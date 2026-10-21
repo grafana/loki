@@ -1019,6 +1019,22 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		requireOnlyFirstIndexRecorded(t, reg, capture)
 	})
 
+	t.Run("yields an error that names the index object and the panic when a read panics", func(t *testing.T) {
+		inMem := objstore.NewInMemBucket()
+		panickingIndex := addIndexObject(t, inMem, sectionOf("object-a"))
+		bucket := newGatedBucket(inMem)
+		gate := bucket.hold(panickingIndex, errors.New("corrupt index object"))
+		gate.panics = true
+		gate.open()
+		m, _, logs := newTestMetastore(bucket)
+
+		batches, err := collectSectionBatches(t, m.SectionsStream(ctx, request))
+
+		require.Empty(t, batches)
+		require.EqualError(t, err, fmt.Sprintf("reading the sections of index object %q: corrupt index object", panickingIndex))
+		require.Contains(t, logs.String(), "panic reading the sections of an index object")
+	})
+
 	t.Run("cancels the other index reads when one read fails, even while the caller handles a batch", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		addIndexObject(t, inMem, sectionOf("object-fast"))
@@ -1842,6 +1858,9 @@ func (b *gatedBucket) enter(ctx context.Context, name string) (leave func(), err
 	defer gate.leftOnce.Do(func() { close(gate.left) })
 	select {
 	case <-gate.release:
+		if gate.panics {
+			panic(gate.err)
+		}
 		return leave, gate.err
 	case <-ctx.Done():
 		if gate.proceedOnCancel {
@@ -1890,6 +1909,9 @@ type readGate struct {
 	// proceedOnCancel lets a held read go through, instead of fail, when its context ends. It models
 	// a read that ends without an error after the cancel. Set it before the first read.
 	proceedOnCancel bool
+
+	// panics makes a read panic with err when the gate opens. Set it before the first read.
+	panics bool
 }
 
 // waitUntilHeld blocks until a read of the object reaches the gate.

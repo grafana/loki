@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -423,7 +425,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 	return SectionsResponse{Sections: sections}, nil
 }
 
-// SectionsStream implements [Metastore.SectionsStream].
 func (m *ObjectMetastore) SectionsStream(ctx context.Context, req SectionsRequest) iter.Seq2[DataobjSectionDescriptors, error] {
 	return func(yield func(DataobjSectionDescriptors, error) bool) {
 		ctx, span := xcap.StartSpan(ctx, tracer, RegionSections)
@@ -492,12 +493,15 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 			uniqueSections int
 		)
 
-		// fail ends the resolution with err. Call it with mu held.
+		// fail ends the resolution with err. It does nothing when an earlier read already failed. Call
+		// it with mu held.
 		fail := func(err error) {
+			if failed {
+				return
+			}
 			failed = true
 
-			// err is the only error in the channel. A read that takes mu later finds failed set and
-			// sends nothing.
+			// The check above makes err the only error in the channel.
 			batches <- batch{err: err}
 			cancelReads()
 		}
@@ -505,6 +509,25 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		g.SetLimit(m.parallelism)
 		for _, indexEntry := range indexes.Indexes {
 			g.Go(func() error {
+				// The caller cannot recover a panic on this goroutine, and the panic would end the
+				// process. End the resolution with an error instead. The deferred Unlock below runs
+				// first, so mu is free here.
+				defer func() {
+					if panicked := recover(); panicked != nil {
+						serverutil.RecordPanic()
+						level.Error(utillog.WithContext(ctx, m.logger)).Log(
+							"msg", "panic reading the sections of an index object",
+							"index", indexEntry.Path,
+							"panic", panicked,
+							"stack", string(debug.Stack()),
+						)
+
+						mu.Lock()
+						defer mu.Unlock()
+						fail(fmt.Errorf("reading the sections of index object %q: %v", indexEntry.Path, panicked))
+					}
+				}()
+
 				sections, readRows, err := m.readIndexSections(readCtx, req, indexEntry.Path)
 
 				mu.Lock()
