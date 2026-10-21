@@ -2160,7 +2160,7 @@ func TestSplitByIntervalPreservesUsageOnMergeFailure(t *testing.T) {
 				merger.err = errors.New("cannot merge responses")
 			}
 			limits := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
-			handler := SplitByIntervalMiddleware(testSchemas, limits, merger, newDefaultSplitter(fakeLimits{}, nil), nilMetrics).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+			handler := SplitByIntervalMiddleware(testSchemas, limits, merger, newDefaultSplitter(limits, nil), nilMetrics).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
 				return logResponseWithScanUsage(100), nil
 			}))
 			response, err := handler.Do(ctx, &LokiRequest{
@@ -2301,7 +2301,7 @@ func BenchmarkSplitByInterval(b *testing.B) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 			limits := WithSplitByLimits(fakeLimits{maxSeries: 100, maxQueryParallelism: tc.parallelism,
 				metadataSplitDuration: map[string]time.Duration{"1": time.Hour}}, time.Hour)
-			handler := SplitByIntervalMiddleware(testSchemas, limits, DefaultCodec, newDefaultSplitter(fakeLimits{}, nil), nilMetrics).
+			handler := SplitByIntervalMiddleware(testSchemas, limits, DefaultCodec, newDefaultSplitter(limits, nil), nilMetrics).
 				Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 					index := int(r.GetStart().Sub(start) / time.Hour)
 					// Keep work after the line limit in flight so this case measures

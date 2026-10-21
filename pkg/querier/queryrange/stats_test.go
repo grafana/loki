@@ -723,7 +723,7 @@ func TestQueryUsageHTTPFlow(t *testing.T) {
 				}
 
 				limits := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: intervalCount}, interval)
-				processing := SplitByIntervalMiddleware(testSchemas, limits, merger, newDefaultSplitter(fakeLimits{}, nil), nilMetrics).Wrap(leaf)
+				processing := SplitByIntervalMiddleware(testSchemas, limits, merger, newDefaultSplitter(limits, nil), nilMetrics).Wrap(leaf)
 
 				// Wrap processing in the HTTP stack and capture successful usage totals.
 				var successfulUsage []int64
