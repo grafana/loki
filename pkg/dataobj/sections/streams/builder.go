@@ -65,9 +65,13 @@ type Builder struct {
 	metrics      *Metrics
 	pageSize     int
 	pageRowCount int
-	shardLayout  ShardLayout
 	lastID       atomic.Int64
 	lookup       map[uint64][]*Stream
+
+	// layout selects the shard bucket of each stream. Flush records it in the
+	// section metadata if it has a stream order. It stays set across Reset,
+	// so reuse a builder only for tenants with the same layout.
+	layout Layout
 
 	// The optional tenant that owns the builder. If specified, the section
 	// must only contain streams owned by the tenant, and no other tenants.
@@ -80,14 +84,16 @@ type Builder struct {
 	globalMinTimestamp time.Time // Minimum timestamp across all streams, used for metrics.
 	globalMaxTimestamp time.Time // Maximum timestamp across all streams, used for metrics.
 
-	// orderedStreams is used for consistently iterating over the list of
-	// streams. It contains streamed added in append order.
+	// ordered holds the streams in append order, so iteration over them is
+	// deterministic.
 	ordered []*Stream
 }
 
 // NewBuilder creates a new streams section builder. pageSize is the target
 // page size in bytes. shardLayout selects the shard bucket of each stream
-// that the builder adds.
+// that the builder adds, unless [Builder.SetLayout] replaces it.
+//
+// The builder records no layout until SetLayout is called.
 func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardLayout) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
@@ -96,10 +102,25 @@ func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardL
 		metrics:      metrics,
 		pageSize:     pageSize,
 		pageRowCount: pageRowCount,
-		shardLayout:  shardLayout,
+		layout:       Layout{shardLayout: shardLayout},
 		lookup:       make(map[uint64][]*Stream, 1024),
 		ordered:      make([]*Stream, 0, 1024),
 	}
+}
+
+// SetLayout makes b record layout in the section metadata on Flush, and
+// selects the shard bucket of each stream with layout.ShardLayout().
+//
+// SetLayout panics if b already holds streams, because their buckets would not
+// match the recorded layout. It also panics if layout is the zero value.
+func (b *Builder) SetLayout(layout Layout) {
+	if len(b.ordered) > 0 {
+		panic("streams: SetLayout called on a builder that holds streams")
+	}
+	if layout.streamOrder == StreamOrderUnspecified {
+		panic("streams: SetLayout called with a layout that has no stream order")
+	}
+	b.layout = layout
 }
 
 // Tenant returns the optional tenant that owns the builder.
@@ -231,7 +252,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
-	newStream.ShardBucket = int64(b.shardLayout.BucketFromHash(hash))
+	newStream.ShardBucket = int64(b.layout.shardLayout.BucketFromHash(hash))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)
@@ -272,6 +293,9 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	}
 
 	columnarEnc.SetTenant(b.tenant)
+	if b.layout.streamOrder != StreamOrderUnspecified {
+		columnarEnc.SetSortInfo(b.layout.sortInfo())
+	}
 
 	n, err = columnarEnc.Flush(w)
 	if err == nil {

@@ -177,7 +177,6 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.Equal(t, "t1", node.Tenant)
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
 	require.Equal(t, task.Runs, node.Runs)
-	require.Equal(t, task.SortSchema, node.SortSchema)
 
 	task2 := &compactionv2pb.TaskSpec{
 		Tenant: "t1",

@@ -29,9 +29,6 @@ var defaultLogSectionConfig = logSectionConfig{
 		AppendStrategy:            logs.AppendOrdered,
 		EstimatedCompressionRatio: 10,
 		SortOrder:                 logs.SortStreamASC,
-		SchemaLabels:              []string{"label:service_name"},
-		StreamOrder:               logs.StreamOrderStableHashV1,
-		ShardCount:                streams.DefaultShardLayout().Buckets(),
 		DropDuplicates:            false, // never modify the requested input
 	},
 }
@@ -183,18 +180,37 @@ func LogsSection(t *testing.T, tenant string, rows []logs.Record, opts ...LogSec
 type streamSectionConfig struct {
 	pageSize     int
 	pageRowCount int
+	layout       streams.Layout
 }
 
 var defaultStreamSectionConfig = streamSectionConfig{
 	pageSize:     1024 * 1024, // 1MB
 	pageRowCount: 10000,
+	layout:       streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}),
+}
+
+// StreamsSectionOpt customizes the streams section that [StreamsSection]
+// builds.
+type StreamsSectionOpt func(*streamSectionConfig)
+
+// WithStreamsLayout makes the streams section record layout instead of the
+// default layout, which has the default shard layout and the schema label
+// service_name.
+func WithStreamsLayout(layout streams.Layout) StreamsSectionOpt {
+	return func(cfg *streamSectionConfig) { cfg.layout = layout }
 }
 
 // StreamsSection returns a streams.Builder populated with the given streams and assigned the specified tenant.
-func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream) dataobj.SectionBuilder {
+// The section records a layout; see [WithStreamsLayout].
+func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream, opts ...StreamsSectionOpt) dataobj.SectionBuilder {
 	t.Helper()
+	config := defaultStreamSectionConfig
+	for _, opt := range opts {
+		opt(&config)
+	}
 
-	sectionBuilder := streams.NewBuilder(streams.NewMetrics(), defaultStreamSectionConfig.pageSize, defaultStreamSectionConfig.pageRowCount, streams.DefaultShardLayout())
+	sectionBuilder := streams.NewBuilder(streams.NewMetrics(), config.pageSize, config.pageRowCount, config.layout.ShardLayout())
+	sectionBuilder.SetLayout(config.layout)
 	sectionBuilder.SetTenant(tenant)
 
 	for _, stream := range labelSets {

@@ -155,7 +155,7 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 	for i, section := range sections {
 		runs[i] = sortmerge.Run{{Section: section, Remap: remaps[i]}}
 	}
-	iter := sortmerge.MixedRunIterator(ctx, runs, sortSchema)
+	iter := sortmerge.MixedRunIterator(ctx, runs)
 
 	var (
 		count int

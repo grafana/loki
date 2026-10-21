@@ -269,17 +269,13 @@ func countTenantSections(obj *dataobj.Object, tenant string, check func(*dataobj
 func assertBuilderE2ESchemaLabels(t *testing.T, obj *dataobj.Object, tenant string, want []string) {
 	t.Helper()
 	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
-		return logs.CheckSection(s) && s.Tenant == tenant
+		return streams.CheckSection(s) && s.Tenant == tenant
 	}) {
-		logsSection, err := logs.Open(t.Context(), sec)
+		streamsSection, err := streams.Open(t.Context(), sec)
 		require.NoError(t, err)
-		got, err := logsSection.SchemaLabels()
+		got, ok, err := streamsSection.Layout()
 		require.NoError(t, err)
-		require.Equal(t, want, got)
-		require.Equal(t, logs.SortLayout{
-			SchemaLabels: want,
-			StreamOrder:  logs.StreamOrderStableHashV1,
-			ShardCount:   streams.DefaultShardLayout().Buckets(),
-		}, logsSection.SortLayout())
+		require.True(t, ok)
+		require.True(t, streams.NewLayout(streams.DefaultShardLayout(), want).Equal(got), "got %+v", got)
 	}
 }

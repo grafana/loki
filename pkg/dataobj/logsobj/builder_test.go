@@ -698,25 +698,12 @@ func testFlushAndSortSchema(t *testing.T) {
 		require.Equal(t, expectedLabelOrder(t, []string{"alpha", "middle", "zoo"}, "service_name", []string{"label:service_name"}), svcOrder)
 	})
 
-	t.Run("records the schema labels in the logs section metadata", func(t *testing.T) {
+	t.Run("records the layout of the tenant in the streams section", func(t *testing.T) {
 		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj2 := buildSorted(t, cfg, "t1", []string{"b", "a"}, overrides)
 
-		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
-			return logs.CheckSection(s) && s.Tenant == "t1"
-		}) {
-			logsSection, err := logs.Open(t.Context(), sec)
-			require.NoError(t, err)
-			labels, err := logsSection.SchemaLabels()
-			require.NoError(t, err)
-			require.Equal(t, []string{"label:app"}, labels, "SchemaLabels must be persisted in section metadata")
-			require.Equal(t, logs.SortLayout{
-				SchemaLabels: []string{"label:app"},
-				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.DefaultShardLayout().Buckets(),
-			}, logsSection.SortLayout())
-		}
+		requireStreamsLayout(t, obj2, "t1", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
 
 		require.Equal(t, expectedLabelOrder(t, []string{"b", "a"}, "app", []string{"label:app"}), appOrder(t, obj2, "t1"))
 		timestampsDescWithinGroups(t, obj2, "t1")
@@ -745,17 +732,6 @@ func testFlushAndSortSchema(t *testing.T) {
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
 			return logs.CheckSection(s) && s.Tenant == "t1"
 		}) {
-			logsSection, err := logs.Open(t.Context(), sec)
-			require.NoError(t, err)
-			schemaLabels, err := logsSection.SchemaLabels()
-			require.NoError(t, err)
-			require.Equal(t, []string{"label:app"}, schemaLabels)
-			require.Equal(t, logs.SortLayout{
-				SchemaLabels: []string{"label:app"},
-				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.DefaultShardLayout().Buckets(),
-			}, logsSection.SortLayout())
-
 			var (
 				prevApp      string
 				prevShard    uint32
@@ -1247,13 +1223,7 @@ func testFlushAndSortLayoutPerObject(t *testing.T) {
 	}
 	requireSchema := func(t *testing.T, obj *dataobj.Object, want []string) {
 		t.Helper()
-		for _, sec := range obj.Sections().Filter(logs.CheckSection) {
-			opened, err := logs.Open(t.Context(), sec)
-			require.NoError(t, err)
-			got, err := opened.SchemaLabels()
-			require.NoError(t, err)
-			require.Equal(t, want, got)
-		}
+		requireStreamsLayout(t, obj, "t1", streams.NewLayout(streams.DefaultShardLayout(), want))
 	}
 
 	t.Run("keeps the sort schema of the open object when the overrides change, and applies the change to the next object", func(t *testing.T) {
@@ -1372,4 +1342,23 @@ type failingRemoveStore struct {
 func (s *failingRemoveStore) Remove(h scratch.Handle) error {
 	_ = s.Store.Remove(h)
 	return errors.New("mock remove error")
+}
+
+// requireStreamsLayout checks that the streams section of tenant in obj
+// records want.
+func requireStreamsLayout(t *testing.T, obj *dataobj.Object, tenant string, want streams.Layout) {
+	t.Helper()
+	var found int
+	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+		return streams.CheckSection(s) && s.Tenant == tenant
+	}) {
+		opened, err := streams.Open(t.Context(), sec)
+		require.NoError(t, err)
+		got, ok, err := opened.Layout()
+		require.NoError(t, err)
+		require.True(t, ok, "the streams section must record a layout")
+		require.True(t, want.Equal(got), "got layout %+v, want %+v", got, want)
+		found++
+	}
+	require.Equal(t, 1, found, "tenant %s must have one streams section", tenant)
 }

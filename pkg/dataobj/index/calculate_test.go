@@ -408,6 +408,7 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	sourceBuilder := dataobj.NewBuilder(nil)
 	ts := time.Unix(10, 0).UTC()
 	streamBuilder := streams.NewBuilder(nil, 2048, 10000, streams.DefaultShardLayout())
+	streamBuilder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), nil))
 	streamBuilder.SetTenant(tenant)
 	id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
 	appendLogsSection := func() {
@@ -473,4 +474,32 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 		require.NoError(t, reader.Close())
 	}
 	require.Equal(t, want, statsIndexes)
+}
+
+func TestCalculator_Calculate_RequiresStreamsLayout(t *testing.T) {
+	t.Run("returns an unprocessable object error when the streams section records no layout", func(t *testing.T) {
+		const tenant = "A"
+		ts := time.Unix(10, 0).UTC()
+		streamBuilder := streams.NewBuilder(nil, 2048, 10000, streams.DefaultShardLayout())
+		streamBuilder.SetTenant(tenant)
+		id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
+		logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+			PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
+		})
+		logBuilder.SetTenant(tenant)
+		logBuilder.Append(logs.Record{StreamID: id, Timestamp: ts, Line: []byte("line")})
+
+		sourceBuilder := dataobj.NewBuilder(nil)
+		require.NoError(t, sourceBuilder.Append(streamBuilder))
+		require.NoError(t, sourceBuilder.Append(logBuilder))
+		source, closer, err := sourceBuilder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		err = NewCalculator(builder, NewCalculatorMetrics(nil)).Calculate(t.Context(), log.NewNopLogger(), source, "objects/no-layout")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "records no layout")
+	})
 }

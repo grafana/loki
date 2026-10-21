@@ -31,21 +31,6 @@ var schemaSortSectionType = dataobj.SectionType{
 	Version:   schemaSortVersion,
 }
 
-// StreamOrder identifies how object-local stream IDs are assigned.
-type StreamOrder int
-
-const (
-	StreamOrderUnspecified  StreamOrder = 0
-	StreamOrderStableHashV1 StreamOrder = 2
-)
-
-// SortLayout describes the physical ordering contract of a logs section.
-type SortLayout struct {
-	SchemaLabels []string
-	StreamOrder  StreamOrder
-	ShardCount   uint32
-}
-
 // CheckSection returns true if section is a logs section.
 func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }
 
@@ -129,36 +114,6 @@ func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
 		return ColumnTypeInvalid, SortDirectionUnspecified, err
 	}
 	return colType, dir, nil
-}
-
-// SchemaLabels returns the ordered list of label names used to define the
-// schema sort key for this section. It returns nil, nil if the section was
-// not sorted by schema (i.e., SortInfo is absent or has no SchemaLabels).
-func (s *Section) SchemaLabels() ([]string, error) {
-	si := s.inner.SortInfo()
-	if si == nil || len(si.SchemaLabels) == 0 {
-		return nil, nil
-	}
-	return si.SchemaLabels, nil
-}
-
-// SortLayout returns the physical ordering contract persisted for this section.
-func (s *Section) SortLayout() SortLayout {
-	si := s.inner.SortInfo()
-	if si == nil {
-		return SortLayout{}
-	}
-
-	var streamOrder StreamOrder
-	switch si.StreamOrder {
-	case datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1:
-		streamOrder = StreamOrderStableHashV1
-	}
-	return SortLayout{
-		SchemaLabels: si.SchemaLabels,
-		StreamOrder:  streamOrder,
-		ShardCount:   si.ShardCount,
-	}
 }
 
 // A Column represents one of the columns in the logs section. Valid columns
