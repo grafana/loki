@@ -4330,6 +4330,14 @@ discover_generic_fields:
 # CLI flag: -limits.tsdb-sharding-strategy
 [tsdb_sharding_strategy: <string> | default = "power_of_two"]
 
+# Experimental: Number of fingerprint-range shards the compactor splits each of
+# the tenant's per-table TSDB indexes into when writing the sharded index copy
+# to -compactor.sharded-index-path-prefix. Must be 0, 1 or a power of two; 0 and
+# 1 write a single file per table. The index under the schema path_prefix is
+# never split.
+# CLI flag: -limits.tsdb-index-shard-factor
+[tsdb_index_shard_factor: <int> | default = 0]
+
 # Precompute chunks for TSDB queries. This can improve query performance at the
 # cost of increased memory usage by computing chunks once during planning,
 # reducing index calls.

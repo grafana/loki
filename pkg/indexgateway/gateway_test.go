@@ -30,12 +30,14 @@ type mockLimits struct {
 	maxCapacity      float64
 	maxBytesPerShard int
 	precomputeChunks bool
+	indexShardFactor int
 }
 
 func (l mockLimits) IndexGatewayShardSize(_ string) int       { return l.shardSize }
 func (l mockLimits) IndexGatewayMaxCapacity(_ string) float64 { return l.maxCapacity }
 func (l mockLimits) TSDBMaxBytesPerShard(_ string) int        { return l.maxBytesPerShard }
 func (l mockLimits) TSDBPrecomputeChunks(_ string) bool       { return l.precomputeChunks }
+func (l mockLimits) TSDBIndexShardFactor(_ string) int        { return l.indexShardFactor }
 
 func TestVolume(t *testing.T) {
 	indexQuerier := newIngesterQuerierMock()

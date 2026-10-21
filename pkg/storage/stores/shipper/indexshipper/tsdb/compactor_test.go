@@ -28,6 +28,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	lokiutil "github.com/grafana/loki/v3/pkg/util"
@@ -602,7 +604,7 @@ func TestCompactor_Compact(t *testing.T) {
 						defer initializedIndexSetsMtx.Unlock()
 						initializedIndexSets[userID] = idxSet
 						return idxSet, nil
-					}, periodConfig)
+					}, periodConfig, nil)
 
 					require.NoError(t, tCompactor.CompactTable())
 
@@ -993,7 +995,7 @@ func TestCompactedIndexForEachSeriesPropagatesIngestedAt(t *testing.T) {
 			builder.FinalizeChunks()
 
 			indexBuckets := IndexBuckets(model.Now(), model.Now(), []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: model.Now()})})
-			compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
+			compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, buildUserID(0), t.TempDir(), periodConfig, builder, 1)
 
 			var got []retention.Chunk
 			err := compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
@@ -1047,7 +1049,7 @@ func TestFormatV4IndexReadThroughStoreAndCompactor(t *testing.T) {
 	builder.FinalizeChunks()
 
 	indexBuckets := IndexBuckets(model.Now(), model.Now(), []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: model.Now()})})
-	compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, flushedChunk.UserID, t.TempDir(), periodConfig, builder)
+	compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, flushedChunk.UserID, t.TempDir(), periodConfig, builder, 1)
 
 	_, err = compactedIndex.IndexChunk(flushedChunk.ChunkRef, metric, flushedChunk.IngestedAt, writer.metas[0].KB, writer.metas[0].Entries)
 	require.NoError(t, err)
@@ -1113,7 +1115,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 		builder.FinalizeChunks()
 
-		return newCompactedIndex(context.Background(), tableName.Prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
+		return newCompactedIndex(context.Background(), tableName.Prefix, buildUserID(0), t.TempDir(), periodConfig, builder, 1)
 	}
 
 	expectedChunkEntries := map[string][]retention.Chunk{
@@ -1246,6 +1248,7 @@ func TestCompactTable_ClosesFilesOnError(t *testing.T) {
 				filepath.Join(tableWorkingDirectory, userID), objectClient)
 		},
 		periodConfig,
+		nil,
 	)
 
 	// CompactTable should return an error due to the corrupt file.
@@ -1266,4 +1269,402 @@ func TestCompactTable_ClosesFilesOnError(t *testing.T) {
 	}
 	require.Empty(t, remainingTSDB,
 		"expected all downloaded TSDB files to be cleaned up after error, but found: %v", remainingTSDB)
+}
+
+type fakeShardLimits map[string]int
+
+func (l fakeShardLimits) TSDBIndexShardFactor(userID string) int { return l[userID] }
+
+// shardTestStreams builds n streams with distinct label sets, so their
+// fingerprints spread over the whole fingerprint space.
+func shardTestStreams(n int) []stream {
+	streams := make([]stream, 0, n)
+	for i := 0; i < n; i++ {
+		lbls := mustParseLabels(fmt.Sprintf(`{foo="bar", i="%d"}`, i))
+		streams = append(streams, buildStream(lbls, buildChunkMetas(0, 5), ""))
+	}
+	return streams
+}
+
+func streamsInShard(streams []stream, shard index.ShardAnnotation) []stream {
+	var res []stream
+	for _, s := range streams {
+		if shard.Match(s.fp) {
+			res = append(res, s)
+		}
+	}
+	return res
+}
+
+func streamFingerprints(streams []stream) []model.Fingerprint {
+	fps := make([]model.Fingerprint, 0, len(streams))
+	for _, s := range streams {
+		fps = append(fps, s.fp)
+	}
+	return fps
+}
+
+func shardTestPeriodConfig() config.PeriodConfig {
+	return config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
+		Schema: "v13",
+	}
+}
+
+func shardTestTableName(periodConfig config.PeriodConfig) string {
+	now := model.Now()
+	return IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})[0].Prefix
+}
+
+func newShardTestCompactedIndex(t *testing.T, streams []stream, k int) *compactedIndex {
+	t.Helper()
+	builder := NewBuilder(index.FormatV3)
+	for _, s := range streams {
+		builder.AddSeries(s.labels, s.fp, s.chunks)
+	}
+	builder.FinalizeChunks()
+
+	periodConfig := shardTestPeriodConfig()
+	return newCompactedIndex(context.Background(), shardTestTableName(periodConfig), "tenant", t.TempDir(), periodConfig, builder, k)
+}
+
+// buildCompactedFiles writes streams through a compactedIndex with shard factor k.
+func buildCompactedFiles(t *testing.T, streams []stream, k int) []*TSDBFile {
+	t.Helper()
+	idxs, err := newShardTestCompactedIndex(t, streams, k).ToShardedIndexFiles()
+	require.NoError(t, err)
+	return tsdbFiles(t, idxs)
+}
+
+func tsdbFiles(t *testing.T, idxs []shipperindex.Index) []*TSDBFile {
+	t.Helper()
+	files := make([]*TSDBFile, 0, len(idxs))
+	for _, idx := range idxs {
+		files = append(files, idx.(*TSDBFile))
+	}
+	t.Cleanup(func() {
+		for _, f := range files {
+			_ = f.Close()
+		}
+	})
+	return files
+}
+
+func fileShard(t *testing.T, f *TSDBFile) index.ShardAnnotation {
+	t.Helper()
+	id, ok := ParseSingleTenantTSDBPath(path.Base(f.Name()))
+	require.True(t, ok, f.Name())
+	return id.Shard
+}
+
+func fileShards(t *testing.T, files []*TSDBFile) []index.ShardAnnotation {
+	t.Helper()
+	shards := make([]index.ShardAnnotation, 0, len(files))
+	for _, f := range files {
+		shards = append(shards, fileShard(t, f))
+	}
+	return shards
+}
+
+func fileFingerprints(t *testing.T, files ...*TSDBFile) []model.Fingerprint {
+	t.Helper()
+	var fps []model.Fingerprint
+	for _, f := range files {
+		err := f.Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(_ labels.Labels, fp model.Fingerprint, _ []index.ChunkMeta) (stop bool) {
+			fps = append(fps, fp)
+			return false
+		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+		require.NoError(t, err)
+	}
+	return fps
+}
+
+func allShardsOf(k uint32) []index.ShardAnnotation {
+	shards := make([]index.ShardAnnotation, 0, k)
+	for x := uint32(0); x < k; x++ {
+		shards = append(shards, index.NewShard(x, k))
+	}
+	return shards
+}
+
+func TestCompactedIndex_ToIndexFiles_IgnoresShardFactor(t *testing.T) {
+	idxs, err := newShardTestCompactedIndex(t, shardTestStreams(64), 4).ToIndexFiles()
+	require.NoError(t, err)
+	files := tsdbFiles(t, idxs)
+
+	require.Len(t, files, 1)
+	require.Equal(t, index.ShardAnnotation{}, fileShard(t, files[0]))
+}
+
+func TestCompactedIndex_ToShardedIndexFiles_AfterToIndexFilesHoldsSameSeries(t *testing.T) {
+	streams := shardTestStreams(64)
+	ci := newShardTestCompactedIndex(t, streams, 4)
+	idxs, err := ci.ToIndexFiles()
+	require.NoError(t, err)
+	tsdbFiles(t, idxs)
+
+	idxs, err = ci.ToShardedIndexFiles()
+	require.NoError(t, err)
+
+	require.ElementsMatch(t, streamFingerprints(streams), fileFingerprints(t, tsdbFiles(t, idxs)...))
+}
+
+func TestCompactedIndex_ToShardedIndexFiles_Unsplit(t *testing.T) {
+	for _, k := range []int{0, 1} {
+		t.Run(fmt.Sprintf("k=%d", k), func(t *testing.T) {
+			files := buildCompactedFiles(t, shardTestStreams(8), k)
+
+			require.Len(t, files, 1)
+			require.Equal(t, index.ShardAnnotation{}, fileShard(t, files[0]))
+		})
+	}
+}
+
+func TestCompactedIndex_ToShardedIndexFiles_WritesOneFilePerShard(t *testing.T) {
+	files := buildCompactedFiles(t, shardTestStreams(64), 4)
+
+	require.ElementsMatch(t, allShardsOf(4), fileShards(t, files))
+}
+
+func TestCompactedIndex_ToShardedIndexFiles_FileHoldsOnlyItsShard(t *testing.T) {
+	for _, f := range buildCompactedFiles(t, shardTestStreams(64), 4) {
+		shard := fileShard(t, f)
+		for _, fp := range fileFingerprints(t, f) {
+			require.True(t, shard.Match(fp), "fingerprint %x in file of shard %s", fp, shard)
+		}
+	}
+}
+
+func TestCompactedIndex_ToShardedIndexFiles_EverySeriesInExactlyOneFile(t *testing.T) {
+	streams := shardTestStreams(64)
+	files := buildCompactedFiles(t, streams, 4)
+
+	require.ElementsMatch(t, streamFingerprints(streams), fileFingerprints(t, files...))
+}
+
+func TestCompactedIndex_ToShardedIndexFiles_SkipsEmptyShards(t *testing.T) {
+	shard := index.NewShard(2, 4)
+	streams := streamsInShard(shardTestStreams(64), shard)
+	require.NotEmpty(t, streams)
+
+	files := buildCompactedFiles(t, streams, 4)
+
+	require.Equal(t, []index.ShardAnnotation{shard}, fileShards(t, files))
+}
+
+func TestCompactedIndex_ToShardedIndexFiles_NoSeriesWritesOneUnsplitFile(t *testing.T) {
+	files := buildCompactedFiles(t, nil, 4)
+
+	require.Len(t, files, 1)
+	require.Equal(t, index.ShardAnnotation{}, fileShard(t, files[0]))
+}
+
+// compactTenant runs a table compaction over tableName in the object store and
+// returns the files compacted for userID.
+func compactTenant(t *testing.T, objectClient client.ObjectClient, tableName, workingDir, userID string, limits IndexShardLimits) []*TSDBFile {
+	t.Helper()
+	ctx := context.Background()
+	newIndexSet := func(u string) (compactor.IndexSet, error) {
+		return newMockIndexSet(u, tableName, filepath.Join(workingDir, u), objectClient)
+	}
+
+	commonIndexSet, err := newMockIndexSet("", tableName, workingDir, objectClient)
+	require.NoError(t, err)
+	existing := map[string]compactor.IndexSet{}
+	_, userDirs, err := objectClient.List(ctx, tableName+"/", "/")
+	require.NoError(t, err)
+	for _, dir := range userDirs {
+		u := path.Base(string(dir))
+		existing[u], err = newIndexSet(u)
+		require.NoError(t, err)
+	}
+
+	var userIndexSet = existing[userID]
+	tCompactor := newTableCompactor(ctx, commonIndexSet, existing, func(u string) (compactor.IndexSet, error) {
+		is, err := newIndexSet(u)
+		if u == userID {
+			userIndexSet = is
+		}
+		return is, err
+	}, shardTestPeriodConfig(), limits)
+	require.NoError(t, tCompactor.CompactTable())
+
+	compacted := userIndexSet.(*mockIndexSet).compactedIndex
+	require.NotNil(t, compacted)
+	idxs, err := compacted.ToIndexFiles()
+	require.NoError(t, err)
+	return tsdbFiles(t, idxs)
+}
+
+func TestCompactTable_WritesUnsplitIndexWithShardFactor(t *testing.T) {
+	const userID = "tenant"
+	periodConfig := shardTestPeriodConfig()
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+	tableName := shardTestTableName(periodConfig)
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	setupMultiTenantIndex(t, indexFormat, map[string][]stream{userID: shardTestStreams(64)}, filepath.Join(objectStoragePath, tableName), time.Unix(1, 0))
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+	require.NoError(t, err)
+
+	files := compactTenant(t, objectClient, tableName, filepath.Join(tempDir, workingDirName, tableName), userID, fakeShardLimits{userID: 4})
+
+	require.Equal(t, []index.ShardAnnotation{{}}, fileShards(t, files))
+}
+
+// boundedFilter is the [min, max] inclusive fingerprint filter of a bounded shard.
+type boundedFilter struct{ minFP, maxFP model.Fingerprint }
+
+func (b boundedFilter) Match(fp model.Fingerprint) bool { return fp >= b.minFP && fp <= b.maxFP }
+func (b boundedFilter) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
+	return b.minFP, max(b.maxFP+1, b.maxFP)
+}
+
+// shardedAndUnsplit returns the same streams written as 4 sharded files read
+// through a MultiIndex, and as a single unsplit file.
+func shardedAndUnsplit(t *testing.T) (sharded, unsplit Index, streams []stream) {
+	t.Helper()
+	streams = shardTestStreams(64)
+	files := buildCompactedFiles(t, streams, 4)
+	indices := make([]Index, 0, len(files))
+	for _, f := range files {
+		indices = append(indices, f)
+	}
+	return NewMultiIndex(IndexSlice(indices)), buildCompactedFiles(t, streams, 1)[0], streams
+}
+
+func shardQueryFilters(streams []stream) map[string]index.FingerprintFilter {
+	minFP, maxFP := model.Fingerprint(math.MaxUint64), model.Fingerprint(0)
+	for _, s := range streams {
+		minFP = min(minFP, s.fp)
+		maxFP = max(maxFP, s.fp)
+	}
+	return map[string]index.FingerprintFilter{
+		"no filter":                    nil,
+		"0_of_2, spans two files":      index.NewShard(0, 2),
+		"3_of_4, one file":             index.NewShard(3, 4),
+		"5_of_8, half a file":          index.NewShard(5, 8),
+		"bounded, all series":          boundedFilter{minFP, maxFP},
+		"bounded, middle of the range": boundedFilter{1 << 62, (3 << 62) - 1},
+		"bounded, single series":       boundedFilter{streams[7].fp, streams[7].fp},
+	}
+}
+
+var shardTestMatcher = labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+
+func TestShardedFiles_GetChunkRefsMatchesUnsplit(t *testing.T) {
+	sharded, unsplit, streams := shardedAndUnsplit(t)
+	for name, fpFilter := range shardQueryFilters(streams) {
+		t.Run(name, func(t *testing.T) {
+			want, err := unsplit.GetChunkRefs(context.Background(), "tenant", 0, 10, nil, fpFilter, shardTestMatcher)
+			require.NoError(t, err)
+			require.NotEmpty(t, want, "the filter should select something")
+
+			got, err := sharded.GetChunkRefs(context.Background(), "tenant", 0, 10, nil, fpFilter, shardTestMatcher)
+			require.NoError(t, err)
+			require.ElementsMatch(t, want, got)
+		})
+	}
+}
+
+func TestShardedFiles_SeriesMatchesUnsplit(t *testing.T) {
+	sharded, unsplit, streams := shardedAndUnsplit(t)
+	for name, fpFilter := range shardQueryFilters(streams) {
+		t.Run(name, func(t *testing.T) {
+			want, err := unsplit.Series(context.Background(), "tenant", 0, 10, nil, fpFilter, shardTestMatcher)
+			require.NoError(t, err)
+			got, err := sharded.Series(context.Background(), "tenant", 0, 10, nil, fpFilter, shardTestMatcher)
+			require.NoError(t, err)
+			require.ElementsMatch(t, want, got)
+		})
+	}
+}
+
+func TestShardedFiles_StatsMatchesUnsplit(t *testing.T) {
+	sharded, unsplit, streams := shardedAndUnsplit(t)
+	includeAll := func(index.ChunkMeta) bool { return true }
+	for name, fpFilter := range shardQueryFilters(streams) {
+		t.Run(name, func(t *testing.T) {
+			want, got := &stats.Stats{}, &stats.Stats{}
+			require.NoError(t, unsplit.Stats(context.Background(), "tenant", 0, 10, want, fpFilter, includeAll, shardTestMatcher))
+			require.NoError(t, sharded.Stats(context.Background(), "tenant", 0, 10, got, fpFilter, includeAll, shardTestMatcher))
+			require.Equal(t, want.Stats(), got.Stats())
+		})
+	}
+}
+
+func TestShardedFiles_ForSeriesMatchesUnsplit(t *testing.T) {
+	sharded, unsplit, streams := shardedAndUnsplit(t)
+	forSeriesFingerprints := func(t *testing.T, idx Index, fpFilter index.FingerprintFilter) []model.Fingerprint {
+		// MultiIndex calls the callback from one goroutine per file
+		var mtx sync.Mutex
+		var fps []model.Fingerprint
+		require.NoError(t, idx.ForSeries(context.Background(), "tenant", fpFilter, 0, 10, func(_ labels.Labels, fp model.Fingerprint, _ []index.ChunkMeta) (stop bool) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			fps = append(fps, fp)
+			return false
+		}, shardTestMatcher))
+		return fps
+	}
+	for name, fpFilter := range shardQueryFilters(streams) {
+		t.Run(name, func(t *testing.T) {
+			require.ElementsMatch(t, forSeriesFingerprints(t, unsplit, fpFilter), forSeriesFingerprints(t, sharded, fpFilter))
+		})
+	}
+}
+
+func TestShardedFiles_LabelNamesMatchesUnsplit(t *testing.T) {
+	sharded, unsplit, _ := shardedAndUnsplit(t)
+
+	want, err := unsplit.LabelNames(context.Background(), "tenant", 0, 10, shardTestMatcher)
+	require.NoError(t, err)
+	got, err := sharded.LabelNames(context.Background(), "tenant", 0, 10, shardTestMatcher)
+	require.NoError(t, err)
+	require.ElementsMatch(t, want, got)
+}
+
+func TestShardedFiles_LabelValuesMatchesUnsplit(t *testing.T) {
+	sharded, unsplit, _ := shardedAndUnsplit(t)
+
+	want, err := unsplit.LabelValues(context.Background(), "tenant", 0, 10, "i", shardTestMatcher)
+	require.NoError(t, err)
+	got, err := sharded.LabelValues(context.Background(), "tenant", 0, 10, "i", shardTestMatcher)
+	require.NoError(t, err)
+	require.ElementsMatch(t, want, got)
+}
+
+func TestMultiIndex_SkipsShardFilesOutsideFilter(t *testing.T) {
+	files := buildCompactedFiles(t, shardTestStreams(64), 4)
+	visitor := indexIterFunc(func(f func(context.Context, Index) error) error {
+		for _, file := range files {
+			if err := f(context.Background(), file); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	mi := NewMultiIndex(visitor)
+
+	for _, tc := range []struct {
+		desc       string
+		fpFilter   index.FingerprintFilter
+		wantShards []index.ShardAnnotation
+	}{
+		{desc: "no filter visits every file", fpFilter: nil, wantShards: allShardsOf(4)},
+		{desc: "3_of_4 visits its file", fpFilter: index.NewShard(3, 4), wantShards: []index.ShardAnnotation{index.NewShard(3, 4)}},
+		{desc: "1_of_2 visits the two files it covers", fpFilter: index.NewShard(1, 2), wantShards: []index.ShardAnnotation{index.NewShard(2, 4), index.NewShard(3, 4)}},
+		{desc: "5_of_8 visits the file containing it", fpFilter: index.NewShard(5, 8), wantShards: []index.ShardAnnotation{index.NewShard(2, 4)}},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			var visited []index.ShardAnnotation
+			require.NoError(t, mi.forMatchingIndices(context.Background(), 0, 10, tc.fpFilter, func(_ context.Context, idx Index) error {
+				visited = append(visited, fileShard(t, idx.(*TSDBFile)))
+				return nil
+			}))
+			require.ElementsMatch(t, tc.wantShards, visited)
+		})
+	}
 }

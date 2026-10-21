@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math/bits"
 	"strconv"
 	"strings"
 	"time"
@@ -142,6 +143,7 @@ type Limits struct {
 	TSDBMaxQueryParallelism     int                `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	TSDBMaxBytesPerShard        flagext.ByteSize   `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
 	TSDBShardingStrategy        string             `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
+	TSDBIndexShardFactor        int                `yaml:"tsdb_index_shard_factor" json:"tsdb_index_shard_factor" category:"experimental"`
 	TSDBPrecomputeChunks        bool               `yaml:"tsdb_precompute_chunks" json:"tsdb_precompute_chunks"`
 	CardinalityLimit            int                `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery  int                `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
@@ -496,6 +498,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 			logql.BoundedVersion.String(),
 		),
 	)
+	f.IntVar(&l.TSDBIndexShardFactor, "limits.tsdb-index-shard-factor", 0, "Experimental: Number of fingerprint-range shards the compactor splits each of the tenant's per-table TSDB indexes into when writing the sharded index copy to -compactor.sharded-index-path-prefix. Must be 0, 1 or a power of two; 0 and 1 write a single file per table. The index under the schema path_prefix is never split.")
 	f.BoolVar(&l.TSDBPrecomputeChunks, "querier.tsdb-precompute-chunks", false, "Precompute chunks for TSDB queries. This can improve query performance at the cost of increased memory usage by computing chunks once during planning, reducing index calls.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Maximum number of stream matchers per query.")
@@ -770,6 +773,10 @@ func (l *Limits) Validate() error {
 		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
 	}
 
+	if err := ValidateTSDBIndexShardFactor(l.TSDBIndexShardFactor); err != nil {
+		return err
+	}
+
 	if l.DataObjMaxBytesPerShard <= 0 {
 		return errors.New("querier.dataobj-max-bytes-per-shard must be greater than 0")
 	}
@@ -962,6 +969,23 @@ func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
 // TSDBShardingStrategy returns the sharding strategy to use in query planning.
 func (o *Overrides) TSDBShardingStrategy(_ context.Context, userID string) string {
 	return o.getOverridesForUser(userID).TSDBShardingStrategy
+}
+
+// TSDBIndexShardFactor returns the number of fingerprint-range shards the
+// compactor splits each of the tenant's per-table TSDB indexes into for the
+// sharded index copy. 0 and 1 both mean a single file per table.
+func (o *Overrides) TSDBIndexShardFactor(userID string) int {
+	return o.getOverridesForUser(userID).TSDBIndexShardFactor
+}
+
+// ValidateTSDBIndexShardFactor checks that a tsdb_index_shard_factor is 0, 1
+// or a power of two. index.ShardAnnotation.Validate rejects a factor of 1, so
+// it is not used here: 1 is the same as 0, no split.
+func ValidateTSDBIndexShardFactor(k int) error {
+	if k < 0 || (k > 1 && bits.OnesCount(uint(k)) != 1) {
+		return fmt.Errorf("limits.tsdb-index-shard-factor must be 0, 1 or a power of two, got %d", k)
+	}
+	return nil
 }
 
 func (o *Overrides) TSDBPrecomputeChunks(userID string) bool {
