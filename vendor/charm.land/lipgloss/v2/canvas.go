@@ -82,7 +82,8 @@ func (c *Canvas) Draw(scr uv.Screen, area uv.Rectangle) {
 	c.scr.Draw(scr, area)
 }
 
-// Render renders the canvas into a styled string.
+// Render renders the canvas into a styled string. Any trailing spaces are
+// trimmed.
 func (c *Canvas) Render() string {
-	return c.scr.Render()
+	return uv.TrimSpace(c.scr.Render())
 }
