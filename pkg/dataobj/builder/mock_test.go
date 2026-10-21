@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"time"
 
@@ -227,6 +228,78 @@ func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason
 	m.lastReason = reason
 	m.lastOffset = offset
 	return nil
+}
+
+// gatedFlushCommitter blocks each Flush until the test sends its result on
+// results, or until the context is canceled. It records the offset, reason
+// and builders of each Flush when the Flush starts, and the largest number of
+// flushes that ran at the same time. It does not use the builders. It is safe
+// for concurrent use.
+type gatedFlushCommitter struct {
+	results chan error
+
+	mtx        sync.Mutex
+	offsets    []int64
+	reasons    []string
+	builders   [][]builder
+	running    int
+	maxRunning int
+}
+
+func newGatedFlushCommitter() *gatedFlushCommitter {
+	return &gatedFlushCommitter{results: make(chan error)}
+}
+
+func (m *gatedFlushCommitter) Flush(ctx context.Context, builders []builder, reason string, offset int64) error {
+	m.mtx.Lock()
+	m.offsets = append(m.offsets, offset)
+	m.reasons = append(m.reasons, reason)
+	m.builders = append(m.builders, builders)
+	m.running++
+	m.maxRunning = max(m.maxRunning, m.running)
+	m.mtx.Unlock()
+
+	defer func() {
+		m.mtx.Lock()
+		m.running--
+		m.mtx.Unlock()
+	}()
+
+	select {
+	case err := <-m.results:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// startedOffsets returns the offsets of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedOffsets() []int64 {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.offsets)
+}
+
+// startedReasons returns the reasons of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedReasons() []string {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.reasons)
+}
+
+// startedBuilders returns the builders of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedBuilders() [][]builder {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.builders)
+}
+
+// maxConcurrentFlushes returns the largest number of flushes that ran at the
+// same time.
+func (m *gatedFlushCommitter) maxConcurrentFlushes() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return m.maxRunning
 }
 
 // testBuilderFactory creates real [logsobj.Builder] instances backed by an
