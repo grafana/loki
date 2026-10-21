@@ -200,8 +200,11 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 		case <-time.After(p.idleFlushTimeout):
 			// This partition is idle, flush it.
 			p.metrics.setConsumptionLag(0)
-			if _, err := p.idleFlush(ctx); errors.Is(err, errStopProcessing) {
-				return nil
+			if _, err := p.idleFlush(ctx); err != nil {
+				if errors.Is(err, errStopProcessing) {
+					return nil
+				}
+				level.Error(p.logger).Log("msg", "failed to enqueue idle flush", "err", err)
 			}
 		}
 	}
