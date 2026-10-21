@@ -14,7 +14,9 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -31,8 +33,6 @@ type FanOutHandler struct {
 	routeName                     string
 	comparator                    comparator.ResponsesComparator
 	instrumentCompares            bool
-	routingMode                   RoutingMode
-	raceTolerance                 time.Duration
 	addRoutingDecisionsToWarnings bool
 }
 
@@ -45,8 +45,6 @@ type FanOutHandlerConfig struct {
 	RouteName                     string
 	Comparator                    comparator.ResponsesComparator
 	InstrumentCompares            bool
-	RoutingMode                   RoutingMode
-	RaceTolerance                 time.Duration
 	AddRoutingDecisionsToWarnings bool
 }
 
@@ -60,8 +58,6 @@ func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 		routeName:                     cfg.RouteName,
 		comparator:                    cfg.Comparator,
 		instrumentCompares:            cfg.InstrumentCompares,
-		routingMode:                   cfg.RoutingMode,
-		raceTolerance:                 cfg.RaceTolerance,
 		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
 	}
 }
@@ -75,20 +71,8 @@ type backendResult struct {
 }
 
 // shouldCompare returns true if the given backend result should be compared against the preferred result.
-func (h *FanOutHandler) shouldCompare(r *backendResult, preferV1 bool) bool {
-	if h.comparator == nil {
-		return false
-	}
-
-	if r.backend.v1Preferred && preferV1 {
-		return true
-	}
-
-	if r.backend.v2Preferred && !preferV1 {
-		return true
-	}
-
-	return false
+func (h *FanOutHandler) shouldCompare(r *backendResult) bool {
+	return h.comparator != nil && r.backend.v1Preferred
 }
 
 // Do implements queryrangebase.Handler. It fans out the request to all backends, returns the preferred backend's
@@ -132,63 +116,22 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 
-	switch h.routingMode {
-	case RoutingModeRace:
-		return h.doWithRacing(results, collected, httpReq)
-	case RoutingModeV2Preferred:
-		return h.doWithPreferred(results, collected, httpReq, false)
-	default:
-		return h.doWithPreferred(results, collected, httpReq, true)
-	}
+	return h.doWithPreferred(results, collected, httpReq)
 }
 
-func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
+func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
 	for i := 0; i < len(h.backends); i++ {
 		result := <-results
 		collected = append(collected, result)
 
-		if result.err == nil && result.backendResp.succeeded() {
-			winner := result
-			remaining := len(h.backends) - i - 1
-
-			if result.backend.v1Preferred && h.raceTolerance > 0 {
-				select {
-				case r2 := <-results:
-					collected = append(collected, r2)
-					if r2.err == nil && r2.backendResp.succeeded() {
-						winner = r2
-						remaining = len(h.backends) - i - 2
-					}
-				case <-time.After(h.raceTolerance):
-				}
-			}
-
-			return h.finishRace(winner, remaining, httpReq, results, collected)
-		}
-	}
-
-	return h.returnFallback(collected)
-}
-
-func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, preferV1 bool) (queryrangebase.Response, error) {
-	for i := 0; i < len(h.backends); i++ {
-		result := <-results
-		collected = append(collected, result)
-
-		isPreferred := (preferV1 && result.backend.v1Preferred) || (!preferV1 && result.backend.v2Preferred)
-		if isPreferred {
+		if result.backend.v1Preferred {
 			if !result.backendResp.succeeded() {
-				continue
-			}
-
-			// 404s are treated as successful, but v2 does not implement all metadata endpoints, so in that case fall back to v1
-			if !preferV1 && result.backendResp.status == 404 {
 				continue
 			}
 
 			remaining := len(h.backends) - i - 1
 			go func() {
-				h.collectRemainingAndCompare(remaining, httpReq, results, collected, preferV1)
+				h.collectRemainingAndCompare(remaining, httpReq, results, collected)
 			}()
 
 			// when the preferred backends succeeds, but with error, that indicates an invalid request
@@ -230,31 +173,26 @@ func (h *FanOutHandler) returnFallback(collected []*backendResult) (queryrangeba
 	return nil, fmt.Errorf("all backends failed")
 }
 
-// finishRace records the race winner and spawns a goroutine to collect remaining results.
-func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult) (queryrangebase.Response, error) {
-	h.metrics.raceWins.WithLabelValues(
-		winner.backend.name,
-		winner.backend.Alias(),
-		h.routeName,
-		detectIssuer(httpReq),
-	).Inc()
-
-	go func() {
-		h.collectRemainingAndCompare(remaining, httpReq, results, collected, true)
-	}()
-
-	if winner.response != nil && h.addRoutingDecisionsToWarnings {
-		addWarningToResponse(winner.response, fmt.Sprintf("%s backend won the race", winner.backend.name))
+// tenantLabel returns the tenant label of the metrics for the request. A multi-tenant request has
+// its tenant IDs joined by "|".
+func tenantLabel(httpReq *http.Request) (string, error) {
+	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(httpReq)
+	if err != nil {
+		return "", err
 	}
 
-	return winner.response, nil
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return "", err
+	}
+	return tenant.JoinTenantIDs(tenantIDs), nil
 }
 
 // collectRemainingAndCompare collects remaining backend results and performs comparisons.
 // Should be called asynchronously to not block preferred response from returning.
-func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, preferV1 bool) {
+func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult) {
 	issuer := detectIssuer(httpReq)
-	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
+	tenantID, err := tenantLabel(httpReq)
 	if err != nil {
 		level.Warn(h.logger).Log(
 			"msg", "failed to extract tenant id from http request",
@@ -270,19 +208,14 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 
 	var preferredResult *backendResult
 	for _, r := range collected {
-		if r.backend.v1Preferred && preferV1 {
-			preferredResult = r
-			break
-		}
-
-		if r.backend.v2Preferred && !preferV1 {
+		if r.backend.v1Preferred {
 			preferredResult = r
 			break
 		}
 	}
 
 	for _, r := range collected {
-		if h.shouldCompare(r, preferV1) {
+		if h.shouldCompare(r) {
 			result := comparisonMatch
 			summary, err := h.compareResponses(preferredResult.backendResp, r.backendResp, time.Now().UTC())
 			if err != nil {
@@ -474,4 +407,16 @@ func statusCodeFromError(err error) int {
 	}
 
 	return http.StatusInternalServerError
+}
+
+// addWarningToResponse adds a warning message to the response based on its type.
+func addWarningToResponse(resp queryrangebase.Response, warning string) {
+	switch r := resp.(type) {
+	case *queryrange.LokiResponse:
+		r.Warnings = append(r.Warnings, warning)
+	case *queryrange.LokiPromResponse:
+		if r.Response != nil {
+			r.Response.Warnings = append(r.Response.Warnings, warning)
+		}
+	}
 }

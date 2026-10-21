@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"cmp"
 	"context"
 	"flag"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"math/rand/v2"
 	"runtime"
 	runtimemetrics "runtime/metrics"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -67,40 +65,26 @@ func BenchmarkFlushCommitter_Concurrency(b *testing.B) {
 		// Requests take as long as typical object storage requests.
 		{name: "upload=real", latency: realRequest},
 	}
-	orders := []struct {
-		name  string
-		order func([]builder)
-	}{
-		{name: "order=tenant", order: func([]builder) {}},
-		{name: "order=largest-first", order: func(builders []builder) {
-			slices.SortStableFunc(builders, func(a, b builder) int {
-				return cmp.Compare(b.GetEstimatedSize(), a.GetEstimatedSize())
-			})
-		}},
-	}
-
 	tenants := newBenchTenants()
 	for _, live := range []bool{false, true} {
 		for _, profile := range profiles {
 			if live && !profile.live {
 				continue
 			}
-			for _, order := range orders {
-				for _, concurrency := range []int{1, 2, 4} {
-					name := fmt.Sprintf("%s/%s/concurrency=%d", profile.name, order.name, concurrency)
-					if live {
-						name = "live/" + name
-					}
-					b.Run(name, func(b *testing.B) {
-						benchmarkFlush(b, tenants, profile.latency, order.order, concurrency, live)
-					})
+			for _, concurrency := range []int{1, 2, 4} {
+				name := fmt.Sprintf("%s/concurrency=%d", profile.name, concurrency)
+				if live {
+					name = "live/" + name
 				}
+				b.Run(name, func(b *testing.B) {
+					benchmarkFlush(b, tenants, profile.latency, concurrency, live)
+				})
 			}
 		}
 	}
 }
 
-func benchmarkFlush(b *testing.B, tenants []benchTenant, latency benchBucketLatency, order func([]builder), concurrency int, live bool) {
+func benchmarkFlush(b *testing.B, tenants []benchTenant, latency benchBucketLatency, concurrency int, live bool) {
 	var peak, base uint64
 	for b.Loop() {
 		b.StopTimer()
@@ -110,7 +94,6 @@ func benchmarkFlush(b *testing.B, tenants []benchTenant, latency benchBucketLate
 		for i, tenant := range tenants {
 			builders[i] = tenant.fill(b, flush.factory)
 		}
-		order(builders)
 
 		runtime.GC()
 		sampler := startHeapSampler(live)
@@ -241,8 +224,8 @@ func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) builde
 //   - 8 medium tenants of about 8 MB of raw log lines each,
 //   - 2 large tenants of about 60 MB of raw log lines each.
 //
-// The sizes are spread across the tenant names, so the large tenants do not
-// come first or last in tenant order.
+// The sizes are spread across the tenant names, so the tenant order does not
+// match the size order.
 func newBenchTenants() []benchTenant {
 	const (
 		small  = 2_000

@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -31,7 +30,7 @@ func TestInstantQueryHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
-		api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, nil, nil, limits, nil, nil, log.NewNopLogger())
+		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 
 		ctx := user.InjectOrgID(context.Background(), "user")
 		req, err := http.NewRequestWithContext(ctx, "GET", `/api/v1/query`, nil)
@@ -419,7 +418,7 @@ func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) 
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, nil, querier, limits, nil, nil, log.NewNopLogger())
+	api := NewQuerierAPI(mockQuerierConfig(), querier, limits, log.NewNopLogger())
 	return api
 }
 
@@ -610,11 +609,11 @@ func TestPatternsHandler(t *testing.T) {
 			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
 
 			api := &QuerierAPI{
-				cfgV1:    conf,
-				querier:  querier,
-				limits:   limits,
-				engineV1: engineMock,
-				logger:   log.NewNopLogger(),
+				cfg:     conf,
+				querier: querier,
+				limits:  limits,
+				engine:  engineMock,
+				logger:  log.NewNopLogger(),
 			}
 
 			req := &logproto.QueryPatternsRequest{
@@ -719,11 +718,11 @@ func TestPatternsHandlerDisabled(t *testing.T) {
 			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
 
 			api := &QuerierAPI{
-				cfgV1:    conf,
-				querier:  querier,
-				limits:   limitsDisabled, // Use the disabled limits
-				engineV1: engineMock,
-				logger:   log.NewNopLogger(),
+				cfg:     conf,
+				querier: querier,
+				limits:  limitsDisabled, // Use the disabled limits
+				engine:  engineMock,
+				logger:  log.NewNopLogger(),
 			}
 
 			req := &logproto.QueryPatternsRequest{

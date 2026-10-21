@@ -52,8 +52,7 @@ type coordinatorMetrics struct {
 	indexesAddedTotal *prometheus.CounterVec // tenant
 
 	// tasksTotal counts compaction tasks of every kind that successful tenant
-	// cycles dispatched. The kinds are IndexMerge, LogMerge, SortObject, and
-	// IndexFilter.
+	// cycles dispatched. The kinds are IndexMerge, LogMerge, and IndexFilter.
 	tasksTotal *prometheus.CounterVec // tenant
 
 	// cycleDurationSeconds measures wall-clock duration of one worker-loop phase
@@ -124,7 +123,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		tasksTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tasks_total",
-			Help: "Cumulative count of compaction tasks (IndexMerge, LogMerge, SortObject, IndexFilter) dispatched per tenant by successful tenant cycles.",
+			Help: "Cumulative count of compaction tasks (IndexMerge, LogMerge, IndexFilter) dispatched per tenant by successful tenant cycles.",
 		}, []string{labelTenant}),
 		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
