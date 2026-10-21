@@ -290,7 +290,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// The flush loop stopped, so a later flush fails.
 			require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
-			require.ErrorIs(t, proc.flush(ctx, "forced"), errFlush)
+			require.ErrorIs(t, proc.flush(ctx, "forced"), errStopProcessing)
 			require.NoError(t, stop())
 		})
 	})
@@ -465,7 +465,7 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 			synctest.Wait()
 
 			err := proc.processRecord(ctx, newRecord(t, 3))
-			require.ErrorIs(t, err, errFlush)
+			require.ErrorIs(t, err, errStopProcessing)
 			require.Equal(t, []int64{1}, flushCommitter.startedOffsets())
 
 			err = stop()

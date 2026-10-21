@@ -149,10 +149,10 @@ func (p *processor) stopping(_ error) error {
 	return nil
 }
 
-// errFlush means that flush could not send its request to the flush loop.
-// Run stops on it, because the processor cannot commit the records that it
-// appends after a failed flush.
-var errFlush = errors.New("failed to flush")
+// errStopProcessing means that the flush loop stopped or ctx is canceled, so
+// the processor cannot flush any more. Run stops on it. stopFlushLoop returns
+// the error of a failed flush, if any.
+var errStopProcessing = errors.New("processor must stop")
 
 func (p *processor) Run(ctx context.Context) (returnErr error) {
 	defer level.Info(p.logger).Log("msg", "stopped partition processor")
@@ -191,7 +191,7 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 				// The record is not lost if the processor stops: a restart
 				// reads it again from the last commit. The deferred
 				// stopFlushLoop returns the error of a failed flush.
-				if errors.Is(err, errFlush) {
+				if errors.Is(err, errStopProcessing) {
 					return nil
 				}
 				level.Error(p.logger).Log("msg", "failed to process record", "err", err)
@@ -200,7 +200,7 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 		case <-time.After(p.idleFlushTimeout):
 			// This partition is idle, flush it.
 			p.metrics.setConsumptionLag(0)
-			if _, err := p.idleFlush(ctx); errors.Is(err, errFlush) {
+			if _, err := p.idleFlush(ctx); errors.Is(err, errStopProcessing) {
 				return nil
 			}
 		}
@@ -256,8 +256,8 @@ func (p *processor) shouldFlushDueToMaxAge() bool {
 
 // idleFlush sends a flush request to the flush loop if the partition has
 // exceeded the idle flush timeout. It returns true if it sent the request,
-// false with errFlush if it could not send it, and false with a nil error if
-// the partition has not exceeded the timeout.
+// false with errStopProcessing if it could not send it, and false with a nil
+// error if the partition has not exceeded the timeout.
 func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
@@ -287,8 +287,8 @@ func (p *processor) needsIdleFlush() bool {
 // flushes them and commits the offset of the last appended record, while the
 // processor keeps appending records to new builders.
 //
-// flush waits while the loop runs the previous flush. It returns errFlush if
-// the loop stopped or ctx is canceled.
+// flush waits while the loop runs the previous flush. It returns
+// errStopProcessing if the loop stopped or ctx is canceled.
 func (p *processor) flush(ctx context.Context, reason string) error {
 	req := flushRequest{
 		builders: p.builder.getBuilders(),
@@ -312,9 +312,9 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.metrics.flushWaitSeconds.Add(time.Since(waitStart).Seconds())
 		return nil
 	case <-p.flushLoopDone:
-		return errFlush
+		return errStopProcessing
 	case <-ctx.Done():
-		return errFlush
+		return errStopProcessing
 	}
 }
 
