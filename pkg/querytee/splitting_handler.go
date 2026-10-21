@@ -2,7 +2,6 @@ package querytee
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -27,7 +26,6 @@ type SplittingHandlerConfig struct {
 	Codec                         queryrangebase.Codec
 	FanOutHandler                 queryrangebase.Handler
 	V1Backend                     *ProxyBackend
-	RoutingMode                   RoutingMode
 	SplitStart                    time.Time
 	SplitLag                      time.Duration
 	SplitRetentionDays            int64
@@ -37,7 +35,6 @@ type SplittingHandlerConfig struct {
 type SplittingHandler struct {
 	codec                         queryrangebase.Codec
 	fanOutHandler                 queryrangebase.Handler
-	routingMode                   RoutingMode
 	splitLag                      time.Duration
 	logger                        log.Logger
 	logsQueryHandler              queryrangebase.Handler
@@ -85,7 +82,6 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 		logsQueryHandler:              logsQueryHandler,
 		metricsQueryHandler:           metricsQueryHandler,
 		v1Handler:                     v1RoundTrip,
-		routingMode:                   cfg.RoutingMode,
 		splitLag:                      cfg.SplitLag,
 		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
 	}
@@ -154,9 +150,8 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Hand
 
 // ServeHTTP implements http.Handler interface to serve queries that can be split.
 //
-// Routing behavior depends on the routing mode:
-//   - v2-preferred/race: Always split when splitLag > 0.
-//   - v1-preferred: Route to v1 only.
+// Multi-tenant queries go to v1 only. Other queries are split between the v1 and v2 backends when
+// splitLag > 0, and fan out to all backends otherwise.
 func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
@@ -195,19 +190,6 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if resp != nil && f.addRoutingDecisionsToWarnings {
 			addWarningToResponse(resp, "multi-tenant query routed to v1 backend only (v2 does not support multi-tenant)")
 		}
-		f.writeResponse(ctx, r, w, resp, err)
-		return
-	}
-
-	// V2 only supports query and query_range endpoints (LokiRequest and LokiInstantRequest).
-	// For unsupported request types, route directly to v1 to avoid errors from v2.
-	if !isV2SupportedRequest(req) && (f.routingMode == RoutingModeV2Preferred || f.routingMode == RoutingModeRace) {
-		level.Debug(f.logger).Log(
-			"msg", "request type not supported by v2, routing to v1 only",
-			"path", r.URL.Path,
-			"type", fmt.Sprintf("%T", req),
-		)
-		resp, err = f.v1Handler.Do(ctx, req)
 		f.writeResponse(ctx, r, w, resp, err)
 		return
 	}
@@ -300,23 +282,6 @@ func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.R
 			addWarningToResponse(resp, "unsupported query was not split and sent to v1 backend only")
 		}
 		return resp, err
-	}
-}
-
-// isV2SupportedRequest returns true if the decoded request type is supported by the
-// v2 backend (Thor query engine). Currently only range queries (LokiRequest) and
-// instant queries (LokiInstantRequest) are supported. Update this function as Thor
-// gains support for additional request types (e.g., labels, series).
-//
-// Note: when splitLag > 0, unsupported types are also caught by the serveSplits
-// default case (line 342). This check makes this requirement more clear, and catches
-// the case where splitLag=0.
-func isV2SupportedRequest(req queryrangebase.Request) bool {
-	switch req.(type) {
-	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest:
-		return true
-	default:
-		return false
 	}
 }
 
