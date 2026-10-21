@@ -3103,14 +3103,15 @@ func TestDryRun_MetricInstant_HintOutsideLookbackIsMiss(t *testing.T) {
 	}}))
 }
 
-func TestDryRun_MetricInstant_IngesterWindowSampleExcluded(t *testing.T) {
+func TestDryRun_MetricInstant_IngesterWindowOverlapSkipsLookup(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
-	// The 5m lookback crosses the 3h cutoff, and the sample ends after it.
+	// The 5m lookback crosses the 3h cutoff, so the only sample would be left out.
 	eval := now.Add(-3*time.Hour + 2*time.Minute)
 	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: nil}}
 	userResp := metricInstantResponse(1, eval)
+	nextCalled := 0
 	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		time.Sleep(25 * time.Millisecond)
+		nextCalled++
 		return userResp, nil
 	})
 
@@ -3123,17 +3124,9 @@ func TestDryRun_MetricInstant_IngesterWindowSampleExcluded(t *testing.T) {
 	resp, err := handler.Do(testTenantContext(), newTestLokiInstantRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, eval))
 	require.NoError(t, err)
 	require.Same(t, userResp, resp)
-
-	require.Equal(t, 1, hp.Calls())
-	_, gotThrough := hp.Window()
-	require.WithinDuration(t, now.Add(-3*time.Hour), gotThrough.Time(), 2*time.Second)
-
-	logLine := findLogLine(logs.String(), "logline dry-run verification")
-	require.NotEmpty(t, logLine)
-	require.Contains(t, logLine, "correct=true", "the sample whose lookback ends after the cutoff is left out")
-	require.Contains(t, logLine, "total_entries=0")
-	require.Contains(t, logLine, "false_negatives=0")
-	require.NotContains(t, logLine, "false_negative_ranges=")
+	require.Equal(t, 1, nextCalled)
+	require.Equal(t, 0, hp.Calls())
+	require.Empty(t, findLogLine(logs.String(), "logline dry-run verification"))
 }
 
 func TestDryRun_MetricInstant_AbsentOverTimeSkipsOverlap(t *testing.T) {
