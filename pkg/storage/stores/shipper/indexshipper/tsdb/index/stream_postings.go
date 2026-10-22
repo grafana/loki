@@ -164,11 +164,11 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 
 	// Postings lists are read through one decbuf ranging over the whole file
 	// so that it can benefit from the FileReader's read-ahead.
-	postingsDecbuf := p.factory.NewRawDecbuf(ctx)
+	// Opening it is deferred to the point that we need it, so that a lookup
+	// which matches nothing doesn't pay the cost of opening a decbuf.
+	var postingsDecbuf streamenc.Decbuf
+	postingsDecbufOpen := false
 	defer func() { _ = postingsDecbuf.Close() }()
-	if err := postingsDecbuf.Err(); err != nil {
-		return nil, err
-	}
 
 	// Unchecked because we already checked CRC32 at startup
 	offsetTableDecbuf := p.factory.NewDecbufAtUnchecked(ctx, p.off)
@@ -213,6 +213,13 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 			}
 			for currentLabelValue >= targetLabelValue {
 				if currentLabelValue == targetLabelValue {
+					if !postingsDecbufOpen {
+						postingsDecbuf = p.factory.NewRawDecbuf(ctx)
+						postingsDecbufOpen = true
+						if err := postingsDecbuf.Err(); err != nil {
+							return nil, err
+						}
+					}
 					postings, err := p.readPostingsList(&postingsDecbuf, postingsOffset)
 					if err != nil {
 						return nil, fmt.Errorf("decode postings: %w", err)
