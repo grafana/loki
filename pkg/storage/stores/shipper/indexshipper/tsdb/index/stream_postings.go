@@ -389,7 +389,7 @@ func (p *pooledBigEndianPostings) release() {
 		return
 	}
 	p.pooled = false
-	postingsListBufferPool.Put(p.buf)
+	putPostingsListBuffer(p.buf)
 }
 
 // streamPostingsOffsetTable iterates the postings-offset table, running
