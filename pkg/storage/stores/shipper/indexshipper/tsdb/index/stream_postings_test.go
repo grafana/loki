@@ -1,12 +1,18 @@
 package index
 
 import (
+	"context"
+	"encoding/binary"
 	"fmt"
+	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
 // drainPostings iterates a Postings to completion and returns the refs.
@@ -259,6 +265,162 @@ func TestStreamPostings_ShardedMatchesMmap(t *testing.T) {
 			for _, ref := range allSeriesRefs {
 				require.Contains(t, union, ref, "series %d missing from the 2-way shard partition", ref)
 			}
+		})
+	}
+}
+
+// postingsListOffset returns the absolute file offset of the postings list for
+// name=value, from r's postings offset table.
+func postingsListOffset(t *testing.T, r *StreamReader, name, value string) int {
+	t.Helper()
+	offset := -1
+	require.NoError(t, streamPostingsOffsetTable(context.Background(), r.factory, int(r.toc.PostingsTable), func(n, v []byte, postingsOffset uint64, _ int) error {
+		if string(n) == name && string(v) == value {
+			offset = int(postingsOffset)
+		}
+		return nil
+	}))
+	require.NotEqual(t, -1, offset, "no postings list for %s=%q", name, value)
+	return offset
+}
+
+// writeMixedPostingsFixture builds an index whose "grp" label has many values
+// with one series each, so their postings lists are tiny and adjacent and a
+// lookup over a run of them straddles read-ahead window boundaries, plus one
+// value in the middle of the run, bigValue, whose postings list is larger than
+// the window.
+func writeMixedPostingsFixture(t *testing.T, format int) (path, bigValue string) {
+	t.Helper()
+
+	const (
+		numSmall    = 1200
+		numBig      = 2000
+		bigAfterIdx = numSmall / 2
+	)
+	bigValue = fmt.Sprintf("s%04dx", bigAfterIdx) // sorts between s0600 and s0601
+
+	series := make([]seriesFixture, 0, numSmall+numBig)
+	add := func(grp string) {
+		series = append(series, seriesFixture{
+			ls:     labels.FromStrings("grp", grp, "id", fmt.Sprintf("%05d", len(series))),
+			chunks: []ChunkMeta{{Checksum: 1, MinTime: 0, MaxTime: 10, KB: 1, Entries: 1}},
+		})
+	}
+	for i := range numSmall {
+		add(fmt.Sprintf("s%04d", i))
+	}
+	for range numBig {
+		add(bigValue)
+	}
+
+	return writeIndexFixture(t, format, series), bigValue
+}
+
+// TestStreamPostings_ManyValuesMatchMmap cross-checks lookups which span multiple
+// read-ahead windows.
+func TestStreamPostings_ManyValuesMatchMmap(t *testing.T) {
+	for _, format := range []int{FormatV3, FormatV4} {
+		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
+			path, bigValue := writeMixedPostingsFixture(t, format)
+			mmap, stream := openBothReaders(t, path)
+
+			values, err := mmap.LabelValues("grp")
+			require.NoError(t, err)
+			bigIdx := slices.Index(values, bigValue)
+			require.Positive(t, bigIdx)
+
+			// Check the fixture has the shape the test relies on.
+			require.Greater(t, 4*len(mustPostingsAndDrain(t, mmap, nil, "grp", bigValue)), streamenc.ReaderBufferSize,
+				"the big list must be larger than the read-ahead window")
+			require.Greater(t,
+				postingsListOffset(t, stream, "grp", values[bigIdx-1])-postingsListOffset(t, stream, "grp", values[0]),
+				2*streamenc.ReaderBufferSize,
+				"the small lists before the big one must span several windows")
+
+			var everyThird []string
+			for i := 0; i < len(values); i += 3 {
+				everyThird = append(everyThird, values[i])
+			}
+
+			for _, tc := range []struct {
+				name   string
+				values []string
+			}{
+				{name: "every value", values: values},
+				{name: "run around the big list", values: values[bigIdx-5 : bigIdx+6]},
+				{name: "every third value", values: everyThird},
+				{name: "big list then absent values", values: []string{bigValue, bigValue + "-absent", "zzz"}},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					require.Equal(t,
+						mustPostingsAndDrain(t, mmap, nil, "grp", tc.values...),
+						mustPostingsAndDrain(t, stream, nil, "grp", tc.values...),
+					)
+				})
+			}
+		})
+	}
+}
+
+// A corrupt postings list must be rejected, and a corrupt count must be
+// rejected before the buffer for its refs is allocated.
+func TestStreamPostings_RejectsCorruptPostingsList(t *testing.T) {
+	// The corrupted list sits in the middle of a run of lists the lookup reads.
+	const corruptValue = "v0064"
+
+	for _, tc := range []struct {
+		name string
+		// corrupt mutates the index file b, given the offset of the list for
+		// corruptValue.
+		corrupt func(b []byte, list int)
+		wantErr error
+	}{
+		{
+			name:    "ref",
+			corrupt: func(b []byte, list int) { b[list+8] ^= 0x01 },
+			wantErr: streamenc.ErrInvalidChecksum,
+		},
+		{
+			name:    "count disagrees with length",
+			corrupt: func(b []byte, list int) { b[list+7] ^= 0x01 },
+			wantErr: streamenc.ErrInvalidSize,
+		},
+		{
+			// A consistent length and count whose refs would need a 2GiB
+			// buffer.
+			name: "huge count",
+			corrupt: func(b []byte, list int) {
+				const n = 1 << 29
+				binary.BigEndian.PutUint32(b[list:], uint32(4+4*n))
+				binary.BigEndian.PutUint32(b[list+4:], n)
+			},
+			wantErr: streamenc.ErrInvalidSize,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeManySymbolsFixture(t, FormatV4)
+			values := func() []string {
+				mmap, stream := openBothReaders(t, path)
+				list := postingsListOffset(t, stream, "id", corruptValue)
+				corruptFileBytes(t, path, func(b []byte) { tc.corrupt(b, list) })
+
+				values, err := mmap.LabelValues("id")
+				require.NoError(t, err)
+				return values
+			}()
+			require.Contains(t, values, corruptValue)
+
+			stream, err := NewStreamFileReader(path, DefaultStreamOptions())
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, stream.Close()) })
+
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			_, err = stream.Postings("id", nil, values...)
+			runtime.ReadMemStats(&after)
+
+			require.ErrorIs(t, err, tc.wantErr)
+			require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(1<<20), "the lookup allocated for the corrupt count")
 		})
 	}
 }

@@ -1,10 +1,12 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,6 +14,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
@@ -23,17 +26,20 @@ type committer interface {
 	Commit(ctx context.Context, partition int32, offset int64) error
 }
 
-// An indexer allows mocking of index building in tests.
+// An indexer allows mocking of index building in tests. Implementations must
+// be safe for concurrent use.
 type indexer interface {
 	Index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error)
 }
 
 // A tocWriter allows mocking of [metastore.TableOfContentsWriter] in tests.
+// Implementations must be safe for concurrent use.
 type tocWriter interface {
 	WriteEntry(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry) error
 }
 
-// A flusher allows mocking of flushes in tests.
+// A flusher allows mocking of flushes in tests. Implementations must be safe
+// for concurrent use.
 type flusher interface {
 	// Flush builds, sorts and uploads the builder's data object. On success the
 	// caller owns the returned [io.Closer] and must close it once it is done
@@ -51,6 +57,12 @@ type flushCommitterImpl struct {
 	partition int32
 	logger    log.Logger
 
+	// concurrency is the maximum number of builders that one flush has in
+	// progress. Each builder in progress holds its sorted object until the ToC
+	// records its index, so concurrency also bounds the sorted objects in
+	// memory. It is at least 1.
+	concurrency int
+
 	duration      *prometheus.HistogramVec
 	e2eLagSeconds prometheus.Gauge
 }
@@ -67,6 +79,7 @@ func newFlushCommitter(
 	indexer indexer,
 	tocWriter tocWriter,
 	partition int32,
+	concurrency int,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) *flushCommitterImpl {
@@ -86,13 +99,14 @@ func newFlushCommitter(
 	d.WithLabelValues(resultCancelled)
 
 	return &flushCommitterImpl{
-		flusher:   flusher,
-		committer: committer,
-		indexer:   indexer,
-		tocWriter: tocWriter,
-		partition: partition,
-		logger:    logger,
-		duration:  d,
+		flusher:     flusher,
+		committer:   committer,
+		indexer:     indexer,
+		tocWriter:   tocWriter,
+		partition:   partition,
+		logger:      logger,
+		duration:    d,
+		concurrency: concurrency,
 		e2eLagSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_builder_e2e_lag_seconds",
 			Help: "Time between a log line being written to Kafka by the distributors and it becoming available for querying in seconds.",
@@ -109,10 +123,8 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 	// earliest record times.
 	earliest := earliestRecordTime(builders)
 
-	for _, b := range builders {
-		if err := c.flushOne(ctx, b, reason); err != nil {
-			return err
-		}
+	if err := c.flushAll(ctx, builders, reason); err != nil {
+		return err
 	}
 
 	// Everything above is queryable once its index is in the metastore, so the
@@ -126,6 +138,56 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 		return fmt.Errorf("failed to commit data object offset %d: %w", offset, err)
 	}
 	return nil
+}
+
+// flushAll flushes and indexes each builder and records each index in the
+// ToC, with at most c.concurrency builders in progress. It returns once every
+// started builder is done and has released its object.
+//
+// The first failure cancels the builders in progress and skips the builders
+// not yet started. flushAll returns that first failure, not the cancellation
+// errors that it causes in the other builders.
+func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string) error {
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(c.concurrency)
+
+	ordered := builders
+	if c.concurrency > 1 {
+		// One large builder can take most of the flush time. If it starts
+		// last, it runs alone after the small builders. If it starts first,
+		// the small builders run beside it, and the flush ends sooner.
+		//
+		// With one slot, the order does not change the flush time. Largest
+		// first would only delay the ToC entries of the small builders.
+		//
+		// Largest first also builds the largest sorted objects at the same
+		// time, which raises peak memory.
+		ordered = largestFirst(builders)
+	}
+	for _, b := range ordered {
+		g.Go(func() error {
+			// Skip the builder if the flush was canceled or another builder
+			// failed while this one waited for a slot. FlushAndSort ignores ctx
+			// while it builds, so it would build the whole object before the
+			// sort sees the cancellation.
+			if err := gctx.Err(); err != nil {
+				return err
+			}
+			return c.flushOne(gctx, b, reason)
+		})
+	}
+	return g.Wait()
+}
+
+// largestFirst returns a new slice with the builders sorted by estimated size,
+// largest first. Builders of equal size keep their order. largestFirst does
+// not modify the given slice.
+func largestFirst(builders []builder) []builder {
+	ordered := slices.Clone(builders)
+	slices.SortStableFunc(ordered, func(a, b builder) int {
+		return cmp.Compare(b.GetEstimatedSize(), a.GetEstimatedSize())
+	})
+	return ordered
 }
 
 func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reason string) error {
@@ -228,15 +290,17 @@ func (c *flushCommitterImpl) commit(ctx context.Context, offset int64) error {
 }
 
 func (c *flushCommitterImpl) observeResult(duration time.Duration, err error) {
-	var result string
+	c.duration.WithLabelValues(resultOf(err)).Observe(duration.Seconds())
+}
+
+// resultOf returns the result label value for an operation that returned err.
+func resultOf(err error) string {
 	switch {
 	case err == nil:
-		result = resultOK
+		return resultOK
 	case errors.Is(err, context.Canceled):
-		result = resultCancelled
+		return resultCancelled
 	default:
-		result = resultError
+		return resultError
 	}
-
-	c.duration.WithLabelValues(result).Observe(duration.Seconds())
 }

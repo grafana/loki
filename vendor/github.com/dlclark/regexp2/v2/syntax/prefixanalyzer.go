@@ -243,6 +243,9 @@ func findPrefix(node *RegexNode) string {
 	return vsb.String()
 }
 
+// tryFindPrefix stops copying a loop body once another copy would make the prefix longer than this.
+const maxLoopPrefixLength = 256
+
 // Processes the node, adding any prefix text to the builder.
 // Returns whether processing should continue with subsequent nodes.
 func tryFindPrefix(node *RegexNode, vsb *bytes.Buffer) bool {
@@ -290,10 +293,14 @@ func tryFindPrefix(node *RegexNode, vsb *bytes.Buffer) bool {
 				// Find how much overlap there is between this branch's prefix
 				// and the smallest amount of prefix that overlapped with all
 				// the previously seen branches.
-				addedLength = commonPrefixLen(vsbSlice, alternateSb.Bytes())
+				addedLength = commonPrefixLen(vsbSlice[:addedLength], alternateSb.Bytes())
 			}
 
-			// Then cull back on what was added based on the other branches.
+			// Then cull back on what was added based on the other branches,
+			// without ending partway through a UTF-8 encoded rune.
+			for addedLength < len(vsbSlice) && !utf8.RuneStart(vsbSlice[addedLength]) {
+				addedLength--
+			}
 			vsb.Truncate(initialLength + addedLength)
 		}
 
@@ -336,9 +343,21 @@ func tryFindPrefix(node *RegexNode, vsb *bytes.Buffer) bool {
 		if node.M < limit {
 			limit = node.M
 		}
-		for i := 0; i < limit; i++ {
-			if tryFindPrefix(node.Children[0], vsb) {
-				return false
+
+		// Once the body is fully processed, further iterations add the same text, so
+		// copy it rather than processing the body again, which can be exponential in
+		// the nesting depth.
+		start := vsb.Len()
+		if !tryFindPrefix(node.Children[0], vsb) {
+			return false
+		}
+		if limit > 1 {
+			body := bytes.Clone(vsb.Bytes()[start:])
+			for i := 1; i < limit; i++ {
+				if vsb.Len()+len(body) > maxLoopPrefixLength {
+					return false
+				}
+				vsb.Write(body)
 			}
 		}
 		return limit == node.N && !rtl
@@ -1259,11 +1278,17 @@ func findRequiredLandmarkChain(node *RegexNode) *RequiredLandmarkChain {
 	// conservative prefilter: if any child cannot be described as a detectable
 	// landmark, we skip that child rather than making it part of the chain.
 	landmarks := make([]RequiredLandmark, 0, 2)
+	var anchors []NodeType
 	for _, child := range node.Children[1:] {
 		if landmark, ok := extractRequiredLandmark(child); ok {
 			landmarks = append(landmarks, landmark)
-		} else if len(landmarks) == 0 && !isZeroWidthLandmarkGap(child) {
-			return nil
+		} else if len(landmarks) == 0 {
+			if !isZeroWidthLandmarkGap(child) {
+				return nil
+			}
+			if child = unwrapTransparentNodes(child); child != nil && isLandmarkAnchor(child.T) && !slices.Contains(anchors, child.T) {
+				anchors = append(anchors, child.T)
+			}
 		}
 	}
 	if len(landmarks) < 2 {
@@ -1272,7 +1297,18 @@ func findRequiredLandmarkChain(node *RegexNode) *RequiredLandmarkChain {
 
 	return &RequiredLandmarkChain{
 		LeadingLoopSet: firstChild.Set,
+		Anchors:        anchors,
 		Landmarks:      landmarks,
+	}
+}
+
+func isLandmarkAnchor(t NodeType) bool {
+	switch t {
+	case NtBeginning, NtBol, NtStart, NtEndZ, NtEnd, NtEol,
+		NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1282,12 +1318,10 @@ func isZeroWidthLandmarkGap(node *RegexNode) bool {
 		return true
 	}
 	switch node.T {
-	case NtEmpty, NtResetCapture, NtUpdateBumpalong,
-		NtBeginning, NtBol, NtStart, NtEndZ, NtEnd, NtEol,
-		NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary:
+	case NtEmpty, NtResetCapture, NtUpdateBumpalong:
 		return true
 	default:
-		return false
+		return isLandmarkAnchor(node.T)
 	}
 }
 

@@ -125,14 +125,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
-	idxPath, err := c.flushAndUploadIndex(ctx, calc, func(ctx context.Context, obj *dataobj.Object) (path string, outputErr error) {
-		reader, err := obj.Reader(ctx)
-		if err != nil {
-			return "", err
-		}
-		defer util.CloseAndHandleError(reader, &outputErr)
-		return v2.CompactedIndexPath(node.Tenant, reader)
-	})
+	idxPath, err := c.flushAndUploadIndex(ctx, node.Tenant, calc)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +277,8 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 }
 
 // sourcesMatchSortLayout checks whether every logs section in sources has the
-// target layout. mismatch is the first object path that does not match.
+// layout of sortSchema with the default shard layout. mismatch is the first
+// object path that does not match.
 func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (string, error) {
 	want := logsobj.TargetSortLayout(sortSchema, streams.DefaultShardLayout())
 	for _, src := range sources {
@@ -363,12 +357,12 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 
 	if inputs.mismatch != "" {
 		level.Warn(c.logger).Log(
-			"msg", "LogMerge: skipping task; source object sort layout does not match target",
+			"msg", "LogMerge: skipping task; source object sort layout does not match the task sort schema",
 			"tenant", node.Tenant,
 			"path", inputs.mismatch,
 			"sort_schema", strings.Join(node.SortSchema, ","),
 		)
-		return nil, fmt.Errorf("source object %q sort layout does not match target", inputs.mismatch)
+		return nil, fmt.Errorf("source object %q sort layout does not match the task sort schema", inputs.mismatch)
 	}
 
 	inputs.table, err = buildGlobalStreamTable(sources, node.SortSchema)

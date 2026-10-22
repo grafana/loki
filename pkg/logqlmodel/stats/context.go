@@ -202,6 +202,11 @@ func (c *Context) Reset() {
 // Result calculates the summary based on store and ingester data.
 func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) Result {
 	r := c.result
+	// c.result keeps accumulating, so the returned Result gets its own Logline.
+	if r.Logline != nil {
+		logline := *r.Logline
+		r.Logline = &logline
+	}
 
 	r.Merge(Result{
 		// ewelch: I'm not sure why we have a separate store object in the context and we don't use the
@@ -309,9 +314,6 @@ func (s *Store) Merge(m Store) {
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
-	if m.QueryUsedV2Engine {
-		s.QueryUsedV2Engine = true
-	}
 }
 
 func (s *Store) ChunksDownloadDuration() time.Duration {
@@ -354,23 +356,45 @@ func (i *Index) Merge(m Index) {
 	}
 	i.ShardPlannedChunks += m.ShardPlannedChunks
 	i.ShardPlannedChunksScanned += m.ShardPlannedChunksScanned
+}
 
-	// Lookup-level logline fields describe the one hint lookup for the whole
-	// query, so they are kept rather than summed.
-	if i.LoglineHintStatus == "" {
-		i.LoglineHintStatus = m.LoglineHintStatus
+// ChunkFilterRatio returns the share of ShardPlannedChunks that weren't
+// scanned, from 0 (no chunks filtered) to 1 (all chunks filtered). The planned
+// chunks are an estimate, so more chunks than planned can be scanned. It
+// reports false when no split went through shard planning.
+func (i Index) ChunkFilterRatio() (float64, bool) {
+	if i.ShardPlannedChunks <= 0 {
+		return 0, false
 	}
-	if i.LoglineHintLookupTime == 0 {
-		i.LoglineHintLookupTime = m.LoglineHintLookupTime
+	ratio := 1 - float64(i.ShardPlannedChunksScanned)/float64(i.ShardPlannedChunks)
+	return min(max(ratio, 0), 1), true
+}
+
+// Merge adds up the per-request counts. The other fields describe the one hint
+// lookup or the final response of the query, so the first value is kept.
+func (l *Logline) Merge(m Logline) {
+	l.SkippedRequests += m.SkippedRequests
+	l.NarrowedRequests += m.NarrowedRequests
+
+	keepFirst(&l.Outcome, m.Outcome)
+	keepFirst(&l.HintStatus, m.HintStatus)
+	keepFirst(&l.HintLookupTime, m.HintLookupTime)
+	keepFirst(&l.HintWaitTime, m.HintWaitTime)
+	keepFirst(&l.HintRanges, m.HintRanges)
+	keepFirst(&l.HintRangesDuration, m.HintRangesDuration)
+	keepFirst(&l.PlannedChunks, m.PlannedChunks)
+	keepFirst(&l.ScannedChunks, m.ScannedChunks)
+	keepFirst(&l.ChunkFilterRatio, m.ChunkFilterRatio)
+	keepFirst(&l.ObjectRequests, m.ObjectRequests)
+	keepFirst(&l.IOBytes, m.IOBytes)
+	keepFirst(&l.IOWait, m.IOWait)
+}
+
+func keepFirst[T comparable](dst *T, v T) {
+	var zero T
+	if *dst == zero {
+		*dst = v
 	}
-	if i.LoglineHintRanges == 0 {
-		i.LoglineHintRanges = m.LoglineHintRanges
-	}
-	if i.LoglineHintRangesDuration == 0 {
-		i.LoglineHintRangesDuration = m.LoglineHintRangesDuration
-	}
-	i.LoglineSkippedRequests += m.LoglineSkippedRequests
-	i.LoglineNarrowedRequests += m.LoglineNarrowedRequests
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -405,6 +429,14 @@ func (c *Cache) CacheQueryLengthServed() time.Duration {
 	return time.Duration(c.QueryLengthServed)
 }
 
+// LoglineStats returns the logline statistics, adding empty ones if r has none.
+func (r *Result) LoglineStats() *Logline {
+	if r.Logline == nil {
+		r.Logline = &Logline{}
+	}
+	return r.Logline
+}
+
 func (r *Result) MergeSplit(m Result) {
 	m.Summary.Splits = 1
 	r.Merge(m)
@@ -417,6 +449,11 @@ func (r *Result) Merge(m Result) {
 	r.Caches.Merge(m.Caches)
 	r.Summary.Merge(m.Summary)
 	r.Index.Merge(m.Index)
+	// Results are copied by value, so merge into r's own Logline rather than
+	// sharing m's.
+	if m.Logline != nil {
+		r.LoglineStats().Merge(*m.Logline)
+	}
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
 		int(r.Summary.TotalEntriesReturned+m.Summary.TotalEntriesReturned))
@@ -484,10 +521,6 @@ func (r Result) TotalDecompressedLines() int64 {
 
 func (r Result) QueryReferencedStructuredMetadata() bool {
 	return r.Querier.Store.QueryReferencedStructured || r.Ingester.Store.QueryReferencedStructured
-}
-
-func (r Result) QueryUsedV2Engine() bool {
-	return r.Querier.Store.QueryUsedV2Engine
 }
 
 func (c *Context) AddIngesterBatch(size int64) {
@@ -758,10 +791,6 @@ func (c *Context) SetQueryReferencedStructuredMetadata() {
 	c.store.QueryReferencedStructured = true
 }
 
-func (c *Context) SetQueryUsedV2Engine() {
-	c.store.QueryUsedV2Engine = true
-}
-
 // AddQuerierExecTime accumulates the querier execution time.
 func (c *Context) AddQuerierExecTime(d time.Duration) {
 	atomic.AddInt64(&c.querierExecTime, int64(d))
@@ -831,13 +860,7 @@ func (r Result) KVList() []any {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
-		"Querier.QueryUsedV2Engine", r.Querier.Store.QueryUsedV2Engine,
 		"Querier.ChunkFetchFailures", r.Querier.Store.ChunkFetchFailures,
-	}
-
-	if r.QueryUsedV2Engine() {
-		// Specifying prefix in case r.Ingester.Store ever uses the new engine.
-		result = append(result, r.Querier.Store.Dataobj.kvList("Querier.")...)
 	}
 
 	result = append(result, r.Caches.kvList()...)
@@ -921,24 +944,5 @@ func (c Caches) kvList() []any {
 		"Cache.TaskResult.EntriesRequested", c.TaskResult.EntriesRequested,
 		"Cache.TaskResult.EntriesFound", c.TaskResult.EntriesFound,
 		"Cache.TaskResult.BytesReceived", humanize.Bytes(uint64(c.TaskResult.BytesReceived)),
-	}
-}
-
-func (d Dataobj) kvList(prefix string) []any {
-	return []any{
-		prefix + "Dataobj.PrePredicateDecompressedRows", d.PrePredicateDecompressedRows,
-		prefix + "Dataobj.PrePredicateDecompressedBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedBytes)),
-		prefix + "Dataobj.PrePredicateDecompressedStructuredMetadataBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedStructuredMetadataBytes)),
-		prefix + "Dataobj.PostPredicateRows", d.PostPredicateRows,
-		prefix + "Dataobj.PostPredicateDecompressedBytes", humanize.Bytes(uint64(d.PostPredicateDecompressedBytes)),
-		prefix + "Dataobj.PostPredicateStructuredMetadataBytes", humanize.Bytes(uint64(d.PostPredicateStructuredMetadataBytes)),
-		prefix + "Dataobj.PostFilterRows", d.PostFilterRows,
-		prefix + "Dataobj.PagesScanned", d.PagesScanned,
-		prefix + "Dataobj.PagesDownloaded", d.PagesDownloaded,
-		prefix + "Dataobj.PagesDownloadedBytes", humanize.Bytes(uint64(d.PagesDownloadedBytes)),
-		prefix + "Dataobj.PageBatches", d.PageBatches,
-		prefix + "Dataobj.TotalRowsAvailable", d.TotalRowsAvailable,
-		prefix + "Dataobj.TotalPageDownloadTime", time.Duration(d.TotalPageDownloadTime),
-		prefix + "Dataobj.WireBytesTransferred", humanize.Bytes(uint64(d.WireBytesTransferred)),
 	}
 }

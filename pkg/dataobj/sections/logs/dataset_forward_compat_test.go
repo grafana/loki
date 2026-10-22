@@ -41,7 +41,7 @@ func TestMakeColumnarDataset_ForwardCompatUnknownColumn(t *testing.T) {
 
 	r := dataset.NewRowReader(dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           columns,
+		ProjectedColumns:  columns,
 		PrefetchAllOnOpen: true,
 	})
 	defer r.Close()

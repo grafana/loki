@@ -25,6 +25,8 @@ func newStepAccumulatorFuncFor(expr *syntax.RangeAggregationExpr) (newStepAccumu
 	switch expr.Operation {
 	case syntax.OpRangeTypeCount:
 		return newCountAccumulator, true
+	case syntax.OpRangeTypeSum:
+		return newSumAccumulator, true
 	default:
 		return nil, false
 	}
@@ -90,4 +92,43 @@ func (a *countAccumulator) value(k int) (float64, bool) {
 		panic("countAccumulator: value called before finish")
 	}
 	return float64(a.counts[k]), a.counts[k] > 0
+}
+
+// sumAccumulator adds up the sample values of each step.
+type sumAccumulator struct {
+	// sums holds the sum of each step. It uses plain float64, like the timestamp-first engine.
+	// Integer values sum exactly in any order while every partial sum stays below 2^53 in magnitude.
+	// Other values can differ in the last digits when samples arrive in another order.
+	sums []float64
+
+	// presence counts the samples of each step. value uses it to tell a step that sums to zero
+	// from a step that holds no sample.
+	presence countAccumulator
+}
+
+func newSumAccumulator(steps int) stepAccumulator {
+	return &sumAccumulator{
+		sums:     make([]float64, steps),
+		presence: countAccumulator{counts: make([]int64, steps+1)},
+	}
+}
+
+func (a *sumAccumulator) add(lo, hi int, v float64) {
+	// Add v to each step in turn. countAccumulator instead marks the first step and the step after
+	// the last, then takes a prefix sum. With floats, the prefix sum leaves a rounding residue
+	// after a large value. It also spreads a NaN or an Inf to every later step.
+	for k := lo; k <= hi; k++ {
+		a.sums[k] += v
+	}
+	a.presence.add(lo, hi, v)
+}
+
+func (a *sumAccumulator) finish() {
+	a.presence.finish()
+}
+
+// value panics when finish has not run, because the presence marks are not counts yet.
+func (a *sumAccumulator) value(k int) (float64, bool) {
+	_, ok := a.presence.value(k)
+	return a.sums[k], ok
 }

@@ -13,59 +13,9 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
-
-// trackingSamplingMockManager is a mock Manager that tracks whether ShouldSample was called.
-type trackingSamplingMockManager struct {
-	shouldSampleResult  bool
-	correlationIDResult string
-	shouldSampleCalled  atomic.Bool
-}
-
-func (m *trackingSamplingMockManager) ShouldSample(_ string) (bool, string) {
-	m.shouldSampleCalled.Store(true)
-	return m.shouldSampleResult, m.correlationIDResult
-}
-
-func (m *trackingSamplingMockManager) SendToGoldfish(_ *http.Request, _, _ *goldfish.BackendResponse, _ string) {
-}
-
-func (m *trackingSamplingMockManager) Close() error {
-	return nil
-}
-
-func newTagCapturingBackend(t *testing.T, received chan<- string) *httptest.Server {
-	t.Helper()
-
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		received <- r.Header.Get(string(httpreq.QueryTagsHTTPHeader))
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
-		require.NoError(t, err)
-	}))
-}
-
-func collectQueryTags(t *testing.T, received <-chan string, count int) []string {
-	t.Helper()
-
-	tags := make([]string, 0, count)
-	for i := 0; i < count; i++ {
-		select {
-		case tag := <-received:
-			tags = append(tags, tag)
-		case <-time.After(time.Second):
-			t.Fatalf("timed out waiting for backend query tags, got %d/%d", len(tags), count)
-		}
-	}
-
-	return tags
-}
 
 func TestFanOutHandler_Do_ReturnsPreferredResponse(t *testing.T) {
 	// Create test backends
@@ -159,12 +109,11 @@ func TestFanOutHandler_Do_AllBackendsFail(t *testing.T) {
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:    backends,
-		Codec:       queryrange.DefaultCodec,
-		Logger:      log.NewNopLogger(),
-		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:   "test_route",
-		RoutingMode: RoutingModeV1Preferred,
+		Backends:  backends,
+		Codec:     queryrange.DefaultCodec,
+		Logger:    log.NewNopLogger(),
+		Metrics:   NewProxyMetrics(prometheus.NewRegistry()),
+		RouteName: "test_route",
 	})
 
 	req := &queryrange.LokiRequest{
@@ -221,12 +170,11 @@ func TestFanOutHandler_Do_WithFilter(t *testing.T) {
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:    backends,
-		Codec:       queryrange.DefaultCodec,
-		Logger:      log.NewNopLogger(),
-		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:   "test_route",
-		RoutingMode: RoutingModeV1Preferred,
+		Backends:  backends,
+		Codec:     queryrange.DefaultCodec,
+		Logger:    log.NewNopLogger(),
+		Metrics:   NewProxyMetrics(prometheus.NewRegistry()),
+		RouteName: "test_route",
 	})
 
 	req := &queryrange.LokiRequest{
@@ -259,435 +207,34 @@ func TestFanOutHandler_Do_WithFilter(t *testing.T) {
 	require.Equal(t, 1, requestCount, "expected only 1 backend to receive request due to filter")
 }
 
-func TestFanOutHandler_Do_RaceModeReturnsNonPreferredIfWithinTolerance(t *testing.T) {
-	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(10 * time.Millisecond)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"1"},"values":[["1000000000","log line 1"]]}]}}`))
-		require.NoError(t, err)
-	}))
-	defer backend1.Close()
-
-	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(50 * time.Millisecond)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"2"},"values":[["1000000000","log line 2"]]}]}}`))
-		require.NoError(t, err)
-	}))
-	defer backend2.Close()
-
-	backend1URL, _ := url.Parse(backend1.URL)
-	backend2URL, _ := url.Parse(backend2.URL)
-
-	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
-	require.NoError(t, err)
-	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
-	require.NoError(t, err)
-	backends := []*ProxyBackend{
-		proxyBackend1,
-		proxyBackend2,
-	}
-
-	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:      backends,
-		Codec:         queryrange.DefaultCodec,
-		Logger:        log.NewNopLogger(),
-		Metrics:       NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:     "test_route",
-		RoutingMode:   RoutingModeRace,
-		RaceTolerance: 100 * time.Millisecond,
-	})
-
-	req := &queryrange.LokiRequest{
-		Query:   `{app="test"}`,
-		StartTs: time.Now().Add(-1 * time.Hour),
-		EndTs:   time.Now(),
-		Limit:   100,
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "test-tenant")
-	resp, err := handler.Do(ctx, req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-
-	lokiResp, ok := resp.(*queryrange.LokiResponse)
-	require.True(t, ok)
-	require.Equal(t, "success", lokiResp.Status)
-	require.Len(t, lokiResp.Data.Result, 1)
-	require.Contains(t, lokiResp.Data.Result[0].Labels, `backend="2"`)
-
-	time.Sleep(100 * time.Millisecond)
-}
-
-func TestFanOutHandler_Do_RaceModeAllBackendsFail(t *testing.T) {
-	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer backend1.Close()
-
-	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer backend2.Close()
-
-	backend1URL, _ := url.Parse(backend1.URL)
-	backend2URL, _ := url.Parse(backend2.URL)
-
-	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
-	require.NoError(t, err)
-	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
-	require.NoError(t, err)
-	backends := []*ProxyBackend{
-		proxyBackend1,
-		proxyBackend2,
-	}
-
-	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:    backends,
-		Codec:       queryrange.DefaultCodec,
-		Logger:      log.NewNopLogger(),
-		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:   "test_route",
-		RoutingMode: RoutingModeRace,
-	})
-
-	req := &queryrange.LokiRequest{
-		Query:   `{app="test"}`,
-		StartTs: time.Now().Add(-1 * time.Hour),
-		EndTs:   time.Now(),
-		Limit:   100,
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "test-tenant")
-	resp, err := handler.Do(ctx, req)
-
-	require.Error(t, err)
-	nonDecodableResp, ok := resp.(*NonDecodableResponse)
-	require.True(t, ok)
-	require.Equal(t, 500, nonDecodableResp.StatusCode)
-}
-
-func TestFanOutHandler_Do_V2PreferredReturnsV2Response(t *testing.T) {
-	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"1"},"values":[["1000000000","log line 1"]]}]}}`))
-		require.NoError(t, err)
-	}))
-	defer backend1.Close()
-
-	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(10 * time.Millisecond)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"2"},"values":[["1000000000","log line 2"]]}]}}`))
-		require.NoError(t, err)
-	}))
-	defer backend2.Close()
-
-	backend1URL, _ := url.Parse(backend1.URL)
-	backend2URL, _ := url.Parse(backend2.URL)
-
-	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true, false)
-	require.NoError(t, err)
-	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false, true)
-	require.NoError(t, err)
-	backends := []*ProxyBackend{
-		proxyBackend1, //v1 preferred
-		proxyBackend2, //v2 preferred
-	}
-
-	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:    backends,
-		Codec:       queryrange.DefaultCodec,
-		Logger:      log.NewNopLogger(),
-		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:   "test_route",
-		RoutingMode: RoutingModeV2Preferred,
-	})
-
-	req := &queryrange.LokiRequest{
-		Query:   `{app="test"}`,
-		StartTs: time.Now().Add(-1 * time.Hour),
-		EndTs:   time.Now(),
-		Limit:   100,
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "test-tenant")
-	resp, err := handler.Do(ctx, req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-
-	lokiResp, ok := resp.(*queryrange.LokiResponse)
-	require.True(t, ok)
-	require.Equal(t, "success", lokiResp.Status)
-	require.Len(t, lokiResp.Data.Result, 1)
-	require.Contains(t, lokiResp.Data.Result[0].Labels, `backend="2"`)
-}
-
-func TestFanOutHandler_Do_V2PreferredFallsBackToV1OnFailure(t *testing.T) {
-	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"1"},"values":[["1000000000","log line 1"]]}]}}`))
-		require.NoError(t, err)
-	}))
-	defer backend1.Close()
-
-	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer backend2.Close()
-
-	backend1URL, _ := url.Parse(backend1.URL)
-	backend2URL, _ := url.Parse(backend2.URL)
-
-	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true, false)
-	require.NoError(t, err)
-	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false, true)
-	require.NoError(t, err)
-	backends := []*ProxyBackend{
-		proxyBackend1, //v1 preferred
-		proxyBackend2, //v2 preferred
-	}
-
-	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:    backends,
-		Codec:       queryrange.DefaultCodec,
-		Logger:      log.NewNopLogger(),
-		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:   "test_route",
-		RoutingMode: RoutingModeV2Preferred,
-	})
-
-	req := &queryrange.LokiRequest{
-		Query:   `{app="test"}`,
-		StartTs: time.Now().Add(-1 * time.Hour),
-		EndTs:   time.Now(),
-		Limit:   100,
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "test-tenant")
-	resp, err := handler.Do(ctx, req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-
-	lokiResp, ok := resp.(*queryrange.LokiResponse)
-	require.True(t, ok)
-	require.Equal(t, "success", lokiResp.Status)
-	require.Len(t, lokiResp.Data.Result, 1)
-	require.Contains(t, lokiResp.Data.Result[0].Labels, `backend="1"`)
-}
-
-// TestFanOutHandler_Do_UpstreamDecisionPreventsDoubleSampling tests that when a sampling decision
-// is already present in context (placed there by SplittingHandler), FanOutHandler does NOT
-// call ShouldSample again. When no decision is in context, it DOES call ShouldSample.
-func TestFanOutHandler_Do_UpstreamDecisionPreventsDoubleSampling(t *testing.T) {
-	// Set up a single backend that always succeeds
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
-		require.NoError(t, err)
-	}))
-	defer backend.Close()
-
-	backendURL, _ := url.Parse(backend.URL)
-	proxyBackend, err := NewProxyBackend("backend-1", backendURL, 5*time.Second, true)
-	require.NoError(t, err)
-	backends := []*ProxyBackend{proxyBackend}
-
-	req := &queryrange.LokiRequest{
-		Query:   `{app="test"}`,
-		StartTs: time.Now().Add(-1 * time.Hour),
-		EndTs:   time.Now(),
-		Limit:   100,
-	}
-
-	t.Run("positive upstream decision skips ShouldSample", func(t *testing.T) {
-		mockManager := &trackingSamplingMockManager{
-			shouldSampleResult:  true,
-			correlationIDResult: "test-uuid",
-		}
-
-		handler := NewFanOutHandler(FanOutHandlerConfig{
-			Backends:        backends,
-			Codec:           queryrange.DefaultCodec,
-			Logger:          log.NewNopLogger(),
-			Metrics:         NewProxyMetrics(prometheus.NewRegistry()),
-			RouteName:       "test_route",
-			GoldfishManager: mockManager,
-		})
-
-		// Set upstream decision (sampled=true) in context
-		ctx := user.InjectOrgID(context.Background(), "test-tenant")
-		ctx = goldfish.ContextWithSamplingDecision(ctx, goldfish.SamplingDecision{
-			Sampled:       true,
-			CorrelationID: "test-uuid",
-		})
-
-		_, err := handler.Do(ctx, req)
-		require.NoError(t, err)
-
-		require.False(t, mockManager.shouldSampleCalled.Load(),
-			"ShouldSample should NOT be called when a positive upstream decision is in context")
-	})
-
-	t.Run("negative upstream decision skips ShouldSample", func(t *testing.T) {
-		mockManager := &trackingSamplingMockManager{
-			shouldSampleResult: false,
-		}
-
-		handler := NewFanOutHandler(FanOutHandlerConfig{
-			Backends:        backends,
-			Codec:           queryrange.DefaultCodec,
-			Logger:          log.NewNopLogger(),
-			Metrics:         NewProxyMetrics(prometheus.NewRegistry()),
-			RouteName:       "test_route",
-			GoldfishManager: mockManager,
-		})
-
-		// Set upstream decision (sampled=false) in context
-		ctx := user.InjectOrgID(context.Background(), "test-tenant")
-		ctx = goldfish.ContextWithSamplingDecision(ctx, goldfish.SamplingDecision{
-			Sampled: false,
-		})
-
-		_, err := handler.Do(ctx, req)
-		require.NoError(t, err)
-
-		require.False(t, mockManager.shouldSampleCalled.Load(),
-			"ShouldSample should NOT be called when a negative upstream decision is in context")
-	})
-
-	t.Run("no upstream decision calls ShouldSample", func(t *testing.T) {
-		mockManager := &trackingSamplingMockManager{
-			shouldSampleResult: false,
-		}
-
-		handler := NewFanOutHandler(FanOutHandlerConfig{
-			Backends:        backends,
-			Codec:           queryrange.DefaultCodec,
-			Logger:          log.NewNopLogger(),
-			Metrics:         NewProxyMetrics(prometheus.NewRegistry()),
-			RouteName:       "test_route",
-			GoldfishManager: mockManager,
-		})
-
-		// No upstream decision in context
-		ctx := user.InjectOrgID(context.Background(), "test-tenant")
-
-		_, err := handler.Do(ctx, req)
-		require.NoError(t, err)
-
-		require.True(t, mockManager.shouldSampleCalled.Load(),
-			"ShouldSample SHOULD be called when no upstream decision is in context")
-	})
-}
-
-func TestFanOutHandler_Do_PropagatesGoldfishCorrelationQueryTags(t *testing.T) {
-	makeHandler := func(t *testing.T, manager goldfish.Manager, received chan<- string) *FanOutHandler {
+func TestTenantLabel(t *testing.T) {
+	newRequest := func(t *testing.T, orgID string) *http.Request {
 		t.Helper()
 
-		backend1 := newTagCapturingBackend(t, received)
-		t.Cleanup(backend1.Close)
-		backend2 := newTagCapturingBackend(t, received)
-		t.Cleanup(backend2.Close)
-
-		backend1URL, _ := url.Parse(backend1.URL)
-		backend2URL, _ := url.Parse(backend2.URL)
-
-		proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
-		require.NoError(t, err)
-		proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
-		require.NoError(t, err)
-
-		return NewFanOutHandler(FanOutHandlerConfig{
-			Backends:        []*ProxyBackend{proxyBackend1, proxyBackend2},
-			Codec:           queryrange.DefaultCodec,
-			Logger:          log.NewNopLogger(),
-			Metrics:         NewProxyMetrics(prometheus.NewRegistry()),
-			RouteName:       "test_route",
-			GoldfishManager: manager,
-		})
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+		if orgID != "" {
+			req.Header.Set(user.OrgIDHeaderName, orgID)
+		}
+		return req
 	}
 
-	req := &queryrange.LokiRequest{
-		Query:   `{app="test"}`,
-		StartTs: time.Now().Add(-1 * time.Hour),
-		EndTs:   time.Now(),
-		Limit:   100,
-	}
+	t.Run("returns the tenant ID of a single-tenant request", func(t *testing.T) {
+		label, err := tenantLabel(newRequest(t, "tenant1"))
 
-	t.Run("sampled request appends correlation query tag", func(t *testing.T) {
-		received := make(chan string, 2)
-		manager := &trackingSamplingMockManager{
-			shouldSampleResult:  true,
-			correlationIDResult: "test-uuid",
-		}
-		handler := makeHandler(t, manager, received)
-
-		ctx := user.InjectOrgID(context.Background(), "test-tenant")
-		ctx = httpreq.InjectAllHeaders(ctx, http.Header{
-			string(httpreq.QueryTagsHTTPHeader): []string{"Source=logvolhist"},
-		})
-
-		_, err := handler.Do(ctx, req)
 		require.NoError(t, err)
-
-		require.ElementsMatch(t, []string{
-			"Source=logvolhist,goldfish_correlation_id=test-uuid",
-			"Source=logvolhist,goldfish_correlation_id=test-uuid",
-		}, collectQueryTags(t, received, 2))
-		require.True(t, manager.shouldSampleCalled.Load())
+		require.Equal(t, "tenant1", label)
 	})
 
-	t.Run("unsampled request leaves tags unchanged", func(t *testing.T) {
-		received := make(chan string, 2)
-		manager := &trackingSamplingMockManager{shouldSampleResult: false}
-		handler := makeHandler(t, manager, received)
+	t.Run("returns the sorted tenant IDs without duplicates, joined by a pipe, for a multi-tenant request", func(t *testing.T) {
+		label, err := tenantLabel(newRequest(t, "tenant2|tenant1|tenant2"))
 
-		ctx := user.InjectOrgID(context.Background(), "test-tenant")
-		ctx = httpreq.InjectAllHeaders(ctx, http.Header{
-			string(httpreq.QueryTagsHTTPHeader): []string{"Source=logvolhist"},
-		})
-
-		_, err := handler.Do(ctx, req)
 		require.NoError(t, err)
-
-		require.ElementsMatch(t, []string{
-			"Source=logvolhist",
-			"Source=logvolhist",
-		}, collectQueryTags(t, received, 2))
-		require.True(t, manager.shouldSampleCalled.Load())
+		require.Equal(t, "tenant1|tenant2", label)
 	})
 
-	t.Run("upstream sampled decision keeps correlation tag without resampling", func(t *testing.T) {
-		received := make(chan string, 2)
-		manager := &trackingSamplingMockManager{
-			shouldSampleResult:  true,
-			correlationIDResult: "should-not-be-used",
-		}
-		handler := makeHandler(t, manager, received)
+	t.Run("returns an error when the request has no tenant ID", func(t *testing.T) {
+		_, err := tenantLabel(newRequest(t, ""))
 
-		ctx := user.InjectOrgID(context.Background(), "test-tenant")
-		ctx = httpreq.InjectAllHeaders(ctx, http.Header{
-			string(httpreq.QueryTagsHTTPHeader): []string{"Source=logvolhist"},
-		})
-		ctx = goldfish.ContextWithSamplingDecision(ctx, goldfish.SamplingDecision{
-			Sampled:       true,
-			CorrelationID: "upstream-uuid",
-		})
-
-		_, err := handler.Do(ctx, req)
-		require.NoError(t, err)
-
-		require.ElementsMatch(t, []string{
-			"Source=logvolhist,goldfish_correlation_id=upstream-uuid",
-			"Source=logvolhist,goldfish_correlation_id=upstream-uuid",
-		}, collectQueryTags(t, received, 2))
-		require.False(t, manager.shouldSampleCalled.Load())
+		require.ErrorIs(t, err, user.ErrNoOrgID)
 	})
 }

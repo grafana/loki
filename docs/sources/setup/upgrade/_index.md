@@ -37,11 +37,24 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Compactor and retention metrics are renamed 
+
+A number of legacy Prometheus metrics prefixed with `loki_boltdb_shipper_*` are renamed to `loki_tsdb_shipper_*`.
+These metrics have already been exposing values from TSDB Shipper and do not change their semantics.
+
+```
+loki_boltdb_shipper_compactor_running
+loki_boltdb_shipper_compact_tables_operation_*
+loki_boltdb_shipper_retention_*
+```
+
+To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.
 
-The ingester-wide setting `ingester.delegate_stream_limits_enabled` (`-ingester.delegate-stream-limits-enabled`) still works and is deprecated. It provides the default of the per-tenant limit, so existing configurations keep their behaviour.
+The ingester-wide setting `ingester.delegate_stream_limits_enabled` (`-ingester.delegate-stream-limits-enabled`) still works and is deprecated. It provides the default of the per-tenant limit, so existing configurations keep their behavior.
 
 ### Optional deferred OTLP attribute expansion
 
@@ -52,6 +65,10 @@ To defer expansion, set `distributor.otlp_config.defer_attribute_expansion` to `
 Enabling this option also changes the Kafka record format. Before enabling it, ensure all deployed services consuming log records from Kafka (`partition-ingester`, `dataobj-builder`, and `logline-index-builder`) are running Loki 4.0 or later.
 
 Disabling this option restores expansion during parsing and the previous format for new Kafka writes. Consumers must remain on Loki 4.0 or later for as long as records written while the option was enabled remain in Kafka.
+
+### Stricter JSON payload validation
+
+Both `/loki/api/v1/push` and the deprecated legacy `/api/prom/push` endpoint now return HTTP 400 if a JSON push payload contains a field name that the endpoint's schema does not recognize. For example, sending the legacy `labels`/`entries` payload shape to `/loki/api/v1/push`, or the regular `stream`/`values` payload shape to `/api/prom/push`, now fails with an error containing `found unknown field: <field>`.
 
 ### Optional index gateway client request limits
 
@@ -213,7 +230,7 @@ With the legacy backends removed, also the `table-manager` target and `table_man
 
 ### Distributor Max Receive Limits for uncompressed bytes
 
-The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
+The next Loki release introduces a new configuration option (i.e. `-distributor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
 
 Supported clients should check the configuration options for max send message size if applicable.
 

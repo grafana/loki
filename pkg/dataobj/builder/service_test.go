@@ -3,18 +3,36 @@ package builder
 import (
 	"context"
 	"errors"
+	"flag"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
+
+func TestNew(t *testing.T) {
+	t.Run("returns an error when the flush concurrency is 0", func(t *testing.T) {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		cfg.Topic = "test"
+		cfg.FlushConcurrency = 0
+
+		_, err := New(kafka.Config{}, cfg, dataobj_uploader.Config{}, metastore.Config{}, nil, nil, prometheus.NewRegistry(), log.NewNopLogger(), nil)
+		require.ErrorContains(t, err, "flush concurrency must be at least 1")
+	})
+}
 
 func TestService(t *testing.T) {
 	t.Run("fails with the processor error when the processor fails", func(t *testing.T) {
 		consumer, processor := newFakeSubservice("consumer"), newFakeSubservice("processor")
-		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, 0, log.NewNopLogger())
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, 0, "test-consumer-group", log.NewNopLogger())
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -29,7 +47,7 @@ func TestService(t *testing.T) {
 
 	t.Run("fails with the consumer error when the consumer fails", func(t *testing.T) {
 		consumer, processor := newFakeSubservice("consumer"), newFakeSubservice("processor")
-		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, 0, log.NewNopLogger())
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, 0, "test-consumer-group", log.NewNopLogger())
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -44,13 +62,39 @@ func TestService(t *testing.T) {
 
 	t.Run("terminates without error when stopped", func(t *testing.T) {
 		consumer, processor := newFakeSubservice("consumer"), newFakeSubservice("processor")
-		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, 0, log.NewNopLogger())
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, 0, "test-consumer-group", log.NewNopLogger())
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, s))
 		require.Equal(t, services.Terminated, s.State())
 		require.NoError(t, s.FailureCase())
+		require.Equal(t, services.Terminated, consumer.State())
+		require.Equal(t, services.Terminated, processor.State())
+	})
+
+	t.Run("runs the reporter until stopped", func(t *testing.T) {
+		consumer, processor, reporter := newFakeSubservice("consumer"), newFakeSubservice("processor"), newFakeSubservice("reporter")
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, reporter, 0, "test-consumer-group", log.NewNopLogger())
+		ctx := testContext(t)
+		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
+		require.Equal(t, services.Running, reporter.State())
+
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, s))
+		require.Equal(t, services.Terminated, reporter.State())
+	})
+
+	t.Run("fails with the reporter error when the reporter fails", func(t *testing.T) {
+		consumer, processor, reporter := newFakeSubservice("consumer"), newFakeSubservice("processor"), newFakeSubservice("reporter")
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, reporter, 0, "test-consumer-group", log.NewNopLogger())
+		ctx := testContext(t)
+		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
+
+		errReporter := errors.New("reporter failed")
+		reporter.fail(errReporter)
+
+		require.Error(t, s.AwaitTerminated(ctx))
+		require.ErrorIs(t, s.FailureCase(), errReporter)
 		require.Equal(t, services.Terminated, consumer.State())
 		require.Equal(t, services.Terminated, processor.State())
 	})
@@ -93,6 +137,6 @@ func (f *fakeSubservice) SetInitialOffset(int64) error {
 
 type fakeResumeOffsetReader struct{}
 
-func (fakeResumeOffsetReader) ResumeOffset(context.Context, int32) (int64, error) {
+func (fakeResumeOffsetReader) ResumeOffset(context.Context, string, int32) (int64, error) {
 	return 0, nil
 }

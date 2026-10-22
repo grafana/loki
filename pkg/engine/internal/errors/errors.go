@@ -9,8 +9,7 @@ var (
 	ErrNotImplemented = errors.New("not implemented")
 
 	// ErrNotSupported indicates the new query engine cannot handle the query.
-	// It is re-exported as engine.ErrNotSupported; the querier and HTTP handler
-	// both branch on it via errors.Is to fall back to the legacy engine or
-	// return HTTP 501.
+	// It is re-exported as engine.ErrNotSupported. The HTTP handler branches
+	// on it via errors.Is to return HTTP 501.
 	ErrNotSupported = errors.New("feature not supported in new query engine")
 )

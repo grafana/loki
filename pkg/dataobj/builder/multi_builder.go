@@ -117,10 +117,9 @@ func (m *MultiObjectBuilder) Reset() {
 // getBuilders returns all builders, sorted by tenant and then by ascending
 // window start time.
 //
-// A deterministic order keeps flush-time side effects (metastore event
-// writes, offset commits, and any future per-scope metrics) predictable
-// regardless of Go's map iteration randomization, which simplifies both
-// tests and operational reasoning.
+// The order does not depend on Go's map iteration, so the same builders always
+// come back in the same order. This makes tests and operational reasoning
+// simpler.
 func (m *MultiObjectBuilder) getBuilders() []builder {
 	scopes := slices.SortedFunc(maps.Keys(m.builders), compareScopes)
 

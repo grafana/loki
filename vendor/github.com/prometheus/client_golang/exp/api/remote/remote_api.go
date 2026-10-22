@@ -602,7 +602,10 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeResponse.writeHeaders(msgType, w)
 
 	if storeErr != nil {
-		if writeResponse.statusCode == 0 {
+		// A storage error must never be reported as success, otherwise the
+		// sender drops the data. NewWriteResponse defaults to 204, so any
+		// non-error status is replaced.
+		if writeResponse.statusCode < 400 {
 			writeResponse.SetStatusCode(http.StatusInternalServerError)
 		}
 		if writeResponse.statusCode/100 == 5 { // 5xx
@@ -610,6 +613,9 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, storeErr.Error(), writeResponse.statusCode)
 		return
+	}
+	if writeResponse.statusCode == 0 {
+		writeResponse.SetStatusCode(http.StatusNoContent)
 	}
 	w.WriteHeader(writeResponse.statusCode)
 }
