@@ -167,9 +167,9 @@ func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, r
 	for _, b := range ordered {
 		g.Go(func() error {
 			// Skip the builder if the flush was canceled or another builder
-			// failed while this one waited for a slot. builder.Flush takes no
-			// context, so it would build the whole object before the sort
-			// sees the cancellation.
+			// failed while this one waited for a slot. FlushAndSort ignores ctx
+			// while it builds, so it would build the whole object before the
+			// sort sees the cancellation.
 			if err := gctx.Err(); err != nil {
 				return err
 			}
