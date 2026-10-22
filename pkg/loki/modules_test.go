@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -292,4 +293,17 @@ func TestInitPatternIngesterTee(t *testing.T) {
 			require.Nil(t, loki.Tee)
 		})
 	}
+}
+
+// Puts both servers and an ingester in the service map, then checks only the
+// ingester comes back - if the servers wait on each other, neither shuts down.
+func TestServerServicesToWaitFor(t *testing.T) {
+	ingester := services.NewIdleService(nil, nil)
+	l := &Loki{serviceMap: map[string]services.Service{
+		Server:         services.NewIdleService(nil, nil),
+		InternalServer: services.NewIdleService(nil, nil),
+		Ingester:       ingester,
+	}}
+
+	require.Equal(t, []services.Service{ingester}, l.serverServicesToWaitFor())
 }
