@@ -37,6 +37,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### LogQL parsers no longer replace labels that have the same name
+
+Loki renames a parsed key to `<name>_extracted` when a stream label or a structured metadata key already has its name. Loki now applies this rule in the same way in all parsers, and some queries return different labels:
+
+- A parsed key that is renamed to `<name>_extracted` no longer replaces a stream label or a structured metadata value that already has that name. Loki drops the parsed value. If a stream label, a structured metadata key, and a parsed key all have the same name, `<name>_extracted` now holds the structured metadata value instead of the parsed value. To keep the parsed value, use `| drop <name>` or `| drop <name>_extracted` before the parser, or give the extracted label another name, for example `| logfmt p="foo"`.
+
+For the rules, refer to [Label name collisions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#label-name-collisions).
+
 ### Bloom filters are deprecated
 
 Query acceleration using bloom filters is deprecated and will be removed in a future release.

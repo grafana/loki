@@ -278,7 +278,7 @@ Label filter expressions have support matching IP addresses. See [Matching IP ad
 
 Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](../metric_queries/).
 
-Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
+Extracted label keys are automatically sanitized by all parsers, to follow the Prometheus label name convention. They can only contain ASCII letters and digits, as well as underscores. They cannot start with a digit. Any other character, including a colon, becomes an underscore, and a key that starts with a digit gets a leading underscore.
 
 For instance, the pipeline `| json` will produce the following mapping:
 ```json
@@ -291,7 +291,7 @@ For instance, the pipeline `| json` will produce the following mapping:
 
 In case of errors, for instance if the line is not in the expected format, the log line won't be filtered but instead will get a new `__error__` label added.
 
-If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However, if an extracted key appears twice, only the first label value will be kept.
+If an extracted label key name already exists in the original log stream or in the structured metadata, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However, if an extracted key appears twice, only the first label value will be kept. Refer to [Label name collisions](#label-name-collisions) for the rules.
 
 Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regular-expression) and [unpack](#unpack) parsers.
 
@@ -572,6 +572,31 @@ For example, using `| unpack` with the log line:
 extracts the `container` and `pod` labels; it sets `original log message` as the new log line.
 
 You can combine the `unpack` and `json` parsers (or any other parsers) if the original embedded log line is of a specific format.
+
+#### Label name collisions
+
+A log line can get the same label name from the stream labels, from the structured metadata, and from a parser. A name always holds one label. When several sources have the same name, the precedence decides which one keeps it:
+
+1. Stream labels.
+2. Structured metadata.
+3. Labels that a parser extracts.
+
+The label with the highest precedence keeps the name. Loki renames each of the other labels to `<name>_extracted`. For example, with the stream label `foo="l"` and the structured metadata `foo="m"`, the structured metadata label becomes `foo_extracted="m"`.
+
+The following rules apply to all parsers:
+
+- A renamed label never replaces another label. If a stream label or a structured metadata key already has the name `<name>_extracted`, Loki drops the renamed label. Loki renames a label only once. For example, an extracted key `foo_extracted` becomes `foo_extracted_extracted` when a stream label `foo_extracted` exists.
+- In one parser stage, a key that is called `foo_extracted` in the log line wins over a key `foo` that Loki renames to `foo_extracted`. The order of the keys in the log line does not matter.
+- A [label format expression](#labels-format-expression) is the only way to replace a label, whatever its source.
+
+Consider a stream with the label `foo="l"`, the structured metadata `foo="m"`, and the log line `foo=p`. The extracted label `foo` finds both names taken, so Loki drops it. The following queries show how to get the extracted value:
+
+- `{job="example"} | logfmt` returns `foo="l"` and `foo_extracted="m"`.
+- `{job="example"} | drop foo | logfmt` returns `foo="p"` and `foo_extracted="m"`. The `drop` removes the stream label, so the extracted label keeps its name.
+- `{job="example"} | drop foo_extracted | logfmt` returns `foo="l"` and `foo_extracted="p"`. The `drop` removes the structured metadata label, so the extracted label takes the name `foo_extracted`.
+- `{job="example"} | logfmt p="foo"` returns `foo="l"`, `foo_extracted="m"`, and `p="p"`. The extracted label has another name, so no collision happens.
+
+Use the `drop` expression before the parser. A `drop` after the parser is too late, because the parser has already dropped the extracted value.
 
 ### Line format expression
 
