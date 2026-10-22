@@ -1278,14 +1278,15 @@ func isCancel(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-// rangesOverlap reports whether any range overlaps [start, end].
+// rangesOverlap reports whether any half-open hint [Start, End) overlaps (start, end].
+// A hint that only ends at start shares no time with the window.
 // Assumes ranges are sorted by Start. It does not allocate.
 func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
 	if len(ranges) == 0 {
 		return false
 	}
 	idx := sort.Search(len(ranges), func(i int) bool {
-		return !ranges[i].End.Before(start)
+		return ranges[i].End.After(start)
 	})
 	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }

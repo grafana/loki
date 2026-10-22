@@ -2421,6 +2421,19 @@ func TestRangesOverlapping(t *testing.T) {
 	require.False(t, rangesOverlap(nil, base, base.Add(time.Hour)))
 }
 
+func TestRangesOverlap_ExclusiveHintEnd(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	hint := []hintprovider.HintTimeRange{{
+		Start: base,
+		End:   base.Add(5 * time.Minute),
+	}}
+
+	// Lookback (5m, 10m] shares nothing with [0, 5m).
+	require.False(t, rangesOverlap(hint, base.Add(5*time.Minute), base.Add(10*time.Minute)))
+	// A hint that starts at the lookback end includes that instant.
+	require.True(t, rangesOverlap(hint, base.Add(-time.Minute), base))
+}
+
 func testTime(n int) time.Time {
 	return time.Date(2025, 1, 1, 0, 0, n, 0, time.UTC)
 }
