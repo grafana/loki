@@ -1326,17 +1326,18 @@ func testFlushAndSortErrors(t *testing.T) {
 		require.ErrorIs(t, err, ErrBuilderEmpty)
 	})
 
-	t.Run("returns an error and no object when releasing the built object fails", func(t *testing.T) {
+	t.Run("returns the sorted object and counts a release failure when releasing the built object fails", func(t *testing.T) {
 		metrics := NewBuilderMetrics()
 		b, err := NewBuilder(testBuilderConfig, &failingRemoveStore{Store: scratch.NewMemory()}, metrics, log.NewNopLogger(), nil)
 		require.NoError(t, err)
 		require.NoError(t, b.Append("tenant", stream, time.Now()))
 
 		obj, closer, err := b.FlushAndSort(t.Context())
-		require.ErrorContains(t, err, "mock remove error")
-		require.Nil(t, obj)
-		require.Nil(t, closer)
-		require.Equal(t, 1.0, testutil.ToFloat64(metrics.flushFailures))
+		require.NoError(t, err)
+		require.NotNil(t, obj)
+		t.Cleanup(func() { _ = closer.Close() })
+		require.Equal(t, 1.0, testutil.ToFloat64(metrics.releaseFailures))
+		require.Zero(t, testutil.ToFloat64(metrics.flushFailures))
 	})
 
 	t.Run("returns nothing and releases the buffered sections when the build fails", func(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/facette/natsort"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/scratch"
-	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // ErrBuilderEmpty is returned by [Builder.Flush] when there is no buffered
@@ -153,10 +153,11 @@ type Builder struct {
 	// clears it, so a limits change applies from the next object.
 	layouts map[string]tenantLayout
 
-	// sortMetrics is never registered. It absorbs the section metrics of the
-	// sort in FlushAndSort, which would otherwise count data that metrics
-	// already observed during the build.
-	sortMetrics *BuilderMetrics
+	// sortLogsMetrics and sortStreamsMetrics are never registered. They absorb
+	// the section metrics of the sort in FlushAndSort, which would otherwise
+	// count data that metrics already observed during the build.
+	sortLogsMetrics    *logs.Metrics
+	sortStreamsMetrics *streams.Metrics
 
 	currentSizeEstimate int
 
@@ -202,7 +203,8 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 		logs:       make(map[string]*logs.Builder),
 		layouts:    make(map[string]tenantLayout),
 
-		sortMetrics: NewBuilderMetrics(),
+		sortLogsMetrics:    logs.NewMetrics(),
+		sortStreamsMetrics: streams.NewMetrics(),
 	}, nil
 }
 
@@ -487,7 +489,19 @@ func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer,
 		return nil, nil, err
 	}
 
-	sorted, sortedCloser, err := b.sortAndRelease(ctx, built, builtCloser, layouts)
+	// A failure to release the built object leaks scratch storage, but the
+	// sorted object is still valid. So the failure is counted and logged, and
+	// it does not fail the flush.
+	defer func() {
+		if err := builtCloser.Close(); err != nil {
+			b.metrics.releaseFailures.Inc()
+			level.Warn(b.logger).Log("msg", "failed to release built data object", "err", err)
+		}
+	}()
+
+	timer := prometheus.NewTimer(b.metrics.sortTime)
+	sorted, sortedCloser, err := b.sort(ctx, built, layouts)
+	timer.ObserveDuration()
 	if err != nil {
 		b.metrics.flushFailures.Inc()
 		// The caller never closes an object returned with an error, so release
@@ -499,16 +513,6 @@ func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer,
 		return nil, nil, fmt.Errorf("sorting object: %w", err)
 	}
 	return sorted, sortedCloser, nil
-}
-
-// sortAndRelease sorts built with layouts and then releases built. It returns
-// the release error if the sort succeeded.
-func (b *Builder) sortAndRelease(ctx context.Context, built *dataobj.Object, builtCloser io.Closer, layouts map[string]tenantLayout) (_ *dataobj.Object, _ io.Closer, returnErr error) {
-	defer util.CloseAndHandleError(builtCloser, &returnErr)
-
-	timer := prometheus.NewTimer(b.metrics.sortTime)
-	defer timer.ObserveDuration()
-	return b.sort(ctx, built, layouts)
 }
 
 // sort writes obj sorted object-wide to b.builder and flushes it. layouts must
@@ -565,7 +569,7 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
 
-		sb := streams.NewBuilder(b.sortMetrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.shardLayout)
+		sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.shardLayout)
 		if err := b.buildStreamSection(ctx, tenant, streamIter, sb); err != nil {
 			return nil, nil, err
 		}
@@ -575,7 +579,7 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
 		}
 
-		lb := logs.NewBuilder(b.sortMetrics.logs, logs.BuilderOptions{
+		lb := logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
 			PageSizeHint:     int(b.cfg.TargetPageSize),
 			PageMaxRowCount:  b.cfg.MaxPageRows,
 			BufferSize:       int(b.cfg.BufferSize),

@@ -25,6 +25,8 @@ type BuilderMetrics struct {
 	sortTime      prometheus.Histogram
 	flushFailures prometheus.Counter
 
+	releaseFailures prometheus.Counter
+
 	builtSize prometheus.Histogram
 }
 
@@ -85,6 +87,10 @@ func NewBuilderMetrics() *BuilderMetrics {
 			Name: "loki_dataobj_flush_failures_total",
 			Help: "Total number of flush failures.",
 		}),
+		releaseFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_release_failures_total",
+			Help: "Total number of failures to release the scratch storage of an intermediate data object. These do not fail the flush.",
+		}),
 	}
 }
 
@@ -112,6 +118,7 @@ func (m *BuilderMetrics) Register(reg prometheus.Registerer) error {
 
 	errs = append(errs, reg.Register(m.builtSize))
 	errs = append(errs, reg.Register(m.flushFailures))
+	errs = append(errs, reg.Register(m.releaseFailures))
 
 	return errors.Join(errs...)
 }
@@ -132,4 +139,5 @@ func (m *BuilderMetrics) Unregister(reg prometheus.Registerer) {
 
 	reg.Unregister(m.builtSize)
 	reg.Unregister(m.flushFailures)
+	reg.Unregister(m.releaseFailures)
 }
