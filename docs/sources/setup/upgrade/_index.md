@@ -69,6 +69,10 @@ loki_boltdb_shipper_retention_*
 
 To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
 
+### Experimental per-index gateway ownership
+
+Set `index_gateway.per_index_ownership.enabled: true` to have index gateways read the sharded index copy of the schema periods with a `sharded_path_prefix`, and preload those indexes according to tenant/table ownership. Tables of other periods are read from `path_prefix` and loaded as without per-index ownership. All settings in `per_index_ownership` are experimental and require ring mode. Gateways join the ring, optionally wait for stable tokens, and preload before becoming ACTIVE. A preload timeout allows activation with remaining work handled by periodic readiness; other preload errors fail startup. Leave ownership disabled to preserve existing behavior.
+
 ### Experimental fingerprint-sharded TSDB index
 
 Set the experimental `sharded_path_prefix` in the `index` block of a schema period to have the compactor also write every per-tenant index of the period's tables that it uploads to that prefix, split into the tenant's experimental `tsdb_sharded_index_shard_factor` fingerprint-range files. The prefix must differ from the `path_prefix` of every schema period. `tsdb_sharded_index_shard_factor` is a per-tenant limit; values `0` and `1` write a single file, and larger values must be powers of two. The index under `path_prefix` is never split, and readers of it are unaffected.

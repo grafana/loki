@@ -114,7 +114,7 @@ func (s *store) init(params storeInitParams) error {
 		params.indexShipperCfg,
 		params.objectClient,
 		params.limits,
-		nil,
+		params.indexShipperCfg.TenantFilter,
 		func(p string) (shipperindex.Index, error) {
 			return openShippableTSDBWithPostingsCache(p, readerOpts, s.postingsCache, params.prefix, params.indexShipperCfg.CacheLocation)
 		},
@@ -218,6 +218,12 @@ func (s *store) FlushIndexes(ctx context.Context) error {
 	}
 
 	return s.indexShipper.FlushIndexes(ctx)
+}
+
+// EnsureQueryReadiness downloads the indexes that must be query ready and are
+// missing.
+func (s *store) EnsureQueryReadiness(ctx context.Context) error {
+	return s.indexShipper.EnsureQueryReadiness(ctx)
 }
 
 // TriggerSync starts a background index sync (refreshing the object-listing
