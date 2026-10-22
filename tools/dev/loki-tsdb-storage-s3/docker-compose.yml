@@ -130,8 +130,6 @@ services:
     depends_on:
       - mimir
       - automq
-    ports:
-      - 12345:12345
     volumes:
       - ./config/alloy.alloy:/etc/alloy/config.alloy
       - alloy-data:/var/lib/alloy/data

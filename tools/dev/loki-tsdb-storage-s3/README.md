@@ -56,7 +56,7 @@ Mimir runs with `multitenancy_enabled: false`, so you can curl it without a tena
 curl -s --get http://localhost:9009/prometheus/api/v1/query --data-urlencode 'query=kafka_broker_active_count'
 ```
 
-Alloy's own UI, which lists the scrape targets and their last error, is at http://localhost:12345.
+Nothing needs to reach Alloy, so its port isn't published — scrape health lands in Mimir as `up` and `scrape_samples_scraped` anyway. Add a `12345:12345` mapping to the service if you want its UI, which lists the scrape targets and their last error.
 
 ## Ports
 
@@ -81,7 +81,6 @@ Every service is published on its natural port, so if you already run another st
 | `automq`   | 9092        | Kafka `HOST` listener |
 | `silo`     | 9000 / 9001 | S3 API / web console  |
 | `mimir`    | 9009        | HTTP and query API    |
-| `alloy`    | 12345       | UI                    |
 | `jaeger`   | 16686       | UI                    |
 
 ## Remote Debugging
