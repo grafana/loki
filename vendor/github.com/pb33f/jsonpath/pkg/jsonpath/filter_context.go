@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 // FilterContext provides rich context during filter evaluation for JSONPath Plus extensions.
