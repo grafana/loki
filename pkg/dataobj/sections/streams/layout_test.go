@@ -43,6 +43,10 @@ func TestNewLayout(t *testing.T) {
 		require.Equal(t, []string{"label:app"}, layout.SchemaLabels())
 	})
 
+	t.Run("returns deeply equal layouts for nil and empty schema labels", func(t *testing.T) {
+		require.Equal(t, NewLayout(DefaultShardLayout(), nil), NewLayout(DefaultShardLayout(), []string{}))
+	})
+
 	t.Run("orders stream IDs by the stable hash stream key", func(t *testing.T) {
 		require.Equal(t, StreamOrderStableHashV1, NewLayout(DefaultShardLayout(), nil).StreamOrder())
 	})
@@ -73,7 +77,7 @@ func TestSection_Layout(t *testing.T) {
 		got, ok, err := openSection(t, b).Layout()
 		require.NoError(t, err)
 		require.True(t, ok)
-		require.True(t, want.Equal(got), "got %+v, want %+v", got, want)
+		require.Equal(t, want, got)
 	})
 
 	t.Run("buckets streams with the shard layout of the recorded layout", func(t *testing.T) {
@@ -104,22 +108,20 @@ func TestSection_Layout(t *testing.T) {
 		got, ok, err := openSection(t, b).Layout()
 		require.NoError(t, err)
 		require.True(t, ok)
-		require.True(t, want.Equal(got))
+		require.Equal(t, want, got)
 	})
 
-	t.Run("keeps the layout across Reset", func(t *testing.T) {
-		want := NewLayout(DefaultShardLayout(), []string{"label:app"})
+	t.Run("records no layout after Reset", func(t *testing.T) {
 		b := newBuilder()
-		b.SetLayout(want)
+		b.SetLayout(NewLayout(DefaultShardLayout(), []string{"label:app"}))
 		b.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 		b.Reset()
 		b.SetTenant("tenant")
 		b.Record(labels.FromStrings("app", "bar"), time.Unix(10, 0), 1)
 
-		got, ok, err := openSection(t, b).Layout()
+		_, ok, err := openSection(t, b).Layout()
 		require.NoError(t, err)
-		require.True(t, ok)
-		require.True(t, want.Equal(got))
+		require.False(t, ok)
 	})
 
 	t.Run("reports no layout when the builder recorded none", func(t *testing.T) {
@@ -205,7 +207,7 @@ func TestBuilder_SetLayout(t *testing.T) {
 		got, ok, err := sec.Layout()
 		require.NoError(t, err)
 		require.True(t, ok)
-		require.True(t, want.Equal(got))
+		require.Equal(t, want, got)
 	})
 
 	t.Run("panics when the layout is the zero value", func(t *testing.T) {

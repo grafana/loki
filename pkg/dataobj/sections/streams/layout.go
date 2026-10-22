@@ -41,8 +41,12 @@ type Layout struct {
 // follow [StreamOrderStableHashV1]. An empty schemaLabels orders streams by
 // shard bucket, then labels.StableHash.
 //
-// NewLayout copies schemaLabels.
+// NewLayout copies schemaLabels. It stores empty schemaLabels as nil, so
+// layouts that [Layout.Equal] reports as equal are also deeply equal.
 func NewLayout(shardLayout ShardLayout, schemaLabels []string) Layout {
+	if len(schemaLabels) == 0 {
+		schemaLabels = nil
+	}
 	return Layout{
 		shardLayout:  shardLayout,
 		schemaLabels: slices.Clone(schemaLabels),
@@ -93,11 +97,7 @@ func layoutFromSortInfo(si *datasetmd.SortInfo) (Layout, error) {
 	if err != nil {
 		return Layout{}, fmt.Errorf("decoding shard layout: %w", err)
 	}
-	return Layout{
-		shardLayout:  shardLayout,
-		schemaLabels: slices.Clone(si.SchemaLabels),
-		streamOrder:  StreamOrderStableHashV1,
-	}, nil
+	return NewLayout(shardLayout, si.SchemaLabels), nil
 }
 
 func streamOrderProto(order StreamOrder) datasetmd.StreamOrder {

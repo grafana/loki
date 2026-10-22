@@ -426,13 +426,13 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	return b.flush(true)
 }
 
-// flushRaw builds a data object from all buffered data, as appended, without
+// flushWithoutLayout builds a data object from all buffered data, as appended, without
 // a layout. Its output is only the input to the sort in FlushAndSort.
 //
 // Each logs section is sorted, but stream IDs follow the order in which
 // streams were first appended, and sections can overlap. Readers that need a
 // layout reject the object, so it is not valid to store.
-func (b *Builder) flushRaw() (*dataobj.Object, io.Closer, error) {
+func (b *Builder) flushWithoutLayout() (*dataobj.Object, io.Closer, error) {
 	return b.flush(false)
 }
 
@@ -501,7 +501,7 @@ func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) 
 // FlushAndSort always resets Builder.
 func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	layouts := maps.Clone(b.layouts)
-	built, builtCloser, err := b.flushRaw()
+	built, builtCloser, err := b.flushWithoutLayout()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -697,9 +697,8 @@ func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record
 }
 
 // buildStreamSection consumes an iterator, appending each stream to the provided
-// streams.Builder, and adds it to the sections accumulator.
+// streams.Builder, and adds it to the sections accumulator. sb must be empty.
 func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], sb *streams.Builder) error {
-	sb.Reset()
 	sb.SetTenant(tenant)
 
 	for res := range iter {

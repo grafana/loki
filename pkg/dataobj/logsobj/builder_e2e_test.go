@@ -99,7 +99,7 @@ func TestBuilder_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	appendDataset(t, b)
 
-	obj1, closer, err := b.flushRaw()
+	obj1, closer, err := b.flushWithoutLayout()
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -274,6 +274,6 @@ func assertBuilderE2ESchemaLabels(t *testing.T, obj *dataobj.Object, tenant stri
 		got, ok, err := streamsSection.Layout()
 		require.NoError(t, err)
 		require.True(t, ok)
-		require.True(t, streams.NewLayout(streams.DefaultShardLayout(), want).Equal(got), "got %+v", got)
+		require.Equal(t, streams.NewLayout(streams.DefaultShardLayout(), want), got)
 	}
 }
