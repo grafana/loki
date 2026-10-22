@@ -309,6 +309,8 @@ func fillFromMeminfoWithContext(ctx context.Context) (*VirtualMemoryStat, *ExVir
 		}
 	}
 
+	// free(1) and psutil both count the reclaimable slab as part of the page
+	// cache, so report "Cached" the same way. See #844.
 	ret.Cached += ret.Sreclaimable
 
 	if !memavail {
@@ -479,7 +481,7 @@ func parseSwapsFile(ctx context.Context, r io.Reader) ([]*SwapDevice, error) {
 
 	// Check header headerFields are as expected
 	headerFields := strings.Fields(scanner.Text())
-	if len(headerFields) < usedCol {
+	if len(headerFields) <= usedCol {
 		return nil, fmt.Errorf("couldn't parse %q: too few fields in header", swapsFilePath)
 	}
 	if headerFields[nameCol] != "Filename" {
@@ -495,7 +497,7 @@ func parseSwapsFile(ctx context.Context, r io.Reader) ([]*SwapDevice, error) {
 	var swapDevices []*SwapDevice
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		if len(fields) < usedCol {
+		if len(fields) <= usedCol {
 			return nil, fmt.Errorf("couldn't parse %q: too few fields", swapsFilePath)
 		}
 
