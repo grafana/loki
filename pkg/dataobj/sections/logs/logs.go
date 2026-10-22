@@ -13,6 +13,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
+// RegionRead is the xcap region name that holds the statistics of reading
+// rows from a logs section.
+var RegionRead = "logs.Reader.Read"
+
 // schemaSortVersion is the section type version for logs sections written in
 // schema sort order. Must not equal columnar.FormatVersion (currently 2).
 // The bumped version lets callers detect the sort contract from the object
@@ -216,7 +220,7 @@ func LegacyLayoutOf(ctx context.Context, sections []*dataobj.Section) (streams.L
 // A Column represents one of the columns in the logs section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
-// Data in columns can be read by using a [Reader].
+// Data in columns can be read by using a [RowReader].
 type Column struct {
 	Section *Section   // Section that contains the column.
 	Name    string     // Optional name of the column.

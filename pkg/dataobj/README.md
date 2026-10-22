@@ -231,10 +231,10 @@ The encoding uses a multi-level compression strategy:
 │ - List columns   │
 └──────┬───────────┘
        │
-       │ NewReader
+       │ NewRowReader
        ▼
 ┌──────────────────┐
-│ logs.Reader      │
+│ logs.RowReader   │
 │ - Read pages     │
 │ - Apply filters  │
 │ - Decompress     │
@@ -243,7 +243,7 @@ The encoding uses a multi-level compression strategy:
        │ Read batches
        ▼
 ┌──────────────────┐
-│ Arrow Records    │
+│ Records          │
 └──────────────────┘
 ```
 
@@ -275,11 +275,11 @@ Section opening:
 #### 4. Reading Data
 
 Reading process:
-1. Validates reader options
+1. Resolves the projected columns of the section
 2. Maps predicates to internal dataset predicates
 3. Reads pages in batches (with prefetching)
 4. Applies predicates at page and row level
-5. Converts to Arrow record batches
+5. Decodes the rows into records
 
 Reader optimizations:
 - **Range coalescing**: Adjacent pages are read in a single request
@@ -478,7 +478,6 @@ import (
     "context"
     "io"
 
-    "github.com/apache/arrow-go/v18/arrow/scalar"
     "github.com/grafana/loki/v3/pkg/dataobj"
     "github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
@@ -507,36 +506,29 @@ func main() {
         panic(err)
     }
 
-    // Find columns
-    var timestampCol, messageCol *logs.Column
-    for _, col := range section.Columns() {
-        switch col.Type {
-        case logs.ColumnTypeTimestamp:
-            timestampCol = col
-        case logs.ColumnTypeMessage:
-            messageCol = col
-        }
-    }
-
     // Create reader with predicate
-    reader := logs.NewReader(logs.ReaderOptions{
-        Columns: []*logs.Column{timestampCol, messageCol},
-        Predicates: []logs.Predicate{
-            logs.GreaterThanPredicate{
-                Column: timestampCol,
-                Value:  scalar.NewInt64Scalar(startTime.UnixNano()),
-            },
+    reader := logs.NewRowReader(section)
+    defer reader.Close()
+
+    err = reader.SetPredicates([]logs.RowPredicate{
+        logs.TimeRangeRowPredicate{
+            StartTime:    startTime,
+            EndTime:      endTime,
+            IncludeStart: true,
         },
     })
-    defer reader.Close()
+    if err != nil {
+        panic(err)
+    }
 
     if err := reader.Open(ctx); err != nil {
         panic(err)
     }
 
     // Read batches
+    buf := make([]logs.Record, 1000)
     for {
-        batch, err := reader.Read(ctx, 1000)
+        n, err := reader.Read(ctx, buf)
         if err == io.EOF {
             break
         }
@@ -544,11 +536,8 @@ func main() {
             panic(err)
         }
 
-        // Process batch (Arrow record)
-        for i := 0; i < int(batch.NumRows()); i++ {
-            timestamp := batch.Column(0).(*array.Timestamp).Value(i)
-            message := batch.Column(1).(*array.String).Value(i)
-            println(timestamp, message)
+        for _, rec := range buf[:n] {
+            println(rec.Timestamp.UnixNano(), string(rec.Line))
         }
     }
 }

@@ -2171,14 +2171,11 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
 	// IndexMerge executor writes merged-index objects to the same namespace
 	// the ToC pointers (written by the planner via its prefixed indexBucket)
-	// resolve to. metastore.NewObjectMetastore applies the prefix internally,
-	// so it still receives the unprefixed `store`.
+	// resolve to.
 	indexBucket := store
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-
-	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
 		Config: t.Cfg.DataObj.Compaction.Worker,
@@ -2187,7 +2184,6 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		// LogMerge executor reads them through the unprefixed store rather than
 		// the index-prefixed bucket used for index I/O and ToC.
 		DataBucket:   store,
-		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,

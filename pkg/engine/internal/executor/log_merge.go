@@ -46,7 +46,7 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 // compacted log objects. Both live at the unprefixed dataobj root (the objects/
 // namespace), not under the index-storage prefix that c.bucket carries, so it
 // prefers dataBucket and falls back to bucket when dataBucket is unset (e.g.
-// query-only workers or tests that share a single bucket).
+// tests that share a single bucket).
 func (c *Context) dataObjectBucket() objstore.Bucket {
 	if c.dataBucket != nil {
 		return c.dataBucket
