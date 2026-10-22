@@ -13,15 +13,37 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
+// minPooledPostingsListBytes is the size below which a postings list's buffer
+// is not pooled.
+// Benchmarks show that a pool Get and Put cost more than they save for short
+// postings lists.
+const minPooledPostingsListBytes = 256
+
 // postingsListBufferPool holds reusable []byte buffers for streaming postings lists.
-var postingsListBufferPool = pool.New(64, 16<<20, 2, func(sz int) interface{} {
+var postingsListBufferPool = pool.New(minPooledPostingsListBytes, 16<<20, 2, func(sz int) interface{} {
 	return make([]byte, 0, sz)
 })
 
 // getPostingsListBuffer returns a buffer of exactly n bytes.
 // Buffers are returned dirty, so the caller is expected to overwrite any data in the buffer.
 func getPostingsListBuffer(n int) []byte {
+	if n < minPooledPostingsListBytes {
+		return make([]byte, n)
+	}
 	return postingsListBufferPool.Get(n).([]byte)[:n]
+}
+
+func putPostingsListBuffer(buf []byte) {
+	if len(buf) >= minPooledPostingsListBytes {
+		postingsListBufferPool.Put(buf)
+	}
+}
+
+func newPostingsListPostings(buf []byte) Postings {
+	if len(buf) >= minPooledPostingsListBytes {
+		return newPooledBigEndianPostings(buf)
+	}
+	return NewBigEndianPostings(buf)
 }
 
 // streamPostings is StreamReader's equivalent of ByteSliceReader's postings.
@@ -306,7 +328,7 @@ func (p *streamPostings) readPostingsList(decbuf *streamenc.Decbuf, postingsOffs
 	decbuf.ReadInto(buf)
 	expectedChecksum := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
-		postingsListBufferPool.Put(buf)
+		putPostingsListBuffer(buf)
 		return nil, err
 	}
 
@@ -314,10 +336,10 @@ func (p *streamPostings) readPostingsList(decbuf *streamenc.Decbuf, postingsOffs
 	binary.BigEndian.PutUint32(count[:], uint32(n))
 	crc := crc32.Update(0, castagnoliTable, count[:])
 	if crc32.Update(crc, castagnoliTable, buf) != expectedChecksum {
-		postingsListBufferPool.Put(buf)
+		putPostingsListBuffer(buf)
 		return nil, fmt.Errorf("postings list at %d: %w", postingsOffset, streamenc.ErrInvalidChecksum)
 	}
-	return newPooledBigEndianPostings(buf), nil
+	return newPostingsListPostings(buf), nil
 }
 
 // pooledBigEndianPostings wraps BigEndianPostings so the backing []byte
