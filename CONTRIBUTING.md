@@ -30,7 +30,7 @@ Before opening an issue or pull request, check whether your question or idea has
 ## Ways to contribute
 
 - **Bug reports**: Use the [GitHub issue tracker](https://github.com/grafana/loki/issues/new/choose) and fill in the appropriate template.
-- **Feature requests**: For small improvements, open an issue. For significant changes, create a [Loki Improvement Document (LID)](#loki-improvement-documents-lids) first.
+- **Feature requests**: For small improvements, open an issue. For significant changes, create an issue describing the desired change first.
 - **Code changes**: Refer to [Development setup](#development-setup) and [Submitting a pull request](#submitting-a-pull-request).
 - **Documentation**: Refer to [Contribute to documentation](#contribute-to-documentation).
 - **Helm chart**: Refer to [Contribute to Helm chart](#contribute-to-helm-chart).
@@ -85,12 +85,6 @@ The `go.work` file is gitignored and does not affect other contributors.
 Effective June 22, 2026, all Grafana Labs repositories will [require signed commits](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-signed-commits). To learn how to enable commit verification, see [about commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification) and see this page to learn about [checking your commit signature verification status](https://docs.github.com/en/authentication/troubleshooting-commit-signature-verification/checking-your-commit-and-tag-signature-verification-status).
 
 **NOTE** Unsigned commits and pull requests will be rejected and closed. This includes pull requests that have been authored by Agents.
-
-### Loki Improvement Documents (LIDs)
-
-Before opening a large pull request to add or significantly change functionality, create a _Loki Improvement Document (LID)_. LIDs allow the community to discuss and vet ideas in an open, transparent way, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) processes.
-
-Create a LID as a pull request using the [LID template](docs/sources/community/lids/template.md).
 
 ### Commit messages
 

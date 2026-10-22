@@ -20,14 +20,6 @@ func newTestBuilderFactory(t *testing.T, reg prometheus.Registerer, overrides Te
 	return bf
 }
 
-func TestBuilderFactory_NewSorterBuilder(t *testing.T) {
-	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), nil)
-
-	b, err := bf.NewSorterBuilder()
-	require.NoError(t, err)
-	require.NotNil(t, b)
-}
-
 func TestBuilderFactory_NewBuilder(t *testing.T) {
 	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), nil)
 
@@ -51,10 +43,6 @@ func TestBuilderFactory_SetsOverridesOnBuilders(t *testing.T) {
 	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), overrides)
 
 	b, err := bf.NewBuilder()
-	require.NoError(t, err)
-	require.Equal(t, overrides, b.overrides)
-
-	b, err = bf.NewSorterBuilder()
 	require.NoError(t, err)
 	require.Equal(t, overrides, b.overrides)
 }

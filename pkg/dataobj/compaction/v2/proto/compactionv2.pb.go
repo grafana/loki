@@ -28,7 +28,7 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 // SectionRef identifies one section in object storage with its sort-key bounds.
 //
 // The section's sort-key is the tuple (sort_schema_label_values, __timestamp__)
-// per the tenant's sort_schema. To order sections correctly without imposing
+// per the sort_schema of the index. To order sections correctly without imposing
 // encoding contracts on the caller, the proto splits this tuple across two
 // field categories:
 //

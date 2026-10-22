@@ -27,7 +27,6 @@ func addCompareCommand(app *kingpin.Application) {
 	var host1, host2 string
 
 	cmd := app.Command("compare", "Compare query results between two remote Loki instances by executing queries against them and dumping the output json.")
-	cmd.Flag("bucket", "Remote bucket name").Required().StringVar(&cfg.Bucket)
 	cmd.Flag("org-id", "Organization ID").Required().StringVar(&cfg.OrgID)
 	cmd.Flag("start", "Start time (RFC3339 format)").Required().StringVar(&cfg.Start)
 	cmd.Flag("end", "End time (RFC3339 format)").Required().StringVar(&cfg.End)
@@ -53,7 +52,7 @@ func addCompareCommand(app *kingpin.Application) {
 	})
 }
 
-// doComparison compares query resultsu from executing a loki http query against two hosts
+// doComparison compares query results from executing a loki http query against two hosts
 func doComparison(params logql.LiteralParams, host1, host2 string) error {
 	level.Info(logger).Log("msg", "executing comparison", "start", params.Start().Format(time.RFC3339), "end", params.End().Format(time.RFC3339))
 	hosts := []string{host1, host2}
@@ -103,8 +102,8 @@ func doComparison(params logql.LiteralParams, host1, host2 string) error {
 
 func checkLogStreams(results []loghttp.Streams) error {
 	streamsInResponses := make([][]string, len(results))
-	chunkEntries := make(map[string][]loghttp.Entry)
-	dataobjEntries := make(map[string][]loghttp.Entry)
+	firstEntries := make(map[string][]loghttp.Entry)
+	secondEntries := make(map[string][]loghttp.Entry)
 
 	for i, result := range results {
 		streams := result
@@ -117,9 +116,9 @@ func checkLogStreams(results []loghttp.Streams) error {
 			lblsMap := lbls.Map()
 			newLbls := labels.FromMap(lblsMap)
 			if i == 0 {
-				chunkEntries[newLbls.String()] = stream.Entries
+				firstEntries[newLbls.String()] = stream.Entries
 			} else {
-				dataobjEntries[newLbls.String()] = stream.Entries
+				secondEntries[newLbls.String()] = stream.Entries
 			}
 			if _, ok := uniq[newLbls.String()]; ok {
 				continue
@@ -157,15 +156,15 @@ func checkLogStreams(results []loghttp.Streams) error {
 	level.Info(logger).Log("msg", "stream comparison complete", "matching_streams", valid)
 
 	level.Info(logger).Log("msg", "starting entry comparison...", "matching_streams", valid)
-	for lbls, entries := range chunkEntries {
+	for lbls, entries := range firstEntries {
 		printed := false
-		dataobjEntries, ok := dataobjEntries[lbls]
+		otherEntries, ok := secondEntries[lbls]
 		if !ok {
 			level.Warn(logger).Log("msg", "stream missing from second response", "labels", lbls)
 			continue
 		}
 		for i, entry := range entries {
-			if entry.Line != dataobjEntries[i].Line {
+			if entry.Line != otherEntries[i].Line {
 				if !printed {
 					level.Warn(logger).Log("msg", "line mismatch found in stream", "stream", lbls)
 					printed = true
