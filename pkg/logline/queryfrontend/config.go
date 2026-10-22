@@ -9,6 +9,7 @@ import (
 const (
 	defaultNgramLength                    = 6
 	defaultMaxHintParallel                = 64
+	defaultMaxConjunctions                = 64
 	defaultHintTimeout                    = 15 * time.Second
 	defaultShardPlanningEnabled           = true
 	defaultShardPlanningMinReductionRatio = 0.75
@@ -54,6 +55,12 @@ type Config struct {
 	// MaxHintParallel is the maximum number of concurrent hint index workers
 	// dispatched per query. Defaults to 64 when zero.
 	MaxHintParallel int `yaml:"max_hint_parallel"`
+	// MaxConjunctions is the most needle sets a query is planned into. A filter
+	// with an or, or a regex with alternation, gives one set per branch, and
+	// the sets are ORed. Over the limit, sets collapse to the needles they
+	// share. 1 gives one set, the needles every branch shares. Defaults to 64
+	// when zero.
+	MaxConjunctions int `yaml:"max_conjunctions"`
 	// QueryIngestersWithin is the window of recent data that lives only in
 	// ingesters (not yet flushed to object storage). The logline index cannot
 	// cover this window, so it is always passed through to the Loki pipeline.
@@ -86,6 +93,8 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Require X-Logline-Index header to activate hint narrowing")
 	f.IntVar(&c.MaxHintParallel, prefix+".max-hint-parallel", 0,
 		"Maximum concurrent hint index workers per query (default 64)")
+	f.IntVar(&c.MaxConjunctions, prefix+".max-conjunctions", defaultMaxConjunctions,
+		"Maximum needle sets a query is planned into. Filters with or and regexes with alternation give one set per branch. 1 keeps only the needles every branch shares.")
 	f.DurationVar(&c.HintTimeout, prefix+".hint-timeout", 0,
 		"Maximum time to wait for logline index hint lookup (default 15s)")
 	f.DurationVar(&c.HintCacheTTL, prefix+".hint-cache-ttl", 2*time.Minute,
@@ -105,6 +114,12 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxHintParallel <= 0 {
 		c.MaxHintParallel = defaultMaxHintParallel
+	}
+	if c.MaxConjunctions < 0 {
+		return fmt.Errorf("max_conjunctions must be >= 0")
+	}
+	if c.MaxConjunctions == 0 {
+		c.MaxConjunctions = defaultMaxConjunctions
 	}
 	if c.HintTimeout <= 0 {
 		c.HintTimeout = defaultHintTimeout
