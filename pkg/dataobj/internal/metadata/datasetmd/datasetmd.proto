@@ -268,10 +268,10 @@ message SortInfo {
   uint32 shard_count = 4;
 }
 
-// StreamOrder identifies the stable ordering used to assign object-local
-// stream IDs.
+// StreamOrder identifies the stream key that orders the stream IDs of a
+// STREAMS section.
 enum StreamOrder {
-  // Legacy or unknown stream ordering.
+  // No known stream order. Readers reject it.
   STREAM_ORDER_UNSPECIFIED = 0;
 
   reserved 1;

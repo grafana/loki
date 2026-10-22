@@ -509,7 +509,7 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr erro
 	if err != nil {
 		return fmt.Errorf("flushing logs builder: %w", err)
 	}
-	defer closer.Close()
+	defer util.CloseAndHandleError(closer, &returnErr)
 
 	pathReader, err := obj.Reader(ctx)
 	if err != nil {

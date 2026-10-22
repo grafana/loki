@@ -126,12 +126,12 @@ func (EncodingType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_7ab9d5b21b743868, []int{2}
 }
 
-// StreamOrder identifies the stable ordering used to assign object-local
-// stream IDs.
+// StreamOrder identifies the stream key that orders the stream IDs of a
+// STREAMS section.
 type StreamOrder int32
 
 const (
-	// Legacy or unknown stream ordering.
+	// No known stream order. Readers reject it.
 	STREAM_ORDER_UNSPECIFIED StreamOrder = 0
 	// IDs are assigned by (shard_bucket, schema key, labels.StableHash, full labels).
 	STREAM_ORDER_STABLE_HASH_V1 StreamOrder = 2

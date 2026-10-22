@@ -16,8 +16,8 @@ import (
 // schemaSortVersion is the section type version for logs sections written in
 // schema sort order. It must differ from columnar.FormatVersion, so callers
 // can detect the sort contract from the object header alone, without opening
-// the section. The stream layout that orders the
-// rows is in the tenant's streams section.
+// the section. The stream layout that orders the rows is in the tenant's
+// streams section.
 const schemaSortVersion uint32 = 3
 
 // Namespace and Kind here are duplicated in pkg/dataobj/decoder.go's logsSectionType, to avoid an

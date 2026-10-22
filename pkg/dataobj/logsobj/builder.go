@@ -133,8 +133,9 @@ type TenantOverrides interface {
 }
 
 // A Builder constructs a logs-oriented data object from a set of incoming
-// log data. [Builder.Append] and [Builder.AppendRecord] add log data. [Builder.FlushAndSort] sorts the data object-wide.
-// [Builder.Flush] trusts the caller to have appended in stream key order.
+// log data. [Builder.Append] and [Builder.AppendRecord] add log data.
+// [Builder.FlushAndSort] sorts the data object-wide. [Builder.Flush]
+// requires the caller to append records in stream key order.
 //
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
@@ -448,7 +449,12 @@ func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) 
 
 	for tenant, sb := range b.streams {
 		if recordLayouts {
-			sb.SetLayout(b.layouts[tenant])
+			layout, ok := b.layouts[tenant]
+			if !ok {
+				flushErrors = append(flushErrors, fmt.Errorf("no layout for tenant %s", tenant))
+				continue
+			}
+			sb.SetLayout(layout)
 		}
 		flushErrors = append(flushErrors, b.builder.Append(sb))
 	}

@@ -1,6 +1,9 @@
 package logs
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -53,6 +56,41 @@ func TestSection_LegacyLayout(t *testing.T) {
 		}).LegacyLayout()
 		require.False(t, ok)
 	})
+}
+
+// TestLegacyFixtures checks that the shared legacy fixtures keep the legacy
+// format. Fixtures in the current format would let the fallback tests pass
+// without the fallback.
+func TestLegacyFixtures(t *testing.T) {
+	for name, schema := range map[string][]string{
+		"legacy-cluster-a": {"label:cluster"},
+		"legacy-cluster-b": {"label:cluster"},
+		"legacy-app":       {"label:app"},
+	} {
+		t.Run(name+" records its layout only in its logs sections", func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "legacy", name+".dataobj"))
+			require.NoError(t, err)
+			obj, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+			require.NoError(t, err)
+
+			require.Positive(t, obj.Sections().Count(streams.CheckSection))
+			for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+				opened, err := streams.Open(t.Context(), sec)
+				require.NoError(t, err)
+				_, ok, err := opened.Layout()
+				require.NoError(t, err)
+				require.False(t, ok)
+			}
+
+			var sections []*dataobj.Section
+			for _, sec := range obj.Sections().Filter(CheckSection) {
+				sections = append(sections, sec)
+			}
+			got, err := LegacyLayoutOf(t.Context(), sections)
+			require.NoError(t, err)
+			require.True(t, streams.NewLayout(streams.DefaultShardLayout(), schema).Equal(got), "got layout %+v", got)
+		})
+	}
 }
 
 func TestLegacyLayoutOf(t *testing.T) {
