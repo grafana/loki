@@ -26,7 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/loser"
@@ -725,7 +724,6 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 		scratchStore:   scratch.NewMemory(),
 		indexobjCfg:    testBuilderCfg,
 		logsobjCfg:     testBuilderCfg,
-		uploaderCfg:    uploader.Config{SHAPrefixSize: 2},
 		builderMetrics: logsobj.NewBuilderMetrics(),
 
 		logMergeObserver: nopLogMergeObserver{},

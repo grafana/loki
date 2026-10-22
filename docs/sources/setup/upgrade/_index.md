@@ -37,6 +37,31 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Bloom filters are deprecated
+
+Query acceleration using bloom filters is deprecated and will be removed in a future release.
+This covers the Bloom Planner, Bloom Builder, and Bloom Gateway components and the following settings:
+
+- The `bloom_build` and `bloom_gateway` configuration blocks.
+- The `storage_config.bloom_shipper` configuration block.
+- The per-tenant `bloom_*` settings in `limits_config`, for example `bloom_creation_enabled` and `bloom_gateway_enable_filtering`.
+
+The components and settings still work. Each bloom component logs a deprecation warning on startup.
+The `deprecated-config-checker` tool flags the deprecated settings.
+
+### Breaking change: Compactor and retention metrics are renamed 
+
+A number of legacy Prometheus metrics prefixed with `loki_boltdb_shipper_*` are renamed to `loki_tsdb_shipper_*`.
+These metrics have already been exposing values from TSDB Shipper and do not change their semantics.
+
+```
+loki_boltdb_shipper_compactor_running
+loki_boltdb_shipper_compact_tables_operation_*
+loki_boltdb_shipper_retention_*
+```
+
+To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.
@@ -96,10 +121,6 @@ The default value of `frontend.compress_responses` changed to `true`. A bug in L
 The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
-
-### Optional chunk fetch error propagation
-
-`chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
 
 ### Breaking change: Removal of the `row_shards` schema setting
 
