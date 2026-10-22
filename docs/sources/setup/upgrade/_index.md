@@ -87,10 +87,6 @@ The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
 
-### Breaking change: Removal of `chunk_store_config.propagate_chunk_fetch_errors`
-
-An object-storage chunk fetch error always fails the query (or bloom build, or migration) outright instead of returning incomplete results. This was previously opt-in behavior through the experimental `chunk_store_config.propagate_chunk_fetch_errors` setting (`-chunk-store.propagate-chunk-fetch-errors`), which has been removed now that it is the only supported behavior. Because the main config file is parsed strictly, a leftover `propagate_chunk_fetch_errors:` key under `chunk_store_config` now fails config load. Remove the setting; the `deprecated-config-checker` tool will flag it.
-
 ### Breaking change: Removal of the `row_shards` schema setting
 
 The `row_shards` setting on a `schema_config` `period_config` has been removed. It configured a static query shard factor for legacy (non-TSDB) index types. TSDB, the only supported index type, resolves log and metric query sharding dynamically from index statistics and ignores `row_shards`; series queries continue to use the previous default factor of 16. Because schema config is parsed strictly, a leftover `row_shards:` key now fails config load. Remove the `row_shards` setting from every `period_config`; the `deprecated-config-checker` tool will flag it.
