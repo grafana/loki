@@ -150,6 +150,119 @@ func TestFileClient_Query(t *testing.T) {
 	}
 }
 
+// TestFileClient_QueryRangeOutputOrder is a regression test: with --stdin,
+// BACKWARD (the logcli default) must return lines in reverse input order and
+// FORWARD must keep input order, also when the pipeline splits the lines into
+// several streams.
+func TestFileClient_QueryRangeOutputOrder(t *testing.T) {
+	input := []string{
+		`level=info msg="line 1"`,
+		`level=error msg="line 2"`,
+		`level=info msg="line 3"`,
+		`level=error msg="line 4"`,
+		`level=info msg="line 5"`,
+		`level=error msg="line 6"`,
+	}
+
+	reversed := make([]string, len(input))
+	for i, line := range input {
+		reversed[len(input)-1-i] = line
+	}
+
+	now := time.Now()
+
+	cases := []struct {
+		name            string
+		query           string
+		direction       logproto.Direction
+		expectedStreams int
+		expected        []string
+	}{
+		{
+			name:            "single-stream-forward",
+			query:           `{source="logcli"}`,
+			direction:       logproto.FORWARD,
+			expectedStreams: 1,
+			expected:        input,
+		},
+		{
+			name:            "single-stream-backward",
+			query:           `{source="logcli"}`,
+			direction:       logproto.BACKWARD,
+			expectedStreams: 1,
+			expected:        reversed,
+		},
+		{
+			// Only extract `level` so lines are grouped into an info and an
+			// error stream.
+			name:            "multi-stream-forward",
+			query:           `{source="logcli"} | logfmt level`,
+			direction:       logproto.FORWARD,
+			expectedStreams: 2,
+			expected:        input,
+		},
+		{
+			name:            "multi-stream-backward",
+			query:           `{source="logcli"} | logfmt level`,
+			direction:       logproto.BACKWARD,
+			expectedStreams: 2,
+			expected:        reversed,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			client := NewFileClient(io.NopCloser(strings.NewReader(strings.Join(input, "\n"))))
+			resp, err := client.QueryRange(
+				c.query,
+				100, // more than input
+				now.Add(-1*time.Hour),
+				now,
+				c.direction,
+				0,
+				0,
+				true,
+			)
+			require.NoError(t, err)
+			require.Equal(t, loghttp.QueryStatusSuccess, resp.Status)
+
+			streams, ok := resp.Data.Result.(loghttp.Streams)
+			require.True(t, ok, "response type should be `loghttp.Streams`")
+			require.Len(t, streams, c.expectedStreams)
+
+			var merged []loghttp.Entry
+			for _, stream := range streams {
+				// Every stream must be ordered by the query direction, and
+				// timestamps must never tie.
+				for i := 1; i < len(stream.Entries); i++ {
+					prev, cur := stream.Entries[i-1].Timestamp, stream.Entries[i].Timestamp
+					if c.direction == logproto.FORWARD {
+						require.True(t, cur.After(prev), "timestamps must strictly increase for FORWARD")
+					} else {
+						require.True(t, cur.Before(prev), "timestamps must strictly decrease for BACKWARD")
+					}
+				}
+				merged = append(merged, stream.Entries...)
+			}
+
+			// Merge all streams by timestamp in the query direction, the same
+			// way logcli prints them.
+			sort.SliceStable(merged, func(i, j int) bool {
+				if c.direction == logproto.FORWARD {
+					return merged[i].Timestamp.Before(merged[j].Timestamp)
+				}
+				return merged[i].Timestamp.After(merged[j].Timestamp)
+			})
+
+			got := make([]string, 0, len(merged))
+			for _, e := range merged {
+				got = append(got, e.Line)
+			}
+			assert.Equal(t, c.expected, got)
+		})
+	}
+}
+
 func TestFileClient_ListLabelNames(t *testing.T) {
 	c := newEmptyClient(t)
 	values, err := c.ListLabelNames(true, time.Now(), time.Now())
@@ -241,10 +354,9 @@ func assertStreams(t *testing.T, result loghttp.ResultValue, logLines []string) 
 
 	require.Len(t, streams, 1, "there should be only one stream for FileClient")
 
+	// Entries are asserted in the order they are returned; they must already
+	// follow the query direction.
 	got := streams[0]
-	sort.Slice(got.Entries, func(i, j int) bool {
-		return got.Entries[i].Timestamp.UnixNano() < got.Entries[j].Timestamp.UnixNano()
-	})
 	require.Equal(t, len(got.Entries), len(logLines))
 	for i, entry := range got.Entries {
 		assert.Equal(t, entry.Line, logLines[i])

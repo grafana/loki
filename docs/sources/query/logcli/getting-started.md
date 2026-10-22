@@ -2068,6 +2068,7 @@ You may use `stdin` flag to do the following:
 
 1. The `--limit` flag doesn't have any meaning when using `--stdin` (use pager like `less` for that).
 1. Be aware there are no **labels** when using `--stdin`. So the stream selector in the query is optional, for example, just `|="timeout"|logfmt|level="error"` is same as `{foo="bar"}|="timeout|logfmt|level="error"`.
+1. Output follows the query direction: by default (`BACKWARD`) lines are printed in reverse input order, and `--forward` keeps the input order.
 
 {{< admonition type="note" >}}
 Currently `stdin` doesn't support any type of metric queries.

@@ -309,8 +309,18 @@ func newFileIterator(
 
 	streams := map[uint64]*logproto.Stream{}
 
-	processLine := func(line string) {
-		ts := time.Now()
+	// Derive each line's timestamp from its position in the input instead of
+	// calling time.Now() while processing. Calling time.Now() per line made the
+	// timestamps follow processing order, so a BACKWARD query (which processes
+	// lines in reverse) gave the last input line the earliest timestamp, and
+	// ordering by timestamp (stream merging, output printing) then restored
+	// input order. With index-based timestamps later input lines are always
+	// newer, every line has a distinct timestamp, and the output follows the
+	// query direction.
+	base := time.Now().Add(-time.Duration(len(lines)) * time.Nanosecond)
+
+	processLine := func(i int, line string) {
+		ts := base.Add(time.Duration(i) * time.Nanosecond)
 		parsedLine, parsedLabels, matches := pipeline.ProcessString(ts.UnixNano(), line, labels.EmptyLabels())
 		if !matches {
 			return
@@ -333,12 +343,12 @@ func newFileIterator(
 	}
 
 	if params.Direction == logproto.FORWARD {
-		for _, line := range lines {
-			processLine(line)
+		for i, line := range lines {
+			processLine(i, line)
 		}
 	} else {
 		for i := len(lines) - 1; i >= 0; i-- {
-			processLine(lines[i])
+			processLine(i, lines[i])
 		}
 	}
 
