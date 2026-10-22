@@ -32,8 +32,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// ErrBuilderEmpty is returned by [Builder.Flush] when there is no buffered
-// data to flush.
+// ErrBuilderEmpty is returned by the flush methods of [Builder] when there is
+// no buffered data to flush.
 var (
 	ErrBuilderEmpty = errors.New("builder empty")
 )
@@ -134,9 +134,9 @@ type TenantOverrides interface {
 
 // A Builder constructs a logs-oriented data object from a set of incoming
 // log data. Log data is appended by calling [Builder.Append] or
-// [Builder.AppendRecord]. [Builder.FlushAndSort] constructs a data object
-// that is sorted object-wide. [Builder.Flush] constructs a data object whose
-// logs sections are sorted one by one, but not object-wide.
+// [Builder.AppendRecord]. [Builder.FlushAndSort] sorts the data object-wide.
+// [Builder.Flush] trusts the caller to have appended in stream key order.
+// [Builder.FlushUnordered] constructs an object that is not valid to store.
 //
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
@@ -407,13 +407,13 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 	return timeRanges
 }
 
-// Flush builds a data object from all buffered data, as appended. Calling
-// Flush on an empty builder returns [ErrBuilderEmpty].
+// Flush builds a data object from all buffered data, as appended, and records
+// each tenant's layout in its streams section. Calling Flush on an empty
+// builder returns [ErrBuilderEmpty].
 //
-// Each logs section is sorted, but stream IDs follow the order in which
-// streams were first appended, and sections can overlap. The streams sections
-// record no layout, so readers that need a layout reject the object. Use
-// [Builder.FlushAndSort] or [Builder.FlushKeyOrdered] for an object to store.
+// The caller must append records in stream key order, so stream IDs and rows
+// already follow the layout. The recorded layout states this order, and
+// readers trust it without a check. Use [Builder.FlushAndSort] otherwise.
 //
 // On success the caller owns the returned [io.Closer] and must close it to
 // release the object's backing scratch storage; reads of the object fail once
@@ -421,21 +421,22 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 //
 // Flush always resets Builder.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
-	return b.flush(false)
+	return b.flush(true)
 }
 
-// FlushKeyOrdered builds a data object from all buffered data, as appended,
-// and records each tenant's layout in its streams section. Calling
-// FlushKeyOrdered on an empty builder returns [ErrBuilderEmpty].
+// FlushUnordered builds a data object from all buffered data, as appended,
+// without a layout. Calling FlushUnordered on an empty builder returns
+// [ErrBuilderEmpty].
 //
-// The caller must append records in stream key order, so stream IDs and rows
-// already follow the layout. The recorded layout states this order, and
-// readers trust it without a check. Use [Builder.FlushAndSort] otherwise.
+// Each logs section is sorted, but stream IDs follow the order in which
+// streams were first appended, and sections can overlap. Readers that need a
+// layout reject the object, so it is not valid to store. [Builder.FlushAndSort]
+// sorts it.
 //
 // The caller owns the returned [io.Closer], as for [Builder.Flush].
-// FlushKeyOrdered always resets Builder.
-func (b *Builder) FlushKeyOrdered() (*dataobj.Object, io.Closer, error) {
-	return b.flush(true)
+// FlushUnordered always resets Builder.
+func (b *Builder) FlushUnordered() (*dataobj.Object, io.Closer, error) {
+	return b.flush(false)
 }
 
 // flush builds the object. If recordLayouts is true, each streams section
@@ -498,7 +499,7 @@ func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) 
 // FlushAndSort always resets Builder.
 func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	layouts := maps.Clone(b.layouts)
-	built, builtCloser, err := b.Flush()
+	built, builtCloser, err := b.FlushUnordered()
 	if err != nil {
 		return nil, nil, err
 	}

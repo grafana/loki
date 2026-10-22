@@ -90,7 +90,7 @@ func TestBuilder(t *testing.T) {
 		for _, entry := range testStreams {
 			require.NoError(t, builder.Append("tenant", entry, time.Now()))
 		}
-		obj, closer, err := builder.Flush()
+		obj, closer, err := builder.FlushUnordered()
 		require.NoError(t, err)
 		defer closer.Close()
 
@@ -139,7 +139,7 @@ func TestBuilder_Append(t *testing.T) {
 		}, time.Now()))
 	}
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.FlushUnordered()
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -183,7 +183,7 @@ func TestBuilder_AppendRecord(t *testing.T) {
 		}, time.Now()))
 	}
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.FlushUnordered()
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -251,7 +251,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
-		_, closer, err := builder.Flush()
+		_, closer, err := builder.FlushUnordered()
 		require.NoError(t, err)
 		defer closer.Close()
 		require.True(t, builder.GetEarliestRecordTime().IsZero())
@@ -310,7 +310,7 @@ func testFlushAndSortOrder(t *testing.T) {
 		appendRecord(0)
 	}
 
-	obj1, closer1, err := builder.Flush()
+	obj1, closer1, err := builder.FlushUnordered()
 	require.NoError(t, err)
 	defer closer1.Close()
 
@@ -392,7 +392,7 @@ func testFlushAndSortShardBuckets(t *testing.T) {
 	}
 
 	t.Run("keeps the bucket that the build gave every stream, without computing it again", func(t *testing.T) {
-		built, builtCloser, err := newFilledBuilder(t).Flush()
+		built, builtCloser, err := newFilledBuilder(t).FlushUnordered()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, builtCloser.Close()) })
 		sorted, sortedCloser, err := newFilledBuilder(t).FlushAndSort(t.Context())
@@ -497,7 +497,7 @@ func BenchmarkBuilder_FlushAndSort(b *testing.B) {
 			b.SetBytes(int64(dataSize))
 
 			fill()
-			obj, closer, err := builder.Flush()
+			obj, closer, err := builder.FlushUnordered()
 			require.NoError(b, err)
 			b.Logf("logs sections before the sort: %d", obj.Sections().Count(logs.CheckSection))
 			require.NoError(b, closer.Close())
@@ -554,7 +554,7 @@ func testFlushAndSortSchema(t *testing.T) {
 				}, now.Add(time.Duration(i)*time.Second)))
 			}
 		}
-		flush := b.Flush
+		flush := b.FlushUnordered
 		if sorted {
 			flush = func() (*dataobj.Object, io.Closer, error) { return b.FlushAndSort(t.Context()) }
 		}
@@ -865,7 +865,7 @@ func testFlushAndSortSchema(t *testing.T) {
 			}
 		}
 
-		obj1, closer1, err := b.Flush()
+		obj1, closer1, err := b.FlushUnordered()
 		require.NoError(t, err)
 		defer closer1.Close()
 		obj2, closer2, err := sortBuilder.FlushAndSort(t.Context())
@@ -1147,7 +1147,7 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 		Entries: []push.Entry{{Timestamp: time.Unix(10, 0).UTC(), Line: "hello"}},
 	}, time.Now()))
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.FlushUnordered()
 	require.Error(t, err)
 	require.Nil(t, obj)
 	require.Nil(t, closer)
@@ -1182,7 +1182,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, builder.Append("tenant", stream, time.Now()))
 
-			_, closer, err := builder.Flush()
+			_, closer, err := builder.FlushUnordered()
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 			} else {
@@ -1191,7 +1191,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 			}
 
 			require.Zero(t, builder.GetEstimatedSize())
-			_, _, err = builder.Flush()
+			_, _, err = builder.FlushUnordered()
 			require.ErrorIs(t, err, ErrBuilderEmpty)
 		})
 	}
@@ -1380,8 +1380,8 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		return b
 	}
 
-	t.Run("Flush records no layout, so readers reject the object", func(t *testing.T) {
-		obj, closer, err := newFilledBuilder(t).Flush()
+	t.Run("FlushUnordered records no layout, so readers reject the object", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t).FlushUnordered()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
@@ -1394,8 +1394,8 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		}
 	})
 
-	t.Run("FlushKeyOrdered records the layout of each tenant", func(t *testing.T) {
-		obj, closer, err := newFilledBuilder(t).FlushKeyOrdered()
+	t.Run("Flush records the layout of each tenant", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t).Flush()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 

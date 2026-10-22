@@ -47,7 +47,7 @@ func buildSchemaObject(t *testing.T, sortSchema []string, byLabel map[string][]p
 		require.NoError(t, b.Append(testTenant, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 	}
 
-	obj, closer, err := b.Flush()
+	obj, closer, err := b.FlushUnordered()
 	require.NoError(t, err)
 	return obj, func() { _ = closer.Close() }
 }

@@ -97,7 +97,7 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	require.NoError(b.t, err)
 
 	timeRanges := b.builder.TimeRanges()
-	obj, closer, err := b.builder.Flush()
+	obj, closer, err := b.builder.FlushUnordered()
 	require.NoError(b.t, err)
 	defer closer.Close()
 

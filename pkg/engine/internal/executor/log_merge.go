@@ -537,7 +537,7 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr error) {
 	// The merged records arrive in global stream key order, so the object
 	// records the source layout without a sort.
-	obj, closer, err := w.logsBuilder.FlushKeyOrdered()
+	obj, closer, err := w.logsBuilder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing logs builder: %w", err)
 	}
