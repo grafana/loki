@@ -14,6 +14,5 @@ This section contains instructions for migrating from one Loki implementation to
 - [Migrate](migrate-storage-clients/) from the legacy storage clients to the Thanos object storage client.
 - [Migrate](ssd-to-distributed/) from a simple scalable deployment to a microservices deployment.
 - [Migrate](ssd-to-ha-monolithic/) from a simple scalable deployment to a highly available monolithic deployment.
-- [Migrate](migrate-to-three-scalable-targets/)  from the two target Helm chart to the three target scalable configuration Helm chart.
 - [Migrate](migrate-from-distributed/) from the `loki-distributed` Helm chart to the `loki` Helm chart.
 - [Migrate](migrate-to-kafka/) from the direct gRPC write path to Kafka-based ingestion.
