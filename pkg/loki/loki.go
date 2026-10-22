@@ -106,8 +106,8 @@ type Config struct {
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
+	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`

@@ -77,7 +77,8 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
-	utillog.WarnExperimentalUse("Bloom Gateway", logger)
+	utillog.WarnExperimentalUse("Bloom Gateway", logger) // still increase experimental features counter despite being deprecated
+	level.Warn(logger).Log("msg", "bloom gateway is deprecated and will be removed in a future release")
 	g := &Gateway{
 		cfg:     cfg,
 		logger:  logger,
