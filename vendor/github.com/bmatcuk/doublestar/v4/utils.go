@@ -139,6 +139,16 @@ func indexNextAlt(s string, allowEscaping bool) int {
 		if allowEscaping && s[i] == '\\' {
 			// skip next byte
 			i++
+		} else if s[i] == '[' {
+			// skip the character class so commas within it aren't treated
+			// as alternative separators
+			for i++; i < l; i++ {
+				if allowEscaping && s[i] == '\\' {
+					i++
+				} else if s[i] == ']' {
+					break
+				}
+			}
 		} else if s[i] == '{' {
 			alts++
 		} else if s[i] == '}' {

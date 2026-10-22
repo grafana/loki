@@ -90,7 +90,11 @@ type guid struct {
 const (
 	maxStringSize        = 256
 	maxPhysAddressLength = 32
-	pad0for64_4for32     = 0
+	// Windows aligns ULONG64 to 8 bytes. Go gives uint64 only 4-byte
+	// alignment on 32-bit, so pad ConnectionType up to the next 8-byte
+	// boundary there.
+	// https://learn.microsoft.com/en-us/windows/win32/api/netioapi/ns-netioapi-mib_if_row2
+	pad0for64_4for32 = (8 - unsafe.Alignof(uint64(0))) % 8
 )
 
 type mibIfRow2 struct {
@@ -365,7 +369,7 @@ func getTCPConnections(family uint32) ([]ConnectionStat, error) {
 		return nil, errors.New("faimly must be required")
 	}
 
-	for {
+	for retry := 0; retry < 10; retry++ {
 		switch family {
 		case kindTCP4.family:
 			if len(buf) > 0 {
@@ -395,6 +399,12 @@ func getTCPConnections(family uint32) ([]ConnectionStat, error) {
 		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
 			return nil, err
 		}
+		if retry == 9 {
+			return nil, errors.New("GetExtendedTcpTable: failed to allocate sufficient buffer after 10 retries")
+		}
+
+		// Add 4KB padding to account for concurrent connection growth between calls.
+		size += 4096
 		buf = make([]byte, size)
 	}
 
@@ -446,7 +456,7 @@ func getUDPConnections(family uint32) ([]ConnectionStat, error) {
 		return nil, errors.New("faimly must be required")
 	}
 
-	for {
+	for retry := 0; retry < 10; retry++ {
 		switch family {
 		case kindUDP4.family:
 			if len(buf) > 0 {
@@ -478,6 +488,12 @@ func getUDPConnections(family uint32) ([]ConnectionStat, error) {
 		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
 			return nil, err
 		}
+		if retry == 9 {
+			return nil, errors.New("GetExtendedUdpTable: failed to allocate sufficient buffer after 10 retries")
+		}
+
+		// Add 4KB padding to account for concurrent connection growth between calls.
+		size += 4096
 		buf = make([]byte, size)
 	}
 

@@ -31,3 +31,6 @@ extend-ignore-re = [
 [default.extend-words]
 caf = "caf"  # part of "café" shown as "caf\u00e9" in Unicode escape examples
 deprecat = "deprecat"  # Used as part of a command in a docs/ file
+Desolver = "Desolver"  # Type name: inverse of Resolver (removes tags)
+Desolve = "Desolve"  # Function name: inverse of Resolve
+desolve = "desolve"  # Function name variants

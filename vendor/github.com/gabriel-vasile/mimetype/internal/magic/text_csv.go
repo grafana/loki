@@ -17,8 +17,7 @@ func TSV(raw []byte, limit uint32) bool {
 
 func sv(in []byte, comma byte, limit uint32) bool {
 	s := scan.Bytes(in)
-	s.DropLastLine(limit)
-	r := csv.NewParser(comma, '#', s)
+	r := csv.NewParser(comma, '#', &s)
 
 	headerFields, _, hasMore := r.CountFields(false)
 	if headerFields < 2 || !hasMore {
@@ -30,8 +29,22 @@ func sv(in []byte, comma byte, limit uint32) bool {
 		if !hasMore && fields == 0 {
 			break
 		}
-		csvLines++
-		if fields != headerFields {
+		if fields == headerFields {
+			csvLines++
+		} else {
+			// maybeTruncated signals the input was cut at the read limit,
+			// meaning the last line may be an incomplete CSV record.
+			maybeTruncated := limit > 0 && uint64(len(in)) >= uint64(limit)
+			if maybeTruncated && fields < headerFields {
+				// Allow the last row to have any number of fields
+				// if the input is maybeTruncated.
+				// BUG: if len(input) == limit, then the input is not truncated
+				// but it is still allowed to have the wrong number of fields
+				// and it will be reported as valid CSV.
+				if len(s) == 0 {
+					break
+				}
+			}
 			return false
 		}
 		if csvLines >= 10 {

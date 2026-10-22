@@ -153,6 +153,10 @@ func ParseEncryptedJSON(
 	keyEncryptionAlgorithms []KeyAlgorithm,
 	contentEncryption []ContentEncryption,
 ) (*JSONWebEncryption, error) {
+	if len(input) == 0 {
+		return nil, errEmptyInput
+	}
+
 	var parsed rawJSONWebEncryption
 	err := json.Unmarshal([]byte(input), &parsed)
 	if err != nil {
@@ -196,15 +200,6 @@ func (parsed *rawJSONWebEncryption) sanitized(
 		if err != nil {
 			return nil, fmt.Errorf("go-jose/go-jose: invalid protected header: %s, %s", err, parsed.Protected.base64())
 		}
-	}
-
-	// Note: this must be called _after_ we parse the protected header,
-	// otherwise fields from the protected header will not get picked up.
-	var err error
-	mergedHeaders := obj.mergedHeaders(nil)
-	obj.Header, err = mergedHeaders.sanitized()
-	if err != nil {
-		return nil, fmt.Errorf("go-jose/go-jose: cannot sanitize merged headers: %v (%v)", err, mergedHeaders)
 	}
 
 	if len(parsed.Recipients) == 0 {
@@ -260,6 +255,15 @@ func (parsed *rawJSONWebEncryption) sanitized(
 		}
 	}
 
+	// Note: this must be called _after_ we parse the protected header,
+	// otherwise fields from the protected header will not get picked up.
+	mergedHeaders := obj.mergedHeaders(nil)
+	var err error
+	obj.Header, err = mergedHeaders.sanitized()
+	if err != nil {
+		return nil, fmt.Errorf("go-jose/go-jose: cannot sanitize merged headers: %w", err)
+	}
+
 	obj.iv = parsed.Iv.bytes()
 	obj.ciphertext = parsed.Ciphertext.bytes()
 	obj.tag = parsed.Tag.bytes()
@@ -290,6 +294,10 @@ func ParseEncryptedCompact(
 ) (*JSONWebEncryption, error) {
 	var parts [5]string
 	var ok bool
+
+	if len(input) == 0 {
+		return nil, errEmptyInput
+	}
 
 	for i := range 4 {
 		parts[i], input, ok = strings.Cut(input, ".")
