@@ -638,7 +638,7 @@ func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
 	})
 
 	cmd.Arg("label", "The name of the label.").Default("").StringVar(&labelName)
-	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	durationVar(cmd.Flag("since", sinceHelp).Default("1h"), &since)
 	cmd.Flag("from", "Start looking for labels at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for labels at this absolute time (exclusive)").StringVar(&to)
 
@@ -665,7 +665,7 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 	})
 
 	cmd.Arg("matcher", "eg '{foo=\"bar\",baz=~\".*blip\"}'").Required().StringVar(&q.Matcher)
-	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	durationVar(cmd.Flag("since", sinceHelp).Default("1h"), &since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 	cmd.Flag("analyze-labels", "Printout a summary of labels including count of label value combinations, useful for debugging high cardinality series").BoolVar(&q.AnalyzeLabels)
@@ -708,13 +708,13 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("now", "Time at which to execute the instant query.").StringVar(&now)
 	} else {
 		cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").Required().StringVar(&q.QueryString)
-		cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+		durationVar(cmd.Flag("since", sinceHelp).Default("1h"), &since)
 		cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
-		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
-		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
+		durationVar(cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range."), &q.Step)
+		durationVar(cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**"), &q.Interval)
 		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
-		cmd.Flag("parallel-duration", "Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-path-prefix to create a file per job to maintain ordering.").Default("1h").DurationVar(&q.ParallelDuration)
+		durationVar(cmd.Flag("parallel-duration", "Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-path-prefix to create a file per job to maintain ordering.").Default("1h"), &q.ParallelDuration)
 		cmd.Flag("parallel-max-workers", "Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers. When using parallel workers, limit is ignored.").Default("1").IntVar(&q.ParallelMaxWorkers)
 		cmd.Flag("part-path-prefix", "When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-utc_start-utc_end.part'. Intended to be used with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.").StringVar(&q.PartPathPrefix)
 		cmd.Flag("overwrite-completed-parts", "Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if it's part file is already downloaded.").Default("false").BoolVar(&q.OverwriteCompleted)
@@ -779,7 +779,7 @@ func newStatsQuery(cmd *kingpin.CmdClause) *index.StatsQuery {
 	})
 
 	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").Required().StringVar(&q.QueryString)
-	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	durationVar(cmd.Flag("since", sinceHelp).Default("1h"), &since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 
@@ -807,7 +807,7 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 	})
 
 	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"}").Required().StringVar(&q.QueryString)
-	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	durationVar(cmd.Flag("since", sinceHelp).Default("1h"), &since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 
@@ -816,7 +816,7 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 	cmd.Flag("aggregateByLabels", "Whether to aggregate results by label name only.").BoolVar(&q.AggregateByLabels)
 
 	if rangeQuery {
-		cmd.Flag("step", "Query resolution step width, roll up volumes into buckets cover step time each.").Default("1h").DurationVar(&q.Step)
+		durationVar(cmd.Flag("step", "Query resolution step width, roll up volumes into buckets cover step time each.").Default("1h"), &q.Step)
 	}
 
 	return q
@@ -854,12 +854,11 @@ func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 		Required().
 		StringVar(&q.QueryString)
 	cmd.Arg("field", "The name of the field.").Default("").StringVar(&fieldName)
-	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	durationVar(cmd.Flag("since", sinceHelp).Default("1h"), &since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
-	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
-		Default("10s").
-		DurationVar(&q.Step)
+	durationVar(cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
+		Default("10s"), &q.Step)
 
 	return q
 }
@@ -882,7 +881,7 @@ func newDeleteCreateQuery(cmd *kingpin.CmdClause) *delete.Query {
 	})
 
 	cmd.Arg("query", "LogQL query to match log lines for deletion (e.g. '{job=\"app\"}')").Required().StringVar(&q.QueryString)
-	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	durationVar(cmd.Flag("since", sinceHelp).Default("1h"), &since)
 	cmd.Flag("from", "Start time for deletion (inclusive)").StringVar(&from)
 	cmd.Flag("to", "End time for deletion (exclusive)").StringVar(&to)
 	cmd.Flag("max-interval", "Maximum time interval for delete request").StringVar(&q.MaxInterval)
