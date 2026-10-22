@@ -136,7 +136,6 @@ type TenantOverrides interface {
 // log data. Log data is appended by calling [Builder.Append] or
 // [Builder.AppendRecord]. [Builder.FlushAndSort] sorts the data object-wide.
 // [Builder.Flush] trusts the caller to have appended in stream key order.
-// [Builder.FlushUnordered] constructs an object that is not valid to store.
 //
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
@@ -424,23 +423,18 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	return b.flush(true)
 }
 
-// FlushUnordered builds a data object from all buffered data, as appended,
-// without a layout. Calling FlushUnordered on an empty builder returns
-// [ErrBuilderEmpty].
+// flushRaw builds a data object from all buffered data, as appended, without
+// a layout. FlushAndSort sorts it.
 //
 // Each logs section is sorted, but stream IDs follow the order in which
 // streams were first appended, and sections can overlap. Readers that need a
-// layout reject the object, so it is not valid to store. [Builder.FlushAndSort]
-// sorts it.
-//
-// The caller owns the returned [io.Closer], as for [Builder.Flush].
-// FlushUnordered always resets Builder.
-func (b *Builder) FlushUnordered() (*dataobj.Object, io.Closer, error) {
+// layout reject the object, so it is not valid to store.
+func (b *Builder) flushRaw() (*dataobj.Object, io.Closer, error) {
 	return b.flush(false)
 }
 
-// flush builds the object. If recordLayouts is true, each streams section
-// records the layout of its tenant.
+// flush builds the object and always resets Builder. If recordLayouts is
+// true, each streams section records the layout of its tenant.
 func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
@@ -499,7 +493,7 @@ func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) 
 // FlushAndSort always resets Builder.
 func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	layouts := maps.Clone(b.layouts)
-	built, builtCloser, err := b.FlushUnordered()
+	built, builtCloser, err := b.flushRaw()
 	if err != nil {
 		return nil, nil, err
 	}

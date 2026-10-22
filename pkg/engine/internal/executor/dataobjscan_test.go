@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -345,7 +346,7 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 		require.NoError(t, builder.Append("tenant", stream, time.Now()))
 	}
 
-	obj, closer, err := builder.FlushUnordered()
+	obj, closer, err := builder.FlushAndSort(context.Background())
 	require.NoError(t, err)
 	t.Cleanup(func() { closer.Close() })
 	return obj

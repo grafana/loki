@@ -99,7 +99,7 @@ func TestBuilder_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	appendDataset(t, b)
 
-	obj1, closer, err := b.FlushUnordered()
+	obj1, closer, err := b.flushRaw()
 	require.NoError(t, err)
 	defer closer.Close()
 
