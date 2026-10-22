@@ -25,7 +25,7 @@ var postingsListBufferPool = pool.New(minPooledPostingsListBytes, 16<<20, 2, fun
 })
 
 // getPostingsListBuffer returns a buffer of exactly n bytes.
-// Buffers are returned dirty, so the caller is expected to overwrite any data in the buffer.
+// Buffers may be returned dirty, so the caller is expected to overwrite any data in the buffer.
 func getPostingsListBuffer(n int) []byte {
 	if n < minPooledPostingsListBytes {
 		return make([]byte, n)
