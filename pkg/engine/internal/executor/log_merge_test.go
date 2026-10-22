@@ -1,11 +1,15 @@
 package executor
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1474,6 +1478,91 @@ func TestDoLogObjectMerge_StreamsLayout(t *testing.T) {
 
 		arts, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")})
 		require.ErrorContains(t, err, "supports only")
+		require.Nil(t, arts)
+	})
+}
+
+func TestDoLogObjectMerge_LegacySources(t *testing.T) {
+	const tenant = "T"
+	clusterLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"})
+
+	// uploadLegacy uploads testdata/name.dataobj, which a writer built before
+	// streams sections recorded a layout. Its logs sections record the layout
+	// in their own sort info.
+	uploadLegacy := func(t *testing.T, bucket objstore.Bucket, name string) {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join("testdata", name+".dataobj"))
+		require.NoError(t, err)
+		require.NoError(t, bucket.Upload(t.Context(), name, bytes.NewReader(data)))
+	}
+	merge := func(t *testing.T, dataBucket objstore.Bucket, paths ...string) (*v2.ResultArtifact, error) {
+		t.Helper()
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		return c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, paths...)})
+	}
+	// outputLayouts returns the layout that each output object records.
+	outputLayouts := func(t *testing.T, dataBucket objstore.Bucket, sources ...string) []streams.Layout {
+		t.Helper()
+		var layouts []streams.Layout
+		require.NoError(t, dataBucket.Iter(t.Context(), "", func(path string) error {
+			if slices.Contains(sources, path) {
+				return nil
+			}
+			obj, err := dataobj.FromBucket(t.Context(), dataBucket, path, 0)
+			require.NoError(t, err)
+			for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+				opened, err := streams.Open(t.Context(), sec)
+				require.NoError(t, err)
+				layout, ok, err := opened.Layout()
+				require.NoError(t, err)
+				require.True(t, ok)
+				layouts = append(layouts, layout)
+			}
+			return nil
+		}, objstore.WithRecursiveIter()))
+		return layouts
+	}
+
+	t.Run("merges legacy sources with the layout of their logs sections and records it in the output", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		uploadLegacy(t, dataBucket, "legacy-cluster-a")
+		uploadLegacy(t, dataBucket, "legacy-cluster-b")
+
+		_, err := merge(t, dataBucket, "legacy-cluster-a", "legacy-cluster-b")
+		require.NoError(t, err)
+
+		layouts := outputLayouts(t, dataBucket, "legacy-cluster-a", "legacy-cluster-b")
+		require.NotEmpty(t, layouts)
+		for _, layout := range layouts {
+			require.True(t, clusterLayout.Equal(layout), "got layout %+v", layout)
+		}
+	})
+
+	t.Run("merges a legacy source with a new source of the same layout", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		uploadLegacy(t, dataBucket, "legacy-cluster-a")
+		buildSourceLogObject(t, dataBucket, "new", []string{"label:cluster"}, map[string][]testStream{
+			tenant: {{labels: `{app="z",cluster="c-z"}`, entries: linesAt(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), 2)}},
+		})
+
+		_, err := merge(t, dataBucket, "legacy-cluster-a", "new")
+		require.NoError(t, err)
+
+		layouts := outputLayouts(t, dataBucket, "legacy-cluster-a", "new")
+		require.NotEmpty(t, layouts)
+		for _, layout := range layouts {
+			require.True(t, clusterLayout.Equal(layout), "got layout %+v", layout)
+		}
+	})
+
+	t.Run("returns an error and no output when a legacy source has another layout", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		uploadLegacy(t, dataBucket, "legacy-cluster-a")
+		uploadLegacy(t, dataBucket, "legacy-app")
+
+		arts, err := merge(t, dataBucket, "legacy-cluster-a", "legacy-app")
+		require.ErrorContains(t, err, "different stream layout")
 		require.Nil(t, arts)
 	})
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // schemaSortVersion is the section type version for logs sections written in
@@ -115,6 +116,24 @@ func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
 		return ColumnTypeInvalid, SortDirectionUnspecified, err
 	}
 	return colType, dir, nil
+}
+
+// LegacyLayout returns the stream layout that the section recorded in its own
+// sort info. Writers recorded it there before the streams section did. ok is
+// false if the section records no such layout, or one that is not stable hash
+// ordered with the default shard layout, because no writer produced another.
+//
+// Readers use LegacyLayout only for objects whose streams section records no
+// layout.
+func (s *Section) LegacyLayout() (layout streams.Layout, ok bool) {
+	si := s.inner.SortInfo()
+	if si == nil || si.StreamOrder != datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1 {
+		return streams.Layout{}, false
+	}
+	if si.ShardCount != streams.DefaultShardLayout().Buckets() {
+		return streams.Layout{}, false
+	}
+	return streams.NewLayout(streams.DefaultShardLayout(), si.SchemaLabels), true
 }
 
 // A Column represents one of the columns in the logs section. Valid columns
