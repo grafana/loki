@@ -16,7 +16,7 @@ services:
       <<: *logging
     image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
     entrypoint: sh
-    command: -c 'mkdir -p /data/loki /data/automq-data /data/automq-ops && exec /usr/bin/silo server --console-address :9001 /data'
+    command: -c 'mkdir -p /data/loki /data/automq-data /data/automq-ops /data/mimir-blocks /data/mimir-ruler /data/mimir-alertmanager && exec /usr/bin/silo server --console-address :9001 /data'
     environment:
       - MINIO_ROOT_USER=loki
       - MINIO_ROOT_PASSWORD=supersecret
@@ -60,6 +60,7 @@ services:
         --override advertised.listeners=PLAINTEXT://automq:9092,HOST://localhost:9092 \
         --override inter.broker.listener.name=PLAINTEXT \
         --override log.dirs=/data/kraft \
+        --override s3.telemetry.metrics.exporter.uri='prometheus://?host=0.0.0.0&port=9090' \
         --override s3.data.buckets='0@s3://automq-data?region=us-east-1&endpoint=http://silo:9000&pathStyle=true' \
         --override s3.ops.buckets='1@s3://automq-ops?region=us-east-1&endpoint=http://silo:9000&pathStyle=true' \
         --override s3.wal.path='0@s3://automq-data?region=us-east-1&endpoint=http://silo:9000&pathStyle=true'
@@ -102,6 +103,38 @@ services:
       DYNAMIC_CONFIG_ENABLED: "true"
     ports:
       - 8080:8080
+
+  mimir:
+    logging:
+      <<: *logging
+    image: grafana/mimir:3.2.2
+    command: [ "-config.file=/etc/mimir/mimir.yaml" ]
+    depends_on:
+      silo:
+        condition: service_healthy
+    ports:
+      - 9009:9009
+    volumes:
+      - ./config/mimir.yaml:/etc/mimir/mimir.yaml
+      - .data-mimir:/data:delegated
+
+  alloy:
+    logging:
+      <<: *logging
+    image: grafana/alloy:v1.21.0
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    depends_on:
+      - mimir
+      - automq
+    ports:
+      - 12345:12345
+    volumes:
+      - ./config/alloy.alloy:/etc/alloy/config.alloy
+      - alloy-data:/var/lib/alloy/data
 
   memcached:
     logging:
@@ -305,6 +338,7 @@ services:
     depends_on:
       - query-frontend
       - querier
+      - mimir
     environment:
       - GF_PATHS_PROVISIONING=/etc/config/grafana/provisioning
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -313,6 +347,8 @@ services:
       - 3000:3000
     volumes:
       - ./config/datasource.yaml:/etc/config/grafana/provisioning/datasources/ds.yaml
+      - ./config/grafana-dashboards.yaml:/etc/config/grafana/provisioning/dashboards/dashboards.yaml
+      - ./config/dashboards:/var/lib/grafana/dashboards
 
   log-gen:
     logging:
@@ -336,3 +372,4 @@ services:
 
 volumes:
   automq-kraft:
+  alloy-data:

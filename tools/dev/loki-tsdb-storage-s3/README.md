@@ -44,6 +44,20 @@ kcat -b localhost:9092 -L
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group ingester-1
 ```
 
+## Metrics
+
+`alloy` scrapes AutoMQ, Mimir and every Loki component, and remote-writes to a single-node `mimir` whose blocks also live in Silo (`mimir-blocks`, `mimir-ruler` and `mimir-alertmanager` buckets). Grafana gets `Mimir` as its default data source, so the metrics and the logs they describe sit side by side.
+
+AutoMQ's metrics come from its built-in Prometheus exporter, turned on with `s3.telemetry.metrics.exporter.uri`. It labels its own series with the cluster ID as `job` and the node ID as `instance`, so the scrape sets `honor_labels = true` to leave them be — [AutoMQ's `Cluster Overview` dashboard](https://github.com/AutoMQ/automq/blob/main/docker/telemetry/grafana/provisioning/dashboards/User/cluster.json) (Apache-2.0, vendored into [`config/dashboards/`](./config/dashboards/)) keys its cluster picker off that `job` label. For more detail, add `--override s3.telemetry.metrics.level=DEBUG` to the broker, which turns on per-stage latency for writes to the object store.
+
+Mimir runs with `multitenancy_enabled: false`, so you can curl it without a tenant header:
+
+```bash
+curl -s --get http://localhost:9009/prometheus/api/v1/query --data-urlencode 'query=kafka_broker_active_count'
+```
+
+Alloy's own UI, which lists the scrape targets and their last error, is at http://localhost:12345.
+
 ## Ports
 
 Every service is published on its natural port, so if you already run another stack that wants one of these, expect a fight over the binding.
@@ -66,6 +80,8 @@ Every service is published on its natural port, so if you already run another st
 | `consul`   | 8500        | UI and API            |
 | `automq`   | 9092        | Kafka `HOST` listener |
 | `silo`     | 9000 / 9001 | S3 API / web console  |
+| `mimir`    | 9009        | HTTP and query API    |
+| `alloy`    | 12345       | UI                    |
 | `jaeger`   | 16686       | UI                    |
 
 ## Remote Debugging
