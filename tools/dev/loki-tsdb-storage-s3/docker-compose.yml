@@ -89,6 +89,17 @@ services:
         done
         /opt/automq/kafka/bin/kafka-topics.sh --bootstrap-server automq:9092 \
           --create --if-not-exists --topic loki --partitions 4 --replication-factor 1
+        # An ingester reads its committed offset as it starts, which needs a group
+        # coordinator, and `__consumer_offsets` is only created once something asks
+        # for one. Ask here, or the ingesters race its creation and die on the
+        # COORDINATOR_NOT_AVAILABLE that first request comes back with.
+        for group in ingester-1 ingester-2; do
+          until /opt/automq/kafka/bin/kafka-consumer-groups.sh --bootstrap-server automq:9092 \
+            --describe --group "$$group" > /dev/null 2>&1; do
+            echo "waiting for the group coordinator for $$group..."
+            sleep 2
+          done
+        done
         /opt/automq/kafka/bin/kafka-topics.sh --bootstrap-server automq:9092 --describe --topic loki
 
   kafka-ui:
