@@ -2751,6 +2751,50 @@ func TestDryRun_MetricRange_PartialHintCoversLookback(t *testing.T) {
 	require.NotContains(t, logLine, "false_negative_ranges=")
 }
 
+func TestDryRun_MetricRange_PassthroughSentinelIsNotCoverage(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	sentinel := hintprovider.HintTimeRange{End: now.Add(-4 * time.Minute), Source: hintprovider.HintSourcePreMinDate}
+	real := hintprovider.HintTimeRange{Start: now.Add(-time.Minute), End: now}
+
+	tests := []struct {
+		name  string
+		hints []hintprovider.HintTimeRange
+		want  string
+	}{
+		{
+			name:  "sentinel overlapping the lookback is a miss",
+			hints: []hintprovider.HintTimeRange{sentinel},
+			want:  "correct=false",
+		},
+		{
+			name:  "a real hint still covers the step",
+			hints: []hintprovider.HintTimeRange{sentinel, real},
+			want:  "correct=true",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: tc.hints}}
+			next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				time.Sleep(25 * time.Millisecond)
+				return metricMatrixResponse(1, now), nil
+			})
+
+			var logs bytes.Buffer
+			handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+			_, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+			require.NoError(t, err)
+
+			logLine := findLogLine(logs.String(), "logline dry-run verification")
+			require.NotEmpty(t, logLine)
+			require.Contains(t, logLine, tc.want)
+			require.Contains(t, logLine, "total_entries=1")
+		})
+	}
+}
+
 func TestDryRun_MetricRange_HintOutsideLookbackIsMiss(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	reqStart := now.Add(-1 * time.Hour)
