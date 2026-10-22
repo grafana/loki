@@ -2613,13 +2613,13 @@ func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 	}
 }
 
-func TestDryRun_MetricRange_StepExtendsLookupStart(t *testing.T) {
+func TestDryRun_MetricRange_StepExtendsLookup(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	reqStart := now.Add(-1 * time.Hour)
 	step := time.Minute
 	interval := 5 * time.Minute
 	lookupFrom := reqStart.Add(-interval - step)
-	lookupThrough := now
+	lookupThrough := now.Add(step)
 
 	var statsFrom, statsThrough model.Time
 	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
