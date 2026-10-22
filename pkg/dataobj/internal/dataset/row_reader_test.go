@@ -482,7 +482,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 
 		var expected []testPerson
 		for _, p := range basicReaderTestData {
-			if !(p.birthYear > 1985) {
+			if p.birthYear <= 1985 {
 				expected = append(expected, p)
 			}
 		}

@@ -239,23 +239,23 @@ func (c *coordinator) planLogCompaction(
 	window time.Time,
 	sourceIndex indexEntry,
 ) (logCompactionPlan, error) {
-	sections, sortSchema, _, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
+	sections, _, _, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
 	if err != nil {
 		return logCompactionPlan{}, fmt.Errorf("reading log section refs: %w", err)
 	}
 	if len(sections) == 0 {
 		return logCompactionPlan{}, nil
 	}
-	return c.planLogMerge(tenant, window, sourceIndex, sections, sortSchema)
+	return c.planLogMerge(tenant, window, sourceIndex, sections)
 }
 
-// planLogMerge plans the k-way merge of sections, which must share sortSchema.
+// planLogMerge plans the k-way merge of sections, which must share a sort
+// schema.
 func (c *coordinator) planLogMerge(
 	tenant string,
 	window time.Time,
 	sourceIndex indexEntry,
 	sections []v2.Section[logSortPrefix],
-	sortSchema []string,
 ) (logCompactionPlan, error) {
 	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndex.Path)
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
