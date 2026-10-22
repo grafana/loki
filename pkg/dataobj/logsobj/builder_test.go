@@ -1333,7 +1333,7 @@ func TestBuilder_FlushAndSort(t *testing.T) {
 	t.Run("keeps the shard bucket of every stream", testFlushAndSortShardBuckets)
 	t.Run("orders streams by the sort schema of each tenant", testFlushAndSortSchema)
 	t.Run("reads the layout once per object", testFlushAndSortLayoutPerObject)
-	t.Run("handles failures", testFlushAndSortErrors)
+	t.Run("returns errors and leaves the builder empty on failure", testFlushAndSortErrors)
 }
 
 // failingRemoveStore is a scratch store whose removes always fail.
@@ -1380,11 +1380,12 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		return b
 	}
 
-	t.Run("flushRaw records no layout, so readers reject the object", func(t *testing.T) {
+	t.Run("flushRaw records no layout in any streams section", func(t *testing.T) {
 		obj, closer, err := newFilledBuilder(t).flushRaw()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
+		require.Equal(t, 2, obj.Sections().Count(streams.CheckSection))
 		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
 			opened, err := streams.Open(t.Context(), sec)
 			require.NoError(t, err)

@@ -1,8 +1,11 @@
 package index
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -551,9 +554,29 @@ func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
 		require.Positive(t, postingRows)
 	})
 
-	t.Run("returns an unprocessable object error when the streams section records no layout", func(t *testing.T) {
+	t.Run("indexes a legacy object with the layout of its logs sections", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join("..", "testdata", "legacy", "legacy-cluster-a.dataobj"))
+		require.NoError(t, err)
+		source, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+		require.NoError(t, err)
+		builder, err := indexobj.NewBuilder("T", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
+		require.NoError(t, calculator.Calculate(t.Context(), log.NewNopLogger(), source, "objects/legacy"))
+		indexObj, closer, _, err := calculator.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		statsRows := readAllStatsRows(t, indexObj)
+		require.NotEmpty(t, statsRows)
+		for _, row := range statsRows {
+			require.Equal(t, "label:cluster", row["sort_schema.utf8"])
+		}
+	})
+
+	t.Run("returns an unprocessable object error when no section records a layout", func(t *testing.T) {
 		_, err := calculate(t, buildSource(t, streams.DefaultShardLayout(), nil))
 		require.ErrorIs(t, err, ErrUnprocessableObject)
-		require.ErrorContains(t, err, "records no layout")
+		require.ErrorContains(t, err, "no legacy layout")
 	})
 }

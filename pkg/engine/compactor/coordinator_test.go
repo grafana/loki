@@ -434,7 +434,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Equal(t, uint64(200), totalLogInputBytes(plan))
 	})
 
-	t.Run("plans a LogMerge task for an index in another sort schema", func(t *testing.T) {
+	t.Run("plans one LogMerge task for an index with a non-default sort schema", func(t *testing.T) {
 		cluster := map[string]string{"cluster": "dev"}
 		secondSection := stat("logs/log-0", "label:cluster", cluster, 30, 35)
 		secondSection.SectionIndex = 1

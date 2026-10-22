@@ -55,6 +55,60 @@ func TestSection_LegacyLayout(t *testing.T) {
 	})
 }
 
+func TestLegacyLayoutOf(t *testing.T) {
+	legacy := func(schemaLabels ...string) *datasetmd.SortInfo {
+		return &datasetmd.SortInfo{
+			SchemaLabels: schemaLabels,
+			StreamOrder:  datasetmd.STREAM_ORDER_STABLE_HASH_V1,
+			ShardCount:   streams.DefaultShardLayout().Buckets(),
+		}
+	}
+	sections := func(t *testing.T, infos ...*datasetmd.SortInfo) []*dataobj.Section {
+		t.Helper()
+		objBuilder := dataobj.NewBuilder(nil)
+		for _, info := range infos {
+			require.NoError(t, objBuilder.Append(&sortInfoSectionBuilder{info: info}))
+		}
+		obj, closer, err := objBuilder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+		var out []*dataobj.Section
+		for _, sec := range obj.Sections().Filter(CheckSection) {
+			out = append(out, sec)
+		}
+		return out
+	}
+	clusterLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"})
+
+	t.Run("returns the layout that every section records", func(t *testing.T) {
+		got, err := LegacyLayoutOf(t.Context(), sections(t, legacy("label:cluster"), legacy("label:cluster")))
+		require.NoError(t, err)
+		require.True(t, clusterLayout.Equal(got))
+	})
+
+	t.Run("skips nil sections", func(t *testing.T) {
+		secs := sections(t, legacy("label:cluster"))
+		got, err := LegacyLayoutOf(t.Context(), []*dataobj.Section{nil, secs[0], nil})
+		require.NoError(t, err)
+		require.True(t, clusterLayout.Equal(got))
+	})
+
+	t.Run("returns an error when the sections record different layouts", func(t *testing.T) {
+		_, err := LegacyLayoutOf(t.Context(), sections(t, legacy("label:cluster"), legacy("label:app")))
+		require.ErrorContains(t, err, "different legacy layouts")
+	})
+
+	t.Run("returns an error when a section records no legacy layout", func(t *testing.T) {
+		_, err := LegacyLayoutOf(t.Context(), sections(t, legacy("label:cluster"), &datasetmd.SortInfo{}))
+		require.ErrorContains(t, err, "no legacy layout")
+	})
+
+	t.Run("returns an error when every section is nil", func(t *testing.T) {
+		_, err := LegacyLayoutOf(t.Context(), []*dataobj.Section{nil})
+		require.ErrorContains(t, err, "records no layout")
+	})
+}
+
 // sortInfoSectionBuilder encodes a logs section with stream ID and timestamp
 // columns and the given sort info.
 type sortInfoSectionBuilder struct {

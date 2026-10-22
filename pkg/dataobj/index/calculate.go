@@ -79,7 +79,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 
 	// Process the streams section first, because the logs sections need the
 	// layout of the object and the labels and shard bucket of each stream.
-	layout, streamLabels, shardBuckets, err := c.processStreamsSection(ctx, streamsSection)
+	layout, streamLabels, shardBuckets, err := c.processStreamsSection(ctx, streamsSection, reader)
 	if err != nil {
 		return fmt.Errorf("failed to process stream section path=%s: %w", objectPath, err)
 	}
@@ -133,9 +133,11 @@ func singleStreamsSection(reader *dataobj.Object) (*dataobj.Section, error) {
 }
 
 // processStreamsSection returns the layout of section and the labels and
-// shard bucket of each stream. It returns an error that wraps
-// [ErrUnprocessableObject] if section records no valid layout.
-func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section) (streams.Layout, map[int64]labels.Labels, map[int64]uint32, error) {
+// shard bucket of each stream. If section records no layout, it takes the
+// layout from the logs sections of reader; see [logs.LegacyLayoutOf]. It
+// returns an error that wraps [ErrUnprocessableObject] if neither records a
+// valid layout.
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, reader *dataobj.Object) (streams.Layout, map[int64]labels.Labels, map[int64]uint32, error) {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
 		return streams.Layout{}, nil, nil, fmt.Errorf("failed to open stream section: %w", err)
@@ -145,7 +147,14 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 		return streams.Layout{}, nil, nil, fmt.Errorf("%w: reading streams layout: %w", ErrUnprocessableObject, err)
 	}
 	if !ok {
-		return streams.Layout{}, nil, nil, fmt.Errorf("%w: streams section records no layout", ErrUnprocessableObject)
+		var logsSections []*dataobj.Section
+		for _, sec := range reader.Sections().Filter(logs.CheckSection) {
+			logsSections = append(logsSections, sec)
+		}
+		layout, err = logs.LegacyLayoutOf(ctx, logsSections)
+		if err != nil {
+			return streams.Layout{}, nil, nil, fmt.Errorf("%w: %w", ErrUnprocessableObject, err)
+		}
 	}
 
 	rowReader := streams.NewRowReader(streamSection)

@@ -133,8 +133,7 @@ type TenantOverrides interface {
 }
 
 // A Builder constructs a logs-oriented data object from a set of incoming
-// log data. Log data is appended by calling [Builder.Append] or
-// [Builder.AppendRecord]. [Builder.FlushAndSort] sorts the data object-wide.
+// log data. [Builder.Append] and [Builder.AppendRecord] add log data. [Builder.FlushAndSort] sorts the data object-wide.
 // [Builder.Flush] trusts the caller to have appended in stream key order.
 //
 // Methods on Builder are not goroutine-safe; callers are responsible for
@@ -424,7 +423,7 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 }
 
 // flushRaw builds a data object from all buffered data, as appended, without
-// a layout. FlushAndSort sorts it.
+// a layout. Its output is only the input to the sort in FlushAndSort.
 //
 // Each logs section is sorted, but stream IDs follow the order in which
 // streams were first appended, and sections can overlap. Readers that need a

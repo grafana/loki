@@ -302,7 +302,7 @@ func sourcesLayout(sources []*logSource) (streams.Layout, error) {
 // buffers.
 //
 // If the streams section records no layout, resolveStreams takes the layout
-// from logsSections, which nil entries skip; see [legacyLayout].
+// from logsSections, which nil entries skip; see [logs.LegacyLayoutOf].
 func resolveStreams(ctx context.Context, section *dataobj.Section, logsSections []*dataobj.Section) (streams.Layout, map[int64]streams.Stream, error) {
 	sec, err := streams.Open(ctx, section)
 	if err != nil {
@@ -313,7 +313,7 @@ func resolveStreams(ctx context.Context, section *dataobj.Section, logsSections 
 		return streams.Layout{}, nil, fmt.Errorf("reading streams layout: %w", err)
 	}
 	if !ok {
-		layout, err = legacyLayout(ctx, logsSections)
+		layout, err = logs.LegacyLayoutOf(ctx, logsSections)
 		if err != nil {
 			return streams.Layout{}, nil, err
 		}
@@ -329,38 +329,6 @@ func resolveStreams(ctx context.Context, section *dataobj.Section, logsSections 
 		out[stream.ID] = stream
 	}
 	return layout, out, nil
-}
-
-// legacyLayout returns the layout that every non-nil section of logsSections
-// records in its own sort info. Objects written before streams sections
-// recorded a layout keep it there. It returns an error if a section records
-// no layout or if the sections disagree.
-func legacyLayout(ctx context.Context, logsSections []*dataobj.Section) (streams.Layout, error) {
-	var (
-		layout streams.Layout
-		found  bool
-	)
-	for _, section := range logsSections {
-		if section == nil {
-			continue
-		}
-		opened, err := logs.Open(ctx, section)
-		if err != nil {
-			return streams.Layout{}, fmt.Errorf("opening logs section: %w", err)
-		}
-		got, ok := opened.LegacyLayout()
-		if !ok {
-			return streams.Layout{}, errors.New("streams section records no layout, and a logs section records no legacy layout")
-		}
-		if found && !got.Equal(layout) {
-			return streams.Layout{}, errors.New("logs sections record different legacy layouts")
-		}
-		layout, found = got, true
-	}
-	if !found {
-		return streams.Layout{}, errors.New("streams section records no layout")
-	}
-	return layout, nil
 }
 
 // buildGlobalStreamTable ranks unique label sets across sources into one

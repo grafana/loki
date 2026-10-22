@@ -4,6 +4,7 @@ package logs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -13,9 +14,9 @@ import (
 )
 
 // schemaSortVersion is the section type version for logs sections written in
-// schema sort order. Must not equal columnar.FormatVersion (currently 2).
-// The bumped version lets callers detect the sort contract from the object
-// header alone, without opening the section. The stream layout that orders the
+// schema sort order. It must differ from columnar.FormatVersion, so callers
+// can detect the sort contract from the object header alone, without opening
+// the section. The stream layout that orders the
 // rows is in the tenant's streams section.
 const schemaSortVersion uint32 = 3
 
@@ -134,6 +135,38 @@ func (s *Section) LegacyLayout() (layout streams.Layout, ok bool) {
 		return streams.Layout{}, false
 	}
 	return streams.NewLayout(streams.DefaultShardLayout(), si.SchemaLabels), true
+}
+
+// LegacyLayoutOf returns the layout that every non-nil section of sections
+// records with [Section.LegacyLayout]. Readers use it for objects whose
+// streams section records no layout. It returns an error if a section records
+// no legacy layout, if the sections disagree, or if no section is non-nil.
+func LegacyLayoutOf(ctx context.Context, sections []*dataobj.Section) (streams.Layout, error) {
+	var (
+		layout streams.Layout
+		found  bool
+	)
+	for _, section := range sections {
+		if section == nil {
+			continue
+		}
+		opened, err := Open(ctx, section)
+		if err != nil {
+			return streams.Layout{}, fmt.Errorf("opening logs section: %w", err)
+		}
+		got, ok := opened.LegacyLayout()
+		if !ok {
+			return streams.Layout{}, errors.New("streams section records no layout, and a logs section records no legacy layout")
+		}
+		if found && !got.Equal(layout) {
+			return streams.Layout{}, errors.New("logs sections record different legacy layouts")
+		}
+		layout, found = got, true
+	}
+	if !found {
+		return streams.Layout{}, errors.New("streams section records no layout")
+	}
+	return layout, nil
 }
 
 // A Column represents one of the columns in the logs section. Valid columns

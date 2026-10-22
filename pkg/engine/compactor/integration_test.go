@@ -1,10 +1,13 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -706,4 +709,46 @@ func storeIntegrationObject(ctx context.Context, t *testing.T, bucket objstore.B
 	require.NoError(t, err)
 	defer reader.Close()
 	require.NoError(t, bucket.Upload(ctx, path, reader))
+}
+
+func TestE2ECompactionLegacyObjects(t *testing.T) {
+	t.Run("compacts legacy objects with a new object of the same layout until idle", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		const tenant = "T"
+		schema := []string{"label:cluster"}
+		window := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+		var sources []compactortest.Source
+		for _, name := range []string{"legacy-cluster-a", "legacy-cluster-b"} {
+			data, err := os.ReadFile(filepath.Join("..", "..", "dataobj", "testdata", "legacy", name+".dataobj"))
+			require.NoError(t, err)
+			obj, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+			require.NoError(t, err)
+			sources = append(sources, compactortest.Source{Path: "objects/" + name, Object: obj})
+		}
+		entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(schema...))
+		entries.ForStream(`{app="z",cluster="c-z"}`).
+			Entry(int(window.Unix()), "{}", "new/z/0").
+			Entry(int(window.Unix())+1, "{}", "new/z/1")
+		sources = append(sources, newScenarioLogSource(t, "objects/new", tenant, entries, streams.NewLayout(streams.DefaultShardLayout(), schema)))
+
+		var sourceLines []string
+		for _, source := range sources {
+			for _, record := range fixtures.ReadTenantLogs(t, source.Object, tenant) {
+				sourceLines = append(sourceLines, string(record.Line))
+			}
+		}
+		require.Len(t, sourceLines, 10)
+
+		scenario := newCompactionScenario(ctx, t, scenarioInput{window: window, logs: sources})
+		scenario.compactUntilIdle(tenant)
+
+		contents := scenario.stored.ReadReachableContents(ctx, t, tenant)
+		requireLogContents(t, contents, sourceLines, schema)
+		for path := range contents.StatsObjectPaths {
+			require.NotContains(t, []string{"objects/legacy-cluster-a", "objects/legacy-cluster-b"}, path, "compaction must rewrite the legacy objects")
+		}
+	})
 }
