@@ -65,7 +65,7 @@ require (
 	github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29
 	github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654
 	github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34
-	github.com/grafana/loki/pkg/push v0.4.0
+	github.com/grafana/loki/pkg/push v0.0.0-20261021195341-fdeb199c5b0a
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
 	github.com/hashicorp/golang-lru/v2 v2.0.7
@@ -135,7 +135,7 @@ require (
 	golang.org/x/text v0.43.0
 	golang.org/x/time v0.16.0
 	golang.org/x/tools v0.52.0
-	google.golang.org/api v0.304.0
+	google.golang.org/api v0.305.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261012220534-4341edf3f941
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
@@ -214,7 +214,7 @@ require (
 	github.com/go-openapi/jsonreference v1.0.3 // indirect
 	github.com/go-openapi/loads v0.25.3 // indirect
 	github.com/go-openapi/spec v1.0.1 // indirect
-	github.com/go-openapi/strfmt v0.27.3 // indirect
+	github.com/go-openapi/strfmt v0.27.4 // indirect
 	github.com/go-openapi/swag v0.29.2 // indirect
 	github.com/go-openapi/swag/cmdutils v0.29.2 // indirect
 	github.com/go-openapi/swag/conv v0.29.2 // indirect

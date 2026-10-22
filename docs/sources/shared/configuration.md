@@ -774,17 +774,37 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.volume-threshold
   [volume_threshold: <float> | default = 0.99]
 
+  # Configures consumption of log entries from Kafka.
+  kafka_ingestion:
+    # Whether the pattern ingester consumes log entries from Kafka. When
+    # enabled, the distributor does not tee log entries to the pattern ingester.
+    # When using CLI flags, this must be set on the distributors as well,
+    # otherwise it just needs to be set once in the config file.
+    # CLI flag: -pattern-ingester.kafka-ingestion-enabled
+    [enabled: <boolean> | default = false]
+
+    # The consumer group of the pattern ingesters.
+    # CLI flag: -pattern-ingester.kafka-consumer-group
+    [consumer_group: <string> | default = "pattern-ingester"]
+
+    # The session timeout of the consumer group. A pattern ingester that
+    # restarts and rejoins within this time gets its partitions back without a
+    # rebalance, but if it does not rejoin, its partitions are not consumed
+    # until the timeout expires.
+    # CLI flag: -pattern-ingester.kafka-session-timeout
+    [session_timeout: <duration> | default = 3m]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
 [index_gateway: <index_gateway>]
 
-# Experimental: The bloom_build block configures the Loki bloom planner and
+# Deprecated: The bloom_build block configures the Loki bloom planner and
 # builder servers, responsible for building bloom filters.
 [bloom_build: <bloom_build>]
 
-# Experimental: The bloom_gateway block configures the Loki bloom gateway
-# server, responsible for serving queries for filtering chunks based on filter
+# Deprecated: The bloom_gateway block configures the Loki bloom gateway server,
+# responsible for serving queries for filtering chunks based on filter
 # expressions.
 [bloom_gateway: <bloom_gateway>]
 
@@ -1940,7 +1960,7 @@ http_config:
 
 ### bloom_build
 
-Experimental: The `bloom_build` block configures the Loki bloom planner and builder servers, responsible for building bloom filters.
+Deprecated: The `bloom_build` block configures the Loki bloom planner and builder servers, responsible for building bloom filters.
 
 ```yaml
 # Flag to enable or disable the usage of the bloom-planner and bloom-builder
@@ -2017,7 +2037,7 @@ builder:
 
 ### bloom_gateway
 
-Experimental: The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
+Deprecated: The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
 
 ```yaml
 # Flag to enable or disable the bloom gateway component globally.
@@ -2294,12 +2314,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # cache. A value of 0 will write all chunks to the cache
 # CLI flag: -store.skip-query-writeback-older-than
 [skip_query_writeback_cache_older_than: <duration> | default = 0s]
-
-# Experimental. Return an object-storage chunk fetch error instead of incomplete
-# results. Applies to queries, bloom builds, and migration, including checksum
-# failures.
-# CLI flag: -chunk-store.propagate-chunk-fetch-errors
-[propagate_chunk_fetch_errors: <boolean> | default = false]
 
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
@@ -4476,29 +4490,29 @@ shard_streams:
 # CLI flag: -index-gateway.max-capacity
 [index_gateway_max_capacity: <float> | default = 1]
 
-# Experimental. Whether to use the bloom gateway component in the read path to
+# Deprecated: Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
 
-# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# Deprecated: Maximum number of builders to use when building blooms. 0 allows
 # unlimited builders.
 # CLI flag: -bloom-build.max-builders
 [bloom_build_max_builders: <int> | default = 0]
 
-# Experimental. Maximum number of retries for a failed task. If a task fails
-# more than this number of times, it is considered failed and will not be
-# retried. A value of 0 disables this limit.
+# Deprecated: Maximum number of retries for a failed task. If a task fails more
+# than this number of times, it is considered failed and will not be retried. A
+# value of 0 disables this limit.
 # CLI flag: -bloom-build.task-max-retries
 [bloom_build_task_max_retries: <int> | default = 3]
 
-# Experimental. Timeout for a builder to finish a task. If a builder does not
+# Deprecated: Timeout for a builder to finish a task. If a builder does not
 # respond within this time, it is considered failed and the task will be
 # requeued. 0 disables the timeout.
 # CLI flag: -bloom-build.builder-response-timeout
 [bloom_build_builder_response_timeout: <duration> | default = 0s]
 
-# Experimental. Whether to create blooms for the tenant.
+# Deprecated: Whether to create blooms for the tenant.
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
@@ -4512,36 +4526,36 @@ shard_streams:
 # CLI flag: -dataobj-compaction.log.enable
 [dataobj_log_compaction_enabled: <boolean> | default = false]
 
-# Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
+# Deprecated: Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
 # CLI flag: -bloom-build.planning-strategy
 [bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
 
-# Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of
+# Deprecated: Only if `bloom-build.planning-strategy` is 'split'. Number of
 # splits to create for the series keyspace when building blooms. The series
 # keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
 
-# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
+# Deprecated: Target chunk size in bytes for bloom tasks. Default is 20GB.
 # CLI flag: -bloom-build.split-target-series-chunk-size
 [bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
-# Experimental. Compression algorithm for bloom block pages.
+# Deprecated: Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
 
-# Experimental. Prefetch blocks on bloom gateways as soon as they are built.
+# Deprecated: Prefetch blocks on bloom gateways as soon as they are built.
 # CLI flag: -bloom-build.prefetch-blocks
 [bloom_prefetch_blocks: <boolean> | default = false]
 
-# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
-# size. Default is 200MB. The actual block size might exceed this limit since
-# blooms will be added to blocks until the block exceeds the maximum block size.
+# Deprecated: The maximum bloom block size. A value of 0 sets an unlimited size.
+# Default is 200MB. The actual block size might exceed this limit since blooms
+# will be added to blocks until the block exceeds the maximum block size.
 # CLI flag: -bloom-build.max-block-size
 [bloom_max_block_size: <int> | default = 200MB]
 
-# Experimental. The maximum bloom size per log stream. A log stream whose
+# Deprecated: The maximum bloom size per log stream. A log stream whose
 # generated bloom filter exceeds this size will be discarded. A value of 0 sets
 # an unlimited size. Default is 128MB.
 # CLI flag: -bloom-build.max-bloom-size
@@ -6527,7 +6541,7 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-# Experimental: Configures the bloom shipper component, which contains the store
+# Deprecated: Configures the bloom shipper component, which contains the store
 # abstraction to fetch bloom filters from and put them to object storage.
 bloom_shipper:
   # Working directory to store downloaded bloom blocks. Supports multiple

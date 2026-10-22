@@ -42,9 +42,6 @@ type Metrics struct {
 	// dryRunVerified counts dry-run verification outcomes.
 	// Labels: result — "correct", "false_negative".
 	dryRunVerified *prometheus.CounterVec
-	// shardPlanningTotal counts shard-planning cancel-then-rerun decisions and outcomes.
-	// Labels: result — "provisional_query", "cancel_then_rerun", "fallback"; reason is low cardinality.
-	shardPlanningTotal *prometheus.CounterVec
 }
 
 // NewMetrics creates a new Metrics instance registered with reg.
@@ -102,9 +99,5 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "logline_query_frontend_dry_run_verified_total",
 			Help: "Total dry-run verification outcomes",
 		}, []string{"result"}),
-		shardPlanningTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "logline_query_frontend_shard_planning_total",
-			Help: "Total shard-planning cancel-then-rerun decisions and outcomes",
-		}, []string{"result", "reason"}),
 	}
 }

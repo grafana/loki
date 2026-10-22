@@ -229,10 +229,6 @@ func buildStack(
 	querier queryrangebase.Handler,
 	limits ...logline_query_limits.Limits,
 ) queryrangebase.Handler {
-	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
-		cfg.ShardPlanning.Enabled = false
-		cfg.ShardPlanning.MinTimeReductionRatio = defaultShardPlanningMinReductionRatio
-	}
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 	var settings logline_query_limits.Limits = mockLimits{}
 	if len(limits) > 0 {
@@ -250,10 +246,6 @@ func buildStackWithLogger(
 	querier queryrangebase.Handler,
 	limits ...logline_query_limits.Limits,
 ) queryrangebase.Handler {
-	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
-		cfg.ShardPlanning.Enabled = false
-		cfg.ShardPlanning.MinTimeReductionRatio = defaultShardPlanningMinReductionRatio
-	}
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, logger)
 	var settings logline_query_limits.Limits = mockLimits{}
 	if len(limits) > 0 {
@@ -2270,10 +2262,7 @@ func hintWaitStack(
 		return emptyStreamResponse(), nil
 	})
 	filter := NewLoglineFilterMiddleware(filterTimeout, metrics, nil).Wrap(querier)
-	cfg := Config{
-		RequireOptInHeader: true,
-		ShardPlanning:      ShardPlanningConfig{Enabled: false, MinTimeReductionRatio: defaultShardPlanningMinReductionRatio},
-	}
+	cfg := Config{RequireOptInHeader: true}
 	prefetch := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, metrics, nil)
 	return prefetch.Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		return split(ctx, req, filter)

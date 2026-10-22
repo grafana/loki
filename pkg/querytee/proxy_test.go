@@ -1,11 +1,11 @@
 package querytee
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -33,11 +34,77 @@ func (testComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonS
 }
 
 func Test_NewProxy(t *testing.T) {
-	cfg := ProxyConfig{}
+	tests := map[string]struct {
+		cfg           ProxyConfig
+		expectedErr   string
+		expectedRoles []BackendRole
+	}{
+		"returns an error when there is no backend": {
+			cfg:         ProxyConfig{},
+			expectedErr: errMinBackends.Error(),
+		},
+		"returns an error when the primary hostname is not set": {
+			cfg:         ProxyConfig{BackendEndpoints: "http://a:80,http://b:80"},
+			expectedErr: "-primary-backend.hostname flag must be set",
+		},
+		"returns an error when no backend has the primary hostname": {
+			cfg: ProxyConfig{
+				BackendEndpoints: "http://a:80,http://b:80",
+				PrimaryBackend:   PrimaryBackendConfig{Hostname: "c"},
+			},
+			expectedErr: "the primary backend (hostname) has not been found among the list of configured backends",
+		},
+		"returns an error when more than one backend has the primary hostname": {
+			cfg: ProxyConfig{
+				BackendEndpoints: "http://a:80,http://a:81",
+				PrimaryBackend:   PrimaryBackendConfig{Hostname: "a"},
+			},
+			expectedErr: "more than one configured backend has the hostname of the primary backend",
+		},
+		"returns an error when no backend has the secondary hostname": {
+			cfg: ProxyConfig{
+				BackendEndpoints: "http://a:80,http://b:80",
+				PrimaryBackend:   PrimaryBackendConfig{Hostname: "a"},
+				SecondaryBackend: SecondaryBackendConfig{Hostname: "c"},
+			},
+			expectedErr: "the secondary backend (hostname) has not been found among the list of configured backends",
+		},
+		"returns an error when the comparison is enabled without a secondary backend": {
+			cfg: ProxyConfig{
+				BackendEndpoints: "http://a:80,http://b:80",
+				PrimaryBackend:   PrimaryBackendConfig{Hostname: "a"},
+				CompareResponses: true,
+			},
+			expectedErr: "when enabling comparison of results -secondary-backend.hostname flag must be set",
+		},
+		"assigns the roles by hostname": {
+			cfg: ProxyConfig{
+				BackendEndpoints: "http://b:80,http://c:80,http://a:80",
+				PrimaryBackend:   PrimaryBackendConfig{Hostname: "a"},
+				SecondaryBackend: SecondaryBackendConfig{Hostname: "b"},
+			},
+			expectedRoles: []BackendRole{RoleSecondary, RoleOther, RolePrimary},
+		},
+	}
 
-	p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
-	assert.Equal(t, errMinBackends, err)
-	assert.Nil(t, p)
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			p, err := NewProxy(testData.cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
+
+			if testData.expectedErr != "" {
+				require.EqualError(t, err, testData.expectedErr)
+				require.Nil(t, p)
+				return
+			}
+
+			require.NoError(t, err)
+			roles := make([]BackendRole, 0, len(p.backends))
+			for _, b := range p.backends {
+				roles = append(roles, b.role)
+			}
+			require.Equal(t, testData.expectedRoles, roles)
+		})
+	}
 }
 
 func Test_Proxy_RequestsForwarding(t *testing.T) {
@@ -52,10 +119,11 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		backends            []mockedBackend
-		preferredBackendIdx int
-		expectedStatus      int
-		expectedRes         string
+		backends             []mockedBackend
+		primaryBackendIdx    int
+		expectedStatus       int
+		expectedRes          string
+		expectedBodyFragment string
 	}{
 		"one backend returning 2xx": {
 			backends: []mockedBackend{
@@ -64,21 +132,25 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			expectedStatus: 200,
 			expectedRes:    querySingleMetric1,
 		},
-		"one backend returning 5xx": {
-			backends: []mockedBackend{
-				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
-			},
-			expectedStatus: 500,
-			expectedRes:    "",
-		},
 		"two backends without path prefix": {
 			backends: []mockedBackend{
 				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
 				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric2)},
 			},
-			preferredBackendIdx: 0,
-			expectedStatus:      200,
-			expectedRes:         querySingleMetric1,
+			primaryBackendIdx:    0,
+			expectedStatus:       200,
+			expectedRes:          querySingleMetric1,
+			expectedBodyFragment: `1583320883,"1"`,
+		},
+		"returns the response of the second backend when it is the primary": {
+			backends: []mockedBackend{
+				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric2)},
+			},
+			primaryBackendIdx:    1,
+			expectedStatus:       200,
+			expectedRes:          querySingleMetric2,
+			expectedBodyFragment: `1583320883,"2"`,
 		},
 		"two backends with the same path prefix": {
 			backends: []mockedBackend{
@@ -91,9 +163,9 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 					handler:    mockQueryResponse("/api/prom"+constants.PathLokiQuery, 200, querySingleMetric2),
 				},
 			},
-			preferredBackendIdx: 0,
-			expectedStatus:      200,
-			expectedRes:         querySingleMetric1,
+			primaryBackendIdx: 0,
+			expectedStatus:    200,
+			expectedRes:       querySingleMetric1,
 		},
 		"two backends with different path prefix": {
 			backends: []mockedBackend{
@@ -106,45 +178,27 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 					handler:    mockQueryResponse("/prefix-2"+constants.PathLokiQuery, 200, querySingleMetric2),
 				},
 			},
-			preferredBackendIdx: 0,
-			expectedStatus:      200,
-			expectedRes:         querySingleMetric1,
+			primaryBackendIdx: 0,
+			expectedStatus:    200,
+			expectedRes:       querySingleMetric1,
 		},
-		"preferred backend returns 4xx": {
-			backends: []mockedBackend{
-				{handler: mockQueryResponse(constants.PathLokiQuery, 400, "")},
-				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
-			},
-			preferredBackendIdx: 0,
-			expectedStatus:      400,
-			expectedRes:         "",
-		},
-		"preferred backend returns 5xx": {
+		"returns the 5xx of the primary backend and does not fall back to the secondary backend": {
 			backends: []mockedBackend{
 				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
 				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
 			},
-			preferredBackendIdx: 0,
-			expectedStatus:      200,
-			expectedRes:         querySingleMetric1,
+			primaryBackendIdx: 0,
+			expectedStatus:    500,
+			expectedRes:       "",
 		},
-		"non-preferred backend returns 5xx": {
+		"secondary backend returns 5xx": {
 			backends: []mockedBackend{
 				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
 				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
 			},
-			preferredBackendIdx: 0,
-			expectedStatus:      200,
-			expectedRes:         querySingleMetric1,
-		},
-		"all backends returns 5xx": {
-			backends: []mockedBackend{
-				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
-				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
-			},
-			preferredBackendIdx: 0,
-			expectedStatus:      500,
-			expectedRes:         "",
+			primaryBackendIdx: 0,
+			expectedStatus:    200,
+			expectedRes:       querySingleMetric1,
 		},
 	}
 
@@ -165,13 +219,12 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 				BackendEndpoints:   strings.Join(backendURLs, ","),
 				ServerServicePort:  0,
 				BackendReadTimeout: time.Second,
-				Routing: RoutingConfig{
-					V1Preferred: strconv.Itoa(testData.preferredBackendIdx),
-				},
+				PrimaryBackend:     PrimaryBackendConfig{Hostname: strconv.Itoa(testData.primaryBackendIdx)},
 			}
 
 			if len(backendURLs) == 2 {
 				cfg.CompareResponses = true
+				cfg.SecondaryBackend.Hostname = strconv.Itoa(1 - testData.primaryBackendIdx)
 			}
 
 			p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
@@ -193,8 +246,119 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, testData.expectedStatus, res.StatusCode)
+			if testData.expectedBodyFragment != "" {
+				body, err := io.ReadAll(res.Body)
+				require.NoError(t, err)
+				require.Contains(t, string(body), testData.expectedBodyFragment)
+			}
 		})
 	}
+}
+
+func Test_Proxy_RoutesRequestsToAllBackends(t *testing.T) {
+	const (
+		primaryIdx   = 0
+		secondaryIdx = 1
+		otherIdx     = 2
+	)
+
+	var (
+		reads  [3]atomic.Int32
+		writes [3]atomic.Int32
+		served = make(chan struct{}, 16)
+		comp   = &recordingComparator{}
+	)
+
+	var backendURLs []string
+	for idx := range 3 {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case constants.PathLokiQuery:
+				reads[idx].Add(1)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`))
+			case constants.PathLokiPush:
+				writes[idx].Add(1)
+				w.WriteHeader(http.StatusNoContent)
+			}
+			served <- struct{}{}
+		}))
+		defer s.Close()
+
+		backendURLs = append(backendURLs, s.URL)
+	}
+
+	p, err := NewProxy(ProxyConfig{
+		BackendEndpoints:   strings.Join(backendURLs, ","),
+		BackendReadTimeout: time.Second,
+		CompareResponses:   true,
+		PrimaryBackend:     PrimaryBackendConfig{Hostname: strconv.Itoa(primaryIdx)},
+		SecondaryBackend:   SecondaryBackendConfig{Hostname: strconv.Itoa(secondaryIdx)},
+	}, log.NewNopLogger(), []Route{{Path: constants.PathLokiQuery, RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: comp}}, []Route{{Path: constants.PathLokiPush, RouteName: "api_v1_push", Methods: []string{"POST"}}}, nil)
+	require.NoError(t, err)
+	defer p.Stop() //nolint:errcheck
+	require.NoError(t, p.Start())
+
+	send := func(t *testing.T, method, path string) {
+		t.Helper()
+
+		req, err := http.NewRequestWithContext(t.Context(), method, fmt.Sprintf("http://%s%s", p.Endpoint(), path), strings.NewReader(""))
+		require.NoError(t, err)
+		req.Header.Set("X-Scope-OrgID", "test-tenant")
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.NoError(t, res.Body.Close())
+	}
+
+	waitServed := func(t *testing.T, count int) {
+		t.Helper()
+
+		for range count {
+			select {
+			case <-served:
+			case <-time.After(5 * time.Second):
+				t.Fatal("a backend did not receive the request")
+			}
+		}
+	}
+
+	t.Run("sends a read to every backend and compares the secondary response", func(t *testing.T) {
+		send(t, http.MethodGet, constants.PathLokiQuery+`?query=rate({job="test"}[5m])`)
+		waitServed(t, 3)
+		require.Eventually(t, func() bool { return len(comp.recorded()) > 0 }, 5*time.Second, 10*time.Millisecond)
+
+		require.Equal(t, int32(1), reads[primaryIdx].Load())
+		require.Equal(t, int32(1), reads[secondaryIdx].Load())
+		require.Equal(t, int32(1), reads[otherIdx].Load())
+	})
+
+	t.Run("sends a write to every backend", func(t *testing.T) {
+		send(t, http.MethodPost, constants.PathLokiPush)
+		waitServed(t, 3)
+
+		require.Equal(t, int32(1), writes[primaryIdx].Load())
+		require.Equal(t, int32(1), writes[secondaryIdx].Load())
+		require.Equal(t, int32(1), writes[otherIdx].Load())
+	})
+}
+
+func TestProxyConfig_RegisterFlags(t *testing.T) {
+	newFlagSet := func() (*flag.FlagSet, *ProxyConfig) {
+		cfg := &ProxyConfig{}
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		cfg.RegisterFlags(fs)
+		return fs, cfg
+	}
+
+	t.Run("sets the hostnames of the primary and the secondary backend", func(t *testing.T) {
+		fs, cfg := newFlagSet()
+
+		require.NoError(t, fs.Parse([]string{"-primary-backend.hostname=a", "-secondary-backend.hostname=b"}))
+
+		require.Equal(t, "a", cfg.PrimaryBackend.Hostname)
+		require.Equal(t, "b", cfg.SecondaryBackend.Hostname)
+	})
 }
 
 func TestProxy_Passthrough(t *testing.T) {
@@ -255,11 +419,11 @@ func TestProxy_Passthrough(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		preferredBackendIdx int
-		queries             []query
+		primaryBackendIdx int
+		queries           []query
 	}{
-		"first backend preferred": {
-			preferredBackendIdx: 0,
+		"first backend primary": {
+			primaryBackendIdx: 0,
 			queries: []query{
 				{
 					path:               pathCommon,
@@ -278,8 +442,8 @@ func TestProxy_Passthrough(t *testing.T) {
 				},
 			},
 		},
-		"second backend preferred": {
-			preferredBackendIdx: 1,
+		"second backend primary": {
+			primaryBackendIdx: 1,
 			queries: []query{
 				{
 					path:               pathCommon,
@@ -322,9 +486,7 @@ func TestProxy_Passthrough(t *testing.T) {
 				ServerServicePort:              0,
 				BackendReadTimeout:             time.Second,
 				PassThroughNonRegisteredRoutes: true,
-				Routing: RoutingConfig{
-					V1Preferred: strconv.Itoa(testData.preferredBackendIdx),
-				},
+				PrimaryBackend:                 PrimaryBackendConfig{Hostname: strconv.Itoa(testData.primaryBackendIdx)},
 			}
 
 			p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
@@ -364,57 +526,5 @@ func mockQueryResponse(path string, status int, res string) http.HandlerFunc {
 		if status == http.StatusOK {
 			_, _ = w.Write([]byte(res))
 		}
-	}
-}
-
-func TestFilterReadDisabledBackend(t *testing.T) {
-	urlMustParse := func(urlStr string) *url.URL {
-		u, err := url.Parse(urlStr)
-		require.NoError(t, err)
-		return u
-	}
-
-	backend1, err := NewProxyBackend("test1", urlMustParse("http:/test1"), time.Second, true)
-	require.NoError(t, err)
-	backend2, err := NewProxyBackend("test2", urlMustParse("http:/test2"), time.Second, false)
-	require.NoError(t, err)
-	backend3, err := NewProxyBackend("test3", urlMustParse("http:/test3"), time.Second, false)
-	require.NoError(t, err)
-	backend4, err := NewProxyBackend("test4", urlMustParse("http:/test4"), time.Second, false)
-	require.NoError(t, err)
-	backends := []*ProxyBackend{
-		backend1,
-		backend2,
-		backend3,
-		backend4,
-	}
-	for name, tc := range map[string]struct {
-		disableReadProxyCfg string
-		expectedBackends    []*ProxyBackend
-	}{
-		"nothing disabled": {
-			expectedBackends: backends,
-		},
-		"test2 disabled": {
-			disableReadProxyCfg: "test2",
-			expectedBackends:    []*ProxyBackend{backends[0], backends[2], backends[3]},
-		},
-		"test2 and test4 disabled": {
-			disableReadProxyCfg: "test2, test4",
-			expectedBackends:    []*ProxyBackend{backends[0], backends[2]},
-		},
-		"all secondary disabled": {
-			disableReadProxyCfg: "test2, test4,test3",
-			expectedBackends:    []*ProxyBackend{backends[0]},
-		},
-		"disabling primary should not be filtered out": {
-			disableReadProxyCfg: "test1",
-			expectedBackends:    backends,
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			filteredBackends := filterReadDisabledBackends(backends, tc.disableReadProxyCfg)
-			require.Equal(t, tc.expectedBackends, filteredBackends)
-		})
 	}
 }

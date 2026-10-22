@@ -147,13 +147,6 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	if err != nil {
 		return nil, err
 	}
-	matchers := dataObjStreamMatchers(selector.Matchers())
-	if len(matchers) == 0 {
-		// The metastore resolves nothing without a stream matcher, so an empty result would be
-		// a silently wrong answer rather than an empty one. LogQL cannot produce such a
-		// selector today, which is why this is an error and not a fallback.
-		return nil, fmt.Errorf("data object metric queries need at least one stream matcher, query %q has none", req.Selector)
-	}
 
 	deletes, err := dataObjDeleteSelectors(req)
 	if err != nil {
@@ -186,7 +179,7 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	query := dataobjread.QueryParams{
 		Start:      req.Start,
 		End:        req.End,
-		Matchers:   matchers,
+		Matchers:   dataObjStreamMatchers(selector.Matchers()),
 		Shard:      dataobjread.NewQueryShard(assignment),
 		Projection: projection,
 	}

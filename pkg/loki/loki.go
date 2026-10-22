@@ -106,8 +106,8 @@ type Config struct {
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
+	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
@@ -355,10 +355,12 @@ func (c *Config) Validate() error {
 	if err := c.Pattern.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
 	}
-	if c.Ingester.KafkaIngestion.Enabled {
+	if c.Ingester.KafkaIngestion.Enabled || (c.Pattern.Enabled && c.Pattern.KafkaIngestion.Enabled) {
 		if err := c.KafkaConfig.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
+	}
+	if c.Ingester.KafkaIngestion.Enabled {
 		if err := c.DataObj.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}

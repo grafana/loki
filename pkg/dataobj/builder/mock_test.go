@@ -46,9 +46,9 @@ type mockBuilder struct {
 	// full, when true, forces IsFull to report the builder as full regardless
 	// of the underlying builder's estimated size.
 	full bool
-	// flushCloser, when set, is returned by Flush in place of the underlying
-	// builder's closer, letting tests observe and fail the release of the
-	// unsorted object.
+	// flushCloser, when set, is returned by FlushAndSort in place of the
+	// underlying builder's closer, letting tests observe and fail the release
+	// of the flushed object.
 	flushCloser *countingCloser
 }
 
@@ -72,16 +72,12 @@ func (m *mockBuilder) IsFull() bool {
 	return m.full || m.builder.IsFull()
 }
 
-func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return m.builder.CopyAndSort(ctx, obj)
-}
-
-func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
+func (m *mockBuilder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return nil, nil, err
 	}
-	obj, closer, err := m.builder.Flush()
+	obj, closer, err := m.builder.FlushAndSort(ctx)
 	if err != nil || m.flushCloser == nil {
 		return obj, closer, err
 	}
@@ -376,19 +372,6 @@ func newTestMultiBuilder() *mockMultiBuilder {
 	return &mockMultiBuilder{
 		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
 	}
-}
-
-// mockSorter returns the object it is given, so the flusher can be driven
-// without performing a real sort.
-type mockSorter struct {
-	// closer is handed to the flusher on every sort, letting tests assert
-	// whether ownership of the sorted object was transferred to the caller or
-	// released by the flusher.
-	closer countingCloser
-}
-
-func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return obj, &m.closer, nil
 }
 
 type mockUploader struct {
