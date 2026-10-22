@@ -59,7 +59,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       ||| % pullRequestFooter),
     ]),
 
-  shouldRelease: job.new()
+  shouldRelease: job.new(common.smallRunner)
                  + job.withSteps([
                    common.fetchReleaseRepo,
                    common.fetchReleaseLib,
