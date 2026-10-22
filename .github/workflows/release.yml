@@ -7,7 +7,7 @@ env:
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PLUGIN_IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "4587d0b45edcb18585ff09f4e5dd1ed1174efeb6"
+  RELEASE_LIB_REF: "31474d7518151f5a5fe74450c3349c5220e040fd"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -81,7 +81,7 @@ jobs:
         else
           echo "exists=true" >> $GITHUB_OUTPUT
         fi
-        
+
         if [[ "$isDraft" == "true" ]]; then
           echo "draft=true" >> $GITHUB_OUTPUT
         fi
@@ -169,30 +169,30 @@ jobs:
       run: |
         # Debug and clean the version variable
         echo "Original VERSION: $VERSION"
-        
+
         # Remove all quotes (both single and double)
         VERSION=$(echo $VERSION | tr -d '"' | tr -d "'")
         echo "After removing quotes: $VERSION"
-        
+
         # Extract version without the 'v' prefix if it exists
         VERSION="${VERSION#v}"
         echo "After removing v prefix: $VERSION"
-        
+
         # Extract major and minor versions
         MAJOR=$(echo $VERSION | cut -d. -f1)
         MINOR=$(echo $VERSION | cut -d. -f2)
         echo "MAJOR: $MAJOR, MINOR: $MINOR"
-        
+
         # Create branch name from template
         BRANCH_TEMPLATE="release-\${major}.\${minor}.x"
         BRANCH_NAME=${BRANCH_TEMPLATE//\$\{major\}/$MAJOR}
         BRANCH_NAME=${BRANCH_NAME//\$\{minor\}/$MINOR}
-        
+
         echo "Checking if branch already exists: $BRANCH_NAME"
-        
+
         # explicitly authenticate with the github app identity
         git remote set-url origin "https://x-access-token:$(echo ${OUTPUTS_TOKEN} | tr -d '"')@github.com/${{ env.RELEASE_REPO }}"
-        
+
         # Check if branch exists
         if git ls-remote --heads origin $BRANCH_NAME | grep -q $BRANCH_NAME; then
           echo "Branch $BRANCH_NAME already exists, skipping creation"
@@ -200,13 +200,13 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
           echo "Creating branch: $BRANCH_NAME from tag: $(echo $OUTPUTS_NAME | tr -d '"')"
-        
+
           # Create branch from the tag
           git fetch --tags
           git checkout "$(echo $OUTPUTS_BRANCH | tr -d '"')"
           git checkout -b $BRANCH_NAME
           git push -u origin $BRANCH_NAME
-        
+
           echo "branch_exists=false" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi
@@ -295,7 +295,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-x64"
+    runs-on: "ubuntu-x64-small"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"

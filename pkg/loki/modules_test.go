@@ -270,3 +270,26 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 
 	return cfg
 }
+
+func TestInitPatternIngesterTee(t *testing.T) {
+	tests := []struct {
+		name           string
+		patternEnabled bool
+		kafkaIngestion bool
+	}{
+		{name: "disabled", patternEnabled: false},
+		{name: "disabled when the pattern ingester consumes from Kafka", patternEnabled: true, kafkaIngestion: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			loki := &Loki{}
+			loki.Cfg.Pattern.Enabled = tc.patternEnabled
+			loki.Cfg.Pattern.KafkaIngestion.Enabled = tc.kafkaIngestion
+
+			svc, err := loki.initPatternIngesterTee()
+			require.NoError(t, err)
+			require.Nil(t, svc)
+			require.Nil(t, loki.Tee)
+		})
+	}
+}

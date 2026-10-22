@@ -126,15 +126,7 @@ func buildSourceLogObjectWithConfig(t *testing.T, bucket objstore.Bucket, path s
 		}
 	}
 
-	obj, closer, err := b.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	// Ingest CopyAndSorts after Flush so source objects are in SortKey
-	// order. Compaction only merges pre-sorted objects.
-	sorter, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
-	require.NoError(t, err)
-	sorted, sortedCloser, err := sorter.CopyAndSort(context.Background(), obj)
+	sorted, sortedCloser, err := b.FlushAndSort(context.Background())
 	require.NoError(t, err)
 	defer sortedCloser.Close()
 
