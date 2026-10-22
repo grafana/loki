@@ -15,48 +15,43 @@ import (
 
 // HandlerFactory creates the query handler of a route.
 type HandlerFactory struct {
-	backends                      []*ProxyBackend
-	codec                         queryrangebase.Codec
-	instrumentCompares            bool
-	logger                        log.Logger
-	metrics                       *ProxyMetrics
-	addRoutingDecisionsToWarnings bool
+	backends            []*ProxyBackend
+	codec               queryrangebase.Codec
+	reportMissingSeries bool
+	logger              log.Logger
+	metrics             *ProxyMetrics
 }
 
 // HandlerFactoryConfig holds configuration for creating a HandlerFactory.
 type HandlerFactoryConfig struct {
-	Backends                      []*ProxyBackend
-	Codec                         queryrangebase.Codec
-	InstrumentCompares            bool
-	Logger                        log.Logger
-	Metrics                       *ProxyMetrics
-	AddRoutingDecisionsToWarnings bool
+	Backends            []*ProxyBackend
+	Codec               queryrangebase.Codec
+	ReportMissingSeries bool
+	Logger              log.Logger
+	Metrics             *ProxyMetrics
 }
 
 // NewHandlerFactory creates a new HandlerFactory.
 func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 	return &HandlerFactory{
-		backends:                      cfg.Backends,
-		codec:                         cfg.Codec,
-		instrumentCompares:            cfg.InstrumentCompares,
-		logger:                        cfg.Logger,
-		metrics:                       cfg.Metrics,
-		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
+		backends:            cfg.Backends,
+		codec:               cfg.Codec,
+		reportMissingSeries: cfg.ReportMissingSeries,
+		logger:              cfg.Logger,
+		metrics:             cfg.Metrics,
 	}
 }
 
-// CreateHandler returns the query handler of a route. It sends each request to every backend,
-// except the backends whose filter does not match the request URL.
+// CreateHandler returns the query handler of a route. It sends each request to every backend.
 func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.ResponsesComparator) http.Handler {
 	fanOutHandler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:                      f.backends,
-		Codec:                         f.codec,
-		Comparator:                    comp,
-		InstrumentCompares:            f.instrumentCompares,
-		Logger:                        f.logger,
-		Metrics:                       f.metrics,
-		RouteName:                     routeName,
-		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
+		Backends:            f.backends,
+		Codec:               f.codec,
+		Comparator:          comp,
+		ReportMissingSeries: f.reportMissingSeries,
+		Logger:              f.logger,
+		Metrics:             f.metrics,
+		RouteName:           routeName,
 	})
 
 	httpMiddlewares := []middleware.Interface{
