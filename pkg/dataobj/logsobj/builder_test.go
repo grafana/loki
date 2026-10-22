@@ -90,7 +90,7 @@ func TestBuilder(t *testing.T) {
 		for _, entry := range testStreams {
 			require.NoError(t, builder.Append("tenant", entry, time.Now()))
 		}
-		obj, closer, err := builder.Flush()
+		obj, closer, err := builder.flushRaw()
 		require.NoError(t, err)
 		defer closer.Close()
 
@@ -139,7 +139,7 @@ func TestBuilder_Append(t *testing.T) {
 		}, time.Now()))
 	}
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.flushRaw()
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -183,7 +183,7 @@ func TestBuilder_AppendRecord(t *testing.T) {
 		}, time.Now()))
 	}
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.flushRaw()
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -251,7 +251,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
-		_, closer, err := builder.Flush()
+		_, closer, err := builder.flushRaw()
 		require.NoError(t, err)
 		defer closer.Close()
 		require.True(t, builder.GetEarliestRecordTime().IsZero())
@@ -310,7 +310,7 @@ func testFlushAndSortOrder(t *testing.T) {
 		appendRecord(0)
 	}
 
-	obj1, closer1, err := builder.Flush()
+	obj1, closer1, err := builder.flushRaw()
 	require.NoError(t, err)
 	defer closer1.Close()
 
@@ -392,7 +392,7 @@ func testFlushAndSortShardBuckets(t *testing.T) {
 	}
 
 	t.Run("keeps the bucket that the build gave every stream, without computing it again", func(t *testing.T) {
-		built, builtCloser, err := newFilledBuilder(t).Flush()
+		built, builtCloser, err := newFilledBuilder(t).flushRaw()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, builtCloser.Close()) })
 		sorted, sortedCloser, err := newFilledBuilder(t).FlushAndSort(t.Context())
@@ -497,7 +497,7 @@ func BenchmarkBuilder_FlushAndSort(b *testing.B) {
 			b.SetBytes(int64(dataSize))
 
 			fill()
-			obj, closer, err := builder.Flush()
+			obj, closer, err := builder.flushRaw()
 			require.NoError(b, err)
 			b.Logf("logs sections before the sort: %d", obj.Sections().Count(logs.CheckSection))
 			require.NoError(b, closer.Close())
@@ -554,7 +554,7 @@ func testFlushAndSortSchema(t *testing.T) {
 				}, now.Add(time.Duration(i)*time.Second)))
 			}
 		}
-		flush := b.Flush
+		flush := b.flushRaw
 		if sorted {
 			flush = func() (*dataobj.Object, io.Closer, error) { return b.FlushAndSort(t.Context()) }
 		}
@@ -663,6 +663,8 @@ func testFlushAndSortSchema(t *testing.T) {
 		require.NoError(t, err)
 		defer closer2.Close()
 
+		requireStreamsLayout(t, obj2, "schema-tenant", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
+		requireStreamsLayout(t, obj2, "default-tenant", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}))
 		require.Equal(t, expectedLabelOrder(t, []string{"zoo", "alpha", "middle"}, "app", []string{"label:app"}), appOrder(t, obj2, "schema-tenant"))
 		timestampsDescWithinGroups(t, obj2, "schema-tenant")
 
@@ -698,25 +700,12 @@ func testFlushAndSortSchema(t *testing.T) {
 		require.Equal(t, expectedLabelOrder(t, []string{"alpha", "middle", "zoo"}, "service_name", []string{"label:service_name"}), svcOrder)
 	})
 
-	t.Run("records the schema labels in the logs section metadata", func(t *testing.T) {
+	t.Run("records the layout of the tenant in the streams section", func(t *testing.T) {
 		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj2 := buildSorted(t, cfg, "t1", []string{"b", "a"}, overrides)
 
-		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
-			return logs.CheckSection(s) && s.Tenant == "t1"
-		}) {
-			logsSection, err := logs.Open(t.Context(), sec)
-			require.NoError(t, err)
-			labels, err := logsSection.SchemaLabels()
-			require.NoError(t, err)
-			require.Equal(t, []string{"label:app"}, labels, "SchemaLabels must be persisted in section metadata")
-			require.Equal(t, logs.SortLayout{
-				SchemaLabels: []string{"label:app"},
-				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.DefaultShardLayout().Buckets(),
-			}, logsSection.SortLayout())
-		}
+		requireStreamsLayout(t, obj2, "t1", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
 
 		require.Equal(t, expectedLabelOrder(t, []string{"b", "a"}, "app", []string{"label:app"}), appOrder(t, obj2, "t1"))
 		timestampsDescWithinGroups(t, obj2, "t1")
@@ -745,17 +734,6 @@ func testFlushAndSortSchema(t *testing.T) {
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
 			return logs.CheckSection(s) && s.Tenant == "t1"
 		}) {
-			logsSection, err := logs.Open(t.Context(), sec)
-			require.NoError(t, err)
-			schemaLabels, err := logsSection.SchemaLabels()
-			require.NoError(t, err)
-			require.Equal(t, []string{"label:app"}, schemaLabels)
-			require.Equal(t, logs.SortLayout{
-				SchemaLabels: []string{"label:app"},
-				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.DefaultShardLayout().Buckets(),
-			}, logsSection.SortLayout())
-
 			var (
 				prevApp      string
 				prevShard    uint32
@@ -887,7 +865,7 @@ func testFlushAndSortSchema(t *testing.T) {
 			}
 		}
 
-		obj1, closer1, err := b.Flush()
+		obj1, closer1, err := b.flushRaw()
 		require.NoError(t, err)
 		defer closer1.Close()
 		obj2, closer2, err := sortBuilder.FlushAndSort(t.Context())
@@ -1169,7 +1147,7 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 		Entries: []push.Entry{{Timestamp: time.Unix(10, 0).UTC(), Line: "hello"}},
 	}, time.Now()))
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.flushRaw()
 	require.Error(t, err)
 	require.Nil(t, obj)
 	require.Nil(t, closer)
@@ -1204,7 +1182,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, builder.Append("tenant", stream, time.Now()))
 
-			_, closer, err := builder.Flush()
+			_, closer, err := builder.flushRaw()
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 			} else {
@@ -1213,7 +1191,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 			}
 
 			require.Zero(t, builder.GetEstimatedSize())
-			_, _, err = builder.Flush()
+			_, _, err = builder.flushRaw()
 			require.ErrorIs(t, err, ErrBuilderEmpty)
 		})
 	}
@@ -1247,13 +1225,7 @@ func testFlushAndSortLayoutPerObject(t *testing.T) {
 	}
 	requireSchema := func(t *testing.T, obj *dataobj.Object, want []string) {
 		t.Helper()
-		for _, sec := range obj.Sections().Filter(logs.CheckSection) {
-			opened, err := logs.Open(t.Context(), sec)
-			require.NoError(t, err)
-			got, err := opened.SchemaLabels()
-			require.NoError(t, err)
-			require.Equal(t, want, got)
-		}
+		requireStreamsLayout(t, obj, "t1", streams.NewLayout(streams.DefaultShardLayout(), want))
 	}
 
 	t.Run("keeps the sort schema of the open object when the overrides change, and applies the change to the next object", func(t *testing.T) {
@@ -1361,7 +1333,7 @@ func TestBuilder_FlushAndSort(t *testing.T) {
 	t.Run("keeps the shard bucket of every stream", testFlushAndSortShardBuckets)
 	t.Run("orders streams by the sort schema of each tenant", testFlushAndSortSchema)
 	t.Run("reads the layout once per object", testFlushAndSortLayoutPerObject)
-	t.Run("handles failures", testFlushAndSortErrors)
+	t.Run("returns errors and leaves the builder empty on failure", testFlushAndSortErrors)
 }
 
 // failingRemoveStore is a scratch store whose removes always fail.
@@ -1372,4 +1344,72 @@ type failingRemoveStore struct {
 func (s *failingRemoveStore) Remove(h scratch.Handle) error {
 	_ = s.Store.Remove(h)
 	return errors.New("mock remove error")
+}
+
+// requireStreamsLayout checks that the streams section of tenant in obj
+// records want.
+func requireStreamsLayout(t *testing.T, obj *dataobj.Object, tenant string, want streams.Layout) {
+	t.Helper()
+	var found int
+	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+		return streams.CheckSection(s) && s.Tenant == tenant
+	}) {
+		opened, err := streams.Open(t.Context(), sec)
+		require.NoError(t, err)
+		got, ok, err := opened.Layout()
+		require.NoError(t, err)
+		require.True(t, ok, "the streams section must record a layout")
+		require.True(t, want.Equal(got), "got layout %+v, want %+v", got, want)
+		found++
+	}
+	require.Equal(t, 1, found, "tenant %s must have one streams section", tenant)
+}
+
+func TestBuilder_FlushRecordsLayout(t *testing.T) {
+	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+	newFilledBuilder := func(t *testing.T) *Builder {
+		t.Helper()
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), tenantOverrides{"t1": {"label:app"}, "t2": {"label:cluster"}})
+		require.NoError(t, err)
+		for _, tenant := range []string{"t1", "t2"} {
+			require.NoError(t, b.Append(tenant, logproto.Stream{
+				Labels:  `{app="a",cluster="c"}`,
+				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
+			}, now))
+		}
+		return b
+	}
+
+	t.Run("flushRaw records no layout in any streams section", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t).flushRaw()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		require.Equal(t, 2, obj.Sections().Count(streams.CheckSection))
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			opened, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			_, ok, err := opened.Layout()
+			require.NoError(t, err)
+			require.False(t, ok)
+		}
+	})
+
+	t.Run("Flush records the layout of each tenant", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t).Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireStreamsLayout(t, obj, "t1", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
+		requireStreamsLayout(t, obj, "t2", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"}))
+	})
+
+	t.Run("FlushAndSort records the layout of each tenant", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t).FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireStreamsLayout(t, obj, "t1", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
+		requireStreamsLayout(t, obj, "t2", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"}))
+	})
 }

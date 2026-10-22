@@ -89,6 +89,25 @@ func (s *Section) NumRows() int {
 	return int(s.columns[0].inner.Metadata().RowsCount)
 }
 
+// Layout returns the layout that the section records. ok is false if the
+// section records no layout.
+//
+// Layout returns an error if the recorded layout is not one that
+// [NewLayout] can produce: the shard count is not a valid shard layout, the
+// stream order is not [StreamOrderStableHashV1], or the section has column
+// sorts.
+func (s *Section) Layout() (layout Layout, ok bool, err error) {
+	si := s.inner.SortInfo()
+	if si == nil {
+		return Layout{}, false, nil
+	}
+	layout, err = layoutFromSortInfo(si)
+	if err != nil {
+		return Layout{}, false, err
+	}
+	return layout, true, nil
+}
+
 // A Column represents one of the columns in the streams section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
