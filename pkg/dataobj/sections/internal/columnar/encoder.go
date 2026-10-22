@@ -294,13 +294,13 @@ func (enc *ColumnEncoder) AppendPage(page *dataset.MemPage) error {
 		Encoding:         page.Desc.Encoding,
 
 		DataOffset: uint64(enc.dataOffset + enc.totalPageSize),
-		DataSize:   uint64(len(page.Data)),
+		DataSize:   uint64(len(page.Bytes())),
 
 		Statistics: page.Desc.Stats,
 	})
 
 	enc.memPages = append(enc.memPages, page)
-	enc.totalPageSize += len(page.Data)
+	enc.totalPageSize += len(page.Bytes())
 	return nil
 }
 
@@ -318,7 +318,7 @@ func (enc *ColumnEncoder) Commit() error {
 	defer bufpool.PutUnsized(columnData)
 
 	for _, p := range enc.memPages {
-		_, _ = columnData.Write(p.Data) // [bytes.Buffer.Write] never fails.
+		_, _ = columnData.Write(p.Bytes()) // [bytes.Buffer.Write] never fails.
 	}
 
 	metadata := enc.buildMetadata()

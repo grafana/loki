@@ -153,7 +153,7 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 		}
 
 		for _, r := range ranges {
-			if !yield(dataset.PageData(r.Data)) {
+			if !yield(dataset.PageData(dataset.MemPage{dataset.PageDesc{}, dataset.NewReleasableData(r.Data)})) {
 				return nil
 			}
 		}
