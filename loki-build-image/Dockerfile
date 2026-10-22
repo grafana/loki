@@ -17,7 +17,7 @@ RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_1.14.2_Linux_arm64" || 
     curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/$BIN.tar.gz" | tar zx && \
     install -t /usr/local/bin helm-docs
 
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS lychee
+FROM alpine:3.24.3@sha256:b3413572228e34bd1c9245f5565e6cd127005655e8a7899aef33d8e83255c9e6 AS lychee
 ARG TARGETARCH
 ARG LYCHEE_VER="0.7.0"
 RUN apk add --no-cache curl && \
@@ -26,18 +26,18 @@ RUN apk add --no-cache curl && \
     mv /tmp/lychee /usr/bin/lychee && \
     rm -rf "/tmp/linux-$TARGETARCH" /tmp/lychee-$LYCHEE_VER.tgz
 
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS golangci
+FROM alpine:3.24.3@sha256:b3413572228e34bd1c9245f5565e6cd127005655e8a7899aef33d8e83255c9e6 AS golangci
 RUN apk add --no-cache curl && \
     cd / && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.11.4
 
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS buf
+FROM alpine:3.24.3@sha256:b3413572228e34bd1c9245f5565e6cd127005655e8a7899aef33d8e83255c9e6 AS buf
 ARG TARGETOS
 RUN apk add --no-cache curl && \
     curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.66.1/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" && \
     chmod +x "/usr/bin/buf"
 
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS docker
+FROM alpine:3.24.3@sha256:b3413572228e34bd1c9245f5565e6cd127005655e8a7899aef33d8e83255c9e6 AS docker
 RUN apk add --no-cache docker-cli docker-cli-buildx
 
 FROM ${GOLANG_BASE_IMAGE} AS drone
