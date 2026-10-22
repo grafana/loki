@@ -800,13 +800,12 @@ github.com/eapache/go-resiliency/breaker
 # github.com/eapache/queue v1.1.0
 ## explicit
 github.com/eapache/queue
-# github.com/ebitengine/purego v0.10.1
-## explicit; go 1.18
+# github.com/ebitengine/purego v0.11.1
+## explicit; go 1.25.0
 github.com/ebitengine/purego
 github.com/ebitengine/purego/internal/cgo
 github.com/ebitengine/purego/internal/fakecgo
 github.com/ebitengine/purego/internal/strings
-github.com/ebitengine/purego/internal/xreflect
 # github.com/edsrzf/mmap-go v1.2.1-0.20241212181136-fad1cd13edbd
 ## explicit; go 1.17
 github.com/edsrzf/mmap-go
@@ -1965,8 +1964,8 @@ github.com/sercand/kuberesolver/v6
 # github.com/sethvargo/go-retry v0.3.0
 ## explicit; go 1.21
 github.com/sethvargo/go-retry
-# github.com/shirou/gopsutil/v4 v4.26.5
-## explicit; go 1.24.0
+# github.com/shirou/gopsutil/v4 v4.26.9
+## explicit; go 1.26.0
 github.com/shirou/gopsutil/v4/common
 github.com/shirou/gopsutil/v4/cpu
 github.com/shirou/gopsutil/v4/internal/common
@@ -2045,11 +2044,11 @@ github.com/tinylib/msgp/msgp/setof
 # github.com/tjhop/slog-gokit v0.1.6
 ## explicit; go 1.21
 github.com/tjhop/slog-gokit
-# github.com/tklauser/go-sysconf v0.3.16
-## explicit; go 1.24.0
+# github.com/tklauser/go-sysconf v0.4.0
+## explicit; go 1.25.0
 github.com/tklauser/go-sysconf
-# github.com/tklauser/numcpus v0.11.0
-## explicit; go 1.24.0
+# github.com/tklauser/numcpus v0.12.0
+## explicit; go 1.25.0
 github.com/tklauser/numcpus
 # github.com/twmb/franz-go v1.20.7
 ## explicit; go 1.24.0
