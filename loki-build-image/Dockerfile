@@ -76,7 +76,7 @@ RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@
 RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@latest
 RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0
 
-FROM aquasec/trivy:0.69.3 AS trivy
+FROM aquasec/trivy:0.76.0@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222 AS trivy
 
 FROM ${GOLANG_BASE_IMAGE}
 RUN apt-get update && \
