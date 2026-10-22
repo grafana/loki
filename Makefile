@@ -648,8 +648,18 @@ benchmark-store:
 	go run ./pkg/storage/hack/main.go
 	$(GOTEST) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
 
+# A local replace hides the required version from Loki's own builds, but modules
+# that import Loki ignore our replaces and must resolve that version themselves.
+check-local-replaces:
+	@set -e; for mod in $$(sed -nE 's#^(replace)?[[:space:]]*([^[:space:]]+)( [^[:space:]]+)? => \.\.?/.*#\2#p' go.mod); do \
+		version=$$(go list -m -f '{{.Version}}' $$mod); \
+		echo "checking $$mod@$$version resolves without the local replace"; \
+		(cd $$(mktemp -d) && GOFLAGS= GOPROXY=https://proxy.golang.org go mod download $$mod@$$version) || \
+			(echo "$$mod@$$version does not resolve for modules that import Loki. Require a pseudo-version of a commit on main instead."; exit 1); \
+	done
+
 # support go modules
-check-mod:
+check-mod: check-local-replaces
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
