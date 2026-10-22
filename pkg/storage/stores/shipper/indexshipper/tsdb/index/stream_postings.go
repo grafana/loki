@@ -313,18 +313,18 @@ func (p *streamPostings) labelNames() []string {
 // refs. Then comes a CRC32 of the content, which is checked here.
 func (p *streamPostings) readPostingsList(decbuf *streamenc.Decbuf, postingsOffset uint64) (Postings, error) {
 	decbuf.ResetAt(int(postingsOffset))
-	contentLen := decbuf.Be32int()
-	n := decbuf.Be32int()
+	contentLen := decbuf.Be32()
+	n := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
 	// The count is read before the CRC is checked, so make sure it agrees with
 	// the length and fits in the file before allocating for it.
-	if contentLen != 4+4*n || 4*n+crc32.Size > decbuf.Len() {
+	if uint64(contentLen) != 4+4*uint64(n) || 4*uint64(n)+crc32.Size > uint64(decbuf.Len()) {
 		return nil, fmt.Errorf("postings list at %d: length %d for %d refs: %w", postingsOffset, contentLen, n, streamenc.ErrInvalidSize)
 	}
 
-	buf := getPostingsListBuffer(4 * n)
+	buf := getPostingsListBuffer(4 * int(n))
 	decbuf.ReadInto(buf)
 	expectedChecksum := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
@@ -333,7 +333,7 @@ func (p *streamPostings) readPostingsList(decbuf *streamenc.Decbuf, postingsOffs
 	}
 
 	var count [4]byte
-	binary.BigEndian.PutUint32(count[:], uint32(n))
+	binary.BigEndian.PutUint32(count[:], n)
 	crc := crc32.Update(0, castagnoliTable, count[:])
 	if crc32.Update(crc, castagnoliTable, buf) != expectedChecksum {
 		putPostingsListBuffer(buf)

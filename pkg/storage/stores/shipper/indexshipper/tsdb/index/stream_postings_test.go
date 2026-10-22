@@ -396,6 +396,27 @@ func TestStreamPostings_RejectsCorruptPostingsList(t *testing.T) {
 			},
 			wantErr: streamenc.ErrInvalidSize,
 		},
+		{
+			// Where int is 32 bits, both values read as negative and
+			// 4+4*count equals the length, so a check in int arithmetic
+			// passes and the buffer allocation panics on a negative size.
+			name: "count that overflows a 32-bit int",
+			corrupt: func(b []byte, list int) {
+				binary.BigEndian.PutUint32(b[list:], 0xFFFFFFFC)   // -4 as an int32
+				binary.BigEndian.PutUint32(b[list+4:], 0xFFFFFFFE) // -2 as an int32
+			},
+			wantErr: streamenc.ErrInvalidSize,
+		},
+		{
+			// Where int is 32 bits, 4*count wraps around to 4, which agrees
+			// with the length.
+			name: "count whose refs wrap around a 32-bit int",
+			corrupt: func(b []byte, list int) {
+				binary.BigEndian.PutUint32(b[list:], 8)
+				binary.BigEndian.PutUint32(b[list+4:], 0x80000001)
+			},
+			wantErr: streamenc.ErrInvalidSize,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeManySymbolsFixture(t, FormatV4)
