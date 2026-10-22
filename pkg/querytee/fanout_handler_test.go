@@ -66,19 +66,26 @@ func TestFanOutHandler_Do(t *testing.T) {
 		require.Equal(t, "primary line", lokiResp.Data.Result[0].Entries[0].Line)
 	})
 
-	t.Run("returns the primary response without waiting for a slow secondary backend", func(t *testing.T) {
-		const secondaryDelay = time.Second
+	t.Run("returns the primary response without waiting for a blocked secondary backend", func(t *testing.T) {
+		release := make(chan struct{})
+		defer close(release)
 		handler := newHandler(nil,
 			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, primaryBody),
-			newTestBackend(t, "backend-2", RoleSecondary, secondaryDelay, http.StatusOK, secondaryBody),
+			newTestBackendWithHandler(t, "backend-2", RoleSecondary, func(http.ResponseWriter, *http.Request) { <-release }),
 		)
 
-		start := time.Now()
-		resp, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
+		done := make(chan error, 1)
+		go func() {
+			_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
+			done <- err
+		}()
 
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Less(t, time.Since(start), secondaryDelay)
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(3 * time.Second):
+			t.Fatal("Do did not return while the secondary backend was blocked")
+		}
 	})
 
 	t.Run("compares the secondary response with the primary response and ignores the other backends", func(t *testing.T) {
@@ -148,12 +155,18 @@ func TestTenantLabel(t *testing.T) {
 func newTestBackend(t *testing.T, name string, role BackendRole, delay time.Duration, status int, body string) *ProxyBackend {
 	t.Helper()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	return newTestBackendWithHandler(t, name, role, func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(delay)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
-	}))
+	})
+}
+
+func newTestBackendWithHandler(t *testing.T, name string, role BackendRole, handler http.HandlerFunc) *ProxyBackend {
+	t.Helper()
+
+	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
 	serverURL, err := url.Parse(server.URL)
