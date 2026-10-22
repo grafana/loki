@@ -88,6 +88,9 @@ type IndexShipper interface {
 	TriggerSync() bool
 	// SyncStatus reports the current/last sync status.
 	SyncStatus() indexstore.SyncStatus
+	// EnsureQueryReadiness downloads the indexes that must be query ready and
+	// are missing.
+	EnsureQueryReadiness(ctx context.Context) error
 	Stop()
 }
 
@@ -107,6 +110,35 @@ type Config struct {
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
+
+	// PerIndexOwnership is set by the index gateway with per-index ownership.
+	// The stores of schema periods with a sharded_path_prefix then read the
+	// sharded index copy with the filters below; the stores of other periods
+	// read path_prefix without them (see ForPeriod).
+	PerIndexOwnership bool `yaml:"-"`
+	// TenantFilter, if set, limits query readiness to the tenants it returns
+	// for each table. It is set by the index gateway with per-index ownership.
+	TenantFilter downloads.TenantFilter `yaml:"-"`
+	// SkipInitialQueryReadiness skips query readiness at construction, for a
+	// TenantFilter that cannot answer until later.
+	SkipInitialQueryReadiness bool `yaml:"-"`
+}
+
+// ForPeriod returns the config and the object storage path prefix of the
+// index store of schema period p. With PerIndexOwnership, a period with a
+// sharded index copy reads it, and any other period reads its index without
+// the per-index ownership filters, as without PerIndexOwnership.
+func (cfg Config) ForPeriod(p config.PeriodConfig) (Config, string) {
+	if !cfg.PerIndexOwnership {
+		return cfg, p.IndexTables.PathPrefix
+	}
+	if p.IndexTables.ShardedPathPrefix != "" {
+		return cfg, p.IndexTables.ShardedPathPrefix
+	}
+	cfg.PerIndexOwnership = false
+	cfg.TenantFilter = nil
+	cfg.SkipInitialQueryReadiness = false
+	return cfg, p.IndexTables.PathPrefix
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -261,6 +293,8 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			DownloadTimeout:   s.cfg.DownloadTimeout,
 			Limits:            limits,
+
+			SkipInitialQueryReadiness: s.cfg.SkipInitialQueryReadiness,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {
@@ -328,6 +362,13 @@ func (s *indexShipper) TriggerSync() bool {
 	return false
 }
 
+func (s *indexShipper) EnsureQueryReadiness(ctx context.Context) error {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.EnsureQueryReadiness(ctx)
+	}
+	return nil
+}
+
 func (s *indexShipper) SyncStatus() indexstore.SyncStatus {
 	if s.downloadsManager != nil {
 		return s.downloadsManager.SyncStatus()
@@ -358,7 +399,8 @@ func (Noop) ForEach(_ context.Context, _, _ string, _ index.ForEachIndexCallback
 func (Noop) ForEachConcurrent(_ context.Context, _, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
-func (Noop) FlushIndexes(_ context.Context) error { return nil }
-func (Noop) TriggerSync() bool                    { return false }
-func (Noop) SyncStatus() indexstore.SyncStatus    { return indexstore.SyncStatus{} }
-func (Noop) Stop()                                {}
+func (Noop) FlushIndexes(_ context.Context) error         { return nil }
+func (Noop) TriggerSync() bool                            { return false }
+func (Noop) SyncStatus() indexstore.SyncStatus            { return indexstore.SyncStatus{} }
+func (Noop) EnsureQueryReadiness(_ context.Context) error { return nil }
+func (Noop) Stop()                                        {}
