@@ -84,6 +84,7 @@ func buildPlanForLogQuery(
 		hasJSONParser    bool
 		hasRegexParser   bool
 		hasFmtExpr       bool
+		hasDropLabels    bool
 	)
 
 	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
@@ -122,7 +123,7 @@ func buildPlanForLogQuery(
 			}
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
-			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser && !hasFmtExpr {
+			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser && !hasFmtExpr && !hasDropLabels {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -138,6 +139,11 @@ func buildPlanForLogQuery(
 			return true
 		case *syntax.LabelFmtExpr:
 			hasFmtExpr = true
+			return true
+		case *syntax.DropLabelsExpr:
+			// drop removes labels, so a label filter that follows one must be
+			// evaluated after it and cannot become a scan predicate.
+			hasDropLabels = true
 			return true
 		}
 		return true
@@ -197,6 +203,7 @@ func buildPlanForLogQuery(
 	hasJSONParser = false
 	hasRegexParser = false
 	hasFmtExpr = false
+	hasDropLabels = false
 
 	// TODO(chaudum): Implement a Walk function that can return an error
 	expr.Walk(func(e syntax.Expr) bool {
@@ -239,7 +246,7 @@ func buildPlanForLogQuery(
 			}
 		case *syntax.LabelFilterExpr:
 			// Add following filters only after we met any parse stage.
-			if hasLogfmtParser || hasJSONParser || hasRegexParser || hasFmtExpr {
+			if hasLogfmtParser || hasJSONParser || hasRegexParser || hasFmtExpr || hasDropLabels {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -277,6 +284,7 @@ func buildPlanForLogQuery(
 			}
 
 			builder = builder.ProjectDrop(dropCols...)
+			hasDropLabels = true
 
 			return true
 		default:
