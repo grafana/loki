@@ -133,6 +133,15 @@ eval range from 60s to 120s step 30s first_over_time({app="a"} | logfmt | unwrap
   {app="a"} 20 _ 40
 eval range from 60s to 120s step 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 30s)
   {app="a"} 30 _ 40
+# A sub-millisecond offset excludes the sample on the upper bound and keeps the step time.
+eval instant at 30s first_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
+  {app="a"} 10      # [10s,30s)={10,20}
+eval instant at 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
+  {app="a"} 20
+eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
+  {app="a"} 10 _ _  # [70s,90s) excludes the sample at 90s
+eval range from 30s to 90s step 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
+  {app="a"} 20 _ _
 # Output gaps.
 eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap v [20s])
   {app="a"} 20 _ 40
@@ -253,6 +262,11 @@ eval instant at 50s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s] 
   {app="a"} 2.5
 eval range from 50s to 110s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s] offset 20s)
   {app="a"} 2.5 5 _
+# A sub-millisecond offset excludes the sample on the upper bound and keeps the step time.
+eval instant at 50s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s] offset 1ns)
+  {app="a"} 4       # [35s,50s)={4}
+eval range from 20s to 50s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s] offset 1ns)
+  {app="a"} 1 4     # [5s,20s)={1}, [35s,50s)={4}
 # Output gap.
 eval range from 50s to 110s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s])
   {app="a"} 4.5 _ 6
@@ -464,6 +478,11 @@ eval instant at 50s approx_count_distinct(id, {app="a"} | logfmt [15s] offset 20
   {app="a"} 2
 eval range from 50s to 110s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s] offset 20s)
   {app="a"} 2 1 _
+# A sub-millisecond offset excludes the sample on the upper bound and keeps the step time.
+eval instant at 50s approx_count_distinct(id, {app="a"} | logfmt [25s] offset 1ns)
+  {app="a"} 2       # [25s,50s)={3,4}
+eval range from 20s to 50s step 30s approx_count_distinct(id, {app="a"} | logfmt [25s] offset 1ns)
+  {app="a"} 1 2     # [−5s,20s)={1,1}, [25s,50s)={3,4}
 # Output gap.
 eval range from 50s to 110s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s])
   {app="a"} 2 _ 1
@@ -776,6 +795,36 @@ eval instant at 60s count_over_time({app="a"} | logfmt | unwrap v [1m])
 # count_over_time() doesn't allow grouping.
 eval instant at 60s count_over_time({app="a"} |= "keep" [1m]) by (app)
   expect fail msg: grouping not allowed for count_over_time aggregation
+
+# count_over_time() with a sub-millisecond offset. The Grafana logs volume histogram sends
+# `offset 1ns` to turn the (T−R, T] window into [T−R, T). The sample keeps the step time T.
+clear
+load
+  {app="volume", level="info"}  "keep"  @ 59.999999999s
+  {app="volume", level="info"}  "keep"  @ 60s
+  {app="volume", level="info"}  "keep"  @ 60.000000001s
+  {app="volume", level="warn"}  "keep"  @ 60s
+  {app="volume", level="error"} "keep"  @ 120s
+  {app="volume", level="info"}  "keep"  @ 120.000000001s
+  {app="volume", level="warn"}  "keep"  @ 179.999999999s
+  {app="volume", level="error"} "keep"  @ 180s
+  {app="volume", level="info"}  "noise" @ 90s
+
+# A line on a bucket boundary belongs to the bucket that starts there.
+eval instant at 240s sum by (level) (count_over_time({app="volume"} |= "keep" [1m] offset 1ns))
+  {level="error"} 1
+eval range from 60s to 240s step 60s sum by (level) (count_over_time({app="volume"} |= "keep" [1m] offset 1ns))
+  {level="info"}  1 2 1 _   # [0,60s)={59.999999999}, [60s,120s)={60, 60.000000001}, [120s,180s)={120.000000001}
+  {level="warn"}  _ 1 1 _
+  {level="error"} _ _ 1 1
+eval instant at 120s count_over_time({app="volume"} |= "keep" [1m] offset 1ns)
+  {app="volume", level="info"} 2
+  {app="volume", level="warn"} 1
+# Without the offset, the same line belongs to the bucket that ends there.
+eval range from 60s to 240s step 60s sum by (level) (count_over_time({app="volume"} |= "keep" [1m]))
+  {level="info"}  2 1 1 _   # (0,60s]={59.999999999, 60}, (60s,120s]={60.000000001}, (120s,180s]={120.000000001}
+  {level="warn"}  1 _ 1 _
+  {level="error"} _ 1 1 _
 
 # count_over_time() over log streams with structured metadata.
 #

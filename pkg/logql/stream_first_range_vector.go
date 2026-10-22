@@ -142,7 +142,7 @@ func (r *streamFirstRangeVectorIterator) At() (int64, StepResult) {
 
 	// Convert the step from nanoseconds to milliseconds, and undo the offset shift.
 	stepTs := r.start + int64(r.currStepIdx)*r.step
-	ts := stepTs/1e+6 + r.offset/1e+6
+	ts := (stepTs + r.offset) / 1e+6
 
 	for _, s := range r.series {
 		value, ok := s.steps.value(r.currStepIdx)

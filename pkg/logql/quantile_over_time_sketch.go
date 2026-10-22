@@ -261,7 +261,7 @@ type quantileSketchBatchRangeVectorIterator struct {
 func (r *quantileSketchBatchRangeVectorIterator) At() (int64, StepResult) {
 	at := make([]ProbabilisticQuantileSample, 0, len(r.window))
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current/1e+6 + r.offset/1e+6
+	ts := (r.current + r.offset) / 1e+6
 	for _, series := range r.window {
 		at = append(at, ProbabilisticQuantileSample{
 			F:      r.agg(series.Floats),

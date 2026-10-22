@@ -199,7 +199,7 @@ func (r *batchRangeVectorIterator) At() (int64, StepResult) {
 	}
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current/1e+6 + r.offset/1e+6
+	ts := (r.current + r.offset) / 1e+6
 	for _, series := range r.window {
 		r.at = append(r.at, promql.Sample{
 			F:      r.agg(series.Floats, r.current),
@@ -592,7 +592,7 @@ func (r *streamRangeVectorIterator) At() (int64, StepResult) {
 	}
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current/1e+6 + r.offset/1e+6
+	ts := (r.current + r.offset) / 1e+6
 	for lbs, rangeAgg := range r.windowRangeAgg {
 		r.at = append(r.at, promql.Sample{
 			F:      rangeAgg.at(),
