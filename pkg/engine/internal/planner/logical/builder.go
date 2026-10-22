@@ -226,6 +226,13 @@ func (b *Builder) ProjectExpand(expr ...Value) *Builder {
 	return b.ProjectAll(true, false, expr...)
 }
 
+// ProjectKeep returns a projection that retains only the referenced columns and
+// drops every other column. Callers that only want to narrow the label set need
+// to reference the builtin and generated columns they want to preserve.
+func (b *Builder) ProjectKeep(expr ...Value) *Builder {
+	return b.Project(false, false, false, expr...)
+}
+
 // Value returns the underlying [Value]. This is useful when you need to access
 // the value directly, such as when passing it to a function that operates on
 // values rather than a Builder.

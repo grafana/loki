@@ -84,6 +84,7 @@ func buildPlanForLogQuery(
 		hasJSONParser    bool
 		hasRegexParser   bool
 		hasFmtExpr       bool
+		hasKeepExpr      bool
 	)
 
 	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
@@ -120,9 +121,15 @@ func buildPlanForLogQuery(
 				hasRegexParser = true
 				return true
 			}
+		case *syntax.KeepLabelsExpr:
+			// `keep` removes every label it does not list, so a label filter after it
+			// must be evaluated against the narrowed label set rather than pushed down
+			// into the scan predicates.
+			hasKeepExpr = true
+			return true
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
-			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser && !hasFmtExpr {
+			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser && !hasFmtExpr && !hasKeepExpr {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -197,6 +204,7 @@ func buildPlanForLogQuery(
 	hasJSONParser = false
 	hasRegexParser = false
 	hasFmtExpr = false
+	hasKeepExpr = false
 
 	// TODO(chaudum): Implement a Walk function that can return an error
 	expr.Walk(func(e syntax.Expr) bool {
@@ -239,7 +247,7 @@ func buildPlanForLogQuery(
 			}
 		case *syntax.LabelFilterExpr:
 			// Add following filters only after we met any parse stage.
-			if hasLogfmtParser || hasJSONParser || hasRegexParser || hasFmtExpr {
+			if hasLogfmtParser || hasJSONParser || hasRegexParser || hasFmtExpr || hasKeepExpr {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -261,8 +269,38 @@ func buildPlanForLogQuery(
 			builder = builder.Format(types.VariadicOpParseLabelfmt, NewLiteral(e.Formats))
 			return false // do not traverse children
 		case *syntax.KeepLabelsExpr:
-			err = unimplementedFeature("keep")
-			return false // do not traverse children
+			if e.HasNamedMatchers() {
+				// Example: `| keep __error__=~"Unknown Error: .*"`
+				err = unimplementedFeature("keep with named matchers")
+				return false // do not traverse children
+			}
+
+			hasKeepExpr = true
+
+			names := e.Names()
+			if len(names) == 0 {
+				// `| keep` without any label is a no-op in v1, so emit no projection.
+				return true
+			}
+
+			// A keep projection retains only the columns it lists, so the columns that
+			// are not part of the label set have to be listed explicitly. This mirrors
+			// v1's KeepLabels stage, which leaves the line and the timestamp untouched
+			// and skips the special labels (see [log.isSpecialLabel]).
+			keepCols := []Value{
+				NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+				NewColumnRef(types.ColumnNameBuiltinMessage, types.ColumnTypeBuiltin),
+				NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
+				NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
+			}
+			for _, name := range names {
+				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
+				keepCols = append(keepCols, value)
+			}
+
+			builder = builder.ProjectKeep(keepCols...)
+
+			return true
 		case *syntax.DropLabelsExpr:
 			if e.HasNamedMatchers() {
 				// Example: `| drop __error__=~"Unknown Error: .*"`
