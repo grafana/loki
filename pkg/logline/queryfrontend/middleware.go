@@ -501,21 +501,14 @@ func metricStepAlignEnd(end time.Time, interval time.Duration, stepMillis int64)
 	return end.Add(time.Duration(stepMillis) * time.Millisecond)
 }
 
-// dryRunMetricReport treats a positive sample as covered when any real hint overlaps its lookback.
-// A pre-min-date sentinel is not a hit. The hint may not be the line that produced the sample.
-// TotalEntries counts the positive steps whose lookback ended at or before the ingester cutoff.
-// A miss records that whole lookback.
+// dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
+// The hint may not be the line that produced the sample. TotalEntries counts the positive
+// steps whose lookback ended at or before the ingester cutoff. A miss records that whole lookback.
 func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
 	report := verification.Report{HintRanges: len(hints)}
 	// For now, we don't check absent_over_time for correctness
 	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
 		return report
-	}
-	indexed := make([]hintprovider.HintTimeRange, 0, len(hints))
-	for _, hint := range hints {
-		if !hint.IsPassthrough() {
-			indexed = append(indexed, hint)
-		}
 	}
 	group := metricMatcherGroup(expr)
 	for _, stream := range promResp.Response.Data.Result {
@@ -529,7 +522,7 @@ func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse,
 				continue
 			}
 			report.TotalEntries++
-			if !rangesOverlap(indexed, winStart, winEnd) {
+			if !rangesOverlap(hints, winStart, winEnd) {
 				report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
 					Start: winStart,
 					End:   winEnd,
