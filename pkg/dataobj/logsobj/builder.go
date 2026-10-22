@@ -246,9 +246,6 @@ func (b *Builder) buildersFor(tenant string, layout streams.Layout) (*streams.Bu
 			AppendStrategy:            logs.AppendOrdered,
 			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
 			SortOrder:                 logs.SortSchemaASC,
-			SchemaLabels:              layout.SchemaLabels(),
-			StreamOrder:               logs.StreamOrderStableHashV1,
-			ShardCount:                layout.ShardLayout().Buckets(),
 			DropDuplicates:            b.cfg.DropDuplicates,
 		})
 		lb.SetTenant(tenant)
@@ -604,9 +601,6 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
 			AppendStrategy:   logs.AppendOrdered,
 			SortOrder:        logs.SortSchemaASC,
-			SchemaLabels:     layout.SchemaLabels(),
-			StreamOrder:      logs.StreamOrderStableHashV1,
-			ShardCount:       layout.ShardLayout().Buckets(),
 			DropDuplicates:   b.cfg.DropDuplicates,
 		})
 		lb.SetTenant(tenant)

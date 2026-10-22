@@ -3,7 +3,8 @@
 The `legacy-*.dataobj` files are data objects in the format from before
 streams sections recorded a stream layout. Their logs sections record the
 layout in their own sort info. LogMerge and compactor tests use them to check
-that such objects still compact.
+that such objects still compact. The index calculator rejects them, because
+their streams sections record no layout.
 
 They were written by `logsobj.Builder.FlushAndSort` at commit `ce961feb09`
 (`refactor(dataobj): Builder owns sorting of new objects (#25498)`). Each holds
