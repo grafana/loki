@@ -1,6 +1,6 @@
 module github.com/grafana/loki/operator/api/loki
 
-go 1.27
+go 1.26.0
 
 require (
 	github.com/stretchr/testify v1.12.1
@@ -26,5 +26,5 @@ require (
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v7 v7.0.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 )
