@@ -516,7 +516,6 @@ func (n *LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		Tenant:         n.Tenant,
 		ToCWindowStart: n.TocWindowStartUnixNanos,
 		Runs:           copyRunRefs(n.Runs),
-		SortSchema:     n.SortSchema,
 	}, nil
 }
 
