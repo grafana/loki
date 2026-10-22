@@ -200,7 +200,7 @@ func WithStreamsLayout(layout streams.Layout) StreamsSectionOpt {
 	return func(cfg *streamSectionConfig) { cfg.layout = layout }
 }
 
-// StreamsSection returns a streams.Builder populated with the given streams and assigned the specified tenant.
+// StreamsSection returns a streams builder for tenant that holds labelSets.
 // The section records a layout; see [WithStreamsLayout].
 func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream, opts ...StreamsSectionOpt) dataobj.SectionBuilder {
 	t.Helper()

@@ -108,8 +108,6 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		require.Equal(t, 1, countTenantSections(obj1, tenant, streams.CheckSection))
 		require.Greater(t, countTenantSections(obj1, tenant, logs.CheckSection), 1)
 
-		assertBuilderE2ESchemaLabels(t, obj1, tenant, schemaLabels)
-
 		for _, sec := range obj1.Sections().Filter(func(s *dataobj.Section) bool {
 			return logs.CheckSection(s) && s.Tenant == tenant
 		}) {

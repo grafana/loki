@@ -434,7 +434,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Equal(t, uint64(200), totalLogInputBytes(plan))
 	})
 
-	t.Run("plans a LogMerge task in the sort schema of the index", func(t *testing.T) {
+	t.Run("plans a LogMerge task for an index in another sort schema", func(t *testing.T) {
 		cluster := map[string]string{"cluster": "dev"}
 		secondSection := stat("logs/log-0", "label:cluster", cluster, 30, 35)
 		secondSection.SectionIndex = 1
@@ -449,9 +449,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, plan.tasks, 1)
-		merge, ok := plan.tasks[0].(logMergeTask)
-		require.True(t, ok, "task is %T, want logMergeTask", plan.tasks[0])
-		require.Equal(t, []string{"label:cluster"}, merge.spec.SortSchema)
+		require.IsType(t, logMergeTask{}, plan.tasks[0])
 		require.Equal(t, uint64(250), totalLogInputBytes(plan))
 	})
 
@@ -491,10 +489,10 @@ func TestExecuteLogCompaction(t *testing.T) {
 		window:      window,
 		sourceIndex: indexEntry{Path: "indexes/source"},
 		tasks: []logCompactionTask{
-			newLogMergeTask(&compactionv2pb.TaskSpec{SortSchema: []string{"label:app"}, Runs: []*compactionv2pb.RunRef{
+			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/a"}}},
 			}}),
-			newLogMergeTask(&compactionv2pb.TaskSpec{SortSchema: []string{"label:app"}, Runs: []*compactionv2pb.RunRef{
+			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b"}}},
 			}}),
 		},

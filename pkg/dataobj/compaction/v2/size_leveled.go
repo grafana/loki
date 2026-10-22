@@ -115,7 +115,7 @@ func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
 // merge with. Plan returns it in unmerged instead of a task, so the caller can
 // keep it without rewriting its data. Every run lands in exactly one merge
 // task or in unmerged.
-func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string, sortSchema []string) (merges []*compactionv2pb.TaskSpec, unmerged []Run) {
+func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string) (merges []*compactionv2pb.TaskSpec, unmerged []Run) {
 	for _, level := range s.groupByLevels(runs) {
 		for start := 0; start < len(level); start += s.k {
 			group := level[start:min(start+s.k, len(level))]
@@ -123,7 +123,7 @@ func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string, sortSchema []strin
 				unmerged = append(unmerged, group[0])
 				continue
 			}
-			merges = append(merges, Plan(group, tenant, len(group), sortSchema)...)
+			merges = append(merges, Plan(group, tenant, len(group))...)
 		}
 	}
 	return merges, unmerged

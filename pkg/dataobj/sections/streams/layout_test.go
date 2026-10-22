@@ -46,7 +46,6 @@ func TestNewLayout(t *testing.T) {
 	t.Run("orders stream IDs by the stable hash stream key", func(t *testing.T) {
 		require.Equal(t, StreamOrderStableHashV1, NewLayout(DefaultShardLayout(), nil).StreamOrder())
 	})
-
 }
 
 func TestSection_Layout(t *testing.T) {
@@ -94,7 +93,7 @@ func TestSection_Layout(t *testing.T) {
 		require.Equal(t, []int64{int64(four.BucketFromLabels(ls))}, buckets)
 	})
 
-	t.Run("returns a single-bucket layout that the builder recorded", func(t *testing.T) {
+	t.Run("round-trips a layout with a single shard bucket", func(t *testing.T) {
 		one, err := ShardLayoutFromBuckets(1)
 		require.NoError(t, err)
 		want := NewLayout(one, nil)
@@ -184,11 +183,29 @@ func (b *sortInfoSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 }
 
 func TestBuilder_SetLayout(t *testing.T) {
-	t.Run("panics when the builder already holds streams", func(t *testing.T) {
+	t.Run("panics when the builder holds streams and the layout has another shard layout", func(t *testing.T) {
+		four, err := ShardLayoutFromBuckets(4)
+		require.NoError(t, err)
 		b := NewBuilder(nil, 1024, 0, DefaultShardLayout())
 		b.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 
-		require.Panics(t, func() { b.SetLayout(NewLayout(DefaultShardLayout(), nil)) })
+		require.Panics(t, func() { b.SetLayout(NewLayout(four, nil)) })
+	})
+
+	t.Run("records a layout set after streams when the shard layout is unchanged", func(t *testing.T) {
+		want := NewLayout(DefaultShardLayout(), []string{"label:app"})
+		b := NewBuilder(nil, 1024, 0, DefaultShardLayout())
+		b.SetTenant("tenant")
+		b.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
+		b.SetLayout(want)
+
+		obj := buildObjectWithUnknownColumn(t, b)
+		sec, err := Open(t.Context(), obj.Sections()[0])
+		require.NoError(t, err)
+		got, ok, err := sec.Layout()
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, want.Equal(got))
 	})
 
 	t.Run("panics when the layout is the zero value", func(t *testing.T) {

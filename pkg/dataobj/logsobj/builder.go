@@ -232,7 +232,6 @@ func (b *Builder) layoutFor(tenant string) streams.Layout {
 func (b *Builder) buildersFor(tenant string, layout streams.Layout) (*streams.Builder, *logs.Builder) {
 	if _, ok := b.streams[tenant]; !ok {
 		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.ShardLayout())
-		sb.SetLayout(layout)
 		sb.SetTenant(tenant)
 		b.streams[tenant] = sb
 	}
@@ -411,11 +410,10 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 // Flush builds a data object from all buffered data, as appended. Calling
 // Flush on an empty builder returns [ErrBuilderEmpty].
 //
-// Each tenant's streams section records the tenant's layout. Each logs
-// section is sorted, but stream IDs follow the order in which streams were
-// first appended, and sections can overlap. The object is sorted
-// object-wide only if records were appended in stream key order. Use
-// [Builder.FlushAndSort] otherwise.
+// Each logs section is sorted, but stream IDs follow the order in which
+// streams were first appended, and sections can overlap. The streams sections
+// record no layout, so readers that need a layout reject the object. Use
+// [Builder.FlushAndSort] or [Builder.FlushKeyOrdered] for an object to store.
 //
 // On success the caller owns the returned [io.Closer] and must close it to
 // release the object's backing scratch storage; reads of the object fail once
@@ -423,6 +421,26 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 //
 // Flush always resets Builder.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
+	return b.flush(false)
+}
+
+// FlushKeyOrdered builds a data object from all buffered data, as appended,
+// and records each tenant's layout in its streams section. Calling
+// FlushKeyOrdered on an empty builder returns [ErrBuilderEmpty].
+//
+// The caller must append records in stream key order, so stream IDs and rows
+// already follow the layout. The recorded layout states this order, and
+// readers trust it without a check. Use [Builder.FlushAndSort] otherwise.
+//
+// The caller owns the returned [io.Closer], as for [Builder.Flush].
+// FlushKeyOrdered always resets Builder.
+func (b *Builder) FlushKeyOrdered() (*dataobj.Object, io.Closer, error) {
+	return b.flush(true)
+}
+
+// flush builds the object. If recordLayouts is true, each streams section
+// records the layout of its tenant.
+func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
 	}
@@ -434,7 +452,10 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	// Flush sections one more time in case they have data.
 	var flushErrors []error
 
-	for _, sb := range b.streams {
+	for tenant, sb := range b.streams {
+		if recordLayouts {
+			sb.SetLayout(b.layouts[tenant])
+		}
 		flushErrors = append(flushErrors, b.builder.Append(sb))
 	}
 	for _, lb := range b.logs {

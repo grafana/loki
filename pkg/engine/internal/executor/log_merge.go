@@ -297,10 +297,9 @@ func sourcesLayout(sources []*logSource) (streams.Layout, error) {
 	return layout, nil
 }
 
-// resolveStreams decodes the layout of a streams section and a map from local
-// stream ID to its stream (labels + aggregates). Labels are deep-copied so they
-// remain valid after the underlying reader buffers are reused. It returns an
-// error if the section records no layout.
+// resolveStreams returns the layout of a streams section and its streams by
+// local stream ID. It copies the labels, because the reader reuses its
+// buffers. It returns an error if the section records no layout.
 func resolveStreams(ctx context.Context, section *dataobj.Section) (streams.Layout, map[int64]streams.Stream, error) {
 	sec, err := streams.Open(ctx, section)
 	if err != nil {
@@ -418,7 +417,8 @@ type logObjectWriter struct {
 }
 
 // fixedSortSchema gives every tenant the same sort schema, so the output
-// builder writes the schema of the sources instead of the tenant overrides.
+// builder writes the schema labels of the source layout instead of the tenant
+// overrides.
 type fixedSortSchema []string
 
 func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
@@ -497,7 +497,9 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 // finalizeAndUpload appends the pending sections, flushes them into one compacted
 // log object, computes its content-hash path, and uploads it to the data bucket.
 func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr error) {
-	obj, closer, err := w.logsBuilder.Flush()
+	// The merged records arrive in global stream key order, so the object
+	// records the source layout without a sort.
+	obj, closer, err := w.logsBuilder.FlushKeyOrdered()
 	if err != nil {
 		return fmt.Errorf("flushing logs builder: %w", err)
 	}

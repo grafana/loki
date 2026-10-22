@@ -36,8 +36,6 @@ func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
 		"Clone must deep-copy nested SectionRef.MaxKey")
 }
 
-// TestLogMerge_Clone_TolerateNilElements verifies cloneRuns does not
-// panic on nil *RunRef or nil *SectionRef entries.
 func TestLogMerge_Clone_TolerateNilElements(t *testing.T) {
 	orig := &LogMerge{
 		NodeID: ulid.Make(),

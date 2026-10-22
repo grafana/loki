@@ -1383,3 +1383,97 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 		})
 	}
 }
+
+func TestDoLogObjectMerge_StreamsLayout(t *testing.T) {
+	const tenant = "T"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// uploadRawSource uploads an object with one stream, whose streams section
+	// uses shardLayout and records layout if it is non-nil.
+	uploadRawSource := func(t *testing.T, bucket objstore.Bucket, path string, shardLayout streams.ShardLayout, layout *streams.Layout) {
+		t.Helper()
+		streamBuilder := streams.NewBuilder(nil, 2048, 10000, shardLayout)
+		if layout != nil {
+			streamBuilder.SetLayout(*layout)
+		}
+		streamBuilder.SetTenant(tenant)
+		id := streamBuilder.Record(labels.FromStrings("app", "a"), base, 4)
+		logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+			PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
+		})
+		logBuilder.SetTenant(tenant)
+		logBuilder.Append(logs.Record{StreamID: id, Timestamp: base, Line: []byte("line")})
+
+		objBuilder := dataobj.NewBuilder(nil)
+		require.NoError(t, objBuilder.Append(streamBuilder))
+		require.NoError(t, objBuilder.Append(logBuilder))
+		obj, closer, err := objBuilder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+		require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, obj))
+	}
+	newContext := func(t *testing.T, dataBucket objstore.Bucket) *Context {
+		t.Helper()
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		return c
+	}
+
+	t.Run("writes output objects that record the layout of the sources", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		buildSourceLogObject(t, dataBucket, "objA", []string{"label:cluster"}, map[string][]testStream{
+			tenant: {{labels: `{app="a",cluster="c"}`, entries: linesAt(base, 2)}},
+		})
+		buildSourceLogObject(t, dataBucket, "objB", []string{"label:cluster"}, map[string][]testStream{
+			tenant: {{labels: `{app="b",cluster="d"}`, entries: linesAt(base, 2)}},
+		})
+		c := newContext(t, dataBucket)
+
+		_, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")})
+		require.NoError(t, err)
+
+		want := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"})
+		var outputs int
+		require.NoError(t, dataBucket.Iter(t.Context(), "", func(path string) error {
+			if path == "objA" || path == "objB" {
+				return nil
+			}
+			obj, err := dataobj.FromBucket(t.Context(), dataBucket, path, 0)
+			require.NoError(t, err)
+			for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+				opened, err := streams.Open(t.Context(), sec)
+				require.NoError(t, err)
+				got, ok, err := opened.Layout()
+				require.NoError(t, err)
+				require.True(t, ok)
+				require.True(t, want.Equal(got), "got layout %+v", got)
+			}
+			outputs++
+			return nil
+		}, objstore.WithRecursiveIter()))
+		require.Positive(t, outputs)
+	})
+
+	t.Run("returns an error and no output when a source records no layout", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		uploadRawSource(t, dataBucket, "objA", streams.DefaultShardLayout(), nil)
+		c := newContext(t, dataBucket)
+
+		arts, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")})
+		require.ErrorContains(t, err, "records no layout")
+		require.Nil(t, arts)
+	})
+
+	t.Run("returns an error and no output when the sources have a non-default shard layout", func(t *testing.T) {
+		four, err := streams.ShardLayoutFromBuckets(4)
+		require.NoError(t, err)
+		layout := streams.NewLayout(four, nil)
+		dataBucket := objstore.NewInMemBucket()
+		uploadRawSource(t, dataBucket, "objA", four, &layout)
+		c := newContext(t, dataBucket)
+
+		arts, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")})
+		require.ErrorContains(t, err, "supports only")
+		require.Nil(t, arts)
+	})
+}

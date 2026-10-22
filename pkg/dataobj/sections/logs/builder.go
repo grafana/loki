@@ -404,9 +404,9 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 func sortInfo(sort SortOrder) *datasetmd_v2.SortInfo {
 	switch sort {
 	case SortStreamASC, SortSchemaASC:
-		// SortSchemaASC sorts rows by the stream key of each record. The
-		// tenant's streams section assigns stream IDs in stream key order, so
-		// the rows also follow [streamID ASC, timestamp DESC].
+		// SortSchemaASC sorts rows by the stream key of each record. If stream
+		// IDs follow stream key order, as in an object that records a stream
+		// layout, the rows also follow [streamID ASC, timestamp DESC].
 		return &datasetmd_v2.SortInfo{
 			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
 				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC

@@ -101,10 +101,10 @@ func TestMixedRunIterator_Errors(t *testing.T) {
 		run  Run
 		want string
 	}{
-		{name: "later section fails", run: Run{valid, {}}, want: "section and stream remap are required"},
-		{name: "missing stream", run: Run{{Section: sec, Remap: map[int64]int64{}}}, want: "absent from stream remap"},
-		{name: "descending stream at boundary", run: Run{{Section: sec, Remap: map[int64]int64{1: 2}}, valid}, want: "run is not sorted"},
-		{name: "ascending timestamp at boundary", run: Run{valid, later}, want: "run is not sorted"},
+		{name: "returns an error when a later section in the run has no remap", run: Run{valid, {}}, want: "section and stream remap are required"},
+		{name: "returns an error when a record stream is absent from the remap", run: Run{{Section: sec, Remap: map[int64]int64{}}}, want: "absent from stream remap"},
+		{name: "returns an error when stream order descends at a section boundary", run: Run{{Section: sec, Remap: map[int64]int64{1: 2}}, valid}, want: "run is not sorted"},
+		{name: "returns an error when timestamps ascend at a section boundary", run: Run{valid, later}, want: "run is not sorted"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

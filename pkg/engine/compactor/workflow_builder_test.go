@@ -160,8 +160,7 @@ func TestBuildIndexMergePlan_AssignsFreshNodeID(t *testing.T) {
 func TestBuildLogMergePlan(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 	task := &compactionv2pb.TaskSpec{
-		Tenant:     "t1",
-		SortSchema: []string{"label:service_name"},
+		Tenant: "t1",
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
 		},

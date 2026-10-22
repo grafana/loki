@@ -68,9 +68,9 @@ type Builder struct {
 	lastID       atomic.Int64
 	lookup       map[uint64][]*Stream
 
-	// layout selects the shard bucket of each stream. Flush records it in the
-	// section metadata if it has a stream order. It stays set across Reset,
-	// so reuse a builder only for tenants with the same layout.
+	// layout selects the shard bucket of each stream. Flush records it only if
+	// SetLayout set it. It stays set across Reset, so reuse a builder only for
+	// tenants with the same layout.
 	layout Layout
 
 	// The optional tenant that owns the builder. If specified, the section
@@ -111,11 +111,12 @@ func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardL
 // SetLayout makes b record layout in the section metadata on Flush, and
 // selects the shard bucket of each stream with layout.ShardLayout().
 //
-// SetLayout panics if b already holds streams, because their buckets would not
-// match the recorded layout. It also panics if layout is the zero value.
+// SetLayout panics if b already holds streams and layout has another shard
+// layout, because the buckets of those streams would not match the recorded
+// layout. It also panics if layout is the zero value.
 func (b *Builder) SetLayout(layout Layout) {
-	if len(b.ordered) > 0 {
-		panic("streams: SetLayout called on a builder that holds streams")
+	if len(b.ordered) > 0 && layout.shardLayout != b.layout.shardLayout {
+		panic("streams: SetLayout changed the shard layout of a builder that holds streams")
 	}
 	if layout.streamOrder == StreamOrderUnspecified {
 		panic("streams: SetLayout called with a layout that has no stream order")

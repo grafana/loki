@@ -663,6 +663,8 @@ func testFlushAndSortSchema(t *testing.T) {
 		require.NoError(t, err)
 		defer closer2.Close()
 
+		requireStreamsLayout(t, obj2, "schema-tenant", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
+		requireStreamsLayout(t, obj2, "default-tenant", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}))
 		require.Equal(t, expectedLabelOrder(t, []string{"zoo", "alpha", "middle"}, "app", []string{"label:app"}), appOrder(t, obj2, "schema-tenant"))
 		timestampsDescWithinGroups(t, obj2, "schema-tenant")
 
@@ -1361,4 +1363,52 @@ func requireStreamsLayout(t *testing.T, obj *dataobj.Object, tenant string, want
 		found++
 	}
 	require.Equal(t, 1, found, "tenant %s must have one streams section", tenant)
+}
+
+func TestBuilder_FlushRecordsLayout(t *testing.T) {
+	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+	newFilledBuilder := func(t *testing.T) *Builder {
+		t.Helper()
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), tenantOverrides{"t1": {"label:app"}, "t2": {"label:cluster"}})
+		require.NoError(t, err)
+		for _, tenant := range []string{"t1", "t2"} {
+			require.NoError(t, b.Append(tenant, logproto.Stream{
+				Labels:  `{app="a",cluster="c"}`,
+				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
+			}, now))
+		}
+		return b
+	}
+
+	t.Run("Flush records no layout, so readers reject the object", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t).Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			opened, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			_, ok, err := opened.Layout()
+			require.NoError(t, err)
+			require.False(t, ok)
+		}
+	})
+
+	t.Run("FlushKeyOrdered records the layout of each tenant", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t).FlushKeyOrdered()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireStreamsLayout(t, obj, "t1", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
+		requireStreamsLayout(t, obj, "t2", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"}))
+	})
+
+	t.Run("FlushAndSort records the layout of each tenant", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t).FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireStreamsLayout(t, obj, "t1", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
+		requireStreamsLayout(t, obj, "t2", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"}))
+	})
 }
