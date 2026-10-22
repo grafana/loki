@@ -78,8 +78,8 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	}
 
 	// Process the streams section first, because the logs sections need the
-	// labels and shard bucket of each stream.
-	streamLabels, shardBuckets, err := c.processStreamsSection(ctx, streamsSection)
+	// layout of the object and the labels and shard bucket of each stream.
+	layout, streamLabels, shardBuckets, err := c.processStreamsSection(ctx, streamsSection)
 	if err != nil {
 		return fmt.Errorf("failed to process stream section path=%s: %w", objectPath, err)
 	}
@@ -92,7 +92,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	for i, section := range reader.Sections().Filter(logs.CheckSection) {
 		g.Go(func() error {
 			sectionLogger := log.With(logger, "section", i)
-			p, err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamLabels, shardBuckets)
+			p, err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), layout, streamLabels, shardBuckets)
 			if err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
 			}
@@ -132,17 +132,27 @@ func singleStreamsSection(reader *dataobj.Object) (*dataobj.Section, error) {
 	return found, nil
 }
 
-func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section) (map[int64]labels.Labels, map[int64]uint32, error) {
+// processStreamsSection returns the layout of section and the labels and
+// shard bucket of each stream. It returns an error that wraps
+// [ErrUnprocessableObject] if section records no valid layout.
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section) (streams.Layout, map[int64]labels.Labels, map[int64]uint32, error) {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open stream section: %w", err)
+		return streams.Layout{}, nil, nil, fmt.Errorf("failed to open stream section: %w", err)
+	}
+	layout, ok, err := streamSection.Layout()
+	if err != nil {
+		return streams.Layout{}, nil, nil, fmt.Errorf("%w: reading streams layout: %w", ErrUnprocessableObject, err)
+	}
+	if !ok {
+		return streams.Layout{}, nil, nil, fmt.Errorf("%w: streams section records no layout", ErrUnprocessableObject)
 	}
 
 	rowReader := streams.NewRowReader(streamSection)
 	defer rowReader.Close()
 
 	if err := rowReader.Open(ctx); err != nil {
-		return nil, nil, fmt.Errorf("failed to open stream row reader: %w", err)
+		return streams.Layout{}, nil, nil, fmt.Errorf("failed to open stream row reader: %w", err)
 	}
 
 	streamBuf := make([]streams.Stream, 8192)
@@ -151,7 +161,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 	for {
 		n, err := rowReader.Read(ctx, streamBuf)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, nil, fmt.Errorf("failed to read stream section: %w", err)
+			return streams.Layout{}, nil, nil, fmt.Errorf("failed to read stream section: %w", err)
 		}
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
@@ -159,11 +169,11 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 		for _, stream := range streamBuf[:n] {
 			if _, ok := streamLabels[stream.ID]; !ok {
 				streamLabels[stream.ID] = stream.Labels
-				shardBuckets[stream.ID] = streams.DefaultShardLayout().BucketFromLabels(stream.Labels)
+				shardBuckets[stream.ID] = layout.ShardLayout().BucketFromLabels(stream.Labels)
 			}
 		}
 	}
-	return streamLabels, shardBuckets, nil
+	return layout, streamLabels, shardBuckets, nil
 }
 
 // processedLogsSection holds the calculation steps of one logs section and the
@@ -177,17 +187,12 @@ type processedLogsSection struct {
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
 // The provided section index counts only logs sections, matching the indexes yielded by Filter, not positions in reader.Sections().
 // The caller must pass the result to flushLogsSection, which runs the Flush of each step.
-func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) (*processedLogsSection, error) {
+func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, layout streams.Layout, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) (*processedLogsSection, error) {
 	logsBuf := make([]logs.Record, 8192)
 
 	logsSection, err := logs.Open(ctx, section)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open logs section: %w", err)
-	}
-
-	schemaLabels, err := logsSection.SchemaLabels()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read logs section schema labels: %w", err)
 	}
 
 	// Fetch the column statistics in order to init the bloom filters for each column
@@ -201,6 +206,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		sectionIdx:         sectionIdx,
 		streamLabels:       streamLabels,
 		streamShardBuckets: shardBuckets,
+		shardLayout:        layout.ShardLayout(),
 		builder:            c.indexobjBuilder,
 	}
 
@@ -211,7 +217,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	lockFreeContext := *calculationContext
 	lockFreeContext.builder = nil
 
-	calculationSteps := getLogsCalculationSteps(schemaLabels)
+	calculationSteps := getLogsCalculationSteps(layout.SchemaLabels())
 
 	// Track cumulative duration per calculation step across all batches + flush.
 	stepDurations := make([]time.Duration, len(calculationSteps))
@@ -360,6 +366,7 @@ type logsCalculationContext struct {
 	// be a problem.
 	streamLabels       map[int64]labels.Labels // source stream ID -> labels
 	streamShardBuckets map[int64]uint32        // source stream ID -> shard bucket
+	shardLayout        streams.ShardLayout     // layout of streamShardBuckets
 	builder            concurrentBuilder
 }
 

@@ -3,7 +3,6 @@ package logsobj
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -14,8 +13,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 )
 
-// rankedSortKey is the sort sidecar of [Builder.FlushAndSort] for one stream. rank is the rank in this object after sorting by
-// SortKey; independently written objects do not share rank.
+// rankedSortKey holds the sort key of one stream and its rank, which is its
+// new stream ID after the sort in [Builder.FlushAndSort]. Independently
+// written objects do not share ranks.
 type rankedSortKey struct {
 	rank int64
 	streams.SortKey
@@ -32,23 +32,6 @@ func emptyRankedSortKey(ls labels.Labels, schemaLabels []string, shardLayout str
 	return rankedSortKey{
 		SortKey: shardLayout.NewSortKey(ls, schemaKey),
 	}, nil
-}
-
-// TargetSortLayout returns the physical logs layout produced for schemaLabels
-// and shardLayout.
-func TargetSortLayout(schemaLabels []string, shardLayout streams.ShardLayout) logs.SortLayout {
-	return logs.SortLayout{
-		SchemaLabels: slices.Clone(schemaLabels),
-		StreamOrder:  logs.StreamOrderStableHashV1,
-		ShardCount:   shardLayout.Buckets(),
-	}
-}
-
-// EqualSortLayout reports whether two physical logs layouts are identical.
-func EqualSortLayout(a, b logs.SortLayout) bool {
-	return slices.Equal(a.SchemaLabels, b.SchemaLabels) &&
-		a.StreamOrder == b.StreamOrder &&
-		a.ShardCount == b.ShardCount
 }
 
 // sortKeys extracts the sort-tuple column for the k-way merge comparator.

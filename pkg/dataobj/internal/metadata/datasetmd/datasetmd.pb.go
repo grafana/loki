@@ -759,6 +759,13 @@ func (m *Statistics) GetCardinalityCount() uint64 {
 }
 
 // SortInfo holds sort order information for rows in the section.
+//
+// A LOG section sets only column_sorts.
+//
+// A STREAMS section that records a layout sets schema_labels, stream_order,
+// and shard_count, and no column_sorts. The layout describes the stream IDs
+// that the STREAMS section defines and that the LOG sections of the same
+// tenant use. A STREAMS section without SortInfo records no layout.
 type SortInfo struct {
 	// The list of column sorts. The length of this depends on how many columns
 	// are used for sorting.
@@ -768,20 +775,16 @@ type SortInfo struct {
 	// contain a single element. Otherwise, this field will contain multiple
 	// elements when compound sorting is used.
 	ColumnSorts []*SortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
-	// schema_labels, if non-empty, indicates that rows are sorted by shard_bucket
-	// (when shard_count > 1), then the values of these fully-qualified sort keys
-	// (in order), then stream hash (see stream_order), followed by column_sorts
-	// as tiebreakers. Each entry is a FQN of the form "label:<name>"
-	// (e.g. "label:service_name").
+	// schema_labels are the fully-qualified labels of the stream key, in order.
+	// Each entry has the form "label:<name>" (e.g. "label:service_name"). Set
+	// only in STREAMS sections.
 	SchemaLabels []string `protobuf:"bytes,2,rep,name=schema_labels,json=schemaLabels,proto3" json:"schema_labels,omitempty"`
-	// stream_order describes how object-local stream IDs were assigned before
-	// rows were sorted by stream ID. It is meaningful for LOG sections with
-	// schema_labels and allows independently written objects to prove that their
-	// stream order is globally compatible.
+	// stream_order is the stream key that orders the stream IDs. Set only in
+	// STREAMS sections. Independently written objects with the same layout have
+	// comparable stream orders.
 	StreamOrder StreamOrder `protobuf:"varint,3,opt,name=stream_order,json=streamOrder,proto3,enum=dataobj.metadata.dataset.v2.StreamOrder" json:"stream_order,omitempty"`
-	// shard_count is the number of physical shard buckets that participate in
-	// the stream layout. Zero means the field was not persisted by a legacy
-	// writer.
+	// shard_count is the bucket count of the shard layout of the shard bucket
+	// column. Set only in STREAMS sections, where it must not be zero.
 	ShardCount uint32 `protobuf:"varint,4,opt,name=shard_count,json=shardCount,proto3" json:"shard_count,omitempty"`
 }
 

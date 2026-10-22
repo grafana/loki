@@ -1,11 +1,15 @@
 package executor
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -175,8 +180,7 @@ func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
 
 	c := newTestExecutorContext(t, bucket)
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
+		Tenant: tenant,
 		Runs: []*compactionv2pb.RunRef{
 			// objA is referenced twice (and by two runs) to exercise dedup.
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objA"}}},
@@ -234,9 +238,8 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 
 	c := newTestExecutorContext(t, bucket)
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
-		Runs:       []*compactionv2pb.RunRef{{Sections: refs}},
+		Tenant: tenant,
+		Runs:   []*compactionv2pb.RunRef{{Sections: refs}},
 	}
 
 	sources, err := c.collectLogSources(ctx, node)
@@ -275,8 +278,7 @@ func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
 	c.dataBucket = root
 
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
+		Tenant: tenant,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objects/aa/bb"}}},
 		},
@@ -431,7 +433,7 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 		},
 	}
 
-	table, err := buildGlobalStreamTable(sources, sortSchema)
+	table, err := buildGlobalStreamTable(sources, streams.NewLayout(streams.DefaultShardLayout(), sortSchema))
 	require.NoError(t, err)
 
 	aID, err := table.Resolve(0, 2)
@@ -492,9 +494,8 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	c := newSmallObjectExecutorContext(t, indexBucket)
 	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
-		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA", "objB", "objC"),
+		Tenant: tenant,
+		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB", "objC"),
 	}
 
 	arts, err := c.doLogObjectMerge(ctx, node)
@@ -573,9 +574,8 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 	c := newTestExecutorContext(t, indexBucket)
 	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
-		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
+		Tenant: tenant,
+		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
 	}
 
 	arts, err := c.doLogObjectMerge(ctx, node)
@@ -639,9 +639,8 @@ func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
 	c.dataBucket = dataBucket
 	c.logMergeObserver = observer
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
-		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
+		Tenant: tenant,
+		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
 	}
 
 	_, err := c.doLogObjectMerge(ctx, node)
@@ -673,7 +672,7 @@ func TestDoLogObjectMerge_CountsDuplicatesByStreamLabels(t *testing.T) {
 		c := newTestExecutorContext(t, objstore.NewInMemBucket())
 		c.dataBucket = dataBucket
 		c.logMergeObserver = observer
-		node := &physical.LogMerge{Tenant: tenant, SortSchema: sortSchema, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")}
+		node := &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")}
 
 		sources, err := c.collectLogSources(ctx, node)
 		require.NoError(t, err)
@@ -712,52 +711,7 @@ func TestDoLogObjectMerge_CountsDuplicatesByStreamLabels(t *testing.T) {
 	})
 }
 
-func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
-	want := logs.SortLayout{
-		SchemaLabels: []string{"label:app"},
-		StreamOrder:  logs.StreamOrderStableHashV1,
-		ShardCount:   streams.DefaultShardLayout().Buckets(),
-	}
-
-	tests := []struct {
-		name string
-		got  logs.SortLayout
-	}{
-		{
-			name: "schema labels",
-			got: logs.SortLayout{
-				SchemaLabels: []string{"label:cluster"},
-				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.DefaultShardLayout().Buckets(),
-			},
-		},
-		{
-			name: "stream order",
-			got: logs.SortLayout{
-				SchemaLabels: []string{"label:app"},
-				StreamOrder:  logs.StreamOrderUnspecified,
-				ShardCount:   streams.DefaultShardLayout().Buckets(),
-			},
-		},
-		{
-			name: "shard count",
-			got: logs.SortLayout{
-				SchemaLabels: []string{"label:app"},
-				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.DefaultShardLayout().Buckets() / 2,
-			},
-		},
-	}
-
-	require.True(t, logsobj.EqualSortLayout(want, want), "identical layouts must match")
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			require.False(t, logsobj.EqualSortLayout(test.got, want))
-		})
-	}
-}
-
-func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
+func TestDoLogObjectMerge_FailsWhenSourceLayoutsDiffer(t *testing.T) {
 	ctx := context.Background()
 	dataBucket := objstore.NewInMemBucket()
 	indexBucket := objstore.NewInMemBucket()
@@ -775,14 +729,13 @@ func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
 	c := newTestExecutorContext(t, indexBucket)
 	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: []string{"label:app"},
-		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
+		Tenant: tenant,
+		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
 	}
 
 	arts, err := c.doLogObjectMerge(ctx, node)
-	require.ErrorContains(t, err, "sort layout does not match the task sort schema")
-	require.Nil(t, arts, "mismatched sort layout must not produce an output")
+	require.ErrorContains(t, err, "different stream layout")
+	require.Nil(t, arts, "mismatched stream layouts must not produce an output")
 }
 
 func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
@@ -804,9 +757,8 @@ func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
 	c := newTestExecutorContext(t, indexBucket)
 	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
-		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA"),
+		Tenant: tenant,
+		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA"),
 	}
 
 	arts, err := c.doLogObjectMerge(ctx, node)
@@ -868,9 +820,8 @@ func TestDoLogObjectMerge_IndexCoversAllSplitObjects(t *testing.T) {
 	c := newSmallObjectExecutorContext(t, indexBucket)
 	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
-		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
+		Tenant: tenant,
+		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
 	}
 
 	arts, err := c.doLogObjectMerge(ctx, node)
@@ -915,7 +866,7 @@ func TestDoLogObjectMerge_EmptyRunsErrors(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 
 	c := newTestExecutorContext(t, bucket)
-	node := &physical.LogMerge{Tenant: "T", SortSchema: []string{"label:app"}}
+	node := &physical.LogMerge{Tenant: "T"}
 
 	_, err := c.doLogObjectMerge(ctx, node)
 	require.Error(t, err, "empty runs must error so the coordinator skips the ToC swap")
@@ -936,8 +887,7 @@ func TestDoLogObjectMerge_ZeroOutputObjectsErrors(t *testing.T) {
 
 	c := newTestExecutorContext(t, bucket)
 	node := &physical.LogMerge{
-		Tenant:     "T",
-		SortSchema: sortSchema,
+		Tenant: "T",
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
 		},
@@ -973,9 +923,8 @@ func TestExecuteLogMerge_ContentHashAndRecord(t *testing.T) {
 	c := newTestExecutorContext(t, indexBucket)
 	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
-		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA"),
+		Tenant: tenant,
+		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA"),
 	}
 
 	// executeLogMerge emits a result record batch
@@ -1124,9 +1073,8 @@ func TestDoLogObjectMerge_HonorsPerTaskSectionSelection(t *testing.T) {
 		c := newTestExecutorContext(t, indexBucket)
 		c.dataBucket = dataBucket
 		node := &physical.LogMerge{
-			Tenant:     tenant,
-			SortSchema: sortSchema,
-			Runs:       []*compactionv2pb.RunRef{{Sections: refs}},
+			Tenant: tenant,
+			Runs:   []*compactionv2pb.RunRef{{Sections: refs}},
 		}
 		arts, err := c.doLogObjectMerge(ctx, node)
 		require.NoError(t, err)
@@ -1321,9 +1269,8 @@ func TestDoLogObjectMerge_StreamMetadataMatchesMergedRecords(t *testing.T) {
 		c := newTestExecutorContext(t, indexBucket)
 		c.dataBucket = dataBucket
 		node := &physical.LogMerge{
-			Tenant:     tenant,
-			SortSchema: sortSchema,
-			Runs:       []*compactionv2pb.RunRef{{Sections: refs}},
+			Tenant: tenant,
+			Runs:   []*compactionv2pb.RunRef{{Sections: refs}},
 		}
 		arts, err := c.doLogObjectMerge(ctx, node)
 		require.NoError(t, err)
@@ -1371,7 +1318,7 @@ func TestDoLogObjectMerge_PlannedRuns(t *testing.T) {
 	}
 	require.True(t, len(refs[0].Sections) > 1 || len(refs[1].Sections) > 1)
 	c := newTestExecutorContext(t, bucket)
-	arts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, SortSchema: schema, Runs: refs})
+	arts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: refs})
 	require.NoError(t, err)
 	require.NoError(t, arts.Validate())
 	objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts.Path, tenant)
@@ -1395,7 +1342,7 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 	refs := sourceLogRuns(t, bucket, tenant, "source")[0].Sections
 	require.Greater(t, len(refs), 1, "fixture must contain multiple logs sections")
 	c := newTestExecutorContext(t, bucket)
-	node := &physical.LogMerge{Tenant: tenant, SortSchema: schema, Runs: []*compactionv2pb.RunRef{
+	node := &physical.LogMerge{Tenant: tenant, Runs: []*compactionv2pb.RunRef{
 		{Sections: []*compactionv2pb.SectionRef{refs[1], refs[1]}},
 		{Sections: []*compactionv2pb.SectionRef{refs[1]}},
 	}}
@@ -1425,7 +1372,7 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 		require.Less(t, len(objects[0].records), 160)
 	})
 	t.Run("concatenate all sections in storage order", func(t *testing.T) {
-		all := &physical.LogMerge{Tenant: tenant, SortSchema: schema, Runs: sourceLogRuns(t, bucket, tenant, "source")}
+		all := &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, bucket, tenant, "source")}
 		arts, err := c.doLogObjectMerge(ctx, all)
 		require.NoError(t, err)
 		objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts.Path, tenant)
@@ -1440,4 +1387,184 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+func TestDoLogObjectMerge_StreamsLayout(t *testing.T) {
+	const tenant = "T"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// uploadRawSource uploads an object with one stream, whose streams section
+	// uses shardLayout and records layout if it is non-nil.
+	uploadRawSource := func(t *testing.T, bucket objstore.Bucket, path string, shardLayout streams.ShardLayout, layout *streams.Layout) {
+		t.Helper()
+		streamBuilder := streams.NewBuilder(nil, 2048, 10000, shardLayout)
+		if layout != nil {
+			streamBuilder.SetLayout(*layout)
+		}
+		streamBuilder.SetTenant(tenant)
+		id := streamBuilder.Record(labels.FromStrings("app", "a"), base, 4)
+		logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+			PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
+		})
+		logBuilder.SetTenant(tenant)
+		logBuilder.Append(logs.Record{StreamID: id, Timestamp: base, Line: []byte("line")})
+
+		objBuilder := dataobj.NewBuilder(nil)
+		require.NoError(t, objBuilder.Append(streamBuilder))
+		require.NoError(t, objBuilder.Append(logBuilder))
+		obj, closer, err := objBuilder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+		require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, obj))
+	}
+	newContext := func(t *testing.T, dataBucket objstore.Bucket) *Context {
+		t.Helper()
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		return c
+	}
+
+	t.Run("writes every output object of a split merge with the layout of the sources", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		var streamsA, streamsB []testStream
+		for i := range 4 {
+			streamsA = append(streamsA, testStream{labels: fmt.Sprintf(`{app="a%d",cluster="c%d"}`, i, i), entries: wideLinesAt(base, 4)})
+			streamsB = append(streamsB, testStream{labels: fmt.Sprintf(`{app="b%d",cluster="d%d"}`, i, i), entries: wideLinesAt(base, 4)})
+		}
+		buildSourceLogObject(t, dataBucket, "objA", []string{"label:cluster"}, map[string][]testStream{tenant: streamsA})
+		buildSourceLogObject(t, dataBucket, "objB", []string{"label:cluster"}, map[string][]testStream{tenant: streamsB})
+		c := newSmallObjectExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+
+		_, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")})
+		require.NoError(t, err)
+
+		layouts := outputLayouts(t, dataBucket, "objA", "objB")
+		require.Greater(t, len(layouts), 1, "the merge must split its output")
+		want := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"})
+		for _, got := range layouts {
+			require.True(t, want.Equal(got), "got layout %+v", got)
+		}
+	})
+
+	t.Run("returns an error and no output when a source records no layout", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		uploadRawSource(t, dataBucket, "objA", streams.DefaultShardLayout(), nil)
+		c := newContext(t, dataBucket)
+
+		arts, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")})
+		require.ErrorContains(t, err, "records no layout")
+		require.Nil(t, arts)
+	})
+
+	t.Run("returns an error and no output when the sources have a non-default shard layout", func(t *testing.T) {
+		four, err := streams.ShardLayoutFromBuckets(4)
+		require.NoError(t, err)
+		layout := streams.NewLayout(four, nil)
+		dataBucket := objstore.NewInMemBucket()
+		uploadRawSource(t, dataBucket, "objA", four, &layout)
+		c := newContext(t, dataBucket)
+
+		arts, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")})
+		require.ErrorContains(t, err, "supports only")
+		require.Nil(t, arts)
+	})
+}
+
+func TestDoLogObjectMerge_LegacySources(t *testing.T) {
+	const tenant = "T"
+	clusterLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:cluster"})
+
+	// uploadLegacy uploads the legacy fixture name from
+	// pkg/dataobj/testdata/legacy, whose logs sections record the layout in
+	// their own sort info.
+	uploadLegacy := func(t *testing.T, bucket objstore.Bucket, name string) {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "dataobj", "testdata", "legacy", name+".dataobj"))
+		require.NoError(t, err)
+		require.NoError(t, bucket.Upload(t.Context(), name, bytes.NewReader(data)))
+	}
+	merge := func(t *testing.T, dataBucket objstore.Bucket, paths ...string) (*v2.ResultArtifact, error) {
+		t.Helper()
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		return c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, paths...)})
+	}
+	t.Run("merges legacy sources with the layout of their logs sections and records it in the output", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		uploadLegacy(t, dataBucket, "legacy-cluster-a")
+		uploadLegacy(t, dataBucket, "legacy-cluster-b")
+
+		_, err := merge(t, dataBucket, "legacy-cluster-a", "legacy-cluster-b")
+		require.NoError(t, err)
+
+		var records int
+		require.NoError(t, dataBucket.Iter(t.Context(), "", func(path string) error {
+			if path == "legacy-cluster-a" || path == "legacy-cluster-b" {
+				return nil
+			}
+			obj, err := dataobj.FromBucket(t.Context(), dataBucket, path, 0)
+			require.NoError(t, err)
+			records += len(fixtures.ReadTenantLogs(t, obj, tenant))
+			return nil
+		}, objstore.WithRecursiveIter()))
+		require.Equal(t, 8, records, "each fixture holds 4 records")
+
+		layouts := outputLayouts(t, dataBucket, "legacy-cluster-a", "legacy-cluster-b")
+		require.NotEmpty(t, layouts)
+		for _, layout := range layouts {
+			require.True(t, clusterLayout.Equal(layout), "got layout %+v", layout)
+		}
+	})
+
+	t.Run("merges a legacy source with a new source of the same layout", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		uploadLegacy(t, dataBucket, "legacy-cluster-a")
+		buildSourceLogObject(t, dataBucket, "new", []string{"label:cluster"}, map[string][]testStream{
+			tenant: {{labels: `{app="z",cluster="c-z"}`, entries: linesAt(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), 2)}},
+		})
+
+		_, err := merge(t, dataBucket, "legacy-cluster-a", "new")
+		require.NoError(t, err)
+
+		layouts := outputLayouts(t, dataBucket, "legacy-cluster-a", "new")
+		require.NotEmpty(t, layouts)
+		for _, layout := range layouts {
+			require.True(t, clusterLayout.Equal(layout), "got layout %+v", layout)
+		}
+	})
+
+	t.Run("returns an error and no output when a legacy source has another layout", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		uploadLegacy(t, dataBucket, "legacy-cluster-a")
+		uploadLegacy(t, dataBucket, "legacy-app")
+
+		arts, err := merge(t, dataBucket, "legacy-cluster-a", "legacy-app")
+		require.ErrorContains(t, err, "different stream layout")
+		require.Nil(t, arts)
+	})
+}
+
+// outputLayouts returns the layout that each streams section of the objects in
+// dataBucket records, except for the objects at sources.
+func outputLayouts(t *testing.T, dataBucket objstore.Bucket, sources ...string) []streams.Layout {
+	t.Helper()
+	var layouts []streams.Layout
+	require.NoError(t, dataBucket.Iter(t.Context(), "", func(path string) error {
+		if slices.Contains(sources, path) {
+			return nil
+		}
+		obj, err := dataobj.FromBucket(t.Context(), dataBucket, path, 0)
+		require.NoError(t, err)
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			opened, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			layout, ok, err := opened.Layout()
+			require.NoError(t, err)
+			require.True(t, ok)
+			layouts = append(layouts, layout)
+		}
+		return nil
+	}, objstore.WithRecursiveIter()))
+	return layouts
 }

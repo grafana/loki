@@ -131,7 +131,7 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 		}, ts))
 	}
 
-	logObj, logCloser, err := logBuilder.Flush()
+	logObj, logCloser, err := logBuilder.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logCloser.Close() })
 
@@ -408,6 +408,7 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	sourceBuilder := dataobj.NewBuilder(nil)
 	ts := time.Unix(10, 0).UTC()
 	streamBuilder := streams.NewBuilder(nil, 2048, 10000, streams.DefaultShardLayout())
+	streamBuilder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), nil))
 	streamBuilder.SetTenant(tenant)
 	id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
 	appendLogsSection := func() {
@@ -473,4 +474,86 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 		require.NoError(t, reader.Close())
 	}
 	require.Equal(t, want, statsIndexes)
+}
+
+func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
+	const tenant = "A"
+	ts := time.Unix(10, 0).UTC()
+
+	// buildSource builds an object with 16 streams. If layout is non-nil, the
+	// streams section records it.
+	buildSource := func(t *testing.T, shardLayout streams.ShardLayout, layout *streams.Layout) *dataobj.Object {
+		t.Helper()
+		streamBuilder := streams.NewBuilder(nil, 2048, 10000, shardLayout)
+		if layout != nil {
+			streamBuilder.SetLayout(*layout)
+		}
+		streamBuilder.SetTenant(tenant)
+		logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+			PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
+		})
+		logBuilder.SetTenant(tenant)
+		for i := range 16 {
+			id := streamBuilder.Record(labels.FromStrings("app", strconv.Itoa(i), "service_name", "svc"), ts, 10)
+			logBuilder.Append(logs.Record{StreamID: id, Timestamp: ts, Line: []byte("line")})
+		}
+
+		sourceBuilder := dataobj.NewBuilder(nil)
+		require.NoError(t, sourceBuilder.Append(streamBuilder))
+		require.NoError(t, sourceBuilder.Append(logBuilder))
+		source, closer, err := sourceBuilder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return source
+	}
+	calculate := func(t *testing.T, source *dataobj.Object) (*dataobj.Object, error) {
+		t.Helper()
+		builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
+		if err := calculator.Calculate(t.Context(), log.NewNopLogger(), source, "objects/source"); err != nil {
+			return nil, err
+		}
+		obj, closer, _, err := calculator.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj, nil
+	}
+
+	t.Run("indexes with the schema labels and shard layout of the recorded layout", func(t *testing.T) {
+		four, err := streams.ShardLayoutFromBuckets(4)
+		require.NoError(t, err)
+		layout := streams.NewLayout(four, []string{"label:app"})
+		indexObj, err := calculate(t, buildSource(t, four, &layout))
+		require.NoError(t, err)
+
+		statsRows := readAllStatsRows(t, indexObj)
+		require.NotEmpty(t, statsRows)
+		for _, row := range statsRows {
+			require.Equal(t, "label:app", row["sort_schema.utf8"])
+			require.Less(t, row["__shard_bucket__.int64"].(int64), int64(4))
+		}
+
+		var postingRows int
+		for _, section := range indexObj.Sections().Filter(postings.CheckSection) {
+			sec, err := postings.Open(t.Context(), section)
+			require.NoError(t, err)
+			inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+			require.NoError(t, inner.Open(t.Context()))
+			reader := postings.NewRowReader(t.Context(), inner)
+			for reader.Next() {
+				require.Equal(t, int64(4), reader.At().ShardBuckets)
+				postingRows++
+			}
+			require.NoError(t, reader.Err())
+			require.NoError(t, reader.Close())
+		}
+		require.Positive(t, postingRows)
+	})
+
+	t.Run("returns an unprocessable object error when the streams section records no layout", func(t *testing.T) {
+		_, err := calculate(t, buildSource(t, streams.DefaultShardLayout(), nil))
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "records no layout")
+	})
 }

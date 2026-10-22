@@ -4,17 +4,20 @@ package logs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // schemaSortVersion is the section type version for logs sections written in
-// schema sort order. Must not equal columnar.FormatVersion (currently 2).
-// The bumped version lets callers detect the sort contract from the object
-// header alone, without opening the section.
+// schema sort order. It must differ from columnar.FormatVersion, so callers
+// can detect the sort contract from the object header alone, without opening
+// the section. The stream layout that orders the
+// rows is in the tenant's streams section.
 const schemaSortVersion uint32 = 3
 
 // Namespace and Kind here are duplicated in pkg/dataobj/decoder.go's logsSectionType, to avoid an
@@ -29,21 +32,6 @@ var schemaSortSectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "logs",
 	Version:   schemaSortVersion,
-}
-
-// StreamOrder identifies how object-local stream IDs are assigned.
-type StreamOrder int
-
-const (
-	StreamOrderUnspecified  StreamOrder = 0
-	StreamOrderStableHashV1 StreamOrder = 2
-)
-
-// SortLayout describes the physical ordering contract of a logs section.
-type SortLayout struct {
-	SchemaLabels []string
-	StreamOrder  StreamOrder
-	ShardCount   uint32
 }
 
 // CheckSection returns true if section is a logs section.
@@ -131,34 +119,54 @@ func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
 	return colType, dir, nil
 }
 
-// SchemaLabels returns the ordered list of label names used to define the
-// schema sort key for this section. It returns nil, nil if the section was
-// not sorted by schema (i.e., SortInfo is absent or has no SchemaLabels).
-func (s *Section) SchemaLabels() ([]string, error) {
+// LegacyLayout returns the stream layout that the section recorded in its own
+// sort info. Writers recorded it there before the streams section did. ok is
+// false if the section records no such layout, or one that is not stable hash
+// ordered with the default shard layout, because no writer produced another.
+//
+// Readers use LegacyLayout only for objects whose streams section records no
+// layout.
+func (s *Section) LegacyLayout() (layout streams.Layout, ok bool) {
 	si := s.inner.SortInfo()
-	if si == nil || len(si.SchemaLabels) == 0 {
-		return nil, nil
+	if si == nil || si.StreamOrder != datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1 {
+		return streams.Layout{}, false
 	}
-	return si.SchemaLabels, nil
+	if si.ShardCount != streams.DefaultShardLayout().Buckets() {
+		return streams.Layout{}, false
+	}
+	return streams.NewLayout(streams.DefaultShardLayout(), si.SchemaLabels), true
 }
 
-// SortLayout returns the physical ordering contract persisted for this section.
-func (s *Section) SortLayout() SortLayout {
-	si := s.inner.SortInfo()
-	if si == nil {
-		return SortLayout{}
+// LegacyLayoutOf returns the layout that every non-nil section of sections
+// records with [Section.LegacyLayout]. Readers use it for objects whose
+// streams section records no layout. It returns an error if a section records
+// no legacy layout, if the sections disagree, or if no section is non-nil.
+func LegacyLayoutOf(ctx context.Context, sections []*dataobj.Section) (streams.Layout, error) {
+	var (
+		layout streams.Layout
+		found  bool
+	)
+	for _, section := range sections {
+		if section == nil {
+			continue
+		}
+		opened, err := Open(ctx, section)
+		if err != nil {
+			return streams.Layout{}, fmt.Errorf("opening logs section: %w", err)
+		}
+		got, ok := opened.LegacyLayout()
+		if !ok {
+			return streams.Layout{}, errors.New("streams section records no layout, and a logs section records no legacy layout")
+		}
+		if found && !got.Equal(layout) {
+			return streams.Layout{}, errors.New("logs sections record different legacy layouts")
+		}
+		layout, found = got, true
 	}
-
-	var streamOrder StreamOrder
-	switch si.StreamOrder {
-	case datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1:
-		streamOrder = StreamOrderStableHashV1
+	if !found {
+		return streams.Layout{}, errors.New("streams section records no layout")
 	}
-	return SortLayout{
-		SchemaLabels: si.SchemaLabels,
-		StreamOrder:  streamOrder,
-		ShardCount:   si.ShardCount,
-	}
+	return layout, nil
 }
 
 // A Column represents one of the columns in the logs section. Valid columns
