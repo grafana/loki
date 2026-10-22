@@ -774,6 +774,26 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.volume-threshold
   [volume_threshold: <float> | default = 0.99]
 
+  # Configures consumption of log entries from Kafka.
+  kafka_ingestion:
+    # Whether the pattern ingester consumes log entries from Kafka. When
+    # enabled, the distributor does not tee log entries to the pattern ingester.
+    # When using CLI flags, this must be set on the distributors as well,
+    # otherwise it just needs to be set once in the config file.
+    # CLI flag: -pattern-ingester.kafka-ingestion-enabled
+    [enabled: <boolean> | default = false]
+
+    # The consumer group of the pattern ingesters.
+    # CLI flag: -pattern-ingester.kafka-consumer-group
+    [consumer_group: <string> | default = "pattern-ingester"]
+
+    # The session timeout of the consumer group. A pattern ingester that
+    # restarts and rejoins within this time gets its partitions back without a
+    # rebalance, but if it does not rejoin, its partitions are not consumed
+    # until the timeout expires.
+    # CLI flag: -pattern-ingester.kafka-session-timeout
+    [session_timeout: <duration> | default = 3m]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
