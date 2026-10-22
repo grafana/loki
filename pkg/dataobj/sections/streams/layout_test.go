@@ -60,8 +60,8 @@ func TestSection_Layout(t *testing.T) {
 		require.NoError(t, err)
 		return sec
 	}
-	newBuilder := func() *Builder {
-		b := NewBuilder(nil, 1024, 0, DefaultShardLayout())
+	newBuilder := func(shardLayout ShardLayout) *Builder {
+		b := NewBuilder(nil, 1024, 0, shardLayout)
 		b.SetTenant("tenant")
 		return b
 	}
@@ -70,7 +70,7 @@ func TestSection_Layout(t *testing.T) {
 		four, err := ShardLayoutFromBuckets(4)
 		require.NoError(t, err)
 		want := NewLayout(four, []string{"label:app", "label:cluster"})
-		b := newBuilder()
+		b := newBuilder(four)
 		b.SetLayout(want)
 		b.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 
@@ -80,11 +80,11 @@ func TestSection_Layout(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
-	t.Run("buckets streams with the shard layout of the recorded layout", func(t *testing.T) {
+	t.Run("buckets streams with the shard layout of the builder", func(t *testing.T) {
 		four, err := ShardLayoutFromBuckets(4)
 		require.NoError(t, err)
 		ls := labels.FromStrings("app", "foo")
-		b := newBuilder()
+		b := newBuilder(four)
 		b.SetLayout(NewLayout(four, nil))
 		b.Record(ls, time.Unix(10, 0), 1)
 
@@ -101,7 +101,7 @@ func TestSection_Layout(t *testing.T) {
 		one, err := ShardLayoutFromBuckets(1)
 		require.NoError(t, err)
 		want := NewLayout(one, nil)
-		b := newBuilder()
+		b := newBuilder(one)
 		b.SetLayout(want)
 		b.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 
@@ -112,7 +112,7 @@ func TestSection_Layout(t *testing.T) {
 	})
 
 	t.Run("records no layout after Reset", func(t *testing.T) {
-		b := newBuilder()
+		b := newBuilder(DefaultShardLayout())
 		b.SetLayout(NewLayout(DefaultShardLayout(), []string{"label:app"}))
 		b.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 		b.Reset()
@@ -125,7 +125,7 @@ func TestSection_Layout(t *testing.T) {
 	})
 
 	t.Run("reports no layout when the builder recorded none", func(t *testing.T) {
-		b := newBuilder()
+		b := newBuilder(DefaultShardLayout())
 		b.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 
 		_, ok, err := openSection(t, b).Layout()
@@ -185,16 +185,15 @@ func (b *sortInfoSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 }
 
 func TestBuilder_SetLayout(t *testing.T) {
-	t.Run("panics when the builder holds streams and the layout has another shard layout", func(t *testing.T) {
+	t.Run("panics when the layout has another shard layout than the builder", func(t *testing.T) {
 		four, err := ShardLayoutFromBuckets(4)
 		require.NoError(t, err)
 		b := NewBuilder(nil, 1024, 0, DefaultShardLayout())
-		b.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 
 		require.Panics(t, func() { b.SetLayout(NewLayout(four, nil)) })
 	})
 
-	t.Run("records a layout set after streams when the shard layout is unchanged", func(t *testing.T) {
+	t.Run("records a layout set after the builder holds streams", func(t *testing.T) {
 		want := NewLayout(DefaultShardLayout(), []string{"label:app"})
 		b := NewBuilder(nil, 1024, 0, DefaultShardLayout())
 		b.SetTenant("tenant")

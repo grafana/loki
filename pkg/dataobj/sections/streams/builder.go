@@ -93,7 +93,7 @@ type Builder struct {
 
 // NewBuilder creates a new streams section builder. pageSize is the target
 // page size in bytes. shardLayout selects the shard bucket of each stream
-// that the builder adds, unless [Builder.SetLayout] replaces it.
+// that the builder adds.
 //
 // The builder records no layout until SetLayout is called, and again after
 // [Builder.Reset].
@@ -111,21 +111,19 @@ func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardL
 	}
 }
 
-// SetLayout makes b record layout in the section metadata on Flush, and
-// selects the shard bucket of each stream with layout.ShardLayout(). The
+// SetLayout makes b record layout in the section metadata on Flush. The
 // layout applies until the next [Builder.Reset].
 //
-// SetLayout panics if b already holds streams and layout has another shard
-// layout, because the buckets of those streams would not match the recorded
-// layout. It also panics if layout is the zero value.
+// SetLayout panics if layout has another shard layout than b, because the
+// shard buckets of the streams would not match the recorded layout. It also
+// panics if layout is the zero value.
 func (b *Builder) SetLayout(layout Layout) {
-	if len(b.ordered) > 0 && layout.shardLayout != b.shardLayout {
-		panic("streams: SetLayout changed the shard layout of a builder that holds streams")
+	if layout.shardLayout != b.shardLayout {
+		panic("streams: SetLayout called with another shard layout than the builder")
 	}
 	if layout.streamOrder == StreamOrderUnspecified {
 		panic("streams: SetLayout called with a layout that has no stream order")
 	}
-	b.shardLayout = layout.shardLayout
 	b.layout = &layout
 }
 
