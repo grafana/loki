@@ -596,7 +596,7 @@ Consider a stream with the label `foo="l"`, the structured metadata `foo="m"`, a
 - `{job="example"} | drop foo_extracted | logfmt` returns `foo="l"` and `foo_extracted="p"`. The `drop` removes the structured metadata label, so the extracted label takes the name `foo_extracted`.
 - `{job="example"} | logfmt p="foo"` returns `foo="l"`, `foo_extracted="m"`, and `p="p"`. The extracted label has another name, so no collision happens.
 
-Use the `drop` expression before the parser. A `drop` after the parser is too late, because the parser has already dropped the extracted value.
+When querying, use the `drop` expression before the parser. A `drop` after the parser is too late, because the parser has already dropped the extracted value.
 
 ### Line format expression
 
