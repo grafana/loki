@@ -302,8 +302,8 @@ github.com/Masterminds/semver/v3
 # github.com/Masterminds/sprig/v3 v3.3.0
 ## explicit; go 1.21
 github.com/Masterminds/sprig/v3
-# github.com/Microsoft/go-winio v0.6.2
-## explicit; go 1.21
+# github.com/Microsoft/go-winio v0.6.4
+## explicit; go 1.26.0
 github.com/Microsoft/go-winio
 github.com/Microsoft/go-winio/internal/fs
 github.com/Microsoft/go-winio/internal/socket
@@ -1984,8 +1984,8 @@ github.com/shurcooL/httpfs/vfsutil
 # github.com/shurcooL/vfsgen v0.0.0-20230704071429-0000e147ea92
 ## explicit; go 1.19
 github.com/shurcooL/vfsgen
-# github.com/sirupsen/logrus v1.9.4
-## explicit; go 1.17
+# github.com/sirupsen/logrus v1.10.2
+## explicit; go 1.23
 github.com/sirupsen/logrus
 # github.com/sony/gobreaker/v2 v2.4.0
 ## explicit; go 1.22.0

@@ -361,7 +361,7 @@ require (
 	github.com/Code-Hex/go-generics-cache v1.5.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
-	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/Microsoft/go-winio v0.6.4 // indirect
 	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 	github.com/armon/go-metrics v0.4.1 // indirect
@@ -463,7 +463,7 @@ require (
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/sirupsen/logrus v1.9.4
+	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
