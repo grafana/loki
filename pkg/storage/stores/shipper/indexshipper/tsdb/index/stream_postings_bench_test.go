@@ -56,6 +56,7 @@ func BenchmarkPostingsBatch(b *testing.B) {
 		{"1024-small-postings-lists-consecutive-in-the-index", labelName, consecutive(1024), nil},
 		{"1024-small-postings-lists-consecutive-in-the-index-sharded-to-1-16th", labelName, consecutive(1024), NewShard(0, 16)},
 		{"2-big-postings-lists", "a", []string{"0", "1"}, nil},
+		{"1-value-absent-from-the-index", labelName, []string{"pod-5-absent"}, nil},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()

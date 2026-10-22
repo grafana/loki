@@ -25,7 +25,7 @@ var postingsListBufferPool = pool.New(minPooledPostingsListBytes, 16<<20, 2, fun
 })
 
 // getPostingsListBuffer returns a buffer of exactly n bytes.
-// Buffers are returned dirty, so the caller is expected to overwrite any data in the buffer.
+// Buffers may be returned dirty, so the caller is expected to overwrite any data in the buffer.
 func getPostingsListBuffer(n int) []byte {
 	if n < minPooledPostingsListBytes {
 		return make([]byte, n)
@@ -164,11 +164,11 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 
 	// Postings lists are read through one decbuf ranging over the whole file
 	// so that it can benefit from the FileReader's read-ahead.
-	postingsDecbuf := p.factory.NewRawDecbuf(ctx)
+	// Opening it is deferred to the point that we need it, so that a lookup
+	// which matches nothing doesn't pay the cost of opening a decbuf.
+	var postingsDecbuf streamenc.Decbuf
+	postingsDecbufOpen := false
 	defer func() { _ = postingsDecbuf.Close() }()
-	if err := postingsDecbuf.Err(); err != nil {
-		return nil, err
-	}
 
 	// Unchecked because we already checked CRC32 at startup
 	offsetTableDecbuf := p.factory.NewDecbufAtUnchecked(ctx, p.off)
@@ -213,6 +213,13 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 			}
 			for currentLabelValue >= targetLabelValue {
 				if currentLabelValue == targetLabelValue {
+					if !postingsDecbufOpen {
+						postingsDecbuf = p.factory.NewRawDecbuf(ctx)
+						postingsDecbufOpen = true
+						if err := postingsDecbuf.Err(); err != nil {
+							return nil, err
+						}
+					}
 					postings, err := p.readPostingsList(&postingsDecbuf, postingsOffset)
 					if err != nil {
 						return nil, fmt.Errorf("decode postings: %w", err)
@@ -313,18 +320,18 @@ func (p *streamPostings) labelNames() []string {
 // refs. Then comes a CRC32 of the content, which is checked here.
 func (p *streamPostings) readPostingsList(decbuf *streamenc.Decbuf, postingsOffset uint64) (Postings, error) {
 	decbuf.ResetAt(int(postingsOffset))
-	contentLen := decbuf.Be32int()
-	n := decbuf.Be32int()
+	contentLen := decbuf.Be32()
+	n := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
 	// The count is read before the CRC is checked, so make sure it agrees with
 	// the length and fits in the file before allocating for it.
-	if contentLen != 4+4*n || 4*n+crc32.Size > decbuf.Len() {
+	if uint64(contentLen) != 4+4*uint64(n) || 4*uint64(n)+crc32.Size > uint64(decbuf.Len()) {
 		return nil, fmt.Errorf("postings list at %d: length %d for %d refs: %w", postingsOffset, contentLen, n, streamenc.ErrInvalidSize)
 	}
 
-	buf := getPostingsListBuffer(4 * n)
+	buf := getPostingsListBuffer(4 * int(n))
 	decbuf.ReadInto(buf)
 	expectedChecksum := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
@@ -333,7 +340,7 @@ func (p *streamPostings) readPostingsList(decbuf *streamenc.Decbuf, postingsOffs
 	}
 
 	var count [4]byte
-	binary.BigEndian.PutUint32(count[:], uint32(n))
+	binary.BigEndian.PutUint32(count[:], n)
 	crc := crc32.Update(0, castagnoliTable, count[:])
 	if crc32.Update(crc, castagnoliTable, buf) != expectedChecksum {
 		putPostingsListBuffer(buf)
@@ -382,7 +389,7 @@ func (p *pooledBigEndianPostings) release() {
 		return
 	}
 	p.pooled = false
-	postingsListBufferPool.Put(p.buf)
+	putPostingsListBuffer(p.buf)
 }
 
 // streamPostingsOffsetTable iterates the postings-offset table, running
