@@ -760,9 +760,7 @@ func (m *Statistics) GetCardinalityCount() uint64 {
 
 // SortInfo holds sort order information for rows in the section.
 //
-// A LOG section sets only column_sorts. LOG sections written before STREAMS
-// sections recorded a layout may also set schema_labels, stream_order, and
-// shard_count. Readers ignore them.
+// A LOG section sets only column_sorts.
 //
 // A STREAMS section that records a layout sets schema_labels, stream_order,
 // and shard_count, and no column_sorts. The layout describes the stream IDs
