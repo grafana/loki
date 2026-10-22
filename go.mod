@@ -379,7 +379,7 @@ require (
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/dennwc/varint v1.0.0
-	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
+	github.com/dgryski/go-metro v0.0.0-20261008173524-5059e0b1da03 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/digitalocean/godo v1.194.1 // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
