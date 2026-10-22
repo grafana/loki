@@ -120,6 +120,10 @@ Loki sets the reset offset for each consumer in code. You can't change it with a
 
 An `ip()` label filter used to keep every log line that already carried an `__error__` label, without checking the address. It now compares the line like a numeric, duration, or bytes filter does. A line that failed in an earlier stage, such as `json`, usually has no value for the label, so the filter drops it. For example, `| json | addr = ip("10.0.0.0/8")` no longer returns the lines that failed to parse, and a metric query with this filter no longer fails on them. To keep those lines, combine the filter with an `__error__` filter, for example `| addr = ip("10.0.0.0/8") or __error__ != ""`.
 
+### Experimental per-index gateway ownership
+
+Set `index_gateway.per_index_ownership.enabled: true` to have index gateways read the sharded index copy of the schema periods with a `sharded_path_prefix`, and preload those indexes according to tenant/table ownership. Tables of other periods are read from `path_prefix` and loaded as without per-index ownership. All settings in `per_index_ownership` are experimental and require ring mode. Gateways join the ring, optionally wait for stable tokens, and preload before becoming ACTIVE. A preload timeout allows activation with remaining work handled by periodic readiness; other preload errors fail startup. Leave ownership disabled to preserve existing behavior.
+
 ## 4.0.0
 
 ### Loki 4.0.0

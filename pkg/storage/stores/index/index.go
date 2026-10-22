@@ -138,6 +138,14 @@ type Syncer interface {
 	SyncStatus() SyncStatus
 }
 
+// QueryReadinessEnsurer is implemented by index stores that can download their
+// query ready indexes on demand.
+type QueryReadinessEnsurer interface {
+	// EnsureQueryReadiness downloads the indexes that must be query ready and
+	// are missing.
+	EnsureQueryReadiness(ctx context.Context) error
+}
+
 type MonitoredReaderWriter struct {
 	rw      ReaderWriter
 	metrics *metrics
