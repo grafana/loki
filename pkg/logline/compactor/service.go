@@ -34,9 +34,14 @@ type Service struct {
 
 	// job tracks a single compactor job lifecycle:
 	// - running: currently in-flight, eligible for abandon on shutdown.
-	// - completed pending ack: finished successfully; include job ID on next
-	//   request so the scheduler can remove it immediately (fast-path completion).
+	// - completed pending ack: finished successfully; include job ID on every
+	//   request until the scheduler answers one, so the scheduler can remove it
+	//   immediately (fast-path completion).
 	job compactorJob
+
+	// retryBackoff is how long runLoop waits after a failed request or job.
+	// It is a field only so tests can shorten it.
+	retryBackoff time.Duration
 }
 
 type jobState int
@@ -72,14 +77,19 @@ func (j *compactorJob) markCompletedPendingAck(id string) {
 	j.id = id
 }
 
-func (j *compactorJob) consumeCompletedID() string {
+func (j *compactorJob) completedID() string {
 	if j.state != jobStateCompletedPendingAck {
 		return ""
 	}
-	id := j.id
+	return j.id
+}
+
+func (j *compactorJob) ackCompleted() {
+	if j.state != jobStateCompletedPendingAck {
+		return
+	}
 	j.state = jobStateIdle
 	j.id = ""
-	return id
 }
 
 // New creates a new compactor Service. Validates cfg and initialises metrics.
@@ -101,6 +111,7 @@ func New(indexStore *store.Store, cfg Config, logger log.Logger, reg prometheus.
 		metrics:          NewMetrics(reg),
 		httpClient:       &http.Client{Timeout: schedulerapi.ClientTimeout},
 		postingsEncoding: postingsEncoding,
+		retryBackoff:     5 * time.Second,
 	}
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
@@ -184,7 +195,11 @@ func (s *Service) runLoop(ctx context.Context) error {
 		default:
 		}
 
-		job, err := s.requestJob(ctx, s.job.consumeCompletedID())
+		// Keep the completed job ID until a request succeeds. Without it, the
+		// scheduler hands the finished job back to this compactor, which
+		// compacts it again, unless a store poll has already seen the merged
+		// index.
+		job, err := s.requestJob(ctx, s.job.completedID())
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -193,12 +208,13 @@ func (s *Service) runLoop(ctx context.Context) error {
 			// Brief backoff before retrying to avoid hammering the scheduler on
 			// transient connectivity issues.
 			select {
-			case <-time.After(5 * time.Second):
+			case <-time.After(s.retryBackoff):
 			case <-ctx.Done():
 				return nil
 			}
 			continue
 		}
+		s.job.ackCompleted()
 
 		if job == nil {
 			// The scheduler long-poll timed out with no available work; retry immediately.
@@ -222,7 +238,7 @@ func (s *Service) runLoop(ctx context.Context) error {
 		// On failure, keep the running job ID so shutdown can still abandon it.
 		// The scheduler can return the same job ID to this compactor for retries.
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(s.retryBackoff):
 		case <-ctx.Done():
 			return nil
 		}

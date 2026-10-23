@@ -42,7 +42,7 @@ Once a source has been assigned to a compaction job, no other job may include it
 
 The primary completion mechanism is `resolveCompletedWork`, which asks the store snapshot whether all of a job's source IDs have been resolved — either compacted (covered by a merged index) or absent from the snapshot entirely. It also prunes the `completedSources` cache for entries the snapshot has confirmed. This makes the system resilient to compactor crashes — the only source of truth is object storage.
 
-As a fast path, compactors send `last_completed_job_id` with their next job request. `handleJobRequest` removes the job immediately (after verifying the compactor ID matches), avoiding redundant re-delivery between ticks. If the compactor crashes before reporting, the tick-based detection handles it.
+As a fast path, compactors send `last_completed_job_id` with their next job request. `handleJobRequest` removes the job immediately (after verifying the compactor ID matches), avoiding redundant re-delivery between ticks. Compactors resend the ID until a request succeeds, so this removal must stay a no-op for a job that is gone or belongs to another compactor. If the compactor crashes before reporting, the tick-based detection handles it.
 
 ### 8. One snapshot per tick
 
