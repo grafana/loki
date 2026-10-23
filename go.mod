@@ -16,7 +16,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.15.1
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/RoaringBitmap/roaring v1.9.4
+	github.com/RoaringBitmap/roaring/v2 v2.30.0
 	github.com/Workiva/go-datastructures v1.1.8
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/alecthomas/kingpin/v2 v2.4.0
