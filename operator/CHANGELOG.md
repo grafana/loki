@@ -1,5 +1,37 @@
 ## Main
 
+## [0.13.0](https://github.com/grafana/loki/compare/operator/v0.12.0...operator/v0.13.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **operator:** Stop reconciliation of deprecated BoltDB schemas ([#24990](https://github.com/grafana/loki/issues/24990))
+
+### Features
+
+* **operator:** Remove obsolete warning about old schema versions ([#25155](https://github.com/grafana/loki/issues/25155)) ([1d6f9e2](https://github.com/grafana/loki/commit/1d6f9e2713202555e42f821532f39813963eaa54))
+* **operator:** Stop reconciliation of deprecated BoltDB schemas ([#24990](https://github.com/grafana/loki/issues/24990)) ([4c138a9](https://github.com/grafana/loki/commit/4c138a95daac240b90ab5de793dbc5022d1c09a6))
+
+
+### Bug Fixes
+
+* **deps:** Update github.com/openshift/cloud-credential-operator digest to 82a5b44 (main) ([#25196](https://github.com/grafana/loki/issues/25196)) ([4ddee18](https://github.com/grafana/loki/commit/4ddee186e7ed28b6f194b804b46ea6ae1cf91bce))
+* **deps:** Update google.golang.org/genproto/googleapis/rpc digest to 4341edf (main) ([#25221](https://github.com/grafana/loki/issues/25221)) ([61f0a90](https://github.com/grafana/loki/commit/61f0a900d86800ca06c7862626ea6c3c3ddf023c))
+* **deps:** Update k8s.io/utils digest to cf1189d (main) ([#25197](https://github.com/grafana/loki/issues/25197)) ([597a49a](https://github.com/grafana/loki/commit/597a49a9ec458de97d2366d395049b925b0169a8))
+* **deps:** Update kubernetes monorepo to v0.37.1 (main) ([#25216](https://github.com/grafana/loki/issues/25216)) ([1199f27](https://github.com/grafana/loki/commit/1199f27ec55d542b11acca9d4e16d6fde2943517))
+* **deps:** Update module github.com/grafana/loki/operator/api/loki to v3 (main) ([#25335](https://github.com/grafana/loki/issues/25335)) ([a9cba45](https://github.com/grafana/loki/commit/a9cba4536fa18f9d1e04e1c244bc545be690d0b7))
+* **deps:** Update module github.com/grafana/loki/v3 to v3.7.8 (main) ([#25218](https://github.com/grafana/loki/issues/25218)) ([d35f719](https://github.com/grafana/loki/commit/d35f7192036affbb0c7cb6c1a7a21d6031199572))
+* **deps:** Update module github.com/maxbrunsfeld/counterfeiter/v6 to v6.14.0 (main) ([#25313](https://github.com/grafana/loki/issues/25313)) ([d4e923c](https://github.com/grafana/loki/commit/d4e923c8511a39a5f8ca0ddbb518d0762c1a5702))
+* **deps:** Update module github.com/stretchr/testify to v1.12.1 (main) ([#25318](https://github.com/grafana/loki/issues/25318)) ([b039c59](https://github.com/grafana/loki/commit/b039c59f02648c4dd84118ce29ef6c1a240e734b))
+* **deps:** Update module sigs.k8s.io/controller-runtime to v0.25.2 (main) ([#25321](https://github.com/grafana/loki/issues/25321)) ([754afcf](https://github.com/grafana/loki/commit/754afcfed5258903001277c519b31eaad185c1d9))
+* **operator:** Fix issues in module definition ([#25255](https://github.com/grafana/loki/issues/25255)) ([21097d2](https://github.com/grafana/loki/commit/21097d2d818d1f4d5b7ef40303f466cbeb7ee58b))
+* **operator:** Fix issues in module definition ([#25499](https://github.com/grafana/loki/issues/25499)) ([182c3bb](https://github.com/grafana/loki/commit/182c3bb41b15b432a7f2e211cbc32f286915daee))
+* **security/UNKNOWN/operator/api/loki:** Update module golang.org/x/net to v0.60.0 [SECURITY] (main) ([#25053](https://github.com/grafana/loki/issues/25053)) ([34cc71c](https://github.com/grafana/loki/commit/34cc71c6908c9752ad28bad59e3d40b4055902a0))
+* **security/UNKNOWN/operator/api/loki:** Update module golang.org/x/text to v0.41.0 [SECURITY] (main) ([#25028](https://github.com/grafana/loki/issues/25028)) ([870c04e](https://github.com/grafana/loki/commit/870c04ef096bc605fcef20697d5b61749cf08b28))
+* **security/UNKNOWN/operator:** Update go toolchain directive to v1.27.2 [SECURITY] (main) ([#25050](https://github.com/grafana/loki/issues/25050)) ([6e3df4d](https://github.com/grafana/loki/commit/6e3df4de08787a3d63f2056f34d1e308bf4eb178))
+* **security/UNKNOWN/operator:** Update go toolchain directive to v1.27.3 [SECURITY] (main) ([#25475](https://github.com/grafana/loki/issues/25475)) ([fab0512](https://github.com/grafana/loki/commit/fab05127647988b9f9e9c2cfd0b6179fb5d889e1))
+* **security/UNKNOWN/operator:** Update module golang.org/x/net to v0.60.0 [SECURITY] (main) ([#25052](https://github.com/grafana/loki/issues/25052)) ([390e710](https://github.com/grafana/loki/commit/390e7106ce482d226cb54bae493491613a6effa7))
+
 ## [0.12.0](https://github.com/grafana/loki/compare/operator/v0.11.0...operator/v0.12.0) (2026-10-07)
 
 
