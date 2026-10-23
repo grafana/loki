@@ -55,6 +55,20 @@ eval select from 0 to 30s forward {app="d5"} | json p="foo"
 eval select from 0 to 30s forward {app="d5"} | json | drop foo
   {app="d5"} `{"foo":"p"}` @ 10s [metadata foo_extracted="m"]
 
+# E7, E8. Two parsers in a row, and the second stage is an expression form. `line_format` swaps the line
+# between the two stages. The first stage to write a name keeps it, so the second stage does not
+# overwrite `foo=j1`.
+clear
+load
+  {app="e7"}             `{"foo":"j1","next":"foo=f2"}`  @ 10s # E7: the second stage is `logfmt foo`
+  {app="e8"}             `{"foo":"j1"}`                  @ 10s # E8: the second stage is `json foo`
+  {app="noise", foo="l"} `{"foo":"noise","next":"foo=noise"}` @ 10s
+
+eval select from 0 to 30s forward {app="e7"} | json | line_format "{{.next}}" | logfmt foo
+  {app="e7"} "foo=f2" @ 10s [parsed foo="j1" next="foo=f2"]
+eval select from 0 to 30s forward {app="e8"} | json | line_format "{\"foo\":\"j2\"}" | json foo
+  {app="e8"} `{"foo":"j2"}` @ 10s [parsed foo="j1"]
+
 # F1. A line has `foo` and a literal `foo_extracted`, and the stream has `foo`. Both keys target
 # `foo_extracted`. The literal key wins, and the key order in the line does not matter. JSON does
 # not define a key order.
@@ -152,3 +166,15 @@ eval instant at 60s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m
   {a="1", b="2"} 1
 eval range from 40s to 60s step 20s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m])) # overlapping
   {a="1", b="2"} 1 1
+
+# H3, H4. A duplicate key in one line, with an expression form. The first value wins.
+clear
+load
+  {app="h3"}    "foo=a foo=b"           @ 10s # H3: `logfmt foo`
+  {app="h4"}    `{"foo":"a","foo":"b"}` @ 10s # H4: `json foo`
+  {app="noise"} `{"foo":"x"}`           @ 10s
+
+eval select from 0 to 30s forward {app="h3"} | logfmt foo
+  {app="h3"} "foo=a foo=b" @ 10s [parsed foo="a"]
+eval select from 0 to 30s forward {app="h4"} | json foo
+  {app="h4"} `{"foo":"a","foo":"b"}` @ 10s [parsed foo="a"]
