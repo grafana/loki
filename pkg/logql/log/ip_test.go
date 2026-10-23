@@ -58,6 +58,31 @@ func Test_IPFilter(t *testing.T) {
 			expected: []int{0, 1}, // short IPv6 addresses near the end must still match
 		},
 		{
+			name: "IPv4 followed by punctuation",
+			pat:  "192.168.0.1",
+			input: []string{
+				"connection from 192.168.0.1.",  // sentence-ending period -> match
+				"connection from 192.168.0.1:",  // trailing colon -> match
+				"connection from 192.168.0.1..", // ellipsis -> match
+				"connection from 192.168.0.11.",
+				"version 1.2.3.",
+				"",
+			},
+			expected: []int{0, 1, 2},
+		},
+		{
+			name: "IPv6 followed by punctuation",
+			pat:  "2001:db8::/32",
+			input: []string{
+				"connection from 2001:db8::1.", // sentence-ending period -> match
+				"peer 2001:db8::1: EOF",        // trailing colon -> match
+				"listening on 2001:db8::.",     // address ending in "::" followed by period -> match
+				"connection from 2001:db9::1.",
+				"",
+			},
+			expected: []int{0, 1, 2},
+		},
+		{
 			name: "IPv4 range",
 			pat:  "192.168.0.1-192.189.10.12",
 			input: []string{
@@ -280,4 +305,34 @@ func Benchmark_IPFilter(b *testing.B) {
 		})
 	}
 
+}
+
+func Benchmark_IPFilter_Adversarial(b *testing.B) {
+	b.ReportAllocs()
+
+	// Lines full of dotted and colon-separated runs that are not addresses and
+	// end in a separator, so every candidate fails to parse and gets retried.
+	line := [][]byte{
+		[]byte(`build 1.2.3. step 4.5.6.7.8. done 9.9.9. retry 10.20.30. at 12:34: ok`),
+		[]byte(`ab:cd:ef: 12:30:45: de:ad:be:ef:: ca:fe: 1.2.3.4.5.6.: end`),
+		[]byte(`versions 1.0. 2.0.1. 3.1.4.1.5. 10.0.0.256. 172.16.0.1.1. tail`),
+	}
+
+	for _, pattern := range []string{
+		"127.0.0.1",
+		"192.168.4.5/16",
+		"2001:db8::/32",
+	} {
+		b.Run(pattern, func(b *testing.B) {
+			stage, err := newIPFilter(pattern)
+			require.NoError(b, err)
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				for _, l := range line {
+					_ = stage.filter(l)
+				}
+			}
+		})
+	}
 }
