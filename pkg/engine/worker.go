@@ -123,8 +123,6 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 
 		NumThreads: params.Config.WorkerThreads,
 
-		Endpoint: params.Endpoint,
-
 		ScratchStore:   params.ScratchStore,
 		IndexobjCfg:    params.IndexobjCfg,
 		LogsobjCfg:     params.LogsobjCfg,

@@ -22,7 +22,7 @@ import (
 // source index into a new index object, and emits a record that reports the
 // content-hash path of the new index.
 func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
-	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifact, err := c.doIndexFilter(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
@@ -32,7 +32,7 @@ func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 			return errorPipeline(ctx, err)
 		}
 		return NewBufferedPipeline(rec)
-	}, nil)
+	})
 }
 
 func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter) (*v2.ResultArtifact, error) {

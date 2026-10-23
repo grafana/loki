@@ -7,11 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
-type PopulateColumnFilter func(arrow.Field, ColumnType) bool
-
-func PopulateSectionKey(_ arrow.Field, columnType ColumnType) bool {
-	return columnType == ColumnTypePath || columnType == ColumnTypeSection
-}
+const InternalLabelsFieldName = "__streamLabelNames__"
 
 var sectionPointerColumns = map[ColumnType]struct{}{
 	ColumnTypePath:             {},

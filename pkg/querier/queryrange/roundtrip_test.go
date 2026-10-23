@@ -1903,10 +1903,6 @@ func (f fakeLimits) RequiredNumberLabels(_ context.Context, _ string) int {
 	return f.requiredNumberLabels
 }
 
-func (f fakeLimits) EngineResultsCacheTimeBucketInterval(_ string) time.Duration {
-	return 24 * time.Hour
-}
-
 func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Duration {
 	return f.maxStatsCacheFreshness
 }
@@ -1944,14 +1940,6 @@ func (f fakeLimits) StreamFirstExecutionEnabled(user string) bool {
 
 func (f fakeLimits) DataObjQueryStartTime(user string) time.Time {
 	return f.dataObjQueryStartTime[user]
-}
-
-func (f fakeLimits) DebugEngineTasks(_ string) bool {
-	return false
-}
-
-func (f fakeLimits) DebugEngineStreams(_ string) bool {
-	return false
 }
 
 type ingesterQueryOpts struct {

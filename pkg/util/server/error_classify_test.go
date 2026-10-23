@@ -60,9 +60,9 @@ func TestClassifyFailure(t *testing.T) {
 			FailureLimit, "max_query_length",
 		},
 		{
-			// The same limit raised on a querier or by the v2 engine arrives with
-			// no error identity left, so the message-match fallback has to
-			// produce the same category and reason as the sentinel case above.
+			// The same limit raised on a querier arrives with no error identity
+			// left, so the message-match fallback has to produce the same
+			// category and reason as the sentinel case above.
 			"max_entries_400_message_only",
 			httpgrpc.Errorf(http.StatusBadRequest, validation.ErrMaxEntriesLimit, 10000, 5000),
 			FailureLimit, "max_entries",
