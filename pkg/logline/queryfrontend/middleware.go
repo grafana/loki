@@ -456,9 +456,7 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 
 	var totalBytes uint64
 	for _, group := range matcherGroups {
-		adjustedFrom, adjustedThrough := group.Widen(from, through)
-		adjustedFrom = metricStepAlignStart(adjustedFrom, group.Interval, stepMillis)
-		adjustedThrough = metricStepAlignEnd(adjustedThrough, group.Interval, stepMillis)
+		adjustedFrom, adjustedThrough := metricLookupBounds(group, from, through, stepMillis)
 
 		resp, err := h.next.Do(ctx, &logproto.IndexStatsRequest{
 			From:     model.Time(adjustedFrom.UnixMilli()),
@@ -482,23 +480,26 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	return totalBytes, nil
 }
 
-// metricStepAlignStart moves a metric read start back by one query step.
-// metricStepAlignEnd moves a metric read end forward by one query step.
-// Prefetch runs before the metric splitter, which floors the start and rounds
-// the end up by less than one step. A log selector has a zero interval, so
-// its bounds stay put. A zero step, as on an instant query, also stays put.
-func metricStepAlignStart(start time.Time, interval time.Duration, stepMillis int64) time.Time {
-	if interval <= 0 || stepMillis <= 0 {
-		return start
+// metricLookupBounds rounds onto the step, then widens by the range and offset.
+// Prefetch runs before the splitter, which floors the start and rounds the end up.
+// A zero interval or a zero step is only widened.
+func metricLookupBounds(group syntax.MatcherRange, from, through time.Time, stepMillis int64) (time.Time, time.Time) {
+	if group.Interval > 0 && stepMillis > 0 {
+		from, through = alignMetricStep(from, through, stepMillis)
 	}
-	return start.Add(-time.Duration(stepMillis) * time.Millisecond)
+	return group.Widen(from, through)
 }
 
-func metricStepAlignEnd(end time.Time, interval time.Duration, stepMillis int64) time.Time {
-	if interval <= 0 || stepMillis <= 0 {
-		return end
+// alignMetricStep matches metricQuerySplitter.alignStartEnd: floor the start and
+// round the end up to the next step.
+func alignMetricStep(start, end time.Time, stepMillis int64) (time.Time, time.Time) {
+	stepNs := stepMillis * int64(time.Millisecond)
+	startNs := start.UnixNano()
+	endNs := end.UnixNano()
+	if mod := endNs % stepNs; mod != 0 {
+		endNs += stepNs - mod
 	}
-	return end.Add(time.Duration(stepMillis) * time.Millisecond)
+	return time.Unix(0, startNs-startNs%stepNs).UTC(), time.Unix(0, endNs).UTC()
 }
 
 // dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
@@ -689,9 +690,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
 	readStart, readEnd := from, through
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		readStart, readEnd = groups[0].Widen(from, through)
-		readStart = metricStepAlignStart(readStart, groups[0].Interval, lokiReq.Step)
-		readEnd = metricStepAlignEnd(readEnd, groups[0].Interval, lokiReq.Step)
+		readStart, readEnd = metricLookupBounds(groups[0], from, through, lokiReq.Step)
 	}
 	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
