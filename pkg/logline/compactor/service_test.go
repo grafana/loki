@@ -44,6 +44,15 @@ func TestNew_InvalidConfig(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestNew_UnknownPostingsEncoding(t *testing.T) {
+	cfg := Config{Compaction: logline.CompactionConfig{
+		SchedulerAddress: "http://localhost:9999",
+		PostingsEncoding: "roaring",
+	}}
+	_, err := New(nil, cfg, log.NewNopLogger(), prometheus.NewRegistry())
+	require.ErrorContains(t, err, "postings_encoding")
+}
+
 func TestServiceLifecycle(t *testing.T) {
 	svc := newTestService(t)
 
