@@ -2737,6 +2737,74 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 	}
 }
 
+func TestMemChunk_SampleIteratorWithStructuredMetadataProjection(t *testing.T) {
+	streamLabels := labels.FromStrings("job", "fake")
+	chk := newMemChunkWithFormat(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	for i, structuredMetadata := range [][]logproto.LabelAdapter{
+		{{Name: "service.name", Value: "a"}, {Name: "trace_id", Value: "1"}},
+		{{Name: "service.name", Value: "b"}, {Name: "trace_id", Value: "2"}},
+	} {
+		dup, err := chk.Append(logprotoEntryWithStructuredMetadata(int64(i), "line", structuredMetadata))
+		require.NoError(t, err)
+		require.False(t, dup)
+	}
+	require.NoError(t, chk.Close())
+
+	// Read the chunk back the way the store does, so its blocks are all encoded.
+	b, err := chk.Bytes()
+	require.NoError(t, err)
+	chk, err = NewByteChunk(b, testBlockSize, testTargetSize)
+	require.NoError(t, err)
+
+	// A bare range aggregation keeps every structured metadata pair it gets in its labels.
+	expr, err := syntax.ParseSampleExpr(`count_over_time({job="fake"}[1d])`)
+	require.NoError(t, err)
+	extractor, err := expr.Extractor()
+	require.NoError(t, err)
+
+	for name, tc := range map[string]struct {
+		ctx  context.Context
+		want []string
+	}{
+		"without a projection every pair is resolved": {
+			ctx:  context.Background(),
+			want: []string{`{job="fake", service_name="a", trace_id="1"}`, `{job="fake", service_name="b", trace_id="2"}`},
+		},
+		"a projection resolves only the pairs it names, by their normalized name": {
+			ctx:  WithStructuredMetadataProjection(context.Background(), []string{"service_name"}),
+			want: []string{`{job="fake", service_name="a"}`, `{job="fake", service_name="b"}`},
+		},
+		"an empty projection resolves no pair": {
+			ctx:  WithStructuredMetadataProjection(context.Background(), nil),
+			want: []string{`{job="fake"}`, `{job="fake"}`},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			it := chk.SampleIterator(tc.ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
+			var got []string
+			for it.Next() {
+				got = append(got, it.Labels())
+			}
+			require.NoError(t, it.Err())
+			require.NoError(t, it.Close())
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	t.Run("entry iterators resolve every pair under a projection", func(t *testing.T) {
+		ctx := WithStructuredMetadataProjection(context.Background(), nil)
+		it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(streamLabels))
+		require.NoError(t, err)
+		var got []string
+		for it.Next() {
+			got = append(got, logproto.FromLabelAdaptersToLabels(it.At().StructuredMetadata).String())
+		}
+		require.NoError(t, it.Err())
+		require.NoError(t, it.Close())
+		require.Equal(t, []string{`{service_name="a", trace_id="1"}`, `{service_name="b", trace_id="2"}`}, got)
+	})
+}
+
 func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 	// use small block size to build multiple blocks in the test chunk
 	blockSize := 10

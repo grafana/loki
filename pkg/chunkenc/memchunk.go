@@ -1472,7 +1472,28 @@ type bufferedIterator struct {
 	symbolsBuf             []symbol      // The buffer for a single entry's symbols.
 	currStructuredMetadata labels.Labels // The current labels.
 
+	// projection holds the structured metadata names to resolve, or is nil to resolve all of
+	// them. projected caches, by name position, whether that name is in projection.
+	projection map[string]struct{}
+	projected  map[uint32]bool
+
 	closed bool
+}
+
+// structuredMetadataProjectionKey is the context key of [WithStructuredMetadataProjection].
+type structuredMetadataProjectionKey struct{}
+
+// WithStructuredMetadataProjection returns a child context under which the sample iterators of
+// encoded blocks pass only the structured metadata named in names to the extractor, and skip
+// resolving the rest. Names are compared after normalization, in the form a query refers to them.
+//
+// Entry iterators ignore it, because a log query returns every structured metadata pair.
+func WithStructuredMetadataProjection(ctx context.Context, names []string) context.Context {
+	projection := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		projection[name] = struct{}{}
+	}
+	return context.WithValue(ctx, structuredMetadataProjectionKey{}, projection)
 }
 
 // processingDisabledKey is used to mark contexts where log line processing should be bypassed.
@@ -1725,12 +1746,45 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	lbls, err := si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil)
+	if si.projection != nil {
+		if err := si.project(); err != nil {
+			si.err = fmt.Errorf("symbolizer lookup: %w", err)
+			return 0, nil, labels.EmptyLabels(), false
+		}
+	}
+
+	lbls, err := si.symbolizer.Lookup(si.symbolsBuf, nil)
 	if err != nil {
 		si.err = fmt.Errorf("symbolizer lookup: %w", err)
 		return 0, nil, labels.EmptyLabels(), false
 	}
 	return ts, si.buf[:lineSize], lbls, true
+}
+
+// project drops from the current entry's symbols, in place, the pairs whose name is not in the
+// projection.
+func (si *bufferedIterator) project() error {
+	if si.projected == nil {
+		si.projected = make(map[uint32]bool)
+	}
+
+	kept := si.symbolsBuf[:0]
+	for _, sym := range si.symbolsBuf {
+		keep, seen := si.projected[sym.Name]
+		if !seen {
+			name, err := si.symbolizer.lookupName(sym.Name)
+			if err != nil {
+				return err
+			}
+			_, keep = si.projection[name]
+			si.projected[sym.Name] = keep
+		}
+		if keep {
+			kept = append(kept, sym)
+		}
+	}
+	si.symbolsBuf = kept
+	return nil
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1853,8 +1907,10 @@ func newSampleIterator(
 		return iter.NoopSampleIterator
 	}
 
+	it := newBufferedIterator(ctx, pool, b, format, symbolizer)
+	it.projection, _ = ctx.Value(structuredMetadataProjectionKey{}).(map[string]struct{})
 	return &sampleBufferedIterator{
-		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
+		bufferedIterator: it,
 		extractor:        extractor,
 		stats:            stats.FromContext(ctx),
 	}

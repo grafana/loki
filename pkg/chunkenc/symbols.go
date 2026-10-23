@@ -187,36 +187,42 @@ func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) (labels.La
 		buf.Reset()
 	}
 
-	labelNamer := otlptranslator.LabelNamer{}
 	for _, symbol := range syms {
-		// First check if we have a normalized name for this symbol
-		s.mtx.RLock()
-		normalized, exists := s.normalizedNames[symbol.Name]
-		s.mtx.RUnlock()
-
-		var name string
-		if exists {
-			name = normalized
-		} else {
-			// If we haven't seen this name before, look it up and normalize it
-			name = s.lookup(symbol.Name)
-			// If we have a match for the symbol name, normalize it. Otherwise keep "" as the name.
-			if name != "" {
-				normalized, err := labelNamer.Build(name)
-				if err != nil {
-					return labels.EmptyLabels(), err
-				}
-				s.mtx.Lock()
-				s.normalizedNames[symbol.Name] = normalized
-				s.mtx.Unlock()
-				name = normalized
-			}
+		name, err := s.lookupName(symbol.Name)
+		if err != nil {
+			return labels.EmptyLabels(), err
 		}
-
 		buf.Add(name, s.lookup(symbol.Value))
 	}
 
 	return buf.Labels(), nil
+}
+
+// lookupName returns the label name at idx, normalized the way Lookup returns it.
+func (s *symbolizer) lookupName(idx uint32) (string, error) {
+	// First check if we have a normalized name for this symbol
+	s.mtx.RLock()
+	normalized, exists := s.normalizedNames[idx]
+	s.mtx.RUnlock()
+	if exists {
+		return normalized, nil
+	}
+
+	// If we haven't seen this name before, look it up and normalize it.
+	// If we have no match for the symbol name, keep "" as the name.
+	name := s.lookup(idx)
+	if name == "" {
+		return "", nil
+	}
+	labelNamer := otlptranslator.LabelNamer{}
+	normalized, err := labelNamer.Build(name)
+	if err != nil {
+		return "", err
+	}
+	s.mtx.Lock()
+	s.normalizedNames[idx] = normalized
+	s.mtx.Unlock()
+	return normalized, nil
 }
 
 func (s *symbolizer) lookup(idx uint32) string {
