@@ -360,6 +360,38 @@ The schema configuration does not contain the most recent schema version and nee
 
 - Add a new object storage schema V13 with a future EffectiveDate
 
+## Lokistack Degraded
+
+### Impact
+
+The LokiStack is in a degraded state and will not reconcile. Log ingestion and querying may be disrupted or unavailable.
+
+### Summary
+
+The LokiStack has entered a degraded state, likely due to a configuration issue or validation failure. The operator will not reconcile the LokiStack until the underlying problem is resolved. Check the degraded condition reason for specific details.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the namespace where the LokiStack is deployed:
+  - OpenShift
+    - `openshift-logging` (LokiStack)
+
+### Steps
+
+1. Check the LokiStack status to identify the specific degraded reason:
+   ```bash
+   oc get lokistack <name> -n <namespace> -o jsonpath='{.status.conditions[?(@.type=="Degraded")]}'
+   ```
+
+2. Check for specific alerts related to the degraded reason for detailed troubleshooting steps.
+
+3. After resolving the issue, the LokiStack should automatically reconcile and exit degraded state.
+
 ## Lokistack Components Not Ready Warning
 
 ### Impact

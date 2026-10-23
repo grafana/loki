@@ -195,6 +195,21 @@ groups:
     for: 1m
     labels:
       severity: warning
+  - alert: LokistackDegraded
+    annotations:
+      description: |-
+        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" is in a degraded state due to "{{ $labels.reason }}".
+        The LokiStack will not reconcile until the underlying issue is resolved.
+      summary: "LokiStack instance is in a degraded state."
+      runbook_url: "[[ .RunbookURL ]]#Lokistack-Degraded"
+    expr: |
+      sum (
+        lokistack_status_condition{condition="Degraded",status="true"}
+      ) by (stack_namespace, stack_name, reason)
+      > 0
+    for: 5m
+    labels:
+      severity: warning
   - alert: LokistackComponentsNotReadyWarning
     annotations:
       description: |-
