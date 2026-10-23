@@ -126,6 +126,10 @@ type LokiStore struct {
 	// (FlushIndexes) and to refresh the object-listing cache + download newly
 	// shipped indexes on demand (TriggerSync/SyncStatuses).
 	syncerFlushers []namedSyncerFlusher
+
+	// queryReadinessEnsurers are the per-period index stores that can download
+	// their query ready indexes on demand (EnsureQueryReadiness).
+	queryReadinessEnsurers []index.QueryReadinessEnsurer
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -215,6 +219,17 @@ func (s *LokiStore) TriggerSync() bool {
 		}
 	}
 	return started
+}
+
+// EnsureQueryReadiness downloads the missing indexes of every per-period index
+// store that supports it.
+func (s *LokiStore) EnsureQueryReadiness(ctx context.Context) error {
+	for _, e := range s.queryReadinessEnsurers {
+		if err := e.EnsureQueryReadiness(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SyncStatuses reports the sync status of each per-period index store, labeled
@@ -321,7 +336,8 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	}
 
 	name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, s.registerer, indexClientLogger)
+	shipperCfg, prefix := s.cfg.TSDBShipperConfig.ForPeriod(p)
+	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, prefix, shipperCfg, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, s.registerer, indexClientLogger)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -342,6 +358,9 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	// assertion collects it for both uses.
 	if sf, ok := indexReaderWriter.(syncerFlusher); ok {
 		s.syncerFlushers = append(s.syncerFlushers, namedSyncerFlusher{name: name, syncerFlusher: sf})
+	}
+	if e, ok := indexReaderWriter.(index.QueryReadinessEnsurer); ok {
+		s.queryReadinessEnsurers = append(s.queryReadinessEnsurers, e)
 	}
 
 	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)

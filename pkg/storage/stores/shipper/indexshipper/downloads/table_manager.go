@@ -42,14 +42,15 @@ type Limits interface {
 }
 
 // TenantFilter is invoked by an IndexGateway instance and answers which
-// tenants from the given list of tenants are assigned to this instance.
+// tenants from the given list of tenants have their index in table assigned
+// to this instance.
 //
 // It is only relevant by an IndexGateway in the ring mode and if its result
 // does not contain a given tenant, that tenant will be ignored by this
-// IndexGateway during query readiness.
+// IndexGateway during query readiness of that table.
 //
-// It requires the same function signature as indexgateway.(*ShardingStrategy).FilterTenants
-type TenantFilter func([]string) ([]string, error)
+// It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterTenants
+type TenantFilter func(table string, tenants []string) ([]string, error)
 
 type TableManager interface {
 	Stop()
@@ -60,6 +61,7 @@ type TableManager interface {
 	TriggerSync() bool
 	// SyncStatus reports the current/last sync status.
 	SyncStatus() indexstore.SyncStatus
+	EnsureQueryReadiness(ctx context.Context) error
 }
 
 type Config struct {
@@ -71,6 +73,10 @@ type Config struct {
 	// its files from object storage.
 	DownloadTimeout time.Duration
 	Limits          Limits
+	// SkipInitialQueryReadiness skips the query readiness run in
+	// NewTableManager, for a TenantFilter that cannot answer yet. Query
+	// readiness still runs periodically and on EnsureQueryReadiness.
+	SkipInitialQueryReadiness bool
 }
 
 type tableManager struct {
@@ -89,6 +95,8 @@ type tableManager struct {
 	wg     sync.WaitGroup
 
 	tenantFilter TenantFilter
+
+	queryReadinessMtx sync.Mutex
 
 	// syncManager serializes periodic and on-demand index syncs and tracks their
 	// status (see TriggerSync/SyncStatus).
@@ -133,12 +141,12 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		return nil, err
 	}
 
-	// download the missing tables.
-	err = tm.ensureQueryReadiness(ctx)
-	if err != nil {
-		// call Stop to close open file references.
-		tm.Stop()
-		return nil, err
+	if !cfg.SkipInitialQueryReadiness {
+		err = tm.EnsureQueryReadiness(ctx)
+		if err != nil {
+			tm.Stop()
+			return nil, err
+		}
 	}
 
 	// Increment the WaitGroup counter here before starting the goroutine
@@ -164,7 +172,7 @@ func (tm *tableManager) loop() {
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
-			if err := tm.ensureQueryReadiness(tm.ctx); err != nil {
+			if err := tm.EnsureQueryReadiness(tm.ctx); err != nil {
 				level.Error(tm.logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
@@ -345,6 +353,13 @@ func (tm *tableManager) cleanupCache() error {
 	return nil
 }
 
+// EnsureQueryReadiness implements TableManager.
+func (tm *tableManager) EnsureQueryReadiness(ctx context.Context) error {
+	tm.queryReadinessMtx.Lock()
+	defer tm.queryReadinessMtx.Unlock()
+	return tm.ensureQueryReadiness(ctx)
+}
+
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
@@ -421,7 +436,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		listFilesDuration := time.Since(operationStart)
 
 		// find the users whos index we need to keep ready for querying from this table
-		usersToBeQueryReadyFor, err := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
+		usersToBeQueryReadyFor, err := tm.findUsersInTableForQueryReadiness(tableName, tableNumber, usersWithIndex, queryReadinessNumByUserID)
 		if err != nil {
 			return err
 		}
@@ -464,7 +479,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 
 // findUsersInTableForQueryReadiness returns the users that needs their index to be query ready based on the tableNumber and
 // query readiness number provided per user
-func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
+func (tm *tableManager) findUsersInTableForQueryReadiness(tableName string, tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
 	activeTableNumber := getActiveTableNumber()
 	usersToBeQueryReadyFor := []string{}
 
@@ -484,7 +499,7 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 		}
 	}
 	if tm.tenantFilter != nil {
-		return tm.tenantFilter(usersToBeQueryReadyFor)
+		return tm.tenantFilter(tableName, usersToBeQueryReadyFor)
 	}
 	return usersToBeQueryReadyFor, nil
 }
