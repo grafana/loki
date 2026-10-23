@@ -67,7 +67,7 @@ The proxy compares only the following routes:
 
 The proxy compares in the background after the backends have answered, so the comparison adds no latency for the client.
 
-The `loki_querytee_responses_compared_total` metric counts the comparisons by `result`:
+The `loki_querytee_responses_compared_total` metric counts the comparisons by `result` and `cause`:
 
 | Result     | Meaning                                                                                                                     |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -76,9 +76,41 @@ The `loki_querytee_responses_compared_total` metric counts the comparisons by `r
 | `fail`     | The secondary request failed, the secondary did not answer with status 200, or the comparator could not compare the bodies. |
 | `skipped`  | The primary failed or did not answer with status 200, or no samples remain after the proxy skips samples.                   |
 
+The `cause` label says how the bodies differ for a `mismatch`, and why a backend failed for a `fail` or a `skipped` pair.
+For a failed backend, the cause belongs to the secondary for a `fail`, and to the primary for a `skipped` pair:
+
+| Cause                                | Result            | Meaning                                                                                         |
+| ------------------------------------ | ----------------- | ----------------------------------------------------------------------------------------------- |
+| `timeout`                            | `fail`, `skipped` | The backend did not answer before its timeout.                                                  |
+| `transport`                          | `fail`, `skipped` | The request to the backend failed before a response arrived, for a reason other than a timeout. |
+| `http_4xx`                           | `fail`, `skipped` | The backend answered with a 4xx status.                                                         |
+| `http_5xx`                           | `fail`, `skipped` | The backend answered with a 5xx status.                                                         |
+| `http_other`                         | `fail`, `skipped` | The backend answered with another status that is not 200.                                       |
+| `compare_error`                      | `fail`            | The comparator could not compare the bodies.                                                    |
+| `status_mismatch`                    | `mismatch`        | The `status` of the responses differs.                                                          |
+| `result_type_mismatch`               | `mismatch`        | The result types differ.                                                                        |
+| `metric_count_mismatch`              | `mismatch`        | The responses have a different number of series.                                                |
+| `metric_missing`                     | `mismatch`        | A series of the primary's response is missing from the secondary's response.                    |
+| `sample_count_mismatch`              | `mismatch`        | A series has a different number of samples.                                                     |
+| `sample_value_mismatch`              | `mismatch`        | A sample has a different value.                                                                 |
+| `sample_timestamp_mismatch`          | `mismatch`        | A sample has a different timestamp.                                                             |
+| `stream_count_mismatch`              | `mismatch`        | The responses have a different number of streams.                                               |
+| `stream_missing`                     | `mismatch`        | A stream of the primary's response is missing from the secondary's response.                    |
+| `stream_entry_count_mismatch`        | `mismatch`        | A stream has a different number of entries.                                                     |
+| `stream_timestamp_mismatch`          | `mismatch`        | An entry has a different timestamp.                                                             |
+| `stream_line_mismatch`               | `mismatch`        | An entry has a different line.                                                                  |
+| `structured_metadata_count_mismatch` | `mismatch`        | An entry has a different number of structured metadata pairs.                                   |
+| `structured_metadata_mismatch`       | `mismatch`        | An entry has different structured metadata.                                                     |
+| `parsed_labels_count_mismatch`       | `mismatch`        | An entry has a different number of parsed label pairs.                                          |
+| `parsed_labels_mismatch`             | `mismatch`        | An entry has different parsed labels.                                                           |
+
+The `cause` is empty for a `match`, and for a `skipped` pair when no samples remain.
+
 The proxy skips the samples from the last `-proxy.compare-skip-recent-samples` (default 60s) and the samples before `-proxy.compare-skip-samples-before`.
 
-When several rows apply, the proxy checks the cases in this order and uses the first that matches: the primary request failed, the secondary request failed, the primary status is not 200, the secondary status is not 200.
+When several `result` rows apply, the proxy checks the cases in this order and uses the first that matches: the primary request failed, the secondary request failed, the primary status is not 200, the secondary status is not 200.
+
+The `loki_querytee_secondary_backend_stats_ratio` metric observes the ratio of a query stat of the secondary over the same stat of the primary.
 
 To also report the number of missing series in the `loki_querytee_missing_metrics_series` metric, set `-proxy.compare-report-missing-series=true`.
 This flag requires `-proxy.compare-responses=true`.

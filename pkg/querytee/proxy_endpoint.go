@@ -204,11 +204,11 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 			actualResponse := responses[i]
 
 			result := comparisonMatch
-			summary, err := p.compareResponses(expectedResponse, actualResponse, time.Now().UTC())
+			summary, cause, err := p.compareResponses(expectedResponse, actualResponse, time.Now().UTC())
 			if err != nil {
 				level.Error(p.logger).Log("msg", "response comparison failed",
-					"backend-name", p.backends[i].name,
-					"route-name", p.routeName,
+					"backend", p.backends[i].name,
+					"route", p.routeName,
 					"query", r.URL.RawQuery, "err", err)
 				result = comparisonFailed
 				if errors.Is(err, comparator.ErrComparisonMismatch) {
@@ -221,7 +221,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 			if p.reportMissingSeries && summary != nil {
 				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer).Observe(float64(summary.MissingMetrics))
 			}
-			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer, tenantID).Inc()
+			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, cause, issuer, tenantID).Inc()
 		}
 	}
 }
@@ -238,29 +238,39 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResp
 	return nil, errNoPrimaryBackend
 }
 
-func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, error) {
+func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, string, error) {
 	if expectedResponse.err != nil {
-		return &comparator.ComparisonSummary{Skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, errorCause(expectedResponse), nil
 	}
 
 	if actualResponse.err != nil {
-		return nil, fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", actualResponse.err)
+		return nil, errorCause(actualResponse), fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", actualResponse.err)
 	}
 
 	// compare response body only if we get a 200
 	if expectedResponse.status != 200 {
-		return &comparator.ComparisonSummary{Skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, errorCause(expectedResponse), nil
 	}
 
 	if actualResponse.status != 200 {
-		return nil, fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
+		return nil, errorCause(actualResponse), fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
 	}
 
 	if expectedResponse.status != actualResponse.status {
-		return nil, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
+		return nil, causeCompareError, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
 	}
 
-	return p.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
+	summary, err := p.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
+	var cause string
+	switch {
+	case errors.Is(err, comparator.ErrComparisonMismatch):
+		if summary != nil {
+			cause = summary.MismatchCause
+		}
+	case err != nil:
+		cause = causeCompareError
+	}
+	return summary, cause, err
 }
 
 type BackendResponse struct {

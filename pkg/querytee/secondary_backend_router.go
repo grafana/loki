@@ -65,7 +65,7 @@ func (r *secondaryBackendRouter) shouldRoute(ctx context.Context, req queryrange
 
 	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		level.Warn(r.logger).Log("msg", "failed to extract tenant IDs", "route-name", r.routeName, "err", err)
+		level.Warn(r.logger).Log("msg", "failed to extract tenant IDs", "route", r.routeName, "err", err)
 		r.metrics.secondaryBackendDecisions.WithLabelValues(r.routeName, decisionInvalidTenant).Inc()
 		return false
 	}
@@ -73,7 +73,7 @@ func (r *secondaryBackendRouter) shouldRoute(ctx context.Context, req queryrange
 	decision := decisionSent
 	defer func() {
 		if p := recover(); p != nil {
-			level.Error(r.logger).Log("msg", "panic in the selection strategy", "route-name", r.routeName, "tenants", strings.Join(tenants, "|"), "query", req.GetQuery(), "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
+			level.Error(r.logger).Log("msg", "panic in the selection strategy", "route", r.routeName, "tenants", strings.Join(tenants, "|"), "query", req.GetQuery(), "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
 			selected, decision = false, decisionStrategyError
 		}
 		r.metrics.secondaryBackendDecisions.WithLabelValues(r.routeName, decision).Inc()

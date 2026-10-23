@@ -15,12 +15,16 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
+
+// maxLoggedQueryLength cuts the query in the log line of a pair.
+const maxLoggedQueryLength = 1000
 
 var errNoPrimaryBackend = errors.New("no primary backend")
 
@@ -79,11 +83,6 @@ type backendResult struct {
 	err         error
 }
 
-// shouldCompare returns true if the given backend result should be compared against the primary result.
-func (h *FanOutHandler) shouldCompare(r *backendResult) bool {
-	return h.comparator != nil && r.backend.isSecondary()
-}
-
 // Do implements queryrangebase.Handler. It sends the request to every backend, except that the
 // secondary backend strategy decides whether the secondary backend gets it. It returns the primary
 // backend's response. In the background, when it has a comparator, it compares the secondary
@@ -128,7 +127,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	results := h.makeBackendRequests(ctx, backends, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(backends))
 
-	return h.doWithPrimary(len(backends), results, collected, httpReq)
+	return h.doWithPrimary(ctx, req, len(backends), results, collected, httpReq)
 }
 
 // backendsForRequest returns the backends that get the request. The secondary backend gets it only
@@ -140,20 +139,28 @@ func (h *FanOutHandler) backendsForRequest(ctx context.Context, req queryrangeba
 	return h.backendsWithoutSecondary
 }
 
-func (h *FanOutHandler) doWithPrimary(numBackends int, results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
+func (h *FanOutHandler) doWithPrimary(ctx context.Context, req queryrangebase.Request, numBackends int, results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
 	for i := 0; i < numBackends; i++ {
 		result := <-results
 		collected = append(collected, result)
 
 		if result.backend.isPrimary() {
 			remaining := numBackends - i - 1
+			tenantID := tenantLabel(ctx)
 			go func() {
-				h.collectRemainingAndCompare(remaining, httpReq, results, collected)
+				h.collectRemainingAndCompare(req, remaining, httpReq, results, collected, tenantID)
 			}()
 
 			// The primary backend failed or returned an error status. The client gets that
 			// response. The proxy does not fall back to another backend.
 			if result.err != nil {
+				level.Warn(h.logger).Log(
+					"msg", "primary backend failed",
+					"route", h.routeName,
+					"backend", result.backend.name,
+					"status", result.backendResp.status,
+					"err", result.err,
+				)
 				return &NonDecodableResponse{
 					StatusCode: result.backendResp.status,
 					Body:       result.backendResp.body,
@@ -168,100 +175,158 @@ func (h *FanOutHandler) doWithPrimary(numBackends int, results <-chan *backendRe
 }
 
 // tenantLabel returns the tenant label of the metrics for the request. A multi-tenant request has
-// its tenant IDs joined by "|".
-func tenantLabel(httpReq *http.Request) (string, error) {
-	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(httpReq)
-	if err != nil {
-		return "", err
-	}
-
+// its tenant IDs joined by "|". It returns "unknown" when the context has no valid tenant.
+func tenantLabel(ctx context.Context) string {
 	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return "", err
+	if err != nil || len(tenantIDs) == 0 {
+		return unknownTenant
 	}
-	return tenant.JoinTenantIDs(tenantIDs), nil
+	return tenant.JoinTenantIDs(tenantIDs)
 }
 
 // collectRemainingAndCompare collects the remaining backend results. When the handler has a
-// comparator, it also compares the secondary result with the primary one. Call it asynchronously,
-// so it does not block the primary response.
-func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult) {
-	issuer := detectIssuer(httpReq)
-	tenantID, err := tenantLabel(httpReq)
-	if err != nil {
-		level.Warn(h.logger).Log(
-			"msg", "failed to extract tenant id from http request",
-			"route-name", h.routeName,
-			"err", err,
-		)
-		tenantID = "unknown"
-	}
+// comparator, it also compares the secondary result with the primary one, and records the outcome.
+// Call it asynchronously, so it does not block the primary response.
+func (h *FanOutHandler) collectRemainingAndCompare(req queryrangebase.Request, remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, tenantID string) {
 	for range remaining {
-		r := <-results
-		collected = append(collected, r)
+		collected = append(collected, <-results)
 	}
 
-	var primaryResult *backendResult
+	var primary, secondary *backendResult
 	for _, r := range collected {
-		if r.backend.isPrimary() {
-			primaryResult = r
-			break
+		switch {
+		case r.backend.isPrimary():
+			primary = r
+		case r.backend.isSecondary():
+			secondary = r
 		}
 	}
-
-	for _, r := range collected {
-		if h.shouldCompare(r) {
-			result := comparisonMatch
-			summary, err := h.compareResponses(primaryResult.backendResp, r.backendResp, time.Now().UTC())
-			if err != nil {
-				level.Error(h.logger).Log("msg", "response comparison failed",
-					"backend-name", r.backend.name,
-					"route-name", h.routeName,
-					"query", httpReq.URL.RawQuery,
-					"err", err)
-				result = comparisonFailed
-				if errors.Is(err, comparator.ErrComparisonMismatch) {
-					result = comparisonMismatch
-				}
-			} else if summary != nil && summary.Skipped {
-				result = comparisonSkipped
-			}
-
-			if h.reportMissingSeries && summary != nil {
-				h.metrics.missingMetrics.WithLabelValues(
-					r.backend.name, r.backend.Alias(), h.routeName, result, issuer,
-				).Observe(float64(summary.MissingMetrics))
-			}
-			h.metrics.responsesComparedTotal.WithLabelValues(
-				r.backend.name, r.backend.Alias(), h.routeName, result, issuer, tenantID,
-			).Inc()
-		}
+	if h.comparator == nil || primary == nil || secondary == nil {
+		return
 	}
+
+	issuer := detectIssuer(httpReq)
+
+	result := comparisonMatch
+	summary, cause, err := h.compareResponses(primary.backendResp, secondary.backendResp, time.Now().UTC())
+	if err != nil {
+		level.Error(h.logger).Log("msg", "response comparison failed",
+			"backend", secondary.backend.name,
+			"route", h.routeName,
+			"query", httpReq.URL.RawQuery,
+			"err", err)
+		result = comparisonFailed
+		if errors.Is(err, comparator.ErrComparisonMismatch) {
+			result = comparisonMismatch
+		}
+	} else if summary != nil && summary.Skipped {
+		result = comparisonSkipped
+	}
+
+	if h.reportMissingSeries && summary != nil {
+		h.metrics.missingMetrics.WithLabelValues(
+			secondary.backend.name, secondary.backend.Alias(), h.routeName, result, issuer,
+		).Observe(float64(summary.MissingMetrics))
+	}
+
+	h.compareStats(req, primary, secondary, tenantID, result, cause)
+
+	h.metrics.responsesComparedTotal.WithLabelValues(
+		secondary.backend.name, secondary.backend.Alias(), h.routeName, result, cause, issuer, tenantID,
+	).Inc()
 }
 
-func (h *FanOutHandler) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, error) {
+// compareStats observes the ratios of the stats of the secondary over the stats of the primary, and
+// logs the pair of responses with the stats of each backend.
+func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, secondary *backendResult, tenantID, result, cause string) {
+	// statsLogFields returns the log fields of the stats of one backend.
+	statsLogFields := func(prefix string, s stats.Result) []any {
+		dataobj := s.Querier.Store.Dataobj
+		return []any{
+			prefix + "_bytes_processed", s.Summary.TotalBytesProcessed,
+			prefix + "_lines_processed", s.Summary.TotalLinesProcessed,
+			prefix + "_exec_time_seconds", s.Summary.ExecTime,
+			prefix + "_queue_time_seconds", s.Summary.QueueTime,
+			prefix + "_splits", s.Summary.Splits,
+			prefix + "_shards", s.Summary.Shards,
+			prefix + "_chunk_decompressed_bytes", s.Querier.Store.Chunk.DecompressedBytes,
+			prefix + "_dataobj_rows_read", dataobj.PrePredicateDecompressedRows,
+			prefix + "_dataobj_decompressed_bytes", dataobj.PrePredicateDecompressedBytes,
+			prefix + "_dataobj_post_filter_rows", dataobj.PostFilterRows,
+		}
+	}
+
+	primaryStats, hasPrimaryStats := responseStats(primary.response)
+	secondaryStats, hasSecondaryStats := responseStats(secondary.response)
+
+	if hasPrimaryStats && hasSecondaryStats {
+		h.metrics.observeSecondaryBackendStats(h.routeName, primaryStats, secondaryStats)
+	}
+
+	query := req.GetQuery()
+	if len(query) > maxLoggedQueryLength {
+		query = query[:maxLoggedQueryLength]
+	}
+	keyvals := []any{
+		"msg", "secondary pair",
+		"route", h.routeName,
+		"tenant", tenantID,
+		"result", result,
+		"cause", cause,
+		"query", query,
+		"primary_status", primary.backendResp.status,
+		"secondary_status", secondary.backendResp.status,
+		"primary_trace_id", primary.backendResp.traceID,
+		"secondary_trace_id", secondary.backendResp.traceID,
+		"primary_duration", primary.backendResp.duration,
+		"secondary_duration", secondary.backendResp.duration,
+	}
+	if hasPrimaryStats {
+		keyvals = append(keyvals, statsLogFields("primary", primaryStats)...)
+		keyvals = append(keyvals,
+			"primary_result_cache_entries_found", primaryStats.Caches.Result.EntriesFound,
+			"primary_result_cache_entries_requested", primaryStats.Caches.Result.EntriesRequested,
+		)
+	}
+	if hasSecondaryStats {
+		keyvals = append(keyvals, statsLogFields("secondary", secondaryStats)...)
+	}
+	level.Info(h.logger).Log(keyvals...)
+}
+
+func (h *FanOutHandler) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, string, error) {
 	if expectedResponse.err != nil {
-		return &comparator.ComparisonSummary{Skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, errorCause(expectedResponse), nil
 	}
 
 	if actualResponse.err != nil {
-		return nil, fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", actualResponse.err)
+		return nil, errorCause(actualResponse), fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", actualResponse.err)
 	}
 
 	// compare response body only if we get a 200
 	if expectedResponse.status != 200 {
-		return &comparator.ComparisonSummary{Skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, errorCause(expectedResponse), nil
 	}
 
 	if actualResponse.status != 200 {
-		return nil, fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
+		return nil, errorCause(actualResponse), fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
 	}
 
 	if expectedResponse.status != actualResponse.status {
-		return nil, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
+		return nil, causeCompareError, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
 	}
 
-	return h.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
+	summary, err := h.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
+	var cause string
+	switch {
+	case errors.Is(err, comparator.ErrComparisonMismatch):
+		if summary != nil {
+			cause = summary.MismatchCause
+		}
+	case err != nil:
+		cause = causeCompareError
+	}
+	return summary, cause, err
 }
 
 // executeBackendRequest executes a request to a single backend.
@@ -379,4 +444,34 @@ func statusCodeFromError(err error) int {
 	}
 
 	return http.StatusInternalServerError
+}
+
+// responseStats returns the query stats of a response. It reports false when the response carries
+// none.
+func responseStats(resp queryrangebase.Response) (stats.Result, bool) {
+	switch r := resp.(type) {
+	case *queryrange.LokiPromResponse:
+		return r.Statistics, true
+	case *queryrange.LokiResponse:
+		return r.Statistics, true
+	default:
+		return stats.Result{}, false
+	}
+}
+
+// errorCause returns why a backend response failed: timeout, transport, http_4xx, http_5xx or
+// http_other.
+func errorCause(r *BackendResponse) string {
+	switch {
+	case r.err != nil && r.status == http.StatusGatewayTimeout:
+		return "timeout"
+	case r.err != nil:
+		return "transport"
+	case r.status >= 400 && r.status < 500:
+		return "http_4xx"
+	case r.status >= 500:
+		return "http_5xx"
+	default:
+		return "http_other"
+	}
 }
