@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.7.10](https://github.com/grafana/loki/compare/v3.7.9...v3.7.10) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** Update github.com/grafana/gomemcache digest to 9448343 (release-3.7.x) ([#25608](https://github.com/grafana/loki/issues/25608)) ([a815365](https://github.com/grafana/loki/commit/a8153653b8c8610e8f07724785d62de1cd089046))
+* **deps:** Update github.com/joncrlsn/dque digest to 7723fd1 (release-3.7.x) ([#25387](https://github.com/grafana/loki/issues/25387)) ([ad44cbb](https://github.com/grafana/loki/commit/ad44cbb73b92ae4d6711e6a4acab23817104ed10))
+* **deps:** Update github.com/thanos-io/objstore digest to 72d3b9f (release-3.7.x) ([#25389](https://github.com/grafana/loki/issues/25389)) ([e7d6809](https://github.com/grafana/loki/commit/e7d68093e0be6cf96fdc81c801057beaca4f212d))
+* **deps:** Update module charm.land/lipgloss/v2 to v2.0.6 (release-3.7.x) ([#25512](https://github.com/grafana/loki/issues/25512)) ([22f7483](https://github.com/grafana/loki/commit/22f7483ab43603238cda7927adff5b340c9af601))
+* **deps:** Update module github.com/bmatcuk/doublestar/v4 to v4.10.3 (release-3.7.x) ([#25519](https://github.com/grafana/loki/issues/25519)) ([726f181](https://github.com/grafana/loki/commit/726f181be6cd65bc69d775c1d6ee40fb9ec9c51a))
+* **deps:** Update module github.com/grpc-ecosystem/go-grpc-middleware/v2 to v2.3.4 (release-3.7.x) ([#25522](https://github.com/grafana/loki/issues/25522)) ([80ba07a](https://github.com/grafana/loki/commit/80ba07a114cd16a49523043a340c500c9ad9185f))
+* **deps:** Update module github.com/klauspost/pgzip to v1.2.7 (release-3.7.x) ([#25523](https://github.com/grafana/loki/issues/25523)) ([bd236c8](https://github.com/grafana/loki/commit/bd236c85f8a8bda681ca5425c9b48657097f795f))
+* **deps:** Update module github.com/oklog/ulid/v2 to v2.1.2 (release-3.7.x) ([#25525](https://github.com/grafana/loki/issues/25525)) ([b48845c](https://github.com/grafana/loki/commit/b48845cf6af23fc1590832d7cafd23a53d7f0469))
+* **deps:** Update module github.com/pierrec/lz4/v4 to v4.1.33 (release-3.7.x) ([#25528](https://github.com/grafana/loki/issues/25528)) ([cc71cda](https://github.com/grafana/loki/commit/cc71cdace45640cc6ad6a2295fb127dd5592cb13))
+* **deps:** Update module github.com/pierrec/lz4/v4 to v4.1.33 (release-3.7.x) ([#25587](https://github.com/grafana/loki/issues/25587)) ([82dfca9](https://github.com/grafana/loki/commit/82dfca9d41d6dbf6b30890b5660e7a81dbdf8a27))
+* **deps:** Update module github.com/schollz/progressbar/v3 to v3.19.1 (release-3.7.x) ([#25530](https://github.com/grafana/loki/issues/25530)) ([80841c3](https://github.com/grafana/loki/commit/80841c35941fc3e1eea5cacf8e43fb295f71ef4f))
+* **deps:** Update module github.com/shirou/gopsutil/v4 to v4.26.9 (release-3.7.x) ([#25532](https://github.com/grafana/loki/issues/25532)) ([f5b2cfd](https://github.com/grafana/loki/commit/f5b2cfd1678e8a0e2c26e5d963e125c14e319fef))
+* **deps:** Update module github.com/Workiva/go-datastructures to v1.1.8 (release-3.7.x) ([#25533](https://github.com/grafana/loki/issues/25533)) ([724235f](https://github.com/grafana/loki/commit/724235f29c76a1c175530e5615f25d7123e46fbb))
+
 ## [3.7.9](https://github.com/grafana/loki/compare/v3.7.8...v3.7.9) (2026-10-20)
 
 
