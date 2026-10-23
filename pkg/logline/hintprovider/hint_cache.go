@@ -119,7 +119,13 @@ func (p *CachingHintProvider) fetchDays(
 			dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
 			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
 			sfKey := singleflightKey(tenant, queryString, day.day)
+			// ran is per caller. The Do closure runs only for the caller that
+			// performs the lookup, so a joiner can keep the shared counters
+			// without also keeping that caller's full read time.
+			ran := false
+			waitStart := time.Now()
 			value, _, shared := p.flight.Do(sfKey, func() (any, error) {
+				ran = true
 				hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
 				if provideErr != nil {
 					return &provideHintsResult{hints: hints, stats: stats, err: provideErr}, nil
@@ -132,6 +138,7 @@ func (p *CachingHintProvider) fetchDays(
 				}
 				return &provideHintsResult{hints: hints, stats: stats}, nil
 			})
+			blocked := time.Since(waitStart)
 			if shared {
 				p.singleflightDedupedTot.Inc()
 			}
@@ -140,8 +147,17 @@ func (p *CachingHintProvider) fetchDays(
 			if !ok {
 				return fmt.Errorf("unexpected singleflight result type %T", value)
 			}
-			results[i] = *res
-			return res.err
+			copied := *res
+			if !ran {
+				stats := NewQueryStats()
+				if res.stats != nil {
+					stats.Merge(res.stats)
+				}
+				stats.totalIOWaitNanos.Store(blocked.Nanoseconds())
+				copied.stats = stats
+			}
+			results[i] = copied
+			return copied.err
 		})
 	}
 
