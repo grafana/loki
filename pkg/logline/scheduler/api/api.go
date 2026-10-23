@@ -3,9 +3,12 @@ package schedulerapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -65,12 +68,21 @@ func NewJobRequest(ctx context.Context, baseURL, workerID, lastCompletedJobID st
 	return http.NewRequestWithContext(ctx, http.MethodGet, jobURL, nil)
 }
 
+// ErrSchedulerUnavailable is wrapped by the error ParseJobResponse returns
+// for a 503, which the scheduler answers until it is running.
+var ErrSchedulerUnavailable = errors.New("scheduler unavailable")
+
 // ParseJobResponse decodes an HTTP response into a JobResponse.
 // Returns (nil, nil) for 204 No Content, (*JobResponse, nil) for 200 OK,
-// or (nil, error) for anything else.
+// or (nil, error) for anything else. The error for a 503 wraps
+// ErrSchedulerUnavailable and carries the scheduler's reason.
 func ParseJobResponse(resp *http.Response) (*JobResponse, error) {
 	if resp.StatusCode == http.StatusNoContent {
 		return nil, nil
+	}
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		reason, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return nil, fmt.Errorf("%w: %s", ErrSchedulerUnavailable, strings.TrimSpace(string(reason)))
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected scheduler response: %d", resp.StatusCode)

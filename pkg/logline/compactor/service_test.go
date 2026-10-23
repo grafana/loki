@@ -182,9 +182,9 @@ func TestRunLoop_ResendsCompletedJobIDUntilSchedulerAnswers(t *testing.T) {
 		fail func(w http.ResponseWriter)
 	}{
 		{
-			name: "scheduler not running",
+			name: "scheduler starting",
 			fail: func(w http.ResponseWriter) {
-				w.WriteHeader(http.StatusServiceUnavailable)
+				http.Error(w, "scheduler is not running: Starting", http.StatusServiceUnavailable)
 			},
 		},
 		{

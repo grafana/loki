@@ -58,11 +58,11 @@ When the compactor stops (e.g. rollout), `stopping()` calls `abandonCurrentJob()
 
 ### Backoff on error, immediate retry on no-work
 
-When `requestJob` returns an error (network failure, bad response), the compactor waits 5s before retrying. When `executeJob` fails, the compactor also waits 5s before requesting the next job to avoid a tight retry loop on transient errors (the scheduler would re-deliver the same job). When the scheduler returns 204 (no work available), the compactor retries immediately — the scheduler's long poll already absorbed the wait.
+When `requestJob` returns an error (network failure, bad response), the compactor waits 5s before retrying. The scheduler answers 503 until it is running, so every scheduler restart produces a run of these: a 503 is logged at warn with the scheduler's state, any other error at error. When `executeJob` fails, the compactor also waits 5s before requesting the next job to avoid a tight retry loop on transient errors (the scheduler would re-deliver the same job). When the scheduler returns 204 (no work available), the compactor retries immediately — the scheduler's long poll already absorbed the wait.
 
 ### Compactor-reported completion (last_completed_job_id)
 
-After a successful compaction, `runLoop` marks the job completed pending ack. Every job request then carries its ID as `last_completed_job_id`, so the scheduler can remove the job immediately (fast-path completion). The ID is cleared only once the scheduler answers with 200 or 204. A failed request (a 5xx, a timeout, or a connection error) keeps it for the retry.
+After a successful compaction, `runLoop` marks the job completed pending ack. Every job request then carries its ID as `last_completed_job_id`, so the scheduler can remove the job immediately (fast-path completion). The ID is cleared only once the scheduler answers with 200 or 204. A failed request keeps it for the retry. That includes the 503 the scheduler answers while it starts, so without this every scheduler restart would drop the reports of jobs that finish during it.
 
 Dropping the ID on a failed request is not safe. Until a store poll sees the merged index, the scheduler still holds the job for this compactor, and `getByWorker` hands it back to be compacted again, which breaks the scheduler's "compacted at most once" invariant. Resending is safe because the scheduler only removes a job that still exists and belongs to this compactor. A failed job is never marked completed, so its ID is never sent.
 

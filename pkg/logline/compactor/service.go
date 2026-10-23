@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -204,7 +205,11 @@ func (s *Service) runLoop(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			level.Error(s.logger).Log("msg", "failed to request job", "err", err)
+			if errors.Is(err, schedulerapi.ErrSchedulerUnavailable) {
+				level.Warn(s.logger).Log("msg", "scheduler is not ready, retrying job request", "err", err)
+			} else {
+				level.Error(s.logger).Log("msg", "failed to request job", "err", err)
+			}
 			// Brief backoff before retrying to avoid hammering the scheduler on
 			// transient connectivity issues.
 			select {
