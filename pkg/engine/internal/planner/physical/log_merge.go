@@ -2,7 +2,6 @@ package physical
 
 import (
 	"context"
-	"slices"
 
 	"github.com/oklog/ulid/v2"
 
@@ -24,10 +23,6 @@ type LogMerge struct {
 	// Runs are the K piles the merge consumes; each RunRef references LOG
 	// sections in object storage.
 	Runs []*compactionv2pb.RunRef
-
-	// SortSchema is the sort schema of the source index as ordered FQN sort keys
-	// (e.g. "label:service_name")
-	SortSchema []string
 }
 
 // ID implements the Node interface.
@@ -43,7 +38,6 @@ func (n *LogMerge) Clone() Node {
 		Tenant:         n.Tenant,
 		ToCWindowStart: n.ToCWindowStart,
 		Runs:           cloneRuns(n.Runs),
-		SortSchema:     slices.Clone(n.SortSchema),
 	}
 }
 

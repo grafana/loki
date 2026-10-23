@@ -1,10 +1,13 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -706,4 +709,59 @@ func storeIntegrationObject(ctx context.Context, t *testing.T, bucket objstore.B
 	require.NoError(t, err)
 	defer reader.Close()
 	require.NoError(t, bucket.Upload(ctx, path, reader))
+}
+
+func TestE2ECompactionLegacyObjects(t *testing.T) {
+	t.Run("compacts legacy objects with a new object of the same layout until idle", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		const tenant = "T"
+		schema := []string{"label:cluster"}
+		base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		window := base.Truncate(metastore.MetastoreWindowSize)
+		bucket := objstore.NewInMemBucket()
+
+		var (
+			sourcePaths []string
+			sourceLines []string
+		)
+		upload := func(path string, obj *dataobj.Object) {
+			reader, err := obj.Reader(ctx)
+			require.NoError(t, err)
+			require.NoError(t, errors.Join(bucket.Upload(ctx, path, reader), reader.Close()))
+			for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
+				sourceLines = append(sourceLines, string(record.Line))
+			}
+			sourcePaths = append(sourcePaths, path)
+		}
+		for _, name := range []string{"legacy-cluster-a", "legacy-cluster-b"} {
+			data, err := os.ReadFile(filepath.Join("..", "..", "dataobj", "testdata", "legacy", name+".dataobj"))
+			require.NoError(t, err)
+			obj, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+			require.NoError(t, err)
+			upload("objects/"+name, obj)
+		}
+		entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(schema...))
+		entries.ForStream(`{app="z",cluster="c-z"}`).
+			Entry(int(base.Unix()), "{}", "new/z/0").
+			Entry(int(base.Unix())+1, "{}", "new/z/1")
+		upload("objects/new", newScenarioLogSource(t, "objects/new", tenant, entries, logsobj.TargetSortLayout(schema, streams.DefaultShardLayout())).Object)
+		require.Len(t, sourceLines, 10)
+
+		// The legacy objects were indexed by the writer that built them, so the
+		// index is seeded by hand rather than with the current calculator.
+		index := seedLogCompactionIndex(ctx, t, bucket, "indexes/00/sources", tenant, sourcePaths, schema, int64(streams.DefaultShardLayout().Buckets()), base)
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: {index}})
+		c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
+		c.limits = integrationLimits{}
+		stored := &compactortest.Scenario{Bucket: bucket, Window: window}
+		scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
+		scenario.compactUntilIdle(tenant)
+
+		contents := stored.ReadReachableContents(ctx, t, tenant)
+		requireLogContents(t, contents, sourceLines, schema)
+		require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-a", "compaction must rewrite the legacy objects")
+		require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-b", "compaction must rewrite the legacy objects")
+	})
 }

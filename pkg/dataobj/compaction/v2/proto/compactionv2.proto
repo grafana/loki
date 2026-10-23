@@ -46,5 +46,8 @@ message RunRef {
 message TaskSpec {
   string tenant = 1 [(gogoproto.jsontag) = "tenant"];
   repeated RunRef runs = 2 [(gogoproto.jsontag) = "runs"];
-  repeated string sort_schema = 3 [(gogoproto.jsontag) = "sort_schema"];
+
+  // Field 3 held the sort schema. Do not reuse it.
+  reserved 3;
+  reserved "sort_schema";
 }
