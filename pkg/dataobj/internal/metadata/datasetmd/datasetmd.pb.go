@@ -759,6 +759,11 @@ func (m *Statistics) GetCardinalityCount() uint64 {
 }
 
 // SortInfo holds sort order information for rows in the section.
+//
+// A STREAMS section that records a layout sets schema_labels, stream_order,
+// and shard_count, and no column_sorts. The layout describes the stream IDs
+// that the STREAMS section defines and that the LOG sections of the same
+// tenant use. A STREAMS section without SortInfo records no layout.
 type SortInfo struct {
 	// The list of column sorts. The length of this depends on how many columns
 	// are used for sorting.

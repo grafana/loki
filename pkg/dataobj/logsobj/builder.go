@@ -32,8 +32,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// ErrBuilderEmpty is returned by [Builder.Flush] when there is no buffered
-// data to flush.
+// ErrBuilderEmpty is returned by the flush methods of [Builder] when there is
+// no buffered data to flush.
 var (
 	ErrBuilderEmpty = errors.New("builder empty")
 )
@@ -133,10 +133,9 @@ type TenantOverrides interface {
 }
 
 // A Builder constructs a logs-oriented data object from a set of incoming
-// log data. Log data is appended by calling [Builder.Append] or
-// [Builder.AppendRecord]. [Builder.FlushAndSort] constructs a data object
-// that is sorted object-wide. [Builder.Flush] constructs a data object whose
-// logs sections are sorted one by one, but not object-wide.
+// log data. [Builder.Append] and [Builder.AppendRecord] add log data.
+// [Builder.FlushAndSort] sorts the data object-wide. [Builder.Flush]
+// requires the caller to append records in stream key order.
 //
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
@@ -151,7 +150,7 @@ type Builder struct {
 
 	// layouts holds the layout of each tenant in the current object. Reset
 	// clears it, so a limits change applies from the next object.
-	layouts map[string]tenantLayout
+	layouts map[string]streams.Layout
 
 	// sortLogsMetrics and sortStreamsMetrics are never registered. They absorb
 	// the section metrics of the sort in FlushAndSort, which would otherwise
@@ -201,18 +200,11 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 		builder:    dataobj.NewBuilder(scratchStore),
 		streams:    make(map[string]*streams.Builder),
 		logs:       make(map[string]*logs.Builder),
-		layouts:    make(map[string]tenantLayout),
+		layouts:    make(map[string]streams.Layout),
 
 		sortLogsMetrics:    logs.NewMetrics(),
 		sortStreamsMetrics: streams.NewMetrics(),
 	}, nil
-}
-
-// tenantLayout is the sort schema and shard layout of one tenant's data in an
-// object.
-type tenantLayout struct {
-	schemaLabels []string
-	shardLayout  streams.ShardLayout
 }
 
 // layoutFor returns the layout of tenant in the current object.
@@ -222,22 +214,23 @@ type tenantLayout struct {
 // overrides can change while the object is open.
 //
 // If overrides is nil, the layout has no schema labels.
-func (b *Builder) layoutFor(tenant string) tenantLayout {
+func (b *Builder) layoutFor(tenant string) streams.Layout {
 	if layout, ok := b.layouts[tenant]; ok {
 		return layout
 	}
-	layout := tenantLayout{shardLayout: streams.DefaultShardLayout()}
+	var schemaLabels []string
 	if b.overrides != nil {
-		layout.schemaLabels = b.overrides.SortSchemaLabels(tenant)
+		schemaLabels = b.overrides.SortSchemaLabels(tenant)
 	}
+	layout := streams.NewLayout(streams.DefaultShardLayout(), schemaLabels)
 	b.layouts[tenant] = layout
 	return layout
 }
 
 // buildersFor initializes the builders for the tenant.
-func (b *Builder) buildersFor(tenant string, layout tenantLayout) (*streams.Builder, *logs.Builder) {
+func (b *Builder) buildersFor(tenant string, layout streams.Layout) (*streams.Builder, *logs.Builder) {
 	if _, ok := b.streams[tenant]; !ok {
-		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.shardLayout)
+		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.ShardLayout())
 		sb.SetTenant(tenant)
 		b.streams[tenant] = sb
 	}
@@ -253,9 +246,9 @@ func (b *Builder) buildersFor(tenant string, layout tenantLayout) (*streams.Buil
 			AppendStrategy:            logs.AppendOrdered,
 			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
 			SortOrder:                 logs.SortSchemaASC,
-			SchemaLabels:              layout.schemaLabels,
+			SchemaLabels:              layout.SchemaLabels(),
 			StreamOrder:               logs.StreamOrderStableHashV1,
-			ShardCount:                layout.shardLayout.Buckets(),
+			ShardCount:                layout.ShardLayout().Buckets(),
 			DropDuplicates:            b.cfg.DropDuplicates,
 		})
 		lb.SetTenant(tenant)
@@ -329,12 +322,12 @@ func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Reco
 
 func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Time, entriesIter iter.Seq2[logs.Record, int64]) error {
 	layout := b.layoutFor(tenant)
-	streamSortKey, err := ComputeSchemaKey(ls, layout.schemaLabels)
+	streamSortKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
 	if err != nil {
 		return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
 	}
 	streamHash := labels.StableHash(ls)
-	streamShard := layout.shardLayout.BucketFromHash(streamHash)
+	streamShard := layout.ShardLayout().BucketFromHash(streamHash)
 
 	sb, lb := b.buildersFor(tenant, layout)
 
@@ -416,13 +409,13 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 	return timeRanges
 }
 
-// Flush builds a data object from all buffered data, as appended. Calling
-// Flush on an empty builder returns [ErrBuilderEmpty].
+// Flush builds a data object from all buffered data, as appended, and records
+// each tenant's layout in its streams section. Calling Flush on an empty
+// builder returns [ErrBuilderEmpty].
 //
-// Each logs section is sorted, but stream IDs follow the order in which
-// streams were first appended, and sections can overlap. The object is sorted
-// object-wide only if records were appended in stream key order. Use
-// [Builder.FlushAndSort] otherwise.
+// The caller must append records in stream key order, so stream IDs and rows
+// already follow the layout. The recorded layout states this order, and
+// readers trust it without a check. Use [Builder.FlushAndSort] otherwise.
 //
 // On success the caller owns the returned [io.Closer] and must close it to
 // release the object's backing scratch storage; reads of the object fail once
@@ -430,6 +423,22 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 //
 // Flush always resets Builder.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
+	return b.flush(true)
+}
+
+// flushWithoutLayout builds a data object from all buffered data, as appended, without
+// a layout. Its output is only the input to the sort in FlushAndSort.
+//
+// Each logs section is sorted, but stream IDs follow the order in which
+// streams were first appended, and sections can overlap. Readers that need a
+// layout reject the object, so it is not valid to store.
+func (b *Builder) flushWithoutLayout() (*dataobj.Object, io.Closer, error) {
+	return b.flush(false)
+}
+
+// flush builds the object and always resets Builder. If recordLayouts is
+// true, each streams section records the layout of its tenant.
+func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
 	}
@@ -441,7 +450,15 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	// Flush sections one more time in case they have data.
 	var flushErrors []error
 
-	for _, sb := range b.streams {
+	for tenant, sb := range b.streams {
+		if recordLayouts {
+			layout, ok := b.layouts[tenant]
+			if !ok {
+				flushErrors = append(flushErrors, fmt.Errorf("no layout for tenant %s", tenant))
+				continue
+			}
+			sb.SetLayout(layout)
+		}
 		flushErrors = append(flushErrors, b.builder.Append(sb))
 	}
 	for _, lb := range b.logs {
@@ -484,7 +501,7 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 // FlushAndSort always resets Builder.
 func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	layouts := maps.Clone(b.layouts)
-	built, builtCloser, err := b.Flush()
+	built, builtCloser, err := b.flushWithoutLayout()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -520,7 +537,7 @@ func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer,
 // follow the layout of its tenant. obj must stay open until sort returns.
 //
 // sort always resets Builder.
-func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[string]tenantLayout) (*dataobj.Object, io.Closer, error) {
+func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[string]streams.Layout) (*dataobj.Object, io.Closer, error) {
 	defer b.Reset()
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
@@ -564,12 +581,13 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
 		}
 
-		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.schemaLabels, layout.shardLayout, streamsSection.NumRows())
+		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), streamsSection.NumRows())
 		if err != nil {
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
 
-		sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.shardLayout)
+		sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.ShardLayout())
+		sb.SetLayout(layout)
 		if err := b.buildStreamSection(ctx, tenant, streamIter, sb); err != nil {
 			return nil, nil, err
 		}
@@ -586,9 +604,9 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
 			AppendStrategy:   logs.AppendOrdered,
 			SortOrder:        logs.SortSchemaASC,
-			SchemaLabels:     layout.schemaLabels,
+			SchemaLabels:     layout.SchemaLabels(),
 			StreamOrder:      logs.StreamOrderStableHashV1,
-			ShardCount:       layout.shardLayout.Buckets(),
+			ShardCount:       layout.ShardLayout().Buckets(),
 			DropDuplicates:   b.cfg.DropDuplicates,
 		})
 		lb.SetTenant(tenant)
@@ -679,9 +697,8 @@ func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record
 }
 
 // buildStreamSection consumes an iterator, appending each stream to the provided
-// streams.Builder, and adds it to the sections accumulator.
+// streams.Builder, and adds it to the sections accumulator. sb must be empty.
 func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], sb *streams.Builder) error {
-	sb.Reset()
 	sb.SetTenant(tenant)
 
 	for res := range iter {
