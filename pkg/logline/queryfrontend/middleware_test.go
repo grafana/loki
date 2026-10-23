@@ -2855,6 +2855,33 @@ func TestDryRun_MetricRange_IngesterWindowSamplesExcluded(t *testing.T) {
 	}}))
 }
 
+func TestDryRun_MetricRange_OldestLookbackPastCutoffSkipsLookup(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	// A 2h query with [1d] widens a day back, but the oldest sample's lookback
+	// still ends inside the 3h ingester window.
+	reqStart := now.Add(-2 * time.Hour)
+	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: nil}}
+	userResp := metricMatrixResponse(1, now)
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		return userResp, nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{
+		DryRun:               true,
+		NgramLength:          6,
+		QueryIngestersWithin: 3 * time.Hour,
+	}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [1d]))`, reqStart, now))
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+	require.Equal(t, 1, nextCalled)
+	require.Equal(t, 0, hp.Calls())
+	require.Empty(t, findLogLine(logs.String(), "logline dry-run verification"))
+}
+
 func TestDryRun_MetricRange_AbsentOverTimeSkipsOverlap(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	reqStart := now.Add(-1 * time.Hour)

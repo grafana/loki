@@ -689,22 +689,21 @@ func (h *loglinePrefetchHandler) doDryRun(
 	// A supported metric query has one log selector, so it has one matcher group.
 	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
 	readStart, readEnd := from, through
+	firstWindowEnd := from
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
 		readStart, readEnd = metricLookupBounds(groups[0], from, through, req.GetStep())
+		firstWindowEnd = readStart.Add(groups[0].Interval)
 	}
 	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
 		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
-		if cutoff.After(readStart) && cutoff.Before(readEnd) {
-			// An instant query has one sample, and its lookback ends at readEnd.
-			// That sample would be left out of the report, so skip the lookup.
-			if _, ok := req.(*queryrange.LokiInstantRequest); ok {
-				return h.next.Do(ctx, req)
-			}
-			eligibleEnd = cutoff
-		} else if !cutoff.After(readStart) {
-			// Entire query is in the ingester window — nothing to verify.
+		// If the oldest window ends after the ingester cutoff, every later step does too.
+		// The correctness report would skip them all, so skip the hint lookup.
+		if cutoff.Before(firstWindowEnd) {
 			return h.next.Do(ctx, req)
+		}
+		if cutoff.Before(readEnd) {
+			eligibleEnd = cutoff
 		}
 	}
 
