@@ -8,7 +8,7 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-  RELEASE_LIB_REF: "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+  RELEASE_LIB_REF: "31474d7518151f5a5fe74450c3349c5220e040fd"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-minor"
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+    uses: "grafana/loki-release/.github/workflows/check.yml@31474d7518151f5a5fe74450c3349c5220e040fd"
     with:
-      build_image: "golang:1.26.6"
-      golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+      build_image: "golang:1.27.3"
+      golang_ci_lint_version: "v2.14.0"
+      release_lib_ref: "31474d7518151f5a5fe74450c3349c5220e040fd"
       skip_validation: false
   create-release-pr:
     needs:
@@ -44,20 +44,20 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -96,7 +96,7 @@ jobs:
           --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
           --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
-        
+
       working-directory: "lib"
   dist:
     needs:
@@ -110,7 +110,7 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
@@ -131,9 +131,9 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.6"
+          --entrypoint /bin/sh "golang:1.27.3"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.6" | grep -q "golang"; then
+          if echo "golang:1.27.3" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist packages
@@ -154,9 +154,9 @@ jobs:
           --env IMAGE_TAG \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.6"
+          --entrypoint /bin/sh "golang:1.27.3"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.6" | grep -q "golang"; then
+          if echo "golang:1.27.3" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist/loki-linux-riscv64
@@ -187,20 +187,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -214,7 +214,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -264,20 +264,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -291,7 +291,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -341,20 +341,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -368,7 +368,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -424,20 +424,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -451,7 +451,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -501,20 +501,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -528,7 +528,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -584,20 +584,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -611,7 +611,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -667,20 +667,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -694,7 +694,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -748,20 +748,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -778,7 +778,7 @@ jobs:
       run: |
         mkdir -p images
         mkdir -p plugins
-        
+
         platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -796,7 +796,7 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=golang:1.26.6
+          BUILD_IMAGE=golang:1.27.3
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
@@ -847,20 +847,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -874,7 +874,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -930,20 +930,20 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -957,7 +957,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -1013,20 +1013,20 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -1048,7 +1048,7 @@ jobs:
       name: "get release version"
       run: |
         yarn install
-        
+
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
           yarn exec -- release-please release-pr \
             --consider-all-branches \
@@ -1078,16 +1078,16 @@ jobs:
             --token "$OUTPUTS_TOKEN" \
             --release-as "${{ env.RELEASE_AS }}"
         fi
-        
+
         cat release.json
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(yarn run --silent get-version)"

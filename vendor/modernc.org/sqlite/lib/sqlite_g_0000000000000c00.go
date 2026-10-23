@@ -6,14 +6,14 @@ package sqlite3
 
 const __FLOAT128_TYPE__ = 1
 
-const __builtin_copysignq = 0
+const __builtin_copysignq = "__builtin_copysignf128"
 
-const __builtin_fabsq = 0
+const __builtin_fabsq = "__builtin_fabsf128"
 
-const __builtin_huge_valq = 0
+const __builtin_huge_valq = "__builtin_huge_valf128"
 
-const __builtin_infq = 0
+const __builtin_infq = "__builtin_inff128"
 
-const __builtin_nanq = 0
+const __builtin_nanq = "__builtin_nanf128"
 
-const __builtin_nansq = 0
+const __builtin_nansq = "__builtin_nansf128"

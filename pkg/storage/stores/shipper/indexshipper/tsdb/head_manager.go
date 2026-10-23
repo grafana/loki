@@ -101,6 +101,9 @@ type HeadManager struct {
 	// Locked before rotating heads/wal
 	mtx sync.RWMutex
 
+	// Locked to synchronize appending to active tenantHeads and logging to active headWAL
+	appendMtx sync.Mutex
+
 	// how often WALs should be rotated and TSDBs cut
 	period period
 
@@ -307,6 +310,14 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
+	// Hold appendMtx across both the in-memory decision and the WAL write so
+	// concurrent Appends to the same series can't have their WAL records land
+	// out of order. The mtx.RLock alone isn't desired, since m.mtx.Lock() would
+	// lock against all other in-flight operations gated with m.mtx and cause a
+	// performance regression.
+	m.appendMtx.Lock()
+	defer m.appendMtx.Unlock()
+
 	rec := m.activeHeads.Append(userID, ls, fprint, chks)
 	return m.active.Log(rec)
 }
@@ -454,16 +465,24 @@ func (m *HeadManager) Rotate(t time.Time) (err error) {
 }
 
 func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
-	period := m.period.PeriodFor(head.start)
 	if err := m.tsdbManager.BuildFromHead(head); err != nil {
 		return errors.Wrap(err, "building tsdb from head")
 	}
 
-	// Now that a TSDB has been created from this group, it's safe to remove them
-	if err := m.truncateWALForPeriod(period); err != nil {
+	// Now that a TSDB has been created from this head, it's safe to remove
+	// its WAL. We remove only the exact WAL this head was rotated out of
+	// (identified by its own rotation timestamp), rather than every WAL
+	// directory that happens to fall in the same rotation-period bucket:
+	// a forced flush (e.g. via the /flush/tenant endpoint) can rotate more
+	// than once within a single period, and a bucket-based sweep would
+	// delete the newly-active WAL out from under the ingester before
+	// anything is ever written to it, breaking every tenant sharing that
+	// WAL until the next rotation (which can immediately repeat the race).
+	if err := m.truncateWAL(head.start); err != nil {
 		level.Error(m.log).Log(
-			"msg", "failed truncating wal files",
-			"period", period,
+			"msg", "failed truncating wal file",
+			"head_start", head.start,
+			"period", m.period.PeriodFor(head.start),
 			"err", err,
 		)
 	}
@@ -471,7 +490,7 @@ func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
 	return nil
 }
 
-func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
+func (m *HeadManager) truncateWAL(ts time.Time) (err error) {
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -481,16 +500,11 @@ func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
 		m.metrics.walTruncations.WithLabelValues(status).Inc()
 	}()
 
-	grp, _, err := walsForPeriod(managerWalDir(m.name, m.dir), m.period, period)
-	if err != nil {
-		return errors.Wrap(err, "listing wals")
+	path := walPath(m.name, m.dir, ts)
+	if err := os.RemoveAll(path); err != nil {
+		return errors.Wrapf(err, "removing tsdb wal: %s", path)
 	}
-	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
-
-	if err := m.removeWALGroup(grp); err != nil {
-		return errors.Wrapf(err, "removing TSDB WALs for period %d", grp.period)
-	}
-	level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
+	level.Debug(m.log).Log("msg", "removed wal", "ts", ts, "path", path)
 
 	return nil
 }
@@ -559,15 +573,6 @@ func walsForPeriod(dir string, period period, offset int) (WalGroup, bool, error
 	}
 
 	return *grp, true, nil
-}
-
-func (m *HeadManager) removeWALGroup(grp WalGroup) error {
-	for _, wal := range grp.wals {
-		if err := os.RemoveAll(walPath(m.name, m.dir, wal.ts)); err != nil {
-			return errors.Wrapf(err, "removing tsdb wal: %s", walPath(m.name, m.dir, wal.ts))
-		}
-	}
-	return nil
 }
 
 func (m *HeadManager) removeLegacyWALGroup(grp WalGroup) error {

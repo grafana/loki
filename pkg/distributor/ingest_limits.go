@@ -19,7 +19,7 @@ import (
 // The ingestLimitsFrontendClient interface is used to mock calls in tests.
 type ingestLimitsFrontendClient interface {
 	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
-	UpdateRates(context.Context, *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error)
+	CheckLimitsAndShard(context.Context, *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to discover ingest-limits-frontend
@@ -62,13 +62,21 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 }
 
 // Implements the [ingestLimitsFrontendClient] interface.
-func (c *ingestLimitsFrontendRingClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
-	var resp *proto.UpdateRatesResponse
-	err := c.withRandomShuffle(ctx, func(ctx context.Context, client proto.IngestLimitsFrontendClient) error {
-		var clientErr error
-		resp, clientErr = client.UpdateRates(ctx, req)
-		return clientErr
-	})
+func (c *ingestLimitsFrontendRingClient) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
+	var (
+		err                     error
+		resp                    *proto.CheckLimitsAndShardResponse
+		doCheckLimitsAndShardFn = func(ctx context.Context, client proto.IngestLimitsFrontendClient) error {
+			var clientErr error
+			resp, clientErr = client.CheckLimitsAndShard(ctx, req)
+			return clientErr
+		}
+	)
+	if c.shuffleShardEnabled {
+		err = c.withTenantShuffleShard(ctx, req.Tenant, doCheckLimitsAndShardFn)
+	} else {
+		err = c.withRandomShuffle(ctx, doCheckLimitsAndShardFn)
+	}
 	return resp, err
 }
 
@@ -213,6 +221,41 @@ func (l *ingestLimits) ExceedsLimits(ctx context.Context, tenant string, streams
 	return resp.Results, nil
 }
 
+// CheckLimitsAndShard asks the limits service for a shard count for each
+// candidate stream. It returns a map from each candidate's pre-shard stream
+// hash to its result. A candidate absent from the map, because the call
+// failed or the frontend never got an answer for it, must be treated as
+// accepted with one shard, never as rejected.
+func (l *ingestLimits) CheckLimitsAndShard(ctx context.Context, tenant string, candidates []limitsServiceShardCandidate) (map[uint64]*proto.StreamShardResult, error) {
+	l.requests.WithLabelValues("CheckLimitsAndShard").Inc()
+	resp, err := l.client.CheckLimitsAndShard(ctx, newCheckLimitsAndShardRequest(tenant, candidates))
+	if err != nil {
+		l.requestsFailed.WithLabelValues("CheckLimitsAndShard").Inc()
+		return nil, err
+	}
+	results := make(map[uint64]*proto.StreamShardResult, len(resp.Results))
+	for _, r := range resp.Results {
+		results[r.StreamHash] = r
+	}
+	return results, nil
+}
+
+func newCheckLimitsAndShardRequest(tenant string, candidates []limitsServiceShardCandidate) *proto.CheckLimitsAndShardRequest {
+	streamMetadata := make([]*proto.StreamMetadata, 0, len(candidates))
+	for _, c := range candidates {
+		// Use the same expanded size as the rate store, including shared metadata per entry.
+		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
+			StreamHash:      c.stream.Hash,
+			TotalSize:       c.totalSize,
+			IngestionPolicy: c.policy,
+		})
+	}
+	return &proto.CheckLimitsAndShardRequest{
+		Tenant:  tenant,
+		Streams: streamMetadata,
+	}
+}
+
 func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
@@ -228,52 +271,6 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 		})
 	}
 	return &proto.ExceedsLimitsRequest{
-		Tenant:  tenant,
-		Streams: streamMetadata,
-	}, nil
-}
-
-// UpdateRates updates the rates for the streams and returns a slice of the
-// updated rates for all streams. Any streams that could not have rates updated
-// have a rate of zero.
-func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []segmentedStream) ([]*proto.UpdateRatesResult, error) {
-	req, err := newUpdateRatesRequest(tenant, streams)
-	if err != nil {
-		// We update `UpdateRates` here because we have clients directly calling `UpdateRatesRaw`.
-		l.requests.WithLabelValues("UpdateRates").Inc()
-		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
-		return nil, err
-	}
-	return l.UpdateRatesRaw(ctx, req)
-}
-
-// UpdateRatesRaw sends a pre-built UpdateRatesRequest to the frontend.
-// This is used by the rate batcher which accumulates stream data over time.
-func (l *ingestLimits) UpdateRatesRaw(ctx context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResult, error) {
-	l.requests.WithLabelValues("UpdateRates").Inc()
-	resp, err := l.client.UpdateRates(ctx, req)
-	if err != nil {
-		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
-		return nil, err
-	}
-	return resp.Results, nil
-}
-
-func newUpdateRatesRequest(tenant string, streams []segmentedStream) (*proto.UpdateRatesRequest, error) {
-	// The distributor sends the hashes of all streams in the request to the
-	// limits-frontend. The limits-frontend is responsible for deciding if
-	// the request would exceed the tenants limits, and if so, which streams
-	// from the request caused it to exceed its limits.
-	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
-	for _, stream := range streams {
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
-			StreamHash:      stream.SegmentationKeyHash,
-			TotalSize:       entriesSize + structuredMetadataSize,
-			IngestionPolicy: stream.Policy,
-		})
-	}
-	return &proto.UpdateRatesRequest{
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil

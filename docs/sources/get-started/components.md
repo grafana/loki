@@ -25,11 +25,15 @@ For more information see [Deployment modes](https://grafana.com/docs/loki/<LOKI_
 | [Compactor](#compactor)                            | x            | x |   |   | x |
 | [Ruler](#ruler)                                    | x            | x |   |   | x |
 | [Pattern ingester](#pattern-ingester)              | x            | x |   | x |   |
-| [Bloom Planner (Experimental)](#bloom-planner)     | x            |   |   |   | x |
-| [Bloom Builder (Experimental)](#bloom-builder)     | x            |   |   |   | x |
-| [Bloom Gateway (Experimental)](#bloom-gateway)     | x            |   |   |   | x |
+| [Bloom Planner (Deprecated)](#bloom-planner)       | x            |   |   |   | x |
+| [Bloom Builder (Deprecated)](#bloom-builder)       | x            |   |   |   | x |
+| [Bloom Gateway (Deprecated)](#bloom-gateway)       | x            |   |   |   | x |
 
 This page describes the responsibilities of each of these components.
+
+{{< admonition type="note" >}}
+Kafka is infrastructure that Loki connects to, not a Loki component binary, so it doesn't have its own row in the table above. When [Kafka-based ingestion](#kafka-based-ingestion-experimental) is enabled, the Distributor and Ingester rows in the table above have optional Kafka write and read behavior. Refer to [Kafka-based ingestion](#kafka-based-ingestion-experimental) for details.
+{{< /admonition >}}
 
 ## Distributor
 
@@ -117,6 +121,10 @@ To ensure consistent query results, Loki uses
 quorum consistency on reads and writes. This means that the distributor will wait
 for a positive response of at least one half plus one of the ingesters to send
 the sample to before responding to the client that initiated the send.
+
+{{< admonition type="note" >}}
+When [Kafka-based ingestion](#kafka-based-ingestion-experimental) is enabled, the distributor can also, or instead, write streams to Kafka. Refer to [Kafka-based ingestion](#kafka-based-ingestion-experimental) for details.
+{{< /admonition >}}
 
 ## Ingester
 
@@ -233,6 +241,10 @@ the same data, as long as every process can reach the same directory. This
 differs from the deprecated, non-shipped BoltDB index store, which only allows
 one process to hold a lock on the database file at a time.
 
+{{< admonition type="note" >}}
+When [Kafka-based ingestion](#kafka-based-ingestion-experimental) is enabled, ingesters consume log streams from a Kafka partition instead of, or in addition to, receiving them directly from the distributor over gRPC. Refer to [Kafka-based ingestion](#kafka-based-ingestion-experimental) for details.
+{{< /admonition >}}
+
 ## Query frontend
 
 The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
@@ -343,10 +355,31 @@ The pattern ingester exposes a query API, so you can fetch detected patterns. Th
 
 This component is disabled by default and must be enabled in your [Loki config file](https://grafana.com/docs/loki/latest/configure/#supported-contents-and-default-values-of-lokiyaml).
 
-## Bloom Planner
+## Kafka-based ingestion (experimental)
 
 {{< admonition type="warning" >}}
 This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
+No SLA is provided.
+{{< /admonition >}}
+
+Loki can optionally use Apache Kafka, or a Kafka-protocol-compatible system, as a durable buffer on the write path, instead of, or in addition to, the direct gRPC path between the distributor and the ingester.
+
+When you enable Kafka-based ingestion:
+
+- The [distributor](#distributor) writes each log stream as one or more records to a Kafka topic.
+- Each [ingester](#ingester) consumes records from exactly one Kafka partition of that topic.
+- Ingesters use the **partition ring**, a hash ring similar to the one ingesters use for gRPC writes, to coordinate which ingester owns which partition. Unlike the main hash ring, the partition ring assigns one partition to one ingester at a time, rather than distributing hash ranges across replicas.
+
+Because Kafka durably stores records until an ingester consumes them, ingesters can restart or roll out without losing or blocking writes: on restart, an ingester resumes consuming from the last offset it committed to Kafka.
+
+Enabling Kafka-based ingestion primarily changes the write path. The read path still works the same way, but the querier must be configured to look up ingesters using the partition ring instead of the classic hash ring. For details, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#read-path).
+
+For configuration, monitoring, and migration guidance, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/).
+
+## Bloom Planner
+
+{{< admonition type="warning" >}}
+This feature is deprecated and will be removed in a future release. Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 
@@ -359,7 +392,7 @@ This service is also used to apply blooms retention.
 ## Bloom Builder
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
+This feature is deprecated and will be removed in a future release. Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 
@@ -373,7 +406,7 @@ The service is stateless and horizontally scalable.
 ## Bloom Gateway
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
+This feature is deprecated and will be removed in a future release. Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 

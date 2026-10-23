@@ -96,10 +96,13 @@ var amazonS3HostFIPS = regexp.MustCompile(`^s3-fips.(.*?).amazonaws.com$`)
 var amazonS3HostFIPSDualStack = regexp.MustCompile(`^s3-fips.dualstack.(.*?).amazonaws.com$`)
 
 // amazonS3HostExpress - regular expression used to determine if an arg is S3 Express zonal endpoint.
-var amazonS3HostExpress = regexp.MustCompile(`^s3express-[a-z0-9]{3,7}-az[1-6]\.([a-z0-9-]+)\.amazonaws\.com$`)
+// The zone ID may be an Availability Zone (use1-az4) or a Local Zone (usw2-lax1-az1),
+// and the dualstack variant (s3express-<zone-id>.dualstack.<region>.amazonaws.com) is matched as well.
+var amazonS3HostExpress = regexp.MustCompile(`^s3express-[a-z0-9]+(?:-[a-z0-9]+)*-az[0-9]+(?:\.dualstack)?\.([a-z0-9-]+)\.amazonaws\.com$`)
 
 // amazonS3HostExpressControl - regular expression used to determine if an arg is S3 express regional endpoint.
-var amazonS3HostExpressControl = regexp.MustCompile(`^s3express-control\.([a-z0-9-]+)\.amazonaws\.com$`)
+// The dualstack variant (s3express-control-dualstack.<region>.amazonaws.com) is matched as well.
+var amazonS3HostExpressControl = regexp.MustCompile(`^s3express-control(?:-dualstack)?\.([a-z0-9-]+)\.amazonaws\.com$`)
 
 // amazonS3HostDot - regular expression used to determine if an arg is s3 host in . style.
 var amazonS3HostDot = regexp.MustCompile(`^s3.(.*?).amazonaws.com$`)
@@ -361,14 +364,35 @@ func EncodePath(pathName string) string {
 var (
 	validBucketName          = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\.\-\_\:]{1,61}[A-Za-z0-9]$`)
 	validBucketNameStrict    = regexp.MustCompile(`^[a-z0-9][a-z0-9\.\-]{1,61}[a-z0-9]$`)
-	validBucketNameS3Express = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]--[a-z0-9]{3,7}-az[1-6]--x-s3$`)
+	validBucketNameS3Express = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]--[a-z0-9]+(?:-[a-z0-9]+)*-az[0-9]+--x-s3$`)
 	ipAddress                = regexp.MustCompile(`^(\d+\.){3}\d+$`)
 )
+
+// A bucket name is a single path element, so it can never carry a path
+// separator nor be a relative path element. Callers that hand a raw request
+// path to CheckValidBucketName/CheckValidBucketNameStrict - because the path
+// hid the bucket behind a leading "//" - rely on this: "//bucket", "../",
+// "/.." and friends have to be rejected as path-shaped input rather than pass
+// on a length or character technicality.
+func checkBucketNamePathShaped(bucketName string) error {
+	if strings.ContainsAny(bucketName, `/\`) {
+		return errors.New("Bucket name cannot contain path separators")
+	}
+	if bucketName == "." || bucketName == ".." {
+		return errors.New("Bucket name cannot be a relative path element")
+	}
+	return nil
+}
 
 // Common checker for both stricter and basic validation.
 func checkBucketNameCommon(bucketName string, strict bool) (err error) {
 	if strings.TrimSpace(bucketName) == "" {
 		return errors.New("Bucket name cannot be empty")
+	}
+	// Checked ahead of the length limits so that path-shaped input is
+	// diagnosed as such whatever its length.
+	if err := checkBucketNamePathShaped(bucketName); err != nil {
+		return err
 	}
 	if len(bucketName) < 3 {
 		return errors.New("Bucket name cannot be shorter than 3 characters")
@@ -408,6 +432,10 @@ func IsS3ExpressBucket(bucketName string) bool {
 func CheckValidBucketNameS3Express(bucketName string) (err error) {
 	if strings.TrimSpace(bucketName) == "" {
 		return errors.New("Bucket name cannot be empty for S3 Express")
+	}
+
+	if err := checkBucketNamePathShaped(bucketName); err != nil {
+		return err
 	}
 
 	if len(bucketName) < 3 {

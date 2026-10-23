@@ -574,28 +574,24 @@ func accumulateChunksToShards(
 	req *logproto.ShardsRequest,
 	filtered []logproto.ChunkRefWithSizingInfo,
 ) ([]logproto.Shard, error) {
-	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
-	filteredM := make(map[model.Fingerprint][]logproto.ChunkRefWithSizingInfo, 1024)
+	// Retain per-stream sizing totals without retaining another copy of every chunk.
+	totals := make(map[model.Fingerprint]sharding.SizedFP, 1024)
 	for _, ref := range filtered {
-		filteredM[model.Fingerprint(ref.Fingerprint)] = append(filteredM[model.Fingerprint(ref.Fingerprint)], ref)
+		fp := model.Fingerprint(ref.Fingerprint)
+		x := totals[fp]
+		x.Fp = fp
+		x.Stats.Chunks++
+		x.Stats.Entries += uint64(ref.Entries)
+		x.Stats.Bytes += uint64(ref.KB << 10)
+		totals[fp] = x
 	}
-
-	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
-	defer func() { sharding.SizedFPsPool.Put(collectedSeries) }()
-
-	for fp, chks := range filteredM {
-		x := sharding.SizedFP{Fp: fp}
-		x.Stats.Chunks = uint64(len(chks))
-
-		for _, chk := range chks {
-			x.Stats.Entries += uint64(chk.Entries)
-			x.Stats.Bytes += uint64(chk.KB << 10)
-		}
-		collectedSeries = append(collectedSeries, x)
+	series := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(totals)))
+	defer func() { sharding.SizedFPsPool.Put(series) }()
+	for _, x := range totals {
+		series = append(series, x)
 	}
-	sort.Sort(collectedSeries)
-
-	return collectedSeries.ShardsFor(req.TargetBytesPerShard), nil
+	sort.Sort(series)
+	return series.ShardsFor(req.TargetBytesPerShard), nil
 }
 
 // chunkGroupsForShards buckets the given chunk refs into one group per shard.

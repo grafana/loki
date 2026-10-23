@@ -7,9 +7,11 @@ import (
 	"io"
 	"iter"
 	"maps"
+	"slices"
 	"strconv"
 	"unsafe"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
@@ -24,10 +26,19 @@ type RowReader struct {
 	matchIDs   map[int64]struct{}
 	predicates []RowPredicate
 
+	// Column projection. When projected is false, every recognized column is read.
+	projected    bool
+	projTypes    map[ColumnType]struct{}
+	projMetadata map[string]struct{}
+
 	buf []dataset.Row
 
-	reader  *dataset.RowReader
-	columns []dataset.Column
+	reader *dataset.RowReader
+
+	// projSectionColumns are the projected columns, in the same order as the dataset columns
+	// given to the reader. Read decodes a row by position, so the two must stay aligned. It
+	// holds every recognized column when no projection is set.
+	projSectionColumns []*Column
 
 	symbols *symbolizer.Symbolizer
 }
@@ -94,6 +105,45 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 	return nil
 }
 
+// SetProjectedColumns restricts the [Record] to the given column types plus the metadata
+// columns named in metadataNames. A [ColumnTypeMetadata] entry in types selects all metadata
+// columns instead.
+//
+// The field of a column that is not projected comes back as its zero value.
+//
+// The reader reads the columns a stream match or a predicate needs, even when the caller
+// does not list them. It does not decode them into the [Record].
+//
+// When the section holds no such column, a metadata or message predicate evaluates against the
+// empty value.
+//
+// When the section holds none of the projected columns, Open returns an error.
+//
+// When SetProjectedColumns is not called, every recognized column is projected.
+//
+// SetProjectedColumns may only be called before reading begins or after a call to
+// [RowReader.Reset].
+func (r *RowReader) SetProjectedColumns(types []ColumnType, metadataNames []string) error {
+	if r.ready {
+		return fmt.Errorf("cannot change projected columns after reading has started")
+	}
+
+	if len(types) == 0 && len(metadataNames) == 0 {
+		return fmt.Errorf("projection must select at least one column")
+	}
+
+	r.projTypes = make(map[ColumnType]struct{}, len(types))
+	for _, t := range types {
+		r.projTypes[t] = struct{}{}
+	}
+	r.projMetadata = make(map[string]struct{}, len(metadataNames))
+	for _, name := range metadataNames {
+		r.projMetadata[name] = struct{}{}
+	}
+	r.projected = true
+	return nil
+}
+
 // Read reads up to the next len(s) records from the reader and stores them
 // into s. It returns the number of records read and any error encountered. At
 // the end of the logs section, Read returns 0, io.EOF.
@@ -117,7 +167,7 @@ func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		err := DecodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols)
+		err := DecodeRow(r.projSectionColumns, r.buf[i], &s[i], r.symbols)
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
@@ -142,24 +192,49 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
-	columns := dset.Columns()
 
-	// r.predicate doesn't contain mappings of stream IDs; we need to build
-	// that as a separate predicate and AND them together.
+	// datasetColumns and sectionColumns are parallel: datasetColumns[i] describes the same
+	// column as sectionColumns[i]. The projection below filters both together so they stay
+	// that way, because the reader addresses a row's values by position.
+	datasetColumns, sectionColumns := dset.Columns(), r.sec.Columns()
+
+	// The stream match and the predicates look their columns up among all the columns. So they
+	// work whether or not the projection lists those columns. Only the projected columns go
+	// into the records.
+	projectedDatasetColumns, projectedSectionColumns := datasetColumns, sectionColumns
+	if r.projected {
+		projectedDatasetColumns, projectedSectionColumns = projectColumns(datasetColumns, sectionColumns, r.projTypes, r.projMetadata)
+
+		// The section holds none of the projected columns, so every record would be empty. Report
+		// it here instead of reading rows that hold nothing.
+		if len(projectedDatasetColumns) == 0 {
+			return fmt.Errorf("none of the projected columns are present in the section")
+		}
+	}
+
+	// The matched stream IDs are not part of r.predicates, so build them as a separate
+	// predicate; RowReaderOptions.Predicates are ANDed together.
 	var predicates []dataset.Predicate
-	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, r.sec.Columns()); p != nil {
+	if p := streamIDPredicate(maps.Keys(r.matchIDs), datasetColumns, sectionColumns); p != nil {
 		predicates = append(predicates, p)
 	}
 
 	for _, predicate := range r.predicates {
-		if p := translateLogsPredicate(predicate, columns, r.sec.Columns()); p != nil {
-			predicates = append(predicates, p)
+		p := translateLogsPredicate(predicate, datasetColumns, sectionColumns)
+
+		// A constant predicate that keeps every row constrains nothing, so drop it. One that
+		// drops every row stays: the dataset reader prunes it to an empty row range, so the
+		// read ends cleanly without touching object storage.
+		if keep, ok := dataset.IsConstPredicate(p); ok && keep {
+			continue
 		}
+
+		predicates = append(predicates, p)
 	}
 
 	readerOpts := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           columns,
+		ProjectedColumns:  projectedDatasetColumns,
 		Predicates:        predicates,
 		PrefetchAllOnOpen: true,
 	}
@@ -179,18 +254,40 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		r.symbols.Reset()
 	}
 
-	r.columns = columns
+	r.projSectionColumns = projectedSectionColumns
 	r.ready = true
 	return nil
+}
+
+// projectColumns keeps the columns the projection selects, returning the dataset and
+// section slices still aligned by position.
+func projectColumns(datasetColumns []dataset.Column, sectionColumns []*Column, types map[ColumnType]struct{}, metadataNames map[string]struct{}) ([]dataset.Column, []*Column) {
+	_, allMetadata := types[ColumnTypeMetadata]
+
+	outDataset := make([]dataset.Column, 0, len(datasetColumns))
+	outSection := make([]*Column, 0, len(sectionColumns))
+	for i, col := range sectionColumns {
+		var keep bool
+		if col.Type == ColumnTypeMetadata {
+			_, named := metadataNames[col.Name]
+			keep = allMetadata || named
+		} else {
+			_, keep = types[col.Type]
+		}
+		if keep {
+			outDataset = append(outDataset, datasetColumns[i])
+			outSection = append(outSection, col)
+		}
+	}
+	return outDataset, outSection
 }
 
 // Reset resets the RowReader with a new Section to read from. Reset allows
 // reusing a RowReader without allocating a new one.
 //
-// Any set predicate is cleared when Reset is called.
+// Any set predicate, stream match and column projection are cleared when Reset is called.
 //
-// Reset may be called with a nil object and a negative section index to clear
-// the RowReader without needing a new object.
+// Reset may be called with a nil section to clear the RowReader without needing a new one.
 func (r *RowReader) Reset(sec *Section) {
 	r.sec = sec
 	r.ready = false
@@ -198,7 +295,10 @@ func (r *RowReader) Reset(sec *Section) {
 	clear(r.matchIDs)
 	r.predicates = nil
 
-	r.columns = nil
+	r.projected = false
+	clear(r.projTypes)
+	clear(r.projMetadata)
+	r.projSectionColumns = nil
 
 	if r.symbols != nil {
 		r.symbols.Reset()
@@ -218,6 +318,15 @@ func (r *RowReader) Close() error {
 }
 
 func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*Column) dataset.Predicate {
+	members := slices.Collect(ids)
+
+	// No IDs means no stream filter at all. Decide that before looking the column up, so an
+	// unmatched read does not depend on whether the column was projected: reading the whole
+	// section without projecting the stream ID would otherwise drop every row.
+	if len(members) == 0 {
+		return nil
+	}
+
 	streamIDColumn := findDatasetColumn(columns, columnDesc, func(col *Column) bool {
 		return col.Type == ColumnTypeStreamID
 	})
@@ -225,21 +334,18 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		return dataset.FalsePredicate{}
 	}
 
-	var values []dataset.Value
-	for i := range ids {
-		values = append(values, dataset.Int64Value(i))
-	}
-
-	if len(values) == 0 {
-		return nil
-	}
-
+	// A logs section keeps the rows of one stream together, so consecutive rows usually share
+	// a stream ID and the memoized set skips most map lookups.
+	//
+	// A memoized set is not safe for concurrent use. Each call builds a new set, and the
+	// reader that owns the predicate uses it on one goroutine.
 	return dataset.InPredicate{
 		Column: streamIDColumn,
-		Values: dataset.NewInt64ValueSet(values),
+		Values: dataset.NewMemoizedInt64ValueSetOf(members...),
 	}
 }
 
+// translateLogsPredicate converts p into the equivalent dataset predicate.
 func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actualColumns []*Column) dataset.Predicate {
 	if p == nil {
 		return nil
@@ -247,21 +353,19 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 
 	switch p := p.(type) {
 	case AndRowPredicate:
-		return dataset.AndPredicate{
-			Left:  translateLogsPredicate(p.Left, dsetColumns, actualColumns),
-			Right: translateLogsPredicate(p.Right, dsetColumns, actualColumns),
-		}
+		return dataset.FoldAndPredicate(
+			translateLogsPredicate(p.Left, dsetColumns, actualColumns),
+			translateLogsPredicate(p.Right, dsetColumns, actualColumns),
+		)
 
 	case OrRowPredicate:
-		return dataset.OrPredicate{
-			Left:  translateLogsPredicate(p.Left, dsetColumns, actualColumns),
-			Right: translateLogsPredicate(p.Right, dsetColumns, actualColumns),
-		}
+		return dataset.FoldOrPredicate(
+			translateLogsPredicate(p.Left, dsetColumns, actualColumns),
+			translateLogsPredicate(p.Right, dsetColumns, actualColumns),
+		)
 
 	case NotRowPredicate:
-		return dataset.NotPredicate{
-			Inner: translateLogsPredicate(p.Inner, dsetColumns, actualColumns),
-		}
+		return dataset.FoldNotPredicate(translateLogsPredicate(p.Inner, dsetColumns, actualColumns))
 
 	case TimeRangeRowPredicate:
 		timeColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
@@ -277,27 +381,35 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 			return col.Type == ColumnTypeMessage
 		})
 		if messageColumn == nil {
-			return dataset.FalsePredicate{}
+			// The section holds no message column, so every row reads as an empty line.
+			return dataset.NewConstPredicate(p.Keep(nil))
 		}
 
-		return dataset.FuncPredicate{
+		fp := dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				if value.Type() == datasetmd.PHYSICAL_TYPE_BINARY {
-					// To handle older dataobjs that still use string type for message column. This can be removed in future.
-					return p.Keep(value.Binary())
+				// A nil value reads as an empty line.
+				if value.IsNil() {
+					return p.Keep(nil)
 				}
-
 				return p.Keep(value.Binary())
 			},
 		}
+		if p.KeepBatch != nil {
+			fp.KeepBatch = func(_ dataset.Column, values *columnar.UTF8, dstIndexes []int32) []int32 {
+				return p.KeepBatch(values.Data(), values.Offsets(), dstIndexes)
+			}
+		}
+		return fp
 
 	case MetadataMatcherRowPredicate:
 		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeMetadata && col.Name == p.Key
 		})
 		if metadataColumn == nil {
-			return dataset.FalsePredicate{}
+			// The section holds no column for the key, so every row reads as an empty value
+			// for it. Keep the whole section when the empty value matches, drop it otherwise.
+			return dataset.NewConstPredicate(p.Value == "")
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
@@ -309,7 +421,9 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 			return col.Type == ColumnTypeMetadata && col.Name == p.Key
 		})
 		if metadataColumn == nil {
-			return dataset.FalsePredicate{}
+			// The section holds no column for the key, so every row reads as an empty value
+			// for it. A negation such as key!="v" therefore keeps the whole section.
+			return dataset.NewConstPredicate(p.Keep(p.Key, ""))
 		}
 		return dataset.FuncPredicate{
 			Column: metadataColumn,

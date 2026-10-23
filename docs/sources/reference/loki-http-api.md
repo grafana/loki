@@ -12,10 +12,22 @@ weight: 500
 Loki exposes an HTTP API for pushing, querying, and tailing log data, as well
 as for viewing and managing cluster information.
 
-{{< admonition type="note" >}}
-Note that authorization is not part of the Loki API.
-Authorization needs to be done separately, for example, using an open-source load-balancer such as NGINX.
-{{< /admonition >}}
+## Authentication
+
+Authentication and authorization are not part of the Loki API itself. How you authenticate depends on how Loki is deployed:
+
+- **Self-hosted, single-tenant Loki**: Loki doesn't enforce authentication. If you need to restrict access, put a reverse proxy (such as NGINX or Envoy) in front of Loki to handle authentication separately.
+- **Self-hosted, multi-tenant Loki**: Set the `X-Scope-OrgID` header on each request to identify the tenant. For details and examples, refer to [Multi-tenant queries](#multi-tenant-queries).
+- **Grafana Enterprise Logs (GEL)**: Use HTTP Basic Authentication, with the tenant name as the username and an access policy token as the password. For an example, refer to [Multi-tenant queries](#multi-tenant-queries).
+- **Grafana Cloud**: Use HTTP Basic Authentication, with your Loki instance ID (the **User** value from the Cloud Portal) as the username and a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/) as the password:
+
+  ```bash
+  curl -u "<LOKI_INSTANCE_ID>:<CLOUD_ACCESS_POLICY_TOKEN>" \
+    -G -s "<LOKI_URL>/loki/api/v1/query" \
+    --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
+  ```
+
+  For step-by-step instructions on finding your Loki instance ID, URL, and creating an access policy token, refer to [Authenticate to query Cloud Logs](https://grafana.com/docs/grafana-cloud/send-data/logs/authenticate-to-query-logs/) in the Grafana Cloud documentation.
 
 ## Endpoints
 
@@ -76,7 +88,7 @@ These HTTP endpoints are exposed by their respective component that is part of t
 These HTTP endpoints are exposed by the `ingester`, `write`, and `all` components for flushing chunks and/or shutting down.
 
 - [`POST /flush`](#flush-in-memory-chunks-to-backing-store)
-- [`POST /flush/tenant`](#flush-in-memory-chunks-and-index-for-a-tenant)
+- [`POST /flush/tenant`](#flush-in-memory-chunks-for-a-tenant-experimental)
 - [`POST /ingester/prepare_shutdown`](#prepare-ingester-shutdown)
 - [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
 
@@ -247,6 +259,10 @@ Alternatively, if the `Content-Type` header is set to `application/json`, a JSON
   ]
 }
 ```
+
+{{< admonition type="note" >}}
+Loki validates JSON push payloads strictly: a field name that doesn't belong to the schema shown above causes the request to fail with HTTP 400 and an error message that contains `found unknown field: <field>`. This also applies to the deprecated `/api/prom/push` endpoint, which uses a different JSON schema (`labels` and `entries` instead of `stream` and `values`). Each endpoint only accepts the fields in its own schema, so sending one endpoint's payload format to the other now returns an error instead of silently dropping data. This validation doesn't apply to the default Protocol Buffer encoding.
+{{< /admonition >}}
 
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
@@ -427,6 +443,8 @@ gave this response:
 }
 ```
 
+#### Multi-tenant queries
+
 If your cluster has
 [Grafana Loki Multi-Tenancy](../../operations/multi-tenancy/) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
@@ -459,13 +477,7 @@ curl -u "Tenant1|Tenant2|Tenant3:$API_TOKEN" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
-To query against your hosted log tenant in Grafana Cloud, use the **User** and **URL** values provided in the Loki logging service details of your Grafana Cloud stack. You can find this information in the [Cloud Portal](https://grafana.com/docs/grafana-cloud/account-management/cloud-portal/#your-grafana-cloud-stack). Use an access policy token in your queries for authentication. The password in this example is an access policy token that has been defined in the `API_TOKEN` environment variable:
-
-```bash
-curl -u "User:$API_TOKEN" \
-  -G -s "<URL_PROVIDED_IN_LOKI_DATA_SOURCE_SETTINGS>/loki/api/v1/query" \
-  --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
-```
+To query against your hosted log tenant in Grafana Cloud, use HTTP Basic Authentication with your Loki instance ID and an access policy token, as described in [Authentication](#authentication) above.
 
 ## Query logs within a range of time
 
@@ -1255,20 +1267,6 @@ GET /config
 modify the output. If it has the value `diff` only the differences between the default configuration
 and the current are returned. A value of `defaults` returns the default configuration.
 
-The optional `q` query parameter returns only the requested field(s) instead of the full configuration.
-Its value is a dot-separated path into the configuration (for example `limits_config.ingestion_rate_strategy`),
-made of `.`-separated segments of letters, digits, and underscores, and it may be repeated to fetch several
-fields in one request (`?q=<path>&q=<path>`). The response is YAML, structured as a nested tree mirroring
-the requested path(s) rather than a flat listing — for example, `?q=my_nested_struct.my_string` returns
-`my_nested_struct:\n    my_string: ...`. Paths that share a common ancestor are merged into the same subtree.
-A malformed path, or a request with more than 20 `q` values or any value over 512 characters, returns `400`
-with no `X-Loki-Config-Query` header at all. A well-formed but unrecognized path also returns `400`, but
-still gets the header, since the path was recognized and attempted.
-
-Each requested path that was recognized is echoed back via the `X-Loki-Config-Query` response header
-(even if the value was not found). This lets a caller confirm that the `q` parameter is supported,
-indicating that they are not requesting from an older Loki which may be returning more fields than requested.
-
 In microservices mode, the `/config` endpoint is exposed by all components.
 
 ## List running services
@@ -1303,36 +1301,48 @@ POST /flush
 ```
 
 `/flush` triggers a flush of all in-memory chunks held by the ingesters to the
-backing store. Mainly used for local testing.
+backing store. By default the flush is queued and the request returns without 
+waiting for it to complete.
+
+**URL query parameters:**
+
+- `flush_index` (experimental):
+  If set to `true`, the request waits for the chunks to be flushed, and then also forces the ingester's in-memory index to be built and shipped to the backing store.
+  The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
+  Waiting for the flush can take a long time, so set a generous client timeout.
+  A bare `flush_index` is treated as `true`.
+  If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
-## Flush in-memory chunks and index for a tenant
+## Flush in-memory chunks for a tenant (experimental)
 
 ```bash
 POST /flush/tenant
 ```
 
-`/flush/tenant` triggers a flush of the in-memory chunks held by an ingester for
-a single tenant, and then forces that ingester's in-memory index (the TSDB head)
-to be built and uploaded to the backing store. This makes the flushed chunks
-immediately referenceable, rather than waiting for the next periodic index
-rotation.
+This endpoint is experimental and may change or be removed.
 
-Unlike `/flush`, this endpoint is tenant-scoped: the tenant is taken from the
-`X-Scope-OrgID` header (when running with multi-tenancy enabled). An optional
-`streams` parameter restricts the flush to the streams matching a log stream
-selector; when omitted, all of the tenant's in-memory streams are flushed.
+`/flush/tenant` triggers a flush of the in-memory chunks held by an ingester for
+a single tenant to the backing store. By default the flush is queued and the
+request returns without waiting for it to complete.
 
 **URL query parameters:**
 
-- `streams=<selector>`:
+- `tenant=<tenant ID>`:
+  Required. The tenant to flush.
+- `matchers=<selector>`:
   Optional log stream selector that selects the streams to flush, for example `{app="foo"}`.
   If omitted, all in-memory streams for the tenant are flushed.
+- `flush_index`:
+  If set to `true`, the request waits for the chunks to be flushed, and then also forces the ingester's in-memory index to be built and shipped to the backing store.
+  The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
+  The index is shared by all tenants on the ingester, so the index flush is not tenant-scoped.
+  Waiting for the flush can take a long time, so set a generous client timeout.
+  A bare `flush_index` is treated as `true`.
+  If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
 
-The flush is handled synchronously: the index is shipped only after the matching
-chunks have been flushed, so the request can be long-running. Set a generous
-client timeout when calling it.
+For example, `POST /flush/tenant?tenant=foo&matchers={app="bar"}&flush_index`.
 
 In microservices mode, the `/flush/tenant` endpoint is exposed by the ingester.
 
@@ -1349,7 +1359,7 @@ waiting for the periodic resync (which re-lists through a cache that can take up
 to a minute to expire). It is the second step of making a freshly flushed index
 queryable across read nodes:
 
-1. `POST /flush/tenant` on the ingester ships the new index to object storage.
+1. `POST /flush/tenant?tenant=<tenant>&flush_index` on the ingester ships the new index to object storage.
 1. `PUT /sync-indexes` on the index-gateway downloads it.
 1. `POST /loki/api/v1/cache/generation_numbers/increase` on the compactor
    invalidates any cached query results so the new data is reflected.

@@ -60,23 +60,147 @@ eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) withou
   {app="foo"} 18
   {app="bar"} 6
 
-# A __error__ set directly as structured metadata is an extraction error too. It still fails the
-# query, and a __error__ filter still drops it.
+# sum() grouping on a `<name>_extracted` label that holds shadowed structured metadata.
+clear
+load
+  {app="a", level="info"} "x" @ 10s [repeat every 10s for 6] [metadata level="error"]
+  {app="a", level="info"} "x" @ 15s [repeat every 20s for 3] [metadata level="warn"]
+  {app="a"}               "x" @ 30s [repeat every 30s for 2] [metadata level="error"]
+  {app="noise", level="info"} "x" @ 20s [repeat every 20s for 3] [metadata level="error"]
+
+eval instant at 60s sum by (level_extracted) (count_over_time({app="a"} [1m]))
+  {level_extracted="error"} 6
+  {level_extracted="warn"} 3
+  {} 2
+eval range from 20s to 60s step 20s sum by (level_extracted) (count_over_time({app="a"} [1m]))
+  {level_extracted="error"} 2 4 6
+  {level_extracted="warn"} 1 2 3
+  {} _ 1 2
+eval instant at 60s sum by (level_extracted) (count_over_time({app="a"} | level_extracted="error" [1m]))
+  {level_extracted="error"} 6
+eval instant at 60s sum by (level) (count_over_time({app="a"} [1m]))
+  {level="info"} 9
+  {level="error"} 2
+eval instant at 60s sum without (level_extracted) (count_over_time({app="a"} [1m]))
+  {app="a", level="info"} 9
+  {app="a", level="error"} 2
+eval range from 20s to 60s step 20s sum without (level_extracted) (count_over_time({app="a"} [1m]))
+  {app="a", level="info"} 3 6 9
+  {app="a", level="error"} _ 1 2
+
+# sum() by() on a `<name>_extracted` label that a parser writes.
+clear
+load
+  # sp = stream+parsed, sm = stream+metadata, tri = all three.
+  {app="a", sp="s", sm="s", tri="s"} "sp=p1 tri=p1" @ 20s [repeat every 20s for 3] [metadata sm="m" tri="m"]
+  {app="a", sp="s", sm="s", tri="s"} "sp=p2 tri=p2" @ 30s [repeat every 20s for 2] [metadata sm="m" tri="m"]
+  {app="noise", sp="s"}              "sp=p1"        @ 20s [repeat every 20s for 3]
+
+eval instant at 60s sum by (sp_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {sp_extracted="p1"} 3
+  {sp_extracted="p2"} 2
+eval range from 40s to 60s step 20s sum by (sp_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {sp_extracted="p1"} 2 3
+  {sp_extracted="p2"} 1 2
+eval instant at 60s sum by (tri_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {tri_extracted="p1"} 3
+  {tri_extracted="p2"} 2
+# The line has no `sm` key, so the spilled metadata value stays.
+eval instant at 60s sum by (sm_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {sm_extracted="m"} 5
+eval instant at 60s sum by (sp, sp_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {sp="s", sp_extracted="p1"} 3
+  {sp="s", sp_extracted="p2"} 2
+
+# sum() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "v={{.i}}" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "v={{.i}}" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "v={{.i}}" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "v={{.i}}" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "v={{.i}}" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s sum by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 8   # 3 + 5
+  {zone="us"} 30  # 10 + 20
+eval range from 20s to 60s step 20s sum by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 3 6 8
+  {zone="us"} 9 19 30
+eval instant at 60s sum without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 8
+  {app="foo", zone="us"} 30
+eval instant at 60s sum by (zone) (max_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {zone="eu"} 6   # 2 + 4, not max(2, 4)
+  {zone="us"} 28  # 9 + 19, not max(9, 19)
+eval instant at 60s sum without (extra) (max_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {app="foo", zone="eu"} 6
+  {app="foo", zone="us"} 28
+eval instant at 60s sum(sum_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {} 248
+eval instant at 60s sum by (zone) (sum_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {zone="eu"} 13
+  {zone="us"} 235
+eval range from 20s to 60s step 20s sum by (zone) (sum_over_time({app="foo"} | logfmt | unwrap v [1m]))   # overlapping
+  {zone="eu"} 1 7 13
+  {zone="us"} 18 93 235
+eval instant at 60s sum without (extra) (sum_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {app="foo", zone="eu"} 13
+  {app="foo", zone="us"} 235
+
+# A __error__ set directly as structured metadata is an extraction error too, and a __error__
+# filter decides what to do with it exactly like a parser-raised error.
 clear
 load
   {app="a"} "1" @ 10s [repeat every 10s for 6]
   {app="a"} "2" @ 15s [repeat every 10s for 6] [metadata __error__="malformed"]
+  {app="x"} "v=oops" @ 40s
+  {app="x"} "v=5"    @ 50s
 
 eval instant at 60s sum(count_over_time({app="a"}[1m]))
-  expect fail
+  expect fail msg: malformed
 eval instant at 60s sum(count_over_time({app="a"} | __error__="" [1m]))
   {} 6
+eval instant at 60s sum(count_over_time({app="a"} | __error__!="" [1m]))
+  {} 5
 # A line filter still fails the query on the errored line it keeps, and still counts correctly once
 # it drops that line instead.
 eval instant at 60s sum(count_over_time({app="a"} |= "2" [1m]))
-  expect fail
+  expect fail msg: malformed
 eval instant at 60s sum(count_over_time({app="a"} |= "1" [1m]))
   {} 6
+# A failed unwrap conversion fails sum_over_time() the same way, unless a filter drops the line.
+eval instant at 60s sum(sum_over_time({app="x"} | logfmt | unwrap v [1m]))
+  expect fail msg: SampleExtractionErr
+eval instant at 60s sum(sum_over_time({app="x"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5
+
+# sum() with an error that a parser raises.
+clear
+load
+  {app="a", pod="p1"} `{"v":1}` @ 10s [repeat every 10s for 6]
+  {app="a", pod="p2"} `{`       @ 45s
+  {app="noise"}       `{"v":1}` @ 10s
+
+eval instant at 60s sum by (app) (count_over_time({app="a"} | json [1m]))
+  expect fail msg: JSONParserErr
+eval instant at 60s sum without (pod) (count_over_time({app="a"} | json [1m]))
+  expect fail msg: JSONParserErr
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app="a"} | json [1m]))   # overlapping
+  expect fail msg: JSONParserErr
+eval instant at 60s sum by (app) (count_over_time({app="a"} | json | __error__="" [1m]))
+  {app="a"} 6
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app="a"} | json | __error__="" [1m]))   # overlapping
+  {app="a"} 4 6
+eval instant at 60s sum by (app) (count_over_time({app="a"} | json | __error__!="" [1m]))
+  {app="a"} 1
+eval instant at 30s sum by (app) (count_over_time({app="a"} | json [1m]))
+  {app="a"} 3
 
 # sum() with special inputs.
 clear
@@ -97,6 +221,60 @@ eval instant at 60s sum(max_over_time({app="a", k=~"pinf|nan"} | logfmt | unwrap
   {} NaN
 eval instant at 60s sum(max_over_time({app="a", k=~"ninf|nan"} | logfmt | unwrap v [1m]))
   {} NaN
+
+# sum() of sum_over_time() edge cases:
+# - A window that sums to zero or to a negative value is a value, not an empty window.
+# - A huge value in one window does not change the sum of a later window.
+# - A NaN or an Inf stays in its own window.
+# - A large value that a later negative value cancels does not drop the small values between them.
+clear
+load
+  {app="z", c="zero"} "v=5"                  @ 20s
+  {app="z", c="zero"} "v=-5"                 @ 40s
+  {app="z", c="neg"}  "v=-3"                 @ 20s
+  {app="z", c="pos"}  "v=1"                  @ 20s
+  {app="h", c="big"}   "v=10000000000000000" @ 20s
+  {app="h", c="big"}   "v=1.5"               @ 40s
+  {app="h", c="small"} "v=123456789.123"     @ 20s
+  {app="h", c="small"} "v=0.1"               @ 40s
+  {app="n", c="nan"}   "v=7"                 @ 20s
+  {app="n", c="nan"}   "v=NaN"               @ 40s
+  {app="n", c="nan"}   "v=3"                 @ 60s
+  {app="n", c="inf"}   "v=+Inf"              @ 20s
+  {app="n", c="inf"}   "v=-Inf"              @ 40s
+  {app="n", c="inf"}   "v=5"                 @ 60s
+  {app="k", c="ten"}   "v=10000000000000000" @ 5s
+  {app="k", c="ten"}   "v=1"                 @ 6s [repeat every 1s for 10]
+  {app="k", c="ten"}   "v=-10000000000000000" @ 16s
+  {app="k", c="seven"} "v=10000000000000000" @ 5s
+  {app="k", c="seven"} "v=1"                 @ 6s [repeat every 1s for 7]
+  {app="k", c="seven"} "v=-10000000000000000" @ 13s
+  {app="noise"}        "v=1"                 @ 30s
+
+eval instant at 60s sum by (c) (sum_over_time({app="z"} | logfmt | unwrap v [1m]))
+  {c="zero"} 0    # 5 - 5 = 0
+  {c="neg"} -3
+  {c="pos"} 1
+eval range from 60s to 130s step 70s sum by (c) (sum_over_time({app="z"} | logfmt | unwrap v [1m]))   # non-overlapping
+  {c="zero"} 0 _  # (70s,130s] has no sample
+  {c="neg"} -3 _
+  {c="pos"} 1 _
+eval range from 20s to 40s step 20s sum by (c) (sum_over_time({app="h"} | logfmt | unwrap v [20s]))   # overlapping
+  {c="big"}   10000000000000000 1.5
+  {c="small"} 123456789.123 0.1
+eval range from 20s to 80s step 20s sum by (c) (sum_over_time({app="n"} | logfmt | unwrap v [20s]))   # overlapping
+  {c="nan"} 7 NaN 3 _
+  {c="inf"} +Inf -Inf 5 _
+eval instant at 60s sum by (c) (sum_over_time({app="k"} | logfmt | unwrap v [1m]))
+  {c="ten"} 10     # 1e16 + 10x1 - 1e16
+  {c="seven"} 7    # 1e16 + 7x1  - 1e16
+eval instant at 60s sum(sum_over_time({app="k"} | logfmt | unwrap v [1m]))
+  {} 17
+eval range from 20s to 60s step 20s sum by (c) (sum_over_time({app="k"} | logfmt | unwrap v [1m]))    # overlapping
+  {c="ten"} 10 10 10
+  {c="seven"} 7 7 7
+eval range from 20s to 60s step 40s sum(sum_over_time({app="k"} | logfmt | unwrap v [20s]))           # non-overlapping
+  {} 17 _   # (40s,60s] has no sample
 
 # avg()
 clear
@@ -157,6 +335,30 @@ eval range from 20s to 60s step 20s avg by (zone) (count_over_time({app=~"foo|ba
 eval instant at 60s avg without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 9
   {app="bar", zone="us"} 21
+
+# avg() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s avg by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 4   # (3 + 5) / 2
+  {zone="us"} 15  # (10 + 20) / 2
+eval range from 20s to 60s step 20s avg by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1.5 3 4
+  {zone="us"} 4.5 9.5 15
+eval instant at 60s avg without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 4
+  {app="foo", zone="us"} 15
 
 # avg() with special inputs.
 clear
@@ -238,6 +440,30 @@ eval instant at 60s min without (pod) (count_over_time({app=~"foo|bar"} |~".+bar
   {app="foo", zone="eu"} 6
   {app="bar", zone="us"} 12
 
+# min() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s min by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 3   # min(3, 5)
+  {zone="us"} 10  # min(10, 20)
+eval range from 20s to 60s step 20s min by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1 2 3
+  {zone="us"} 3 6 10
+eval instant at 60s min without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 3
+  {app="foo", zone="us"} 10
+
 # min() with special inputs.
 clear
 load
@@ -318,6 +544,30 @@ eval instant at 60s max without (pod) (count_over_time({app=~"foo|bar"} |~".+bar
   {app="foo", zone="eu"} 12
   {app="bar", zone="us"} 30
 
+# max() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s max by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 5   # max(3, 5)
+  {zone="us"} 20  # max(10, 20)
+eval range from 20s to 60s step 20s max by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 2 4 5
+  {zone="us"} 6 13 20
+eval instant at 60s max without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 5
+  {app="foo", zone="us"} 20
+
 # max() with special inputs.
 clear
 load
@@ -393,6 +643,28 @@ eval range from 20s to 60s step 20s count by (zone) (count_over_time({app=~"foo|
 eval instant at 60s count without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 2
   {app="bar", zone="us"} 1
+
+# count() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 10s [repeat every 10s for 18] [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 50s [repeat every 10s for 14] [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 30s [repeat every 10s for 16] [metadata zone="us" extra="1"]
+  {app="noise"} "x" @ 10s [repeat every 10s for 18] [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 6
+  {app="foo", zone="eu", extra="2"} 2
+  {app="foo", zone="us", extra="1"} 4
+eval instant at 60s count by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 2
+  {zone="us"} 1
+eval range from 20s to 60s step 20s count by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1 1 2
+  {zone="us"} _ 1 1
+eval instant at 60s count without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 2
+  {app="foo", zone="us"} 1
 
 # count() with special inputs.
 clear
@@ -472,6 +744,30 @@ eval range from 20s to 60s step 20s stddev by (zone) (count_over_time({app=~"foo
 eval instant at 60s stddev without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 3
   {app="bar", zone="us"} 9
+
+# stddev() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s stddev by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1   # mean 4, so both of {3, 5} deviate 1
+  {zone="us"} 5   # mean 15, so both of {10, 20} deviate 5
+eval range from 20s to 60s step 20s stddev by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 0.5 1 1
+  {zone="us"} 1.5 3.5 5
+eval instant at 60s stddev without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 1
+  {app="foo", zone="us"} 5
 
 # stddev() with special inputs.
 clear
@@ -553,6 +849,30 @@ eval range from 20s to 60s step 20s stdvar by (zone) (count_over_time({app=~"foo
 eval instant at 60s stdvar without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 9
   {app="bar", zone="us"} 81
+
+# stdvar() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s stdvar by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1   # mean 4, deviation 1, variance 1 x 1
+  {zone="us"} 25  # mean 15, deviation 5, variance 5 x 5
+eval range from 20s to 60s step 20s stdvar by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 0.25 1 1
+  {zone="us"} 2.25 12.25 25
+eval instant at 60s stdvar without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 1
+  {app="foo", zone="us"} 25
 
 # stdvar() with special inputs.
 clear
@@ -639,6 +959,35 @@ eval instant at 60s topk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) wi
   {app="bar", pod="a"} 15
   {app="bar", pod="b"} 30
 
+# topk() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s topk(1, count_over_time({app="foo"}[1m])) by (zone)
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="2"} 20
+eval range from 20s to 60s step 20s topk(1, count_over_time({app="foo"}[1m])) by (zone)
+  {app="foo", zone="eu", extra="2"} 2 4 5
+  {app="foo", zone="us", extra="2"} 6 13 20
+eval instant at 60s topk(2, count_over_time({app="foo"}[1m])) by (zone)  # k=2 takes both series
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s topk(1, count_over_time({app="foo"}[1m])) without (extra)
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="2"} 20
+
 # topk() with special inputs.
 clear
 load
@@ -719,6 +1068,35 @@ eval instant at 60s bottomk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", pod="a"} 6
   {app="foo", pod="b"} 12
 
+# bottomk() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s bottomk(1, count_over_time({app="foo"}[1m])) by (zone)
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="us", extra="1"} 10
+eval range from 20s to 60s step 20s bottomk(1, count_over_time({app="foo"}[1m])) by (zone)
+  {app="foo", zone="eu", extra="1"} 1 2 3
+  {app="foo", zone="us", extra="1"} 3 6 10
+eval instant at 60s bottomk(2, count_over_time({app="foo"}[1m])) by (zone)  # k=2 takes both series
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s bottomk(1, count_over_time({app="foo"}[1m])) without (extra)
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="us", extra="1"} 10
+
 # bottomk() with special inputs.
 clear
 load
@@ -764,6 +1142,28 @@ eval instant at 60s sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1
   {app="foo", pod="b"} 1.2
   {app="foo", pod="a"} 1.1
   {app="bar", pod="a"} 1.05
+
+# sort() / sort_desc() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s sort(count_over_time({app="foo"}[1m]))
+  expect ordered
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s sort_desc(count_over_time({app="foo"}[1m]))
+  expect ordered
+  {app="foo", zone="us", extra="2"} 20
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="eu", extra="1"} 3
 
 # sort() / sort_desc() with special inputs.
 #

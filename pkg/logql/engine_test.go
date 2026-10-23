@@ -352,19 +352,41 @@ func (statsQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (it
 }
 
 func TestEngine_Stats(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+	t.Run("records query exec time and decompressed bytes", func(t *testing.T) {
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
-	queueTime := 2 * time.Nanosecond
+		queueTime := 2 * time.Nanosecond
 
-	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+		params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		q := eng.Query(params)
+
+		ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+		require.NoError(t, err)
+		require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
+		require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
+	})
+
+	params, err := NewLiteralParams(`sum(count_over_time({foo="bar"}[1m]))`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
 	require.NoError(t, err)
-	q := eng.Query(params)
 
-	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
-	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
-	require.NoError(t, err)
-	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
-	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
+	t.Run("records a timestamp-first query when the tenant does not enable stream-first", func(t *testing.T) {
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+		r, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "a"))
+		require.NoError(t, err)
+		require.Positive(t, r.Statistics.Summary.TimestampFirstQueries)
+		require.Zero(t, r.Statistics.Summary.StreamFirstQueries)
+	})
+
+	t.Run("records a stream-first query when the tenant enables it", func(t *testing.T) {
+		limits := tenantStreamFirstLimits{fakeLimits: fakeLimits{maxSeries: NoLimits.maxSeries, timeout: NoLimits.timeout}, enabled: map[string]bool{"a": true}}
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, limits, log.NewNopLogger())
+		r, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "a"))
+		require.NoError(t, err)
+		require.Positive(t, r.Statistics.Summary.StreamFirstQueries)
+		require.Zero(t, r.Statistics.Summary.TimestampFirstQueries)
+	})
 }
 
 type metaQuerier struct{}
@@ -501,6 +523,30 @@ func TestStepEvaluator_Error(t *testing.T) {
 			require.Equal(t, tc.err, err)
 		})
 	}
+}
+
+func TestEngine_RangeAggEvaluator_UnparsableSeriesLabels(t *testing.T) {
+	samples := make([]logproto.Sample, 0, testSize)
+	for i := int64(0); i < testSize; i++ {
+		samples = append(samples, identity(i).Sample)
+	}
+	querier := &errorIteratorQuerier{
+		samples: func() []iter.SampleIterator {
+			return []iter.SampleIterator{
+				iter.NewSeriesIterator(logproto.Series{
+					Labels:  `{app="foo", badlabels=}`,
+					Samples: samples,
+				}),
+			}
+		},
+	}
+	eng := NewEngine(EngineOpts{}, querier, NoLimits, log.NewNopLogger())
+
+	params, err := NewLiteralParams(`count_over_time({app="foo"}[1m])`, time.Unix(0, 0), time.Unix(180, 0), 1*time.Second, 0, logproto.BACKWARD, 1, nil, nil)
+	require.NoError(t, err)
+	q := eng.Query(params)
+	_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.Error(t, err)
 }
 
 func TestEngine_MaxSeries(t *testing.T) {
@@ -668,7 +714,7 @@ func TestHashingStability(t *testing.T) {
 		}
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
-		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}}, nil)
 		return buf.String()
 	}
 
@@ -698,7 +744,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 
 	mock := &mockEvaluatorFactory{
 		SampleEvaluatorFunc(
-			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
+			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
 				return EmptyEvaluator[SampleVector]{value: nil}, nil
 			},
 		),
@@ -718,9 +764,9 @@ type mockEvaluatorFactory struct {
 	sampleEvalFunc SampleEvaluatorFunc
 }
 
-func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error) {
 	if m.sampleEvalFunc != nil {
-		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p)
+		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p, isRootExpr)
 	}
 	return nil, errors.New("unimplemented mock SampleEvaluatorFactory")
 }
@@ -815,7 +861,7 @@ func (q *querierRecorder) SelectSamples(
 ) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
-			return iter.NewMultiSeriesIterator(s), nil
+			return iter.NewTimestampFirstMultiSeriesIterator(s), nil
 		}
 	}
 	recordID := paramsID(p)
@@ -826,7 +872,7 @@ func (q *querierRecorder) SelectSamples(
 	if !ok {
 		return nil, fmt.Errorf("no series found for id: %s has: %+v", recordID, q.series)
 	}
-	return iter.NewMultiSeriesIterator(series), nil
+	return iter.NewTimestampFirstMultiSeriesIterator(series), nil
 }
 
 func paramsID(p interface{}) string {

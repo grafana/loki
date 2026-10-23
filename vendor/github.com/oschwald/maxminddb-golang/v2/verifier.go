@@ -93,10 +93,15 @@ func (w *searchTreeWalker) verifyPointer(pointer, bitDepth uint) (uint8, error) 
 // Verify performs comprehensive validation of the MaxMind DB file.
 //
 // This method validates:
-//   - Metadata section: format versions, required fields, and value constraints
+//   - Metadata section: format versions, required fields, and value constraints.
+//     Values that the metadata map points to can follow the map, so the rest
+//     of the section must be a sequence of valid values. Each metadata pointer
+//     must point to the start of a field.
 //   - Search tree: traverses all networks to verify tree structure integrity
 //   - Data section separator: validates the 16-byte separator between tree and data
-//   - Data section: verifies all data records referenced by the search tree
+//   - Data section: verifies all data records referenced by the search tree.
+//     A search-tree record can point to a top-level value or to a field
+//     nested in one. Each data pointer must point to the start of a field.
 //
 // The verifier is stricter than the MaxMind DB specification and may return
 // errors on some databases that are still readable by normal operations.
@@ -106,9 +111,9 @@ func (w *searchTreeWalker) verifyPointer(pointer, bitDepth uint) (uint8, error) 
 //   - Ensuring database integrity in critical applications
 //
 // Note: Verification traverses the entire database and may be slow on large files.
-// Each data record and the original metadata graph, including unknown metadata
-// fields, receives an independent set of decoder operation limits while it is
-// materialized for verification.
+// Each data record and the metadata section, including unknown metadata fields
+// and values after the metadata map, receives an independent set of decoder
+// operation limits while it is materialized for verification.
 // A successful result applies only while the Reader's backing file or byte
 // slice remains unchanged.
 // The method is thread-safe and can be called on an active Reader.

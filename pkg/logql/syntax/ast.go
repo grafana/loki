@@ -312,6 +312,121 @@ func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	return current
 }
 
+// PushableLineFilters returns, as one filter, the line filters that can run before every other
+// stage. These are the line filters before the first stage that can modify the line.
+//
+// It returns nil when no such filter exists or when the filters keep every line.
+func (m MultiStageExpr) PushableLineFilters() (log.Filterer, error) {
+	pushable, _, err := m.splitPushableStages()
+	if err != nil {
+		return nil, err
+	}
+
+	filters := make([]log.Filterer, 0, len(pushable))
+	for _, s := range pushable {
+		f, err := s.Filter()
+		if err != nil {
+			return nil, logqlmodel.NewStageError(s.String(), err)
+		}
+		filters = append(filters, f)
+	}
+
+	if f := log.NewAndFilters(filters); f != log.TrueFilter {
+		return f, nil
+	}
+	return nil, nil
+}
+
+// WithoutPushableLineFilters returns m without the line filter stages before the first stage that
+// can modify the line. It also removes a filter that keeps every line, which PushableLineFilters
+// leaves out of its result.
+func (m MultiStageExpr) WithoutPushableLineFilters() (MultiStageExpr, error) {
+	_, rest, err := m.splitPushableStages()
+	return rest, err
+}
+
+// WithoutPushableLineFilters returns a copy of expr whose pipeline has no stage that
+// [MultiStageExpr.WithoutPushableLineFilters] removes. It returns nil when expr has no such stage.
+// It never changes expr.
+func WithoutPushableLineFilters(expr SampleExpr) (SampleExpr, error) {
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+	pipeline, ok := selector.(*PipelineExpr)
+	if !ok {
+		return nil, nil
+	}
+	rest, err := pipeline.MultiStages.WithoutPushableLineFilters()
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) == len(pipeline.MultiStages) {
+		return nil, nil
+	}
+
+	clone, err := Clone[SampleExpr](expr)
+	if err != nil {
+		return nil, err
+	}
+	cloneSelector, err := clone.Selector()
+	if err != nil {
+		return nil, err
+	}
+	clonePipeline, ok := cloneSelector.(*PipelineExpr)
+	if !ok {
+		return nil, fmt.Errorf("the clone of %q lost its pipeline", expr)
+	}
+
+	// Do not reuse rest. Its stages are the nodes of expr, and building a pipeline from them changes
+	// those nodes.
+	clonePipeline.MultiStages, err = clonePipeline.MultiStages.WithoutPushableLineFilters()
+	if err != nil {
+		return nil, err
+	}
+	return clone, nil
+}
+
+// splitPushableStages splits m at the first stage that can modify the line. It returns the line
+// filter stages before that stage, and the remaining stages of m without them.
+func (m MultiStageExpr) splitPushableStages() (pushable []*LineFilterExpr, rest MultiStageExpr, err error) {
+	var (
+		allLineFilters     []*LineFilterExpr
+		chainedLineFilters = map[*LineFilterExpr]struct{}{}
+	)
+
+	for i, e := range m {
+		if f, ok := e.(*LineFilterExpr); ok {
+			allLineFilters = append(allLineFilters, f)
+
+			// Mark every filter that f reaches through Left. Filter on f already covers them.
+			for l := f.Left; l != nil; l = l.Left {
+				chainedLineFilters[l] = struct{}{}
+			}
+			continue
+		}
+
+		s, err := e.Stage()
+		if err != nil {
+			return nil, nil, logqlmodel.NewStageError(e.String(), err)
+		}
+		rest = append(rest, e)
+		if s.Hints().CanModifyLine {
+			rest = append(rest, m[i+1:]...)
+			break
+		}
+	}
+
+	// Drop every filter that another filter reaches through Left. Filter on the last link of a chain
+	// already covers the filters before it, so keeping both would run those filters twice.
+	for _, f := range allLineFilters {
+		if _, ok := chainedLineFilters[f]; !ok {
+			pushable = append(pushable, f)
+		}
+	}
+	return pushable, rest, nil
+}
+
 func (m MultiStageExpr) String() string {
 	var sb strings.Builder
 	for i, e := range m {
@@ -426,8 +541,7 @@ func (e *PipelineExpr) HasFilter() bool {
 		case *LabelFilterExpr:
 			return true
 		case *LineFilterExpr:
-			// ignore empty matchers as they match everything
-			if (v.Ty != log.LineMatchEqual && v.Ty != log.LineMatchRegexp) || v.Match != "" {
+			if v.hasFilter() {
 				return true
 			}
 		default:
@@ -562,6 +676,20 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 		Or:         right.Or,
 		IsOrChild:  right.IsOrChild,
 	}
+}
+
+// hasFilter returns true if any filter in the chain, including or branches,
+// can filter out lines.
+func (e *LineFilterExpr) hasFilter() bool {
+	if e == nil {
+		return false
+	}
+	// Empty matchers match everything. An empty or branch does not make its
+	// group match everything, because building the or filter drops it.
+	if (e.Ty != log.LineMatchEqual && e.Ty != log.LineMatchRegexp) || e.Match != "" {
+		return true
+	}
+	return e.Left.hasFilter() || e.Or.hasFilter()
 }
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
@@ -818,13 +946,14 @@ func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
 func (e *LabelFilterExpr) Accept(v RootVisitor) { v.VisitLabelFilter(e) }
 
 func (e *LabelFilterExpr) Stage() (log.Stage, error) {
-	switch ip := e.LabelFilterer.(type) {
+	switch f := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
-		return ip, ip.PatternError()
+		return f, f.PatternError()
 	case *log.NoopLabelFilter:
 		return log.NoopStage, nil
+	default:
+		return e.LabelFilterer, nil
 	}
-	return e.LabelFilterer, nil
 }
 
 func (e *LabelFilterExpr) String() string {
@@ -1225,6 +1354,23 @@ func (r *LogRangeExpr) Walk(f WalkFn) {
 
 func (r *LogRangeExpr) Accept(v RootVisitor) {
 	v.VisitLogRange(r)
+}
+
+// HasUnwrapPostFilterOnErrorLabel reports whether the unwrap carries a post filter that reads
+// __error__ or __error_details__.
+func (r *LogRangeExpr) HasUnwrapPostFilterOnErrorLabel() bool {
+	if r.Unwrap == nil {
+		return false
+	}
+
+	for _, f := range r.Unwrap.PostFilters {
+		// ReadsErrorLabel is true for any filter that touches __error__ or __error_details__,
+		// whether it asks to keep or to drop the errored lines.
+		if f.Hints().ReadsErrorLabel {
+			return true
+		}
+	}
+	return false
 }
 
 // WithoutUnwrap returns a copy of the log range without the unwrap statement.
@@ -1861,7 +2007,7 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	}
 	// inject in the range vector extractor the outer groups to improve performance.
 	// This is only possible if the operation is a sum. Anything else needs all labels.
-	if r, ok := e.Left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.Operation, r.Operation) {
+	if r, ok := e.Left.(*RangeAggregationExpr); ok && CanInjectVectorGrouping(e.Operation, r.Operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.Grouping == nil {
 			return r.extractor(e.Grouping)
@@ -1870,8 +2016,12 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	return e.Left.Extractor()
 }
 
-// canInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
-func canInjectVectorGrouping(vecOp, rangeOp string) bool {
+// CanInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
+//
+// An injected grouping replaces the extractor's label set at extraction time. It reaches the
+// extractor only when the range aggregation carries no grouping of its own, because that one
+// wins.
+func CanInjectVectorGrouping(vecOp, rangeOp string) bool {
 	if vecOp != OpTypeSum {
 		return false
 	}
@@ -2586,6 +2736,13 @@ var shardableOps = map[string]bool{
 type MatcherRange struct {
 	Matchers         []*labels.Matcher
 	Interval, Offset time.Duration
+}
+
+// Widen shifts the bounds back by this group's range and offset. The start
+// moves by interval+offset and the end moves by offset. A log selector has
+// both durations zero, so its bounds stay put.
+func (m MatcherRange) Widen(from, through time.Time) (time.Time, time.Time) {
+	return from.Add(-(m.Interval + m.Offset)), through.Add(-m.Offset)
 }
 
 func MatcherGroups(expr Expr) ([]MatcherRange, error) {

@@ -1,6 +1,7 @@
 package hyperloglog
 
 import (
+	"fmt"
 	"math/bits"
 	"slices"
 
@@ -37,6 +38,15 @@ func decodeHash(k uint32, p, pp uint8) (uint32, uint8) {
 	return getIndex(k, p, pp), r
 }
 
+// checkSparseKey requires p to have passed checkPrecision.
+func checkSparseKey(k uint32, p uint8) error {
+	maxRho := maxRho(p)
+	if _, r := decodeHash(k, p, pp); r > maxRho {
+		return fmt.Errorf("hyperloglog: sparse key %#08x decodes to rho %d, max %d: %w", k, r, maxRho, ErrorInvalidData)
+	}
+	return nil
+}
+
 type set struct {
 	m *intmap.Set[uint32]
 }
@@ -67,6 +77,12 @@ func (s set) Len() int {
 
 func (s set) add(v uint32) bool {
 	return s.m.Add(v)
+}
+
+func (s set) clear() {
+	if s.m != nil {
+		s.m.Clear()
+	}
 }
 
 func (s set) Clone() set {

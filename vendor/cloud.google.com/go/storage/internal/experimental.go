@@ -46,4 +46,9 @@ var (
 	// WithOtelDebugMetrics is a function which is implemented by the storage package.
 	// It enables debug client-side OpenTelemetry metrics.
 	WithOtelDebugMetrics any // func() option.ClientOption
+	// WithBufferPool is a function which is implemented by the storage package.
+	// It sets the buffer pool used to allocate memory for parallel uploads.
+	//
+	// This option is not supported at the moment.
+	WithBufferPool any // func(BufferPool) option.ClientOption
 )

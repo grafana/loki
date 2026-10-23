@@ -5,6 +5,7 @@ package streams
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -88,10 +89,29 @@ func (s *Section) NumRows() int {
 	return int(s.columns[0].inner.Metadata().RowsCount)
 }
 
+// Layout returns the layout that the section records. ok is false if the
+// section records no layout.
+//
+// Layout returns an error if the recorded layout is not one that
+// [NewLayout] can produce: the shard count is not a valid shard layout, the
+// stream order is not [StreamOrderStableHashV1], or the section has column
+// sorts.
+func (s *Section) Layout() (layout Layout, ok bool, err error) {
+	si := s.inner.SortInfo()
+	if si == nil {
+		return Layout{}, false, nil
+	}
+	layout, err = layoutFromSortInfo(si)
+	if err != nil {
+		return Layout{}, false, err
+	}
+	return layout, true, nil
+}
+
 // A Column represents one of the columns in the streams section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
-// Data in columns can be read by using a [Reader].
+// Data in columns can be read by using a [RowReader].
 type Column struct {
 	Section *Section   // Section that contains the column.
 	Name    string     // Optional name of the column.
@@ -162,4 +182,9 @@ func (ct ColumnType) String() string {
 		return fmt.Sprintf("ColumnType(%d)", ct)
 	}
 	return text
+}
+
+// HasColumn reports whether the section holds a column of the given type.
+func (s *Section) HasColumn(typ ColumnType) bool {
+	return slices.ContainsFunc(s.columns, func(column *Column) bool { return column.Type == typ })
 }

@@ -43,6 +43,23 @@ func TestRecordCopyIsDeepCopy(t *testing.T) {
 	require.Equal(t, []byte("Xriginal line"), copied.Line)
 }
 
+func TestRecord_UncompressedSize(t *testing.T) {
+	t.Run("returns the line length when there is no metadata", func(t *testing.T) {
+		rec := logs.Record{Line: []byte("hello")}
+		require.Equal(t, int64(5), rec.UncompressedSize())
+	})
+
+	t.Run("adds metadata value bytes but not metadata name bytes", func(t *testing.T) {
+		rec := logs.Record{Line: []byte("hello"), Metadata: labels.FromStrings("trace_id", "abc", "user", "z")}
+		require.Equal(t, int64(5+3+1), rec.UncompressedSize())
+	})
+
+	t.Run("returns zero for an empty record", func(t *testing.T) {
+		var rec logs.Record
+		require.Equal(t, int64(0), rec.UncompressedSize())
+	})
+}
+
 func Test(t *testing.T) {
 	records := []logs.Record{
 		{
@@ -86,19 +103,19 @@ func Test(t *testing.T) {
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0),
+			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
+			Timestamp: time.Unix(100, 0).UTC(),
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(10, 0),
+			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("foo bar"),
 		},
@@ -155,19 +172,19 @@ func TestAppendOrdered(t *testing.T) {
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0),
+			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
+			Timestamp: time.Unix(100, 0).UTC(),
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(10, 0),
+			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("foo bar"),
 		},

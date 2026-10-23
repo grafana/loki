@@ -343,6 +343,49 @@ func (i *IndexStatsResponse) GetHeaders() []*definitions.PrometheusResponseHeade
 	return nil
 }
 
+func (m IndexMeta) IndexPath() string {
+	return m.ID + "/index"
+}
+
+func (m *LoglineIndexRequest) GetStart() time.Time {
+	return time.UnixMilli(int64(m.From))
+}
+
+func (m *LoglineIndexRequest) GetEnd() time.Time {
+	return time.UnixMilli(int64(m.Through))
+}
+
+func (m *LoglineIndexRequest) GetStep() int64 { return 0 }
+
+func (m *LoglineIndexRequest) GetQuery() string {
+	return m.Expr
+}
+
+func (m *LoglineIndexRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *LoglineIndexRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	return &clone
+}
+
+func (m *LoglineIndexRequest) WithQuery(query string) definitions.Request {
+	clone := *m
+	clone.Expr = query
+	return &clone
+}
+
+func (m *LoglineIndexRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", m.GetQuery()),
+		attribute.String("start", timestamp.Time(int64(m.From)).String()),
+		attribute.String("end", timestamp.Time(int64(m.Through)).String()),
+		attribute.Int("ngram_length", int(m.NgramLength)),
+		attribute.Int("max_parallel", int(m.MaxParallel)),
+	)
+}
+
 // Satisfy definitions.Request for Volume
 
 // GetStart returns the start timestamp of the request in milliseconds.

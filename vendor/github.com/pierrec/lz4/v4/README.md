@@ -2,7 +2,6 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/pierrec/lz4/v4.svg)](https://pkg.go.dev/github.com/pierrec/lz4/v4)
 [![CI](https://github.com/pierrec/lz4/workflows/ci/badge.svg)](https://github.com/pierrec/lz4/actions)
-[![Go Report Card](https://goreportcard.com/badge/github.com/pierrec/lz4)](https://goreportcard.com/report/github.com/pierrec/lz4)
 [![GitHub tag (latest SemVer)](https://img.shields.io/github/tag/pierrec/lz4.svg?style=social)](https://github.com/pierrec/lz4/tags)
 
 ## Overview
@@ -21,7 +20,7 @@ go get github.com/pierrec/lz4/v4
 There is a command line interface tool to compress and decompress LZ4 files.
 
 ```
-go install github.com/pierrec/lz4/v4/cmd/lz4c@latest
+go install github.com/pierrec/lz4/cmd/lz4c@latest
 ```
 
 Usage
@@ -90,3 +89,5 @@ Special thanks to [@Zariel](https://github.com/Zariel) for his asm implementatio
 Special thanks to [@greatroar](https://github.com/greatroar) for his work on the asm implementations of the decoder for amd64 and arm64.
 
 Special thanks to [@klauspost](https://github.com/klauspost) for his work on optimizing the code.
+
+Special thanks to [@lizthegrey](https://github.com/lizthegrey) for work on the arm64 decoder, the compressors, and fuzzing and robustness testing.

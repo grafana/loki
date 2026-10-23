@@ -2,8 +2,8 @@
 # Loki HA Monolithic – Docker Compose
 # =============================================================================
 # Services
-#   minio            – S3-compatible object storage (chunks + ruler buckets)
-#   minio-init       – one-shot container that creates required MinIO buckets
+#   silo             – S3-compatible object storage (chunks + ruler buckets)
+#   silo-init        – one-shot container that creates required Silo buckets
 #   loki-1/2/3       – Loki single-binary replicas (target=all), RF=3
 #   nginx            – reverse proxy / load balancer in front of Loki
 #
@@ -14,7 +14,7 @@
 name: loki-ha-monolithic
 
 x-loki-common: &loki-common
-  image: grafana/loki:3.7.7@sha256:d70e4659623f3e109af669cae76fe2a5dd5be54e2298fe8aed380d982fbc2500
+  image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
   command:
     [
       "-config.file=/etc/loki/loki.yaml",
@@ -23,7 +23,7 @@ x-loki-common: &loki-common
       "-target=all",
     ]
   depends_on:
-    minio-init:
+    silo-init:
       condition: service_completed_successfully
   networks:
     - loki
@@ -35,9 +35,9 @@ x-loki-common: &loki-common
     start_period: 30s
 
 services:
-  minio:
-    image: pgsty/minio:latest
-    entrypoint: ["minio", "server", "/data", "--console-address", ":9001"]
+  silo:
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
+    entrypoint: ["silo", "server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: loki
       MINIO_ROOT_PASSWORD: supersecret
@@ -45,7 +45,7 @@ services:
       - minio-data:/data
     ports:
       - "9000:9000" # S3 API
-      - "9001:9001" # MinIO web console
+      - "9001:9001" # Silo web console
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -55,16 +55,16 @@ services:
     networks:
       - loki
 
-  minio-init:
+  silo-init:
     image: pgsty/mc:latest
     depends_on:
-      minio:
+      silo:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-        mc alias set minio http://minio:9000 loki supersecret &&
-        mc mb --ignore-existing minio/loki-chunks &&
-        mc mb --ignore-existing minio/loki-ruler &&
+        mc alias set silo http://silo:9000 loki supersecret &&
+        mc mb --ignore-existing silo/loki-chunks &&
+        mc mb --ignore-existing silo/loki-ruler &&
         echo 'Buckets created.'
       "
     networks:

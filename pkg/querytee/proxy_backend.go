@@ -7,15 +7,42 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"regexp"
 	"time"
 
 	"github.com/grafana/dskit/tracing"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
+
+// BackendRole tells how the proxy uses a backend.
+type BackendRole int
+
+const (
+	// RoleOther is a backend that is neither the primary nor the secondary. It receives every
+	// request on a registered route. The proxy never returns its response and never compares it.
+	RoleOther BackendRole = iota
+	// RolePrimary is the backend whose response the proxy returns to the client, even when the
+	// response is an error. The proxy does not fall back to another backend.
+	RolePrimary
+	// RoleSecondary is the backend whose responses the proxy compares with the primary's. It
+	// receives every write on a registered route. It receives a read only when the selection
+	// strategy picks it. The proxy never returns its response. When -proxy.compare-responses is
+	// set, the proxy compares its response with the primary's on routes that have a comparator.
+	RoleSecondary
+)
+
+// String returns the name of the role. It is the value of the backend_alias metric label.
+func (r BackendRole) String() string {
+	switch r {
+	case RolePrimary:
+		return "primary"
+	case RoleSecondary:
+		return "secondary"
+	default:
+		return "other"
+	}
+}
 
 // ProxyBackend holds the information of a single backend.
 type ProxyBackend struct {
@@ -23,38 +50,22 @@ type ProxyBackend struct {
 	endpoint *url.URL
 	client   *http.Client
 	timeout  time.Duration
-
-	// Whether this is the preferred backend from which picking up
-	// the response and sending it back to the client.
-	v1Preferred bool
-	v2Preferred bool
-
-	// Only process requests that match the filter.
-	filter *regexp.Regexp
+	role     BackendRole
 }
 
-// NewProxyBackend makes a new ProxyBackend
-// It accepts preferred booleans in the following order [v1, v2].
-// A backend can be v1Preferred, v2Preferred, or neither, but not both.
-func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred ...bool) (*ProxyBackend, error) {
-	var v1Preferred, v2Preferred bool
-	if len(preferred) > 0 {
-		v1Preferred = preferred[0]
-	}
-	if len(preferred) > 1 {
-		v2Preferred = preferred[1]
-	}
-
-	if v1Preferred && v2Preferred {
-		return nil, errors.New("cannot be both v1Preferred and v2Preferred")
+// NewProxyBackend makes a new ProxyBackend.
+func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, role BackendRole) (*ProxyBackend, error) {
+	switch role {
+	case RoleOther, RolePrimary, RoleSecondary:
+	default:
+		return nil, errors.Errorf("unknown backend role %d", role)
 	}
 
 	return &ProxyBackend{
-		name:        name,
-		endpoint:    endpoint,
-		timeout:     timeout,
-		v1Preferred: v1Preferred,
-		v2Preferred: v2Preferred,
+		name:     name,
+		endpoint: endpoint,
+		timeout:  timeout,
+		role:     role,
 		client: &http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return errors.New("the query-tee proxy does not follow redirects")
@@ -74,22 +85,17 @@ func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, pref
 	}, nil
 }
 
-func (b *ProxyBackend) WithFilter(f *regexp.Regexp) *ProxyBackend {
-	b.filter = f
-	return b
+// Alias returns the backend alias label value for metrics. It is "primary", "secondary" or "other".
+func (b *ProxyBackend) Alias() string {
+	return b.role.String()
 }
 
-// Alias returns the backend alias label value for metrics.
-// Returns "v1" for v1-preferred backends, "v2" for v2-preferred backends,
-// or "other" for non-preferred backends.
-func (b *ProxyBackend) Alias() string {
-	if b.v1Preferred {
-		return "v1"
-	}
-	if b.v2Preferred {
-		return "v2"
-	}
-	return "other"
+func (b *ProxyBackend) isPrimary() bool {
+	return b.role == RolePrimary
+}
+
+func (b *ProxyBackend) isSecondary() bool {
+	return b.role == RoleSecondary
 }
 
 func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *BackendResponse {
@@ -126,8 +132,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadClos
 	// Create a child span directly from the original context to preserve parent-child relationship
 	span, spanCtx := tracing.StartSpanFromContext(orig.Context(), "querytee.backend.request")
 	span.SetTag("backend.name", b.name)
-	span.SetTag("backend.preferred.v1", b.v1Preferred)
-	span.SetTag("backend.preferred.v2", b.v2Preferred)
+	span.SetTag("backend.role", b.role.String())
 	span.SetTag("backend.endpoint", b.endpoint.String())
 
 	req := orig.Clone(spanCtx)
@@ -198,19 +203,19 @@ func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, http.He
 // injectTraceHeaders explicitly injects trace context into HTTP headers.
 // This is necessary because context.WithoutCancel breaks the normal trace propagation.
 func (b *ProxyBackend) injectTraceHeaders(req *http.Request) {
-	ctx := req.Context()
+	otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
+}
 
-	// First, try OpenTracing if it's registered (dskit might be using this)
-	if opentracing.IsGlobalTracerRegistered() {
-		if span := opentracing.SpanFromContext(ctx); span != nil {
-			tracer := opentracing.GlobalTracer()
-			// Inject the span context into the HTTP headers
-			_ = tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
-			return
+// ProxyBackends is a list of backends.
+type ProxyBackends []*ProxyBackend
+
+// CountFunc returns the number of backends for which match returns true.
+func (bs ProxyBackends) CountFunc(match func(*ProxyBackend) bool) int {
+	var count int
+	for _, b := range bs {
+		if match(b) {
+			count++
 		}
 	}
-
-	// Otherwise, use OpenTelemetry propagation
-	propagator := otel.GetTextMapPropagator()
-	propagator.Inject(ctx, propagation.HeaderCarrier(req.Header))
+	return count
 }

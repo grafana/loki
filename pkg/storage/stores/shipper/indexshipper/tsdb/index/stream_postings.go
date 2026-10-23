@@ -2,7 +2,9 @@ package index
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"sort"
 
 	"github.com/prometheus/prometheus/storage"
@@ -11,15 +13,37 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
+// minPooledPostingsListBytes is the size below which a postings list's buffer
+// is not pooled.
+// Benchmarks show that a pool Get and Put cost more than they save for short
+// postings lists.
+const minPooledPostingsListBytes = 256
+
 // postingsListBufferPool holds reusable []byte buffers for streaming postings lists.
-var postingsListBufferPool = pool.New(64, 16<<20, 2, func(sz int) interface{} {
+var postingsListBufferPool = pool.New(minPooledPostingsListBytes, 16<<20, 2, func(sz int) interface{} {
 	return make([]byte, 0, sz)
 })
 
 // getPostingsListBuffer returns a buffer of exactly n bytes.
-// Buffers are returned dirty, so the caller is expected to overwrite any data in the buffer.
+// Buffers may be returned dirty, so the caller is expected to overwrite any data in the buffer.
 func getPostingsListBuffer(n int) []byte {
+	if n < minPooledPostingsListBytes {
+		return make([]byte, n)
+	}
 	return postingsListBufferPool.Get(n).([]byte)[:n]
+}
+
+func putPostingsListBuffer(buf []byte) {
+	if len(buf) >= minPooledPostingsListBytes {
+		postingsListBufferPool.Put(buf)
+	}
+}
+
+func newPostingsListPostings(buf []byte) Postings {
+	if len(buf) >= minPooledPostingsListBytes {
+		return newPooledBigEndianPostings(buf)
+	}
+	return NewBigEndianPostings(buf)
 }
 
 // streamPostings is StreamReader's equivalent of ByteSliceReader's postings.
@@ -128,13 +152,33 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 		return EmptyPostings(), nil
 	}
 
-	results := make([]Postings, 0, len(labelValues))
-	skip := 0
 	valueIndex := 0
 	for valueIndex < len(labelValues) && labelValues[valueIndex] < offsets[0].labelValue {
 		// Discard values before the start
 		valueIndex++
 	}
+	if valueIndex == len(labelValues) || labelValues[valueIndex] > offsets[len(offsets)-1].labelValue {
+		// If there are no values left, return early to avoid unnecessary IO
+		return EmptyPostings(), nil
+	}
+
+	// Postings lists are read through one decbuf ranging over the whole file
+	// so that it can benefit from the FileReader's read-ahead.
+	// Opening it is deferred to the point that we need it, so that a lookup
+	// which matches nothing doesn't pay the cost of opening a decbuf.
+	var postingsDecbuf streamenc.Decbuf
+	postingsDecbufOpen := false
+	defer func() { _ = postingsDecbuf.Close() }()
+
+	// Unchecked because we already checked CRC32 at startup
+	offsetTableDecbuf := p.factory.NewDecbufAtUnchecked(ctx, p.off)
+	defer func() { _ = offsetTableDecbuf.Close() }()
+	if err := offsetTableDecbuf.Err(); err != nil {
+		return nil, err
+	}
+
+	results := make([]Postings, 0, len(labelValues))
+	skip := 0
 	for valueIndex < len(labelValues) {
 		targetLabelValue := labelValues[valueIndex]
 
@@ -148,37 +192,36 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 			i--
 		}
 
-		// Unchecked because we already checked CRC32 at startup
-		decbuf := p.factory.NewDecbufAtUnchecked(ctx, p.off)
-		if err := decbuf.Err(); err != nil {
-			_ = decbuf.Close()
-			return nil, err
-		}
-		decbuf.ResetAt(offsets[i].offset)
+		offsetTableDecbuf.ResetAt(offsets[i].offset)
 
 		// Iterate the offset table entries from the sparse position forward
-		for decbuf.Err() == nil {
+		for offsetTableDecbuf.Err() == nil {
 			if skip == 0 {
 				// These are always the same number of bytes,
 				// and it's faster to skip than parse.
-				skip = decbuf.Len()
-				decbuf.Uvarint()          // Key count
-				decbuf.SkipUvarintBytes() // Label name
-				skip -= decbuf.Len()
+				skip = offsetTableDecbuf.Len()
+				offsetTableDecbuf.Uvarint()          // Key count
+				offsetTableDecbuf.SkipUvarintBytes() // Label name
+				skip -= offsetTableDecbuf.Len()
 			} else {
-				decbuf.Skip(skip)
+				offsetTableDecbuf.Skip(skip)
 			}
-			currentLabelValue := decbuf.UvarintStr() // Label value
-			postingsOffset := decbuf.Uvarint64()     // Absolute file offset to postings entry
-			if err := decbuf.Err(); err != nil {
-				_ = decbuf.Close()
+			currentLabelValue := offsetTableDecbuf.UvarintStr() // Label value
+			postingsOffset := offsetTableDecbuf.Uvarint64()     // Absolute file offset to postings entry
+			if err := offsetTableDecbuf.Err(); err != nil {
 				return nil, err
 			}
 			for currentLabelValue >= targetLabelValue {
 				if currentLabelValue == targetLabelValue {
-					postings, err := p.readPostingsList(postingsOffset)
+					if !postingsDecbufOpen {
+						postingsDecbuf = p.factory.NewRawDecbuf(ctx)
+						postingsDecbufOpen = true
+						if err := postingsDecbuf.Err(); err != nil {
+							return nil, err
+						}
+					}
+					postings, err := p.readPostingsList(&postingsDecbuf, postingsOffset)
 					if err != nil {
-						_ = decbuf.Close()
 						return nil, fmt.Errorf("decode postings: %w", err)
 					}
 					results = append(results, postings)
@@ -194,11 +237,9 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 				break
 			}
 		}
-		if err := decbuf.Err(); err != nil {
-			_ = decbuf.Close()
+		if err := offsetTableDecbuf.Err(); err != nil {
 			return nil, fmt.Errorf("get postings offset entry: %w", err)
 		}
-		_ = decbuf.Close()
 	}
 
 	return Merge(results...), nil
@@ -272,30 +313,40 @@ func (p *streamPostings) labelNames() []string {
 
 // readPostingsList reads the postings list stored at absolute file offset
 // postingsOffset into memory and wraps it in a BigEndianPostings.
-// On disk, the list is a 4-byte big-endian count N followed by N contiguous
-// 4-byte big-endian series refs (then the section CRC, which NewDecbufAtChecked
-// validates while opening).
-func (p *streamPostings) readPostingsList(postingsOffset uint64) (Postings, error) {
-	decbuf := p.factory.NewDecbufAtChecked(context.Background(), int(postingsOffset), castagnoliTable)
-	defer decbuf.Close()
+// decbuf is a raw Decbuf over the whole file, which is left positioned after
+// the list.
+// On disk, the list is a 4-byte big-endian content length, then the content:
+// a 4-byte big-endian count N followed by N contiguous 4-byte big-endian series
+// refs. Then comes a CRC32 of the content, which is checked here.
+func (p *streamPostings) readPostingsList(decbuf *streamenc.Decbuf, postingsOffset uint64) (Postings, error) {
+	decbuf.ResetAt(int(postingsOffset))
+	contentLen := decbuf.Be32()
+	n := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
-
-	n := decbuf.Be32int()
-	if err := decbuf.Err(); err != nil {
-		return nil, err
+	// The count is read before the CRC is checked, so make sure it agrees with
+	// the length and fits in the file before allocating for it.
+	if uint64(contentLen) != 4+4*uint64(n) || 4*uint64(n)+crc32.Size > uint64(decbuf.Len()) {
+		return nil, fmt.Errorf("postings list at %d: length %d for %d refs: %w", postingsOffset, contentLen, n, streamenc.ErrInvalidSize)
 	}
 
-	buf := getPostingsListBuffer(4 * n)
-	// We may be reusing a dirty buffer.
-	// ReadInfo either fills the entire buffer (erasing all accessible stale data) or errors (in which case we abort).
+	buf := getPostingsListBuffer(4 * int(n))
 	decbuf.ReadInto(buf)
+	expectedChecksum := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
-		postingsListBufferPool.Put(buf)
+		putPostingsListBuffer(buf)
 		return nil, err
 	}
-	return newPooledBigEndianPostings(buf), nil
+
+	var count [4]byte
+	binary.BigEndian.PutUint32(count[:], n)
+	crc := crc32.Update(0, castagnoliTable, count[:])
+	if crc32.Update(crc, castagnoliTable, buf) != expectedChecksum {
+		putPostingsListBuffer(buf)
+		return nil, fmt.Errorf("postings list at %d: %w", postingsOffset, streamenc.ErrInvalidChecksum)
+	}
+	return newPostingsListPostings(buf), nil
 }
 
 // pooledBigEndianPostings wraps BigEndianPostings so the backing []byte
@@ -338,7 +389,7 @@ func (p *pooledBigEndianPostings) release() {
 		return
 	}
 	p.pooled = false
-	postingsListBufferPool.Put(p.buf)
+	putPostingsListBuffer(p.buf)
 }
 
 // streamPostingsOffsetTable iterates the postings-offset table, running

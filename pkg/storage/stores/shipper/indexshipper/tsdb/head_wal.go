@@ -48,10 +48,7 @@ const (
 
 // CurrentChunksRec is the chunks record version this binary writes.
 // Older versions remain readable.
-// To enable safe rollback, the version needs to be change in 2 steps:
-// First, allow v2 decoding but keep v1 encoding.
-// Second, switch current record version to v2 to enable v2 encoding.
-const CurrentChunksRec = WalRecordChunks
+const CurrentChunksRec = WalRecordChunksV2
 
 type WALRecord struct {
 	UserID      string

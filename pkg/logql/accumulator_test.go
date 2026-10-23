@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -119,7 +122,8 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			acc := NewStreamAccumulator(params)
 			for i := 0; i < nQueries; i++ {
 				err := acc.Accumulate(context.Background(), logqlmodel.Result{
-					Data: payloads[i],
+					Data:       payloads[i],
+					Statistics: stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: 100}}}},
 				}, i)
 				require.Nil(t, err)
 			}
@@ -127,6 +131,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			got, ok := acc.Result()[0].Data.(logqlmodel.Streams)
 			require.Equal(t, true, ok)
 			require.Equal(t, int64(nQueries), acc.Result()[0].Statistics.Summary.Shards)
+			require.Equal(t, int64(100*nQueries), acc.Result()[0].Statistics.Summary.TotalBytesProcessed)
 
 			// each stream should have the top 3 entries
 			for i := 0; i < streamsPerQuery; i++ {
@@ -148,6 +153,139 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestDownstreamAccumulatorFreeRoom verifies that the stream accumulator
+// returns `limit` entries when more than `limit` entries are available,
+// independent of how the downstream entries are grouped into streams.
+//
+// The two shapes model the same downstream data with and without the
+// X-Loki-Response-Encoding-Flags: categorize-labels header:
+//
+//   - "collapsed": structured metadata is stripped from the series labels, so
+//     all entries of a shard arrive as one stream with many entries.
+//   - "per-entry": structured metadata makes every series label string unique,
+//     so each entry arrives as its own single-entry stream.
+func TestDownstreamAccumulatorFreeRoom(t *testing.T) {
+	const limit = 500
+	start := time.Unix(1700000000, 0)
+
+	// Entries are returned by the downstream best-first: oldest first for
+	// FORWARD, newest first for BACKWARD.
+	orderForDirection := func(entries []logproto.Entry, dir logproto.Direction) []logproto.Entry {
+		if dir == logproto.BACKWARD {
+			for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+		return entries
+	}
+
+	// batch builds one downstream result holding n entries starting at
+	// start+offset, either as a single stream or as one stream per entry.
+	batch := func(shape string, dir logproto.Direction, id, n int, offset, step time.Duration) logqlmodel.Result {
+		entries := make([]logproto.Entry, 0, n)
+		for i := range n {
+			entries = append(entries, logproto.Entry{
+				Timestamp: start.Add(offset + time.Duration(i)*step),
+				Line:      fmt.Sprintf("batch-%d-entry-%d", id, i),
+			})
+		}
+		entries = orderForDirection(entries, dir)
+
+		if shape == "per-entry" {
+			streams := make(logqlmodel.Streams, 0, len(entries))
+			for i, e := range entries {
+				streams = append(streams, logproto.Stream{
+					Labels:  fmt.Sprintf(`{app="foo", __stream_shard__="%d", trace_id="%d"}`, id, i),
+					Entries: []logproto.Entry{e},
+				})
+			}
+			return logqlmodel.Result{Data: streams}
+		}
+
+		return logqlmodel.Result{Data: logqlmodel.Streams{{
+			Labels:  fmt.Sprintf(`{app="foo", __stream_shard__="%d"}`, id),
+			Entries: entries,
+		}}}
+	}
+
+	allEntries := func(results []logqlmodel.Result) []logproto.Entry {
+		var entries []logproto.Entry
+		for _, res := range results {
+			for _, s := range res.Data.(logqlmodel.Streams) {
+				entries = append(entries, s.Entries...)
+			}
+		}
+		return entries
+	}
+
+	// bestFirst sorts entries in the order the query returns them, so that the
+	// first `limit` entries are the expected result.
+	bestFirst := func(entries []logproto.Entry, dir logproto.Direction) []logproto.Entry {
+		sort.Slice(entries, func(i, j int) bool {
+			if dir == logproto.BACKWARD {
+				return entries[i].Timestamp.After(entries[j].Timestamp)
+			}
+			return entries[i].Timestamp.Before(entries[j].Timestamp)
+		})
+		return entries
+	}
+
+	lines := func(entries []logproto.Entry) []string {
+		res := make([]string, 0, len(entries))
+		for _, e := range entries {
+			res = append(res, e.Line)
+		}
+		sort.Strings(res)
+		return res
+	}
+
+	for _, dir := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
+		for _, shape := range []string{"collapsed", "per-entry"} {
+			t.Run(fmt.Sprintf("%s/%s", dir, shape), func(t *testing.T) {
+				params, err := NewLiteralParams(`{app="foo"}`, start, start.Add(time.Hour), 0, 0, dir, limit, nil, nil)
+				require.NoError(t, err)
+				acc := NewStreamAccumulator(params)
+
+				// The first batch is small and holds the best entries, so it
+				// establishes `worst` while the accumulator is nearly empty.
+				// The following batches hold only entries that are worse than
+				// that, while the accumulator still has room for 487 entries.
+				var (
+					results []logqlmodel.Result
+					total   int
+				)
+				if dir == logproto.FORWARD {
+					results = append(results, batch(shape, dir, 0, 13, 0, time.Second))
+					total += 13
+					for id := 1; id <= 4; id++ {
+						results = append(results, batch(shape, dir, id, 200, time.Duration(id)*10*time.Minute, 100*time.Millisecond))
+						total += 200
+					}
+				} else {
+					results = append(results, batch(shape, dir, 0, 13, 59*time.Minute, time.Second))
+					total += 13
+					for id := 1; id <= 4; id++ {
+						results = append(results, batch(shape, dir, id, 200, time.Duration(5-id)*10*time.Minute, 100*time.Millisecond))
+						total += 200
+					}
+				}
+
+				downstream := allEntries(results)
+				for i, res := range results {
+					require.NoError(t, acc.Accumulate(context.Background(), res, i))
+				}
+
+				require.Greater(t, total, limit)
+				got := allEntries(acc.Result())
+				require.Len(t, got, limit)
+				// the accumulator must keep the best `limit` entries
+				expected := bestFirst(downstream, dir)[:limit]
+				require.Equal(t, lines(expected), lines(got))
+			})
+		}
 	}
 }
 
@@ -291,4 +429,112 @@ func newRandomSketch() sketch.QuantileSketch {
 		_ = s.Add(r.Float64())
 	}
 	return s
+}
+
+func TestAccumulatorStatistics(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		newAccumulator   func() Accumulator
+		newValue         func(*testing.T, int) parser.Value
+		incompatibleSize bool
+	}{
+		{
+			name:           "streams",
+			newAccumulator: func() Accumulator { return NewStreamAccumulator(LiteralParams{limit: 1}) },
+			newValue:       func(*testing.T, int) parser.Value { return logqlmodel.Streams{} },
+		},
+		{
+			name:             "quantile",
+			newAccumulator:   func() Accumulator { return newQuantileSketchAccumulator() },
+			newValue:         func(_ *testing.T, size int) parser.Value { return make(ProbabilisticQuantileMatrix, size) },
+			incompatibleSize: true,
+		},
+		{
+			name:             "count distinct",
+			newAccumulator:   func() Accumulator { return newCountDistinctSketchAccumulator() },
+			newValue:         func(_ *testing.T, size int) parser.Value { return make(CountDistinctSketchMatrix, size) },
+			incompatibleSize: true,
+		},
+		{
+			name:           "count min",
+			newAccumulator: func() Accumulator { return newCountMinSketchAccumulator() },
+			newValue: func(t *testing.T, size int) parser.Value {
+				cms, err := sketch.NewCountMinSketch(uint32(size), 2)
+				require.NoError(t, err)
+				return CountMinSketchVector{F: cms}
+			},
+			incompatibleSize: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			type input struct {
+				data          parser.Value
+				wantError     bool
+				errorContains string
+			}
+			type scenario struct {
+				name   string
+				inputs []input
+			}
+			scenarios := []scenario{
+				{
+					name: "merge results",
+					inputs: []input{
+						{data: tc.newValue(t, 1)},
+						{data: tc.newValue(t, 1)},
+					},
+				},
+				{
+					name: "invalid type",
+					// A scalar is invalid for every accumulator in this test.
+					inputs: []input{{data: promql.Scalar{}, wantError: true, errorContains: "unexpected"}},
+				},
+			}
+			// Stream results have no matrix length or sketch width to mismatch.
+			if tc.incompatibleSize {
+				scenarios = append(scenarios, scenario{
+					name: "merge failure",
+					inputs: []input{
+						{data: tc.newValue(t, 1)},
+						// Different matrix lengths or sketch widths prevent merging.
+						{data: tc.newValue(t, 2), wantError: true},
+					},
+				})
+			}
+
+			for _, scenario := range scenarios {
+				t.Run(scenario.name, func(t *testing.T) {
+					acc := tc.newAccumulator()
+					var wantBytes int64
+					for i, input := range scenario.inputs {
+						bytesScanned := int64(100 * (i + 1))
+						result := logqlmodel.Result{
+							Data: input.data,
+							Statistics: stats.Result{
+								Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: bytesScanned}}},
+							},
+						}
+
+						err := acc.Accumulate(context.Background(), result, i)
+						if input.wantError {
+							require.Error(t, err)
+							if input.errorContains != "" {
+								require.ErrorContains(t, err, input.errorContains)
+							}
+						} else {
+							require.NoError(t, err)
+						}
+
+						// Rejected input still consumed bytes. Check after each
+						// call so both lost usage and duplicate merges are caught.
+						wantBytes += bytesScanned
+						results := acc.Result()
+						require.Len(t, results, 1)
+						require.Equal(t, wantBytes, results[0].Statistics.Summary.TotalBytesProcessed)
+						require.Equal(t, int64(i+1), results[0].Statistics.Summary.Shards)
+					}
+				})
+			}
+		})
+	}
 }

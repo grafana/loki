@@ -137,7 +137,10 @@ func (mr *Resolver) findURI(input string) string {
 	}
 	// if we found an odd number of immediately $ preceding ${, then the expansion is escaped
 	if count%2 == 1 {
-		return ""
+		if !strings.Contains(remaining, "}") {
+			return ""
+		}
+		return mr.findURI(remaining)
 	}
 
 	return input[openIndex : closeIndex+1]

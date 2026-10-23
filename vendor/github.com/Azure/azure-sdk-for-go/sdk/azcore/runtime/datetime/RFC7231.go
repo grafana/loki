@@ -30,7 +30,7 @@ func (r RFC7231) MarshalText() ([]byte, error) {
 // UnmarshalJSON unmarshals a JSON byte slice into an RFC7231 timestamp.
 func (r *RFC7231) UnmarshalJSON(data []byte) error {
 	t, err := time.Parse(rfc1123JSON, strings.ToUpper(string(data)))
-	*r = RFC7231(t.UTC())
+	*r = RFC7231(t.In(gmt))
 	return err
 }
 
@@ -41,7 +41,7 @@ func (r *RFC7231) UnmarshalText(data []byte) error {
 		return nil
 	}
 	t, err := time.Parse(time.RFC1123, string(data))
-	*r = RFC7231(t.UTC())
+	*r = RFC7231(t.In(gmt))
 	return err
 }
 

@@ -14,7 +14,6 @@ The `dataobj` package provides a container format for storing and retrieving str
 - [Section Types](#section-types)
 - [Operational Components](#operational-components)
 - [Creating Custom Sections](#creating-custom-sections)
-- [Usage Examples](#usage-examples)
 
 ---
 
@@ -26,29 +25,32 @@ The dataobj package provides a hierarchical container format:
 ┌─────────────────────────────────────┐
 │         Data Object File            │
 ├─────────────────────────────────────┤
-│  Header (Magic: "THOR")            │
-├─────────────────────────────────────┤
-│  Section 1 Data                     │
-│  Section 2 Data                     │
-│  ...                                │
-│  Section N Data                     │
+│  Header                             │
+│  - Magic: "DOBJ"                    │
+│  - File Metadata Size (4 bytes)     │
+│  - File Format Version              │
+│  - File Metadata (Protobuf)         │
+│    - Dictionary                     │
+│    - Section Types                  │
+│    - Section Layout Info            │
 ├─────────────────────────────────────┤
 │  Section 1 Metadata                 │
 │  Section 2 Metadata                 │
 │  ...                                │
 │  Section N Metadata                 │
 ├─────────────────────────────────────┤
-│  File Metadata (Protobuf)           │
-│  - Dictionary                       │
-│  - Section Types                    │
-│  - Section Layout Info              │
+│  Section 1 Data                     │
+│  Section 2 Data                     │
+│  ...                                │
+│  Section N Data                     │
 ├─────────────────────────────────────┤
-│  Footer                             │
-│  - File Format Version              │
-│  - File Metadata Size (4 bytes)     │
-│  - Magic: "THOR"                    │
+│  Tailer                             │
+│  - Magic: "DOBJ"                    │
 └─────────────────────────────────────┘
 ```
+
+The file metadata sits in the header, at the start of the file. This lets a
+reader resolve every section's layout with one read from offset 0.
 
 ### Core Components
 
@@ -103,13 +105,13 @@ Most section implementations use columnar storage via the `internal/dataset` pac
 ```
 Offset  | Content
 --------|----------------------------------------------------------
-0       | Magic bytes: "THOR" (4 bytes)
-4       | [Section Data Region - All sections concatenated]
-...     | [Section Metadata Region - All sections concatenated]
-...     | Format Version (varint)
+0       | Magic bytes: "DOBJ" (4 bytes)
+4       | File Metadata Size (uint32, little-endian)
+8       | Format Version (varint)
 ...     | File Metadata (protobuf-encoded)
--8      | Metadata Size (uint32, little-endian)
--4      | Magic bytes: "THOR" (4 bytes)
+...     | [Section Metadata Region - All sections concatenated]
+...     | [Section Data Region - All sections concatenated]
+-4      | Magic bytes: "DOBJ" (4 bytes)
 ```
 
 File Metadata Structure (Protobuf) can be found in the `pkg/dataobj/internal/metadata` package.
@@ -228,10 +230,10 @@ The encoding uses a multi-level compression strategy:
 │ - List columns   │
 └──────┬───────────┘
        │
-       │ NewReader
+       │ NewRowReader
        ▼
 ┌──────────────────┐
-│ logs.Reader      │
+│ logs.RowReader   │
 │ - Read pages     │
 │ - Apply filters  │
 │ - Decompress     │
@@ -240,7 +242,7 @@ The encoding uses a multi-level compression strategy:
        │ Read batches
        ▼
 ┌──────────────────┐
-│ Arrow Records    │
+│ Records          │
 └──────────────────┘
 ```
 
@@ -249,18 +251,18 @@ The encoding uses a multi-level compression strategy:
 #### 1. Opening a Data Object
 
 Opening process:
-1. Reads last 16KB of file in one request (optimistic read for metadata)
-2. Parses footer to find metadata offset and size
+1. Reads first 16KB of file in one request (optimistic read for metadata)
+2. Parses the header, at the start of the file, to find the metadata size
 3. Reads and decodes file metadata
 4. Constructs Section objects with SectionReaders
 
 #### 2. Decoding File Metadata
 
 The decoder:
-1. Validates magic bytes ("THOR")
-2. Reads metadata size from last 8 bytes
-3. Seeks to metadata offset
-4. Decodes format version and protobuf metadata
+1. Validates magic bytes ("DOBJ")
+2. Reads metadata size from the header, right after the magic bytes
+3. Reads the format version, then the protobuf metadata that follows it
+4. Uses the header size to compute where the section metadata region starts
 
 #### 3. Opening a Section
 
@@ -272,11 +274,11 @@ Section opening:
 #### 4. Reading Data
 
 Reading process:
-1. Validates reader options
+1. Resolves the projected columns of the section
 2. Maps predicates to internal dataset predicates
 3. Reads pages in batches (with prefetching)
 4. Applies predicates at page and row level
-5. Converts to Arrow record batches
+5. Decodes the rows into records
 
 Reader optimizations:
 - **Range coalescing**: Adjacent pages are read in a single request
@@ -318,7 +320,7 @@ Stores log records in columnar format.
 **Kind**: `streams`
 **Location**: `pkg/dataobj/sections/streams/`
 
-Stores stream metadata and statistics.
+Stores stream metadata and statistics in logs objects.
 
 **Columns:**
 - `stream_id` (int64): Unique stream identifier
@@ -334,7 +336,8 @@ Stores stream metadata and statistics.
 **Kind**: `pointers`
 **Location**: `pkg/dataobj/sections/pointers/`
 
-Used in index objects to point to other objects that contain logs, via stream or predicate lookup.
+Used in older index objects to point to other objects that contain logs, via stream or predicate lookup.
+The index builder no longer writes this section, and the compactor skips it.
 
 **Columns:**
 - `path` (binary): Path to data object in object storage
@@ -371,18 +374,18 @@ Used in Table of Contents (toc) objects to point to index objects, via a time ra
 
 ## Operational Components
 
-### Consumer
+### Builder
 
-**Location**: `pkg/dataobj/consumer/`
+**Location**: `pkg/dataobj/builder/`
 
-The consumer reads log data from Kafka and builds data objects.
+The builder (the `dataobj-builder` target) reads log data from Kafka and builds data objects.
 
 **Key Features:**
 - Reads from Kafka partitions
-- Accumulates logs into data objects
+- Accumulates logs into data objects, one per tenant and 12-hour window
 - Flushes based on size or idle timeout
 - Commits offsets after successful upload
-- Emits metadata events containing a reference to each successfully uploaded object.
+- Builds an index object for each uploaded data object and records it in the Table of Contents.
 
 ### Metastore
 
@@ -391,164 +394,20 @@ The consumer reads log data from Kafka and builds data objects.
 Manages an index of data objects and their contents for efficient querying.
 
 The metastore serves queries by the following:
-1. Fetch and scan relevant Table of Contents (toc) files from the query time range to resolve index objects.
-2. Fetches resolved index objects and utilises the contained indexes (stream sections, blooms, etc.) to resolve log objects & metadata such as size and number of log lines.
+1. Fetch and scan the querying tenant's Table of Contents (toc) files for every 12-hour window in the query time range to resolve index objects. Each toc file holds a single tenant and is stored at `tocs/<window>/<tenant>/toc.toc`.
+2. Fetches resolved index objects and reads their postings sections to resolve the log object sections that match the query.
 
-### Index Builder
+### Index
 
 **Location**: `pkg/dataobj/index/`
 
-Creates index objects that contain indexes over data objects containing the logs.
+Creates index objects that contain indexes over data objects containing the logs. Used by the builder and by compaction.
 
 ### Explorer Service
 
 **Location**: `pkg/dataobj/explorer/`
 
 HTTP service for inspecting data objects.
-
----
-
-## Usage Examples
-
-### Example 1: Building and Uploading a Data Object
-
-```go
-package main
-
-import (
-    "context"
-    "time"
-
-    "github.com/grafana/loki/v3/pkg/dataobj"
-    "github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-    "github.com/grafana/loki/v3/pkg/dataobj/uploader"
-    "github.com/prometheus/prometheus/model/labels"
-)
-
-func main() {
-    ctx := context.Background()
-
-    // Create logs builder
-    logsBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
-        PageSizeHint: 256 * 1024,
-        BufferSize: 10 * 1024 * 1024,
-        AppendStrategy: logs.AppendUnordered,
-        SortOrder: logs.SortStreamASC,
-    })
-
-    // Append log records
-    logsBuilder.Append(logs.Record{
-        StreamID:  12345,
-        Timestamp: time.Now(),
-        Metadata:  labels.Labels{{Name: "level", Value: "error"}},
-        Line:      []byte("error occurred"),
-    })
-
-    // Create data object
-    objBuilder := dataobj.NewBuilder(nil)
-    objBuilder.Append(logsBuilder)
-
-    obj, closer, err := objBuilder.Flush()
-    if err != nil {
-        panic(err)
-    }
-    defer closer.Close()
-
-    // Upload to object storage
-    uploader := uploader.New(uploaderCfg, bucket, logger)
-    objectPath, err := uploader.Upload(ctx, obj)
-    if err != nil {
-        panic(err)
-    }
-
-    println("Uploaded to:", objectPath)
-}
-```
-
-### Example 2: Reading and Querying Logs
-
-```go
-package main
-
-import (
-    "context"
-    "io"
-
-    "github.com/apache/arrow-go/v18/arrow/scalar"
-    "github.com/grafana/loki/v3/pkg/dataobj"
-    "github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-)
-
-func main() {
-    ctx := context.Background()
-
-    // Open data object
-    obj, err := dataobj.FromBucket(ctx, bucket, "objects/ab/cd123...", 0)
-    if err != nil {
-        panic(err)
-    }
-
-    // Find logs sections
-    var logsSection *dataobj.Section
-    for _, sec := range obj.Sections() {
-        if logs.CheckSection(sec) {
-            logsSection = sec
-            break
-        }
-    }
-
-    // Open logs section
-    section, err := logs.Open(ctx, logsSection)
-    if err != nil {
-        panic(err)
-    }
-
-    // Find columns
-    var timestampCol, messageCol *logs.Column
-    for _, col := range section.Columns() {
-        switch col.Type {
-        case logs.ColumnTypeTimestamp:
-            timestampCol = col
-        case logs.ColumnTypeMessage:
-            messageCol = col
-        }
-    }
-
-    // Create reader with predicate
-    reader := logs.NewReader(logs.ReaderOptions{
-        Columns: []*logs.Column{timestampCol, messageCol},
-        Predicates: []logs.Predicate{
-            logs.GreaterThanPredicate{
-                Column: timestampCol,
-                Value:  scalar.NewInt64Scalar(startTime.UnixNano()),
-            },
-        },
-    })
-    defer reader.Close()
-    
-    if err := reader.Open(ctx); err != nil {
-        panic(err)
-    }
-
-    // Read batches
-    for {
-        batch, err := reader.Read(ctx, 1000)
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            panic(err)
-        }
-
-        // Process batch (Arrow record)
-        for i := 0; i < int(batch.NumRows()); i++ {
-            timestamp := batch.Column(0).(*array.Timestamp).Value(i)
-            message := batch.Column(1).(*array.String).Value(i)
-            println(timestamp, message)
-        }
-    }
-}
-```
 
 ---
 

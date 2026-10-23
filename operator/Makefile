@@ -1,5 +1,5 @@
 # include the bingo binary variables. This enables the bingo versions to be
-# referenced here as make variables. For example: $(GOLANGCI_LINT)
+# referenced here as make variables. For example: $(PROMTOOL)
 include .bingo/Variables.mk
 
 WEBSITE_DIR ?= website
@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.11.0
+VERSION ?= 0.12.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 
@@ -88,6 +88,10 @@ CALCULATOR_IMG ?= $(REGISTRY_BASE)/storage-size-calculator:latest
 PASSTHROUGH_GATEWAY_IMG ?= $(REGISTRY_BASE)/passthrough-gateway:latest
 
 GO_FILES := $(shell find . -type f -name '*.go')
+
+# Tools
+GOLANGCI_LINT := go tool -modfile=.tools/golangci-lint.mod golangci-lint
+HUGO := go tool -modfile=.tools/hugo.mod hugo
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -177,12 +181,12 @@ scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundle
 	$(OPERATOR_SDK) scorecard -c ./bundle/openshift/tests/scorecard/config.yaml bundle/openshift
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
+lint: generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) config verify
 	$(GOLANGCI_LINT) run --timeout=5m ./...
 
 .PHONY: lint-fix
-lint-fix: $(GOLANGCI_LINT) ## Attempt to automatically fix lint issues in source code.
+lint-fix: ## Attempt to automatically fix lint issues in source code.
 	$(GOLANGCI_LINT) run --fix --timeout=5m ./...
 
 .PHONY: lint-prometheus
@@ -325,6 +329,9 @@ oci-push-passthrough-gateway: ## Push the passthrough gateway image
 
 ##@ Website
 
+.PHONY: docs
+docs: docs/operator/api.md docs/operator/feature-gates.md
+
 TYPES_TARGET := $(shell find api/loki -type f -iname "*_types.go")
 docs/operator/api.md: $(TYPES_TARGET) $(GEN_CRD_API_REFERENCE_DOCS)
 	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/api/loki/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
@@ -342,19 +349,21 @@ docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_
 	sed -i 's/##/\n##/' $@
 	sed -i 's/+newline/\n/' $@
 
-.PHONY: web-pre
-web-pre: docs/operator/api.md docs/operator/feature-gates.md ## Build the markdown API files of the loki-operator.dev website
-	@echo ">> preprocessing docs for website"
-	@git submodule update --init --recursive
-	cd $(WEBSITE_DIR)/themes/doks/ && npm ci && rm -rf content
+.PHONY: web-dependencies
+web-dependencies: ## Install dependencies needed for website build
+	cd website && npm ci
 
 .PHONY: web
-web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website
-	cd $(WEBSITE_DIR) && $(HUGO) -b $(WEBSITE_BASE_URL)
+web: docs web-dependencies ## Run production build of the loki-operator.dev website
+	$(HUGO) -b $(WEBSITE_BASE_URL) -s $(WEBSITE_DIR)
 
 .PHONY: web-serve
-web-serve: $(HUGO) | web-pre ## Run local preview version of the loki-operator.dev website
-	@cd $(WEBSITE_DIR) && $(HUGO) serve
+web-serve: docs web-dependencies ## Run local preview version of the loki-operator.dev website
+	$(HUGO) serve -s $(WEBSITE_DIR)
+
+.PHONY: web-clean
+web-clean: ## Remove outputs created by website build
+	rm -fr website/public website/resources website/.hugo_build.lock website/hugo_stats.json
 
 JSONNET_SRC = $(shell find . -type f -not -path './jsonnet/vendor/*' \( -name '*.libsonnet' -o -name '*.jsonnet' \))
 JSONNET_VENDOR_DIR = jsonnet/vendor

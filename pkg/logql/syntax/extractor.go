@@ -52,14 +52,9 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	copy(sortedGroups, exprGroups)
 	sort.Strings(sortedGroups)
 
-	var stages []log.Stage
-	if p, ok := r.Left.Left.(*PipelineExpr); ok {
-		// if the expression is a pipeline then take all stages into account first.
-		st, err := p.MultiStages.stages()
-		if err != nil {
-			return nil, err
-		}
-		stages = st
+	stages, err := stagesFor(r.Left)
+	if err != nil {
+		return nil, err
 	}
 	// unwrap...means we want to extract metrics from labels.
 	if r.Left.Unwrap != nil {
@@ -132,14 +127,34 @@ func distinctValueExtractor(label string, left *LogRangeExpr, grouping *Grouping
 	copy(sortedGroups, groups)
 	sort.Strings(sortedGroups)
 
-	var stages []log.Stage
-	if p, ok := left.Left.(*PipelineExpr); ok {
-		st, err := p.MultiStages.stages()
-		if err != nil {
-			return nil, err
-		}
-		stages = st
+	stages, err := stagesFor(left)
+	if err != nil {
+		return nil, err
 	}
 
 	return log.NewDistinctValueSampleExtractor(label, stages, sortedGroups, without, noLabels)
+}
+
+// stagesFor returns the stages of expr's pipeline, or nil when expr wraps a bare selector with
+// no pipeline.
+func stagesFor(expr *LogRangeExpr) ([]log.Stage, error) {
+	p, ok := expr.Left.(*PipelineExpr)
+	if !ok {
+		return nil, nil
+	}
+	return p.MultiStages.stages()
+}
+
+// KeepsErroredLines reports whether expr's pipeline asks to keep the lines that carry __error__,
+// so a metric query returns such a sample instead of failing. It answers for every error the
+// pipeline can raise, including one that an unwrap conversion or its post-filters raise.
+func KeepsErroredLines(expr *LogRangeExpr) (bool, error) {
+	stages, err := stagesFor(expr)
+	if err != nil {
+		return false, err
+	}
+	if expr.Unwrap != nil {
+		stages = append(stages, log.ReduceAndLabelFilter(expr.Unwrap.PostFilters))
+	}
+	return log.Stages(stages).Hints().KeepsErroredLines, nil
 }
