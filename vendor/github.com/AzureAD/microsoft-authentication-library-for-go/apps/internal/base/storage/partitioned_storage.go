@@ -59,7 +59,7 @@ func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.
 
 	// errors returned by read* methods indicate a cache miss and are therefore non-fatal. We continue populating
 	// TokenResponse fields so that e.g. lack of an ID token doesn't prevent the caller from receiving a refresh token.
-	accessToken, err := m.readAccessToken(aliases, realm, clientID, userAssertionHash, scopes, partitionKeyFromRequest, tokenType, authnSchemeKeyID)
+	accessToken, err := m.readAccessToken(aliases, realm, clientID, userAssertionHash, scopes, partitionKeyFromRequest, tokenType, authnSchemeKeyID, authParameters.CacheExtKeyGenerator())
 	if err == nil {
 		tr.AccessToken = accessToken
 	}
@@ -125,6 +125,7 @@ func (m *PartitionedManager) Write(authParameters authority.AuthParams, tokenRes
 		if authParameters.AuthorizationType == authority.ATOnBehalfOf {
 			accessToken.UserAssertionHash = userAssertionHash // get Hash method on this
 		}
+		accessToken.ExtCacheKey = authParameters.CacheExtKeyGenerator()
 
 		// Since we have a valid access token, cache it before moving on.
 		if err := accessToken.Validate(); err == nil {
@@ -200,7 +201,16 @@ func (m *PartitionedManager) aadMetadataFromCache(ctx context.Context, authority
 func (m *PartitionedManager) aadMetadata(ctx context.Context, authorityInfo authority.Info) (authority.InstanceDiscoveryMetadata, error) {
 	discoveryResponse, err := m.requests.AADInstanceDiscovery(ctx, authorityInfo)
 	if err != nil {
-		return authority.InstanceDiscoveryMetadata{}, err
+		// If it's an invalid_instance error, always propagate
+		if strings.Contains(err.Error(), "invalid_instance") {
+			return authority.InstanceDiscoveryMetadata{}, err
+		}
+		// If the caller canceled the context, propagate
+		if ctx.Err() != nil {
+			return authority.InstanceDiscoveryMetadata{}, err
+		}
+		// For transient errors (network failures, HTTP 500, etc.), cache a fallback entry
+		return m.fallbackMetadata(authorityInfo.Host), nil
 	}
 
 	m.aadCacheMu.Lock()
@@ -220,7 +230,28 @@ func (m *PartitionedManager) aadMetadata(ctx context.Context, authorityInfo auth
 	return m.aadCache[authorityInfo.Host], nil
 }
 
-func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientID, userAssertionHash string, scopes []string, partitionKey, tokenType, authnSchemeKeyID string) (AccessToken, error) {
+// fallbackMetadata returns a cached fallback metadata entry for the given host.
+// It first checks the known metadata provider for pre-baked alias data, then
+// falls back to a self-entry. Acquires aadCacheMu.
+func (m *PartitionedManager) fallbackMetadata(host string) authority.InstanceDiscoveryMetadata {
+	m.aadCacheMu.Lock()
+	defer m.aadCacheMu.Unlock()
+	if known, ok := authority.GetKnownMetadata(host); ok {
+		for _, alias := range known.Aliases {
+			m.aadCache[alias] = known
+		}
+		return known
+	}
+	fallback := authority.InstanceDiscoveryMetadata{
+		PreferredNetwork: host,
+		PreferredCache:   host,
+		Aliases:          []string{host},
+	}
+	m.aadCache[host] = fallback
+	return fallback
+}
+
+func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientID, userAssertionHash string, scopes []string, partitionKey, tokenType, authnSchemeKeyID, extCacheKey string) (AccessToken, error) {
 	m.contractMu.RLock()
 	defer m.contractMu.RUnlock()
 	if accessTokens, ok := m.contract.AccessTokensPartition[partitionKey]; ok {
@@ -232,6 +263,13 @@ func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientI
 				if at.TokenType == tokenType && at.AuthnSchemeKeyID == authnSchemeKeyID {
 					if checkAlias(at.Environment, envAliases) {
 						if isMatchingScopes(scopes, at.Scopes) {
+							// Tokens acquired with extra cache-key components (e.g. client claims
+							// via WithClaimsFromClient) are partitioned by ExtCacheKey. Only return a
+							// token whose ExtCacheKey matches the request's; this also ensures a
+							// request without extra components never returns a hashed token.
+							if at.ExtCacheKey != extCacheKey {
+								continue
+							}
 							return at, nil
 						}
 					}
@@ -306,7 +344,7 @@ func (m *PartitionedManager) writeRefreshToken(refreshToken accesstokens.Refresh
 	m.contractMu.Lock()
 	defer m.contractMu.Unlock()
 	key := refreshToken.Key()
-	if m.contract.AccessTokensPartition[partitionKey] == nil {
+	if m.contract.RefreshTokensPartition[partitionKey] == nil {
 		m.contract.RefreshTokensPartition[partitionKey] = make(map[string]accesstokens.RefreshToken)
 	}
 	m.contract.RefreshTokensPartition[partitionKey][key] = refreshToken

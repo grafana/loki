@@ -16,6 +16,7 @@ import (
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority"
+	"golang.org/x/sync/singleflight"
 )
 
 type cacheEntry struct {
@@ -35,6 +36,8 @@ type authorityEndpoint struct {
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry
+
+	resolveGroup singleflight.Group
 }
 
 // newAuthorityEndpoint is the constructor for AuthorityEndpoint.
@@ -50,35 +53,49 @@ func (m *authorityEndpoint) ResolveEndpoints(ctx context.Context, authorityInfo 
 		return endpoints, nil
 	}
 
-	endpoint, err := m.openIDConfigurationEndpoint(ctx, authorityInfo)
+	key := authorityInfo.CanonicalAuthorityURI
+	v, err, _ := m.resolveGroup.Do(key, func() (interface{}, error) {
+		// Double-check inside the singleflight group: another goroutine may
+		// have populated the cache while we were waiting.
+		if endpoints, found := m.cachedEndpoints(authorityInfo, userPrincipalName); found {
+			return endpoints, nil
+		}
+
+		endpoint, err := m.openIDConfigurationEndpoint(ctx, authorityInfo)
+		if err != nil {
+			return authority.Endpoints{}, err
+		}
+
+		resp, err := m.rest.Authority().GetTenantDiscoveryResponse(ctx, endpoint)
+		if err != nil {
+			return authority.Endpoints{}, err
+		}
+		if err := resp.Validate(); err != nil {
+			return authority.Endpoints{}, fmt.Errorf("ResolveEndpoints(): %w", err)
+		}
+
+		tenant := authorityInfo.Tenant
+
+		endpoints := authority.NewEndpoints(
+			strings.Replace(resp.AuthorizationEndpoint, "{tenant}", tenant, -1),
+			strings.Replace(resp.TokenEndpoint, "{tenant}", tenant, -1),
+			strings.Replace(resp.Issuer, "{tenant}", tenant, -1),
+			authorityInfo.Host)
+
+		aliases := m.addCachedEndpoints(authorityInfo, userPrincipalName, endpoints)
+
+		if err := resp.ValidateIssuerMatchesAuthority(authorityInfo.CanonicalAuthorityURI,
+			aliases); err != nil {
+			return authority.Endpoints{}, fmt.Errorf("ResolveEndpoints(): %w", err)
+		}
+
+		return endpoints, nil
+	})
 	if err != nil {
 		return authority.Endpoints{}, err
 	}
 
-	resp, err := m.rest.Authority().GetTenantDiscoveryResponse(ctx, endpoint)
-	if err != nil {
-		return authority.Endpoints{}, err
-	}
-	if err := resp.Validate(); err != nil {
-		return authority.Endpoints{}, fmt.Errorf("ResolveEndpoints(): %w", err)
-	}
-
-	tenant := authorityInfo.Tenant
-
-	endpoints := authority.NewEndpoints(
-		strings.Replace(resp.AuthorizationEndpoint, "{tenant}", tenant, -1),
-		strings.Replace(resp.TokenEndpoint, "{tenant}", tenant, -1),
-		strings.Replace(resp.Issuer, "{tenant}", tenant, -1),
-		authorityInfo.Host)
-
-	m.addCachedEndpoints(authorityInfo, userPrincipalName, endpoints)
-
-	if err := resp.ValidateIssuerMatchesAuthority(authorityInfo.CanonicalAuthorityURI,
-		m.cache[authorityInfo.CanonicalAuthorityURI].Aliases); err != nil {
-		return authority.Endpoints{}, fmt.Errorf("ResolveEndpoints(): %w", err)
-	}
-
-	return endpoints, nil
+	return v.(authority.Endpoints), nil
 }
 
 // cachedEndpoints returns the cached endpoints if they exist. If not, we return false.
@@ -100,7 +117,7 @@ func (m *authorityEndpoint) cachedEndpoints(authorityInfo authority.Info, userPr
 	return authority.Endpoints{}, false
 }
 
-func (m *authorityEndpoint) addCachedEndpoints(authorityInfo authority.Info, userPrincipalName string, endpoints authority.Endpoints) {
+func (m *authorityEndpoint) addCachedEndpoints(authorityInfo authority.Info, userPrincipalName string, endpoints authority.Endpoints) map[string]bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -128,6 +145,7 @@ func (m *authorityEndpoint) addCachedEndpoints(authorityInfo authority.Info, use
 	}
 
 	m.cache[authorityInfo.CanonicalAuthorityURI] = updatedCacheEntry
+	return updatedCacheEntry.Aliases
 }
 
 func (m *authorityEndpoint) openIDConfigurationEndpoint(ctx context.Context, authorityInfo authority.Info) (string, error) {

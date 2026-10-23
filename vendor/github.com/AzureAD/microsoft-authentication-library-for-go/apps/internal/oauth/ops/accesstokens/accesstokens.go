@@ -110,6 +110,7 @@ func (c *Credential) JWT(ctx context.Context, authParams authority.AuthParams) (
 		options := exported.AssertionRequestOptions{
 			ClientID:      authParams.ClientID,
 			TokenEndpoint: authParams.Endpoints.TokenEndpoint,
+			FMIPath:       authParams.ExtraBodyParameters["fmi_path"],
 		}
 		return c.AssertionCallback(ctx, options)
 	}
@@ -337,6 +338,44 @@ func (c Client) FromUserAssertionClientCertificate(ctx context.Context, authPara
 
 	// Add extra body parameters if provided
 	addExtraBodyParameters(ctx, qv, authParameters)
+	return c.doTokenResp(ctx, authParameters, qv)
+}
+
+// FromUserFederatedIdentityCredential acquires a user-scoped token using the user_fic grant type.
+// This exchanges a federated identity credential for a user token.
+func (c Client) FromUserFederatedIdentityCredential(ctx context.Context, authParameters authority.AuthParams, cred *Credential) (TokenResponse, error) {
+	if cred.Secret == "" && cred.Cert == nil && cred.AssertionCallback == nil {
+		return TokenResponse{}, fmt.Errorf("user_fic requires a client secret or assertion credential; token provider credentials are not supported")
+	}
+	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return TokenResponse{}, err
+	}
+	qv.Set(grantType, grant.UserFIC)
+	qv.Set(clientID, authParameters.ClientID)
+	qv.Set("user_federated_identity_credential", authParameters.UserFederatedIdentityCredential)
+	qv.Set(clientInfo, clientInfoVal)
+
+	// Set user identifier: either user_id (OID) or username (UPN)
+	if authParameters.UserObjectID != "" {
+		qv.Set("user_id", authParameters.UserObjectID)
+	} else if authParameters.Username != "" {
+		qv.Set("username", authParameters.Username)
+	}
+
+	addScopeQueryParam(qv, authParameters)
+	addExtraBodyParameters(ctx, qv, authParameters)
+
+	credParams, err := prepURLVals(ctx, cred, authParameters)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	for k, vs := range credParams {
+		for _, v := range vs {
+			qv.Set(k, v)
+		}
+	}
+
 	return c.doTokenResp(ctx, authParameters, qv)
 }
 
