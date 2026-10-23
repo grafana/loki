@@ -13,14 +13,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
-// QueryHandler decodes a query request, sends it to the fan-out handler and writes the response.
+// QueryHandler decodes a query request, sends it to the downstream handler and writes the response.
 type QueryHandler struct {
 	codec         queryrangebase.Codec
 	fanOutHandler queryrangebase.Handler
 	logger        log.Logger
 }
 
-// NewQueryHandler returns a handler that serves query requests with the fan-out handler. It
+// NewQueryHandler returns a handler that serves query requests with the given handler. It
 // requires the org ID of the tenant on every request.
 func NewQueryHandler(codec queryrangebase.Codec, fanOutHandler queryrangebase.Handler, logger log.Logger) *QueryHandler {
 	return &QueryHandler{codec: codec, fanOutHandler: fanOutHandler, logger: logger}

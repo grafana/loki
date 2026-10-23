@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -24,17 +25,19 @@ import (
 var errNoPrimaryBackend = errors.New("no primary backend")
 
 // FanOutHandler implements queryrangebase.Handler and fans out requests to multiple backends.
-// It returns the primary backend's response as soon as it is ready. When it has a comparator, it
-// compares the secondary backend's response with the primary's in the background. It never returns
-// the secondary backend's response.
+// It sends each request to every backend, except that the secondary backend strategy decides
+// whether the secondary backend gets it. It returns the primary backend's response as soon as it is
+// ready. When it has a comparator, it compares the secondary backend's response with the primary's
+// in the background. It never returns the secondary backend's response.
 type FanOutHandler struct {
-	backends            []*ProxyBackend
-	codec               queryrangebase.Codec
-	logger              log.Logger
-	metrics             *ProxyMetrics
-	routeName           string
-	comparator          comparator.ResponsesComparator
-	reportMissingSeries bool
+	backends               []*ProxyBackend
+	secondaryBackendRouter *secondaryBackendRouter
+	codec                  queryrangebase.Codec
+	logger                 log.Logger
+	metrics                *ProxyMetrics
+	routeName              string
+	comparator             comparator.ResponsesComparator
+	reportMissingSeries    bool
 }
 
 // FanOutHandlerConfig holds configuration for creating a FanOutHandler.
@@ -46,18 +49,23 @@ type FanOutHandlerConfig struct {
 	RouteName           string
 	Comparator          comparator.ResponsesComparator
 	ReportMissingSeries bool
+
+	// SecondaryBackendStrategy picks the requests that the secondary backend receives. Without a
+	// strategy, the secondary backend receives every request.
+	SecondaryBackendStrategy SelectionStrategy
 }
 
 // NewFanOutHandler creates a new FanOutHandler.
 func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 	return &FanOutHandler{
-		backends:            cfg.Backends,
-		codec:               cfg.Codec,
-		logger:              cfg.Logger,
-		metrics:             cfg.Metrics,
-		routeName:           cfg.RouteName,
-		comparator:          cfg.Comparator,
-		reportMissingSeries: cfg.ReportMissingSeries,
+		backends:               cfg.Backends,
+		secondaryBackendRouter: newSecondaryBackendRouter(cfg.SecondaryBackendStrategy, cfg.Metrics, cfg.RouteName, cfg.Logger),
+		codec:                  cfg.Codec,
+		logger:                 cfg.Logger,
+		metrics:                cfg.Metrics,
+		routeName:              cfg.RouteName,
+		comparator:             cfg.Comparator,
+		reportMissingSeries:    cfg.ReportMissingSeries,
 	}
 }
 
@@ -74,9 +82,10 @@ func (h *FanOutHandler) shouldCompare(r *backendResult) bool {
 	return h.comparator != nil && r.backend.isSecondary()
 }
 
-// Do implements queryrangebase.Handler. It sends the request to every backend and returns the
-// primary backend's response. In the background, when it has a comparator, it compares the
-// secondary backend's response with the primary's.
+// Do implements queryrangebase.Handler. It sends the request to every backend, except that the
+// secondary backend strategy decides whether the secondary backend gets it. It returns the primary
+// backend's response. In the background, when it has a comparator, it compares the secondary
+// backend's response with the primary's.
 func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	httpReq, err := h.codec.EncodeRequest(ctx, req)
 	if err != nil {
@@ -113,19 +122,29 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		httpReq.Body.Close()
 	}
 
-	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
-	collected := make([]*backendResult, 0, len(h.backends))
+	backends := h.backendsForRequest(ctx, req)
+	results := h.makeBackendRequests(ctx, backends, httpReq, body, req, issuer)
+	collected := make([]*backendResult, 0, len(backends))
 
-	return h.doWithPrimary(results, collected, httpReq)
+	return h.doWithPrimary(len(backends), results, collected, httpReq)
 }
 
-func (h *FanOutHandler) doWithPrimary(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
-	for i := 0; i < len(h.backends); i++ {
+// backendsForRequest returns the backends that get the request. The secondary backend gets it only
+// when the secondary backend strategy selects it. The strategy decision is counted in the metrics.
+func (h *FanOutHandler) backendsForRequest(ctx context.Context, req queryrangebase.Request) []*ProxyBackend {
+	if h.secondaryBackendRouter.shouldRoute(ctx, req) {
+		return h.backends
+	}
+	return slices.DeleteFunc(slices.Clone(h.backends), (*ProxyBackend).isSecondary)
+}
+
+func (h *FanOutHandler) doWithPrimary(numBackends int, results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
+	for i := 0; i < numBackends; i++ {
 		result := <-results
 		collected = append(collected, result)
 
 		if result.backend.isPrimary() {
-			remaining := len(h.backends) - i - 1
+			remaining := numBackends - i - 1
 			go func() {
 				h.collectRemainingAndCompare(remaining, httpReq, results, collected)
 			}()
@@ -311,12 +330,6 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 	).Observe(result.backendResp.duration.Seconds())
 }
 
-// WithMetrics sets metrics for the handler.
-func (h *FanOutHandler) WithMetrics(metrics *ProxyMetrics) *FanOutHandler {
-	h.metrics = metrics
-	return h
-}
-
 // WithComparator sets the response comparator.
 func (h *FanOutHandler) WithComparator(comparator comparator.ResponsesComparator) *FanOutHandler {
 	h.comparator = comparator
@@ -326,14 +339,15 @@ func (h *FanOutHandler) WithComparator(comparator comparator.ResponsesComparator
 // makeBackendRequests initiates backend requests and returns a channel for receiving results.
 func (h *FanOutHandler) makeBackendRequests(
 	ctx context.Context,
+	backends []*ProxyBackend,
 	httpReq *http.Request,
 	body []byte,
 	req queryrangebase.Request,
 	issuer string,
 ) chan *backendResult {
-	results := make(chan *backendResult, len(h.backends))
+	results := make(chan *backendResult, len(backends))
 
-	for i, backend := range h.backends {
+	for i, backend := range backends {
 		go func(_ int, b *ProxyBackend) {
 			result := h.executeBackendRequest(ctx, httpReq, body, b, req)
 
