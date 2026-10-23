@@ -402,23 +402,12 @@ func TestLimitsValidation(t *testing.T) {
 			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown", OTLPConfig: &push.OTLPConfig{}},
 			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", compression.SupportedCodecs()),
 		},
-		{
-			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "none", OTLPConfig: &push.OTLPConfig{}, EngineResultsCacheTimeBucketInterval: model.Duration(30 * time.Second)},
-			expected: fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got 30s"),
-		},
-		{
-			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "none", OTLPConfig: &push.OTLPConfig{}, EngineResultsCacheTimeBucketInterval: model.Duration(time.Hour)},
-			expected: nil,
-		},
 	} {
 		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)
 		t.Run(desc, func(t *testing.T) {
 			tc.limits.TSDBShardingStrategy = logql.PowerOfTwoVersion.String() // hacky but needed for test
 			tc.limits.TSDBMaxBytesPerShard = DefaultTSDBMaxBytesPerShard
 			tc.limits.DataObjMaxBytesPerShard = DefaultDataObjMaxBytesPerShard
-			if tc.limits.EngineResultsCacheTimeBucketInterval == 0 {
-				_ = tc.limits.EngineResultsCacheTimeBucketInterval.Set("24h")
-			}
 			if tc.expected == nil {
 				require.NoError(t, tc.limits.Validate())
 			} else {
@@ -1297,7 +1286,7 @@ func TestDataObjCompaction_ValidateRejectsLogWithoutIndex(t *testing.T) {
 
 func TestDataObjCompaction_ValidateAcceptsValidCombinations(t *testing.T) {
 	// Build from RegisterFlags defaults so the other required Validate() fields
-	// (TSDBMaxBytesPerShard, EngineResultsCacheTimeBucketInterval, etc.) are
+	// (TSDBMaxBytesPerShard, etc.) are
 	// already satisfied; toggle only the two compaction booleans.
 	combos := []struct{ index, log bool }{
 		{false, false},

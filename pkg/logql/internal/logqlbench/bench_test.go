@@ -316,8 +316,6 @@ func (benchLimits) BlockedQueries(_ context.Context, _ string) []*validation.Blo
 	return nil
 }
 func (l benchLimits) StreamFirstExecutionEnabled(_ string) bool { return l.streamFirstEnabled }
-func (benchLimits) DebugEngineTasks(_ string) bool              { return false }
-func (benchLimits) DebugEngineStreams(_ string) bool            { return false }
 
 // instrumentation is shared by both backends; only one runs per sub-benchmark, so one instance is safe.
 type instrumentation struct {

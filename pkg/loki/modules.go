@@ -177,6 +177,18 @@ const (
 	bloomGatewayRingKey = "bloom-gateway"
 )
 
+// Builds a slice of services to wait for, except the other server,
+// as they would deadlock and wait on each other.
+func (t *Loki) serverServicesToWaitFor() []services.Service {
+	svs := []services.Service(nil)
+	for m, s := range t.serviceMap {
+		if m != Server && m != InternalServer {
+			svs = append(svs, s)
+		}
+	}
+	return svs
+}
+
 func (t *Loki) initServer() (services.Service, error) {
 	prometheus.MustRegister(version.NewCollector(constants.Loki))
 	// unregister default go collector
@@ -197,18 +209,7 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server = serv
 
-	servicesToWaitFor := func() []services.Service {
-		svs := []services.Service(nil)
-		for m, s := range t.serviceMap {
-			// Server should not wait for itself.
-			if m != Server {
-				svs = append(svs, s)
-			}
-		}
-		return svs
-	}
-
-	s := NewServerService(t.Server, servicesToWaitFor)
+	s := NewServerService(t.Server, t.serverServicesToWaitFor)
 
 	// Best effort to propagate the org ID from the start.
 	h := func(next http.Handler) http.Handler {
@@ -257,18 +258,7 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 
 	t.InternalServer = serv
 
-	servicesToWaitFor := func() []services.Service {
-		svs := []services.Service(nil)
-		for m, s := range t.serviceMap {
-			// Server should not wait for itself.
-			if m != InternalServer {
-				svs = append(svs, s)
-			}
-		}
-		return svs
-	}
-
-	s := NewServerService(t.InternalServer, servicesToWaitFor)
+	s := NewServerService(t.InternalServer, t.serverServicesToWaitFor)
 
 	return s, nil
 }
@@ -897,6 +887,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		return nil, nil
 	}
 	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Pattern.KafkaIngestion.KafkaConfig = t.Cfg.KafkaConfig
 	t.PatternIngester, err = pattern.New(
 		t.Cfg.Pattern,
 		t.Overrides,
@@ -935,6 +926,10 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 
 	if !t.Cfg.Pattern.Enabled {
 		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
+		return nil, nil
+	}
+	if t.Cfg.Pattern.KafkaIngestion.Enabled {
+		_ = level.Info(logger).Log("msg", "pattern ingester tee service disabled because the pattern ingester consumes from Kafka")
 		return nil, nil
 	}
 	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
@@ -2176,14 +2171,11 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
 	// IndexMerge executor writes merged-index objects to the same namespace
 	// the ToC pointers (written by the planner via its prefixed indexBucket)
-	// resolve to. metastore.NewObjectMetastore applies the prefix internally,
-	// so it still receives the unprefixed `store`.
+	// resolve to.
 	indexBucket := store
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-
-	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
 		Config: t.Cfg.DataObj.Compaction.Worker,
@@ -2192,7 +2184,6 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		// LogMerge executor reads them through the unprefixed store rather than
 		// the index-prefixed bucket used for index I/O and ToC.
 		DataBucket:   store,
-		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,

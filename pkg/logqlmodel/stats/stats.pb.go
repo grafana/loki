@@ -862,8 +862,7 @@ type Store struct {
 	PipelineWrapperFilteredLines int64   `protobuf:"varint,7,opt,name=pipelineWrapperFilteredLines,proto3" json:"pipelineWrapperFilteredLines"`
 	Dataobj                      Dataobj `protobuf:"bytes,8,opt,name=dataobj,proto3" json:"dataobj"`
 	// Total number of chunks that failed to be fetched or decoded for the query,
-	// counted even when propagateChunkFetchErrors tolerated the failure instead
-	// of failing the query outright.
+	// which always fails the query outright.
 	ChunkFetchFailures int64 `protobuf:"varint,15,opt,name=chunkFetchFailures,proto3" json:"chunkFetchFailures"`
 	// Chunk refs left to read after time and logline hint filtering. Unlike
 	// totalChunksRef it leaves out the chunks those filters dropped, and unlike

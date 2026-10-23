@@ -910,6 +910,9 @@ load
   {app="noise"}    "noise" @ 0s  [repeat every 10s for 13]
   {app="err"}      "msg"   @ 20s [metadata v="oops"]
   {app="err"}      "msg"   @ 40s [metadata v="6"]
+  {app="k", c="ten"} "v=10000000000000000"  @ 5s
+  {app="k", c="ten"} "v=1"                  @ 6s [repeat every 1s for 10]
+  {app="k", c="ten"} "v=-10000000000000000" @ 16s
 
 # parsed field
 eval instant at 60s rate({app="p"} | logfmt | unwrap v [30s])
@@ -938,6 +941,13 @@ eval instant at 60s rate({app="err"} | unwrap v | __error__="" [1m])
   {app="err"} 0.1
 eval instant at 60s rate({app="err"} | unwrap v | __error__!="" [1m])
   {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", app="err"} 0
+# A large value that a later negative value cancels does not drop the small values between them.
+eval instant at 60s rate({app="k"} | logfmt | unwrap v [1m])
+  {app="k", c="ten"} 0.16666666666666666
+eval range from 20s to 60s step 20s rate({app="k"} | logfmt | unwrap v [1m])    # overlapping
+  {app="k", c="ten"} 0.16666666666666666 0.16666666666666666 0.16666666666666666
+eval range from 20s to 60s step 40s rate({app="k"} | logfmt | unwrap v [20s])   # non-overlapping
+  {app="k", c="ten"} 0.5 _
 
 # rate() with unwrap: window shapes, offset, and grouping.
 clear
@@ -973,6 +983,7 @@ eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m]) without
 # - any NaN -> NaN
 # - +Inf absorbs a finite value
 # - +Inf with -Inf -> NaN
+# - A large value that a later negative value cancels does not drop the small values between them.
 clear
 load
   {app="a", c="multi"}  "v=7"    @ 20s
@@ -984,6 +995,9 @@ load
   {app="a", c="posinf"} "v=5"    @ 40s
   {app="a", c="mixinf"} "v=+Inf" @ 20s
   {app="a", c="mixinf"} "v=-Inf" @ 40s
+  {app="k", c="ten"}    "v=10000000000000000"  @ 5s
+  {app="k", c="ten"}    "v=1"                  @ 6s [repeat every 1s for 10]
+  {app="k", c="ten"}    "v=-10000000000000000" @ 16s
   {app="noise"} "noise" @ 20s [repeat every 10s for 3]
 
 eval instant at 60s avg_over_time({app="a"} | logfmt | unwrap v [1m])
@@ -1017,6 +1031,12 @@ eval range from 40s to 100s step 20s avg_over_time({app="a"} | logfmt | unwrap v
   {app="a", c="nan"}    _ 7 NaN _
   {app="a", c="posinf"} _ +Inf 5 _
   {app="a", c="mixinf"} _ +Inf -Inf _
+eval instant at 60s avg_over_time({app="k"} | logfmt | unwrap v [1m])
+  {app="k", c="ten"} 0.8333333333333334
+eval range from 20s to 60s step 20s avg_over_time({app="k"} | logfmt | unwrap v [1m])   # overlapping
+  {app="k", c="ten"} 0.8333333333333334 0.8333333333333334 0.8333333333333334
+eval range from 20s to 60s step 40s avg_over_time({app="k"} | logfmt | unwrap v [20s])  # non-overlapping
+  {app="k", c="ten"} 0.8333333333333334 _
 # avg_over_time() requires unwrap.
 eval instant at 60s avg_over_time({app="a"}[1m])
   expect fail msg: invalid aggregation avg_over_time without unwrap

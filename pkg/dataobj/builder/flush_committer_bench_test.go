@@ -153,7 +153,7 @@ func newBenchFlush(tb testing.TB, latency benchBucketLatency, concurrency int) *
 	}
 	var (
 		uploader  = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)
-		flusher   = newFlusher(logsobj.NewSorter(factory, reg), uploader, logger, reg)
+		flusher   = newFlusher(uploader, logger, reg)
 		tocWriter = metastore.NewTableOfContentsWriter(idxBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, metastore.NewTocWriterMetrics(reg), indexobjMetrics)
 	)
 	return &benchFlush{

@@ -89,8 +89,7 @@ type Config struct {
 	PlanVersion uint `yaml:"plan_version"`
 
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
-	// endpoint for the embedded engine.Scheduler instance. See
-	// pkg/engine/scheduler.go for the underlying SchedulerParams.
+	// endpoint for the embedded scheduler.
 	Scheduler SchedulerConfig `yaml:"scheduler"`
 
 	// Worker holds the worker-side knobs for the dataobj-compaction-worker
@@ -110,8 +109,7 @@ type Config struct {
 	LogsobjBuilder logsobj.BuilderBaseConfig `yaml:"logsobj_builder" category:"experimental"`
 }
 
-// SchedulerConfig holds the scheduler-side parameters that get passed
-// to engine.NewScheduler when the compaction planner target boots.
+// SchedulerConfig holds the parameters of the embedded compaction scheduler.
 type SchedulerConfig struct {
 	// AdvertiseAddr is the host:port the embedded scheduler advertises to
 	// remote workers. Empty string keeps the scheduler in-process-only
@@ -120,15 +118,13 @@ type SchedulerConfig struct {
 
 	// Endpoint is the absolute path on the Loki HTTP router where the
 	// embedded scheduler listens for worker frame traffic. Defaults to
-	// "/api/v2/compaction-frame" so it never collides with the
-	// query-engine scheduler at "/api/v2/frame".
+	// "/api/v2/compaction-frame".
 	Endpoint string `yaml:"endpoint"`
 }
 
 // WorkerConfig holds the worker-side parameters that get passed to
 // engine.NewWorker when the dataobj-compaction-worker target boots.
-// The compaction worker runs in remote-transport mode only; it discovers
-// the compaction scheduler via DNS-SRV lookup.
+// The compaction worker discovers the compaction scheduler via DNS-SRV lookup.
 //
 // The worker module is gated by Loki target -target=dataobj-compaction-worker
 // AND the same dataobj.compaction.enabled flag the planner uses. There is
@@ -136,7 +132,7 @@ type SchedulerConfig struct {
 // Loki target.
 type WorkerConfig struct {
 	// WorkerThreads is the per-pod task concurrency. Zero means use
-	// GOMAXPROCS (matches the engine worker's default).
+	// GOMAXPROCS.
 	WorkerThreads int `yaml:"worker_threads"`
 
 	// SchedulerLookupAddress is the DNS-SRV address used to discover the
@@ -153,15 +149,12 @@ type WorkerConfig struct {
 
 	// AdvertiseAddr is the host:port the embedded worker advertises to
 	// schedulers and other workers. Required when the worker module
-	// actually initializes (enforced in NewWorker): the compaction worker
-	// uses no LocalScheduler, and engine.NewWorker requires one of
-	// AdvertiseAddr or LocalScheduler to be set.
+	// actually initializes (enforced in NewWorker).
 	AdvertiseAddr string `yaml:"advertise_addr"`
 
 	// Endpoint is the absolute path on the worker's HTTP router where the
 	// wire frame handler is registered. Defaults to
-	// "/api/v2/compaction-frame" so it never collides with the
-	// query-engine worker at "/api/v2/frame".
+	// "/api/v2/compaction-frame".
 	Endpoint string `yaml:"endpoint"`
 }
 

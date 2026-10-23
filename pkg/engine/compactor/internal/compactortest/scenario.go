@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // Source is a built log object and the bucket key to use for it.
@@ -42,9 +43,10 @@ type Contents struct {
 	StatsObjectPaths    map[string]bool
 	PostingsObjectPaths map[string]bool
 	SortSchemas         map[string]bool
-	LogSectionLayouts   []logs.SortLayout
-	StatsRowCount       int64
-	Lines               []string
+	// StreamLayouts holds the layout of each reachable streams section.
+	StreamLayouts []streams.Layout
+	StatsRowCount int64
+	Lines         []string
 }
 
 // New seeds a bucket with the supplied sources, one calculated index per source,
@@ -128,7 +130,7 @@ func (s *Scenario) Indexes(ctx context.Context, t *testing.T, tenant string) []i
 	return entries
 }
 
-// ReadReachableContents reads stats, postings, log lines & sort layouts reachable through
+// ReadReachableContents reads stats, postings, log lines & stream layouts reachable through
 // indexes for a given tenant; it does not inspect unrelated objects in the bucket.
 func (s *Scenario) ReadReachableContents(ctx context.Context, t *testing.T, tenant string) Contents {
 	t.Helper()
@@ -165,10 +167,17 @@ func (s *Scenario) ReadReachableContents(ctx context.Context, t *testing.T, tena
 	}
 	for path := range contents.StatsObjectPaths {
 		sections := s.tenantSections(ctx, t, path, tenant)
+		for _, section := range sections.Filter(streams.CheckSection) {
+			opened, err := streams.Open(ctx, section)
+			require.NoError(t, err)
+			layout, ok, err := opened.Layout()
+			require.NoError(t, err)
+			require.True(t, ok, "streams section of %q must record a layout", path)
+			contents.StreamLayouts = append(contents.StreamLayouts, layout)
+		}
 		for _, section := range sections.Filter(logs.CheckSection) {
 			opened, err := logs.Open(ctx, section)
 			require.NoError(t, err)
-			contents.LogSectionLayouts = append(contents.LogSectionLayouts, opened.SortLayout())
 			for result := range logs.IterSection(ctx, opened) {
 				record, err := result.Value()
 				require.NoError(t, err)

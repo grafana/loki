@@ -35,10 +35,7 @@ type ProxyEndpoint struct {
 	logger     log.Logger
 	comparator comparator.ResponsesComparator
 
-	instrumentCompares bool
-
-	// Whether for this endpoint there's a preferred backend configured.
-	hasPreferredBackend bool
+	reportMissingSeries bool
 
 	// The route name used to track metrics.
 	routeName string
@@ -54,24 +51,15 @@ func NewProxyEndpoint(
 	metrics *ProxyMetrics,
 	logger log.Logger,
 	comparator comparator.ResponsesComparator,
-	instrumentCompares bool,
+	reportMissingSeries bool,
 ) *ProxyEndpoint {
-	hasPreferredBackend := false
-	for _, backend := range backends {
-		if backend.v1Preferred {
-			hasPreferredBackend = true
-			break
-		}
-	}
-
 	return &ProxyEndpoint{
 		backends:            backends,
 		routeName:           routeName,
 		metrics:             metrics,
 		logger:              logger,
 		comparator:          comparator,
-		hasPreferredBackend: hasPreferredBackend,
-		instrumentCompares:  instrumentCompares,
+		reportMissingSeries: reportMissingSeries,
 	}
 }
 
@@ -99,8 +87,11 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 	resCh := make(chan *BackendResponse, len(p.backends))
 	go p.executeBackendRequests(r, resCh)
 
-	// Wait for the first response that's feasible to be sent back to the client.
-	downstreamRes := p.waitBackendResponseForDownstream(resCh)
+	downstreamRes, err := p.waitBackendResponseForDownstream(resCh)
+	if err != nil {
+		server.WriteError(err, w)
+		return
+	}
 
 	if downstreamRes.err != nil {
 		server.WriteError(downstreamRes.err, w)
@@ -170,11 +161,6 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 				bodyReader = io.NopCloser(bytes.NewReader(body))
 			}
 
-			if backend.filter != nil && !backend.filter.Match([]byte(r.URL.String())) {
-				lvl(p.logger).Log("msg", "Skipping non-preferred backend", "path", r.URL.Path, "query", query, "backend", backend.name)
-				return
-			}
-
 			res := backend.ForwardRequest(r, bodyReader)
 
 			// Log with a level based on the backend response.
@@ -194,7 +180,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 
 			// Keep track of the response if required.
 			if p.comparator != nil {
-				if backend.v1Preferred {
+				if backend.isPrimary() {
 					expectedResponseIdx = idx
 				}
 				responses[idx] = res
@@ -212,7 +198,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 	if p.comparator != nil {
 		expectedResponse := responses[expectedResponseIdx]
 		for i := range responses {
-			if i == expectedResponseIdx {
+			if i == expectedResponseIdx || !p.backends[i].isSecondary() {
 				continue
 			}
 			actualResponse := responses[i]
@@ -232,7 +218,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 				result = comparisonSkipped
 			}
 
-			if p.instrumentCompares && summary != nil {
+			if p.reportMissingSeries && summary != nil {
 				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer).Observe(float64(summary.MissingMetrics))
 			}
 			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer, tenantID).Inc()
@@ -240,39 +226,16 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 	}
 }
 
-func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResponse) *BackendResponse {
-	var (
-		responses                 = make([]*BackendResponse, 0, len(p.backends))
-		preferredResponseReceived = false
-	)
-
+// waitBackendResponseForDownstream returns the primary backend's response, even when it is an
+// error. It does not fall back to another backend. It returns errNoPrimaryBackend when no backend
+// is the primary.
+func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResponse) (*BackendResponse, error) {
 	for res := range resCh {
-		// If the response is successful we can immediately return it if:
-		// - There's no preferred backend configured
-		// - Or this response is from the preferred backend
-		// - Or the preferred backend response has already been received and wasn't successful
-		if res.succeeded() && (!p.hasPreferredBackend || res.backend.v1Preferred || preferredResponseReceived) {
-			return res
+		if res.backend.isPrimary() {
+			return res, nil
 		}
-
-		// If we received a non successful response from the preferred backend, then we can
-		// return the first successful response received so far (if any).
-		if res.backend.v1Preferred && !res.succeeded() {
-			preferredResponseReceived = true
-
-			for _, prevRes := range responses {
-				if prevRes.succeeded() {
-					return prevRes
-				}
-			}
-		}
-
-		// Otherwise we keep track of it for later.
-		responses = append(responses, res)
 	}
-
-	// No successful response, so let's pick the first one.
-	return responses[0]
+	return nil, errNoPrimaryBackend
 }
 
 func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, error) {
