@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -26,7 +27,7 @@ func TestReader_ReadBeforeOpen(t *testing.T) {
 }
 
 func TestReader_RoundTrip(t *testing.T) {
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), streams.NewLayout(streams.DefaultShardLayout(), nil))
 	b.SetTenant("test-tenant")
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj",

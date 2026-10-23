@@ -269,7 +269,9 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 	streamLabels := labels.FromStrings("app", "api", "cluster", "prod")
 	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	postingsBuilder.SetTenant(tenant)
-	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+	shardLayout, err := streams.ShardLayoutFromBuckets(uint32(shardCount))
+	require.NoError(t, err)
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), streams.NewLayout(shardLayout, sortSchema))
 	statsBuilder.SetTenant(tenant)
 	schemaLabels := make(map[string]string, len(sortSchema))
 	for _, key := range sortSchema {
@@ -389,12 +391,14 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 		}), "index for source %q must be in the ToC", source.Path)
 
 		// Check the file pointed to by this index is the correct shape according to the index
-		refs, indexedSchema, shardCount, err := logSectionRefsFor(ctx, scenario.stored.Bucket, tenant, indexPath)
+		refs, err := logSectionRefsFor(ctx, scenario.stored.Bucket, tenant, indexPath)
 		require.NoError(t, err)
 		require.NotEmpty(t, refs)
 		require.Equal(t, source.Path, refs[0].Ref.ObjectPath)
-		require.Equal(t, test.layouts[fileIdx].SchemaLabels(), indexedSchema)
-		require.Equal(t, int64(test.layouts[fileIdx].ShardLayout().Buckets()), shardCount)
+		indexedLayout, ok, err := indexLayoutAt(ctx, scenario.stored.Bucket, tenant, indexPath)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, test.layouts[fileIdx], indexedLayout)
 
 		// Check the actual logs section is the correct shape too
 		obj, err := dataobj.FromBucket(ctx, scenario.stored.Bucket, source.Path, 0)
@@ -439,7 +443,7 @@ func requireConvergedLevels(t *testing.T, scenario *compactionScenario, indexes 
 	t.Helper()
 	require.Len(t, indexes, 1, "all overlapping indexes should consolidate")
 
-	sections, _, _, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
+	sections, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
 	require.NoError(t, err)
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
 	require.Len(t, runs, wantRuns)
@@ -489,10 +493,12 @@ func requireSingleSortedRun(t *testing.T, scenario *compactionScenario, indexes 
 	t.Helper()
 	require.Len(t, indexes, 1, "all overlapping indexes should consolidate")
 
-	sections, indexedSchema, shardCount, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
+	sections, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
 	require.NoError(t, err)
-	require.Equal(t, schema, indexedSchema)
-	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), shardCount)
+	indexedLayout, ok, err := indexLayoutAt(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, streams.NewLayout(streams.DefaultShardLayout(), schema), indexedLayout)
 	require.NotEmpty(t, sections)
 
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
@@ -677,7 +683,7 @@ func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bu
 		}
 		sections = append(sections, postingsBuilder)
 
-		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}))
 		statsBuilder.SetTenant(tenant)
 		statsBuilder.Append(stats.Stat{
 			ObjectPath:       path,

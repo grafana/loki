@@ -56,7 +56,13 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		return nil, fmt.Errorf("opening source index %q: %w", node.SourceIndexPath, err)
 	}
 
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore)
+	// A source without stats sections has no layout. The builder then gets
+	// the zero layout, and rejects any stat, so it never records that layout.
+	layout, _, err := indexobj.TenantLayout(ctx, source, node.Tenant)
+	if err != nil {
+		return nil, fmt.Errorf("reading stream layout of source index %q: %w", node.SourceIndexPath, err)
+	}
+	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}

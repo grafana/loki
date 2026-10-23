@@ -766,6 +766,10 @@ func (m *Statistics) GetCardinalityCount() uint64 {
 // and shard_count, and no column_sorts. The layout describes the stream IDs
 // that the STREAMS section defines and that the LOG sections of the same
 // tenant use. A STREAMS section without SortInfo records no layout.
+//
+// A STATS section sets column_sorts, and also schema_labels, stream_order,
+// and shard_count to record the layout of the data objects that its rows
+// describe. A STATS section that sets only column_sorts records no layout.
 type SortInfo struct {
 	// The list of column sorts. The length of this depends on how many columns
 	// are used for sorting.
@@ -777,14 +781,15 @@ type SortInfo struct {
 	ColumnSorts []*SortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
 	// schema_labels are the fully-qualified labels of the stream key, in order.
 	// Each entry has the form "label:<name>" (e.g. "label:service_name"). Set
-	// only in STREAMS sections.
+	// only in STREAMS and STATS sections that record a layout.
 	SchemaLabels []string `protobuf:"bytes,2,rep,name=schema_labels,json=schemaLabels,proto3" json:"schema_labels,omitempty"`
 	// stream_order is the stream key that orders the stream IDs. Set only in
-	// STREAMS sections. Independently written objects with the same layout have
-	// comparable stream orders.
+	// STREAMS and STATS sections that record a layout. Independently written
+	// objects with the same layout have comparable stream orders.
 	StreamOrder StreamOrder `protobuf:"varint,3,opt,name=stream_order,json=streamOrder,proto3,enum=dataobj.metadata.dataset.v2.StreamOrder" json:"stream_order,omitempty"`
 	// shard_count is the bucket count of the shard layout of the shard bucket
-	// column. Set only in STREAMS sections, where it must not be zero.
+	// column. Set only in STREAMS and STATS sections that record a layout,
+	// where it must not be zero.
 	ShardCount uint32 `protobuf:"varint,4,opt,name=shard_count,json=shardCount,proto3" json:"shard_count,omitempty"`
 }
 
