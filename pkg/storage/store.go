@@ -221,8 +221,8 @@ func (s *LokiStore) TriggerSync() bool {
 	return started
 }
 
-// EnsureQueryReadiness downloads the missing query ready indexes of every
-// per-period index store that supports it.
+// EnsureQueryReadiness downloads the missing indexes of every per-period index
+// store that supports it.
 func (s *LokiStore) EnsureQueryReadiness(ctx context.Context) error {
 	for _, e := range s.queryReadinessEnsurers {
 		if err := e.EnsureQueryReadiness(ctx); err != nil {
