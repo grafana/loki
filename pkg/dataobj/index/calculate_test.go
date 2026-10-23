@@ -470,17 +470,18 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
 	const tenant = "A"
 
-	// buildSource builds an object with 16 streams in layout. The streams
-	// section records layout if record is true.
+	// buildSource builds an object with 16 streams in layout, each with one
+	// record that has structured metadata. The streams section records
+	// layout if record is true.
 	buildSource := func(t *testing.T, layout streams.Layout, record bool) *dataobj.Object {
 		t.Helper()
 		fixture := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
 		for i := range 16 {
-			fixture.ForStream(fmt.Sprintf(`{app="%d",service_name="svc"}`, i)).Entry(10, "{}", "line")
+			fixture.ForStream(fmt.Sprintf(`{app="%d",service_name="svc"}`, i)).Entry(10, fmt.Sprintf(`{trace_id="%d"}`, i), "line")
 		}
 		opts := []fixtures.StreamsSectionOpt{fixtures.WithStreamsLayout(layout)}
 		if !record {
-			opts = append(opts, fixtures.WithoutStreamsLayout())
+			opts = []fixtures.StreamsSectionOpt{fixtures.WithoutStreamsLayout()}
 		}
 		source, closer := fixtures.DataObject(t,
 			fixtures.StreamsSection(t, tenant, fixture.Streams(), opts...),
@@ -503,7 +504,7 @@ func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
 		return obj, nil
 	}
 
-	t.Run("indexes with the schema labels and shard layout of the recorded layout", func(t *testing.T) {
+	t.Run("indexes labels and structured metadata with the schema labels and shard layout of the recorded layout", func(t *testing.T) {
 		four, err := streams.ShardLayoutFromBuckets(4)
 		require.NoError(t, err)
 		layout := streams.NewLayout(four, []string{"label:app"})
@@ -517,7 +518,7 @@ func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
 			require.Less(t, row["__shard_bucket__.int64"].(int64), int64(4))
 		}
 
-		var postingRows int
+		var labelRows, bloomRows int
 		for _, section := range indexObj.Sections().Filter(postings.CheckSection) {
 			sec, err := postings.Open(t.Context(), section)
 			require.NoError(t, err)
@@ -525,13 +526,22 @@ func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
 			require.NoError(t, inner.Open(t.Context()))
 			reader := postings.NewRowReader(t.Context(), inner)
 			for reader.Next() {
-				require.Equal(t, int64(4), reader.At().ShardBuckets)
-				postingRows++
+				row := reader.At()
+				require.Equal(t, int64(4), row.ShardBuckets)
+				switch row.Kind {
+				case postings.KindLabel:
+					labelRows++
+				case postings.KindBloom:
+					require.Equal(t, "trace_id", row.ColumnName)
+					require.Less(t, row.MaxShardBucket, uint32(4))
+					bloomRows++
+				}
 			}
 			require.NoError(t, reader.Err())
 			require.NoError(t, reader.Close())
 		}
-		require.Positive(t, postingRows)
+		require.Positive(t, labelRows)
+		require.Positive(t, bloomRows)
 	})
 
 	t.Run("returns an unprocessable object error for a legacy object", func(t *testing.T) {

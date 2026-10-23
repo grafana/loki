@@ -193,14 +193,15 @@ func LogsSection(t *testing.T, tenant string, rows []logs.Record, opts ...LogSec
 type streamSectionConfig struct {
 	pageSize     int
 	pageRowCount int
-	layout       streams.Layout
-	noLayout     bool
+	// layout is the layout that the section records, or nil to record none.
+	// A section without a layout uses the default shard layout.
+	layout *streams.Layout
 }
 
 var defaultStreamSectionConfig = streamSectionConfig{
 	pageSize:     1024 * 1024, // 1MB
 	pageRowCount: 10000,
-	layout:       streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}),
+	layout:       new(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"})),
 }
 
 // StreamsSectionOpt customizes the streams section that [StreamsSection]
@@ -211,13 +212,13 @@ type StreamsSectionOpt func(*streamSectionConfig)
 // default layout, which has the default shard layout and the schema label
 // service_name.
 func WithStreamsLayout(layout streams.Layout) StreamsSectionOpt {
-	return func(cfg *streamSectionConfig) { cfg.layout = layout }
+	return func(cfg *streamSectionConfig) { cfg.layout = &layout }
 }
 
-// WithoutStreamsLayout makes the streams section record no layout. Its shard
-// layout is still the one of [WithStreamsLayout], or the default.
+// WithoutStreamsLayout makes the streams section record no layout. The
+// section uses the default shard layout.
 func WithoutStreamsLayout() StreamsSectionOpt {
-	return func(cfg *streamSectionConfig) { cfg.noLayout = true }
+	return func(cfg *streamSectionConfig) { cfg.layout = nil }
 }
 
 // StreamsSection returns a streams builder for tenant that holds labelSets.
@@ -230,9 +231,13 @@ func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream, opt
 		opt(&config)
 	}
 
-	sectionBuilder := streams.NewBuilder(streams.NewMetrics(), config.pageSize, config.pageRowCount, config.layout.ShardLayout())
-	if !config.noLayout {
-		sectionBuilder.SetLayout(config.layout)
+	shardLayout := streams.DefaultShardLayout()
+	if config.layout != nil {
+		shardLayout = config.layout.ShardLayout()
+	}
+	sectionBuilder := streams.NewBuilder(streams.NewMetrics(), config.pageSize, config.pageRowCount, shardLayout)
+	if config.layout != nil {
+		sectionBuilder.SetLayout(*config.layout)
 	}
 	sectionBuilder.SetTenant(tenant)
 
