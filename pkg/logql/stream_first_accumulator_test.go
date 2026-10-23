@@ -1,11 +1,13 @@
 package logql
 
 import (
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"slices"
 	"testing"
 
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 )
 
@@ -258,7 +260,149 @@ func TestSumAccumulator(t *testing.T) {
 		}
 	})
 
-	t.Run("allocates the struct and two slices when created and nothing while adding or reading samples", func(t *testing.T) {
+	t.Run("keeps the small samples that follow a large one in the same step", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 1e16)
+		for range 10 {
+			a.add(0, 0, 1)
+		}
+		a.finish()
+
+		require.Equal(t, []stepValue{{1e16 + 10, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("keeps the small samples between a large value and the same value negated", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 1e16)
+		for range 10 {
+			a.add(0, 0, 1)
+		}
+		a.add(0, 0, -1e16)
+		a.finish()
+
+		require.Equal(t, []stepValue{{10, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("keeps the small samples between a large value and the same value negated in every step of a range", func(t *testing.T) {
+		a := newSumAccumulator(4)
+		a.add(0, 3, 1e16)
+		for range 10 {
+			a.add(0, 3, 1)
+		}
+		a.add(0, 3, -1e16)
+		a.add(2, 3, 0.5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{10, true}, {10, true}, {10.5, true}, {10.5, true}}, stepValues(t, a, 4))
+	})
+
+	t.Run("keeps a negative compensation", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 1e16)
+		a.add(0, 0, -1)
+		a.add(0, 0, -1)
+		a.finish()
+
+		require.Equal(t, []stepValue{{1e16 - 2, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("keeps the compensation of steps after the first step of the range that first needs one", func(t *testing.T) {
+		a := newSumAccumulator(3)
+		a.add(1, 2, 1e16)
+		a.add(0, 2, 1)
+		a.add(0, 2, 1)
+		a.finish()
+
+		require.Equal(t, []stepValue{{2, true}, {1e16 + 2, true}, {1e16 + 2, true}}, stepValues(t, a, 3))
+	})
+
+	t.Run("returns NaN for a positive and a negative infinity in one step", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, math.Inf(1))
+		a.add(0, 0, math.Inf(-1))
+		a.finish()
+
+		got := stepValues(t, a, 1)
+		require.True(t, math.IsNaN(got[0].value))
+		require.True(t, got[0].present)
+	})
+
+	t.Run("returns infinity for an infinity and finite samples in one step", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 1)
+		a.add(0, 0, math.Inf(1))
+		a.add(0, 0, 2.5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{math.Inf(1), true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("returns the same value as SumOverTime for the same samples in the same order", func(t *testing.T) {
+		const steps = 20
+
+		rng := rand.New(rand.NewPCG(3, 4))
+		acc := newSumAccumulator(steps)
+		want := make([]SumOverTime, steps)
+		for range 2000 {
+			lo := rng.IntN(steps)
+			hi := lo + rng.IntN(steps-lo)
+			v := rng.Float64() * math.Pow(10, float64(rng.IntN(17)))
+			if rng.IntN(2) == 0 {
+				v = -v
+			}
+			acc.add(lo, hi, v)
+			for k := lo; k <= hi; k++ {
+				want[k].agg(promql.FPoint{F: v})
+			}
+		}
+		acc.finish()
+
+		got := stepValues(t, acc, steps)
+		for k := range steps {
+			require.Equal(t, want[k].at(), got[k].value, "step %d", k)
+		}
+	})
+
+	t.Run("does not allocate the compensation while the sums are exact", func(t *testing.T) {
+		a := newSumAccumulator(10).(*sumAccumulator)
+		require.Zero(t, testing.AllocsPerRun(100, func() {
+			a.add(0, 9, 1234567)
+			a.add(3, 5, -89)
+		}))
+		require.Nil(t, a.compensations)
+	})
+
+	t.Run("does not allocate the compensation for fractional values that fall in separate steps", func(t *testing.T) {
+		a := newSumAccumulator(3).(*sumAccumulator)
+		a.add(0, 0, 0.1)
+		a.add(1, 1, 1e16)
+		a.add(2, 2, 123456789.123)
+
+		require.Nil(t, a.compensations)
+	})
+
+	t.Run("allocates the compensation once at the first inexact sum and never again", func(t *testing.T) {
+		var created stepAccumulator
+		withoutCompensation := testing.AllocsPerRun(100, func() {
+			created = newSumAccumulator(10)
+			created.add(0, 9, 1e16)
+		})
+		withCompensation := testing.AllocsPerRun(100, func() {
+			created = newSumAccumulator(10)
+			created.add(0, 9, 1e16)
+			created.add(0, 9, 1)
+			created.add(0, 9, 0.1)
+		})
+		require.Equal(t, withoutCompensation+1, withCompensation)
+
+		a := newSumAccumulator(10).(*sumAccumulator)
+		a.add(0, 9, 1e16)
+		a.add(0, 9, 1)
+		require.NotNil(t, a.compensations)
+		require.Zero(t, testing.AllocsPerRun(100, func() { a.add(0, 9, 0.1) }))
+	})
+
+	t.Run("allocates the struct and two slices when created and nothing while adding exact values or reading samples", func(t *testing.T) {
 		var created stepAccumulator
 		require.Equal(t, 3.0, testing.AllocsPerRun(100, func() { created = newSumAccumulator(10) }))
 		require.NotNil(t, created)
@@ -320,4 +464,35 @@ func TestStreamFirstRangeAggregation(t *testing.T) {
 			})
 		}
 	})
+}
+
+// BenchmarkSumAccumulator measures the cost of adding one sample to the steps of its window. The
+// number of steps per sample is about selRange/step.
+func BenchmarkSumAccumulator(b *testing.B) {
+	const steps = 1440
+
+	for _, kind := range []string{"integer", "fractional"} {
+		rng := rand.New(rand.NewPCG(7, 8))
+		values := make([]float64, steps)
+		for i := range values {
+			values[i] = float64(rng.IntN(1000))
+			if kind == "fractional" {
+				values[i] += rng.Float64()
+			}
+		}
+
+		for _, stepsPerSample := range []int{1, 5, 60, 288} {
+			b.Run(fmt.Sprintf("values=%s/steps-per-sample=%d", kind, stepsPerSample), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					a := newSumAccumulator(steps)
+					for i, v := range values {
+						a.add(i, min(i+stepsPerSample-1, steps-1), v)
+					}
+					a.finish()
+				}
+				b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/steps, "ns/sample")
+			})
+		}
+	}
 }
