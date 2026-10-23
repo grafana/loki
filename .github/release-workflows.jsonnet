@@ -96,11 +96,17 @@ local weeklyImageJobs = {
   ),
   'check.yml': std.manifestYamlDoc({
     name: 'check',
+    // Commits on main are checked by images.yml, which gates the weekly
+    // images on the same check.
     on: {
       pull_request: {},
-      push: {
-        branches: ['main'],
-      },
+    },
+    // A new push to a PR makes the running check obsolete. The group must not
+    // match the check-<sha> group of the called workflow, or GitHub reports a
+    // concurrency deadlock.
+    concurrency: {
+      group: 'check-pr-${{ github.event.pull_request.number }}',
+      'cancel-in-progress': true,
     },
     permissions: {
       contents: 'read',
