@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func TestStatsCollectorMiddleware(t *testing.T) {
@@ -1019,6 +1020,115 @@ func TestQueryUsageHTTPFlow_DiscardedShardsOnFailure(t *testing.T) {
 				requireFailedQueryUsageShape(t, line)
 				require.Equal(t, util.HumanizeBytes(wantBytes), line["total_bytes"])
 				require.Equal(t, strconv.Itoa(wantStatus), line["status"])
+			})
+		})
+	}
+}
+
+func TestFailedQueryUsageRequestContext(t *testing.T) {
+	for _, tc := range []struct {
+		name                    string
+		queryTags               string
+		userAgent               string
+		instant                 bool
+		rejectedBeforeExecution bool
+		wantTags                map[string]string
+	}{
+		{
+			name:      "range query attribution",
+			queryTags: "Source=logs-drilldown,User=alice@example.com,DashboardUID=abc123,PanelId=7",
+			userAgent: "Grafana/12.0",
+			wantTags:  map[string]string{"source": "logs-drilldown", "user": "alice@example.com", "dashboarduid": "abc123", "panelid": "7"},
+		},
+		{
+			name: "instant query attribution", instant: true,
+			queryTags: "Source=explore,User=bob@example.com", userAgent: "Grafana/12.0",
+			wantTags: map[string]string{"source": "explore", "user": "bob@example.com"},
+		},
+		{
+			name: "rejection before execution", rejectedBeforeExecution: true,
+			queryTags: "Source=explore,User=alice@example.com", userAgent: "Grafana/12.0",
+			wantTags: map[string]string{"source": "explore", "user": "alice@example.com"},
+		},
+		{name: "without attribution"},
+		{
+			name:      "malformed tags are skipped",
+			queryTags: "invalid,User=,Source=explore,Feature=beta",
+			wantTags:  map[string]string{"source": "explore", "feature": "beta"},
+		},
+		{
+			name:      "tags use HTTP sanitization",
+			queryTags: "Source=explore,User=alice+ops@example.com",
+			wantTags:  map[string]string{"source": "explore", "user": "alice_ops@example.com"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lines := captureFailedQueryUsage(t)
+			synctest.Test(t, func(t *testing.T) {
+				// Freeze time so offsets can be checked exactly after HTTP decoding.
+				now := time.Now()
+				params := url.Values{
+					"query": {`{app="test"} |= "error"`},
+					"start": {strconv.FormatInt(now.Add(-time.Hour).UnixNano(), 10)},
+					"end":   {strconv.FormatInt(now.Add(-time.Minute).UnixNano(), 10)},
+					"step":  {"30"}, "limit": {"42"},
+				}
+				path := "/loki/api/v1/query_range"
+				wantRange, wantStartDelta, wantStep := "range", "1h0m0s", "30s"
+				if tc.instant {
+					path = "/loki/api/v1/query"
+					params = url.Values{
+						"query": {`sum(rate({app="test"}[5m]))`},
+						"time":  {strconv.FormatInt(now.Add(-time.Minute).UnixNano(), 10)},
+						"limit": {"42"},
+					}
+					wantRange, wantStartDelta, wantStep = "instant", "1m0s", "0s"
+				}
+
+				// Fail after recording completed work, or reject before reaching the
+				// stats collector. Both paths must retain the same request context.
+				calls := 0
+				processing := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+					calls++
+					stats.JoinDiscardedWork(ctx, stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: 4096}}}})
+					return nil, errors.New("query failed")
+				}))
+				wantStatus, wantCalls, wantBytes := http.StatusInternalServerError, 1, "4.1kB"
+				if tc.rejectedBeforeExecution {
+					processing = NewLimitedRoundTripper(processing, fakeLimits{maxQueryParallelism: 0}, testSchemas)
+					wantStatus, wantCalls, wantBytes = http.StatusTooManyRequests, 0, "0B"
+				}
+
+				// Exercise the same header extraction used for successful queries.
+				successfulRecords := 0
+				handler := httpreq.ExtractQueryTagsMiddleware().Wrap(httpreq.PropagateAllHeadersMiddleware().Wrap(
+					statsHTTPMiddleware(metricRecorderFn(func(*queryData) { successfulRecords++ })).Wrap(
+						NewSerializeHTTPHandler(processing, DefaultCodec))))
+				request := httptest.NewRequest(http.MethodGet, path+"?"+params.Encode(), nil)
+				request.Header.Set(string(httpreq.QueryTagsHTTPHeader), tc.queryTags)
+				request.Header.Set("User-Agent", tc.userAgent)
+				request = request.WithContext(user.InjectOrgID(request.Context(), "test"))
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, request)
+
+				require.Equal(t, wantStatus, response.Code, response.Body.String())
+				require.Equal(t, wantCalls, calls)
+				require.Zero(t, successfulRecords)
+				line := lines.only(t)
+				tagFields := make([]string, 0, len(tc.wantTags))
+				for field, value := range tc.wantTags {
+					tagFields = append(tagFields, field)
+					require.Equal(t, value, line[field], field)
+				}
+				requireFailedQueryUsageShape(t, line, tagFields...)
+				require.Equal(t, "test", line["org_id"])
+				require.Equal(t, tc.userAgent, line["user_agent"])
+				require.Equal(t, wantRange, line["range_type"])
+				require.Equal(t, wantStartDelta, line["start_delta"])
+				require.Equal(t, "1m0s", line["end_delta"])
+				require.Equal(t, wantStep, line["step"])
+				require.Equal(t, "42", line["limit"])
+				require.Equal(t, wantBytes, line["total_bytes"])
 			})
 		})
 	}

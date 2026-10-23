@@ -34,10 +34,11 @@ func wrapErr(sentinel, err error) error {
 	return fmt.Errorf("%w: %w", sentinel, err)
 }
 
-// failedQueryUsageFields is the complete field set of the failed-query usage
-// line; the regular stats line's fields must stay off it.
+// failedQueryUsageFields lists the fixed fields of the failed-query usage line.
+// Request-specific query tags may add attribution fields.
 var failedQueryUsageFields = []string{
-	"msg", "query", "query_hash", "query_type", "range_type", "length",
+	"msg", "user_agent", "query", "query_hash", "query_type", "range_type", "length",
+	"start_delta", "end_delta", "step", "limit",
 	"status", "duration", "total_bytes", "failure_category", "failure_reason",
 }
 
@@ -90,7 +91,7 @@ func captureFailedQueryUsage(t *testing.T) *failedQueryUsageCapture {
 
 // requireFailedQueryUsageShape asserts the line carries exactly the agreed
 // fields: nothing leaked in and nothing went missing.
-func requireFailedQueryUsageShape(t *testing.T, line map[string]string) {
+func requireFailedQueryUsageShape(t *testing.T, line map[string]string, queryTagFields ...string) {
 	t.Helper()
 
 	fields := make([]string, 0, len(line))
@@ -101,7 +102,8 @@ func requireFailedQueryUsageShape(t *testing.T, line map[string]string) {
 		}
 		fields = append(fields, k)
 	}
-	require.ElementsMatch(t, failedQueryUsageFields, fields)
+	expectedFields := append(append([]string(nil), failedQueryUsageFields...), queryTagFields...)
+	require.ElementsMatch(t, expectedFields, fields)
 
 	// Spelled out as well: these were deliberately left off the line.
 	for _, absent := range []string{
