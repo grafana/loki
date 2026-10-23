@@ -205,15 +205,18 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 
 			result := comparisonMatch
 			summary, cause, err := p.compareResponses(expectedResponse, actualResponse, time.Now().UTC())
-			if err != nil {
+			if errors.Is(err, comparator.ErrComparisonMismatch) {
+				result = comparisonMismatch
+				level.Warn(p.logger).Log("msg", "compared responses were not equal",
+					"backend", p.backends[i].name,
+					"route", p.routeName,
+					"query", r.URL.RawQuery, "err", err)
+			} else if err != nil {
+				result = comparisonFailed
 				level.Error(p.logger).Log("msg", "response comparison failed",
 					"backend", p.backends[i].name,
 					"route", p.routeName,
 					"query", r.URL.RawQuery, "err", err)
-				result = comparisonFailed
-				if errors.Is(err, comparator.ErrComparisonMismatch) {
-					result = comparisonMismatch
-				}
 			} else if summary != nil && summary.Skipped {
 				result = comparisonSkipped
 			}

@@ -108,11 +108,9 @@ func (m *ProxyMetrics) observeSecondaryBackendStats(route string, primary, secon
 		secondary.Summary.QueueTime > idleQueueTime.Seconds(),
 		"idle", "busy",
 	)
-	resultCacheStatus := comparisonStatus(
-		primary.Caches.Result.EntriesFound > 0,
-		secondary.Caches.Result.EntriesFound > 0,
-		"miss", "hit",
-	)
+	primaryEntriesFound, _ := resultCacheEntries(primary.Caches)
+	secondaryEntriesFound, _ := resultCacheEntries(secondary.Caches)
+	resultCacheStatus := comparisonStatus(primaryEntriesFound > 0, secondaryEntriesFound > 0, "miss", "hit")
 
 	for _, stat := range []struct {
 		name               string
@@ -130,4 +128,15 @@ func (m *ProxyMetrics) observeSecondaryBackendStats(route string, primary, secon
 		}
 		m.secondaryBackendStatsRatio.WithLabelValues(route, stat.name, queriersLoadStatus, resultCacheStatus).Observe(stat.secondary / stat.primary)
 	}
+}
+
+// resultCacheEntries returns the number of entries that the results caches of the query-frontend
+// found and requested for a query. A query uses the cache of its type: the range query results
+// cache, the instant metric results cache or the log results cache.
+func resultCacheEntries(caches stats.Caches) (found, requested int32) {
+	for _, cache := range []stats.Cache{caches.Result, caches.InstantMetricResult, caches.LogResult} {
+		found += cache.EntriesFound
+		requested += cache.EntriesRequested
+	}
+	return found, requested
 }

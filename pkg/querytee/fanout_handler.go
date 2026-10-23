@@ -209,16 +209,20 @@ func (h *FanOutHandler) collectRemainingAndCompare(req queryrangebase.Request, r
 
 	result := comparisonMatch
 	summary, cause, err := h.compareResponses(primary.backendResp, secondary.backendResp, time.Now().UTC())
-	if err != nil {
+	if errors.Is(err, comparator.ErrComparisonMismatch) {
+		result = comparisonMismatch
+		level.Warn(h.logger).Log("msg", "compared responses were not equal",
+			"backend", secondary.backend.name,
+			"route", h.routeName,
+			"query", httpReq.URL.RawQuery,
+			"err", err)
+	} else if err != nil {
+		result = comparisonFailed
 		level.Error(h.logger).Log("msg", "response comparison failed",
 			"backend", secondary.backend.name,
 			"route", h.routeName,
 			"query", httpReq.URL.RawQuery,
 			"err", err)
-		result = comparisonFailed
-		if errors.Is(err, comparator.ErrComparisonMismatch) {
-			result = comparisonMismatch
-		}
 	} else if summary != nil && summary.Skipped {
 		result = comparisonSkipped
 	}
@@ -242,6 +246,7 @@ func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, second
 	// statsLogFields returns the log fields of the stats of one backend.
 	statsLogFields := func(prefix string, s stats.Result) []any {
 		dataobj := s.Querier.Store.Dataobj
+		cacheEntriesFound, cacheEntriesRequested := resultCacheEntries(s.Caches)
 		return []any{
 			prefix + "_bytes_processed", s.Summary.TotalBytesProcessed,
 			prefix + "_lines_processed", s.Summary.TotalLinesProcessed,
@@ -253,6 +258,8 @@ func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, second
 			prefix + "_dataobj_rows_read", dataobj.PrePredicateDecompressedRows,
 			prefix + "_dataobj_decompressed_bytes", dataobj.PrePredicateDecompressedBytes,
 			prefix + "_dataobj_post_filter_rows", dataobj.PostFilterRows,
+			prefix + "_result_cache_entries_found", cacheEntriesFound,
+			prefix + "_result_cache_entries_requested", cacheEntriesRequested,
 		}
 	}
 
@@ -283,10 +290,6 @@ func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, second
 	}
 	if hasPrimaryStats {
 		keyvals = append(keyvals, statsLogFields("primary", primaryStats)...)
-		keyvals = append(keyvals,
-			"primary_result_cache_entries_found", primaryStats.Caches.Result.EntriesFound,
-			"primary_result_cache_entries_requested", primaryStats.Caches.Result.EntriesRequested,
-		)
 	}
 	if hasSecondaryStats {
 		keyvals = append(keyvals, statsLogFields("secondary", secondaryStats)...)
@@ -294,29 +297,29 @@ func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, second
 	level.Info(h.logger).Log(keyvals...)
 }
 
-func (h *FanOutHandler) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, string, error) {
-	if expectedResponse.err != nil {
-		return &comparator.ComparisonSummary{Skipped: true}, errorCause(expectedResponse), nil
+func (h *FanOutHandler) compareResponses(primaryResponse, secondaryResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, string, error) {
+	if primaryResponse.err != nil {
+		return &comparator.ComparisonSummary{Skipped: true}, errorCause(primaryResponse), nil
 	}
 
-	if actualResponse.err != nil {
-		return nil, errorCause(actualResponse), fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", actualResponse.err)
+	if secondaryResponse.err != nil {
+		return nil, errorCause(secondaryResponse), fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", secondaryResponse.err)
 	}
 
 	// compare response body only if we get a 200
-	if expectedResponse.status != 200 {
-		return &comparator.ComparisonSummary{Skipped: true}, errorCause(expectedResponse), nil
+	if primaryResponse.status != 200 {
+		return &comparator.ComparisonSummary{Skipped: true}, errorCause(primaryResponse), nil
 	}
 
-	if actualResponse.status != 200 {
-		return nil, errorCause(actualResponse), fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
+	if secondaryResponse.status != 200 {
+		return nil, errorCause(secondaryResponse), fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", secondaryResponse.status)
 	}
 
-	if expectedResponse.status != actualResponse.status {
-		return nil, causeCompareError, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
+	if primaryResponse.status != secondaryResponse.status {
+		return nil, causeCompareError, fmt.Errorf("expected status code %d but got %d", primaryResponse.status, secondaryResponse.status)
 	}
 
-	summary, err := h.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
+	summary, err := h.comparator.Compare(primaryResponse.body, secondaryResponse.body, queryEvalTime)
 	var cause string
 	switch {
 	case errors.Is(err, comparator.ErrComparisonMismatch):

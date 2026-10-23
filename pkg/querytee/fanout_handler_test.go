@@ -59,9 +59,9 @@ func TestFanOutHandler_Do(t *testing.T) {
 	}
 
 	// bodyWithStats returns a response body whose stats carry the bytes processed, the queue time
-	// in seconds and the number of results cache entries found.
-	bodyWithStats := func(bytesProcessed, queueTime, cacheEntriesFound int) string {
-		return fmt.Sprintf(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"test"},"values":[["1000000000","line"]]}],"stats":{"summary":{"totalBytesProcessed":%d,"queueTime":%d},"cache":{"result":{"entriesFound":%d}}}}}`, bytesProcessed, queueTime, cacheEntriesFound)
+	// in seconds and the number of entries that the given cache found.
+	bodyWithStats := func(bytesProcessed, queueTime int, cache string, cacheEntriesFound int) string {
+		return fmt.Sprintf(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"test"},"values":[["1000000000","line"]]}],"stats":{"summary":{"totalBytesProcessed":%d,"queueTime":%d},"cache":{%q:{"entriesFound":%d}}}}}`, bytesProcessed, queueTime, cache, cacheEntriesFound)
 	}
 
 	// bytesRatio returns the count and the sum of the observed ratios of the bytes processed.
@@ -174,9 +174,9 @@ func TestFanOutHandler_Do(t *testing.T) {
 	})
 
 	t.Run("counts a match and observes the ratios of the stats when both backends answer", func(t *testing.T) {
-		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, bodyWithStats(250, 0, 0))
+		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, bodyWithStats(250, 0, "result", 0))
 		handler := newHandler(staticComparator{summary: &comparator.ComparisonSummary{}},
-			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithStats(1000, 0, 0)),
+			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithStats(1000, 0, "result", 0)),
 			secondary,
 		)
 
@@ -194,16 +194,24 @@ func TestFanOutHandler_Do(t *testing.T) {
 		expectedLoad, expectedCache string
 	}{
 		"labels the ratios primary_busy and primary_hit when only the primary queued the query and found a cached entry": {
-			primaryBody: bodyWithStats(1000, 1, 1), secondaryBody: bodyWithStats(500, 0, 0),
+			primaryBody: bodyWithStats(1000, 1, "result", 1), secondaryBody: bodyWithStats(500, 0, "result", 0),
 			expectedLoad: "primary_busy", expectedCache: "primary_hit",
 		},
 		"labels the ratios secondary_busy and secondary_hit when only the secondary queued the query and found a cached entry": {
-			primaryBody: bodyWithStats(1000, 0, 0), secondaryBody: bodyWithStats(500, 1, 1),
+			primaryBody: bodyWithStats(1000, 0, "result", 0), secondaryBody: bodyWithStats(500, 1, "result", 1),
 			expectedLoad: "secondary_busy", expectedCache: "secondary_hit",
 		},
 		"labels the ratios both_busy and both_hit when both backends queued the query and found a cached entry": {
-			primaryBody: bodyWithStats(1000, 1, 1), secondaryBody: bodyWithStats(500, 1, 1),
+			primaryBody: bodyWithStats(1000, 1, "result", 1), secondaryBody: bodyWithStats(500, 1, "result", 1),
 			expectedLoad: "both_busy", expectedCache: "both_hit",
+		},
+		"labels the ratios primary_hit when only the primary found an entry in the instant metric results cache": {
+			primaryBody: bodyWithStats(1000, 0, "instantMetricResult", 1), secondaryBody: bodyWithStats(500, 0, "result", 0),
+			expectedLoad: "both_idle", expectedCache: "primary_hit",
+		},
+		"labels the ratios secondary_hit when only the secondary found an entry in the log results cache": {
+			primaryBody: bodyWithStats(1000, 0, "result", 0), secondaryBody: bodyWithStats(500, 0, "logResult", 1),
+			expectedLoad: "both_idle", expectedCache: "secondary_hit",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
