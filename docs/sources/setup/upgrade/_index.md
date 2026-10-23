@@ -69,6 +69,12 @@ loki_boltdb_shipper_retention_*
 
 To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
 
+### Experimental per-index client routing
+
+The experimental `tsdb_shipper.index_gateway_client.sharding: per_index` mode routes each table of a request for a schema period with a `sharded_path_prefix` to its owners. Requests for other periods use the default routing. It requires ring mode and is intended for per-index ownership. `per_index_max_concurrency` limits concurrent parts per request (default `8`); each part also counts toward the client's in-flight limit. The default sharding mode preserves existing routing.
+
+Statistics count streams once per table. Volume merging combines each table's limited result, so a series absent from every table's top results can be omitted. Requests ending exactly at midnight can produce slightly different weighted chunk and entry estimates. These experimental differences are covered by the fan-out tests.
+
 ### Experimental ownership reconciliation
 
 With per-index ownership enabled, `index_gateway.per_index_ownership.ring_check_period` controls experimental ring-change reconciliation. The default is `10s`; `0` disables the watcher. Gateways retain serving replicas during handoff and evict only indexes they no longer own. On-demand and common indexes keep their existing TTL behavior.
