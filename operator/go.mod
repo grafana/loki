@@ -2,7 +2,7 @@ module github.com/grafana/loki/operator
 
 go 1.26.9
 
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	dario.cat/mergo v1.0.2
