@@ -30,14 +30,15 @@ var errNoPrimaryBackend = errors.New("no primary backend")
 // ready. When it has a comparator, it compares the secondary backend's response with the primary's
 // in the background. It never returns the secondary backend's response.
 type FanOutHandler struct {
-	backends               []*ProxyBackend
-	secondaryBackendRouter *secondaryBackendRouter
-	codec                  queryrangebase.Codec
-	logger                 log.Logger
-	metrics                *ProxyMetrics
-	routeName              string
-	comparator             comparator.ResponsesComparator
-	reportMissingSeries    bool
+	backends                 []*ProxyBackend
+	backendsWithoutSecondary []*ProxyBackend
+	secondaryBackendRouter   *secondaryBackendRouter
+	codec                    queryrangebase.Codec
+	logger                   log.Logger
+	metrics                  *ProxyMetrics
+	routeName                string
+	comparator               comparator.ResponsesComparator
+	reportMissingSeries      bool
 }
 
 // FanOutHandlerConfig holds configuration for creating a FanOutHandler.
@@ -58,14 +59,15 @@ type FanOutHandlerConfig struct {
 // NewFanOutHandler creates a new FanOutHandler.
 func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 	return &FanOutHandler{
-		backends:               cfg.Backends,
-		secondaryBackendRouter: newSecondaryBackendRouter(cfg.SecondaryBackendStrategy, cfg.Metrics, cfg.RouteName, cfg.Logger),
-		codec:                  cfg.Codec,
-		logger:                 cfg.Logger,
-		metrics:                cfg.Metrics,
-		routeName:              cfg.RouteName,
-		comparator:             cfg.Comparator,
-		reportMissingSeries:    cfg.ReportMissingSeries,
+		backends:                 cfg.Backends,
+		backendsWithoutSecondary: slices.DeleteFunc(slices.Clone(cfg.Backends), (*ProxyBackend).isSecondary),
+		secondaryBackendRouter:   newSecondaryBackendRouter(cfg.SecondaryBackendStrategy, cfg.Metrics, cfg.RouteName, cfg.Logger),
+		codec:                    cfg.Codec,
+		logger:                   cfg.Logger,
+		metrics:                  cfg.Metrics,
+		routeName:                cfg.RouteName,
+		comparator:               cfg.Comparator,
+		reportMissingSeries:      cfg.ReportMissingSeries,
 	}
 }
 
@@ -135,7 +137,7 @@ func (h *FanOutHandler) backendsForRequest(ctx context.Context, req queryrangeba
 	if h.secondaryBackendRouter.shouldRoute(ctx, req) {
 		return h.backends
 	}
-	return slices.DeleteFunc(slices.Clone(h.backends), (*ProxyBackend).isSecondary)
+	return h.backendsWithoutSecondary
 }
 
 func (h *FanOutHandler) doWithPrimary(numBackends int, results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
