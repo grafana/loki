@@ -1,0 +1,41 @@
+apiVersion: olm.operatorframework.io/v1
+kind: ClusterExtension
+metadata:
+  name: loki-operator
+  labels:
+    app.kubernetes.io/name: loki-operator
+    app.kubernetes.io/part-of: loki
+spec:
+  namespace: openshift-operators-redhat
+  serviceAccount:
+    name: loki-operator-installer
+  source:
+    sourceType: Catalog
+    catalog:
+      packageName: loki-operator
+
+      # Version selection
+      # Option 1: Latest version
+      # Omit version field to install latest available
+
+      # Option 2: Pin to specific version
+      # version: "0.7.0"
+
+      # Option 3: Version range (auto-update within range)
+      # version: ">=0.7.0, <1.0.0"
+      # version: "0.7.x"  # Patch updates only
+      # version: "~0.7"   # Z-stream updates
+
+      # Upgrade policy
+      # - CatalogProvided: Follow catalog upgrade constraints (default, recommended)
+      # - SelfCertified: Ignore constraints, allow any upgrade/downgrade
+      upgradeConstraintPolicy: CatalogProvided
+
+      # Catalog selector
+      # Filters which ClusterCatalogs to use for package selection
+      selector:
+        matchLabels:
+          olm.operatorframework.io/metadata.name: openshift-redhat-operators
+
+      # Optional: Channel selection
+      # channels: ["stable"]
