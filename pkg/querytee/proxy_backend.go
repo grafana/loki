@@ -26,9 +26,9 @@ const (
 	// response is an error. The proxy does not fall back to another backend.
 	RolePrimary
 	// RoleSecondary is the backend whose responses the proxy compares with the primary's. It
-	// receives every request on a registered route. The proxy never returns its response. When
-	// -proxy.compare-responses is set, the proxy compares its response with the primary's on
-	// routes that have a comparator.
+	// receives every write on a registered route. It receives a read only when the selection
+	// strategy picks it. The proxy never returns its response. When -proxy.compare-responses is
+	// set, the proxy compares its response with the primary's on routes that have a comparator.
 	RoleSecondary
 )
 
