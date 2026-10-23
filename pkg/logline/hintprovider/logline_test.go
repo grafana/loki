@@ -128,7 +128,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
-	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats, 6, 64)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats, 6, 64, time.Time{}, time.Time{})
 	require.NoError(t, err)
 	require.Empty(t, shardRanges)
 
@@ -1109,7 +1109,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
-	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats, 6, 64)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats, 6, 64, time.Time{}, time.Time{})
 	require.NoError(t, err)
 	require.NotEmpty(t, shardRanges)
 
@@ -1436,4 +1436,124 @@ func writeShardedTermTestIndex(
 	}
 	require.NoError(t, indexStore.PutIndex(context.Background(), bytes.NewReader(indexBytes), meta))
 	require.NoError(t, indexStore.Poll(context.Background()))
+}
+
+func TestRangesForDocIDs_MergesAbuttingDocs(t *testing.T) {
+	const bucket = 100 * time.Millisecond
+	t0 := time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC)
+	meta := store.Meta{Date: "2026-03-02", StorageID: "abc"}
+
+	const n = 1000
+	docs := make([]format.DocumentMetadata, n)
+	ids := make([]uint32, n)
+	for i := range n {
+		start := t0.Add(time.Duration(i) * bucket)
+		docs[i] = format.DocumentMetadata{
+			ID:          uint32(i),
+			MinTimeUnix: start.UnixMilli(),
+			MaxTimeUnix: start.Add(bucket).UnixMilli(),
+		}
+		ids[i] = uint32(i)
+	}
+
+	t.Run("abutting buckets collapse to one range", func(t *testing.T) {
+		got := rangesForDocIDs(meta, ids, docs, time.Time{}, time.Time{})
+		require.Len(t, got, 1)
+		require.Equal(t, t0, got[0].Start)
+		require.Equal(t, t0.Add(time.Duration(n)*bucket), got[0].End)
+		require.Contains(t, got[0].Source, "index=2026-03-02/abc")
+		require.Contains(t, got[0].Source, "docs=1000")
+		require.Contains(t, got[0].Source, "first=0")
+	})
+
+	t.Run("metadata out of id order still collapses", func(t *testing.T) {
+		reversed := make([]format.DocumentMetadata, len(docs))
+		for i := range docs {
+			reversed[i] = docs[len(docs)-1-i]
+		}
+		got := rangesForDocIDs(meta, ids, reversed, time.Time{}, time.Time{})
+		require.Len(t, got, 1)
+		require.Equal(t, t0, got[0].Start)
+		require.Equal(t, t0.Add(time.Duration(n)*bucket), got[0].End)
+	})
+
+	t.Run("a missing bucket stays a gap", func(t *testing.T) {
+		matched := make([]uint32, 0, n-1)
+		for _, id := range ids {
+			if id == n/2 {
+				continue
+			}
+			matched = append(matched, id)
+		}
+		got := rangesForDocIDs(meta, matched, docs, time.Time{}, time.Time{})
+		want := normalizePerDoc(matched, docs, time.Time{}, time.Time{})
+		require.Len(t, got, 2)
+		requireSameCoverage(t, want, got)
+		require.Equal(t, t0, got[0].Start)
+		require.Equal(t, t0.Add(time.Duration(n/2)*bucket), got[0].End)
+		require.Equal(t, t0.Add(time.Duration(n/2+1)*bucket), got[1].Start)
+		require.Equal(t, t0.Add(time.Duration(n)*bucket), got[1].End)
+	})
+
+	t.Run("query window drops buckets outside it", func(t *testing.T) {
+		// Inclusive window covers docs 3, 4, and 5. Doc 5 ends at t0+600ms
+		// and does not include that instant.
+		windowStart := t0.Add(3 * bucket)
+		windowEnd := t0.Add(6*bucket - time.Millisecond)
+		got := rangesForDocIDs(meta, ids, docs, windowStart, windowEnd)
+		want := normalizePerDoc(ids, docs, windowStart, windowEnd)
+		require.Len(t, got, 1)
+		requireSameCoverage(t, want, got)
+		require.Equal(t, windowStart, got[0].Start)
+		require.Equal(t, t0.Add(6*bucket), got[0].End)
+		require.Contains(t, got[0].Source, "docs=3")
+	})
+
+	t.Run("partial overlap keeps the document bounds", func(t *testing.T) {
+		windowStart := t0.Add(4*bucket + 40*time.Millisecond)
+		windowEnd := t0.Add(4*bucket + 60*time.Millisecond)
+		got := rangesForDocIDs(meta, ids, docs, windowStart, windowEnd)
+		require.Len(t, got, 1)
+		require.Equal(t, t0.Add(4*bucket), got[0].Start)
+		require.Equal(t, t0.Add(5*bucket), got[0].End)
+		require.Contains(t, got[0].Source, "doc=4")
+	})
+
+	t.Run("empty inputs", func(t *testing.T) {
+		require.Nil(t, rangesForDocIDs(meta, nil, docs, time.Time{}, time.Time{}))
+		require.Nil(t, rangesForDocIDs(meta, ids, nil, time.Time{}, time.Time{}))
+	})
+}
+
+// normalizePerDoc is the previous per-document expansion, used to check that
+// collapsing runs does not change the covered time.
+func normalizePerDoc(docIDs []uint32, docs []format.DocumentMetadata, windowStart, windowEnd time.Time) []HintTimeRange {
+	byID := make(map[uint32]format.DocumentMetadata, len(docs))
+	for _, doc := range docs {
+		byID[doc.ID] = doc
+	}
+	clip := !windowStart.IsZero() || !windowEnd.IsZero()
+	var ranges []HintTimeRange
+	for _, id := range docIDs {
+		doc, ok := byID[id]
+		if !ok {
+			continue
+		}
+		minTS := time.UnixMilli(doc.MinTimeUnix).UTC()
+		maxTS := time.UnixMilli(doc.MaxTimeUnix).UTC()
+		if clip && !docOverlapsInclusiveWindow(minTS, maxTS, windowStart, windowEnd) {
+			continue
+		}
+		ranges = append(ranges, HintTimeRange{Start: minTS, End: maxTS})
+	}
+	return NormalizeRanges(ranges)
+}
+
+func requireSameCoverage(t *testing.T, want, got []HintTimeRange) {
+	t.Helper()
+	require.Len(t, got, len(want))
+	for i := range want {
+		require.Equal(t, want[i].Start, got[i].Start, "range %d start", i)
+		require.Equal(t, want[i].End, got[i].End, "range %d end", i)
+	}
 }
