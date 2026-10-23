@@ -237,7 +237,7 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 			Entries:  1,
 		}
 		chunkMetas = append(chunkMetas, chunkMeta)
-		if Overlap(chunkMeta, queryBounds) {
+		if overlapChunk(chunkMeta, queryBounds) {
 			numChunksToMatch++
 		}
 	}
