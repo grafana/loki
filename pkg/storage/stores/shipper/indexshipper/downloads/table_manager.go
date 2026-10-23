@@ -61,8 +61,6 @@ type TableManager interface {
 	TriggerSync() bool
 	// SyncStatus reports the current/last sync status.
 	SyncStatus() indexstore.SyncStatus
-	// EnsureQueryReadiness downloads the indexes that must be query ready and are
-	// missing.
 	EnsureQueryReadiness(ctx context.Context) error
 }
 
