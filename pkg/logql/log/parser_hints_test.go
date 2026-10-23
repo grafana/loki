@@ -57,6 +57,20 @@ func Test_ParserHints(t *testing.T) {
 		expectLbs string
 	}{
 		{
+			`sum by (user) (count_over_time({app="nginx"} | json | label_format user="{{ $.remote_user }}" [1m]))`,
+			jsonLine,
+			true,
+			1.0,
+			`{user="foo"}`,
+		},
+		{
+			`sum(count_over_time({app="nginx"} | json | line_format "{{ $.remote_user }}" |= "foo" [1m]))`,
+			jsonLine,
+			true,
+			1.0,
+			`{}`,
+		},
+		{
 			`rate({app="nginx"} | json | response_status = 204 [1m])`,
 			jsonLine,
 			true,

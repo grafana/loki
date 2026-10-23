@@ -934,6 +934,9 @@ func TestLineFormatter_RequiredLabelNames(t *testing.T) {
 		{`{{ if  .foo | hasSuffix "Ip" }} {{.bar}} {{end}}-{{ if  .foo | hasSuffix "pw"}}no{{end}}`, []string{"foo", "bar"}},
 		{`{{with .foo}}{{printf "%q" .}} {{end}}`, []string{"foo"}},
 		{`{{with .foo}}{{printf "%q" .}} {{else}} {{ .buzz | lower }} {{end}}`, []string{"foo", "buzz"}},
+		{`{{ $.foo }} and {{ .bar }}`, []string{"foo", "bar"}},
+		{`{{with .foo}}{{ $.bar | lower }}{{end}}`, []string{"foo", "bar"}},
+		{`{{ $x := .foo }}{{ $x }}`, []string{"foo"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.fmt, func(t *testing.T) {
