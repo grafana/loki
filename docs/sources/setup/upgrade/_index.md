@@ -37,6 +37,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### `max_query_bytes_read` counts the data that split metric queries read again
+
+The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before. The estimate doesn't change for queries that the engine router sends in part to the v2 engine.
+
+The query size limits also reject a query when the query-frontend can't get the index stats for it. Before, a failed index stats lookup skipped `max_query_bytes_read` and `max_querier_bytes_read`, and the query ran. Now the query fails with an HTTP 500 status. A canceled request, a timeout, or a 4xx error from the lookup keeps its own status code.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.

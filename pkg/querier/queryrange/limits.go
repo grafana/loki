@@ -2,8 +2,10 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -229,7 +231,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	// Enforce the max query length.
 	lengthCapture := func(id string) time.Duration { return l.MaxQueryLength(ctx, id) }
-	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
+	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 && !skipsMaxQueryLength(ctx) {
 		queryLen := timestamp.Time(r.GetEnd().UnixMilli()).Sub(timestamp.Time(r.GetStart().UnixMilli()))
 		if queryLen > maxQueryLength {
 			return nil, fmt.Errorf("%w: %w", logqlmodel.ErrMaxQueryLength,
@@ -240,6 +242,23 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	return l.next.Do(ctx, r)
 }
 
+type skipMaxQueryLengthKey struct{}
+
+// withoutMaxQueryLength returns a context in which limitsMiddleware does not check the
+// max query length.
+//
+// The query size limiter uses it for its index stats lookups. A lookup also covers the
+// range vector interval, or the default lookback, before the query. So the lookup can be
+// longer than a query that passed the check.
+func withoutMaxQueryLength(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipMaxQueryLengthKey{}, true)
+}
+
+func skipsMaxQueryLength(ctx context.Context) bool {
+	skip, _ := ctx.Value(skipMaxQueryLengthKey{}).(bool)
+	return skip
+}
+
 type querySizeLimiter struct {
 	logger            log.Logger
 	next              queryrangebase.Handler
@@ -248,8 +267,9 @@ type querySizeLimiter struct {
 	limitFunc         func(context.Context, string) int
 	spec              querySizeLimitSpec
 
-	// splitter is the splitter that runs after the limiter, or nil when no
-	// splitter runs on the same request.
+	// splitter makes the same splits as the split middleware after the limiter. The
+	// limiter uses it to count the data that the splits read again. It is nil when no
+	// split middleware follows the limiter.
 	splitter splitter
 }
 
@@ -259,6 +279,7 @@ func newQuerySizeLimiter(
 	logger log.Logger,
 	limitFunc func(context.Context, string) int,
 	spec querySizeLimitSpec,
+	splitter splitter,
 	statsHandler ...queryrangebase.Handler,
 ) *querySizeLimiter {
 	q := &querySizeLimiter{
@@ -267,6 +288,7 @@ func newQuerySizeLimiter(
 		maxLookBackPeriod: engineOpts.MaxLookBackPeriod,
 		limitFunc:         limitFunc,
 		spec:              spec,
+		splitter:          splitter,
 	}
 
 	q.statsHandler = next
@@ -285,7 +307,7 @@ func NewQuerierSizeLimiterMiddleware(
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQuerierBytesRead, maxQuerierBytesReadSpec, statsHandler...)
+		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQuerierBytesRead, maxQuerierBytesReadSpec, nil, statsHandler...)
 	})
 }
 
@@ -297,16 +319,20 @@ func NewQuerySizeLimiterMiddleware(
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler...)
+		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, nil, statsHandler...)
 	})
 }
 
 // newSplitQuerySizeLimiterMiddleware creates a new Middleware that enforces query size
-// limits on requests that splitter then splits by time.
+// limits on requests that the split middleware then splits by time.
 //
 // The estimate is the bytes that all splits read together. A split of a range aggregation
 // also reads the range vector interval before its start, so the splits read more than the
 // unsplit request.
+//
+// splitter must make the same splits as the split middleware after the limiter. When a
+// request does not go through that split middleware, splitter must not split it either.
+// Otherwise the limiter counts reads that do not happen.
 func newSplitQuerySizeLimiterMiddleware(
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
@@ -315,26 +341,25 @@ func newSplitQuerySizeLimiterMiddleware(
 	statsHandler queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		q := newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler)
-		q.splitter = splitter
-		return q
+		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, splitter, statsHandler)
 	})
 }
 
-// getBytesReadForRequest returns the number of bytes that would be read for the query in r.
-// Since the query expression may contain multiple stream matchers, this function sums up the
-// bytes that will be read for each stream.
-// E.g. for the following query:
+// getBytesReadForRequest estimates the bytes that the query in r reads. It sums the bytes of
+// each stream matcher in the query, with the interval and offset of each matcher. For
+// example, for this query it sums the bytes of {job="foo"} and of {job="bar"}:
 //
 //	count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m] offset 10m)
 //
-// this function will sum the bytes read for each of the following streams, taking into account
-// individual intervals and offsets
-//   - {job="foo"}
-//   - {job="bar"}
+// When the limiter has a splitter, the bytes of r include the data that the splits of r
+// read again.
 //
-// It returns an error when it cannot estimate the bytes of r. An error for the query limits
-// context only drops the context from the estimate, because the context is optional.
+// The estimate is the larger of the bytes of r and the bytes of the query limits context.
+// The context gets no split scaling, because the frontend does not know how the client
+// splits the context range.
+//
+// It returns an error when it cannot estimate the bytes of r. An error for the context
+// only drops the context from the estimate, because the bytes of r still enforce the limit.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs []string, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
@@ -345,12 +370,19 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs
 		var err error
 		fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, queryLimitCtx.Expr, queryLimitCtx.From, queryLimitCtx.To, nil)
 		if err != nil {
-			level.Warn(util_log.WithContext(ctx, q.logger)).Log("msg", "failed to get bytes read stats for query limits context", "err", err)
+			if ctx.Err() != nil {
+				return 0, ctx.Err()
+			}
+			sp.RecordError(err)
+			level.Warn(util_log.WithContext(ctx, q.logger)).Log("msg", "failed to get bytes read stats for query limits context", "limit_name", q.spec.limitName, "err", err)
 		}
 	}
 
-	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd(), q.split(tenantIDs, r))
+	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd(), func() []queryrangebase.Request {
+		return q.split(tenantIDs, r)
+	})
 	if err != nil {
+		sp.RecordError(err)
 		return 0, err
 	}
 
@@ -362,6 +394,9 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs
 }
 
 // split returns the splits that the splitter makes of r, or nil when r is not split.
+//
+// It does not split requests other than *LokiRequest, because metricQuerySplitter panics
+// on them.
 func (q *querySizeLimiter) split(tenantIDs []string, r queryrangebase.Request) []queryrangebase.Request {
 	if q.splitter == nil {
 		return nil
@@ -376,9 +411,14 @@ func (q *querySizeLimiter) split(tenantIDs []string, r queryrangebase.Request) [
 	return splits
 }
 
-// getBytesForQueryAndRange returns the bytes that query reads in [from, to]. When splits is
-// not empty, it returns the bytes that the splits read together.
-func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time, splits []queryrangebase.Request) (uint64, error) {
+// getBytesForQueryAndRange estimates from the index stats the bytes that query reads when it
+// runs over [from, to]. The estimate includes the range vector interval and offset before
+// from.
+//
+// split returns the splits of the query. The caller passes a nil split when it has no
+// splits. getBytesForQueryAndRange calls split only when a matcher group has a range
+// vector interval, because only then do the splits read data again.
+func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time, split func() []queryrangebase.Request) (uint64, error) {
 	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return 0, err
@@ -393,7 +433,7 @@ func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query s
 	start := time.Now()
 	const maxConcurrentIndexReq = 10
 	matcherStats, err := getStatsForMatchers(
-		ctx,
+		withoutMaxQueryLength(ctx),
 		q.logger,
 		q.statsHandler,
 		model.Time(from.UnixMilli()),
@@ -404,6 +444,11 @@ func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query s
 	)
 	if err != nil {
 		return 0, err
+	}
+
+	var splits []queryrangebase.Request
+	if split != nil && slices.ContainsFunc(matcherGroups, func(grp syntax.MatcherRange) bool { return grp.Interval > 0 }) {
+		splits = split()
 	}
 
 	combinedStats := stats.MergeStats(matcherStats...)
@@ -441,7 +486,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, limitFuncCapture); maxBytesRead > 0 {
 		bytesRead, err := q.getBytesReadForRequest(ctx, tenantIDs, r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
+			return nil, q.statsLookupError(log, err)
 		}
 
 		statsBytesStr := humanize.IBytes(bytesRead)
@@ -456,15 +501,36 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	return q.next.Do(ctx, r)
 }
 
-// splitBytesRead scales bytes, the index stats of one matcher group in [from, to], to the
-// bytes that splits read together.
+// statsLookupError returns the error that the limiter returns when it cannot estimate the
+// bytes of a request.
+//
+// The limiter rejects the request, so that a failed lookup does not skip the limit. A
+// canceled request, a timeout, and a 4xx error keep their own error, so that they get
+// their own status code. Any other error becomes a 500 without the internal error text,
+// and the limiter logs the internal error.
+func (q *querySizeLimiter) statsLookupError(log log.Logger, err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.Code/100 == 4 {
+		return err
+	}
+
+	level.Error(log).Log("msg", "failed to get bytes read stats for query", "limit_name", q.spec.limitName, "err", err)
+	return httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query")
+}
+
+// splitBytesRead scales bytes to the bytes that splits read together. bytes is the index
+// stats of one matcher group for the request range [from, to]. The stats include the range
+// vector interval before from.
 //
 // A split reads its own time range plus the range vector interval before it. The windows
-// of adjacent splits overlap by the interval, so each split reads the overlap again. The
-// index stats cover the overlap only once.
+// of adjacent splits overlap by about the interval, so each split reads the overlap again.
+// The index stats cover the overlap only once.
 //
-// The scaling assumes that the matcher group stores data at a constant rate. It does not
-// make more index requests.
+// The scaling assumes that the matcher group stores data at a constant rate. It scales the
+// stats instead of sending one index request per split, so that the index load does not
+// grow with the number of splits.
 func splitBytesRead(bytes uint64, interval time.Duration, from, to time.Time, splits []queryrangebase.Request) uint64 {
 	if interval <= 0 || len(splits) < 2 {
 		return bytes

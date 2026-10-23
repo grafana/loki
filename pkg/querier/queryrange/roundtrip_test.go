@@ -224,6 +224,27 @@ func TestMetricsTripperware(t *testing.T) {
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
+	// Test that MaxQueryBytesRead counts the data that the splits of a range aggregation
+	// read again. The 4h range vector makes the two splits read 14h of data, but the index
+	// stats cover 10h.
+	rangeReq := &LokiRequest{
+		Query:     `count_over_time({app="foo"} |= "foo"[4h])`,
+		Limit:     1000,
+		Step:      30000, // 30sec
+		StartTs:   testTime.Add(-6 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+		Plan:      testutil.MustPlan(`count_over_time({app="foo"} |= "foo"[4h])`),
+	}
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 800})
+	queryCount, queryHandler = counter()
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, rangeReq)
+	require.ErrorIs(t, err, logqlmodel.ErrMaxQueryBytesRead)
+	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
 	// Test MaxQuerierBytesRead limit
 	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
 	queryCount, queryHandler = counter()
