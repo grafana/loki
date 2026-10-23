@@ -39,6 +39,10 @@ type Builder struct {
 	// records it. Reset clears it.
 	layout *streams.Layout
 
+	// sortSchema is the schema labels of layout joined for [stats.Stat].
+	// SetLayout computes it once, because AppendStat runs for every stat.
+	sortSchema string
+
 	// Each section builder is nil until first use, and Reset sets it back to
 	// nil. NewBuilder does not create them, so a Builder is cheap to create.
 	indexPointers *indexpointers.Builder
@@ -98,6 +102,7 @@ func (b *Builder) SetLayout(layout streams.Layout) error {
 		return fmt.Errorf("index already has stream layout %v, got %v", *b.layout, layout)
 	}
 	b.layout = &layout
+	b.sortSchema = strings.Join(layout.SchemaLabels(), ",")
 	return nil
 }
 
@@ -136,7 +141,7 @@ func (b *Builder) AppendStat(objectPath string, sectionIdx int64,
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIdx,
 		ShardBucket:      shardBucket,
-		SortSchema:       strings.Join(b.layout.SchemaLabels(), ","),
+		SortSchema:       b.sortSchema,
 		Labels:           labels,
 		MinTimestamp:     minTs.UnixNano(),
 		MaxTimestamp:     maxTs.UnixNano(),
@@ -312,6 +317,7 @@ func (b *Builder) Reset() {
 	b.stats = nil
 	b.postings = nil
 	b.layout = nil
+	b.sortSchema = ""
 
 	b.state = builderStateEmpty
 }
