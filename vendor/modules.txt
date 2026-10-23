@@ -1729,7 +1729,7 @@ github.com/pb33f/libopenapi/utils
 # github.com/pb33f/ordered-map/v2 v2.3.2
 ## explicit; go 1.24
 github.com/pb33f/ordered-map/v2
-# github.com/philhofer/fwd v1.2.0
+# github.com/philhofer/fwd v1.2.1
 ## explicit; go 1.20
 github.com/philhofer/fwd
 # github.com/pierrec/lz4/v4 v4.1.33
