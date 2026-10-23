@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -26,38 +25,23 @@ const (
 	ShardingPerIndex = "per_index"
 )
 
-// tablePeriod is the period of every TSDB index table.
-const tablePeriod = config.ObjectStorageIndexRequiredPeriod
-
 // tablePart is the part of a request that reads one index table.
 type tablePart struct {
 	Table         string
 	From, Through model.Time
 }
 
-// splitByTable splits [from, through] into one part per index table that the
-// index gateway reads to answer it. Tables are picked the way tsdb.IndexBuckets
-// picks them: every table whose day overlaps [from, through], both ends
-// inclusive, that lies within tableRange. Each part is clipped to its table's
-// day. As through is inclusive, a through exactly at midnight yields a part
+// splitByTable splits [from, through] into one part per index table of
+// tableRange that the index gateway reads to answer it, clipped to the table.
+// As through is inclusive, a through exactly at midnight yields a part
 // [through, through] for the table starting at that midnight.
 func splitByTable(from, through model.Time, tableRange config.TableRange) []tablePart {
-	period := int64(tablePeriod)
-	start := from.Time().UnixNano() / period
-	end := through.Time().UnixNano() / period
-
 	var parts []tablePart
-	for n := start; n <= end; n++ {
-		cfg := tableRange.ConfigForTableNumber(n)
-		if cfg == nil {
-			continue
-		}
-		dayStart := model.TimeFromUnixNano(n * period)
-		dayEnd := model.TimeFromUnixNano((n+1)*period) - 1
+	for _, table := range (config.TableRanges{tableRange}).IndexTablesFor(from, through) {
 		parts = append(parts, tablePart{
-			Table:   cfg.IndexTables.Prefix + strconv.FormatInt(n, 10),
-			From:    max(from, dayStart),
-			Through: min(through, dayEnd),
+			Table:   table.Name,
+			From:    max(from, table.Start),
+			Through: min(through, table.End),
 		})
 	}
 	return parts
