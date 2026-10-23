@@ -887,8 +887,8 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 ## explicit; go 1.20
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29
-## explicit; go 1.26.7
+# github.com/grafana/dskit v0.0.0-20261021210157-9647c44d36b0
+## explicit; go 1.26.10
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/cancellation
 github.com/grafana/dskit/clusterutil
@@ -964,7 +964,9 @@ github.com/grpc-ecosystem/grpc-gateway/v2/runtime
 github.com/grpc-ecosystem/grpc-gateway/v2/utilities
 # github.com/hashicorp/consul/api v1.35.0
 ## explicit; go 1.26.9
-github.com/hashicorp/consul/api
+# github.com/hashicorp/consul/api/v2 v2.0.0
+## explicit; go 1.26
+github.com/hashicorp/consul/api/v2
 # github.com/hashicorp/errwrap v1.1.0
 ## explicit
 github.com/hashicorp/errwrap

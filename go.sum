@@ -433,8 +433,8 @@ github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWS
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 h1:JeSE6pjso5THxAzdVpqr6/geYxZytqFMBCOtn/ujyeo=
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674/go.mod h1:r4w70xmWCQKmi1ONH4KIaBptdivuRPyosB9RmPlGEwA=
-github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29 h1:hTUx1kh6QgzSCbkSc5SyKaXFcFI0S/B2JIS5islwSt8=
-github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29/go.mod h1:JRfSXoPMy/K8sJ08PdQ9qStOIM18gr8Ayh7Wyi/3YQA=
+github.com/grafana/dskit v0.0.0-20261021210157-9647c44d36b0 h1:kaBiNKt8QkluGjntecY3viqdpQith46NcWHqJb46+tE=
+github.com/grafana/dskit v0.0.0-20261021210157-9647c44d36b0/go.mod h1:T0PZJPgv3YfJvAQvvf5745krPqT0jqCHsYHDLGlSWK8=
 github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654 h1:d04mpP3+tVfBec0NkKKASCnzps5xfd8UY5gBoVFOba0=
 github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654/go.mod h1:j/s0jkda4UXTemDs7Pgw/vMT06alWc42CHisvYac0qw=
 github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34 h1:sQ4hElLT1o+YcyfAF10AGW7nNwFuQvc2NU7qLZ6UhFc=
@@ -455,8 +455,11 @@ github.com/grpc-ecosystem/grpc-gateway/v2 v2.32.0 h1:QMILzF8BA7xftE4zVORkRrlv08m
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.32.0/go.mod h1:+ZQ6iUL8+ATyxGDQNuRKpNwJFdGDUi0e7E1QL9MvI7U=
 github.com/hashicorp/consul/api v1.35.0 h1:4ULHUF0DDHcDqQE48KpdbV7PIIQDua3UaJ/bEcUiTE0=
 github.com/hashicorp/consul/api v1.35.0/go.mod h1:RwV43v4y1mHVnJY2V9m89rR/0mDF9QL6q7+G0Rkma/I=
+github.com/hashicorp/consul/api/v2 v2.0.0 h1:FBzxiwnP8kJoHL2ByDUSvaItbc7jF7LxZLTnHtO75wA=
+github.com/hashicorp/consul/api/v2 v2.0.0/go.mod h1:1gEhzpcnl4X4ui7JFpFQvn7QRYQ60IFm6BxBXjrv0dg=
 github.com/hashicorp/consul/sdk v0.19.0 h1:zucuiWFKpggzzrx9MPHCpei74gnrLoHT/TGP2NmegHc=
-github.com/hashicorp/consul/sdk v0.19.0/go.mod h1:Xak7xFgsTYKR6j523cZDqCgZy0g/JvKMNs9MhX7MUM4=
+github.com/hashicorp/consul/sdk/v2 v2.0.0 h1:3KJ7oqP5ZY0OGmUUMTTafPNM1CscXw9NMJ329UMMgcs=
+github.com/hashicorp/consul/sdk/v2 v2.0.0/go.mod h1:Si3zN9Zw40NHtow0yrGpgJ0wMsL9O2RWDevEzmKzbps=
 github.com/hashicorp/cronexpr v1.1.3 h1:rl5IkxXN2m681EfivTlccqIryzYJSXRGRNa0xeG7NA4=
 github.com/hashicorp/cronexpr v1.1.3/go.mod h1:P4wA0KBl9C5q2hABiMO7cp6jcIg96CDh1Efb3g1PWA4=
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=

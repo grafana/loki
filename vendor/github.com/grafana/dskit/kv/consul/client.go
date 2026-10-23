@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	consul "github.com/hashicorp/consul/api"
+	consul "github.com/hashicorp/consul/api/v2"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"

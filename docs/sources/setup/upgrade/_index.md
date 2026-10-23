@@ -37,6 +37,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### New dskit configuration options
+
+The dskit update adds three optional settings:
+
+- `server.metrics_cache_duration` (`-server.metrics-cache-duration`) caches successful `/metrics` responses. The default `0s` disables caching. Cached metrics can lag live values by the configured duration.
+- `server.tls_curve_preferences` (`-server.tls-curve-preferences`) selects TLS key exchange curves and groups. The default empty value uses Go's defaults.
+- `memberlist.local_state_cache_enabled` (`-memberlist.local-state-cache-enabled`) caches serialized KV entries for push/pull synchronization. The default `false` disables caching. Enabling it uses additional memory proportional to the KV store size.
+
 ### Bloom filters are deprecated
 
 Query acceleration using bloom filters is deprecated and will be removed in a future release.
