@@ -38,7 +38,7 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 		return nil, err
 	}
 	m := util.NewMetrics(prometheus.DefaultRegisterer)
-	c, err := util.New(m, cfg.clientConfig, 0, 0, false, logger)
+	c, err := util.New(m, cfg.clientConfig, logger)
 	if err != nil {
 		return nil, err
 	}
