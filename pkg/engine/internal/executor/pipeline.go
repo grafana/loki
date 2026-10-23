@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -26,7 +25,7 @@ type Pipeline interface {
 	// It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 	Read(context.Context) (arrow.RecordBatch, error)
 	// Close closes the resources of the pipeline.
-	// The implementation must close all the of the pipeline's inputs and must be safe to call multiple times.
+	// The implementation must close the pipelines it wraps and must be safe to call multiple times.
 	Close()
 }
 
@@ -35,75 +34,38 @@ var (
 	EOF                = fmt.Errorf("pipeline exhausted: %w", io.EOF) //nolint:revive,staticcheck
 )
 
-type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
+// failedPipeline is a [Pipeline] whose Read always returns err.
+type failedPipeline struct{ err error }
 
-type GenericPipeline struct {
-	inputs []Pipeline
-	read   readFunc
-}
-
-func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
-	return &GenericPipeline{
-		read:   read,
-		inputs: inputs,
-	}
-}
-
-var _ Pipeline = (*GenericPipeline)(nil)
-
-func openInputsConcurrently(ctx context.Context, inputs []Pipeline) error {
-	g, ctx := errgroup.WithContext(ctx)
-	for _, in := range inputs {
-		g.Go(func() error { return in.Open(ctx) })
-	}
-	return g.Wait()
-}
+var _ Pipeline = failedPipeline{}
 
 // Open implements Pipeline.
-func (p *GenericPipeline) Open(ctx context.Context) error {
-	return openInputsConcurrently(ctx, p.inputs)
-}
+func (failedPipeline) Open(context.Context) error { return nil }
 
 // Read implements Pipeline.
-func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	if p.read == nil {
-		return nil, EOF
-	}
-	return p.read(ctx, p.inputs)
-}
+func (p failedPipeline) Read(context.Context) (arrow.RecordBatch, error) { return nil, p.err }
 
 // Close implements Pipeline.
-func (p *GenericPipeline) Close() {
-	for _, inp := range p.inputs {
-		inp.Close()
-	}
-}
+func (failedPipeline) Close() {}
 
 func errorPipeline(ctx context.Context, err error) Pipeline {
 	span := trace.SpanFromContext(ctx)
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
 
-	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
-		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
-	})
+	return failedPipeline{err: fmt.Errorf("failed to execute pipeline: %w", err)}
 }
 
 type lazyPipeline struct {
-	ctor func(ctx context.Context, inputs []Pipeline) Pipeline
-
-	inputs []Pipeline
-	built  Pipeline
+	ctor  func(ctx context.Context) Pipeline
+	built Pipeline
 }
 
 // newLazyPipeline defers building a [Pipeline] until the first call to
 // [Pipeline.Open]. Use it for pipelines that are expensive to build or that
 // depend on data only available during execution.
-func newLazyPipeline(ctor func(ctx context.Context, inputs []Pipeline) Pipeline, inputs []Pipeline) *lazyPipeline {
-	return &lazyPipeline{
-		ctor:   ctor,
-		inputs: inputs,
-	}
+func newLazyPipeline(ctor func(ctx context.Context) Pipeline) *lazyPipeline {
+	return &lazyPipeline{ctor: ctor}
 }
 
 var _ Pipeline = (*lazyPipeline)(nil)
@@ -113,7 +75,7 @@ func (lp *lazyPipeline) Open(ctx context.Context) error {
 	if lp.built != nil {
 		return nil
 	}
-	lp.built = lp.ctor(ctx, lp.inputs)
+	lp.built = lp.ctor(ctx)
 	return lp.built.Open(ctx)
 }
 

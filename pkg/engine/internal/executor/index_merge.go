@@ -24,7 +24,7 @@ import (
 // drive both merges, feed indexobj.Builder, upload the result, and emit a record
 // reporting the content-hash path.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
-	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifact, err := c.doIndexMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
@@ -37,7 +37,7 @@ func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge
 			return errorPipeline(ctx, err)
 		}
 		return NewBufferedPipeline(rec)
-	}, nil)
+	})
 }
 
 func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (*v2.ResultArtifact, error) {

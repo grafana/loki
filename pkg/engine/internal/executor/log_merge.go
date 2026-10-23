@@ -26,7 +26,7 @@ import (
 var errNoSourceObjects = errors.New("no source objects found")
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
-	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifact, err := c.doLogObjectMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
@@ -39,7 +39,7 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 			return errorPipeline(ctx, err)
 		}
 		return NewBufferedPipeline(rec)
-	}, nil)
+	})
 }
 
 // dataObjectBucket returns the bucket for reading source log objects and writing

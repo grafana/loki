@@ -37,9 +37,6 @@ type Config struct {
 	// Logger for optional log messages.
 	Logger log.Logger
 
-	// Metrics for the worker's wire connections.
-	WireMetrics *wire.Metrics
-
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
@@ -74,10 +71,6 @@ type Config struct {
 	//
 	// If NumThreads is set to 0, NumThreads defaults to [runtime.GOMAXPROCS].
 	NumThreads int
-
-	// Absolute path of the endpoint where the frame handler is registered.
-	// Used for connecting to scheduler and other workers.
-	Endpoint string
 
 	// ScratchStore holds the temporary data of compaction tasks. Optional; nil
 	// keeps the data in memory.

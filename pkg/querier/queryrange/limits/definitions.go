@@ -15,7 +15,6 @@ type Limits interface {
 	logql.Limits
 	QuerySplitDuration(string) time.Duration
 	InstantMetricQuerySplitDuration(string) time.Duration
-	EngineResultsCacheTimeBucketInterval(string) time.Duration
 	MetadataQuerySplitDuration(string) time.Duration
 	RecentMetadataQuerySplitDuration(string) time.Duration
 	RecentMetadataQueryWindow(string) time.Duration
