@@ -289,6 +289,38 @@ This information can be used to pinpoint the application sending the offending l
 - View detailed log output from the Loki distributors to identify affected streams
 - Decide on further steps depending on log source and validation error
 
+## Loki Discarded Samples Rate Limit
+
+### Impact
+
+Loki is rejecting a sustained share of log lines because a tenant ingestion limit is exhausted. Collectors retry these responses, so lines are not dropped immediately, but a long rejection period delays ingestion and can lose lines if the collector restarts while its buffer is full.
+
+### Summary
+
+At least 10% of lines for a tenant are discarded for `rate_limited`, `per_stream_rate_limit`, or `stream_limit`, and discards are above one sample per second, for 15 minutes.
+
+`LokiDiscardedSamplesWarning` does not include these reasons, because a single rejected push is retryable. `LokiTenantRateLimit` counts HTTP 429 responses and can stay quiet when a few large pushes are rejected while most requests succeed. This alert uses the discarded-line ratio instead.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
+
+### Steps
+
+- Identify the tenant and reason: `sum by (tenant, reason) (rate(loki_discarded_samples_total{reason=~"rate_limited|per_stream_rate_limit|stream_limit"}[15m]))`
+- For `rate_limited`, raise `limits.global.ingestion.ingestionRate` and `ingestionBurstSize`, or lower the collector batch size. A 1x.extra-small LokiStack has a 4MiB/s global rate and a 6MiB burst. The burst is not divided across distributors, and one push that does not fit the remaining tokens is rejected in full.
+- For `per_stream_rate_limit`, raise `perStreamRateLimit` and `perStreamRateLimitBurst`, or split the busy stream.
+- For `stream_limit`, raise `maxGlobalStreamsPerTenant` or drop unused streams at the collector.
+- On OpenShift, the collector batch size for a LokiStack output is `ClusterLogForwarder` `tuning.maxWrite`.
+
 ## Loki Ingester Flush Failure Rate Critical
 
 ### Impact
