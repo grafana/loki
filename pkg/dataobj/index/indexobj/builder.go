@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -31,6 +33,11 @@ type Builder struct {
 	metrics *BuilderMetrics
 
 	builder *dataobj.Builder // Inner builder for accumulating sections.
+
+	// layout is the stream layout of the data objects that the index
+	// describes, or nil before [Builder.SetLayout]. Every stats section
+	// records it. Reset clears it.
+	layout *streams.Layout
 
 	// Each section builder is nil until first use, and Reset sets it back to
 	// nil. NewBuilder does not create them, so a Builder is cheap to create.
@@ -83,12 +90,26 @@ func (b *Builder) getIndexPointersBuilder() *indexpointers.Builder {
 	return b.indexPointers
 }
 
-func (b *Builder) getStatsBuilder() *stats.Builder {
+// SetLayout sets the stream layout of the data objects that the index
+// describes. Every data object in one index must share a layout, so
+// SetLayout returns an error if the builder already has another layout.
+func (b *Builder) SetLayout(layout streams.Layout) error {
+	if b.layout != nil && !b.layout.Equal(layout) {
+		return fmt.Errorf("index already has stream layout %v, got %v", *b.layout, layout)
+	}
+	b.layout = &layout
+	return nil
+}
+
+func (b *Builder) getStatsBuilder() (*stats.Builder, error) {
 	if b.stats == nil {
-		b.stats = stats.NewBuilder(b.metrics.stats, stats.ColumnarSectionEncoder(int(b.cfg.TargetPageSize), b.cfg.MaxPageRows))
+		if b.layout == nil {
+			return nil, errors.New("appending a stat before the stream layout is set")
+		}
+		b.stats = stats.NewBuilder(b.metrics.stats, stats.ColumnarSectionEncoder(int(b.cfg.TargetPageSize), b.cfg.MaxPageRows), *b.layout)
 		b.stats.SetTenant(b.tenant)
 	}
-	return b.stats
+	return b.stats, nil
 }
 
 func (b *Builder) getPostingsBuilder() *postings.Builder {
@@ -99,18 +120,23 @@ func (b *Builder) getPostingsBuilder() *postings.Builder {
 	return b.postings
 }
 
-// AppendStat records a per-sort-key aggregate for a data object section.
+// AppendStat records a per-sort-key aggregate for a data object section. The
+// stat uses the schema labels of the layout that [Builder.SetLayout] set, and
+// AppendStat returns an error if no layout is set.
 func (b *Builder) AppendStat(objectPath string, sectionIdx int64,
-	shardBucket uint32, sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	shardBucket uint32, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
 	b.metrics.appendsTotal.Inc()
 
-	statsBuilder := b.getStatsBuilder()
+	statsBuilder, err := b.getStatsBuilder()
+	if err != nil {
+		return err
+	}
 
 	statsBuilder.Append(stats.Stat{
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIdx,
 		ShardBucket:      shardBucket,
-		SortSchema:       sortSchema,
+		SortSchema:       strings.Join(b.layout.SchemaLabels(), ","),
 		Labels:           labels,
 		MinTimestamp:     minTs.UnixNano(),
 		MaxTimestamp:     maxTs.UnixNano(),
@@ -285,6 +311,7 @@ func (b *Builder) Reset() {
 	b.indexPointers = nil
 	b.stats = nil
 	b.postings = nil
+	b.layout = nil
 
 	b.state = builderStateEmpty
 }

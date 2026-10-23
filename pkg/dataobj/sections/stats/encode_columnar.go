@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // ColumnarSectionEncoder returns a [SectionEncoder] that encodes [Stat] rows
@@ -15,20 +16,19 @@ import (
 // pageSizeHint and pageMaxRowCount control the page splitting behaviour of the
 // underlying column builders.
 func ColumnarSectionEncoder(pageSizeHint int, pageMaxRowCount int) SectionEncoder {
-	return func(rows []Stat, enc *columnar.Encoder) error {
-		return columnarEncode(rows, enc, pageSizeHint, pageMaxRowCount)
+	return func(rows []Stat, layout streams.Layout, enc *columnar.Encoder) error {
+		return columnarEncode(rows, layout, enc, pageSizeHint, pageMaxRowCount)
 	}
 }
 
 // columnarEncode implements the core encoding logic.
-func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
+func columnarEncode(rows []Stat, layout streams.Layout, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
 	if len(rows) == 0 {
 		return nil
 	}
 
-	// Parse label keys from SortSchema. All rows within a section share the
-	// same SortSchema (guaranteed by the builder being per-tenant and the
-	// calculation pipeline producing rows with a config-driven schema).
+	// All rows within a section share the same SortSchema, because a builder
+	// holds the rows of one layout.
 	labelKeys := schemaLabelNames(rows[0].SortSchema)
 
 	// Build fixed column builders.
@@ -130,7 +130,9 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 		ColumnIndex: maxTimestampIndex,
 		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 	})
-	enc.SetSortInfo(&datasetmd.SortInfo{ColumnSorts: columnSorts})
+	sortInfo := &datasetmd.SortInfo{ColumnSorts: columnSorts}
+	layout.WriteSortInfo(sortInfo)
+	enc.SetSortInfo(sortInfo)
 
 	// Encode fixed columns.
 	errs := make([]error, 0, labelColumnOffset+len(labelKeys))

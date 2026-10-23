@@ -21,3 +21,15 @@ To regenerate them, check out that commit and run a test in
 schema}`, calls `FlushAndSort`, and writes the object bytes to these files.
 The fixtures exist only to test the legacy layout fallback in
 `logs.LegacyLayoutOf`.
+
+## Legacy index fixture
+
+`legacy-index.dataobj` is an index object in the format from before stats
+sections recorded a stream layout. Its stats rows record the sort schema
+`label:service_name`, and its postings rows record 32 shard buckets. It holds
+tenant `acme` and two stats rows and two label postings for `logs/obj`.
+
+It was written by `indexobj.Builder` at commit `a26d83b0f2`
+(`feat(dataobj): Read the stream layout only from the streams section
+(#25578)`). It exists only to test the legacy layout fallback in
+`indexobj.TenantLayout`.

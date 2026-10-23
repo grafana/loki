@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -86,14 +87,14 @@ func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
 
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 	require.Zero(t, b.EstimatedSize(), "empty builder should have zero size")
 	require.Empty(t, b.rows, "empty builder should have no rows")
 }
 
 // TestBuilder_RoundTrip verifies stats round-trip correctly through on-disk encoding.
 func TestBuilder_RoundTrip(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 
 	input := []Stat{
 		{
@@ -178,7 +179,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 // TestBuilder_SortOrder verifies the sort order: label values in sort-schema order,
 // then MinTimestamp, then MaxTimestamp.
 func TestBuilder_SortOrder(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 
 	// Intentionally appended out of order.
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "beta"}, MinTimestamp: 200})
@@ -255,7 +256,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 // TestBuilder_AllSameServiceName verifies that rows with identical service_name
 // are sorted by MinTimestamp.
 func TestBuilder_AllSameServiceName(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 
 	// Multiple rows with the same service_name, different timestamps.
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 300, ObjectPath: "c"})
@@ -370,7 +371,7 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 // produces rows whose order disagrees with the reader/verifier's expectation,
 // surfacing as "output stats not sorted".
 func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 
 	// All rows share the same (service_name, MinTimestamp, MaxTimestamp).
 	// They differ only in ObjectPath and SectionIndex, and are appended in an
@@ -426,7 +427,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 
 // TestBuilder_MissingServiceName verifies rows with empty/missing label values sort before non-empty ones.
 func TestBuilder_MissingServiceName(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": ""}, ObjectPath: "obj1", MinTimestamp: 100})
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, ObjectPath: "obj2", MinTimestamp: 200})
@@ -468,7 +469,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 func TestBuilder_SectionSplitting(t *testing.T) {
 	// Use a very small page size to force multiple pages.
 	smallEncoder := ColumnarSectionEncoder(100, 2)
-	b := NewBuilder(nil, smallEncoder)
+	b := NewBuilder(nil, smallEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 	b.SetTenant("test-tenant")
 
 	// Append first batch.
@@ -519,7 +520,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 
 // TestBuilder_LargeValues verifies large label and path values round-trip correctly.
 func TestBuilder_LargeValues(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 
 	longPath := "/" + strings.Repeat("a", 10000)
 	longLabel := strings.Repeat("b", 5000)
@@ -563,7 +564,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 
 // TestBuilder_ResetAndReuse verifies that Reset clears all rows and the builder can be reused.
 func TestBuilder_ResetAndReuse(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 	b.SetTenant("test-tenant")
 
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "first"}, MinTimestamp: 100})
@@ -598,7 +599,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 
 // TestBuilder_EstimatedSize verifies EstimatedSize returns non-zero after appending.
 func TestBuilder_EstimatedSize(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 
 	require.Zero(t, b.EstimatedSize(), "empty builder should have zero estimated size")
 
@@ -616,7 +617,7 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder state.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100})
 
 	obj, closer := buildObject(t, b)
@@ -630,7 +631,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 
 // TestBuilder_Type verifies that the section type is correct.
 func TestBuilder_Type(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, streams.NewLayout(streams.DefaultShardLayout(), nil))
 	require.Equal(t, sectionType, b.Type())
 }
 

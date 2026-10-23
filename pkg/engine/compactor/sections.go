@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -27,7 +28,9 @@ import (
 
 const prefetchBytes = 2 * 1024 * 1024
 
-var errNoShardBucketColumn = errors.New("postings section has no ShardBuckets column")
+// errCorruptIndex reports an index whose sections of one tenant do not share
+// one stream layout. No retry can fix it, so compaction skips it.
+var errCorruptIndex = errors.New("corrupt index")
 
 // indexEntry is one index object listed in a ToC for a particular tenant.
 type indexEntry struct {
@@ -326,12 +329,49 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 	return columns, nil
 }
 
-// logSectionRefsFor returns one bounded reference per log section indexed by
-// idxPath, together with the index's sort schema and shard count.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], []string, int64, error) {
+// indexLayout returns the stream layout of the data objects that obj indexes
+// for tenant. ok is false if the index has no stats section for tenant. It
+// returns an error that wraps errCorruptIndex if the sections of the index do
+// not share one layout.
+func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath string) (layout streams.Layout, ok bool, err error) {
+	layout, ok, err = indexobj.TenantLayout(ctx, obj, tenant)
+	if errors.Is(err, indexobj.ErrMixedLayouts) {
+		return streams.Layout{}, false, fmt.Errorf("%w: index %s: %w", errCorruptIndex, idxPath, err)
+	}
+	if err != nil {
+		return streams.Layout{}, false, fmt.Errorf("read stream layout tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+	return layout, ok, nil
+}
+
+// indexLayoutAt opens the index at idxPath and returns its layout; see
+// indexLayout.
+func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) (streams.Layout, bool, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+		return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+	return indexLayout(ctx, obj, tenant, idxPath)
+}
+
+// logSectionRefsFor returns one bounded reference per log section indexed by
+// idxPath. It returns an error that wraps errCorruptIndex if the sections of
+// the index do not share one stream layout.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], error) {
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
+	if err != nil {
+		return nil, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+	layout, ok, err := indexLayout(ctx, obj, tenant, idxPath)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+	labelNames, err := schemaLabelNames(layout.SchemaLabels())
+	if err != nil {
+		return nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	type sectionID struct {
@@ -340,10 +380,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	}
 
 	var (
-		schema     []string
-		labelNames []string
-		schemaName string
-		reader     stats.Reader
+		reader stats.Reader
 
 		bySection = make(map[sectionID]*v2.Section[logSortPrefix])
 	)
@@ -358,18 +395,18 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
-			return nil, nil, 0, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
-			return nil, nil, 0, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
 			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, nil, 0, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+				return nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
 			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
@@ -379,20 +416,10 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			rows := scratch[:numRows]
 			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
-				return nil, nil, 0, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
 			for _, stat := range rows[:n] {
-				if schemaName == "" && len(bySection) == 0 {
-					schemaName = stat.SortSchema
-					schema, labelNames, err = parseSortSchema(stat.SortSchema)
-					if err != nil {
-						return nil, nil, 0, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
-					}
-				} else if stat.SortSchema != schemaName {
-					return nil, nil, 0, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
-				}
-
 				var labels []string
 				if len(labelNames) > 0 {
 					labels = make([]string, len(labelNames))
@@ -440,16 +467,6 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
-	// Scan the postings section to determine the shard count
-	// TODO(benclive): Copy the shard count to the stats section to avoid this step
-	shardCount, err := getShardCount(ctx, obj, tenant)
-	if err != nil {
-		if !errors.Is(err, errNoShardBucketColumn) {
-			return nil, nil, 0, fmt.Errorf("get shard count tenant=%s index=%s: %w", tenant, idxPath, err)
-		}
-		shardCount = 0
-	}
-
 	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
 	for _, ref := range bySection {
 		refs = append(refs, *ref)
@@ -460,85 +477,19 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
-	return refs, schema, shardCount, nil
+	return refs, nil
 }
 
-func getShardCount(ctx context.Context, obj *dataobj.Object, tenant string) (shardCount int64, finalErr error) {
-	var (
-		haveShardCount bool
-	)
-	for _, section := range obj.Sections().Filter(postings.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
-		opened, err := postings.Open(ctx, section)
-		if err != nil {
-			return 0, fmt.Errorf("open postings section: %w", err)
-		}
-
-		shardBucketColumns := columnsOfType(opened.Columns(), postings.ColumnTypeShardBuckets)
-		if len(shardBucketColumns) != 1 {
-			return 0, errNoShardBucketColumn
-		}
-
-		inner := postings.NewReader(postings.ReaderOptions{Columns: shardBucketColumns})
-		if err := inner.Open(ctx); err != nil {
-			return 0, fmt.Errorf("opening postings reader: %w", err)
-		}
-
-		// Wrap the read in an inline func to close the reader after each loop
-		err = func() error {
-			rowReader := postings.NewRowReader(ctx, inner)
-			defer func() {
-				closeErr := rowReader.Close()
-				if finalErr == nil {
-					finalErr = closeErr
-				}
-			}()
-
-			for rowReader.Next() {
-				row := rowReader.At()
-				if !haveShardCount {
-					shardCount = row.ShardBuckets
-					haveShardCount = true
-				} else if row.ShardBuckets != shardCount {
-					return fmt.Errorf("detected multiple shard counts within index file: %d and %d", shardCount, row.ShardBuckets)
-				}
-			}
-			if err := rowReader.Err(); err != nil {
-				return fmt.Errorf("reading postings: %w", err)
-			}
-			return nil
-		}()
-		if err != nil {
-			return 0, err
-		}
-	}
-
-	return shardCount, nil
-}
-
-func columnsOfType(columns []*postings.Column, typ postings.ColumnType) []*postings.Column {
-	var foundColumns []*postings.Column
-	for _, column := range columns {
-		if column.Type == typ {
-			foundColumns = append(foundColumns, column)
-		}
-	}
-	return foundColumns
-}
-
-func parseSortSchema(value string) (schema, labelNames []string, _ error) {
-	for entry := range strings.SplitSeq(value, ",") {
-		if entry == "" {
-			continue
-		}
+// schemaLabelNames returns the label names of the fully-qualified schema
+// labels, in order.
+func schemaLabelNames(schemaLabels []string) ([]string, error) {
+	var labelNames []string
+	for _, entry := range schemaLabels {
 		typ, name, ok := strings.Cut(entry, ":")
 		if !ok || typ != "label" || name == "" {
-			return nil, nil, fmt.Errorf("invalid log sort key %q", entry)
+			return nil, fmt.Errorf("invalid log sort key %q", entry)
 		}
-		schema = append(schema, entry)
 		labelNames = append(labelNames, name)
 	}
-	return schema, labelNames, nil
+	return labelNames, nil
 }

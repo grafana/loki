@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // TestRowReader_RoundTrip builds a stats section with two rows and verifies
@@ -15,7 +16,7 @@ import (
 func TestRowReader_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), streams.NewLayout(streams.DefaultShardLayout(), nil))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -92,7 +93,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 func TestRowReader_CloseIdempotent(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), streams.NewLayout(streams.DefaultShardLayout(), nil))
 	b.Append(stats.Stat{
 		ObjectPath:   "/obj1",
 		SectionIndex: 0,
