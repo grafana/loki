@@ -36,6 +36,7 @@ func (l mockLimits) IndexGatewayShardSize(_ string) int       { return l.shardSi
 func (l mockLimits) IndexGatewayMaxCapacity(_ string) float64 { return l.maxCapacity }
 func (l mockLimits) TSDBMaxBytesPerShard(_ string) int        { return l.maxBytesPerShard }
 func (l mockLimits) TSDBPrecomputeChunks(_ string) bool       { return l.precomputeChunks }
+func (l mockLimits) TSDBShardedIndexShardFactor(_ string) int { return 0 }
 
 func TestVolume(t *testing.T) {
 	indexQuerier := newIngesterQuerierMock()

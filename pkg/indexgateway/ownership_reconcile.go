@@ -19,12 +19,15 @@ func (cfg *PerIndexOwnershipConfig) registerReconcileFlags(prefix string, f *fla
 }
 
 // FilterTenantsToDrop returns the tenants whose index in table this instance
-// no longer serves, so it can evict them. It matches downloads.TenantFilter.
+// no longer serves any shard of, so it can evict them. It matches
+// downloads.TenantFilter. Files of shards no longer owned within a tenant
+// that is still served are dropped by the index set's sync through
+// FilterFiles.
 //
 // It returns no tenants unless this instance is ACTIVE in the ring: while it
 // is JOINING (preloading), LEAVING (shutting down) or missing from the ring it
 // keeps everything. A tenant is returned only if this instance is an owner of
-// its index neither for routing (IndexOwnersRead) nor for loading
+// none of its shards, neither for routing (IndexOwnersRead) nor for loading
 // (IndexesSync). IndexOwnersRead skips owners that are not ACTIVE yet and
 // extends to the next instance, so while a new owner is JOINING and
 // preloading, this instance still counts as an owner and keeps the index.
@@ -39,18 +42,19 @@ func (f *IndexOwnershipFilter) FilterTenantsToDrop(table string, tenantIDs []str
 
 	var drop []string
 	for _, tenantID := range tenantIDs {
-		owned, err := f.ownership.Owns(f.instanceAddr, tenantID, table, IndexOwnersRead)
+		k := f.shardFactor(table, tenantID)
+		serving, err := f.ownership.OwnedShards(f.instanceAddr, tenantID, table, k, IndexOwnersRead)
 		if err != nil {
 			return nil, err
 		}
-		if owned {
+		if len(serving) > 0 {
 			continue
 		}
-		owned, err = f.ownership.Owns(f.instanceAddr, tenantID, table, IndexesSync)
+		owned, err := f.ownership.OwnedShards(f.instanceAddr, tenantID, table, k, IndexesSync)
 		if err != nil {
 			return nil, err
 		}
-		if !owned {
+		if len(owned) == 0 {
 			drop = append(drop, tenantID)
 		}
 	}

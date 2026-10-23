@@ -114,6 +114,7 @@ type Config struct {
 	TenantFilter              downloads.TenantFilter `yaml:"-"`
 	SkipInitialQueryReadiness bool                   `yaml:"-"`
 	DropFilter                downloads.TenantFilter `yaml:"-"`
+	FileFilter                downloads.FileFilter   `yaml:"-"`
 }
 
 // ForPeriod returns the config and the object storage path prefix of the
@@ -129,6 +130,7 @@ func (cfg Config) ForPeriod(p config.PeriodConfig) (Config, string) {
 	cfg.TenantFilter = nil
 	cfg.SkipInitialQueryReadiness = false
 	cfg.DropFilter = nil
+	cfg.FileFilter = nil
 	return cfg, p.IndexTables.PathPrefix
 }
 
@@ -286,6 +288,7 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 			Limits:                    limits,
 			SkipInitialQueryReadiness: s.cfg.SkipInitialQueryReadiness,
 			DropFilter:                s.cfg.DropFilter,
+			FileFilter:                s.cfg.FileFilter,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {

@@ -69,6 +69,10 @@ loki_boltdb_shipper_retention_*
 
 To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
 
+### Experimental fingerprint-shard ownership rollout
+
+Per-index ownership uses the tenant's `tsdb_sharded_index_shard_factor` to select files by fingerprint overlap in the schema periods with a `sharded_path_prefix`. Gateways and clients must use the same schema config and per-tenant limits, including runtime overrides. Upgrade the complete query path before setting factors greater than `1`; older table-only routing is insufficient when gateways keep partial indexes. Unsplit files remain readable and overlap every owned shard.
+
 ### Experimental per-index client routing
 
 The experimental `tsdb_shipper.index_gateway_client.sharding: per_index` mode routes each table of a request for a schema period with a `sharded_path_prefix` to its owners. Requests for other periods use the default routing. It requires ring mode and is intended for per-index ownership. `per_index_max_concurrency` limits concurrent parts per request (default `8`); each part also counts toward the client's in-flight limit. The default sharding mode preserves existing routing.
