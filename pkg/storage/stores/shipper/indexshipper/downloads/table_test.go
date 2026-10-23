@@ -478,3 +478,27 @@ func verifyIndexForEach(t *testing.T, expectedIndexes []string, forEachFunc func
 	sort.Strings(expectedIndexes)
 	require.Equal(t, expectedIndexes, indexesFound)
 }
+
+func TestTableQueryReadinessRefreshesOwnedFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	setupReconcileTable(t, tempDir, "u1")
+	keep := "u1-0"
+	filter := func(_, _ string, files []storage.IndexFile) ([]storage.IndexFile, error) {
+		var owned []storage.IndexFile
+		for _, file := range files {
+			if file.Name == keep {
+				owned = append(owned, file)
+			}
+		}
+		return owned, nil
+	}
+	tbl := newReconcileTable(t, tempDir, newOpenRecorder(), tableOptions{fileFilter: filter})
+	ctx := context.Background()
+	require.NoError(t, tbl.EnsureQueryReadiness(ctx, []string{"u1"}))
+	require.ElementsMatch(t, []string{"0", "1", "u1-0"}, forEachNames(t, tbl, "u1"))
+	keep = "u1-1"
+	// Reconciliation must refresh an already-query-ready tenant immediately,
+	// without waiting for the independent periodic sync loop.
+	require.NoError(t, tbl.EnsureQueryReadiness(ctx, []string{"u1"}))
+	require.ElementsMatch(t, []string{"0", "1", "u1-1"}, forEachNames(t, tbl, "u1"))
+}
