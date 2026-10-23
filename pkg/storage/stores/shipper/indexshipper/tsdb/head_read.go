@@ -25,10 +25,6 @@ import (
 )
 
 // Index returns an IndexReader against the block.
-//
-// Like a TSDB file reader, it is not scoped to a query window: label and
-// postings lookups see every series in the head. Callers skip the head when the
-// window misses its bounds (see tenantHeads.tenantIndex).
 func (h *Head) Index() IndexReader {
 	return &headIndexReader{head: h}
 }

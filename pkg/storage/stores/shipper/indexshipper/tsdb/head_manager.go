@@ -824,9 +824,7 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	if !ok {
 		return
 	}
-	// The head's reader isn't scoped to the query window, so skip the head
-	// when the window misses it. Otherwise label queries with matchers return
-	// series that have no data in the window.
+	// only return the index if we overlap in time
 	if int64(through) < tenant.MinTime() || int64(from) > tenant.MaxTime() {
 		return nil, false
 	}
