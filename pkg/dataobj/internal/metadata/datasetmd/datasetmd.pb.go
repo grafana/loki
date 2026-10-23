@@ -781,15 +781,15 @@ type SortInfo struct {
 	ColumnSorts []*SortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
 	// schema_labels are the fully-qualified labels of the stream key, in order.
 	// Each entry has the form "label:<name>" (e.g. "label:service_name"). Set
-	// only in STREAMS and STATS sections.
+	// only in STREAMS and STATS sections that record a layout.
 	SchemaLabels []string `protobuf:"bytes,2,rep,name=schema_labels,json=schemaLabels,proto3" json:"schema_labels,omitempty"`
 	// stream_order is the stream key that orders the stream IDs. Set only in
-	// STREAMS and STATS sections. Independently written objects with the same
-	// layout have comparable stream orders.
+	// STREAMS and STATS sections that record a layout. Independently written
+	// objects with the same layout have comparable stream orders.
 	StreamOrder StreamOrder `protobuf:"varint,3,opt,name=stream_order,json=streamOrder,proto3,enum=dataobj.metadata.dataset.v2.StreamOrder" json:"stream_order,omitempty"`
 	// shard_count is the bucket count of the shard layout of the shard bucket
-	// column. Set only in STREAMS and STATS sections, where it must not be
-	// zero.
+	// column. Set only in STREAMS and STATS sections that record a layout,
+	// where it must not be zero.
 	ShardCount uint32 `protobuf:"varint,4,opt,name=shard_count,json=shardCount,proto3" json:"shard_count,omitempty"`
 }
 

@@ -2,6 +2,7 @@ package indexobj
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,6 +70,38 @@ func TestTenantLayout(t *testing.T) {
 	t.Run("returns an invalid layout error for a legacy index without postings rows", func(t *testing.T) {
 		_, err := legacyTenantLayout(t.Context(), buildStats(t, "acme", appLayout), "acme")
 		require.ErrorIs(t, err, ErrInvalidLayout)
+	})
+
+	t.Run("returns a mixed layouts error for a legacy index whose stats rows have different sort schemas", func(t *testing.T) {
+		builder := dataobj.NewBuilder(nil)
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), appLayout)
+		statsBuilder.SetTenant("acme")
+		statsBuilder.Append(stats.Stat{ObjectPath: "logs/a", SortSchema: "label:app"})
+		statsBuilder.Append(stats.Stat{ObjectPath: "logs/b", SortSchema: "label:cluster"})
+		require.NoError(t, builder.Append(statsBuilder))
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		_, err = legacyTenantLayout(t.Context(), obj, "acme")
+		require.ErrorIs(t, err, ErrMixedLayouts)
+	})
+
+	t.Run("returns a mixed layouts error for a legacy index whose postings rows have different shard buckets", func(t *testing.T) {
+		b, err := NewMergeBuilder(testBuilderConfig, nil, "acme", appLayout)
+		require.NoError(t, err)
+		require.NoError(t, b.AppendStat("acme", stats.Stat{ObjectPath: "logs/obj", SortSchema: "label:app"}))
+		for i, buckets := range []int64{32, 16} {
+			require.NoError(t, b.AppendPostingsLabelEntry("acme", postings.LabelEntry{
+				ObjectPath: "logs/obj", ColumnName: "app", LabelValue: fmt.Sprint(i), ShardBuckets: buckets,
+			}))
+		}
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		_, err = legacyTenantLayout(t.Context(), obj, "acme")
+		require.ErrorIs(t, err, ErrMixedLayouts)
 	})
 
 	t.Run("derives the layout of a legacy index from its stats and postings rows", func(t *testing.T) {

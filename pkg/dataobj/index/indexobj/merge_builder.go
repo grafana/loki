@@ -22,7 +22,9 @@ import (
 // merge-mode sub-builders.
 //
 // A MergeBuilder builds the index of one tenant, whose data objects share one
-// stream layout. Every stats section records that layout.
+// stream layout. Every stats section records that layout. A MergeBuilder
+// built with the zero layout accepts postings but no stats, because it has no
+// layout to record.
 //
 // Methods on MergeBuilder are not goroutine-safe; callers are responsible for
 // synchronization.
@@ -34,8 +36,9 @@ type MergeBuilder struct {
 	currentSizeEstimate int
 	builderFull         bool
 
-	builder  *dataobj.Builder // Inner builder for accumulating sections.
+	builder  *dataobj.Builder
 	stats    *stats.Builder
+	layout   streams.Layout
 	postings *postings.MergeBuilder
 
 	unflushedSizeEstimate int
@@ -71,6 +74,7 @@ func NewMergeBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, 
 
 		builder:  dataobj.NewBuilder(scratchStore),
 		stats:    statsBuilder,
+		layout:   layout,
 		postings: postingsBuilder,
 	}, nil
 }
@@ -96,6 +100,10 @@ func (b *MergeBuilder) AppendStat(tenantID string, stat stats.Stat) error {
 	b.metrics.appendsTotal.Inc()
 	if err := b.checkTenant(tenantID); err != nil {
 		return err
+	}
+
+	if b.layout.StreamOrder() == streams.StreamOrderUnspecified {
+		return errors.New("merge builder without a stream layout got a stat")
 	}
 
 	tenantStats := b.stats

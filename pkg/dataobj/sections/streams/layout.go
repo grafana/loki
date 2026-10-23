@@ -90,8 +90,8 @@ func (l Layout) WriteSortInfo(si *datasetmd.SortInfo) {
 }
 
 // LayoutFromSortInfo decodes the layout that [Layout.WriteSortInfo] wrote to
-// si, and ignores the column sorts of si. ok is false if si records no
-// layout: a nil si, or no stream order, shard count, or schema labels.
+// si, and ignores the column sorts of si. ok is false if si is nil or sets
+// none of the stream order, the shard count, and the schema labels.
 //
 // LayoutFromSortInfo returns an error for any other state that [NewLayout]
 // cannot produce: a shard count that is not a valid shard layout, or a stream

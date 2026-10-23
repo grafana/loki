@@ -345,8 +345,8 @@ func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath strin
 	return layout, ok, nil
 }
 
-// indexLayoutAt opens the index at idxPath and returns its layout; see
-// indexLayout.
+// indexLayoutAt opens the index at idxPath and returns its layout as
+// indexLayout does.
 func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) (streams.Layout, bool, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {

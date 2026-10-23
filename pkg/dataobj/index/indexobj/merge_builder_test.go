@@ -329,6 +329,12 @@ func TestMergeBuilder_OtherTenant(t *testing.T) {
 }
 
 func TestMergeBuilder_RecordsLayout(t *testing.T) {
+	t.Run("AppendStat returns an error when the builder has the zero layout", func(t *testing.T) {
+		b, err := NewMergeBuilder(testBuilderConfig, nil, "tenant-1", streams.Layout{})
+		require.NoError(t, err)
+		require.ErrorContains(t, b.AppendStat("tenant-1", stats.Stat{ObjectPath: "obj"}), "without a stream layout")
+	})
+
 	t.Run("every stats section records the layout of the builder", func(t *testing.T) {
 		b, err := NewMergeBuilder(oneStatPerSectionConfig, nil, "tenant-1", testMergeLayout)
 		require.NoError(t, err)

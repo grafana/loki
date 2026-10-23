@@ -1373,10 +1373,9 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	require.False(t, hasTruncated, "label should not be truncated to 'my'")
 }
 
-// TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly tests that merging
-// indexes with different stream layouts fails with a clear error before any
-// data is written.
-func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
+// TestExecuteIndexMerge_FailsWhenSourceLayoutsDiffer tests that merging
+// indexes with different stream layouts fails before any data is written.
+func TestExecuteIndexMerge_FailsWhenSourceLayoutsDiffer(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 

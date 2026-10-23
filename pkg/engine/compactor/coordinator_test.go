@@ -2675,3 +2675,24 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
 	})
 }
+
+func TestNewLayoutKey(t *testing.T) {
+	sixteen, err := streams.ShardLayoutFromBuckets(16)
+	require.NoError(t, err)
+
+	t.Run("gives equal keys to equal layouts", func(t *testing.T) {
+		require.Equal(t,
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})),
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})))
+	})
+
+	t.Run("gives different keys to layouts that differ only in shard buckets", func(t *testing.T) {
+		require.NotEqual(t,
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})),
+			newLayoutKey(streams.NewLayout(sixteen, []string{"label:app"})))
+	})
+
+	t.Run("gives no real layout the zero key", func(t *testing.T) {
+		require.NotEqual(t, layoutKey{}, newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), nil)))
+	})
+}

@@ -56,8 +56,8 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		return nil, fmt.Errorf("opening source index %q: %w", node.SourceIndexPath, err)
 	}
 
-	// A source without stats sections records no layout. Its output then
-	// holds no stats sections either, so the zero layout is never recorded.
+	// A source without stats sections has no layout. The builder then gets
+	// the zero layout, and rejects any stat, so it never records that layout.
 	layout, _, err := indexobj.TenantLayout(ctx, source, node.Tenant)
 	if err != nil {
 		return nil, fmt.Errorf("reading stream layout of source index %q: %w", node.SourceIndexPath, err)
