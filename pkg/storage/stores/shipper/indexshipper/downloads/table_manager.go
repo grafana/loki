@@ -52,14 +52,12 @@ type Limits interface {
 // It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterTenants
 type TenantFilter func(table string, tenants []string) ([]string, error)
 
-// FileFilter answers which of the index files of a tenant in a table this
+// FileFilter answers which index files of a given tenant and table this
 // instance must keep ready for queries. It is applied when a user index set
 // kept ready for queries syncs with storage: files it does not return are not
-// downloaded, and are removed if present. Index sets downloaded on demand by
-// a query are not filtered, so a gateway that is not an owner can still answer
-// a query from the whole index. With fingerprint-sharded index files, the
-// index gateway keeps the files whose fingerprint range overlaps a shard it
-// owns.
+// downloaded, and are removed if present. It is not applied to an index set
+// downloaded on demand to serve a query; that set keeps every file, so a
+// gateway that is not an owner can still answer the query.
 //
 // It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterFiles
 type FileFilter func(table, tenant string, files []storage.IndexFile) ([]storage.IndexFile, error)
@@ -95,9 +93,9 @@ type Config struct {
 	// index sets are not evicted this way, but are governed by CacheTTL. The
 	// index gateway with per-index ownership sets it.
 	DropFilter TenantFilter
-	// FileFilter, if set, limits the files a user index set kept ready for
-	// queries downloads and keeps (see FileFilter). The index gateway with
-	// per-index ownership sets it.
+	// FileFilter, if set, limits the files a user index set downloads and keeps
+	// ready for queries (see FileFilter). The index gateway with per-index
+	// ownership sets it.
 	FileFilter FileFilter
 }
 

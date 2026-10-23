@@ -981,8 +981,8 @@ func (t *Loki) initStore() (services.Service, error) {
 		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr(), tables, t.Overrides)
 		t.Cfg.StorageConfig.TSDBShipperConfig.PerIndexOwnership = true
 		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
-		// Of a tenant's index, keep only the files of the fingerprint-range
-		// shards this gateway owns.
+		// Of a tenant's index, keep only the files overlapping the
+		// fingerprint-range shards this gateway owns.
 		t.Cfg.StorageConfig.TSDBShipperConfig.FileFilter = filter.FilterFiles
 		t.Cfg.StorageConfig.TSDBShipperConfig.SkipInitialQueryReadiness = true
 		// Evict indexes this gateway no longer owns, judged from ACTIVE instances

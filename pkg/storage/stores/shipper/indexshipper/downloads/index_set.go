@@ -70,9 +70,7 @@ type indexSet struct {
 	logger            log.Logger
 	maxConcurrent     int
 	downloadTimeout   time.Duration
-	// fileFilter, if set, limits the files synced from storage while the index
-	// set is query ready (see FileFilter). Files it leaves out are removed.
-	fileFilter indexSetFileFilter
+	fileFilter        indexSetFileFilter
 
 	lastUsedAt time.Time
 	index      map[string]index.Index
@@ -466,9 +464,9 @@ func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock, bypassListC
 		return
 	}
 
-	// An index set kept ready for queries only holds the files this instance
-	// owns; one downloaded on demand holds every file so that any instance can
-	// answer the query.
+	// Only filter once the index set is query ready, i.e. preloaded because
+	// this instance owns it. An index set downloaded lazily to serve a query
+	// keeps every file, since that query may need any of them.
 	if t.fileFilter != nil && t.queryReady.Load() {
 		files, err = t.fileFilter(files)
 		if err != nil {
