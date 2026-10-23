@@ -24,6 +24,7 @@ type Limits interface {
 	IndexGatewayMaxCapacity(tenantID string) float64
 	TSDBMaxBytesPerShard(string) int
 	TSDBPrecomputeChunks(string) bool
+	ShardedIndexLimits
 }
 
 type ShardingStrategy interface {
