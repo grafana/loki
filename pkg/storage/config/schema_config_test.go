@@ -710,6 +710,58 @@ func TestTableRange_TableInRange(t *testing.T) {
 	}
 }
 
+func TestTableRanges_IndexTablesFor(t *testing.T) {
+	day := model.Time(ObjectStorageIndexRequiredPeriod / time.Millisecond)
+	period := func(prefix string) *PeriodConfig {
+		return &PeriodConfig{IndexTables: IndexPeriodicTableConfig{
+			PeriodicTableConfig: PeriodicTableConfig{Prefix: prefix, Period: ObjectStorageIndexRequiredPeriod},
+		}}
+	}
+	older, newer := period("old_"), period("new_")
+	ranges := TableRanges{
+		{Start: 10, End: 11, PeriodConfig: older},
+		{Start: 12, End: 20, PeriodConfig: newer},
+	}
+	table := func(name string, n int64, cfg *PeriodConfig) IndexTable {
+		return IndexTable{Name: name, Start: model.Time(n) * day, End: model.Time(n+1)*day - 1, Config: cfg}
+	}
+
+	for _, tc := range []struct {
+		name          string
+		from, through model.Time
+		want          []IndexTable
+	}{
+		{
+			name: "within one table",
+			from: 12*day + 1, through: 13*day - 1,
+			want: []IndexTable{table("new_12", 12, newer)},
+		},
+		{
+			name: "through at midnight reads the next table",
+			from: 12 * day, through: 13 * day,
+			want: []IndexTable{table("new_12", 12, newer), table("new_13", 13, newer)},
+		},
+		{
+			name: "across periods",
+			from: 11*day + 1, through: 12*day + 1,
+			want: []IndexTable{table("old_11", 11, older), table("new_12", 12, newer)},
+		},
+		{
+			name: "clipped to the ranges",
+			from: 9 * day, through: 10*day + 1,
+			want: []IndexTable{table("old_10", 10, older)},
+		},
+		{
+			name: "outside the ranges",
+			from: 30 * day, through: 31 * day,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, ranges.IndexTablesFor(tc.from, tc.through))
+		})
+	}
+}
+
 func TestGetIndexStoreTableRanges(t *testing.T) {
 	now := model.Now()
 	schemaConfig := SchemaConfig{
