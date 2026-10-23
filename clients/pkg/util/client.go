@@ -38,13 +38,11 @@ const (
 	TenantLabel  = "tenant"
 	ReasonLabel  = "reason"
 
-	ReasonGeneric       = "ingester_error"
-	ReasonRateLimited   = "rate_limited"
-	ReasonStreamLimited = "stream_limited"
-	ReasonLineTooLong   = "line_too_long"
+	ReasonGeneric     = "ingester_error"
+	ReasonRateLimited = "rate_limited"
 )
 
-var Reasons = []string{ReasonGeneric, ReasonRateLimited, ReasonStreamLimited, ReasonLineTooLong}
+var Reasons = []string{ReasonGeneric, ReasonRateLimited}
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
@@ -54,8 +52,6 @@ type Metrics struct {
 	droppedBytes                 *prometheus.CounterVec
 	sentEntries                  *prometheus.CounterVec
 	droppedEntries               *prometheus.CounterVec
-	mutatedEntries               *prometheus.CounterVec
-	mutatedBytes                 *prometheus.CounterVec
 	requestDuration              *prometheus.HistogramVec
 	batchRetries                 *prometheus.CounterVec
 	countersWithHost             []*prometheus.CounterVec
@@ -91,16 +87,6 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		Name:      "dropped_entries_total",
 		Help:      "Number of log entries dropped because failed to be sent to the ingester after all retries.",
 	}, []string{HostLabel, TenantLabel, ReasonLabel})
-	m.mutatedEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "mutated_entries_total",
-		Help:      "The total number of log entries that have been mutated.",
-	}, []string{HostLabel, TenantLabel, ReasonLabel})
-	m.mutatedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "mutated_bytes_total",
-		Help:      "The total number of bytes that have been mutated.",
-	}, []string{HostLabel, TenantLabel, ReasonLabel})
 	m.requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
@@ -121,7 +107,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	}
 
 	m.countersWithHostTenantReason = []*prometheus.CounterVec{
-		m.droppedBytes, m.droppedEntries, m.mutatedEntries, m.mutatedBytes,
+		m.droppedBytes, m.droppedEntries,
 	}
 
 	if reg != nil {
@@ -130,8 +116,6 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.droppedBytes = mustRegisterOrGet(reg, m.droppedBytes).(*prometheus.CounterVec)
 		m.sentEntries = mustRegisterOrGet(reg, m.sentEntries).(*prometheus.CounterVec)
 		m.droppedEntries = mustRegisterOrGet(reg, m.droppedEntries).(*prometheus.CounterVec)
-		m.mutatedEntries = mustRegisterOrGet(reg, m.mutatedEntries).(*prometheus.CounterVec)
-		m.mutatedBytes = mustRegisterOrGet(reg, m.mutatedBytes).(*prometheus.CounterVec)
 		m.requestDuration = mustRegisterOrGet(reg, m.requestDuration).(*prometheus.HistogramVec)
 		m.batchRetries = mustRegisterOrGet(reg, m.batchRetries).(*prometheus.CounterVec)
 	}
@@ -172,15 +156,12 @@ type client struct {
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
-	ctx                 context.Context
-	cancel              context.CancelFunc
-	maxStreams          int
-	maxLineSize         int
-	maxLineSizeTruncate bool
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // New makes a new Client.
-func New(metrics *Metrics, cfg Config, maxStreams, maxLineSize int, maxLineSizeTruncate bool, logger log.Logger) (Client, error) {
+func New(metrics *Metrics, cfg Config, logger log.Logger) (Client, error) {
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
 	}
@@ -197,12 +178,9 @@ func New(metrics *Metrics, cfg Config, maxStreams, maxLineSize int, maxLineSizeT
 		metrics: metrics,
 		name:    asSha256(cfg),
 
-		externalLabels:      cfg.ExternalLabels.LabelSet,
-		ctx:                 ctx,
-		cancel:              cancel,
-		maxStreams:          maxStreams,
-		maxLineSize:         maxLineSize,
-		maxLineSizeTruncate: maxLineSizeTruncate,
+		externalLabels: cfg.ExternalLabels.LabelSet,
+		ctx:            ctx,
+		cancel:         cancel,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
@@ -281,24 +259,11 @@ func (c *client) run() {
 
 			e, tenantID := c.processEntry(e)
 
-			// Either drop or mutate the log entry because its length is greater than maxLineSize. maxLineSize == 0 means disabled.
-			if c.maxLineSize != 0 && len(e.Line) > c.maxLineSize {
-				if !c.maxLineSizeTruncate {
-					c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonLineTooLong).Inc()
-					c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonLineTooLong).Add(float64(len(e.Line)))
-					break
-				}
-
-				c.metrics.mutatedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonLineTooLong).Inc()
-				c.metrics.mutatedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonLineTooLong).Add(float64(len(e.Line) - c.maxLineSize))
-				e.Line = e.Line[:c.maxLineSize]
-			}
-
 			batch, ok := batches[tenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[tenantID] = newBatch(c.maxStreams, e)
+				batches[tenantID] = newBatch(e)
 				c.initBatchMetrics(tenantID)
 				break
 			}
@@ -308,22 +273,12 @@ func (c *client) run() {
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
 				c.sendBatch(tenantID, batch)
 
-				batches[tenantID] = newBatch(c.maxStreams, e)
+				batches[tenantID] = newBatch(e)
 				break
 			}
 
 			// The max size of the batch isn't reached, so we can add the entry
-			err := batch.add(e)
-			if err != nil {
-				level.Error(c.logger).Log("msg", "batch add err", "tenant", tenantID, "error", err)
-				reason := ReasonGeneric
-				if err.Error() == errMaxStreamsLimitExceeded {
-					reason = ReasonStreamLimited
-				}
-				c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, reason).Add(float64(len(e.Line)))
-				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, reason).Inc()
-				return
-			}
+			batch.add(e)
 		case <-maxWaitCheck.C:
 			// Send all batches whose max wait time has been reached
 			for tenantID, batch := range batches {
