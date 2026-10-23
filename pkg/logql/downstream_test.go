@@ -1002,12 +1002,12 @@ func (d partialResultDownstreamer) Downstream(_ context.Context, _ []DownstreamQ
 
 // TestDownstreamEvaluator_KeepsCompletedShardUsageOnError covers a single
 // Downstream call where one shard completed and another failed: the completed
-// shard's usage must still reach the partial collector, since the engine drops
+// shard's usage must still reach the discarded-work context, since the engine drops
 // the results along with the error.
 func TestDownstreamEvaluator_KeepsCompletedShardUsageOnError(t *testing.T) {
 	const shardABytes = 4096
 
-	partial, ctx := stats.NewPartialContext(context.Background())
+	discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
 
 	ev := DownstreamEvaluator{Downstreamer: partialResultDownstreamer{
 		// Shard A completed; shard B failed and contributed no result.
@@ -1022,5 +1022,5 @@ func TestDownstreamEvaluator_KeepsCompletedShardUsageOnError(t *testing.T) {
 	res, err := ev.Downstream(ctx, []DownstreamQuery{{}, {}}, nil)
 	require.Error(t, err)
 	require.Nil(t, res)
-	require.Equal(t, int64(shardABytes), partial.Result().Querier.Store.Chunk.DecompressedBytes)
+	require.Equal(t, int64(shardABytes), discardedWork.Result().Querier.Store.Chunk.DecompressedBytes)
 }

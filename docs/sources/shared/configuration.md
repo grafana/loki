@@ -4318,11 +4318,6 @@ discover_generic_fields:
 # CLI flag: -querier.split-instant-metric-queries-by-interval
 [split_instant_metric_queries_by_interval: <duration> | default = 1h]
 
-# Time bucket interval used for cache key generation in the Thor (V2) query
-# engine. Queries starting within the same bucket share the same cache key.
-# CLI flag: -querier.engine-results-cache-time-bucket-interval
-[engine_results_cache_time_bucket_interval: <duration> | default = 1d]
-
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
 # setting to 0.
@@ -4705,15 +4700,6 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# Experimental: Toggles verbose debug logging of tasks in the new query engine.
-# CLI flag: -limits.debug-engine-tasks
-[debug_engine_tasks: <boolean> | default = false]
-
-# Experimental: Toggles verbose debug logging of data streams in the new query
-# engine.
-# CLI flag: -limits.debug-engine-streams
-[debug_engine_streams: <boolean> | default = false]
 ```
 
 ### local_storage_config

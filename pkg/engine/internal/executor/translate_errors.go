@@ -24,24 +24,11 @@ func (p translateEOFPipeline) Close() {
 	p.pipeline.Close()
 }
 
+// Read reads from the wrapped pipeline and turns [EOF] into [io.EOF].
 func (p translateEOFPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := p.pipeline.Read(ctx)
-	return rec, translateEOF(err, false)
-}
-
-func translateEOF(err error, toExecutor bool) error {
-	if toExecutor {
-		// io.EOF to executor.EOF
-		if errors.Is(err, io.EOF) {
-			err = EOF
-		}
+	if errors.Is(err, EOF) {
+		err = io.EOF
 	}
-	if !toExecutor {
-		// executor.EOF to io.EOF
-		if errors.Is(err, EOF) {
-			err = io.EOF
-		}
-	}
-
-	return err
+	return rec, err
 }

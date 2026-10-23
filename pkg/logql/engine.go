@@ -692,9 +692,14 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 }
 
 type groupedAggregation struct {
-	labels      labels.Labels
-	value       float64
-	mean        float64
+	labels labels.Labels
+	value  float64
+	// mean is the running mean of OpTypeStddev and OpTypeStdvar.
+	mean float64
+	// sum is the accumulation state of OpTypeSum. avg is the accumulation state of OpTypeAvg.
+	// Neither operation accumulates in value, mean or groupCount.
+	sum         kahanSum
+	avg         kahanAvg
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap

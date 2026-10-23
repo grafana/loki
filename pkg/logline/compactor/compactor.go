@@ -67,6 +67,7 @@ func (s *Service) compact(ctx context.Context, job *schedulerapi.JobResponse) er
 	// Phase 3: streaming merge + upload. The merge writes directly into the
 	// object-storage upload pipe; hash and size are computed from the stream.
 	writerCfg := &format.WriterConfig{
+		Encoding:         s.postingsEncoding,
 		DensityThreshold: float32(s.cfg.DensityThreshold),
 		DocumentInterval: sourceMetas[0].DocumentInterval,
 	}

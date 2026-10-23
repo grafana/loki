@@ -60,6 +60,7 @@ func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
 		sectionIdx:         0,
 		streamLabels:       testLabels,
 		streamShardBuckets: makeTestShardBuckets(testLabels),
+		shardLayout:        streams.DefaultShardLayout(),
 		builder:            builder,
 	}
 }

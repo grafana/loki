@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v3/pkg/logline/format"
 	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
@@ -26,6 +27,10 @@ type Service struct {
 	logger     log.Logger
 	metrics    *Metrics
 	httpClient *http.Client
+
+	// postingsEncoding is the encoding merged indexes are written with,
+	// resolved from cfg.Compaction.PostingsEncoding.
+	postingsEncoding format.PostingsEncoding
 
 	// job tracks a single compactor job lifecycle:
 	// - running: currently in-flight, eligible for abandon on shutdown.
@@ -84,20 +89,25 @@ func New(indexStore *store.Store, cfg Config, logger log.Logger, reg prometheus.
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid compactor config: %w", err)
 	}
+	postingsEncoding, err := cfg.Compaction.WriterPostingsEncoding()
+	if err != nil {
+		return nil, fmt.Errorf("invalid compactor config: %w", err)
+	}
 
 	s := &Service{
-		cfg:        cfg,
-		store:      indexStore,
-		logger:     logger,
-		metrics:    NewMetrics(reg),
-		httpClient: &http.Client{Timeout: schedulerapi.ClientTimeout},
+		cfg:              cfg,
+		store:            indexStore,
+		logger:           logger,
+		metrics:          NewMetrics(reg),
+		httpClient:       &http.Client{Timeout: schedulerapi.ClientTimeout},
+		postingsEncoding: postingsEncoding,
 	}
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
 }
 
 func (s *Service) starting(_ context.Context) error {
-	level.Info(s.logger).Log("msg", "compactor service starting", "scheduler", s.cfg.Compaction.SchedulerAddress, "compactor_id", s.cfg.Compaction.CompactorID)
+	level.Info(s.logger).Log("msg", "compactor service starting", "scheduler", s.cfg.Compaction.SchedulerAddress, "compactor_id", s.cfg.Compaction.CompactorID, "postings_encoding", s.cfg.Compaction.PostingsEncoding)
 	return nil
 }
 

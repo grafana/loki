@@ -11,6 +11,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
+// DefaultStorageLag is the default of -dataobj.storage-lag.
+const DefaultStorageLag = 3 * time.Hour
+
 type Config struct {
 	Builder builder.Config `yaml:"builder"`
 	// Uploader is shared by every target that uploads data objects.
@@ -49,7 +52,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(
 		&cfg.StorageLag,
 		"dataobj.storage-lag",
-		3*time.Hour,
+		DefaultStorageLag,
 		"Delay after which data objects hold all the data.",
 	)
 }
