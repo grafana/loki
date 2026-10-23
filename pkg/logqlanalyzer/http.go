@@ -3,6 +3,7 @@ package logqlanalyzer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -26,14 +27,22 @@ func CorsMiddleware() mux.MiddlewareFunc {
 	}
 }
 
+const maxRequestBodySize = 1 * 1024 * 1024
+
 type LogQLAnalyzeHandler struct {
 	analyzer logQLAnalyzer
 }
 
 func (s *LogQLAnalyzeHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	req.Body = http.MaxBytesReader(w, req.Body, maxRequestBodySize)
 	payload, err := io.ReadAll(req.Body)
 	if err != nil {
-		writeError(req.Context(), w, err, http.StatusBadRequest, "unable to read request body")
+		statusCode := http.StatusBadRequest
+		var mbErr *http.MaxBytesError
+		if errors.As(err, &mbErr) {
+			statusCode = http.StatusRequestEntityTooLarge
+		}
+		writeError(req.Context(), w, err, statusCode, "unable to read request body")
 		return
 	}
 	requestBody := &Request{}

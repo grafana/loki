@@ -6,24 +6,29 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/zeebo/xxh3"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/querylimits"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
@@ -35,11 +40,11 @@ import (
 //    logline index lookup, stores results + ingester cutoff in context.
 //
 // 2. Filter MW (below SplitByInterval, below cache): for each interval
-//    sub-request, consults the prefetched hints to skip empty intervals
-//    or narrow to at most k hint envelopes (k = ceil(interval/15m), cap 8).
+//    sub-request, skips empty intervals or attaches the clipped hint ranges
+//    to one downstream request. Queriers consume those ranges.
 //
 // SplitByInterval handles direction ordering, LIMIT early-exit, and
-// interval-level caching. We just help it skip or narrow intervals.
+// interval-level caching. Filter does not change request bounds.
 //
 //	Prefetch MW → [Loki: limits → SplitByInterval → cache → shard → ...] → Filter MW → queriers
 
@@ -65,28 +70,7 @@ const (
 
 const LoglineSkipCacheHeader = "X-Logline-Skip-Cache"
 
-// envelopeTargetDuration is the target coverage of each narrowed envelope.
-// k = ceil(incoming interval / envelopeTargetDuration), capped at
-// maxEnvelopesPerInterval. Groups are formed by cutting the k-1 largest
-// inter-hint gaps so distant clusters are not unioned into one scan.
-const (
-	envelopeTargetDuration  = 15 * time.Minute
-	maxEnvelopesPerInterval = 8
-)
-
 type hintPrefetchKeyType struct{}
-type shardPlanningRerunGuardKeyType struct{}
-
-type shardPlanningDecision struct {
-	eligible bool
-	reason   string
-	overlaps []hintprovider.HintTimeRange
-}
-
-type provisionalQueryResult struct {
-	resp queryrangebase.Response
-	err  error
-}
 
 // hintPrefetchResult holds pre-computed logline index lookup results, shared
 // between the prefetch and filter middleware layers via context.
@@ -98,26 +82,72 @@ type hintPrefetchResult struct {
 	queryStart     time.Time     // original query start
 	queryEnd       time.Time     // original query end
 	ingesterCutoff time.Time     // data after this is in ingester window only
+	minDate        time.Time     // data before this has no index coverage; zero if unknown
+	lookupDuration time.Duration // wall time of the lookup, set before done is closed
 	done           chan struct{} // closed when lookup completes
-
-	// Per-query impact counters, updated from the filter layer and logged once
-	// after the full query pipeline finishes.
-	totalIntervals        atomic.Int64
-	skippedIntervals      atomic.Int64
-	narrowedIntervals     atomic.Int64
-	passthroughIntervals  atomic.Int64
-	originalDurationNanos atomic.Int64
-	queryDurationNanos    atomic.Int64
+	wait           waitTracker   // time sub-requests spent waiting for done
 }
 
-type hintImpactSnapshot struct {
-	totalIntervals       int64
-	skippedIntervals     int64
-	narrowedIntervals    int64
-	passthroughIntervals int64
-	originalDuration     time.Duration
-	queryDuration        time.Duration
-	timeReductionRatio   float64
+// waitForLookup blocks until the lookup is done, ctx ends or timeout passes,
+// and reports whether the timeout passed.
+func (r *hintPrefetchResult) waitForLookup(ctx context.Context, timeout time.Duration) (timedOut bool, err error) {
+	select {
+	case <-r.done:
+		return false, nil
+	default:
+	}
+
+	r.wait.begin(time.Now())
+	defer func() { r.wait.end(time.Now()) }()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-r.done:
+		return false, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-timer.C:
+		return true, nil
+	}
+}
+
+// waitTracker measures the wall time during which at least one sub-request
+// waits for the hint lookup. Sub-requests wait in parallel and in waves, so
+// this is the union of their wait intervals, not the sum.
+type waitTracker struct {
+	mu      sync.Mutex
+	waiters int
+	start   time.Time
+	total   time.Duration
+}
+
+func (w *waitTracker) begin(now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.waiters == 0 {
+		w.start = now
+	}
+	w.waiters++
+}
+
+func (w *waitTracker) end(now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.waiters--
+	if w.waiters == 0 {
+		w.total += now.Sub(w.start)
+	}
+}
+
+// duration returns the wait time so far, including a wait still in progress.
+func (w *waitTracker) duration(now time.Time) time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.waiters > 0 {
+		return w.total + now.Sub(w.start)
+	}
+	return w.total
 }
 
 type dryRunLookupResult struct {
@@ -128,59 +158,135 @@ type dryRunLookupResult struct {
 	done     chan struct{}
 }
 
-func (r *hintPrefetchResult) recordSkipped(intervalDuration time.Duration) {
-	if r == nil {
-		return
+// Values of the logline hintStatus statistic.
+const (
+	hintStatusOK             = "ok"
+	hintStatusUnsupported    = "unsupported"
+	hintStatusError          = "error"
+	hintStatusCanceled       = "canceled"
+	hintStatusIncomplete     = "incomplete"
+	hintStatusIngesterWindow = "ingester_window"
+)
+
+// status reports how the lookup ended. It must be called after the query
+// pipeline returns, so a lookup still running is reported as incomplete.
+func (r *hintPrefetchResult) status() string {
+	select {
+	case <-r.done:
+	default:
+		return hintStatusIncomplete
 	}
-	r.totalIntervals.Add(1)
-	r.skippedIntervals.Add(1)
-	r.originalDurationNanos.Add(intervalDuration.Nanoseconds())
+	switch {
+	case r.err == nil && !r.ingesterCutoff.After(r.queryStart):
+		return hintStatusIngesterWindow
+	case r.err == nil:
+		return hintStatusOK
+	case errors.Is(r.err, hintprovider.ErrUnsupported):
+		return hintStatusUnsupported
+	case isCancel(r.err):
+		return hintStatusCanceled
+	default:
+		return hintStatusError
+	}
 }
 
-func (r *hintPrefetchResult) recordNarrowed(originalDuration, queriedDuration time.Duration) {
-	if r == nil {
-		return
+// Values of the logline outcome statistic, which tells whether the index
+// skipped data or why it didn't.
+const (
+	outcomeDataSkipped          = "data_skipped"
+	outcomeTinyDataSkipped      = "tiny_data_skipped"
+	outcomeSkipRatioUnavailable = "skip_ratio_unavailable"
+	outcomeTimeRangeNotIndexed  = "time_range_not_indexed"
+	outcomeRecentDataOnly       = "recent_data_only"
+	outcomeUnsupportedQuery     = "unsupported_query"
+	outcomeQueryTooSmall        = "query_too_small"
+	outcomeSizeEstimateFailed   = "size_estimate_failed"
+	outcomeLookupFailed         = "lookup_failed"
+	outcomeLookupTimeout        = "lookup_timeout"
+	outcomeAnsweredBeforeLookup = "answered_before_lookup"
+	outcomeCanceled             = "canceled"
+)
+
+// tinyDataSkippedRatio is the chunk filter ratio below which the index is
+// reported as having skipped too little data to help.
+const tinyDataSkippedRatio = 0.25
+
+// loglineOutcome derives the outcome of a query that went through the hint
+// lookup from its final logline statistics. lookupTimedOut reports whether a
+// sub-request stopped waiting for the lookup.
+func loglineOutcome(l *logqlstats.Logline, lookupTimedOut bool) string {
+	switch l.HintStatus {
+	case hintStatusUnsupported:
+		return outcomeUnsupportedQuery
+	case hintStatusError:
+		return outcomeLookupFailed
+	case hintStatusIncomplete:
+		if !lookupTimedOut {
+			return outcomeAnsweredBeforeLookup
+		}
+		return outcomeLookupTimeout
+	case hintStatusCanceled:
+		return outcomeCanceled
+	case hintStatusIngesterWindow:
+		return outcomeRecentDataOnly
 	}
-	r.totalIntervals.Add(1)
-	r.narrowedIntervals.Add(1)
-	r.originalDurationNanos.Add(originalDuration.Nanoseconds())
-	r.queryDurationNanos.Add(queriedDuration.Nanoseconds())
+	switch {
+	case l.PlannedChunks <= 0:
+		return outcomeSkipRatioUnavailable
+	case l.SkippedRequests+l.NarrowedRequests == 0:
+		return outcomeTimeRangeNotIndexed
+	case l.ChunkFilterRatio < tinyDataSkippedRatio:
+		return outcomeTinyDataSkipped
+	default:
+		return outcomeDataSkipped
+	}
 }
 
-func (r *hintPrefetchResult) recordPassthrough(intervalDuration time.Duration) {
-	if r == nil {
+// attachLoglineStats sets the lookup-level logline statistics and the outcome
+// on the final query response. The stats collector aliases the response's
+// statistics, so these values reach the frontend metrics.go line.
+func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult) {
+	lokiResp, ok := resp.(*queryrange.LokiResponse)
+	if !ok || result == nil {
 		return
 	}
-	r.totalIntervals.Add(1)
-	r.passthroughIntervals.Add(1)
-	r.originalDurationNanos.Add(intervalDuration.Nanoseconds())
-	r.queryDurationNanos.Add(intervalDuration.Nanoseconds())
-}
-
-func (r *hintPrefetchResult) impactSnapshot() hintImpactSnapshot {
-	if r == nil {
-		return hintImpactSnapshot{}
-	}
-
-	originalNanos := r.originalDurationNanos.Load()
-	queryNanos := r.queryDurationNanos.Load()
-	ratio := 0.0
-	if originalNanos > 0 {
-		ratio = float64(originalNanos-queryNanos) / float64(originalNanos)
-		if ratio < 0 {
-			ratio = 0
+	l := lokiResp.Statistics.LoglineStats()
+	l.HintStatus = result.status()
+	l.HintWaitTime = result.wait.duration(time.Now()).Nanoseconds()
+	if l.HintStatus != hintStatusIncomplete {
+		l.HintLookupTime = result.lookupDuration.Nanoseconds()
+		l.HintRanges = int64(len(result.ranges))
+		l.HintRangesDuration = indexedHintDuration(result.ranges, result.queryStart, result.queryEnd).Nanoseconds()
+		if result.stats != nil {
+			snap := result.stats.Snapshot()
+			l.ObjectRequests = snap.ObjectStorageRequests
+			l.IOBytes = snap.TotalIOBytes
+			l.IOWait = snap.TotalIOWait.Nanoseconds()
 		}
 	}
+	setLoglineChunkStats(&lokiResp.Statistics)
+	l.Outcome = loglineOutcome(l, result.stats.Snapshot().PrefetchTimeouts > 0)
+}
 
-	return hintImpactSnapshot{
-		totalIntervals:       r.totalIntervals.Load(),
-		skippedIntervals:     r.skippedIntervals.Load(),
-		narrowedIntervals:    r.narrowedIntervals.Load(),
-		passthroughIntervals: r.passthroughIntervals.Load(),
-		originalDuration:     time.Duration(originalNanos),
-		queryDuration:        time.Duration(queryNanos),
-		timeReductionRatio:   ratio,
+// setLoglineChunkStats copies the shard planning chunk counts and their ratio
+// into the logline statistics.
+func setLoglineChunkStats(s *logqlstats.Result) {
+	l := s.LoglineStats()
+	l.PlannedChunks = s.Index.ShardPlannedChunks
+	l.ScannedChunks = s.Index.ShardPlannedChunksScanned
+	l.ChunkFilterRatio, _ = s.Index.ChunkFilterRatio()
+}
+
+// indexedHintDuration sums the hint ranges clipped to [start, end], leaving out
+// the pre-min-date passthrough range, which has no index coverage.
+func indexedHintDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
+	indexed := make([]hintprovider.HintTimeRange, 0, len(ranges))
+	for _, r := range ranges {
+		if !r.IsPassthrough() {
+			indexed = append(indexed, r)
+		}
 	}
+	return hintCoverageDuration(indexed, start, end)
 }
 
 func appendHintStats(logValues []any, stats *hintprovider.QueryStats) []any {
@@ -220,24 +326,6 @@ func hintPrefetchFromContext(ctx context.Context) *hintPrefetchResult {
 	return v
 }
 
-func withShardPlanningRerunGuard(ctx context.Context) context.Context {
-	return context.WithValue(ctx, shardPlanningRerunGuardKeyType{}, true)
-}
-
-func shardPlanningRerunGuardFromContext(ctx context.Context) bool {
-	v, _ := ctx.Value(shardPlanningRerunGuardKeyType{}).(bool)
-	return v
-}
-
-func withShardPlanningQueryLimits(ctx context.Context, strategy string) context.Context {
-	limits := querylimits.QueryLimits{}
-	if existing := querylimits.ExtractQueryLimitsFromContext(ctx); existing != nil {
-		limits = *existing
-	}
-	limits.TSDBShardingStrategy = strategy
-	return querylimits.InjectQueryLimitsIntoContext(ctx, limits)
-}
-
 func intervalDuration(start, end time.Time) time.Duration {
 	if !end.After(start) {
 		return 0
@@ -248,39 +336,44 @@ func intervalDuration(start, end time.Time) time.Duration {
 // NewLoglinePrefetchMiddleware starts an async logline index lookup before
 // SplitByInterval generates intervals.
 func NewLoglinePrefetchMiddleware(
-	hp hintprovider.QueryHintProvider,
-	cfg MiddlewareConfig,
-	tenantSettings TenantSettings,
+	inner *hintprovider.LoglineHintProvider,
+	hintCache cache.Cache,
+	cfg Config,
+	limits logline_query_limits.Limits,
 	metrics *Metrics,
 	logger log.Logger,
+	reg prometheus.Registerer,
 ) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		hp := hintprovider.QueryHintProvider(&frontendHintAdapter{inner: inner, next: next})
+		hp = hintprovider.NewCachingHintProvider(hp, hintCache, reg)
+		return newLoglinePrefetchHandler(next, hp, cfg, limits, metrics, logger)
+	})
+}
+
+func newLoglinePrefetchHandler(
+	next queryrangebase.Handler,
+	hp hintprovider.QueryHintProvider,
+	cfg Config,
+	limits logline_query_limits.Limits,
+	metrics *Metrics,
+	logger log.Logger,
+) queryrangebase.Handler {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
-	if tenantSettings == nil {
-		tenantSettings = staticTenantSettings{}
+	return &loglinePrefetchHandler{
+		next:                 next,
+		hintProvider:         hp,
+		defaultMode:          modeFromDryRun(cfg.DryRun),
+		requireOptInHeader:   cfg.RequireOptInHeader,
+		ngramLength:          cfg.NgramLength,
+		hintTimeout:          cfg.HintTimeout,
+		queryIngestersWithin: cfg.QueryIngestersWithin,
+		limits:               limits,
+		metrics:              metrics,
+		logger:               logger,
 	}
-	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
-		cfg.ShardPlanning.Enabled = defaultShardPlanningEnabled
-	}
-	cfg.ShardPlanning.applyDefaults()
-	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return &loglinePrefetchHandler{
-			next:                 next,
-			hintProvider:         hp,
-			defaultMode:          modeFromDryRun(cfg.DryRun),
-			requireOptInHeader:   cfg.RequireOptInHeader,
-			ngramLength:          cfg.NgramLength,
-			hintTimeout:          cfg.HintTimeout,
-			minQueryBytes:        cfg.MinQueryBytesForIndex,
-			queryIngestersWithin: cfg.QueryIngestersWithin,
-			querySplitDuration:   cfg.QuerySplitDuration,
-			shardPlanning:        cfg.ShardPlanning,
-			tenantSettings:       tenantSettings,
-			metrics:              metrics,
-			logger:               logger,
-		}
-	})
 }
 
 type loglinePrefetchHandler struct {
@@ -291,13 +384,35 @@ type loglinePrefetchHandler struct {
 	ngramLength          int
 	hintTimeout          time.Duration
 	dryRunInflight       atomic.Int32
-	minQueryBytes        int64
 	queryIngestersWithin time.Duration
-	querySplitDuration   time.Duration
-	shardPlanning        ShardPlanningConfig
-	tenantSettings       TenantSettings
+	limits               logline_query_limits.Limits
 	metrics              *Metrics
 	logger               log.Logger
+}
+
+// Mode controls how logline filtering behaves for a tenant.
+type Mode int
+
+const (
+	ModeUnset Mode = iota
+	ModeOff
+	ModeDryRun
+	ModeLive
+)
+
+// modeFromLimit maps the limits_config value to a Mode. Loki validates the
+// value when it loads the limits, so anything else is treated as unset.
+func modeFromLimit(s string) Mode {
+	switch s {
+	case "off":
+		return ModeOff
+	case "dry_run":
+		return ModeDryRun
+	case "live":
+		return ModeLive
+	default:
+		return ModeUnset
+	}
 }
 
 func modeFromDryRun(dryRun bool) Mode {
@@ -333,7 +448,7 @@ func resolveMode(header string, tenantMode, defaultMode Mode, requireOptInHeader
 	return mode, false
 }
 
-func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time) (uint64, error) {
+func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time, stepMillis int64) (uint64, error) {
 	matcherGroups, err := syntax.MatcherGroups(expr)
 	if err != nil {
 		return 0, err
@@ -343,18 +458,15 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 		matcherGroups = append(matcherGroups, syntax.MatcherRange{})
 	}
 
-	start := model.Time(from.UnixMilli())
-	end := model.Time(through.UnixMilli())
+	ctx = queryrange.WithInternalRequest(ctx)
 
 	var totalBytes uint64
 	for _, group := range matcherGroups {
-		diff := group.Interval + group.Offset
-		adjustedFrom := start.Add(-diff)
-		adjustedThrough := end.Add(-group.Offset)
+		adjustedFrom, adjustedThrough := metricLookupBounds(group, from, through, stepMillis)
 
 		resp, err := h.next.Do(ctx, &logproto.IndexStatsRequest{
-			From:     adjustedFrom,
-			Through:  adjustedThrough,
+			From:     model.Time(adjustedFrom.UnixMilli()),
+			Through:  model.Time(adjustedThrough.UnixMilli()),
 			Matchers: syntax.MatchersString(group.Matchers),
 		})
 		if err != nil {
@@ -374,52 +486,81 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	return totalBytes, nil
 }
 
-func (h *loglinePrefetchHandler) observeShardPlanning(result, reason string) {
-	if h == nil || h.metrics == nil || h.metrics.shardPlanningTotal == nil {
-		return
+// metricLookupBounds rounds onto the step, then widens by the range and offset.
+// Prefetch runs before the splitter, which floors the start and rounds the end up.
+// A zero interval or a zero step is only widened.
+func metricLookupBounds(group syntax.MatcherRange, from, through time.Time, stepMillis int64) (time.Time, time.Time) {
+	if group.Interval > 0 && stepMillis > 0 {
+		from, through = alignMetricStep(from, through, stepMillis)
 	}
-	h.metrics.shardPlanningTotal.WithLabelValues(result, reason).Inc()
+	return group.Widen(from, through)
 }
 
-func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResult, from, through time.Time) shardPlanningDecision {
-	if result == nil {
-		return shardPlanningDecision{reason: "hint_error"}
+// alignMetricStep matches metricQuerySplitter.alignStartEnd: floor the start and
+// round the end up to the next step.
+func alignMetricStep(start, end time.Time, stepMillis int64) (time.Time, time.Time) {
+	stepNs := stepMillis * int64(time.Millisecond)
+	startNs := start.UnixNano()
+	endNs := end.UnixNano()
+	if mod := endNs % stepNs; mod != 0 {
+		endNs += stepNs - mod
 	}
-	if result.err != nil {
-		if errors.Is(result.err, hintprovider.ErrUnsupported) {
-			return shardPlanningDecision{reason: "unsupported"}
+	return time.Unix(0, startNs-startNs%stepNs).UTC(), time.Unix(0, endNs).UTC()
+}
+
+// dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
+// The hint may not be the line that produced the sample. TotalEntries counts the positive
+// steps whose lookback ended at or before the ingester cutoff. A miss records that whole lookback.
+func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
+	report := verification.Report{HintRanges: len(hints)}
+	// For now, we don't check absent_over_time for correctness
+	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
+		return report
+	}
+	group := metricMatcherGroup(expr)
+	for _, stream := range promResp.Response.Data.Result {
+		for _, sample := range stream.Samples {
+			if sample.Value <= 0 {
+				continue
+			}
+			step := time.UnixMilli(sample.TimestampMs)
+			winStart, winEnd := group.Widen(step, step)
+			if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
+				continue
+			}
+			report.TotalEntries++
+			if !rangesOverlap(hints, winStart, winEnd) {
+				report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
+					Start: winStart,
+					End:   winEnd,
+				})
+				continue
+			}
+			report.CoveredEntries++
 		}
-		return shardPlanningDecision{reason: "hint_error"}
 	}
-	if through.After(result.ingesterCutoff) {
-		return shardPlanningDecision{reason: "ingester_window"}
-	}
-	for _, hint := range result.ranges {
-		if hint.IsPassthrough() {
-			return shardPlanningDecision{reason: "passthrough_range"}
-		}
-	}
+	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
+	return report
+}
 
-	overlaps := rangesOverlapping(result.ranges, from, through)
+// metricMatcherGroup returns the single matcher group for a supported metric query.
+func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
+	groups, err := syntax.MatcherGroups(expr)
+	if err != nil || len(groups) != 1 {
+		return syntax.MatcherRange{}
+	}
+	return groups[0]
+}
 
-	queryDuration := intervalDuration(from, through)
-	if queryDuration == 0 {
-		return shardPlanningDecision{reason: "time_reduction_too_small", overlaps: overlaps}
+func isAbsentOverTimeAgg(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return isAbsentOverTimeAgg(e.Left)
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeAbsent
+	default:
+		return false
 	}
-	// Use k-envelope coverage after the same SplitByInterval slices the
-	// filter will see. Hint-only math, or a single k-budget on the unsplit
-	// range, overstates scanned time once the cap of 8 unions distant
-	// clusters the filter would keep separate.
-	cumulative := envelopeQueriedDuration(overlaps, from, through, h.querySplitDuration)
-	timeReductionRatio := float64(queryDuration-cumulative) / float64(queryDuration)
-	if timeReductionRatio < 0 {
-		timeReductionRatio = 0
-	}
-	if timeReductionRatio < h.shardPlanning.MinTimeReductionRatio {
-		return shardPlanningDecision{reason: "time_reduction_too_small", overlaps: overlaps}
-	}
-
-	return shardPlanningDecision{eligible: true, reason: "eligible", overlaps: overlaps}
 }
 
 func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
@@ -542,34 +683,32 @@ func roundTo1Decimal(v float64) float64 {
 	return math.Round(v*10) / 10
 }
 
-// hintRangesTotalSeconds returns the unclipped sum of non-passthrough hint
-// range durations, formatted to one decimal place for log output.
-func hintRangesTotalSeconds(ranges []hintprovider.HintTimeRange) string {
-	var total float64
-	for _, r := range ranges {
-		if r.IsPassthrough() {
-			continue
-		}
-		total += intervalDuration(r.Start.UTC(), r.End.UTC()).Seconds()
-	}
-	return fmt.Sprintf("%.1f", roundTo1Decimal(total))
-}
-
 func (h *loglinePrefetchHandler) doDryRun(
 	ctx context.Context,
 	req queryrangebase.Request,
-	lokiReq *queryrange.LokiRequest,
+	direction logproto.Direction,
 	expr syntax.Expr,
 	from, through time.Time,
 	queryBytes uint64,
 ) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, h.logger)
-	eligibleEnd := through
+	// A supported metric query has one log selector, so it has one matcher group.
+	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
+	readStart, readEnd := from, through
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		readStart, readEnd = metricLookupBounds(groups[0], from, through, req.GetStep())
+	}
+	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
 		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
-		if cutoff.After(from) && cutoff.Before(through) {
+		if cutoff.After(readStart) && cutoff.Before(readEnd) {
+			// An instant query has one sample, and its lookback ends at readEnd.
+			// That sample would be left out of the report, so skip the lookup.
+			if _, ok := req.(*queryrange.LokiInstantRequest); ok {
+				return h.next.Do(ctx, req)
+			}
 			eligibleEnd = cutoff
-		} else if !cutoff.After(from) {
+		} else if !cutoff.After(readStart) {
 			// Entire query is in the ingester window — nothing to verify.
 			return h.next.Do(ctx, req)
 		}
@@ -581,7 +720,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		}
 		level.Warn(logger).Log(
 			"msg", "logline dry-run hint lookup skipped due to inflight limit",
-			"query_hash", util.HashedQuery(lokiReq.Query),
+			"query_hash", util.HashedQuery(req.GetQuery()),
 			"limit", 1,
 		)
 		return h.next.Do(ctx, req)
@@ -608,7 +747,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 			prefetchCtx,
 			tenant,
 			expr,
-			model.TimeFromUnixNano(from.UnixNano()),
+			model.TimeFromUnixNano(readStart.UnixNano()),
 			model.TimeFromUnixNano(eligibleEnd.UnixNano()),
 		)
 		lookup.duration = time.Since(start)
@@ -643,7 +782,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 
 	// Bind common fields once so every branch inherits them.
 	logger = log.With(logger,
-		"query_hash", util.HashedQuery(lokiReq.Query),
+		"query_hash", util.HashedQuery(req.GetQuery()),
 		"query_timeout", queryTimeout,
 		"query_start", from.Format(time.RFC3339Nano),
 		"query_end", through.Format(time.RFC3339Nano),
@@ -682,7 +821,8 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	hintSummary := summarizeDryRunHints(lookup.ranges, from, through, eligibleEnd, lokiReq.Direction)
+	hintSummary := summarizeDryRunHints(lookup.ranges, readStart, readEnd, eligibleEnd, direction)
+	queryType, _ := logql.QueryType(expr)
 
 	// Hint lookup succeeded. If the query timed out we can still report
 	// the hint data — mark correct=true since the hints themselves were
@@ -693,6 +833,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		}
 		logValues := []any{
 			"msg", "logline dry-run verification",
+			"query_type", queryType,
 			"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
 			"hint_duration", lookup.duration,
 			"hint_ranges", len(lookup.ranges),
@@ -714,16 +855,19 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	lokiResp, ok := resp.(*queryrange.LokiResponse)
-	if !ok {
+	var vr verification.Report
+	switch r := resp.(type) {
+	case *queryrange.LokiPromResponse:
+		vr = dryRunMetricReport(expr, r, lookup.ranges, eligibleEnd)
+	case *queryrange.LokiResponse:
+		vr = verifyDryRunHints(lookup.ranges, r, eligibleEnd)
+	default:
 		level.Warn(logger).Log(
 			"msg", "logline dry-run verification skipped due non-Loki response",
 			"response_type", fmt.Sprintf("%T", resp),
 		)
 		return resp, queryErr
 	}
-
-	vr := verifyDryRunHints(lookup.ranges, lokiResp, eligibleEnd)
 	correct := vr.Correct()
 	label := "correct"
 	if !correct {
@@ -735,6 +879,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 
 	logValues := []any{
 		"msg", "logline dry-run verification",
+		"query_type", queryType,
 		"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
 		"hint_duration", lookup.duration,
 		"hint_ranges", len(lookup.ranges),
@@ -749,6 +894,11 @@ func (h *loglinePrefetchHandler) doDryRun(
 		"false_negatives", vr.FalseNegatives,
 		"correct", correct,
 	}
+	if len(vr.FalseNegativeRanges) > 0 {
+		logValues = append(logValues,
+			"false_negative_ranges", hintprovider.FormatHintRanges(vr.FalseNegativeRanges),
+		)
+	}
 	logValues = appendHintStats(logValues, lookup.stats)
 	level.Info(logger).Log(logValues...)
 
@@ -756,15 +906,12 @@ func (h *loglinePrefetchHandler) doDryRun(
 }
 
 func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	lokiReq, ok := req.(*queryrange.LokiRequest)
-	if !ok {
+	switch req.(type) {
+	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest:
+	default:
 		return h.next.Do(ctx, req)
 	}
 	logger := util_log.WithContext(ctx, h.logger)
-	if shardPlanningRerunGuardFromContext(ctx) {
-		h.observeShardPlanning("fallback", "rerun_guard")
-		return h.next.Do(ctx, req)
-	}
 	if httpreq.ExtractHeader(ctx, LoglineSkipCacheHeader) != "" {
 		ctx = hintprovider.WithSkipCache(ctx)
 		level.Debug(logger).Log("msg", "hint cache skipped by request header", "header", LoglineSkipCacheHeader)
@@ -772,27 +919,27 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 
 	header := httpreq.ExtractHeader(ctx, LoglineIndexHeader)
 	tenant, _ := user.ExtractOrgID(ctx)
-	tenantMode := ModeUnset
-	minQueryBytes := h.minQueryBytes
-	if h.tenantSettings != nil {
-		tenantMode = h.tenantSettings.Mode(tenant)
-		if tenantMinQueryBytes, ok := h.tenantSettings.MinQueryBytesForIndex(tenant); ok {
-			minQueryBytes = tenantMinQueryBytes
-		}
-	}
+	// A multi-tenant request (a|b) has no entry of its own in the runtime
+	// overrides, so it gets the limits_config defaults.
+	tenantMode := modeFromLimit(h.limits.LoglineQueryMode(tenant))
+	minQueryBytes := h.limits.LoglineQueryMinQueryBytesForIndex(tenant)
 	mode, passthrough := resolveMode(header, tenantMode, h.defaultMode, h.requireOptInHeader)
 	if passthrough {
 		return h.next.Do(ctx, req)
 	}
 
-	expr, err := syntax.ParseExpr(lokiReq.Query)
+	expr, err := syntax.ParseExpr(req.GetQuery())
 	if err != nil {
 		return h.next.Do(ctx, req)
 	}
 
-	// Metric queries (SampleExpr) return numeric series, not log entries,
-	// so there is nothing to narrow or verify.
-	if _, ok := expr.(syntax.SampleExpr); ok {
+	if _, isMetric := expr.(syntax.SampleExpr); isMetric {
+		if mode != ModeDryRun || len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
+			return h.next.Do(ctx, req)
+		}
+		// A log selector on the instant endpoint is rejected by the querier.
+		// Return it here so this path does not look up hints for that request.
+	} else if _, isInstant := req.(*queryrange.LokiInstantRequest); isInstant {
 		return h.next.Do(ctx, req)
 	}
 
@@ -800,22 +947,22 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// When ngramLength is not configured (<=0), skip the early check and let
 	// ProvideHints handle support detection internally.
 	if h.ngramLength > 0 && len(hintprovider.SupportedQuery(expr, h.ngramLength)) == 0 {
-		return h.next.Do(ctx, req)
+		return h.nextWithOutcome(ctx, req, mode, outcomeUnsupportedQuery)
 	}
 
 	// Shared eligibility: stats-based byte threshold.
-	from := lokiReq.StartTs.UTC()
-	through := lokiReq.EndTs.UTC()
+	from := req.GetStart().UTC()
+	through := req.GetEnd().UTC()
 	queryBytes := uint64(0)
 	if minQueryBytes > 0 {
-		queryBytes, err = h.getQueryBytes(ctx, expr, from, through)
+		queryBytes, err = h.getQueryBytes(ctx, expr, from, through, req.GetStep())
 		if err != nil {
 			level.Warn(logger).Log(
 				"msg", "failed to get query stats for logline gating; skipping hint lookup",
 				"err", err,
 				"threshold_bytes", minQueryBytes,
 			)
-			return h.next.Do(ctx, req)
+			return h.nextWithOutcome(ctx, req, mode, outcomeSizeEstimateFailed)
 		}
 		if queryBytes < uint64(minQueryBytes) {
 			if h.metrics != nil && h.metrics.hintSkippedSmallQuery != nil {
@@ -826,12 +973,20 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 				"query_bytes", queryBytes,
 				"threshold_bytes", minQueryBytes,
 			)
-			return h.next.Do(ctx, req)
+			return h.nextWithOutcome(ctx, req, mode, outcomeQueryTooSmall)
 		}
 	}
 
+	var direction logproto.Direction
+	switch r := req.(type) {
+	case *queryrange.LokiRequest:
+		direction = r.GetDirection()
+	case *queryrange.LokiInstantRequest:
+		direction = r.GetDirection()
+	}
+
 	if mode == ModeDryRun {
-		return h.doDryRun(ctx, req, lokiReq, expr, from, through, queryBytes)
+		return h.doDryRun(ctx, req, direction, expr, from, through, queryBytes)
 	}
 
 	ingesterCutoff := through
@@ -851,214 +1006,129 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		queryEnd:       through,
 		queryBytes:     queryBytes,
 		ingesterCutoff: ingesterCutoff,
+		minDate:        h.minDate(),
 		stats:          hintprovider.NewQueryStats(),
 		done:           make(chan struct{}),
 	}
 
-	prefetchCtx := ctx
-	go func() {
-		defer close(result.done)
-
-		start := time.Now()
-		defer func() {
-			dur := time.Since(start)
-			h.metrics.hintProviderDuration.Observe(dur.Seconds())
-			if isCancel(result.err) {
-				level.Info(logger).Log("msg", "hint prefetch canceled", "duration", dur)
-				return
-			}
-			if result.stats != nil {
-				result.stats.SetWallTime(dur)
-				snap := result.stats.Snapshot()
-				level.Info(logger).Log(
-					"msg", "hint prefetch completed",
-					"duration", dur,
-					"query_bytes", result.queryBytes,
-					"ranges", len(result.ranges),
-					"hint_ranges_detail", hintprovider.FormatHintRanges(result.ranges),
-					"hint_total_seconds", hintRangesTotalSeconds(result.ranges),
-					"err", result.err,
-					"object_requests", snap.ObjectStorageRequests,
-					"header_reads", snap.HeaderReads,
-					"metadata_reads", snap.MetadataReads,
-					"term_dict_reads", snap.TermDictReads,
-					"bitmap_reads", snap.BitmapReads,
-					"header_cache_misses", snap.HeaderCacheMisses,
-					"metadata_cache_misses", snap.MetadataCacheMisses,
-					"io_wait", snap.TotalIOWait,
-					"io_bytes", snap.TotalIOBytes,
-					"peak_concurrency", snap.PeakConcurrency,
-					"effective_concurrency", snap.EffectiveConcurrency,
-					"prefetch_calls", snap.PrefetchCalls,
-					"prefetch_timeouts", snap.PrefetchTimeouts,
-					"index_queries_total", snap.IndexQueriesTotal,
-					"index_queries_term_miss", snap.IndexQueriesTermMiss,
-					"index_queries_empty_and", snap.IndexQueriesEmptyAnd,
-					"index_queries_positive", snap.IndexQueriesPositive,
-					"term_batches_processed_total", snap.TotalTermBatchesProcessed,
-					"hint_cache_result", snap.HintCacheResult,
-					"hint_cache_days_fetched", snap.HintCacheDaysFetched,
-					"hint_cache_days_hit", snap.HintCacheDaysHit,
-				)
-				return
-			}
-			level.Info(logger).Log(
-				"msg", "hint prefetch completed",
-				"duration", dur,
-				"query_bytes", result.queryBytes,
-				"ranges", len(result.ranges),
-				"hint_ranges_detail", hintprovider.FormatHintRanges(result.ranges),
-				"hint_total_seconds", hintRangesTotalSeconds(result.ranges),
-				"err", result.err,
-			)
-		}()
-
-		eligibleEnd := ingesterCutoff
-		if !eligibleEnd.After(from) {
-			return
+	// Pass-through sub-requests don't wait for the lookup, so the query can
+	// return before it finishes.
+	prefetchCtx, cancelPrefetch := context.WithCancel(ctx)
+	defer cancelPrefetch()
+	if ingesterCutoff.After(maxTime(from, result.minDate)) {
+		go h.lookupHints(prefetchCtx, logger, tenant, expr, result)
+	} else {
+		// Every sub-request passes through, so nothing reads the lookup. When
+		// the stored part of the query predates the index, report the range the
+		// lookup would have returned so stats treat the query as not indexed.
+		if ingesterCutoff.After(from) {
+			result.ranges = []hintprovider.HintTimeRange{{
+				End:    result.minDate,
+				Source: hintprovider.HintSourcePreMinDate,
+			}}
 		}
-
-		eligibleFrom := model.TimeFromUnixNano(from.UnixNano())
-		eligibleThrough := model.TimeFromUnixNano(eligibleEnd.UnixNano())
-
-		hints, stats, err := h.hintProvider.ProvideHints(prefetchCtx, tenant, expr, eligibleFrom, eligibleThrough)
-		if stats != nil {
-			result.stats.Merge(stats)
-		}
-		if err != nil {
-			result.err = err
-			return
-		}
-		if hints != nil {
-			result.ranges = hints.TimeRanges // already normalized+sorted
-			h.metrics.hintRangesReturned.Observe(float64(len(result.ranges)))
-		}
-	}()
-
-	ctx = withHintPrefetch(ctx, result)
-	if !h.shardPlanning.Enabled {
-		resp, err := h.next.Do(ctx, req)
-		if err != nil {
-			return resp, err
-		}
-
-		h.logHintImpact(logger, resp, result)
-		return resp, nil
+		close(result.done)
 	}
 
-	// Shard planning races hint prefetch against a provisional query. If hints
-	// finish first and narrow enough, cancel the in-flight query and rerun with
-	// power_of_two sharding. Otherwise keep the provisional query result.
-	provisionalQueryCtx, cancelProvisionalQuery := context.WithCancel(ctx)
-	defer cancelProvisionalQuery()
-	provisionalQueryDone := make(chan provisionalQueryResult, 1)
-	go func() {
-		resp, err := h.next.Do(provisionalQueryCtx, req)
-		provisionalQueryDone <- provisionalQueryResult{resp: resp, err: err}
+	ctx = withHintPrefetch(ctx, result)
+	defer h.observeHintWait(result)
+	resp, err := h.next.Do(ctx, req)
+	if err != nil {
+		return resp, err
+	}
+	attachLoglineStats(resp, result)
+	return resp, nil
+}
+
+// observeHintWait records the hint wait of a live query. Call it once per
+// query, including queries that fail, so the histogram counts every lookup.
+func (h *loglinePrefetchHandler) observeHintWait(result *hintPrefetchResult) {
+	wait := result.wait.duration(time.Now())
+	h.metrics.hintWaitDuration.WithLabelValues(result.status()).Observe(wait.Seconds())
+}
+
+// lookupHints looks up hint ranges for [result.queryStart, result.ingesterCutoff]
+// and closes result.done when it finishes.
+func (h *loglinePrefetchHandler) lookupHints(
+	ctx context.Context,
+	logger log.Logger,
+	tenant string,
+	expr syntax.Expr,
+	result *hintPrefetchResult,
+) {
+	defer close(result.done)
+
+	start := time.Now()
+	defer func() {
+		dur := time.Since(start)
+		result.lookupDuration = dur
+		if isCancel(result.err) {
+			h.metrics.hintLookupsCanceled.Inc()
+			level.Info(logger).Log("msg", "hint prefetch canceled", "duration", dur)
+			return
+		}
+		h.metrics.hintProviderDuration.Observe(dur.Seconds())
+		// The metrics.go line carries the status, lookup time and range
+		// count and duration. This line keeps the remaining detail.
+		logValues := []any{
+			"msg", "hint prefetch completed",
+			"query_bytes", result.queryBytes,
+			"hint_ranges_detail", hintprovider.FormatHintRanges(result.ranges),
+			"err", result.err,
+		}
+		if result.stats != nil {
+			result.stats.SetWallTime(dur)
+			snap := result.stats.Snapshot()
+			logValues = append(logValues,
+				"prefetch_calls", snap.PrefetchCalls,
+				"prefetch_timeouts", snap.PrefetchTimeouts,
+			)
+		}
+		level.Debug(logger).Log(appendHintStats(logValues, result.stats)...)
 	}()
 
-	select {
-	case provisional := <-provisionalQueryDone:
-		h.observeShardPlanning("provisional_query", "query_finished_first")
-		if provisional.err != nil {
-			return provisional.resp, provisional.err
-		}
-		h.logHintImpact(logger, provisional.resp, result)
-		return provisional.resp, nil
-	case <-result.done:
-		select {
-		case provisional := <-provisionalQueryDone:
-			h.observeShardPlanning("provisional_query", "query_finished_first")
-			if provisional.err != nil {
-				return provisional.resp, provisional.err
-			}
-			h.logHintImpact(logger, provisional.resp, result)
-			return provisional.resp, nil
-		default:
-		}
+	eligibleFrom := model.TimeFromUnixNano(result.queryStart.UnixNano())
+	eligibleThrough := model.TimeFromUnixNano(result.ingesterCutoff.UnixNano())
 
-		decision := h.shardPlanningDecision(result, from, through)
-		if !decision.eligible {
-			h.observeShardPlanning("fallback", decision.reason)
-			provisional := <-provisionalQueryDone
-			if provisional.err != nil {
-				return provisional.resp, provisional.err
-			}
-			h.logHintImpact(logger, provisional.resp, result)
-			return provisional.resp, nil
-		}
-
-		// Hints finished first with enough time reduction — cancel the provisional
-		// query and rerun with power_of_two sharding.
-		h.observeShardPlanning("cancel_then_rerun", decision.reason)
-		cancelProvisionalQuery()
-
-		rerunCtx := withShardPlanningRerunGuard(ctx)
-		rerunCtx = withShardPlanningQueryLimits(rerunCtx, shardPlanningStrategyPowerOfTwo)
-		resp, err := h.next.Do(rerunCtx, req)
-		if err != nil {
-			return resp, err
-		}
-		h.logHintImpact(logger, resp, result)
-		return resp, nil
+	hints, stats, err := h.hintProvider.ProvideHints(ctx, tenant, expr, eligibleFrom, eligibleThrough)
+	if stats != nil {
+		result.stats.Merge(stats)
+	}
+	if err != nil {
+		result.err = err
+		return
+	}
+	if hints != nil {
+		result.ranges = hints.TimeRanges // already normalized+sorted
+		h.metrics.hintRangesReturned.Observe(float64(len(result.ranges)))
 	}
 }
 
-func (h *loglinePrefetchHandler) logHintImpact(logger log.Logger, resp queryrangebase.Response, result *hintPrefetchResult) {
-	if result == nil {
-		return
+// minDate returns the first date the index covers, or zero when the hint
+// provider doesn't report one.
+func (h *loglinePrefetchHandler) minDate() time.Time {
+	if p, ok := h.hintProvider.(interface{ MinDate() time.Time }); ok {
+		return p.MinDate().UTC()
 	}
+	return time.Time{}
+}
 
-	select {
-	case <-result.done:
-	default:
-		return
+// nextWithOutcome runs the query without a hint lookup. In live mode it records
+// why the lookup was skipped.
+func (h *loglinePrefetchHandler) nextWithOutcome(ctx context.Context, req queryrangebase.Request, mode Mode, outcome string) (queryrangebase.Response, error) {
+	resp, err := h.next.Do(ctx, req)
+	if mode != ModeLive || err != nil {
+		return resp, err
 	}
-
-	if result.err != nil {
-		return
-	}
-
-	impact := result.impactSnapshot()
-	logValues := []any{
-		"msg", "query hint impact",
-		"query_start", result.queryStart.Format(time.RFC3339Nano),
-		"query_end", result.queryEnd.Format(time.RFC3339Nano),
-		"query_range", result.queryEnd.Sub(result.queryStart),
-		"hint_ranges", len(result.ranges),
-		"total_intervals", impact.totalIntervals,
-		"skipped_intervals", impact.skippedIntervals,
-		"narrowed_intervals", impact.narrowedIntervals,
-		"passthrough_intervals", impact.passthroughIntervals,
-		"original_duration", impact.originalDuration,
-		"queried_duration", impact.queryDuration,
-		"time_reduction_ratio", impact.timeReductionRatio,
-	}
-
 	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok {
-		totalChunksRef := lokiResp.Statistics.Querier.Store.GetTotalChunksRef() +
-			lokiResp.Statistics.Ingester.Store.GetTotalChunksRef()
-		totalChunksDownloaded := lokiResp.Statistics.Querier.Store.GetTotalChunksDownloaded() +
-			lokiResp.Statistics.Ingester.Store.GetTotalChunksDownloaded()
-		totalDecompressedBytes := lokiResp.Statistics.Querier.Store.Chunk.GetDecompressedBytes() +
-			lokiResp.Statistics.Ingester.Store.Chunk.GetDecompressedBytes()
-		totalDecompressedLines := lokiResp.Statistics.Querier.Store.Chunk.GetDecompressedLines() +
-			lokiResp.Statistics.Ingester.Store.Chunk.GetDecompressedLines()
-
-		logValues = append(logValues,
-			"total_chunks_ref", totalChunksRef,
-			"total_chunks_downloaded", totalChunksDownloaded,
-			"decompressed_bytes", totalDecompressedBytes,
-			"decompressed_lines", totalDecompressedLines,
-			"total_entries_returned", lokiResp.Statistics.Summary.GetTotalEntriesReturned(),
-		)
+		setLoglineChunkStats(&lokiResp.Statistics)
+		lokiResp.Statistics.LoglineStats().Outcome = outcome
 	}
-
-	level.Info(logger).Log(logValues...)
+	return resp, nil
 }
 
 // NewLoglineFilterMiddleware intercepts each interval sub-request from
-// SplitByInterval and narrows/skips it using prefetched hints.
+// SplitByInterval and either skips it or attaches clipped hint ranges.
 func NewLoglineFilterMiddleware(
 	hintTimeout time.Duration,
 	metrics *Metrics,
@@ -1098,25 +1168,38 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 
 	intervalStart := lokiReq.StartTs.UTC()
 	intervalEnd := lokiReq.EndTs.UTC()
-	originalDuration := intervalDuration(intervalStart, intervalEnd)
 
-	timer := time.NewTimer(h.hintTimeout)
-	defer timer.Stop()
-	select {
-	case <-result.done:
-		result.stats.ObservePrefetchCall(false)
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-timer.C:
-		result.stats.ObservePrefetchCall(true)
-		result.recordPassthrough(originalDuration)
+	// A metric split reads before its start. Overlap and clipping use that window
+	// so a lookback match is not treated as a miss. Log queries widen by zero.
+	expr, _ := syntax.ParseExpr(lokiReq.Query)
+	readStart, readEnd := intervalStart, intervalEnd
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
+	}
+
+	// These intervals pass through whatever the lookup returns, so they run
+	// without waiting for it.
+	if readEnd.After(result.ingesterCutoff) {
+		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
+		return h.next.Do(ctx, req)
+	}
+	if !readEnd.After(result.minDate) {
+		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
+		return h.next.Do(ctx, req)
+	}
+
+	timedOut, err := result.waitForLookup(ctx, h.hintTimeout)
+	if err != nil {
+		return nil, err
+	}
+	result.stats.ObservePrefetchCall(timedOut)
+	if timedOut {
 		h.metrics.hintPassthrough.WithLabelValues("timeout").Inc()
 		level.Warn(logger).Log("msg", "hint prefetch timeout, falling back to passthrough", "timeout", h.hintTimeout)
 		return h.next.Do(ctx, req)
 	}
 
 	if result.err != nil {
-		result.recordPassthrough(originalDuration)
 		if errors.Is(result.err, hintprovider.ErrUnsupported) {
 			h.metrics.hintPassthrough.WithLabelValues("unsupported").Inc()
 		} else {
@@ -1126,163 +1209,147 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.next.Do(ctx, req)
 	}
 
-	if intervalEnd.After(result.ingesterCutoff) {
-		result.recordPassthrough(originalDuration)
-		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
+	overlapping := rangesOverlapping(result.ranges, readStart, readEnd)
+	if len(overlapping) == 0 {
+		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
+		return skippedResponse(lokiReq, expr), nil
+	}
+
+	hints := clipHintRangesForInterval(overlapping, readStart, readEnd)
+	if len(hints) == 0 {
+		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
+		return skippedResponse(lokiReq, expr), nil
+	}
+
+	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
+	// the querier scans the interval normally.
+	if passthroughCoversInterval(overlapping, hints, readStart, readEnd) {
+		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
 		return h.next.Do(ctx, req)
 	}
 
-	overlapping := rangesOverlapping(result.ranges, intervalStart, intervalEnd)
-	if len(overlapping) == 0 {
-		result.recordSkipped(originalDuration)
-		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return emptyLokiResponse(lokiReq), nil
-	}
-
-	groups := groupHintEnvelopes(overlapping, intervalStart, intervalEnd, envelopeBudget(originalDuration))
-	if len(groups) == 0 {
-		result.recordSkipped(originalDuration)
-		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return emptyLokiResponse(lokiReq), nil
-	}
-
-	if len(overlapping) == 1 && overlapping[0].IsPassthrough() {
-		result.recordPassthrough(originalDuration)
-		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-		return h.next.Do(ctx, req.WithStartEnd(groups[0].Start, groups[0].End))
-	}
-
-	var queried time.Duration
-	for _, g := range groups {
-		queried += intervalDuration(g.Start, g.End)
-	}
-	result.recordNarrowed(originalDuration, queried)
 	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
-
-	if len(groups) == 1 {
-		return h.next.Do(ctx, req.WithStartEnd(groups[0].Start, groups[0].End))
-	}
-
-	responses := make([]queryrangebase.Response, 0, len(groups))
-	for _, g := range groups {
-		resp, err := h.next.Do(ctx, req.WithStartEnd(g.Start, g.End))
-		if err != nil {
-			return nil, err
+	resp, err := h.next.Do(ctx, withHintRanges(lokiReq, hints))
+	// The count travels on the sub-request's response, so the split and shard
+	// merges add it up and discarded responses (retries) drop it.
+	if err == nil {
+		switch r := resp.(type) {
+		case *queryrange.LokiResponse:
+			r.Statistics.LoglineStats().NarrowedRequests++
+		case *queryrange.LokiPromResponse:
+			r.Statistics.LoglineStats().NarrowedRequests++
 		}
-		responses = append(responses, resp)
 	}
-	return queryrange.DefaultCodec.MergeResponse(responses...)
+	return resp, err
 }
 
-type hintEnvelope struct {
-	Start time.Time
-	End   time.Time
+func skippedResponse(req *queryrange.LokiRequest, expr syntax.Expr) queryrangebase.Response {
+	if _, ok := expr.(syntax.SampleExpr); ok {
+		return skippedMetricResponse()
+	}
+	return skippedLokiResponse(req)
 }
 
-func envelopeQueriedDuration(ranges []hintprovider.HintTimeRange, start, end time.Time, split time.Duration) time.Duration {
-	var queried time.Duration
-	// LokiRequest splits are half-open [start, end). Zero split disables
-	// splitting, matching querier.split-queries-by-interval.
-	util.ForInterval(split, start, end, false, func(sliceStart, sliceEnd time.Time) {
-		queried += intervalEnvelopeDuration(ranges, sliceStart, sliceEnd)
-	})
-	return queried
+func skippedLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
+	resp := emptyLokiResponse(req)
+	resp.Statistics.LoglineStats().SkippedRequests = 1
+	return resp
 }
 
-func intervalEnvelopeDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
-	var queried time.Duration
-	for _, g := range groupHintEnvelopes(ranges, start, end, envelopeBudget(intervalDuration(start, end))) {
-		queried += intervalDuration(g.Start, g.End)
-	}
-	return queried
+func skippedMetricResponse() *queryrange.LokiPromResponse {
+	resp := emptyMetricResponse()
+	resp.Statistics.LoglineStats().SkippedRequests = 1
+	return resp
 }
 
-func envelopeBudget(interval time.Duration) int {
-	if interval <= 0 {
-		return 1
-	}
-	k := int((interval + envelopeTargetDuration - 1) / envelopeTargetDuration)
-	if k < 1 {
-		return 1
-	}
-	if k > maxEnvelopesPerInterval {
-		return maxEnvelopesPerInterval
-	}
-	return k
+// withHintRanges clones the request and sets hint ranges. The caller's
+// request, including its bounds, is left unchanged.
+func withHintRanges(req *queryrange.LokiRequest, hints []logproto.HintTimeRange) *queryrange.LokiRequest {
+	clone := *req
+	clone.HintRanges = hints
+	return &clone
 }
 
-// groupHintEnvelopes partitions start-sorted hints into at most maxGroups
-// envelopes by cutting the largest inter-hint gaps. Overlapping or touching
-// hints (gap <= 0) are never split. Each envelope is clipped to [intervalStart, intervalEnd].
-func groupHintEnvelopes(ranges []hintprovider.HintTimeRange, intervalStart, intervalEnd time.Time, maxGroups int) []hintEnvelope {
-	clipped := make([]hintprovider.HintTimeRange, 0, len(ranges))
+// clipHintRangesForInterval clips ranges to the half-open interval, converts a
+// pre-min-date sentinel into that overlap, then sorts and merges. Touching
+// ranges merge, matching querier hint consumption.
+func clipHintRangesForInterval(ranges []hintprovider.HintTimeRange, start, end time.Time) []logproto.HintTimeRange {
+	clipped := make([]logproto.HintTimeRange, 0, len(ranges))
 	for _, r := range ranges {
-		start := maxTime(r.Start, intervalStart)
-		end := minTime(r.End, intervalEnd)
-		if !end.After(start) {
+		rangeStart := r.Start
+		if r.IsPassthrough() || rangeStart.Before(start) {
+			rangeStart = start
+		}
+		rangeEnd := r.End
+		if rangeEnd.After(end) {
+			rangeEnd = end
+		}
+		if !rangeStart.Before(rangeEnd) {
 			continue
 		}
-		clipped = append(clipped, hintprovider.HintTimeRange{Start: start, End: end})
+		clipped = append(clipped, logproto.HintTimeRange{Start: rangeStart, End: rangeEnd})
 	}
-	if len(clipped) == 0 {
-		return nil
-	}
-
-	n := len(clipped)
-	cutCount := maxGroups - 1
-	if cutCount > n-1 {
-		cutCount = n - 1
-	}
-
-	type rankedGap struct {
-		after int
-		d     time.Duration
-	}
-	ranked := make([]rankedGap, 0, n-1)
-	for i := 0; i < n-1; i++ {
-		d := clipped[i+1].Start.Sub(clipped[i].End)
-		ranked = append(ranked, rankedGap{after: i, d: d})
-	}
-	sort.Slice(ranked, func(i, j int) bool {
-		if ranked[i].d != ranked[j].d {
-			return ranked[i].d > ranked[j].d
+	sort.Slice(clipped, func(i, j int) bool {
+		if clipped[i].Start.Equal(clipped[j].Start) {
+			return clipped[i].End.Before(clipped[j].End)
 		}
-		return ranked[i].after < ranked[j].after
+		return clipped[i].Start.Before(clipped[j].Start)
 	})
 
-	cutAfter := make([]bool, n-1)
-	cuts := 0
-	for _, g := range ranked {
-		if cuts >= cutCount {
-			break
-		}
-		if g.d <= 0 {
+	merged := clipped[:0]
+	for _, current := range clipped {
+		if len(merged) == 0 || current.Start.After(merged[len(merged)-1].End) {
+			merged = append(merged, current)
 			continue
 		}
-		cutAfter[g.after] = true
-		cuts++
+		if current.End.After(merged[len(merged)-1].End) {
+			merged[len(merged)-1].End = current.End
+		}
 	}
+	return merged
+}
 
-	var groups []hintEnvelope
-	runStart := 0
-	for i := 0; i < n; i++ {
-		if i < n-1 && !cutAfter[i] {
-			continue
-		}
-		end := clipped[runStart].End
-		for j := runStart + 1; j <= i; j++ {
-			if clipped[j].End.After(end) {
-				end = clipped[j].End
-			}
-		}
-		groups = append(groups, hintEnvelope{Start: clipped[runStart].Start, End: end})
-		runStart = i + 1
+// passthroughCoversInterval reports that every overlapping hint is a
+// pre-min-date sentinel and together they cover the whole interval.
+func passthroughCoversInterval(ranges []hintprovider.HintTimeRange, hints []logproto.HintTimeRange, start, end time.Time) bool {
+	if len(hints) != 1 || !end.After(start) {
+		return false
 	}
-	return groups
+	for _, r := range ranges {
+		if !r.IsPassthrough() {
+			return false
+		}
+	}
+	return !hints[0].Start.After(start) && !hints[0].End.Before(end)
+}
+
+func hintRangesDuration(hints []logproto.HintTimeRange) time.Duration {
+	var queried time.Duration
+	for _, hint := range hints {
+		queried += intervalDuration(hint.Start, hint.End)
+	}
+	return queried
+}
+
+func hintCoverageDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
+	return hintRangesDuration(clipHintRangesForInterval(ranges, start, end))
 }
 
 func isCancel(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+// rangesOverlap reports whether any half-open hint [Start, End) overlaps (start, end].
+// A hint that only ends at start shares no time with the window.
+// Assumes ranges are sorted by Start. It does not allocate.
+func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+	if len(ranges) == 0 {
+		return false
+	}
+	idx := sort.Search(len(ranges), func(i int) bool {
+		return ranges[i].End.After(start)
+	})
+	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }
 
 // rangesOverlapping returns hint ranges that overlap [start, end].
@@ -1329,6 +1396,18 @@ func emptyLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
 		Data: queryrange.LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result:     []logproto.Stream{},
+		},
+	}
+}
+
+func emptyMetricResponse() *queryrange.LokiPromResponse {
+	return &queryrange.LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result:     []queryrangebase.SampleStream{},
+			},
 		},
 	}
 }

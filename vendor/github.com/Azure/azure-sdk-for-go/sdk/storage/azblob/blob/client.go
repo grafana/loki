@@ -24,6 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/internal/sasurl"
 )
 
 // ClientOptions contains the optional parameters when creating a Client.
@@ -291,15 +292,14 @@ func (b *Client) GetSASURL(permissions sas.BlobPermissions, expiry time.Time, o 
 		Permissions:   permissions.String(),
 		StartTime:     st,
 		ExpiryTime:    expiry.UTC(),
+		BlobVersion:   urlParts.VersionID,
 	}.SignWithSharedKey(b.sharedKey())
 
 	if err != nil {
 		return "", err
 	}
 
-	endpoint := b.URL() + "?" + qps.Encode()
-
-	return endpoint, nil
+	return sasurl.Append(b.URL(), qps.Encode()), nil
 }
 
 // Concurrent Download Functions -----------------------------------------------------------------------------------------

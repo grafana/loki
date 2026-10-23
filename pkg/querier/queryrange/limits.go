@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	querystats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -460,12 +461,17 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
 
 		if len(sl.hashes) >= sl.maxSeries && httpreq.IsLogsDrilldownRequest(ctx) {
+			// Return the response with its full statistics. Recording them as
+			// discarded work as well would count the same scan twice.
 			metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
 			return res, nil
 		}
 
 		sl.hashes[hash] = struct{}{}
 		if len(sl.hashes) > sl.maxSeries {
+			// The query already ran. Preserve its usage before discarding the
+			// successful response; the outer collector will see only the error.
+			querystats.JoinDiscardedWork(ctx, promResponse.Statistics)
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 		}
 	}

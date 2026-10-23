@@ -91,7 +91,7 @@ func appendArg(dst []interface{}, arg interface{}) []interface{} {
 	default:
 		// scan struct field
 		v := reflect.ValueOf(arg)
-		if v.Type().Kind() == reflect.Ptr {
+		if v.Type().Kind() == reflect.Pointer {
 			if v.IsNil() {
 				// error: arg is not a valid object
 				return dst

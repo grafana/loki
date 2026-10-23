@@ -67,7 +67,6 @@ type Fetcher struct {
 
 	l2CacheHandoff                   time.Duration
 	skipQueryWritebackCacheOlderThan time.Duration
-	propagateChunkFetchErrors        bool
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
@@ -87,7 +86,7 @@ type decodeResponse struct {
 }
 
 // New makes a new ChunkFetcher.
-func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration, propagateChunkFetchErrors bool) (*Fetcher, error) {
+func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:                           schema,
 		storage:                          storage,
@@ -96,7 +95,6 @@ func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.
 		l2CacheHandoff:                   l2CacheHandoff,
 		cacheStubs:                       cacheStubs,
 		skipQueryWritebackCacheOlderThan: skipQueryWritebackOlderThan,
-		propagateChunkFetchErrors:        propagateChunkFetchErrors,
 		decodeRequests:                   make(chan decodeRequest),
 	}
 
@@ -237,17 +235,19 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
 	if storageErr != nil {
-		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
+		// Only treat this as an expected, benign cancellation if the query itself was canceled
+		// or timed out: storageErr can also be (or wrap) context.Canceled/DeadlineExceeded from
+		// a per-request sub-timeout that object storage clients apply internally, which is a
+		// genuine storage failure rather than an expected query cancellation.
+		if ctx.Err() == nil {
 			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
 			if failures := len(missing) - len(fromStorage); failures > 0 {
 				st.AddChunkFetchFailures(int64(failures))
 			}
+			level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 		}
-		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 
-		if c.propagateChunkFetchErrors {
-			return nil, storageErr
-		}
+		return nil, storageErr
 	}
 
 	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {

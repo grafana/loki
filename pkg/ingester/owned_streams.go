@@ -30,19 +30,18 @@ type ownedStreamService struct {
 	lock             sync.RWMutex
 	notOwnedStreams  map[model.Fingerprint]any
 
-	// Track streams by policy for policy-specific limit enforcement
-	policyStreamCounts map[string]*atomic.Int64
-	policyLock         sync.RWMutex
+	// Track owned streams by policy for policy-specific limit enforcement
+	policyStreams *policyStreamCounts
 }
 
 func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamService {
 	svc := &ownedStreamService{
-		tenantID:           tenantID,
-		limiter:            limiter,
-		fixedLimit:         atomic.NewInt32(0),
-		ownedStreamCount:   atomic.NewInt64(0),
-		notOwnedStreams:    make(map[model.Fingerprint]any),
-		policyStreamCounts: make(map[string]*atomic.Int64),
+		tenantID:         tenantID,
+		limiter:          limiter,
+		fixedLimit:       atomic.NewInt32(0),
+		ownedStreamCount: atomic.NewInt64(0),
+		notOwnedStreams:  make(map[model.Fingerprint]any),
+		policyStreams:    newPolicyStreamCounts(),
 	}
 
 	svc.updateFixedLimit()
@@ -54,24 +53,12 @@ func (s *ownedStreamService) getOwnedStreamCount() int {
 }
 
 func (s *ownedStreamService) getPolicyStreamCount(policy string) int {
-	if policy == noPolicy {
-		return 0
-	}
-
-	s.policyLock.RLock()
-	defer s.policyLock.RUnlock()
-
-	if policyCount, exists := s.policyStreamCounts[policy]; exists {
-		return int(policyCount.Load())
-	}
-	return 0
+	return s.policyStreams.get(policy)
 }
 
 // getActivePolicyCount returns the number of policies that currently have active streams
 func (s *ownedStreamService) getActivePolicyCount() int {
-	s.policyLock.RLock()
-	defer s.policyLock.RUnlock()
-	return len(s.policyStreamCounts)
+	return s.policyStreams.len()
 }
 
 func (s *ownedStreamService) updateFixedLimit() (old, newVal int32) {
@@ -88,15 +75,7 @@ func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bo
 	if owned {
 		s.ownedStreamCount.Inc()
 
-		// Track policy-specific stream count if policy is specified
-		if policy != noPolicy {
-			s.policyLock.Lock()
-			if s.policyStreamCounts[policy] == nil {
-				s.policyStreamCounts[policy] = atomic.NewInt64(0)
-			}
-			s.policyStreamCounts[policy].Inc()
-			s.policyLock.Unlock()
-		}
+		s.policyStreams.inc(policy)
 		return
 	}
 
@@ -118,18 +97,7 @@ func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint, policy str
 	}
 	s.ownedStreamCount.Dec()
 
-	// Decrement policy-specific stream count if policy is specified
-	if policy != noPolicy {
-		s.policyLock.Lock()
-		if policyCount, exists := s.policyStreamCounts[policy]; exists {
-			policyCount.Dec()
-			// Clean up policy if count reaches zero to prevent unbounded map growth
-			if policyCount.Load() == 0 {
-				delete(s.policyStreamCounts, policy)
-			}
-		}
-		s.policyLock.Unlock()
-	}
+	s.policyStreams.dec(policy)
 }
 
 func (s *ownedStreamService) resetStreamCounts() {
@@ -139,10 +107,7 @@ func (s *ownedStreamService) resetStreamCounts() {
 	notOwnedStreamsMetric.Sub(float64(len(s.notOwnedStreams)))
 	s.notOwnedStreams = make(map[model.Fingerprint]any)
 
-	// Reset policy-specific stream counts and clean up the map
-	s.policyLock.Lock()
-	s.policyStreamCounts = make(map[string]*atomic.Int64)
-	s.policyLock.Unlock()
+	s.policyStreams.reset()
 }
 
 func (s *ownedStreamService) isStreamNotOwned(fp model.Fingerprint) bool {
@@ -151,4 +116,74 @@ func (s *ownedStreamService) isStreamNotOwned(fp model.Fingerprint) bool {
 
 	_, notOwned := s.notOwnedStreams[fp]
 	return notOwned
+}
+
+// policyStreamCounts tracks the number of streams per policy. Streams without a policy are not
+// tracked.
+type policyStreamCounts struct {
+	mtx    sync.RWMutex
+	counts map[string]int
+}
+
+func newPolicyStreamCounts() *policyStreamCounts {
+	return &policyStreamCounts{counts: make(map[string]int)}
+}
+
+func (c *policyStreamCounts) inc(policy string) {
+	if policy == noPolicy {
+		return
+	}
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.counts[policy]++
+}
+
+func (c *policyStreamCounts) dec(policy string) {
+	if policy == noPolicy {
+		return
+	}
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	n, ok := c.counts[policy]
+	if !ok {
+		return
+	}
+	// Clean up policy if count reaches zero to prevent unbounded map growth
+	if n <= 1 {
+		delete(c.counts, policy)
+		return
+	}
+	c.counts[policy] = n - 1
+}
+
+func (c *policyStreamCounts) get(policy string) int {
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
+	return c.counts[policy]
+}
+
+// len returns the number of policies that currently have streams.
+func (c *policyStreamCounts) len() int {
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
+	return len(c.counts)
+}
+
+// sum returns the total number of streams across the policies for which include returns true.
+func (c *policyStreamCounts) sum(include func(policy string) bool) int {
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
+	total := 0
+	for policy, n := range c.counts {
+		if include(policy) {
+			total += n
+		}
+	}
+	return total
+}
+
+func (c *policyStreamCounts) reset() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.counts = make(map[string]int)
 }

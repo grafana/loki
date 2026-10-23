@@ -36,14 +36,14 @@ func NewQueryShardMiddleware(
 	engineOpts logql.EngineOpts,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
+	cfg Config,
 	limits Limits,
 	maxShards int,
 	statsHandler queryrangebase.Handler,
 	retryNextHandler queryrangebase.Handler,
-	shardAggregation []string,
 ) queryrangebase.Middleware {
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, engineOpts, next, retryNextHandler, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
+		return newASTMapperware(confs, engineOpts, next, retryNextHandler, statsHandler, logger, shardingMetrics, cfg, limits, maxShards)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -67,13 +67,14 @@ func newASTMapperware(
 	statsHandler queryrangebase.Handler,
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
+	cfg Config,
 	limits Limits,
 	maxShards int,
-	shardAggregation []string,
 ) *astMapperware {
 	ast := &astMapperware{
 		confs:            confs,
 		logger:           log.With(logger, "middleware", "QueryShard.astMapperware"),
+		cfg:              cfg,
 		limits:           limits,
 		next:             next,
 		retryNextHandler: retryNextHandler,
@@ -81,7 +82,6 @@ func newASTMapperware(
 		ng:               logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics:          metrics,
 		maxShards:        maxShards,
-		shardAggregation: shardAggregation,
 	}
 
 	if statsHandler != nil {
@@ -92,6 +92,7 @@ func newASTMapperware(
 }
 
 type astMapperware struct {
+	cfg              Config
 	confs            []config.PeriodConfig
 	logger           log.Logger
 	limits           Limits
@@ -101,10 +102,6 @@ type astMapperware struct {
 	ng               *logql.DownstreamEngine
 	metrics          *logql.MapperMetrics
 	maxShards        int
-
-	// Feature flag for sharding range and vector aggregations such as
-	// quantile_ver_time with probabilistic data structures.
-	shardAggregation []string
 }
 
 func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
@@ -161,6 +158,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	resolver, ok := newDynamicShardResolver(
 		ctx,
+		ast.cfg,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
 		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli())),
@@ -194,7 +192,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	limitShardAggregation := validation.IntersectionPerTenant(tenants, func(tenant string) []string {
 		return ast.limits.ShardAggregations(tenant)
 	})
-	mergedShardAggregation := slices.Compact(append(limitShardAggregation, ast.shardAggregation...))
+	mergedShardAggregation := slices.Compact(append(limitShardAggregation, ast.cfg.ShardAggregations...))
 
 	mapper := logql.NewShardMapper(strategy, ast.metrics, mergedShardAggregation)
 
@@ -213,7 +211,17 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// If the ast can't be mapped to a sharded equivalent,
 	// we can bypass the sharding engine and forward the request downstream.
 	if noop {
-		return ast.next.Do(ctx, r)
+		resp, err := ast.next.Do(ctx, r)
+		if err != nil {
+			return resp, err
+		}
+		switch resp := resp.(type) {
+		case *LokiResponse:
+			addShardPlannedChunks(&resp.Statistics, resolver.plannedChunks.Load())
+		case *LokiPromResponse:
+			addShardPlannedChunks(&resp.Statistics, resolver.plannedChunks.Load())
+		}
+		return resp, nil
 	}
 
 	var path string
@@ -231,13 +239,14 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		// Keep the usage of the shards and index lookups that completed before
 		// the failure.
-		stats.JoinPartial(ctx, res.Statistics)
-		stats.JoinPartial(ctx, resolverStats.Result(0, 0, 0))
+		stats.JoinDiscardedWork(ctx, res.Statistics)
+		stats.JoinDiscardedWork(ctx, resolverStats.Result(0, 0, 0))
 		return nil, err
 	}
 
 	// Merge index and volume stats result cache stats from shard resolver into the query stats.
 	res.Statistics.Merge(resolverStats.Result(0, 0, 0))
+	addShardPlannedChunks(&res.Statistics, resolver.plannedChunks.Load())
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {
 		return nil, err
@@ -292,6 +301,17 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	default:
 		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data.Type())
 	}
+}
+
+// addShardPlannedChunks records the chunks shard planning estimated for a
+// request together with the chunks scanned for it. Splits that bypass shard
+// planning add to neither, so the two stay comparable.
+func addShardPlannedChunks(s *stats.Result, planned int64) {
+	if planned <= 0 {
+		return
+	}
+	s.Index.ShardPlannedChunks += planned
+	s.Index.ShardPlannedChunksScanned += s.TotalChunksScanned()
 }
 
 // shardSplitter middleware will only shard appropriate requests that do not extend past the MinShardingLookback interval.

@@ -1,0 +1,93 @@
+title = "Loki Operator"
+baseurl = "https://loki-operator.dev/"
+disableAliases = true
+disableHugoGeneratorInject = true
+disableKinds = ["taxonomy", "term"]
+enableEmoji = true
+enableGitInfo = true
+enableRobotsTXT = true
+locale = "en-US"
+rssLimit = 10
+summarylength = 20 # 70 (default)
+
+# Multilingual
+defaultContentLanguage = "en"
+defaultContentLanguageInSubdir = false
+
+copyRight = ""
+
+[build.buildStats]
+  enable = true
+
+[outputs]
+  home = ["html", "sitemap"]
+  page = ["html", "markdown"]
+  section = ["html", "rss", "sitemap"]
+  taxonomy = ["html", "rss", "sitemap"]
+  term = ["html", "rss", "sitemap"]
+
+[outputFormats.searchIndex]
+  mediaType = "application/json"
+  baseName = "search-index"
+  isPlainText = true
+  notAlternative = true
+
+[outputFormats.markdown]
+  baseName = "index"
+  isHTML = false
+  isPlainText = true
+  mediaType = "text/markdown"
+
+[outputFormats.llms]
+  baseName = "llms"
+  isHTML = false
+  isPlainText = true
+  mediaType = "text/plain"
+
+# Add output format for section sitemap.xml
+[outputFormats.sitemap]
+  mediaType = "application/xml"
+  baseName = "sitemap"
+  isHTML = false
+  isPlainText = true
+  noUgly = true
+  rel  = "sitemap"
+
+[sitemap]
+  changefreq = "monthly"
+  filename = "sitemap.xml"
+  priority = 0.5
+
+[caches]
+  [caches.getresource]
+    dir = ":cacheDir/:project"
+    maxAge = -1 # "30m"
+
+[permalinks]
+  blog = "/blog/:slug/"
+  docs = "/docs/:sections[1:]/:filename"
+
+[minify.tdewolff.html]
+  keepComments = true # If set to false, build signatures are removed
+  keepWhitespace = false
+
+[pagination]
+  pagerSize = 10
+
+[related]
+  threshold = 80
+  includeNewer = true
+  toLower = false
+    [[related.indices]]
+      name = "categories"
+      weight = 100
+    [[related.indices]]
+      name = "tags"
+      weight = 80
+    [[related.indices]]
+      name = "date"
+      weight = 10
+
+[imaging]
+anchor = "Center"
+resampleFilter = "Lanczos"

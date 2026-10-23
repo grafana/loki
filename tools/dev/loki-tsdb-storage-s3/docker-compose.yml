@@ -11,15 +11,15 @@ services:
     ports:
       - 8500:8500
 
-  minio:
+  silo:
     logging:
       <<: *logging
-    image: minio/minio:RELEASE.2024-02-24T17-11-14Z
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
     entrypoint: sh
-    command: -c 'mkdir -p /data/loki && /usr/bin/minio server --console-address :9001 /data'
+    command: -c 'mkdir -p /data/loki && exec /usr/bin/silo server --console-address :9001 /data'
     environment:
-      - MINIO_ACCESS_KEY=loki
-      - MINIO_SECRET_KEY=supersecret
+      - MINIO_ROOT_USER=loki
+      - MINIO_ROOT_PASSWORD=supersecret
     ports:
       - 9000:9000
       - 9001:9001
@@ -29,7 +29,7 @@ services:
   memcached:
     logging:
       <<: *logging
-    image: memcached:1.6.45-alpine@sha256:c29847751abb41f4c268c84fb3087fee05d4edcbda44409ccb5086e26148e8a7
+    image: memcached:1.6.45-alpine@sha256:9e4de012dc607573052061c0bcb38abc775e1dd59b24e7ac38d1892842094aaf
 
   jaeger:
     logging:
@@ -70,7 +70,7 @@ services:
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18002 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
     depends_on:
       - consul
-      - minio
+      - silo
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
@@ -90,7 +90,7 @@ services:
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18003 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003"]
     depends_on:
       - consul
-      - minio
+      - silo
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
@@ -110,7 +110,7 @@ services:
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004 -querier.scheduler-address=query-scheduler:9009"]
     depends_on:
       - consul
-      - minio
+      - silo
       - query-frontend
       - query-scheduler
     environment:
@@ -132,7 +132,7 @@ services:
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=index-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008"]
     depends_on:
       - consul
-      - minio
+      - silo
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
@@ -151,7 +151,7 @@ services:
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18006 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=compactor -server.http-listen-port=8006 -server.grpc-listen-port=9006"]
     depends_on:
       - consul
-      - minio
+      - silo
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
@@ -171,7 +171,7 @@ services:
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18007 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=query-frontend -server.http-listen-port=8007 -server.grpc-listen-port=9007 -frontend.scheduler-address=query-scheduler:9009 -log.level=debug"]
     depends_on:
       - consul
-      - minio
+      - silo
       - query-scheduler
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
@@ -191,7 +191,7 @@ services:
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18009 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=query-scheduler -server.http-listen-port=8009 -server.grpc-listen-port=9009 -log.level=debug"]
     depends_on:
       - consul
-      - minio
+      - silo
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:

@@ -15,6 +15,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	azruntime "github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/log"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/transport"
 	msalerrors "github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/managedidentity"
 )
@@ -44,6 +45,11 @@ type managedIdentityClient struct {
 	// a credentialUnavailableError instead of an AuthenticationFailedError for an unexpected IMDS response.
 	chained    bool
 	msalClient msalManagedIdentityClient
+	// configurableClient is set when a source (Service Fabric today, mTLS later) requires MSAL to
+	// configure the transport. MSAL applies certificate pinning and the redirect policy via
+	// ConfigureClient, preserving the azcore pipeline's middleware. Its client field holds the
+	// caller-supplied base until ConfigureClient replaces it with the augmented client.
+	configurableClient configurableClient
 }
 
 // setIMDSRetryOptionDefaults sets zero-valued fields to default values appropriate for IMDS
@@ -104,6 +110,22 @@ func newManagedIdentityClient(options *ManagedIdentityCredentialOptions) (*manag
 		setIMDSRetryOptionDefaults(&cp.Retry)
 	}
 
+	if source == managedidentity.ServiceFabric {
+		if cp.Transport != nil {
+			// This source has MSAL pin the base client, so a caller-supplied Transport must be an
+			// *http.Client MSAL can clone. Any other transporter can't be pinned, so fail closed
+			// rather than send credentials unpinned.
+			base, ok := cp.Transport.(*http.Client)
+			if !ok {
+				return nil, errors.New(credNameManagedIdentity + ": Service Fabric managed identity requires ClientOptions.Transport to be an *http.Client")
+			}
+			c.configurableClient.client = base
+		}
+		// Install a client MSAL configures (see ConfigureClient) at the bottom of the pipeline,
+		// so certificate verification and the redirect policy apply without discarding middleware.
+		cp.Transport = &c.configurableClient
+	}
+
 	c.azClient, err = azcore.NewClient(module, version, azruntime.PipelineOptions{
 		Tracing: azruntime.TracingOptions{
 			Namespace: traceNamespace,
@@ -155,6 +177,24 @@ func (*managedIdentityClient) CloseIdleConnections() {
 
 func (c *managedIdentityClient) Do(r *http.Request) (*http.Response, error) {
 	return doForClient(c.azClient, r)
+}
+
+// ConfigureClient implements managedidentity.ClientConfigurer. MSAL passes an augmentation
+// that applies a source's certificate pinning and redirect policy; azidentity supplies the caller's
+// Transport as the base (or the SDK default when none was set) and installs the augmented client at
+// the bottom of the pipeline, preserving the azcore middleware above.
+func (c *managedIdentityClient) ConfigureClient(augment func(*http.Client) (*http.Client, error)) error {
+	base := c.configurableClient.client
+	if base == nil {
+		// no caller provided transport so use our default
+		base = transport.DefaultHTTPClient
+	}
+	client, err := augment(base)
+	if err != nil {
+		return err
+	}
+	c.configurableClient.client = client
+	return nil
 }
 
 // authenticate acquires an access token
@@ -220,3 +260,5 @@ func (c *managedIdentityClient) GetToken(ctx context.Context, tro policy.TokenRe
 	err = newAuthenticationFailedErrorFromMSAL(credNameManagedIdentity, err)
 	return azcore.AccessToken{}, err
 }
+
+var _ managedidentity.ClientConfigurer = (*managedIdentityClient)(nil)

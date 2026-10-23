@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -171,6 +172,200 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			require.ElementsMatch(t, tc.expLabels, received)
 		})
 	}
+}
+
+func TestMultiTenantQuerier_SelectSamples_ShouldHonorSampleOrder(t *testing.T) {
+	byTenant := func(id string) func(ctx context.Context) bool {
+		return func(ctx context.Context) bool {
+			got, err := user.ExtractOrgID(ctx)
+			return err == nil && got == id
+		}
+	}
+
+	newQuerier := func() *querierMock {
+		querier := newQuerierMock()
+
+		// Both tenants pick a stream with the same labels, and so the same StreamHash: a
+		// real fingerprint is a hash of the labels alone. Their samples' timestamps
+		// interleave if sorted by timestamp alone. This distinguishes stream-first (grouped
+		// by each tenant's own stream) from timestamp-first (interleaved) output.
+		querier.On("SelectSamples", mock.MatchedBy(byTenant("1")), mock.Anything).Return(func() iter.SampleIterator {
+			return iter.NewSeriesIterator(logproto.Series{
+				Labels:     `{app="a"}`,
+				StreamHash: 100,
+				Samples:    []logproto.Sample{{Timestamp: 5, Hash: 5, Value: 1}, {Timestamp: 6, Hash: 6, Value: 1}},
+			})
+		}, nil)
+		querier.On("SelectSamples", mock.MatchedBy(byTenant("2")), mock.Anything).Return(func() iter.SampleIterator {
+			return iter.NewSeriesIterator(logproto.Series{
+				Labels:     `{app="a"}`,
+				StreamHash: 100,
+				Samples:    []logproto.Sample{{Timestamp: 1, Hash: 1, Value: 1}, {Timestamp: 100, Hash: 100, Value: 1}},
+			})
+		}, nil)
+		return querier
+	}
+	selector := `count_over_time({app="a"}[1m]) > 10`
+
+	t.Run("stream-first groups by stream hash across tenants", func(t *testing.T) {
+		multiTenantQuerier := NewMultiTenantQuerier(newQuerier(), log.NewNopLogger())
+		ctx := user.InjectOrgID(context.Background(), "1|2")
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Selector: selector,
+			Plan:     testutil.MustPlan(selector),
+			Order:    logproto.SAMPLE_ORDER_BY_STREAM,
+		}}
+
+		it, err := multiTenantQuerier.SelectSamples(ctx, params)
+		require.NoError(t, err)
+
+		var got []int64
+		for it.Next() {
+			got = append(got, it.At().Timestamp)
+		}
+		require.NoError(t, it.Err())
+		require.Equal(t, []int64{5, 6, 1, 100}, got, "must group by StreamHash (tenant 1's stream first), not interleave by timestamp")
+	})
+
+	t.Run("timestamp-first interleaves by timestamp regardless of stream", func(t *testing.T) {
+		multiTenantQuerier := NewMultiTenantQuerier(newQuerier(), log.NewNopLogger())
+		ctx := user.InjectOrgID(context.Background(), "1|2")
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Selector: selector,
+			Plan:     testutil.MustPlan(selector),
+			Order:    logproto.SAMPLE_ORDER_BY_TIMESTAMP,
+		}}
+
+		it, err := multiTenantQuerier.SelectSamples(ctx, params)
+		require.NoError(t, err)
+
+		var got []int64
+		for it.Next() {
+			got = append(got, it.At().Timestamp)
+		}
+		require.NoError(t, it.Err())
+		require.Equal(t, []int64{1, 5, 6, 100}, got)
+	})
+
+	t.Run("unknown order errors instead of silently defaulting", func(t *testing.T) {
+		multiTenantQuerier := NewMultiTenantQuerier(newQuerier(), log.NewNopLogger())
+		ctx := user.InjectOrgID(context.Background(), "1|2")
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Selector: selector,
+			Plan:     testutil.MustPlan(selector),
+			Order:    logproto.SampleOrder(99),
+		}}
+
+		_, err := multiTenantQuerier.SelectSamples(ctx, params)
+		require.ErrorContains(t, err, "unknown sample order")
+	})
+}
+
+func TestTenantSampleIterator_StreamHash(t *testing.T) {
+	t.Run("differs across tenants that have the same log stream", func(t *testing.T) {
+		newIter := func(tenantID string) iter.SampleIterator {
+			return NewTenantSampleIterator(iter.NewSeriesIterator(logproto.Series{
+				Labels:     `{app="a"}`,
+				StreamHash: 42,
+			}), tenantID)
+		}
+
+		it1 := newIter("1")
+		it2 := newIter("2")
+
+		require.NotEqual(t, it1.Labels(), it2.Labels(), "tenant-qualified labels must differ")
+		require.NotEqual(t, it1.StreamHash(), it2.StreamHash(), "StreamHash must differ if two tenants have the same log stream")
+	})
+
+	t.Run("stays fixed within one stream even when Labels varies per sample", func(t *testing.T) {
+		// structured metadata and label_format can both make a stream report a
+		// different Labels() per sample, while its own StreamHash stays fixed.
+		inner := &varyingLabelsSampleIterator{streamHash: 42, labels: []string{`{app="a", x="1"}`, `{app="a", x="2"}`}}
+		it := NewTenantSampleIterator(inner, "1")
+
+		require.True(t, it.Next())
+		h1, l1 := it.StreamHash(), it.Labels()
+		require.True(t, it.Next())
+		h2, l2 := it.StreamHash(), it.Labels()
+
+		require.NotEqual(t, l1, l2, "the wrapped iterator's Labels() must actually vary per sample for this test to be meaningful")
+		require.Equal(t, h1, h2, "StreamHash must stay fixed within one stream regardless of Labels()")
+	})
+}
+
+// varyingLabelsSampleIterator reports a fixed StreamHash but a different Labels() on
+// each successive sample, mimicking structured metadata or label_format.
+type varyingLabelsSampleIterator struct {
+	streamHash uint64
+	labels     []string
+	i          int
+}
+
+func (it *varyingLabelsSampleIterator) Next() bool {
+	it.i++
+	return it.i <= len(it.labels)
+}
+func (it *varyingLabelsSampleIterator) Err() error          { return nil }
+func (it *varyingLabelsSampleIterator) At() logproto.Sample { return logproto.Sample{} }
+func (it *varyingLabelsSampleIterator) Close() error        { return nil }
+func (it *varyingLabelsSampleIterator) Labels() string      { return it.labels[it.i-1] }
+func (it *varyingLabelsSampleIterator) StreamHash() uint64  { return it.streamHash }
+
+func TestMultiTenantQuerier_SelectSamples_ClosesOpenedIterators(t *testing.T) {
+	selector := `count_over_time({foo="bar"}[1m]) > 10`
+
+	t.Run("closes every opened iterator when rejecting an unknown order", func(t *testing.T) {
+		var closed atomic.Int64
+		querier := newQuerierMock()
+		querier.On("SelectSamples", mock.Anything, mock.Anything).Return(func() iter.SampleIterator {
+			return &closeTrackingSampleIterator{SampleIterator: newSampleIterator(), closed: &closed}
+		}, nil)
+
+		multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+		ctx := user.InjectOrgID(context.Background(), "1|2")
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Selector: selector,
+			Plan:     testutil.MustPlan(selector),
+			Order:    logproto.SampleOrder(99),
+		}}
+
+		_, err := multiTenantQuerier.SelectSamples(ctx, params)
+		require.ErrorContains(t, err, "unknown sample order")
+		require.Equal(t, int64(2), closed.Load())
+	})
+
+	t.Run("closes an already-opened iterator when another tenant's call fails, without letting its close error mask the real one", func(t *testing.T) {
+		var opened, closed atomic.Int64
+		closeBoom := fmt.Errorf("close tenant 1 failed")
+		selectBoom := fmt.Errorf("tenant 2 unavailable")
+
+		byTenant := func(id string) func(ctx context.Context) bool {
+			return func(ctx context.Context) bool {
+				got, err := user.ExtractOrgID(ctx)
+				return err == nil && got == id
+			}
+		}
+
+		querier := newQuerierMock()
+		querier.On("SelectSamples", mock.MatchedBy(byTenant("1")), mock.Anything).Return(func() iter.SampleIterator {
+			opened.Add(1)
+			return &closeTrackingSampleIterator{SampleIterator: newSampleIterator(), closed: &closed, closeErr: closeBoom}
+		}, nil)
+		querier.On("SelectSamples", mock.MatchedBy(byTenant("2")), mock.Anything).Return(func() iter.SampleIterator { return nil }, selectBoom)
+
+		multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+		ctx := user.InjectOrgID(context.Background(), "1|2")
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Selector: selector,
+			Plan:     testutil.MustPlan(selector),
+			Order:    logproto.SAMPLE_ORDER_BY_TIMESTAMP,
+		}}
+
+		_, err := multiTenantQuerier.SelectSamples(ctx, params)
+		require.ErrorIs(t, err, selectBoom)
+		require.NotErrorIs(t, err, closeBoom)
+		require.Equal(t, opened.Load(), closed.Load())
+	})
 }
 
 func TestMultiTenantQuerier_TenantFilter(t *testing.T) {

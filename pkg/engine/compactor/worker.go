@@ -10,9 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -22,8 +20,7 @@ type WorkerParams struct {
 	Config WorkerConfig
 
 	Bucket       objstore.Bucket
-	DataBucket   objstore.Bucket     // unprefixed bucket for reading source log objects; nil falls back to Bucket
-	Metastore    metastore.Metastore // may be nil in tests where no task ever arrives
+	DataBucket   objstore.Bucket // unprefixed bucket for reading source log objects; nil falls back to Bucket
 	ScratchStore scratch.Store
 
 	Logger     log.Logger
@@ -31,10 +28,8 @@ type WorkerParams struct {
 
 	// IndexobjCfg controls index object construction parameters for compaction.
 	IndexobjCfg logsobj.BuilderBaseConfig
-	// LogsobjCfg controls index object construction parameters for compaction.
+	// LogsobjCfg controls log object construction parameters for compaction.
 	LogsobjCfg logsobj.BuilderBaseConfig
-	// UploaderCfg controls object key generation for compacted log objects.
-	UploaderCfg uploader.Config
 }
 
 // Worker is the dataobj-compaction-worker target service. It wraps an
@@ -61,8 +56,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, errors.New("dataobj compaction worker: scheduler_lookup_address is required")
 	}
 	if params.Config.AdvertiseAddr == "" {
-		// engine.NewWorker rejects nil AdvertiseAddr when no LocalScheduler
-		// is set; the compaction worker never sets LocalScheduler.
+		// engine.NewWorker rejects a nil AdvertiseAddr.
 		return nil, errors.New("dataobj compaction worker: advertise_addr is required")
 	}
 	if params.Config.Endpoint == "" {
@@ -91,26 +85,18 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Logger:       log.With(logger, "component", "dataobj-compaction-worker"),
 		Bucket:       params.Bucket,
 		DataBucket:   params.DataBucket,
-		Metastore:    params.Metastore,
 		ScratchStore: params.ScratchStore,
 		Config: engine.WorkerConfig{
 			WorkerThreads:           params.Config.WorkerThreads,
 			SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 			SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 		},
-		// ExecutorConfig left zero: real IndexMerge and TableOfContentsConsolidate
-		// executors arrive in follow-up changes. The zero value produces a no-op
-		// task-results cache and a default batch size.
-		Executor:      engine.ExecutorConfig{},
-		AdvertiseAddr: advertiseAddr,
-		Endpoint:      params.Config.Endpoint,
-		// LocalScheduler left nil: the compaction worker only ever
-		// connects to remote schedulers via DNS-SRV.
-		IndexobjCfg:        params.IndexobjCfg,
-		LogsobjCfg:         params.LogsobjCfg,
-		UploaderCfg:        params.UploaderCfg,
-		IndexMergeObserver: wm,
-		LogMergeObserver:   wm,
+		AdvertiseAddr:       advertiseAddr,
+		Endpoint:            params.Config.Endpoint,
+		IndexobjCfg:         params.IndexobjCfg,
+		LogsobjCfg:          params.LogsobjCfg,
+		IndexMergeObserver:  wm,
+		NewLogMergeObserver: wm.logMergeObserver,
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)
@@ -123,8 +109,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 func (w *Worker) Service() services.Service { return w.inner.Service() }
 
 // RegisterWorkerServer registers the worker's HTTP frame handler on the
-// provided router. No-op when the worker was constructed without an
-// advertise address.
+// provided router.
 func (w *Worker) RegisterWorkerServer(router *mux.Router) { w.inner.RegisterWorkerServer(router) }
 
 // RegisterMetrics registers metrics about w to report to reg.

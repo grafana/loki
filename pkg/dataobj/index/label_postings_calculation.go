@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // created for and scoped to each logs section
@@ -36,17 +36,11 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			return fmt.Errorf("unknown stream ID %d in log record", log.StreamID)
 		}
 
-		// The uncompressed byte contract is line bytes plus structured metadata
-		// value bytes, matching streams.Stream.UncompressedSize and the stats
-		// calculation so every producer reports the same quantity.
-		uncompressedSize := int64(len(log.Line))
-		log.Metadata.Range(func(md labels.Label) {
-			uncompressedSize += int64(len(md.Value))
-		})
+		uncompressedSize := log.UncompressedSize()
 		streamLbls.Range(func(lbl labels.Label) {
-			calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
+			calcCtx.builder.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
-				ShardBuckets:     int64(streams.ShardFactor),
+				ShardBuckets:     int64(calcCtx.shardLayout.Buckets()),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       lbl.Name,
 				LabelValue:       lbl.Value,
@@ -60,6 +54,6 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 	return nil
 }
 
-func (c *labelPostingsCalculation) Flush(_ context.Context, _ *logsCalculationContext) error {
+func (c *labelPostingsCalculation) Flush(_ context.Context, _ *logsCalculationContext, _ *indexobj.Builder) error {
 	return nil
 }

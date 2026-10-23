@@ -2,6 +2,7 @@ package jwtutil
 
 import (
 	"crypto"
+	"maps"
 
 	"github.com/spiffe/go-spiffe/v2/internal/cryptoutil"
 )
@@ -9,9 +10,7 @@ import (
 // CopyJWTAuthorities copies JWT authorities from a map to a new map.
 func CopyJWTAuthorities(jwtAuthorities map[string]crypto.PublicKey) map[string]crypto.PublicKey {
 	copiedJWTAuthorities := make(map[string]crypto.PublicKey)
-	for key, jwtAuthority := range jwtAuthorities {
-		copiedJWTAuthorities[key] = jwtAuthority
-	}
+	maps.Copy(copiedJWTAuthorities, jwtAuthorities)
 	return copiedJWTAuthorities
 }
 

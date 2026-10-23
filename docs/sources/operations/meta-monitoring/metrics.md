@@ -104,24 +104,26 @@ Abnormal behavior:
 Compaction issues can silently degrade read performance and retention behavior over time.
 
 {{< admonition type="note" >}}
-The compaction and retention metrics use a `loki_boltdb_shipper_` prefix for historical reasons. The compactor emits these metrics regardless of which index type you use, including TSDB.
+Prior to Loki 4.0 the compaction and retention metrics used a `loki_boltdb_shipper_` prefix for historical reasons.
+The compactor emitted these metrics regardless of which index type you use, including TSDB.
+After removing the legacy BoltDB Shipper index, the prefix has been renamed to `loki_tsdb_shipper_`.
 {{< /admonition >}}
 
 Key metrics:
 
-- `loki_boltdb_shipper_compactor_running`
-- `loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds`
-- `loki_boltdb_shipper_compact_tables_operation_total`
-- `loki_boltdb_shipper_compact_tables_operation_duration_seconds`
+- `loki_tsdb_shipper_compactor_running`
+- `loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds`
+- `loki_tsdb_shipper_compact_tables_operation_total`
+- `loki_tsdb_shipper_compact_tables_operation_duration_seconds`
 
 Example queries:
 
 ```promql
-sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace)
+sum(loki_tsdb_shipper_compactor_running) by (cluster, namespace)
 ```
 
 ```promql
-time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds > 0)
+time() - (loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds > 0)
 ```
 
 Abnormal behavior:
@@ -190,6 +192,40 @@ Abnormal behavior:
 - Sharp drops (possible data path interruption).
 - Unexpected spikes (possible overload or noisy tenants).
 
+## Kafka-based ingestion (experimental)
+
+{{< admonition type="note" >}}
+These metrics only apply if you've enabled [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/), an experimental write-path feature.
+{{< /admonition >}}
+
+**Key metrics:**
+
+- `loki_kafka_client_partition_reader_consumption_lag_seconds`: the single most important Kafka health signal. Growing lag means ingesters can't keep up with the rate at which the distributor produces records.
+- `loki_distributor_kafka_appends_total` (label `status`): produce success and failure rate. A rising failure rate means writes aren't reaching Kafka.
+- `loki_distributor_kafka_latency_seconds`: produce latency. A sustained increase points to Kafka broker pressure or network issues.
+- `loki_kafka_client_partition_reader_fetch_errors_total`: errors fetching records from Kafka brokers. This should stay near zero.
+
+**Example queries:**
+
+```promql
+# Consumption lag p99 by partition state
+histogram_quantile(0.99, sum(rate(loki_kafka_client_partition_reader_consumption_lag_seconds_bucket{phase="running", cluster="$cluster", namespace="$namespace"}[$__rate_interval])) by (le, cluster, namespace))
+```
+
+```promql
+# Kafka produce error rate
+sum(rate(loki_distributor_kafka_appends_total{status="fail", cluster="$cluster", namespace="$namespace"}[$__rate_interval])) by (cluster, namespace)
+```
+
+**Abnormal behavior:**
+
+- Consumption lag growing over time (ingesters can't keep up with the produce rate).
+- Any sustained produce failures.
+- Rising produce latency (broker pressure, network issues, or too few partitions).
+- Fetch errors (broker unavailability or a protocol version mismatch).
+
+For a complete list of Kafka metrics, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#monitoring-kafka-ingestion).
+
 ## Object store operations
 
 Object store latency and failures directly impact query and retention workflows.
@@ -214,6 +250,18 @@ Abnormal behavior:
 
 - Growing failure rates by operation.
 - Increasing p99 latency for `get`, `get_range`, or `upload`.
+
+Connection metrics just for S3:
+
+- `net_conntrack_dialer_conn_attempted_total`
+- `net_conntrack_dialer_conn_established_total`
+- `net_conntrack_dialer_conn_failed_total`
+- `net_conntrack_dialer_conn_closed_total`
+
+Abnormal behavior:
+
+- Non-zero rate of failed connections.
+- High rate of closed connections under ordinary load.
 
 ## Resource and runtime health
 
@@ -273,13 +321,13 @@ Retention and sweeper lag can cause storage growth and delayed data lifecycle ac
 Key metrics:
 
 - `loki_compactor_apply_retention_last_successful_run_timestamp_seconds`
-- `loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time`
-- `loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count`
+- `loki_tsdb_shipper_retention_sweeper_marker_file_processing_current_time`
+- `loki_tsdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count`
 
 Example query:
 
 ```promql
-time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{cluster="$cluster", namespace="$namespace"} > 0)
+time() - (loki_tsdb_shipper_retention_sweeper_marker_file_processing_current_time{cluster="$cluster", namespace="$namespace"} > 0)
 ```
 
 Abnormal behavior:

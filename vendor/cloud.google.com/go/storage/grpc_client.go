@@ -25,6 +25,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/iam/apiv1/iampb"
@@ -125,6 +126,7 @@ type grpcStorageClient struct {
 	raw            *gapic.Client
 	settings       *settings
 	config         *storageConfig
+	readStallMgr   *bucketDelayManager
 	dpDiag         string
 	metrics        *clientMetrics
 	metricsCleanup func()
@@ -199,11 +201,26 @@ func newGRPCStorageClient(ctx context.Context, opts ...storageOption) (client *g
 		}()
 	}
 
+	var bd *bucketDelayManager
+	if config.readStallTimeoutConfig != nil {
+		drrstConfig := config.readStallTimeoutConfig
+		bd, err = newBucketDelayManager(
+			drrstConfig.TargetPercentile,
+			getDynamicReadReqIncreaseRateFromEnv(),
+			getDynamicReadReqInitialTimeoutSecFromEnv(drrstConfig.Min),
+			drrstConfig.Min,
+			defaultDynamicReqdReqMaxTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("creating dynamic-delay: %w", err)
+		}
+	}
+
 	c := &grpcStorageClient{
 		settings:       s,
 		config:         &config,
 		metrics:        clientMetrics,
 		metricsCleanup: metricsCleanup,
+		readStallMgr:   bd,
 	}
 	// Add routing interceptors to inject headers.
 	ui, si := c.routingInterceptors()
@@ -1331,7 +1348,7 @@ func (c *grpcStorageClient) NewRangeReader(ctx context.Context, params *newRange
 		var err error
 		var decoder *readResponseDecoder
 
-		err = run(cc, func(ctx context.Context) error {
+		openStream := func(ctx context.Context) error {
 			var databufs mem.BufferSlice
 			openAndSendReq := func() error {
 				databufs = mem.BufferSlice{}
@@ -1389,6 +1406,18 @@ func (c *grpcStorageClient) NewRangeReader(ctx context.Context, params *newRange
 			}
 			err = decoder.readFullObjectResponse()
 			return err
+		}
+
+		err = run(cc, func(ctx context.Context) error {
+			decoder = nil
+			return executeWithReadStallTimeout(ctx, c.readStallMgr, params.bucket, openStream, func(stallTimeout time.Duration) {
+				target := stripPort(metricsStateFromContext(ctx).getTarget())
+				c.metrics.recordStallDuration(ctx, stallTimeout, "ReadObject", "grpc", target)
+				if decoder != nil && decoder.databufs != nil {
+					decoder.databufs.Free()
+					decoder = nil
+				}
+			})
 		}, s.retry, s.idempotent, withOperation("ReadObject"), withBucket(params.bucket), withObject(params.object))
 		if err != nil {
 			// Close the stream context we just created to ensure we don't leak

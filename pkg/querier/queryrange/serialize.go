@@ -32,6 +32,7 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, err
 	}
+	stripClientHints(request)
 
 	response, err := rt.next.Do(ctx, request)
 	if err != nil {
@@ -43,6 +44,28 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 	}
 
 	return rt.codec.EncodeResponse(ctx, r, response)
+}
+
+// stripClientHints clears the hint ranges and the data-object options of a request decoded from
+// HTTP.
+//
+// Only Loki components may set these fields. A client that sets them could change what a query
+// reads, and Loki must stay in control of that:
+//   - Hint ranges limit the time ranges for which the querier returns samples.
+//   - Data-object options mark a request as eligible for reads from data objects. Only the
+//     query-frontend decides this for each request.
+//
+// The query-frontend and the standalone querier call this at their HTTP entrypoints. The scheduler
+// path does not call it, because it carries the values that internal middleware attached after
+// decode.
+func stripClientHints(request queryrangebase.Request) {
+	switch request := request.(type) {
+	case *LokiRequest:
+		request.HintRanges = nil
+		request.DataObjOptions = nil
+	case *LokiInstantRequest:
+		request.DataObjOptions = nil
+	}
 }
 
 type serializeHTTPHandler struct {
@@ -67,6 +90,7 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		serverutil.WriteError(err, w)
 		return
 	}
+	stripClientHints(request)
 
 	response, err := rt.next.Do(ctx, request)
 	if err != nil {

@@ -24,7 +24,7 @@ func CopyTraceID(dest, src *TraceID) {
 	*dest = *src
 }
 
-// IsEmpty returns true if id contains at leas one non-zero byte.
+// IsEmpty returns true if id doesn't contain at least one non-zero byte.
 func (tid TraceID) IsEmpty() bool {
 	return tid == [traceIDSize]byte{}
 }

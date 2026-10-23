@@ -2,7 +2,9 @@ package distributor
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"unicode"
@@ -93,7 +95,28 @@ func (l *FieldDetector) shouldDiscoverGenericFields() bool {
 	return l.validationContext.allowStructuredMetadata && len(l.validationContext.discoverGenericFields) > 0
 }
 
-func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+func (l *FieldDetector) discoverFields(ctx context.Context, lbs labels.Labels, entry *logproto.Entry, structuredMetadata labels.Labels, sharedMetadata ...labels.Labels) {
+	if l.shouldDiscoverLogLevels() {
+		pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
+			logLevel, ok := l.extractLogLevel(lbs, structuredMetadata, *entry, sharedMetadata...)
+			if ok {
+				entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+			}
+		})
+	}
+	if l.shouldDiscoverGenericFields() {
+		pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
+			for field, hints := range l.validationContext.discoverGenericFields {
+				extracted, ok := l.extractGenericField(field, hints, lbs, structuredMetadata, *entry, sharedMetadata...)
+				if ok {
+					entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+				}
+			}
+		})
+	}
+}
+
+func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry, sharedMetadata ...labels.Labels) (logproto.LabelAdapter, bool) {
 	// Check if detected_level is already present in entry.StructuredMetadata and normalize it
 	for i, sm := range entry.StructuredMetadata {
 		if sm.Name == constants.LevelLabel {
@@ -107,14 +130,21 @@ func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 		}
 	}
 
+	// Shared detected levels are normalized once before entries are processed.
+	for _, shared := range sharedMetadata {
+		if shared.Has(constants.LevelLabel) {
+			return logproto.LabelAdapter{}, false
+		}
+	}
+
 	levelFromLabel, hasLevelLabel := labelsContainAny(labels, l.allowedLevelLabels)
 	var logLevel string
 	if hasLevelLabel {
 		logLevel = normalizeLogLevel(levelFromLabel)
-	} else if levelFromMetadata, ok := labelsContainAny(structuredMetadata, l.allowedLevelLabels); ok {
+	} else if levelFromMetadata, ok := labelsContainAny(structuredMetadata, l.allowedLevelLabels, sharedMetadata...); ok {
 		logLevel = normalizeLogLevel(levelFromMetadata)
 	} else {
-		logLevel = l.detectLogLevelFromLogEntry(entry, structuredMetadata)
+		logLevel = l.detectLogLevelFromLogEntry(entry, structuredMetadata, sharedMetadata...)
 	}
 
 	if logLevel == "" {
@@ -126,12 +156,12 @@ func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 	}, true
 }
 
-func (l *FieldDetector) extractGenericField(name string, hints []string, labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+func (l *FieldDetector) extractGenericField(name string, hints []string, labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry, sharedMetadata ...labels.Labels) (logproto.LabelAdapter, bool) {
 
 	var value string
 	if v, ok := labelsContainAny(labels, hints); ok {
 		value = v
-	} else if v, ok := labelsContainAny(structuredMetadata, hints); ok {
+	} else if v, ok := labelsContainAny(structuredMetadata, hints, sharedMetadata...); ok {
 		value = v
 	} else {
 		value = l.detectGenericFieldFromLogEntry(entry, hints)
@@ -143,10 +173,16 @@ func (l *FieldDetector) extractGenericField(name string, hints []string, labels 
 	return logproto.LabelAdapter{Name: name, Value: value}, true
 }
 
-func labelsContainAny(labels labels.Labels, names []string) (string, bool) {
+// Search hint names in order, then metadata sources in precedence order.
+func labelsContainAny(metadata labels.Labels, names []string, sharedMetadata ...labels.Labels) (string, bool) {
 	for _, name := range names {
-		if labels.Has(name) {
-			return labels.Get(name), true
+		if metadata.Has(name) {
+			return metadata.Get(name), true
+		}
+		for _, shared := range sharedMetadata {
+			if shared.Has(name) {
+				return shared.Get(name), true
+			}
 		}
 	}
 	return "", false
@@ -176,10 +212,10 @@ func normalizeLogLevel(level string) string {
 	}
 }
 
-func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels, sharedMetadata ...labels.Labels) string {
 	// otlp logs have a severity number, using which we are defining the log levels.
 	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
-	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
+	if otlpSeverityNumberTxt, _ := labelsContainAny(structuredMetadata, []string{push.OTLPSeverityNumber}, sharedMetadata...); otlpSeverityNumberTxt != "" {
 		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
 		if err != nil {
 			return constants.LogLevelInfo

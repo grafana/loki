@@ -82,6 +82,17 @@ Help With Tests
 To anyone interesting in helping or contributing, I sure could use some help creating tests for each language.
 Please see issue [here](https://github.com/go-playground/locales/issues/1) for details.
 
+Supported Go Versions
+---------------------
+This package is aligned with the [Go release policy](https://go.dev/doc/devel/release) in that support is guaranteed for 
+the two most recent major versions.
+
+This does not mean the package will not work with older versions of Go, only that we reserve the right to increase the 
+MSGV(Minimum Supported Go Version) when the need arises to address Security issues/patches, OS issues & support or newly 
+introduced functionality that would greatly benefit the maintenance and/or usage of this package.
+
+If and when the MSGV is increased it will be done so in a minimum of a `Minor` release bump.
+
 License
 ------
 Distributed under MIT License, please see license file in code for more details.

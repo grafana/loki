@@ -5,6 +5,7 @@
 package libc // import "modernc.org/libc"
 
 import (
+	"bytes"
 	crand "crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
@@ -16,9 +17,11 @@ import (
 	"os"
 	"os/exec"
 	gosignal "os/signal"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	gotime "time"
 	"unicode"
 	"unsafe"
@@ -33,6 +36,7 @@ import (
 	"modernc.org/libc/limits"
 	"modernc.org/libc/netdb"
 	"modernc.org/libc/netinet/in"
+	"modernc.org/libc/pthread"
 	"modernc.org/libc/signal"
 	"modernc.org/libc/stdio"
 	"modernc.org/libc/sys/socket"
@@ -109,8 +113,13 @@ func (f file) setEOF() {
 	(*stdio.FILE)(unsafe.Pointer(f)).F_flags |= 2
 }
 
+func (f file) clearEOF() {
+	(*stdio.FILE)(unsafe.Pointer(f)).F_flags &^= 2
+}
+
 func (f file) close(t *TLS) int32 {
 	r := Xclose(t, f.fd())
+	Xfree(t, f.s().F_bf.F_base)
 	Xfree(t, uintptr(f))
 	if r < 0 {
 		return stdio.EOF
@@ -119,8 +128,130 @@ func (f file) close(t *TLS) int32 {
 	return 0
 }
 
+// Input is buffered using the FILE fields like Apple's libc does: _bf is the buffer, _p the
+// next byte and _r the bytes left, so the __sgetc macro works. Output is not buffered.
+const (
+	fileBufSize   = 4096
+	fileUngetSize = 8 // Space reserved in front of the buffer for ungetc.
+	fileNoBuf     = 4 // F_flags bit set by setvbuf(_IONBF).
+)
+
+func (f file) s() *stdio.FILE { return (*stdio.FILE)(unsafe.Pointer(f)) }
+
+// mu is the per-FILE lock, allocated behind the FILE by newFile. Every stdio function
+// on a FILE holds it, so concurrent callers behave as if they used flockfile.
+func (f file) mu() *sync.Mutex {
+	return (*sync.Mutex)(unsafe.Pointer(uintptr(f) + unsafe.Sizeof(stdio.FILE{})))
+}
+
+// sysread reads into b and sets the EOF or error indicator. EOF is sticky until cleared.
+func (f file) sysread(t *TLS, b []byte) int {
+	if f.eof() {
+		return 0
+	}
+
+	n, err := unix.Read(int(f.fd()), b)
+	switch {
+	case err != nil:
+		f.setErr()
+		t.setErrno(err)
+		return 0
+	case n == 0:
+		f.setEOF()
+	}
+	return n
+}
+
+// fill refills the read buffer, allocating it on first use.
+func (f file) fill(t *TLS) bool {
+	s := f.s()
+	if s.F_bf.F_base == 0 && !f.allocBuf(t) {
+		return false
+	}
+
+	n := fileBufSize
+	if s.F_flags&fileNoBuf != 0 {
+		n = 1
+	}
+	s.F_p = s.F_bf.F_base + fileUngetSize
+	s.F_r = int32(f.sysread(t, unsafe.Slice((*byte)(unsafe.Pointer(s.F_p)), n)))
+	return s.F_r != 0
+}
+
+func (f file) allocBuf(t *TLS) bool {
+	s := f.s()
+	if s.F_bf.F_base = Xmalloc(t, fileUngetSize+fileBufSize); s.F_bf.F_base == 0 {
+		f.setErr()
+		return false
+	}
+
+	s.F_bf.F_size = fileUngetSize + fileBufSize
+	s.F_p = s.F_bf.F_base + fileUngetSize
+	s.F_r = 0
+	return true
+}
+
+// buffered returns the unread input bytes.
+func (f file) buffered() []byte {
+	s := f.s()
+	if s.F_r <= 0 {
+		return nil
+	}
+
+	return unsafe.Slice((*byte)(unsafe.Pointer(s.F_p)), s.F_r)
+}
+
+func (f file) consume(n int) {
+	s := f.s()
+	s.F_p += uintptr(n)
+	s.F_r -= int32(n)
+}
+
+// read reads up to len(b) bytes, bypassing the buffer for large reads.
+func (f file) read(t *TLS, b []byte) int {
+	n := 0
+	for n < len(b) {
+		if r := f.buffered(); len(r) != 0 {
+			m := copy(b[n:], r)
+			f.consume(m)
+			n += m
+			continue
+		}
+
+		if len(b)-n < fileBufSize && f.s().F_flags&fileNoBuf == 0 {
+			if !f.fill(t) {
+				break
+			}
+
+			continue
+		}
+
+		m := f.sysread(t, b[n:])
+		if m == 0 {
+			break
+		}
+
+		n += m
+	}
+	return n
+}
+
+// unread drops buffered input and moves the descriptor back to the stream position.
+// It fails, keeping the buffer, if the descriptor is not seekable.
+func (f file) unread() bool {
+	s := f.s()
+	if s.F_r > 0 {
+		if _, err := unix.Seek(int(f.fd()), -int64(s.F_r), io.SeekCurrent); err != nil {
+			return false
+		}
+	}
+
+	s.F_r = 0
+	return true
+}
+
 func newFile(t *TLS, fd int32) uintptr {
-	p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(stdio.FILE{})))
+	p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(stdio.FILE{})+unsafe.Sizeof(sync.Mutex{})))
 	if p == 0 {
 		return 0
 	}
@@ -141,6 +272,9 @@ func fwrite(fd int32, b []byte) (int, error) {
 }
 
 func Xclearerr(tls *TLS, f uintptr) {
+	file(f).mu().Lock()
+	defer file(f).mu().Unlock()
+
 	file(f).clearErr()
 }
 
@@ -149,6 +283,9 @@ func Xfeof(t *TLS, f uintptr) (r int32) {
 		trc("t=%v f=%v, (%v:)", t, f, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
+	file(f).mu().Lock()
+	defer file(f).mu().Unlock()
+
 	r = BoolInt32(file(f).eof())
 	return r
 }
@@ -179,7 +316,12 @@ func Xfprintf(t *TLS, stream, format, args uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v args=%v, (%v:)", t, args, origin(2))
 	}
-	n, _ := fwrite(int32((*stdio.FILE)(unsafe.Pointer(stream)).F_file), printf(format, args))
+	b := printf(format, args)
+	file(stream).mu().Lock()
+	defer file(stream).mu().Unlock()
+
+	file(stream).unread()
+	n, _ := fwrite(file(stream).fd(), b)
 	return int32(n)
 }
 
@@ -315,13 +457,12 @@ func Xgetrusage(t *TLS, who int32, usage uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v who=%v usage=%v, (%v:)", t, who, usage, origin(2))
 	}
-	panic(todo(""))
-	// if _, _, err := unix.Syscall(unix.SYS_GETRUSAGE, uintptr(who), usage, 0); err != 0 {
-	// 	t.setErrno(err)
-	// 	return -1
-	// }
+	if err := unix.Getrusage(int(who), (*unix.Rusage)(unsafe.Pointer(usage))); err != nil {
+		t.setErrno(err)
+		return -1
+	}
 
-	// return 0
+	return 0
 }
 
 // int fgetc(FILE *stream);
@@ -329,13 +470,64 @@ func Xfgetc(t *TLS, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
 	}
-	fd := int((*stdio.FILE)(unsafe.Pointer(stream)).F_file)
-	var buf [1]byte
-	if n, _ := unix.Read(fd, buf[:]); n != 0 {
-		return int32(buf[0])
+	f := file(stream)
+	s := f.s()
+	mu := f.mu()
+	mu.Lock()
+	if s.F_r <= 0 && !f.fill(t) {
+		mu.Unlock()
+		return stdio.EOF
 	}
 
-	return stdio.EOF
+	s.F_r--
+	c := *(*byte)(unsafe.Pointer(s.F_p))
+	s.F_p++
+	mu.Unlock()
+	return int32(c)
+}
+
+// char *fgets(char *s, int size, FILE *stream);
+func Xfgets(t *TLS, s uintptr, size int32, stream uintptr) uintptr {
+	if __ccgo_strace {
+		trc("t=%v s=%v size=%v stream=%v, (%v:)", t, s, size, stream, origin(2))
+	}
+	if size < 1 {
+		return 0
+	}
+
+	f := file(stream)
+	f.mu().Lock()
+	defer f.mu().Unlock()
+
+	d := unsafe.Slice((*byte)(unsafe.Pointer(s)), size)
+	n := 0
+	for n < len(d)-1 {
+		b := f.buffered()
+		if len(b) == 0 {
+			if !f.fill(t) {
+				break
+			}
+
+			b = f.buffered()
+		}
+		if m := len(d) - 1 - n; len(b) > m {
+			b = b[:m]
+		}
+		if i := bytes.IndexByte(b, '\n'); i >= 0 {
+			b = b[:i+1]
+		}
+		n += copy(d[n:], b)
+		f.consume(len(b))
+		if d[n-1] == '\n' {
+			break
+		}
+	}
+	if n == 0 && size > 1 {
+		return 0
+	}
+
+	d[n] = 0
+	return s
 }
 
 // int lstat(const char *pathname, struct stat *statbuf);
@@ -387,7 +579,7 @@ func Xlocaltime(_ *TLS, timep uintptr) uintptr {
 	localtime.Ftm_mon = int32(t.Month() - 1)
 	localtime.Ftm_year = int32(t.Year() - 1900)
 	localtime.Ftm_wday = int32(t.Weekday())
-	localtime.Ftm_yday = int32(t.YearDay())
+	localtime.Ftm_yday = int32(t.YearDay() - 1)
 	localtime.Ftm_isdst = Bool32(isTimeDST(t))
 	_, off := t.Zone()
 	localtime.Ftm_gmtoff = int64(off)
@@ -407,7 +599,7 @@ func Xlocaltime_r(_ *TLS, timep, result uintptr) uintptr {
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_mon = int32(t.Month() - 1)
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_year = int32(t.Year() - 1900)
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_wday = int32(t.Weekday())
-	(*time.Tm)(unsafe.Pointer(result)).Ftm_yday = int32(t.YearDay())
+	(*time.Tm)(unsafe.Pointer(result)).Ftm_yday = int32(t.YearDay() - 1)
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_isdst = Bool32(isTimeDST(t))
 	_, off := t.Zone()
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_gmtoff = int64(off)
@@ -494,13 +686,56 @@ func Xsysconf(t *TLS, name int32) long {
 	switch name {
 	case unistd.X_SC_PAGESIZE:
 		return long(unix.Getpagesize())
-	case unistd.X_SC_NPROCESSORS_ONLN:
+	case unistd.X_SC_NPROCESSORS_ONLN, unistd.X_SC_NPROCESSORS_CONF:
 		return long(runtime.NumCPU())
-	case unistd.X_SC_GETPW_R_SIZE_MAX:
-		return 128
+	case unistd.X_SC_GETPW_R_SIZE_MAX, unistd.X_SC_GETGR_R_SIZE_MAX:
+		return 4096
+	case unistd.X_SC_CLK_TCK:
+		return 100
+	case unistd.X_SC_OPEN_MAX:
+		var rl unix.Rlimit
+		if unix.Getrlimit(unix.RLIMIT_NOFILE, &rl) != nil {
+			return 256
+		}
+
+		return long(rl.Cur)
+	case unistd.X_SC_CHILD_MAX:
+		var rl unix.Rlimit
+		if unix.Getrlimit(unix.RLIMIT_NPROC, &rl) != nil {
+			return 266
+		}
+
+		return long(rl.Cur)
+	case unistd.X_SC_ARG_MAX:
+		if v, err := unix.SysctlUint32("kern.argmax"); err == nil {
+			return long(v)
+		}
+
+		return 1048576
+	case unistd.X_SC_PHYS_PAGES:
+		if v, err := unix.SysctlUint64("hw.memsize"); err == nil {
+			return long(v / uint64(unix.Getpagesize()))
+		}
+	case unistd.X_SC_LINE_MAX:
+		return 2048
+	case unistd.X_SC_LOGIN_NAME_MAX, unistd.X_SC_HOST_NAME_MAX, unistd.X_SC_TTY_NAME_MAX:
+		return 255
+	case unistd.X_SC_IOV_MAX:
+		return 1024
+	case unistd.X_SC_SYMLOOP_MAX:
+		return 32
+	case unistd.X_SC_NGROUPS_MAX:
+		return 16
+	case unistd.X_SC_STREAM_MAX:
+		return 20
+	case unistd.X_SC_TZNAME_MAX:
+		return 255
+	case unistd.X_SC_VERSION, unistd.X_SC_MONOTONIC_CLOCK:
+		return 200112
 	}
 
-	panic(todo("", name))
+	t.setErrno(errno.EINVAL)
+	return -1
 }
 
 // int close(int fd);
@@ -723,7 +958,11 @@ func Xgettimeofday(t *TLS, tv, tz uintptr) int32 {
 		trc("t=%v tz=%v, (%v:)", t, tz, origin(2))
 	}
 	if tz != 0 {
-		panic(todo(""))
+		// struct timezone is obsolete, report no offset and no DST.
+		*(*[2]int32)(unsafe.Pointer(tz)) = [2]int32{}
+	}
+	if tv == 0 {
+		return 0
 	}
 
 	var tvs unix.Timeval
@@ -1012,14 +1251,13 @@ func Xaccept(t *TLS, sockfd int32, addr uintptr, addrlen uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v sockfd=%v addr=%v addrlen=%v, (%v:)", t, sockfd, addr, addrlen, origin(2))
 	}
-	panic(todo(""))
-	// n, _, err := unix.Syscall6(unix.SYS_ACCEPT4, uintptr(sockfd), addr, uintptr(addrlen), 0, 0, 0)
-	// if err != 0 {
-	// 	t.setErrno(err)
-	// 	return -1
-	// }
+	n, _, err := unix.Syscall(unix.SYS_ACCEPT, uintptr(sockfd), addr, addrlen)
+	if err != 0 {
+		t.setErrno(err)
+		return -1
+	}
 
-	// return int32(n)
+	return int32(n)
 }
 
 // // int getrlimit(int resource, struct rlimit *rlim);
@@ -1093,7 +1331,19 @@ func Xsetvbuf(t *TLS, stream, buf uintptr, mode int32, size types.Size_t) int32 
 	if __ccgo_strace {
 		trc("t=%v buf=%v mode=%v size=%v, (%v:)", t, buf, mode, size, origin(2))
 	}
-	return 0 //TODO
+	file(stream).mu().Lock()
+	defer file(stream).mu().Unlock()
+
+	switch mode {
+	case stdio.X_IONBF:
+		file(stream).s().F_flags |= fileNoBuf
+	case stdio.X_IOLBF, stdio.X_IOFBF:
+		file(stream).s().F_flags &^= fileNoBuf
+	default:
+		t.setErrno(errno.EINVAL)
+		return -1
+	}
+	return 0
 }
 
 // int raise(int sig);
@@ -1101,7 +1351,12 @@ func Xraise(t *TLS, sig int32) int32 {
 	if __ccgo_strace {
 		trc("t=%v sig=%v, (%v:)", t, sig, origin(2))
 	}
-	panic(todo(""))
+	if err := unix.Kill(unix.Getpid(), unix.Signal(sig)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
 }
 
 // // int backtrace(void **buffer, int size);
@@ -1531,8 +1786,18 @@ func Xinet_ntoa(t *TLS, in1 in.In_addr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v in1=%v, (%v:)", t, in1, origin(2))
 	}
-	panic(todo(""))
+	// The address is in network byte order, its bytes are the dotted quad.
+	b := (*[4]byte)(unsafe.Pointer(&in1.Fs_addr))
+	s := fmt.Sprintf("%d.%d.%d.%d", b[0], b[1], b[2], b[3])
+	inetNtoaOnce.Do(func() { inetNtoaBuf = Xmalloc(t, 16) })
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(inetNtoaBuf)), 16), s+"\x00")
+	return inetNtoaBuf
 }
+
+var (
+	inetNtoaOnce sync.Once
+	inetNtoaBuf  uintptr
+)
 
 func X__ccgo_in6addr_anyp(t *TLS) uintptr {
 	if __ccgo_strace {
@@ -1566,7 +1831,14 @@ func Xfflush(t *TLS, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
 	}
-	return 0 //TODO
+	// Output is unbuffered. For input, sync the descriptor offset like glibc, ignoring
+	// unseekable descriptors.
+	if stream != 0 {
+		file(stream).mu().Lock()
+		file(stream).unread()
+		file(stream).mu().Unlock()
+	}
+	return 0
 }
 
 // size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
@@ -1577,32 +1849,12 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 	if size == 0 || nmemb == 0 {
 		return 0
 	}
-	fd := uintptr(file(stream).fd())
-	count := size * nmemb
-	var n int
-	var err error
-	switch {
-	case count == 0:
-		n, err = unix.Read(int(fd), nil)
-	default:
-		n, err = unix.Read(int(fd), (*RawMem)(unsafe.Pointer(ptr))[:count:count])
-		if n == 0 {
-			file(stream).setEOF()
-		}
-		if dmesgs && err == nil {
-			dmesg("%v: fd %v, n %#x\n%s", origin(1), fd, n, hex.Dump((*RawMem)(unsafe.Pointer(ptr))[:n:n]))
-		}
-	}
-	if err != nil {
-		if dmesgs {
-			dmesg("%v: %v FAIL", origin(1), err)
-		}
-		file(stream).setErr()
-		return types.Size_t(n) / size
-	}
+	file(stream).mu().Lock()
+	defer file(stream).mu().Unlock()
 
+	n := file(stream).read(t, unsafe.Slice((*byte)(unsafe.Pointer(ptr)), size*nmemb))
 	if dmesgs {
-		dmesg("%v: ok", origin(1))
+		dmesg("%v: fd %v, n %#x", origin(1), file(stream).fd(), n)
 	}
 	return types.Size_t(n) / size
 }
@@ -1615,6 +1867,10 @@ func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) type
 	if size == 0 || nmemb == 0 {
 		return 0
 	}
+	file(stream).mu().Lock()
+	defer file(stream).mu().Unlock()
+
+	file(stream).unread()
 	fd := uintptr(file(stream).fd())
 	count := size * nmemb
 	var n int
@@ -1667,6 +1923,10 @@ func Xfputc(t *TLS, c int32, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v c=%v stream=%v, (%v:)", t, c, stream, origin(2))
 	}
+	file(stream).mu().Lock()
+	defer file(stream).mu().Unlock()
+
+	file(stream).unread()
 	if _, err := fwrite(file(stream).fd(), []byte{byte(c)}); err != nil {
 		return stdio.EOF
 	}
@@ -1679,6 +1939,13 @@ func Xfseek(t *TLS, stream uintptr, offset long, whence int32) int32 {
 	if __ccgo_strace {
 		trc("t=%v stream=%v offset=%v whence=%v, (%v:)", t, stream, offset, whence, origin(2))
 	}
+	f := file(stream)
+	f.mu().Lock()
+	defer f.mu().Unlock()
+
+	if r := f.s().F_r; whence == stdio.SEEK_CUR && r > 0 {
+		offset -= long(r)
+	}
 	if n := Xlseek(t, int32(file(stream).fd()), types.Off_t(offset), whence); n < 0 {
 		if dmesgs {
 			dmesg("%v: fd %v, off %#x, whence %v: %v", origin(1), file(stream).fd(), offset, whenceStr(whence), n)
@@ -1690,6 +1957,8 @@ func Xfseek(t *TLS, stream uintptr, offset long, whence int32) int32 {
 	if dmesgs {
 		dmesg("%v: fd %v, off %#x, whence %v: ok", origin(1), file(stream).fd(), offset, whenceStr(whence))
 	}
+	f.s().F_r = 0
+	f.clearEOF()
 	return 0
 }
 
@@ -1698,12 +1967,18 @@ func Xftell(t *TLS, stream uintptr) long {
 	if __ccgo_strace {
 		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
 	}
+	file(stream).mu().Lock()
+	defer file(stream).mu().Unlock()
+
 	n := Xlseek(t, file(stream).fd(), 0, stdio.SEEK_CUR)
 	if n < 0 {
 		file(stream).setErr()
 		return -1
 	}
 
+	if r := file(stream).s().F_r; r > 0 {
+		n -= types.Off_t(r)
+	}
 	if dmesgs {
 		dmesg("%v: fd %v, n %#x: ok %#x", origin(1), file(stream).fd(), n, long(n))
 	}
@@ -1715,6 +1990,9 @@ func Xferror(t *TLS, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
 	}
+	file(stream).mu().Lock()
+	defer file(stream).mu().Unlock()
+
 	return Bool32(file(stream).err())
 }
 
@@ -1723,6 +2001,10 @@ func Xfputs(t *TLS, s, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
 	}
+	file(stream).mu().Lock()
+	defer file(stream).mu().Unlock()
+
+	file(stream).unread()
 	if _, _, err := unix.Syscall(unix.SYS_WRITE, uintptr(file(stream).fd()), s, uintptr(Xstrlen(t, s))); err != 0 {
 		return -1
 	}
@@ -1739,7 +2021,9 @@ func Xgetservbyname(t *TLS, name, proto uintptr) uintptr {
 	}
 	var protoent *gonetdb.Protoent
 	if proto != 0 {
-		protoent = gonetdb.GetProtoByName(GoString(proto))
+		if protoent = gonetdb.GetProtoByName(GoString(proto)); protoent == nil {
+			return 0
+		}
 	}
 	servent := gonetdb.GetServByName(GoString(name), protoent)
 	if servent == nil {
@@ -1749,68 +2033,47 @@ func Xgetservbyname(t *TLS, name, proto uintptr) uintptr {
 		return 0
 	}
 
-	Xfree(t, (*netdb.Servent)(unsafe.Pointer(&getservbynameStaticResult)).Fs_name)
-	if v := (*netdb.Servent)(unsafe.Pointer(&getservbynameStaticResult)).Fs_aliases; v != 0 {
-		for {
-			p := *(*uintptr)(unsafe.Pointer(v))
-			if p == 0 {
-				break
-			}
-
-			Xfree(t, p)
-			v += unsafe.Sizeof(uintptr(0))
+	// The result is static storage that owns its strings and the aliases
+	// array until the next call frees them, even after a failed call.
+	r := &getservbynameStaticResult
+	Xfree(t, r.Fs_name)
+	if v := r.Fs_aliases; v != 0 {
+		for p := v; *(*uintptr)(unsafe.Pointer(p)) != 0; p += unsafe.Sizeof(uintptr(0)) {
+			Xfree(t, *(*uintptr)(unsafe.Pointer(p)))
 		}
 		Xfree(t, v)
 	}
-	Xfree(t, (*netdb.Servent)(unsafe.Pointer(&getservbynameStaticResult)).Fs_proto)
-	cname, err := CString(servent.Name)
-	if err != nil {
-		getservbynameStaticResult = netdb.Servent{}
+	Xfree(t, r.Fs_proto)
+	*r = netdb.Servent{}
+	var err error
+	if r.Fs_name, err = CString(servent.Name); err != nil {
 		return 0
 	}
 
-	var protoname uintptr
-	if protoent != nil {
-		if protoname, err = CString(protoent.Name); err != nil {
-			Xfree(t, cname)
-			getservbynameStaticResult = netdb.Servent{}
-			return 0
-		}
+	if r.Fs_aliases = Xcalloc(t, types.Size_t(len(servent.Aliases)+1), types.Size_t(unsafe.Sizeof(uintptr(0)))); r.Fs_aliases == 0 {
+		return 0
 	}
-	var a []uintptr
-	for _, v := range servent.Aliases {
-		cs, err := CString(v)
+
+	for i, v := range servent.Aliases {
+		p, err := CString(v)
 		if err != nil {
-			for _, v := range a {
-				Xfree(t, v)
-			}
 			return 0
 		}
 
-		a = append(a, cs)
-	}
-	v := Xcalloc(t, types.Size_t(len(a)+1), types.Size_t(unsafe.Sizeof(uintptr(0))))
-	if v == 0 {
-		Xfree(t, cname)
-		Xfree(t, protoname)
-		for _, v := range a {
-			Xfree(t, v)
-		}
-		getservbynameStaticResult = netdb.Servent{}
-		return 0
-	}
-	for _, p := range a {
-		*(*uintptr)(unsafe.Pointer(v)) = p
-		v += unsafe.Sizeof(uintptr(0))
+		*(*uintptr)(unsafe.Pointer(r.Fs_aliases + uintptr(i)*unsafe.Sizeof(uintptr(0)))) = p
 	}
 
-	getservbynameStaticResult = netdb.Servent{
-		Fs_name:    cname,
-		Fs_aliases: v,
-		Fs_port:    int32(servent.Port),
-		Fs_proto:   protoname,
+	// servent.Protocol is nil only for a protocol missing from /etc/protocols.
+	var protoname string
+	if servent.Protocol != nil {
+		protoname = servent.Protocol.Name
 	}
-	return uintptr(unsafe.Pointer(&getservbynameStaticResult))
+	if r.Fs_proto, err = CString(protoname); err != nil {
+		return 0
+	}
+
+	r.Fs_port = int32(Xhtons(t, uint16(servent.Port)))
+	return uintptr(unsafe.Pointer(r))
 }
 
 // //TODO- func Xreaddir64(t *TLS, dir uintptr) uintptr {
@@ -2012,8 +2275,16 @@ func Xcopyfile(t *TLS, _ ...interface{}) int32 {
 }
 
 // int truncate(const char *path, off_t length);
-func Xtruncate(t *TLS, _ ...interface{}) int32 {
-	panic(todo(""))
+func Xtruncate(t *TLS, path uintptr, length types.Off_t) int32 {
+	if __ccgo_strace {
+		trc("t=%v path=%v length=%v, (%v:)", t, path, length, origin(2))
+	}
+	if err := unix.Truncate(GoString(path), int64(length)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
 }
 
 type darwinDir struct {
@@ -2380,7 +2651,28 @@ func Xungetc(t *TLS, c int32, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v c=%v stream=%v, (%v:)", t, c, stream, origin(2))
 	}
-	panic(todo(""))
+	f := file(stream)
+	f.mu().Lock()
+	defer f.mu().Unlock()
+
+	s := f.s()
+	if c == stdio.EOF || s.F_bf.F_base == 0 && !f.allocBuf(t) {
+		return stdio.EOF
+	}
+
+	if s.F_r <= 0 {
+		s.F_r = 0
+		s.F_p = s.F_bf.F_base + fileUngetSize
+	}
+	if s.F_p == s.F_bf.F_base {
+		return stdio.EOF
+	}
+
+	s.F_p--
+	s.F_r++
+	*(*byte)(unsafe.Pointer(s.F_p)) = byte(c)
+	f.clearEOF()
+	return int32(byte(c))
 }
 
 // int issetugid(void);
@@ -2388,7 +2680,7 @@ func Xissetugid(t *TLS) int32 {
 	if __ccgo_strace {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
-	panic(todo(""))
+	return Bool32(unix.Getuid() != unix.Geteuid() || unix.Getgid() != unix.Getegid())
 }
 
 var progname uintptr
@@ -2463,7 +2755,8 @@ func X__srget(t *TLS, f uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v f=%v, (%v:)", t, f, origin(2))
 	}
-	panic(todo(""))
+	// Called by the __sgetc macro once _r went negative.
+	return Xfgetc(t, f)
 }
 
 // int	__svfscanf(FILE *, const char *, va_list) __scanflike(2, 0);
@@ -2807,4 +3100,496 @@ func X__builtin_ctz(t *TLS, n uint32) int32 {
 
 func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {
 	return byte(a_load_8(ptr))
+}
+
+// The functions below were reported missing by
+// https://gitlab.com/cznic/libc/-/issues/54.
+
+// int openat(int dirfd, const char *pathname, int flags, ...);
+func Xopenat(t *TLS, dirfd int32, pathname uintptr, flags int32, args uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v flags=%v args=%v, (%v:)", t, dirfd, pathname, flags, args, origin(2))
+	}
+	var mode types.Mode_t
+	if args != 0 {
+		mode = (types.Mode_t)(VaUint32(&args))
+	}
+	fd, err := unix.Openat(int(dirfd), GoString(pathname), int(flags), uint32(mode))
+	if err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return int32(fd)
+}
+
+// int fstatat(int dirfd, const char *pathname, struct stat *statbuf, int flags);
+func Xfstatat(t *TLS, dirfd int32, pathname, statbuf uintptr, flags int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v statbuf=%v flags=%v, (%v:)", t, dirfd, pathname, statbuf, flags, origin(2))
+	}
+	if err := unix.Fstatat(int(dirfd), GoString(pathname), (*unix.Stat_t)(unsafe.Pointer(statbuf)), int(flags)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int mkdirat(int dirfd, const char *pathname, mode_t mode);
+func Xmkdirat(t *TLS, dirfd int32, pathname uintptr, mode types.Mode_t) int32 {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v mode=%v, (%v:)", t, dirfd, pathname, mode, origin(2))
+	}
+	if err := unix.Mkdirat(int(dirfd), GoString(pathname), uint32(mode)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int unlinkat(int dirfd, const char *pathname, int flags);
+func Xunlinkat(t *TLS, dirfd int32, pathname uintptr, flags int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v flags=%v, (%v:)", t, dirfd, pathname, flags, origin(2))
+	}
+	if err := unix.Unlinkat(int(dirfd), GoString(pathname), int(flags)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int renameat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath);
+func Xrenameat(t *TLS, olddirfd int32, oldpath uintptr, newdirfd int32, newpath uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v olddirfd=%v oldpath=%v newdirfd=%v newpath=%v, (%v:)", t, olddirfd, oldpath, newdirfd, newpath, origin(2))
+	}
+	if err := unix.Renameat(int(olddirfd), GoString(oldpath), int(newdirfd), GoString(newpath)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t bufsiz);
+func Xreadlinkat(t *TLS, dirfd int32, pathname, buf uintptr, bufsiz types.Size_t) types.Ssize_t {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v buf=%v bufsiz=%v, (%v:)", t, dirfd, pathname, buf, bufsiz, origin(2))
+	}
+	var b []byte
+	if buf != 0 && bufsiz != 0 {
+		b = unsafe.Slice((*byte)(unsafe.Pointer(buf)), bufsiz)
+	}
+	n, err := unix.Readlinkat(int(dirfd), GoString(pathname), b)
+	if err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return types.Ssize_t(n)
+}
+
+// int symlinkat(const char *target, int newdirfd, const char *linkpath);
+func Xsymlinkat(t *TLS, target uintptr, newdirfd int32, linkpath uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v target=%v newdirfd=%v linkpath=%v, (%v:)", t, target, newdirfd, linkpath, origin(2))
+	}
+	if err := unix.Symlinkat(GoString(target), int(newdirfd), GoString(linkpath)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int linkat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
+func Xlinkat(t *TLS, olddirfd int32, oldpath uintptr, newdirfd int32, newpath uintptr, flags int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v olddirfd=%v oldpath=%v newdirfd=%v newpath=%v flags=%v, (%v:)", t, olddirfd, oldpath, newdirfd, newpath, flags, origin(2))
+	}
+	if err := unix.Linkat(int(olddirfd), GoString(oldpath), int(newdirfd), GoString(newpath), int(flags)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int fchmodat(int dirfd, const char *pathname, mode_t mode, int flags);
+func Xfchmodat(t *TLS, dirfd int32, pathname uintptr, mode types.Mode_t, flags int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v mode=%v flags=%v, (%v:)", t, dirfd, pathname, mode, flags, origin(2))
+	}
+	if err := unix.Fchmodat(int(dirfd), GoString(pathname), uint32(mode), int(flags)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags);
+func Xfchownat(t *TLS, dirfd int32, pathname uintptr, owner types.Uid_t, group types.Gid_t, flags int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v owner=%v group=%v flags=%v, (%v:)", t, dirfd, pathname, owner, group, flags, origin(2))
+	}
+	if err := unix.Fchownat(int(dirfd), GoString(pathname), int(int32(owner)), int(int32(group)), int(flags)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int faccessat(int dirfd, const char *pathname, int mode, int flags);
+func Xfaccessat(t *TLS, dirfd int32, pathname uintptr, mode int32, flags int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v mode=%v flags=%v, (%v:)", t, dirfd, pathname, mode, flags, origin(2))
+	}
+	if err := unix.Faccessat(int(dirfd), GoString(pathname), uint32(mode), int(flags)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// timespecs converts the two struct timespec at p, a null p means now.
+func timespecs(p uintptr) []unix.Timespec {
+	if p == 0 {
+		return nil
+	}
+
+	return []unix.Timespec{
+		*(*unix.Timespec)(unsafe.Pointer(p)),
+		*(*unix.Timespec)(unsafe.Pointer(p + unsafe.Sizeof(unix.Timespec{}))),
+	}
+}
+
+// int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
+func Xutimensat(t *TLS, dirfd int32, pathname, times uintptr, flags int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v dirfd=%v pathname=%v times=%v flags=%v, (%v:)", t, dirfd, pathname, times, flags, origin(2))
+	}
+	if err := unix.UtimesNanoAt(int(dirfd), GoString(pathname), timespecs(times), int(flags)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int futimens(int fd, const struct timespec times[2]);
+//
+// Implemented through the /dev/fd name of the descriptor, x/sys/unix has no
+// futimens for darwin.
+func Xfutimens(t *TLS, fd int32, times uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v times=%v, (%v:)", t, fd, times, origin(2))
+	}
+	if err := unix.UtimesNanoAt(unix.AT_FDCWD, fmt.Sprintf("/dev/fd/%d", fd), timespecs(times), 0); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int lchmod(const char *path, mode_t mode);
+func Xlchmod(t *TLS, path uintptr, mode types.Mode_t) int32 {
+	if __ccgo_strace {
+		trc("t=%v path=%v mode=%v, (%v:)", t, path, mode, origin(2))
+	}
+	if err := unix.Fchmodat(unix.AT_FDCWD, GoString(path), uint32(mode), unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// DIR *fdopendir(int fd);
+func Xfdopendir(t *TLS, fd int32) uintptr {
+	if __ccgo_strace {
+		trc("t=%v fd=%v, (%v:)", t, fd, origin(2))
+	}
+	p := Xmalloc(t, uint64(unsafe.Sizeof(darwinDir{})))
+	if p == 0 {
+		panic("OOM")
+	}
+
+	*(*darwinDir)(unsafe.Pointer(p)) = darwinDir{fd: int(fd)}
+	return p
+}
+
+// int getloadavg(double loadavg[], int nelem);
+func Xgetloadavg(t *TLS, loadavg uintptr, nelem int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v loadavg=%v nelem=%v, (%v:)", t, loadavg, nelem, origin(2))
+	}
+	// struct loadavg { fixpt_t ldavg[3]; long fscale; }
+	b, err := unix.SysctlRaw("vm.loadavg")
+	if err != nil || len(b) < 24 {
+		return -1
+	}
+
+	fscale := float64(*(*int64)(unsafe.Pointer(&b[16])))
+	n := int32(0)
+	for ; n < nelem && n < 3; n++ {
+		*(*float64)(unsafe.Pointer(loadavg + uintptr(n)*8)) = float64(*(*uint32)(unsafe.Pointer(&b[4*n]))) / fscale
+	}
+	return n
+}
+
+// int posix_openpt(int flags);
+func Xposix_openpt(t *TLS, flags int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v flags=%v, (%v:)", t, flags, origin(2))
+	}
+	fd, err := unix.Open("/dev/ptmx", int(flags), 0)
+	if err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return int32(fd)
+}
+
+// int grantpt(int fd);
+func Xgrantpt(t *TLS, fd int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v, (%v:)", t, fd, origin(2))
+	}
+	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.TIOCPTYGRANT, 0); err != 0 {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// int unlockpt(int fd);
+func Xunlockpt(t *TLS, fd int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v, (%v:)", t, fd, origin(2))
+	}
+	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.TIOCPTYUNLK, 0); err != 0 {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// ptsname returns the name of the slave of the pty master fd.
+func ptsname(fd int32) (string, error) {
+	var buf [128]byte
+	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.TIOCPTYGNAME, uintptr(unsafe.Pointer(&buf[0]))); err != 0 {
+		return "", err
+	}
+
+	n := 0
+	for n < len(buf) && buf[n] != 0 {
+		n++
+	}
+	return string(buf[:n]), nil
+}
+
+// int ptsname_r(int fd, char *buf, size_t buflen);
+func Xptsname_r(t *TLS, fd int32, buf uintptr, buflen types.Size_t) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v buf=%v buflen=%v, (%v:)", t, fd, buf, buflen, origin(2))
+	}
+	s, err := ptsname(fd)
+	if err != nil {
+		t.setErrno(err)
+		return int32(err.(unix.Errno))
+	}
+
+	if types.Size_t(len(s)+1) > buflen {
+		t.setErrno(errno.ERANGE)
+		return errno.ERANGE
+	}
+
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(s)+1), s+"\x00")
+	return 0
+}
+
+// char *ptsname(int fd);
+func Xptsname(t *TLS, fd int32) uintptr {
+	if __ccgo_strace {
+		trc("t=%v fd=%v, (%v:)", t, fd, origin(2))
+	}
+	ptsnameOnce.Do(func() { ptsnameBuf = Xmalloc(t, 128) })
+	if Xptsname_r(t, fd, ptsnameBuf, 128) != 0 {
+		return 0
+	}
+
+	return ptsnameBuf
+}
+
+var (
+	ptsnameOnce sync.Once
+	ptsnameBuf  uintptr
+)
+
+// int getlogin_r(char *buf, size_t bufsize);
+func Xgetlogin_r(t *TLS, buf uintptr, bufsize types.Size_t) int32 {
+	if __ccgo_strace {
+		trc("t=%v buf=%v bufsize=%v, (%v:)", t, buf, bufsize, origin(2))
+	}
+	name := ""
+	if u, err := user.Current(); err == nil {
+		name = u.Username
+	}
+	if name == "" {
+		name = os.Getenv("LOGNAME")
+	}
+	if name == "" {
+		name = os.Getenv("USER")
+	}
+	if name == "" {
+		return errno.ENOENT
+	}
+
+	if types.Size_t(len(name)+1) > bufsize {
+		return errno.ERANGE
+	}
+
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(name)+1), name+"\x00")
+	return 0
+}
+
+var (
+	threadNamesMu sync.Mutex
+	threadNames   = map[int32]string{}
+)
+
+// int pthread_setname_np(const char *name);
+//
+// Darwin names only the calling thread.
+func Xpthread_setname_np(t *TLS, name uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v name=%v, (%v:)", t, name, origin(2))
+	}
+	s := GoString(name)
+	if len(s) > 63 {
+		return errno.ENAMETOOLONG
+	}
+
+	threadNamesMu.Lock()
+	threadNames[t.ID] = s
+	threadNamesMu.Unlock()
+	return 0
+}
+
+// int pthread_getname_np(pthread_t thread, char *name, size_t len);
+func Xpthread_getname_np(t *TLS, thread pthread.Pthread_t, name uintptr, len1 types.Size_t) int32 {
+	if __ccgo_strace {
+		trc("t=%v thread=%v name=%v len1=%v, (%v:)", t, thread, name, len1, origin(2))
+	}
+	threadNamesMu.Lock()
+	s := threadNames[int32(thread)]
+	threadNamesMu.Unlock()
+	if len1 == 0 {
+		return 0
+	}
+
+	if types.Size_t(len(s)+1) > len1 {
+		s = s[:len1-1]
+	}
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(name)), len(s)+1), s+"\x00")
+	return 0
+}
+
+// int kqueue(void);
+func Xkqueue(t *TLS) int32 {
+	if __ccgo_strace {
+		trc("t=%v, (%v:)", t, origin(2))
+	}
+	fd, err := unix.Kqueue()
+	if err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return int32(fd)
+}
+
+// int kevent(int kq, const struct kevent *changelist, int nchanges, struct kevent *eventlist, int nevents, const struct timespec *timeout);
+func Xkevent(t *TLS, kq int32, changelist uintptr, nchanges int32, eventlist uintptr, nevents int32, timeout uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v kq=%v changelist=%v nchanges=%v eventlist=%v nevents=%v timeout=%v, (%v:)", t, kq, changelist, nchanges, eventlist, nevents, timeout, origin(2))
+	}
+	var changes, events []unix.Kevent_t
+	if changelist != 0 && nchanges > 0 {
+		changes = unsafe.Slice((*unix.Kevent_t)(unsafe.Pointer(changelist)), nchanges)
+	}
+	if eventlist != 0 && nevents > 0 {
+		events = unsafe.Slice((*unix.Kevent_t)(unsafe.Pointer(eventlist)), nevents)
+	}
+	n, err := unix.Kevent(int(kq), changes, events, (*unix.Timespec)(unsafe.Pointer(timeout)))
+	if err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return int32(n)
+}
+
+// int openpty(int *amaster, int *aslave, char *name, const struct termios *termp, const struct winsize *winp);
+func Xopenpty(t *TLS, amaster, aslave, name, termp, winp uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v amaster=%v aslave=%v name=%v termp=%v winp=%v, (%v:)", t, amaster, aslave, name, termp, winp, origin(2))
+	}
+	master := Xposix_openpt(t, fcntl.O_RDWR|fcntl.O_NOCTTY)
+	if master < 0 {
+		return -1
+	}
+
+	if Xgrantpt(t, master) != 0 || Xunlockpt(t, master) != 0 {
+		Xclose(t, master)
+		return -1
+	}
+
+	s, err := ptsname(master)
+	if err != nil {
+		Xclose(t, master)
+		t.setErrno(err)
+		return -1
+	}
+
+	slave, err := unix.Open(s, unix.O_RDWR|unix.O_NOCTTY, 0)
+	if err != nil {
+		Xclose(t, master)
+		t.setErrno(err)
+		return -1
+	}
+
+	if termp != 0 {
+		if err := unix.IoctlSetTermios(slave, unix.TIOCSETA, (*unix.Termios)(unsafe.Pointer(termp))); err != nil {
+			unix.Close(slave)
+			Xclose(t, master)
+			t.setErrno(err)
+			return -1
+		}
+	}
+	if winp != 0 {
+		if err := unix.IoctlSetWinsize(slave, unix.TIOCSWINSZ, (*unix.Winsize)(unsafe.Pointer(winp))); err != nil {
+			unix.Close(slave)
+			Xclose(t, master)
+			t.setErrno(err)
+			return -1
+		}
+	}
+	*(*int32)(unsafe.Pointer(amaster)) = master
+	*(*int32)(unsafe.Pointer(aslave)) = int32(slave)
+	if name != 0 {
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(name)), len(s)+1), s+"\x00")
+	}
+	return 0
 }

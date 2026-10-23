@@ -1,18 +1,18 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@31474d7518151f5a5fe74450c3349c5220e040fd"
     "with":
-      "build_image": "golang:1.26.6"
-      "golang_ci_lint_version": "v2.10.1"
-      "release_lib_ref": "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+      "build_image": "golang:1.27.3"
+      "golang_ci_lint_version": "v2.14.0"
+      "release_lib_ref": "31474d7518151f5a5fe74450c3349c5220e040fd"
       "skip_validation": false
       "use_github_app_token": true
   "logql-analyzer-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.6"
+      "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+      "RELEASE_LIB_REF": "31474d7518151f5a5fe74450c3349c5220e040fd"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -28,20 +28,20 @@
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "lib"
         "persist-credentials": false
         "ref": "${{ env.RELEASE_LIB_REF }}"
         "repository": "grafana/loki-release"
     - "name": "pull code to release"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "release"
         "persist-credentials": false
         "repository": "${{ env.RELEASE_REPO }}"
     - "name": "setup node"
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       "with":
         "node-version": 24
         "package-manager-cache": false
@@ -135,12 +135,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        
+
         # 'needs.logql-analyzer-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-        
+
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -150,9 +150,9 @@
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.6"
+      "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+      "RELEASE_LIB_REF": "31474d7518151f5a5fe74450c3349c5220e040fd"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -168,20 +168,20 @@
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "lib"
         "persist-credentials": false
         "ref": "${{ env.RELEASE_LIB_REF }}"
         "repository": "grafana/loki-release"
     - "name": "pull code to release"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "release"
         "persist-credentials": false
         "repository": "${{ env.RELEASE_REPO }}"
     - "name": "setup node"
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       "with":
         "node-version": 24
         "package-manager-cache": false
@@ -275,12 +275,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        
+
         # 'needs.loki-canary-boringcrypto-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-        
+
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -290,9 +290,9 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.6"
+      "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+      "RELEASE_LIB_REF": "31474d7518151f5a5fe74450c3349c5220e040fd"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -308,20 +308,20 @@
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "lib"
         "persist-credentials": false
         "ref": "${{ env.RELEASE_LIB_REF }}"
         "repository": "grafana/loki-release"
     - "name": "pull code to release"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "release"
         "persist-credentials": false
         "repository": "${{ env.RELEASE_REPO }}"
     - "name": "setup node"
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       "with":
         "node-version": 24
         "package-manager-cache": false
@@ -415,12 +415,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        
+
         # 'needs.loki-canary-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-        
+
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -430,9 +430,9 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.6"
+      "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+      "RELEASE_LIB_REF": "31474d7518151f5a5fe74450c3349c5220e040fd"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -448,20 +448,20 @@
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "lib"
         "persist-credentials": false
         "ref": "${{ env.RELEASE_LIB_REF }}"
         "repository": "grafana/loki-release"
     - "name": "pull code to release"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "release"
         "persist-credentials": false
         "repository": "${{ env.RELEASE_REPO }}"
     - "name": "setup node"
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       "with":
         "node-version": 24
         "package-manager-cache": false
@@ -555,12 +555,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        
+
         # 'needs.loki-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-        
+
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -570,9 +570,9 @@
   "loki-query-tee-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.6"
+      "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+      "RELEASE_LIB_REF": "31474d7518151f5a5fe74450c3349c5220e040fd"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -588,20 +588,20 @@
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "lib"
         "persist-credentials": false
         "ref": "${{ env.RELEASE_LIB_REF }}"
         "repository": "grafana/loki-release"
     - "name": "pull code to release"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       "with":
         "path": "release"
         "persist-credentials": false
         "repository": "${{ env.RELEASE_REPO }}"
     - "name": "setup node"
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       "with":
         "node-version": 24
         "package-manager-cache": false
@@ -695,12 +695,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        
+
         # 'needs.loki-query-tee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-        
+
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \

@@ -122,8 +122,8 @@ func stringsCut(s, sep string) (before, after string, found bool) {
 // Owner name.
 type Owner struct {
 	XMLName     xml.Name `xml:"Owner" json:"owner"`
-	DisplayName string   `xml:"ID" json:"name"`
-	ID          string   `xml:"DisplayName" json:"id"`
+	DisplayName string   `xml:"DisplayName" json:"name"`
+	ID          string   `xml:"ID" json:"id"`
 }
 
 // UploadInfo contains information about the
@@ -161,9 +161,9 @@ type UploadInfo struct {
 // RestoreInfo contains information of the restore operation of an archived object
 type RestoreInfo struct {
 	// Is the restoring operation is still ongoing
-	OngoingRestore bool
+	OngoingRestore bool `xml:"IsRestoreInProgress"`
 	// When the restored copy of the archived object will be removed
-	ExpiryTime time.Time
+	ExpiryTime time.Time `xml:"RestoreExpiryDate"`
 }
 
 // ObjectInfo container for object metadata.
@@ -244,7 +244,10 @@ type ObjectInfo struct {
 	// NumVersions is the number of versions of the object.
 	NumVersions int
 
-	Restore *RestoreInfo
+	// Restore is the restore state of an archived object. Listings only
+	// report it when asked with ListObjectsOptions.WithRestoreStatus, and
+	// only for objects that have been restored or are being restored.
+	Restore *RestoreInfo `xml:"RestoreStatus"`
 
 	// Checksum values
 	ChecksumCRC32     string
@@ -254,9 +257,9 @@ type ObjectInfo struct {
 	ChecksumCRC64NVME string
 	ChecksumMD5       string
 	ChecksumSHA512    string
-	ChecksumXXHash64  string
-	ChecksumXXHash3   string
-	ChecksumXXHash128 string
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128"`
 	ChecksumAlgorithm string
 	ChecksumMode      string `xml:"ChecksumType"`
 

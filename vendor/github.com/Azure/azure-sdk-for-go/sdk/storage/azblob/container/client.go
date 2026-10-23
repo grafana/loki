@@ -28,6 +28,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/pageblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/internal/sasurl"
 )
 
 // ClientOptions contains the optional parameters when creating a Client.
@@ -365,9 +366,7 @@ func (c *Client) GetSASURL(permissions sas.ContainerPermissions, expiry time.Tim
 		return "", err
 	}
 
-	endpoint := c.URL() + "?" + qps.Encode()
-
-	return endpoint, nil
+	return sasurl.Append(c.URL(), qps.Encode()), nil
 }
 
 // NewBatchBuilder creates an instance of BatchBuilder using the same auth policy as the client.

@@ -1,5 +1,16 @@
 # Release History
 
+## 1.8.2 (2026-10-01)
+
+### Bugs Fixed
+
+* Fixed `blob.Client.GetSASURL()` generating a SAS that omitted the pinned blob version from the signed string-to-sign when called on a client returned by `WithVersionID`. The resulting SAS was byte-for-byte identical to an ordinary base-blob (`sr=b`) SAS and, once corrected to include `sr=bv`, would still fail to authenticate because the version identifier was never included in the signed payload. Both the resource-type binding and the signed version identifier are now correctly propagated for `SignWithSharedKey` and `SignWithUserDelegation`.
+* Fixed `GetSASURL()` on `blob.Client`, `container.Client`, and `service.Client` (and the specialized blob clients `blockblob.Client`, `appendblob.Client`, `pageblob.Client` which delegate to `blob.Client`) appending a duplicated `?` to the resulting URL when called on a client whose URL already contained a query string (e.g. a client returned by `WithSnapshot` or `WithVersionID`, or a custom endpoint with pre-existing query parameters), which produced a malformed SAS URL.
+
+### Other Changes
+
+* Updated `azcore` version to `1.23.2`
+
 ## 1.8.1 (2026-09-09)
 
 ### Breaking Changes

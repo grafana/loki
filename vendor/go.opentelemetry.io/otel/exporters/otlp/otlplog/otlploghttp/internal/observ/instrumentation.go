@@ -182,6 +182,8 @@ func ServerAddrAttrs(target string) []attribute.KeyValue {
 	}
 }
 
+// ExportLogs records the start of an export of count log records and
+// returns an ExportOp used to record its outcome.
 func (i *Instrumentation) ExportLogs(ctx context.Context, count int64) ExportOp {
 	start := time.Now()
 

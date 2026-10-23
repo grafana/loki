@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 )
 
@@ -39,6 +40,11 @@ var (
 		Namespace: "loki_canary",
 		Name:      "ws_pings_total",
 		Help:      "counts every time the websocket receives a ping message",
+	})
+	otlpValidationErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "otlp_validation_errors_total",
+		Help:      "counts returned log entries with missing or mismatched OTLP canary attributes, including repeated observations",
 	})
 	userAgent = fmt.Sprintf("loki-canary/%s", build.Version)
 )
@@ -57,6 +63,7 @@ type Reader struct {
 	pathPrefix      string
 	user            string
 	pass            string
+	bearerToken     config.SecretReader
 	tenantID        string
 	httpClient      *http.Client
 	queryTimeout    time.Duration
@@ -72,6 +79,7 @@ type Reader struct {
 	done            chan struct{}
 	queryAppend     string
 	labelSelector   string
+	validateOTLP    bool
 }
 
 func buildLabelSelector(labels, sName, sValue, lName, lVal string) (string, error) {
@@ -90,8 +98,13 @@ func buildLabelSelector(labels, sName, sValue, lName, lVal string) (string, erro
 }
 
 func (r *Reader) buildMetricQuery(queryRange string) string {
-	if r.queryAppend != "" {
-		return fmt.Sprintf("count_over_time(%s %s[%s])", r.labelSelector, r.queryAppend, queryRange)
+	queryAppend := r.queryAppend
+	if r.validateOTLP {
+		// The per-record attribute must not create a series for each timestamp.
+		queryAppend = strings.TrimSpace(queryAppend + " | drop canary_timestamp")
+	}
+	if queryAppend != "" {
+		return fmt.Sprintf("count_over_time(%s %s[%s])", r.labelSelector, queryAppend, queryRange)
 	}
 	return fmt.Sprintf("count_over_time(%s[%s])", r.labelSelector, queryRange)
 }
@@ -105,6 +118,7 @@ func NewReader(writer io.Writer,
 	pathPrefix string,
 	user string,
 	pass string,
+	bearerTokenFile string,
 	tenantID string,
 	queryTimeout time.Duration,
 	labelName string,
@@ -114,8 +128,18 @@ func NewReader(writer io.Writer,
 	interval time.Duration,
 	queryAppend string,
 	labels string,
+	validateOTLP bool,
 ) (*Reader, error) {
+	if user != "" && bearerTokenFile != "" {
+		return nil, fmt.Errorf("at most one of basic authentication and bearer token authentication may be configured")
+	}
+
 	h := http.Header{}
+	if validateOTLP {
+		// Keep structured metadata separate from stream labels for validation
+		// on both the websocket and historical query responses.
+		h.Set(httpreq.LokiEncodingFlagsHeader, string(httpreq.FlagCategorizeLabels))
+	}
 
 	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
 	httpClient := http.DefaultClient
@@ -137,6 +161,19 @@ func NewReader(writer io.Writer,
 		// non-mutual TLS
 		httpClient = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 	}
+
+	var bearerToken config.SecretReader
+	if bearerTokenFile != "" {
+		bearerToken = config.NewFileSecret(bearerTokenFile)
+		transport := httpClient.Transport
+		if transport == nil {
+			transport = http.DefaultTransport
+		}
+		httpClient = &http.Client{
+			Transport: config.NewAuthorizationCredentialsRoundTripper("Bearer", bearerToken, transport),
+		}
+	}
+
 	if user != "" {
 		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
 	}
@@ -171,6 +208,7 @@ func NewReader(writer io.Writer,
 		pathPrefix:      prefix,
 		user:            user,
 		pass:            pass,
+		bearerToken:     bearerToken,
 		tenantID:        tenantID,
 		queryTimeout:    queryTimeout,
 		httpClient:      httpClient,
@@ -184,6 +222,7 @@ func NewReader(writer io.Writer,
 		shuttingDown:    false,
 		queryAppend:     queryAppend,
 		labelSelector:   labelSel,
+		validateOTLP:    validateOTLP,
 	}
 
 	go rd.run()
@@ -351,12 +390,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		return nil, err
 	}
 
-	if r.user != "" {
-		req.SetBasicAuth(r.user, r.pass)
-	}
-	if r.tenantID != "" {
-		req.Header.Set("X-Scope-OrgID", r.tenantID)
-	}
+	req.Header = r.header.Clone()
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := r.httpClient.Do(req)
@@ -393,9 +427,9 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	case logqlmodel.ValueTypeStreams:
 		for _, stream := range value.(loghttp.Streams) {
 			for _, entry := range stream.Entries {
-				ts, err := parseResponse(&entry)
+				ts, err := r.parseResponse(&entry)
 				if err != nil {
-					fmt.Fprint(r.w, err)
+					fmt.Fprintln(r.w, err)
 					continue
 				}
 				tss = append(tss, *ts)
@@ -460,9 +494,9 @@ func (r *Reader) run() {
 		}
 		for _, stream := range tailResponse.Streams {
 			for _, entry := range stream.Entries {
-				ts, err := parseResponse(&entry)
+				ts, err := r.parseResponse(&entry)
 				if err != nil {
-					fmt.Fprint(r.w, err)
+					fmt.Fprintln(r.w, err)
 					continue
 				}
 				r.recv <- *ts
@@ -515,8 +549,15 @@ func (r *Reader) closeAndReconnect() {
 
 		fmt.Fprintf(r.w, "Connecting to loki at %v, using selector %s\n", u.String(), r.labelSelector)
 
+		header, err := r.webSocketHeader(context.Background())
+		if err != nil {
+			fmt.Fprintf(r.w, "failed to load authorization credentials for %s: %s\n", u.String(), err)
+			<-time.After(10 * time.Second)
+			continue
+		}
+
 		dialer := r.webSocketDialer()
-		c, _, err := dialer.Dial(u.String(), r.header)
+		c, _, err := dialer.Dial(u.String(), header)
 		if err != nil {
 			fmt.Fprintf(r.w, "failed to connect to %s with err %s\n", u.String(), err)
 			<-time.After(10 * time.Second)
@@ -537,6 +578,21 @@ func (r *Reader) closeAndReconnect() {
 	}
 }
 
+func (r *Reader) webSocketHeader(ctx context.Context) (http.Header, error) {
+	header := r.header.Clone()
+	if r.bearerToken == nil {
+		return header, nil
+	}
+
+	token, err := r.bearerToken.Fetch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	header.Set("Authorization", "Bearer "+token)
+
+	return header, nil
+}
+
 // webSocketDialer creates a dialer for the web socket connection to Loki
 // websocket.DefaultDialer will be returned in the case that the connection to Loki is http or TLS without client certs.
 // For the mTLS case, return a websocket.Dialer configured to use client side certificates.
@@ -548,7 +604,7 @@ func (r *Reader) webSocketDialer() *websocket.Dialer {
 	}
 }
 
-func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
+func (r *Reader) parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	sp := strings.Split(entry.Line, " ")
 	if len(sp) != 2 {
 		return nil, errors.Errorf("received invalid entry: %s", entry.Line)
@@ -556,6 +612,13 @@ func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	ts, err := strconv.ParseInt(sp[0], 10, 64)
 	if err != nil {
 		return nil, errors.Errorf("failed to parse timestamp: %s", sp[0])
+	}
+	if r.validateOTLP {
+		want := strconv.FormatInt(ts, 10)
+		if got := entry.StructuredMetadata.Get("canary_timestamp"); got != want {
+			otlpValidationErrors.Inc()
+			return nil, fmt.Errorf("otlp attribute validation failed for entry %s: canary_timestamp=%q, expected %q", sp[0], got, want)
+		}
 	}
 	t := time.Unix(0, ts)
 	return &t, nil

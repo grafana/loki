@@ -22,8 +22,11 @@ type Unmarshaler interface {
 }
 
 // CursorUnmarshaler is implemented by decoders that can decode directly from
-// an immutable cursor and return its proven successor without acquiring a
-// stateful Decoder.
+// an immutable cursor and return its successor without acquiring a stateful
+// Decoder. Implementations must consume and validate the complete value.
+// Successor checks verify decoder identity and recorded origin. A successor from
+// MapReader.End relies on the implementation having completed that reader's
+// counted traversal.
 type CursorUnmarshaler interface {
 	UnmarshalMaxMindDBCursor(cursor Cursor) (Cursor, error)
 }
@@ -276,7 +279,10 @@ func (d *ReflectionDecoder) structFieldValueIsInlineContainer(offset uint) bool 
 		ctrlByte := d.buffer[offset]
 		if ctrlByte>>5 == byte(KindMap) ||
 			(ctrlByte>>5 == byte(KindExtended) && offset+1 < uint(len(d.buffer)) &&
-				(d.buffer[offset+1] == byte(KindMap-7) ||
+				// Extended type byte 0 is not a valid type, but the
+				// budgeted skip rejects it, while nextValueOffset would
+				// skip it as a scalar.
+				(d.buffer[offset+1] == 0 ||
 					d.buffer[offset+1] == byte(KindSlice-7))) {
 			return true
 		}
@@ -399,8 +405,7 @@ func (d *ReflectionDecoder) nextValueOffsetBudgetedSlow(
 
 func wrapRootDecodeError(err error, offset uint) error {
 	// Check if error already has context (including path), if so just add offset if missing
-	var contextErr mmdberrors.ContextualError
-	if errors.As(err, &contextErr) {
+	if contextErr, ok := errors.AsType[mmdberrors.ContextualError](err); ok {
 		if contextErr.Offset != 0 || offset == 0 {
 			return err
 		}
@@ -600,8 +605,7 @@ func wrapErrorWithPath(err error, prepend func(*mmdberrors.PathBuilder)) error {
 		return nil
 	}
 
-	var contextErr mmdberrors.ContextualError
-	if errors.As(err, &contextErr) {
+	if contextErr, ok := errors.AsType[mmdberrors.ContextualError](err); ok {
 		pathBuilder := mmdberrors.NewPathBuilder()
 		if contextErr.Path != "" && contextErr.Path != "/" {
 			pathBuilder.ParseAndExtend(contextErr.Path)
@@ -1020,12 +1024,9 @@ func (d *ReflectionDecoder) unmarshalPointer(
 
 	// Check for pointer-to-pointer by looking at what we're about to decode
 	// This is done efficiently by checking the control byte at the pointer location
+	// An extended type cannot encode a pointer, so only the control byte can.
 	controlByte := d.buffer[pointer]
-	kind := Kind(controlByte >> 5)
-	if kind == KindExtended && pointer+1 < uint(len(d.buffer)) {
-		kind = Kind(d.buffer[pointer+1] + 7)
-	}
-	if kind == KindPointer {
+	if Kind(controlByte>>5) == KindPointer {
 		return 0, mmdberrors.NewInvalidDatabaseError(
 			"invalid pointer to pointer at offset %d",
 			pointer,
@@ -1634,10 +1635,7 @@ func (d *ReflectionDecoder) decodeBudgetedStringKey(offset uint) (string, uint, 
 	if err := d.reserveExactPayload(uint(len(key))); err != nil {
 		return "", 0, err
 	}
-	if d.stringCache == nil {
-		return string(key), nextOffset, nil
-	}
-	return d.stringCache.internAt(cacheOffset, key), nextOffset, nil
+	return d.decodeStringBytes(cacheOffset, key), nextOffset, nil
 }
 
 // unmarshalValidatedMapKey invokes a custom map-key decoder after decodeKey
@@ -1806,13 +1804,20 @@ func (d *ReflectionDecoder) decodeStructWithFields(
 		// fast-path decoders bypass embedded-pointer initialization,
 		// which is the caller's responsibility on the slow path.
 		switch fieldInfo.dispatch {
+		case dispatchString:
+			if fastOffset, ok := d.tryFastDecodeString(offset, fieldValue, depth); ok {
+				offset = fastOffset
+				continue
+			}
+			offset, err = d.decodeValueSkipUnmarshaler(offset, fieldValue, depth)
 		case dispatchFast:
 			if len(fieldInfo.index) == 0 {
-				if fastOffset, ok := d.tryFastDecodeTyped(
+				fastOffset, ok := d.tryFastDecodeTyped(
 					offset,
 					fieldValue,
 					fieldInfo.fieldType,
-				); ok {
+				)
+				if ok {
 					offset = fastOffset
 					continue
 				}
@@ -1917,8 +1922,7 @@ func (d *ReflectionDecoder) decodeValueMaxSize(
 		}
 		value, next, err := cursor.ReadStringMaxSize(maximum)
 		if err != nil {
-			var mismatch UnexpectedKindError
-			if errors.As(err, &mismatch) {
+			if _, ok := errors.AsType[UnexpectedKindError](err); ok {
 				return d.decodeValueSkipUnmarshaler(offset, result, depth)
 			}
 			return 0, err
@@ -2170,6 +2174,9 @@ const (
 	// decodeValueSkipUnmarshaler (which is sound: the field type cannot
 	// implement either custom interface by construction).
 	dispatchFast fieldDispatch = iota
+	// dispatchString decodes strings, including database pointers, without
+	// repeating destination-type dispatch. Custom unmarshalers take precedence.
+	dispatchString
 	// dispatchUnmarshaler: field's unwrapped type is an interface, or its pointer
 	// type implements CursorUnmarshaler or Unmarshaler through methods declared
 	// on either a value or pointer receiver. Goes through decodeValue, which
@@ -2413,7 +2420,7 @@ func makeStructFields(rootType reflect.Type) *fieldsType {
 	return makeStructFieldsWithStack(rootType, map[reflect.Type]bool{rootType: true})
 }
 
-//nolint:gocyclo // Field discovery keeps validation and precedence rules in one traversal.
+//nolint:gocyclo,maintidx // Field discovery keeps validation and precedence rules in one traversal.
 func makeStructFieldsWithStack(
 	rootType reflect.Type,
 	stack map[reflect.Type]bool,
@@ -2510,6 +2517,8 @@ func makeStructFieldsWithStack(
 			case maxSizeCustom ||
 				unwrappedFieldType.Kind() == reflect.Interface:
 				dispatch = dispatchUnmarshaler
+			case fieldType.Kind() == reflect.String:
+				dispatch = dispatchString
 			case isFastDecodeType(fieldType):
 				dispatch = dispatchFast
 			default:
@@ -2814,6 +2823,28 @@ func (av addressableValue) indirect(mayAlloc bool) addressableValue {
 		av = addressableValue{Value: av.Elem()}
 	}
 	return av
+}
+
+// tryFastDecodeString uses the key decoder to validate either an inline string
+// or one database pointer to a string. Failures fall back to value decoding so
+// type errors describe a value, not a map key. Callers must have an active budget.
+func (d *ReflectionDecoder) tryFastDecodeString(
+	offset uint,
+	result addressableValue,
+	depth int,
+) (uint, bool) {
+	// Leave the depth boundary to the general decoder. Following a database
+	// pointer adds one level, even though its target is a scalar.
+	if depth >= maximumDataStructureDepth {
+		return 0, false
+	}
+	value, cacheOffset, nextOffset, err := d.decodeKeyAt(offset)
+	if err != nil || uint(len(value)) > uint(d.payloadRemaining) {
+		return 0, false
+	}
+	d.payloadRemaining -= uint32(len(value))
+	result.SetString(d.decodeStringBytes(cacheOffset, value))
+	return nextOffset, true
 }
 
 // tryFastDecodeTyped returns (newOffset, true) on success and (0, false)

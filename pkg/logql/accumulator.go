@@ -56,14 +56,10 @@ func newQuantileSketchAccumulator() *QuantileSketchAccumulator {
 }
 
 func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
-	if res.Data.Type() != QuantileSketchMatrixType {
-		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
-	}
-	data, ok := res.Data.(ProbabilisticQuantileMatrix)
-	if !ok {
-		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
-	}
-
+	// Keep statistics in this accumulator even if validation or merging fails.
+	// DownstreamEvaluator moves them to the discarded-work context when
+	// Downstream returns an error; successful results use the normal stats path.
+	//
 	// TODO(owen-d/ewelch): Shard counts should be set by the querier
 	// so we don't have to do it in tricky ways in multiple places.
 	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
@@ -72,6 +68,15 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 		res.Statistics.Summary.Shards = 1
 	}
 	a.stats.Merge(res.Statistics)
+
+	if res.Data.Type() != QuantileSketchMatrixType {
+		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
+	}
+	data, ok := res.Data.(ProbabilisticQuantileMatrix)
+	if !ok {
+		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
+	}
+
 	metadata.ExtendHeaders(a.headers, res.Headers)
 
 	for _, w := range res.Warnings {
@@ -85,7 +90,6 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 
 	var err error
 	a.matrix, err = a.matrix.Merge(data)
-	a.stats.Merge(res.Statistics)
 	return err
 }
 
@@ -131,14 +135,10 @@ func newCountMinSketchAccumulator() *CountMinSketchAccumulator {
 }
 
 func (a *CountMinSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
-	if res.Data.Type() != CountMinSketchVectorType {
-		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), CountMinSketchVectorType)
-	}
-	data, ok := res.Data.(CountMinSketchVector)
-	if !ok {
-		return fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", res.Data)
-	}
-
+	// Keep statistics in this accumulator even if validation or merging fails.
+	// DownstreamEvaluator moves them to the discarded-work context when
+	// Downstream returns an error; successful results use the normal stats path.
+	//
 	// TODO(owen-d/ewelch): Shard counts should be set by the querier
 	// so we don't have to do it in tricky ways in multiple places.
 	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
@@ -147,6 +147,15 @@ func (a *CountMinSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 		res.Statistics.Summary.Shards = 1
 	}
 	a.stats.Merge(res.Statistics)
+
+	if res.Data.Type() != CountMinSketchVectorType {
+		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), CountMinSketchVectorType)
+	}
+	data, ok := res.Data.(CountMinSketchVector)
+	if !ok {
+		return fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", res.Data)
+	}
+
 	metadata.ExtendHeaders(a.headers, res.Headers)
 
 	for _, w := range res.Warnings {
@@ -160,7 +169,6 @@ func (a *CountMinSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 
 	var err error
 	a.vec, err = a.vec.Merge(&data)
-	a.stats.Merge(res.Statistics)
 	return err
 }
 
@@ -204,6 +212,14 @@ func newCountDistinctSketchAccumulator() *CountDistinctSketchAccumulator {
 }
 
 func (a *CountDistinctSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
+	// Keep statistics in this accumulator even if validation or merging fails.
+	// DownstreamEvaluator moves them to the discarded-work context when
+	// Downstream returns an error; successful results use the normal stats path.
+	if res.Statistics.Summary.Shards == 0 {
+		res.Statistics.Summary.Shards = 1
+	}
+	a.stats.Merge(res.Statistics)
+
 	if res.Data.Type() != CountDistinctSketchMatrixType {
 		return fmt.Errorf("unexpected data type: got (%s), want (%s)", res.Data.Type(), CountDistinctSketchMatrixType)
 	}
@@ -212,10 +228,6 @@ func (a *CountDistinctSketchAccumulator) Accumulate(_ context.Context, res logql
 		return fmt.Errorf("unexpected type: got (%T), want (CountDistinctSketchMatrix)", res.Data)
 	}
 
-	if res.Statistics.Summary.Shards == 0 {
-		res.Statistics.Summary.Shards = 1
-	}
-	a.stats.Merge(res.Statistics)
 	metadata.ExtendHeaders(a.headers, res.Headers)
 	for _, w := range res.Warnings {
 		a.warnings[w] = struct{}{}
@@ -358,25 +370,15 @@ func (acc *AccumulatedStreams) Push(x any) {
 
 	if room := acc.limit - acc.count; room >= len(s.Entries) {
 		if i, ok := acc.Find(s.Labels); ok {
-			// stream already exists, append entries
-
-			// these are already guaranteed to be sorted
-			// Reasoning: we shard subrequests so each stream exists on only one
-			// shard. Therefore, the only time a stream should already exist
-			// is in successive splits, which are already guaranteed to be ordered
-			// and we can just append.
 			acc.appendTo(acc.streams[i], s)
-
 			return
 		}
 
-		// new stream
 		acc.addStream(s)
 		return
 	}
 
-	// there's not enough room for all the entries,
-	// so we need to
+	// there's not enough room for all the entries, so only the best ones are kept
 	acc.push(s)
 }
 
@@ -410,9 +412,14 @@ func (acc *AccumulatedStreams) push(s *logproto.Stream) {
 		}
 		return acc.less(s.Entries[i].Timestamp, worst)
 	})
+	// The first `room` entries are needed while the accumulator is not full,
+	// regardless of how they compare to the current worst entry: entries arrive
+	// best-first, so once they have been inserted, any later entry of this
+	// stream is worse than the new worst entry of the accumulator.
+	cutoff = max(cutoff, room)
 	s.Entries = s.Entries[:cutoff]
 
-	for i := 0; i < len(s.Entries) && acc.less(worst, s.Entries[i].Timestamp); i++ {
+	for i := 0; i < len(s.Entries) && (acc.count < acc.limit || acc.less(worst, s.Entries[i].Timestamp)); i++ {
 
 		// push one entry at a time
 		room = acc.limit - acc.count
@@ -446,14 +453,10 @@ func (acc *AccumulatedStreams) addStream(s *logproto.Stream) {
 	heap.Fix(acc, i)
 }
 
-// dst must already exist in acc
+// appendTo appends the entries of src to dst, which must already exist in acc.
+// Entries usually arrive in order, so they are appended as-is and dst is only
+// re-sorted when an out-of-order entry is seen.
 func (acc *AccumulatedStreams) appendTo(dst, src *logproto.Stream) {
-	// these are already guaranteed to be sorted
-	// Reasoning: we shard subrequests so each stream exists on only one
-	// shard. Therefore, the only time a stream should already exist
-	// is in successive splits, which are already guaranteed to be ordered
-	// and we can just append.
-
 	var needsSort bool
 	for _, e := range src.Entries {
 		// sort if order has broken
