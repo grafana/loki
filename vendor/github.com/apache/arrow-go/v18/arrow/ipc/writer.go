@@ -75,6 +75,14 @@ func hasNestedDict(data arrow.ArrayData) bool {
 }
 
 // Writer is an Arrow stream writer.
+//
+// Writer is not safe for concurrent use. It writes to the underlying io.Writer
+// without any synchronization, so concurrent calls to Write or Close can
+// interleave output and corrupt the stream (for example by emitting the schema
+// header more than once). Because an arbitrary io.Writer cannot be assumed to
+// be safe for concurrent use, callers that produce records from multiple
+// goroutines must serialize writes themselves, for example by sending records
+// over a channel to a single goroutine that owns the Writer.
 type Writer struct {
 	w io.Writer
 

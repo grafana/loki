@@ -18,6 +18,7 @@ package compress
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/andybalholm/brotli"
@@ -56,6 +57,14 @@ func (b brotliCodec) Encode(dst, src []byte) []byte {
 }
 
 func (brotliCodec) Decode(dst, src []byte) []byte {
+	dst, err := (brotliCodec{}).DecodeWithError(dst, src)
+	if err != nil {
+		panic(err)
+	}
+	return dst
+}
+
+func (brotliCodec) DecodeWithError(dst, src []byte) ([]byte, error) {
 	rdr := brotli.NewReader(bytes.NewReader(src))
 	if dst != nil {
 		var (
@@ -68,34 +77,43 @@ func (brotliCodec) Decode(dst, src []byte) []byte {
 			sofar += n
 		}
 		if err != nil && err != io.EOF {
-			panic(err)
+			return nil, err
 		}
-		return dst[:sofar]
+		if sofar == len(dst) {
+			var extra [1]byte
+			if n, err := rdr.Read(extra[:]); n != 0 || err != io.EOF {
+				if err != nil {
+					return nil, err
+				}
+				return nil, fmt.Errorf("codec: brotli: decoded data exceeds destination size %d", len(dst))
+			}
+		}
+		return dst[:sofar], nil
 	}
 
 	dst, err := io.ReadAll(rdr)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return dst
+	return dst, nil
 }
 
 // taken from brotli/enc/encode.c:1426
 // BrotliEncoderMaxCompressedSize
 func (brotliCodec) CompressBound(len int64) int64 {
 	// [window bits / empty metadata] + N * [uncompressed] + [last empty]
+	if len == 0 {
+		return 2
+	}
 	debug.Assert(len > 0, "brotli compressbound should be > 0")
 	nlarge := len >> 14
 	overhead := 2 + (4 * nlarge) + 3 + 1
 	result := len + overhead
-	if len == 0 {
-		return 2
-	}
 	if result < len {
 		return 0
 	}
-	return len
+	return result
 }
 
 func (brotliCodec) NewWriter(w io.Writer) io.WriteCloser {

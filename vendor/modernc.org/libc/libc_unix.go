@@ -42,49 +42,51 @@ func init() {
 	atExit = append(atExit, func() { closePasswd(&staticGetpwnam) })
 }
 
+var (
+	signalCh   chan os.Signal
+	signalTls  *TLS
+	signalInit sync.Once
+)
+
+func startSignalHandler() {
+	signalCh = make(chan os.Signal, 10)
+	signalTls = NewTLS()
+	go func() {
+		for sig := range signalCh {
+			if s, ok := sig.(unix.Signal); ok {
+				signum := int32(s)
+				signalsMu.Lock()
+				handler := signals[signum]
+				signalsMu.Unlock()
+				if handler != 0 && handler != signal.SIG_DFL && handler != signal.SIG_IGN {
+					var f func(*TLS, int32)
+					*(*uintptr)(unsafe.Pointer(&f)) = handler
+					f(signalTls, signum)
+				}
+			}
+		}
+	}()
+}
+
 // sighandler_t signal(int signum, sighandler_t handler);
 func Xsignal(t *TLS, signum int32, handler uintptr) uintptr { //TODO use sigaction?
 	if __ccgo_strace {
 		trc("t=%v signum=%v handler=%v, (%v:)", t, signum, handler, origin(2))
 	}
-	signalsMu.Lock()
+	signalInit.Do(startSignalHandler)
 
+	signalsMu.Lock()
 	defer signalsMu.Unlock()
 
 	r := signals[signum]
 	signals[signum] = handler
 	switch handler {
 	case signal.SIG_DFL:
-		panic(todo("%v %#x", unix.Signal(signum), handler))
+		gosignal.Reset(unix.Signal(signum))
 	case signal.SIG_IGN:
-		switch r {
-		case signal.SIG_DFL:
-			gosignal.Ignore(unix.Signal(signum)) //TODO
-		case signal.SIG_IGN:
-			gosignal.Ignore(unix.Signal(signum))
-		default:
-			panic(todo("%v %#x", unix.Signal(signum), handler))
-		}
+		gosignal.Ignore(unix.Signal(signum))
 	default:
-		switch r {
-		case signal.SIG_DFL:
-			c := make(chan os.Signal, 1)
-			gosignal.Notify(c, unix.Signal(signum))
-			go func() { //TODO mechanism to stop/cancel
-				for {
-					<-c
-					var f func(*TLS, int32)
-					*(*uintptr)(unsafe.Pointer(&f)) = handler
-					tls := NewTLS()
-					f(tls, signum)
-					tls.Close()
-				}
-			}()
-		case signal.SIG_IGN:
-			panic(todo("%v %#x", unix.Signal(signum), handler))
-		default:
-			panic(todo("%v %#x", unix.Signal(signum), handler))
-		}
+		gosignal.Notify(signalCh, unix.Signal(signum))
 	}
 	return r
 }

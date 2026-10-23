@@ -443,7 +443,10 @@ func (t *StructType) String() string {
 		if i > 0 {
 			o.WriteString(", ")
 		}
-		o.WriteString(fmt.Sprintf("%s: %v", f.Name, f.Type))
+		fmt.Fprintf(&o, "%s: %v", f.Name, f.Type)
+		if f.Nullable {
+			o.WriteString(" nullable")
+		}
 	}
 	o.WriteString(">")
 	return o.String()
@@ -575,9 +578,9 @@ func (*MapType) Name() string { return "map" }
 
 func (t *MapType) String() string {
 	var o strings.Builder
-	o.WriteString(fmt.Sprintf("map<%s, %s",
+	fmt.Fprintf(&o, "map<%s, %s",
 		t.value.Elem().(*StructType).Field(0).Type,
-		t.value.Elem().(*StructType).Field(1).Type))
+		t.value.Elem().(*StructType).Field(1).Type)
 	if t.KeysSorted {
 		o.WriteString(", keys_sorted")
 	}

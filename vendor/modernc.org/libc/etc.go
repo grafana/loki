@@ -149,23 +149,23 @@ func addObject(o interface{}) uintptr {
 
 func getObject(t uintptr) interface{} {
 	objectMu.Lock()
+	defer objectMu.Unlock()
 	o := objects[t]
 	if o == nil {
 		panic(todo("", t))
 	}
 
-	objectMu.Unlock()
 	return o
 }
 
 func removeObject(t uintptr) {
 	objectMu.Lock()
+	defer objectMu.Unlock()
 	if _, ok := objects[t]; !ok {
 		panic(todo(""))
 	}
 
 	delete(objects, t)
-	objectMu.Unlock()
 }
 
 func (t *TLS) setErrno(err interface{}) {

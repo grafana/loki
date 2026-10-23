@@ -18,13 +18,15 @@ package scalar
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"hash/maphash"
 	"math"
 	"math/big"
 	"reflect"
 	"strconv"
 	"unsafe"
+
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -36,7 +38,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/float16"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
-	"golang.org/x/xerrors"
 )
 
 // Scalar represents a single value of a specific DataType as opposed to
@@ -96,7 +97,7 @@ func (s *scalar) IsValid() bool { return s.Valid }
 
 func (s *scalar) Validate() error {
 	if s.Type == nil {
-		return xerrors.New("scalar lacks a type")
+		return errors.New("scalar lacks a type")
 	}
 	return nil
 }
@@ -129,7 +130,7 @@ func (n *Null) Validate() (err error) {
 		return
 	}
 	if n.Valid {
-		err = xerrors.New("null scalar should have Valid = false")
+		err = errors.New("null scalar should have Valid = false")
 	}
 	return
 }
@@ -398,6 +399,18 @@ type Extension struct {
 	Value Scalar
 }
 
+func (s *Extension) Retain() {
+	if r, ok := s.Value.(Releasable); ok {
+		r.Retain()
+	}
+}
+
+func (s *Extension) Release() {
+	if r, ok := s.Value.(Releasable); ok {
+		r.Release()
+	}
+}
+
 func (s *Extension) value() interface{} { return s.Value }
 func (s *Extension) equals(rhs Scalar) bool {
 	return Equals(s.Value, rhs.(*Extension).Value)
@@ -561,13 +574,13 @@ func init() {
 // GetScalar creates a scalar object from the value at a given index in the
 // passed in array, returns an error if unable to do so.
 func GetScalar(arr arrow.Array, idx int) (Scalar, error) {
-	if arr.DataType().ID() != arrow.DICTIONARY && arr.IsNull(idx) {
-		return MakeNullScalar(arr.DataType()), nil
+	if idx < 0 || idx >= arr.Len() {
+		return nil, fmt.Errorf("%w: called GetScalar with index out of range",
+			arrow.ErrIndex)
 	}
 
-	if idx >= arr.Len() {
-		return nil, fmt.Errorf("%w: called GetScalar with index larger than array len",
-			arrow.ErrIndex)
+	if arr.DataType().ID() != arrow.DICTIONARY && arr.IsNull(idx) {
+		return MakeNullScalar(arr.DataType()), nil
 	}
 
 	switch arr := arr.(type) {
@@ -969,7 +982,7 @@ func MakeArrayFromScalar(sc Scalar, length int, mem memory.Allocator) (arrow.Arr
 }
 
 func Hash(seed maphash.Seed, s Scalar) uint64 {
-	var h maphash.Hash
+	var h maphash.MapHash
 	h.SetSeed(seed)
 	binary.Write(&h, endian.Native, arrow.HashType(seed, s.DataType()))
 
@@ -981,6 +994,10 @@ func Hash(seed maphash.Seed, s Scalar) uint64 {
 	hash := func() {
 		out ^= h.Sum64()
 		h.Reset()
+	}
+	hashUint64 := func(v uint64) {
+		binary.Write(&h, endian.Native, v)
+		hash()
 	}
 
 	valueHash := func(v interface{}) uint64 {
@@ -1050,8 +1067,22 @@ func Hash(seed maphash.Seed, s Scalar) uint64 {
 	case TemporalScalar:
 		return valueHash(s.value())
 	case ListScalar:
-		array.Hash(&h, s.GetList().Data())
-		hash()
+		list := s.GetList()
+		hashUint64(uint64(list.Len()))
+		for i := 0; i < list.Len(); i++ {
+			// Include the logical position in the same chunk as the element so
+			// that list order affects the aggregate hash.
+			binary.Write(&h, endian.Native, uint64(i))
+			if list.IsNull(i) {
+				h.Write([]byte{0})
+				hash()
+				continue
+			}
+
+			h.Write([]byte{1})
+			binary.Write(&h, endian.Native, hashListElement(seed, list, i))
+			hash()
+		}
 	case *Struct:
 		for _, c := range s.Value {
 			if c.IsValid() {
@@ -1061,4 +1092,29 @@ func Hash(seed maphash.Seed, s Scalar) uint64 {
 	}
 
 	return out
+}
+
+func hashListElement(seed maphash.Seed, list arrow.Array, index int) uint64 {
+	value, err := GetScalar(list, index)
+	if err == nil {
+		defer func() {
+			if r, ok := value.(Releasable); ok {
+				r.Release()
+			}
+		}()
+		return Hash(seed, value)
+	}
+
+	// Some valid array types do not have a scalar representation yet. ValueStr
+	// is their logical value representation and avoids making list hashing
+	// depend on GetScalar supporting every array type.
+	var h maphash.MapHash
+	h.SetSeed(seed)
+	binary.Write(&h, endian.Native, arrow.HashType(seed, list.DataType()))
+	out := h.Sum64()
+	h.Reset()
+	valueString := list.ValueStr(index)
+	binary.Write(&h, endian.Native, uint64(len(valueString)))
+	h.Write([]byte(valueString))
+	return out ^ h.Sum64()
 }
