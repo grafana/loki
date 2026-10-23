@@ -94,6 +94,38 @@ func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	return nil
 }
 
+// IndexTable is one ObjectStorageIndexRequiredPeriod index table. Start and
+// End are the first and last millisecond it covers.
+type IndexTable struct {
+	Name       string
+	Start, End model.Time
+	Config     *PeriodConfig
+}
+
+// IndexTablesFor returns, in order, the index tables that hold the index of
+// [from, through], both ends inclusive: every table of t whose period overlaps
+// the range.
+func (t TableRanges) IndexTablesFor(from, through model.Time) []IndexTable {
+	period := int64(ObjectStorageIndexRequiredPeriod)
+	start := from.Time().UnixNano() / period
+	end := through.Time().UnixNano() / period
+
+	var tables []IndexTable
+	for n := start; n <= end; n++ {
+		cfg := t.ConfigForTableNumber(n)
+		if cfg == nil {
+			continue
+		}
+		tables = append(tables, IndexTable{
+			Name:   cfg.IndexTables.Prefix + strconv.FormatInt(n, 10),
+			Start:  model.TimeFromUnixNano(n * period),
+			End:    model.TimeFromUnixNano((n+1)*period) - 1,
+			Config: cfg,
+		})
+	}
+	return tables
+}
+
 // TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
 func (t TableRange) TableInRange(tableName string) (bool, error) {
 	// non-periodic tables

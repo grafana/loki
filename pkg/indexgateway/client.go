@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -166,8 +167,8 @@ func (i *ClientConfig) validatePerIndex() error {
 	if i.TableRange.PeriodConfig == nil {
 		return errors.New("index gateway client sharding=per_index requires the table range of the schema period")
 	}
-	if p := i.TableRange.PeriodConfig.IndexTables.Period; p != tablePeriod {
-		return fmt.Errorf("index gateway client sharding=per_index requires an index period of %s, got %s", tablePeriod, p)
+	if p := i.TableRange.PeriodConfig.IndexTables.Period; p != config.ObjectStorageIndexRequiredPeriod {
+		return fmt.Errorf("index gateway client sharding=per_index requires an index period of %s, got %s", config.ObjectStorageIndexRequiredPeriod, p)
 	}
 	return nil
 }
@@ -197,29 +198,38 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		return nil, err
 	}
 
-	latency, err := registerOrExisting(r, prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
 		Help:      "Time (in seconds) spent serving requests when using the index gateway",
 		Buckets:   instrument.DefBuckets,
-	}, []string{"operation", "status_code"}))
-	if err != nil {
-		return nil, err
+	}, []string{"operation", "status_code"})
+	if r != nil {
+		err := r.Register(latency)
+		if err != nil {
+			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
+			if !ok {
+				return nil, err
+			}
+			latency = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
+		}
 	}
 
-	retries, err := registerOrExisting(r, prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	retries := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_retries",
 		Help:      "Number of retries attempted before a successful or failed index gateway request",
 		Buckets:   []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 40, 50, 100},
-	}, []string{"status"}))
-	if err != nil {
-		return nil, err
-	}
-
-	fanout, err := newFanoutMetrics(r)
-	if err != nil {
-		return nil, err
+	}, []string{"status"})
+	if r != nil {
+		err := r.Register(retries)
+		if err != nil {
+			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
+			if !ok {
+				return nil, err
+			}
+			retries = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
+		}
 	}
 
 	buckets := make([]time.Duration, len(cfg.TimeBasedShardingBuckets))
@@ -242,7 +252,6 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		storeGatewayClientRequestDuration: latency,
 		retriesHistogram:                  retries,
 		inFlight:                          newInFlightGate(cfg.MaxInFlightRequests, gateReg),
-		fanoutMetrics:                     fanout,
 		ring:                              cfg.Ring,
 		limits:                            limits,
 		buckets:                           buckets,
@@ -250,6 +259,7 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 	}
 	if sgClient.perIndex() {
 		sgClient.ownership = NewIndexOwnership(cfg.Ring)
+		sgClient.fanoutMetrics = newFanoutMetrics(r)
 	}
 
 	unaryInterceptors, streamInterceptors := instrumentation(cfg, sgClient.storeGatewayClientRequestDuration)
@@ -282,13 +292,20 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 			HealthCheckEnabled: sgClient.cfg.PoolConfig.HealthCheckIngesters,
 			HealthCheckTimeout: sgClient.cfg.PoolConfig.RemoteTimeout,
 		}
-		clients, err := registerOrExisting(r, prometheus.NewGauge(prometheus.GaugeOpts{
+		clients := prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "index_gateway_clients",
 			Help:      "The current number of index gateway clients.",
-		}))
-		if err != nil {
-			return nil, err
+		})
+		if r != nil {
+			err := r.Register(clients)
+			if err != nil {
+				alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
+				if !ok {
+					return nil, err
+				}
+				clients = alreadyErr.ExistingCollector.(prometheus.Gauge)
+			}
 		}
 		//TODO(ewelch) we can't use metrics in the provider because of duplicate registration errors
 		dnsProvider := discovery.NewDNS(logger, sgClient.cfg.PoolConfig.ClientCleanupPeriod, sgClient.cfg.Address, nil)
@@ -456,10 +473,15 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 			if err != nil {
 				return nil, errors.Wrap(err, "index gateway client get tenant ID")
 			}
-			// Shards are not merged across tables: a request spanning tables goes
-			// whole to the owners of its first table. They answer it correctly, but
-			// have to load the other tables as any non-owner would, so it is slower.
-			// Multi-table shard requests are expected to be rare.
+			// TODO(twhitney): For now, we are just tracking how often a request spans
+			// table boundaries. Shards are not merged across tables, a request
+			// spanning tables goes to the owners of its first table. They
+			// answer it correctly, but have to load the other tables as any non-owner
+			// would, so it is slower. A request spans tables when its split crosses
+			// or ends at midnight, or its range vector reaches back into the previous
+			// day. If this proves problematic we will need to either a) clip the
+			// boundaries, b) speed it up through other means (caching?), or c)
+			// introduce a new mergable response type.
 			tables := "single"
 			if len(parts) > 1 {
 				tables = "multi"
@@ -706,23 +728,6 @@ func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Durati
 	return addrs[start:end]
 }
 
-// registerOrExisting registers c with r, or returns the collector already
-// registered under the same descriptor. One client is built per schema period,
-// and they share their metrics.
-func registerOrExisting[T prometheus.Collector](r prometheus.Registerer, c T) (T, error) {
-	if r == nil {
-		return c, nil
-	}
-	if err := r.Register(c); err != nil {
-		alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
-		if !ok {
-			return c, err
-		}
-		return alreadyErr.ExistingCollector.(T), nil
-	}
-	return c, nil
-}
-
 // fanoutMetrics are the metrics of per_index sharding.
 type fanoutMetrics struct {
 	requestTables     *prometheus.HistogramVec
@@ -730,35 +735,23 @@ type fanoutMetrics struct {
 	getShardsRequests *prometheus.CounterVec
 }
 
-func newFanoutMetrics(r prometheus.Registerer) (*fanoutMetrics, error) {
-	var (
-		m   fanoutMetrics
-		err error
-	)
-	m.requestTables, err = registerOrExisting(r, prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: constants.Loki,
-		Name:      "index_gateway_client_request_tables",
-		Help:      "Number of index tables a request is split into with per_index sharding. Each table is a separate index gateway request.",
-		Buckets:   []float64{1, 2, 3, 4, 7, 14, 31},
-	}, []string{"operation"}))
-	if err != nil {
-		return nil, err
+func newFanoutMetrics(r prometheus.Registerer) *fanoutMetrics {
+	return &fanoutMetrics{
+		requestTables: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_request_tables",
+			Help:      "Number of index tables a request is split into with per_index sharding. Each table is a separate index gateway request.",
+			Buckets:   []float64{1, 2, 3, 4, 7, 14, 31},
+		}, []string{"operation"}),
+		boundaryParts: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_boundary_parts_total",
+			Help:      "Index gateway requests sent with per_index sharding only because a request ends exactly at the start of an index table.",
+		}, []string{"operation"}),
+		getShardsRequests: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_get_shards_requests_total",
+			Help:      "GetShards requests sent with per_index sharding, by whether they read a single index table or several. A request that reads several tables is sent whole to the owners of its first table.",
+		}, []string{"tables"}),
 	}
-	m.boundaryParts, err = registerOrExisting(r, prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "index_gateway_client_boundary_parts_total",
-		Help:      "Index gateway requests sent with per_index sharding only because a request ends exactly at the start of an index table.",
-	}, []string{"operation"}))
-	if err != nil {
-		return nil, err
-	}
-	m.getShardsRequests, err = registerOrExisting(r, prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "index_gateway_client_get_shards_requests_total",
-		Help:      "GetShards requests sent with per_index sharding, by whether they read a single index table or several. A request that reads several tables is sent whole to the owners of its first table.",
-	}, []string{"tables"}))
-	if err != nil {
-		return nil, err
-	}
-	return &m, nil
 }
