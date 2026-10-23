@@ -991,8 +991,8 @@ func (t *Loki) initStore() (services.Service, error) {
 	perIndexOwnership := t.usePerIndexOwnership()
 	if perIndexOwnership {
 		// Read the sharded index copy of the schema periods that have one, and
-		// preload only the indexes this gateway owns, once it has joined the
-		// ring and can tell which those are (see below).
+		// preload only the indexes this gateway owns, after it has joined the
+		// ring and can tell which those are.
 		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
 		t.Cfg.StorageConfig.TSDBShipperConfig.PerIndexOwnership = true
 		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants

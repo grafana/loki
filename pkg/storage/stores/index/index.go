@@ -139,10 +139,9 @@ type Syncer interface {
 }
 
 // QueryReadinessEnsurer is implemented by index stores that can download their
-// query ready indexes on demand.
+// indexes on demand (after joining the ring).
 type QueryReadinessEnsurer interface {
-	// EnsureQueryReadiness downloads the indexes that must be query ready and
-	// are missing.
+	// EnsureQueryReadiness downloads the indexes this gateway is responsible for
 	EnsureQueryReadiness(ctx context.Context) error
 }
 

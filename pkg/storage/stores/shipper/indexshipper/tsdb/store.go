@@ -220,8 +220,7 @@ func (s *store) FlushIndexes(ctx context.Context) error {
 	return s.indexShipper.FlushIndexes(ctx)
 }
 
-// EnsureQueryReadiness downloads the indexes that must be query ready and are
-// missing.
+// EnsureQueryReadiness downloads the missing indexes this store owns
 func (s *store) EnsureQueryReadiness(ctx context.Context) error {
 	return s.indexShipper.EnsureQueryReadiness(ctx)
 }

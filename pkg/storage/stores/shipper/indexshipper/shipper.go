@@ -88,8 +88,7 @@ type IndexShipper interface {
 	TriggerSync() bool
 	// SyncStatus reports the current/last sync status.
 	SyncStatus() indexstore.SyncStatus
-	// EnsureQueryReadiness downloads the indexes that must be query ready and
-	// are missing.
+	// EnsureQueryReadiness downloads the missing indexes this IndexShipper owns
 	EnsureQueryReadiness(ctx context.Context) error
 	Stop()
 }
@@ -111,23 +110,13 @@ type Config struct {
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
 
-	// PerIndexOwnership is set by the index gateway with per-index ownership.
-	// The stores of schema periods with a sharded_path_prefix then read the
-	// sharded index copy with the filters below; the stores of other periods
-	// read path_prefix without them (see ForPeriod).
-	PerIndexOwnership bool `yaml:"-"`
-	// TenantFilter, if set, limits query readiness to the tenants it returns
-	// for each table. It is set by the index gateway with per-index ownership.
-	TenantFilter downloads.TenantFilter `yaml:"-"`
-	// SkipInitialQueryReadiness skips query readiness at construction, for a
-	// TenantFilter that cannot answer until later.
-	SkipInitialQueryReadiness bool `yaml:"-"`
+	PerIndexOwnership         bool                   `yaml:"-"`
+	TenantFilter              downloads.TenantFilter `yaml:"-"`
+	SkipInitialQueryReadiness bool                   `yaml:"-"`
 }
 
 // ForPeriod returns the config and the object storage path prefix of the
-// index store of schema period p. With PerIndexOwnership, a period with a
-// sharded index copy reads it, and any other period reads its index without
-// the per-index ownership filters, as without PerIndexOwnership.
+// index store of schema period p.
 func (cfg Config) ForPeriod(p config.PeriodConfig) (Config, string) {
 	if !cfg.PerIndexOwnership {
 		return cfg, p.IndexTables.PathPrefix
