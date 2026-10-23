@@ -287,14 +287,7 @@ func (p *Proxy) Start() error {
 		if p.cfg.CompareResponses {
 			comp = route.ResponseComparator
 		}
-		endpoint := NewProxyEndpoint(
-			p.backends,
-			route.RouteName,
-			p.metrics,
-			p.logger,
-			comp,
-			p.cfg.ReportMissingSeries,
-		)
+		endpoint := NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger)
 
 		routeHandlerFactory := NewHandlerFactory(HandlerFactoryConfig{
 			Backends:                 p.backends,
@@ -316,18 +309,7 @@ func (p *Proxy) Start() error {
 
 	// create a separate endpoint without a query handler for write requests
 	for _, route := range p.writeRoutes {
-		var comp comparator.ResponsesComparator
-		if p.cfg.CompareResponses {
-			comp = route.ResponseComparator
-		}
-		endpoint := NewProxyEndpoint(
-			p.backends,
-			route.RouteName,
-			p.metrics,
-			p.logger,
-			comp,
-			p.cfg.ReportMissingSeries,
-		)
+		endpoint := NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger)
 
 		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
 	}
