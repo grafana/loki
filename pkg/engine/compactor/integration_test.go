@@ -557,9 +557,6 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		}
 	})
 
-	ms := metastore.NewObjectMetastore(bucket, metastore.Config{}, log.NewNopLogger(),
-		metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry()))
-
 	var compactionCfg Config
 	flagext.DefaultValues(&compactionCfg)
 	if logsobjConfig != nil {
@@ -576,8 +573,6 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		Logger:           log.NewNopLogger(),
 		Bucket:           bucket,
 		DataBucket:       bucket,
-		Metastore:        ms,
-		BatchSize:        2048,
 		Dialer:           dialer,
 		Listener:         workerListener,
 		SchedulerAddress: wire.LocalScheduler,

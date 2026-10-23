@@ -14,9 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 )
 
-// Scheduler is the compactor-side scheduler wrapper. It mirrors the
-// *engine.Scheduler wrapper used by the query path but lives here so the
-// coordinator can access the internal *scheduler.Scheduler.
+// Scheduler is the compactor-side scheduler wrapper. It gives the
+// coordinator access to the internal *scheduler.Scheduler.
 type Scheduler struct {
 	inner    *scheduler.Scheduler
 	endpoint string

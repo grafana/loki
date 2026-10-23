@@ -111,7 +111,7 @@ func (s *Section) Layout() (layout Layout, ok bool, err error) {
 // A Column represents one of the columns in the streams section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
-// Data in columns can be read by using a [Reader].
+// Data in columns can be read by using a [RowReader].
 type Column struct {
 	Section *Section   // Section that contains the column.
 	Name    string     // Optional name of the column.
