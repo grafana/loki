@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
@@ -339,5 +340,50 @@ func TestSplitByRange_policy(t *testing.T) {
 		got := splitter.policy(tenants, &LokiInstantRequest{Query: `sum(`, TimeTs: dataObjRoutingNow.Add(-6 * time.Hour)})
 
 		require.Equal(t, splitter.chunkPolicy, got)
+	})
+}
+
+func TestChunksOnlySplitter_split(t *testing.T) {
+	const query = `sum(count_over_time({app="foo"}[1h]))`
+	start := time.Date(2026, 10, 9, 16, 40, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	limits := fakeLimits{splitDuration: map[string]time.Duration{"1": 30 * time.Minute}}
+
+	newSplitter := func(v2Start, v2End time.Time, v2Supported bool) chunksOnlySplitter {
+		return chunksOnlySplitter{
+			splitter: newMetricQuerySplitter(Config{}, limits, nil),
+			router: RouterConfig{
+				Enabled:  true,
+				V2Range:  func() (time.Time, time.Time) { return v2Start, v2End },
+				Validate: func(logql.Params) bool { return v2Supported },
+			},
+		}
+	}
+
+	t.Run("does not split a request that the router sends in part to the v2 engine", func(t *testing.T) {
+		splitter := newSplitter(start.Add(30*time.Minute), end.Add(time.Hour), true)
+
+		splits, enabled := splitter.split(time.Now().UTC(), []string{"1"}, newRangeRequest(query, start, end))
+
+		require.False(t, enabled)
+		require.Empty(t, splits)
+	})
+
+	t.Run("splits a request outside the v2 engine range", func(t *testing.T) {
+		splitter := newSplitter(end, end.Add(time.Hour), true)
+
+		splits, enabled := splitter.split(time.Now().UTC(), []string{"1"}, newRangeRequest(query, start, end))
+
+		require.True(t, enabled)
+		require.Len(t, splits, 2)
+	})
+
+	t.Run("splits a request that the v2 engine does not support", func(t *testing.T) {
+		splitter := newSplitter(start, end, false)
+
+		splits, enabled := splitter.split(time.Now().UTC(), []string{"1"}, newRangeRequest(query, start, end))
+
+		require.True(t, enabled)
+		require.Len(t, splits, 2)
 	})
 }

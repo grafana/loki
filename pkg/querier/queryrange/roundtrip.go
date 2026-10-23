@@ -989,7 +989,15 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 		}
 	}
 
-	splitter := newMetricQuerySplitter(cfg, limits, iqo)
+	metricSplitter := newMetricQuerySplitter(cfg, limits, iqo)
+	routesToV2 := routerConfig.Enabled && !disableEngineRouter
+
+	// The size limiter must split a request the same way as the split middleware. The split
+	// middleware does not see the requests that the engine router sends to the v2 engine.
+	var limiterSplitter splitter = metricSplitter
+	if routesToV2 {
+		limiterSplitter = chunksOnlySplitter{splitter: metricSplitter, router: routerConfig}
+	}
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
@@ -1016,14 +1024,14 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			newSplitQuerySizeLimiterMiddleware(engineOpts, log, limits, splitter, statsHandler),
+			newSplitQuerySizeLimiterMiddleware(engineOpts, log, limits, limiterSplitter, statsHandler),
 		)
 
 		// Splitting, sharding, caching and retry middlwares are not added to v2 engine splits
 		// as they are expected to be handled by the new engine handler.
 		chunksEngineMWs := []base.Middleware{
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, metricSplitter, metrics.SplitByMetrics),
 		}
 
 		if cfg.CacheResults {
@@ -1072,7 +1080,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 		)
 
 		// route query range supported by v2 engine to the new engine handler.
-		if routerConfig.Enabled && !disableEngineRouter {
+		if routesToV2 {
 			engineRouterMiddleware := NewEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, true, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,

@@ -21,6 +21,22 @@ type splitter interface {
 	split(execTime time.Time, tenantIDs []string, request queryrangebase.Request) (splits []queryrangebase.Request, enabled bool)
 }
 
+// chunksOnlySplitter splits only the requests that the engine router sends to the chunks
+// engine alone. It does not split a request that the router sends in part to the v2
+// engine, because the v2 engine does not run the split middleware. The chunks part of such
+// a request is still split, so its re-reads are not counted.
+type chunksOnlySplitter struct {
+	splitter
+	router RouterConfig
+}
+
+func (s chunksOnlySplitter) split(execTime time.Time, tenantIDs []string, r queryrangebase.Request) ([]queryrangebase.Request, bool) {
+	if s.router.sendsToV2(r) {
+		return nil, false
+	}
+	return s.splitter.split(execTime, tenantIDs, r)
+}
+
 type defaultSplitter struct {
 	limits Limits
 	iqo    util.IngesterQueryOptions

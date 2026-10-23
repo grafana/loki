@@ -130,6 +130,20 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 	return e.merger.MergeResponse(responses...)
 }
 
+// sendsToV2 reports whether the engine router sends some or all of r to the v2 engine.
+func (c RouterConfig) sendsToV2(r queryrangebase.Request) bool {
+	start, end := c.V2Range()
+	if !r.GetEnd().After(start) || !r.GetStart().Before(end) {
+		return false
+	}
+
+	params, err := ParamsFromRequest(r)
+	if err != nil {
+		return false
+	}
+	return c.Validate(params)
+}
+
 // whether the time range of the request overlaps with the time range of the v2 engine
 func (e engineRouter) isOverlappingV2range(r queryrangebase.Request, start, end time.Time) bool {
 	if !r.GetEnd().After(start) || !r.GetStart().Before(end) {
