@@ -45,7 +45,7 @@ func Marshal(i interface{}) ([]byte, error) {
 	enc.SetIndent("", "")
 
 	v := reflect.ValueOf(i)
-	if v.Kind() != reflect.Ptr && v.CanAddr() {
+	if v.Kind() != reflect.Pointer && v.CanAddr() {
 		v = v.Addr()
 	}
 	err := marshalStruct(v, &buff, enc)
@@ -58,7 +58,26 @@ func Marshal(i interface{}) ([]byte, error) {
 // Unmarshal unmarshals a []byte representing JSON into i, which must be a *struct. In addition, if the struct has
 // a field called AdditionalFields of type map[string]interface{}, JSON data representing fields not in the struct
 // will be written as key/value pairs to AdditionalFields.
-func Unmarshal(b []byte, i interface{}) error {
+//
+// Any panic that escapes the underlying reflect-based decoder (for example
+// "reflect: New of type that may not be allocated in heap") is recovered and
+// returned as an error so that callers are not crashed by malformed or
+// otherwise unexpected input.
+//
+// IMPORTANT: when Unmarshal returns a non-nil error, the destination i may
+// have been partially populated (the decoder writes fields sequentially and a
+// panic mid-decode does not roll back earlier writes). Callers that need
+// all-or-nothing semantics — particularly those handling untrusted input —
+// must decode into a temporary value and only copy/assign it on success.
+// MSAL's own token-cache callers already follow this pattern (see
+// apps/internal/base/storage.Manager.Unmarshal).
+func Unmarshal(b []byte, i interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("json: panic during Unmarshal: %v", r)
+		}
+	}()
+
 	if len(b) == 0 {
 		return nil
 	}
@@ -105,7 +124,7 @@ func hasMarshalJSON(v reflect.Value) bool {
 	ok := false
 	if _, ok = v.Interface().(json.Marshaler); !ok {
 		var i any
-		if v.Kind() == reflect.Ptr {
+		if v.Kind() == reflect.Pointer {
 			i = v.Elem().Interface()
 		} else if v.CanAddr() {
 			i = v.Addr().Interface()
@@ -122,7 +141,7 @@ func callMarshalJSON(v reflect.Value) ([]byte, error) {
 		return marsh.MarshalJSON()
 	}
 
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if marsh, ok := v.Elem().Interface().(json.Marshaler); ok {
 			return marsh.MarshalJSON()
 		}
@@ -141,7 +160,7 @@ func callMarshalJSON(v reflect.Value) ([]byte, error) {
 // the UnmarshalJSON method.
 func hasUnmarshalJSON(v reflect.Value) bool {
 	// You can't unmarshal on a non-pointer type.
-	if v.Kind() != reflect.Ptr {
+	if v.Kind() != reflect.Pointer {
 		if !v.CanAddr() {
 			return false
 		}
