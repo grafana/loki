@@ -5,7 +5,7 @@
 <!-- Badges: release & docker images  -->
 <!-- Badges: code quality  -->
 <!-- Badges: license & compliance -->
-[![Release][release-badge]][release-url] [![Go Report Card][gocard-badge]][gocard-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
+[![Release][release-badge]][release-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
 <!-- Badges: documentation & support -->
 <!-- Badges: others & stats -->
 [![GoDoc][godoc-badge]][godoc-url] [![Discord Channel][discord-badge]][discord-url] [![go version][goversion-badge]][goversion-url] ![Top language][top-badge] ![Commits since latest release][commits-badge]
@@ -15,6 +15,14 @@
 An implementation of JSON Pointer for golang, which supports go `struct`.
 
 ## Announcements
+
+* **2026-07-07** : landing v1.0.0
+  * stable API pledge
+
+* **2026-06-29** : reinsourced external dependency to swag (v0.24.0)
+  * module `github.com/go-openapi/swag/jsonname` is source directly here, so we no longer have any external dependency
+  * `jsonname` was never really used by any other package, so it makes sense to deprecate it away from the `swag` family
+    and retrofit its functionality here. `jsonpointer` no longer get external dependencies, besides test dependencies.
 
 * **2026-04-15** : added support for trailing "-" for arrays (v0.23.0)
   * this brings full support of [RFC6901][RFC6901]
@@ -30,11 +38,12 @@ An implementation of JSON Pointer for golang, which supports go `struct`.
   * the default name provider in use is not fully aligned with go JSON stdlib
   * exposed an option (or global setting) to change the provider that resolves a struct into json keys
   * the default behavior is not altered
-  * a new alternate name provider is added (imported from `go-openapi/swag/jsonname`), aligned with JSON stdlib behavior
 
 ## Status
 
 API is stable and feature-complete.
+
+The project continues to receive regular updates, bug fixes and hygiene maintenance (CI, linting, etc).
 
 ## Import this library in your project
 
@@ -143,8 +152,6 @@ Maintainers can cut a new release by either:
 [release-badge]: https://badge.fury.io/gh/go-openapi%2Fjsonpointer.svg
 [release-url]: https://badge.fury.io/gh/go-openapi%2Fjsonpointer
 <!-- Badges: code quality  -->
-[gocard-badge]: https://goreportcard.com/badge/github.com/go-openapi/jsonpointer
-[gocard-url]: https://goreportcard.com/report/github.com/go-openapi/jsonpointer
 [codefactor-badge]: https://img.shields.io/codefactor/grade/github/go-openapi/jsonpointer
 [codefactor-url]: https://www.codefactor.io/repository/github/go-openapi/jsonpointer
 <!-- Badges: documentation & support -->
