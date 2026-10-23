@@ -745,8 +745,9 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 	// Any v11/v12 schema is rejected - only v13 is supported.
 	// Users must migrate to v13 and remove all v11/v12 schemas.
 	tests := []struct {
-		name    string
-		schemas []lokiv1.ObjectStorageSchema
+		name          string
+		schemas       []lokiv1.ObjectStorageSchema
+		errorContains string
 	}{
 		{
 			name: "v11 schema is rejected",
@@ -757,6 +758,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 					EffectiveDate: "2020-01-01",
 				},
 			},
+			errorContains: "v11",
 		},
 		{
 			name: "v12 schema is rejected",
@@ -767,6 +769,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 					EffectiveDate: "2020-01-01",
 				},
 			},
+			errorContains: "v12",
 		},
 		{
 			name: "v11 schema is rejected even with v13 present",
@@ -781,6 +784,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 					EffectiveDate: "2030-01-01",
 				},
 			},
+			errorContains: "v11",
 		},
 		{
 			name: "v12 schema is rejected even with v13 present",
@@ -795,6 +799,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 					EffectiveDate: "2030-01-01",
 				},
 			},
+			errorContains: "v12",
 		},
 	}
 
@@ -851,7 +856,8 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 			require.IsType(t, &status.DegradedError{}, err)
 
 			degradedErr := err.(*status.DegradedError)
-			require.Contains(t, degradedErr.Message, "spec contains deprecated schema versions")
+			require.Contains(t, degradedErr.Message, "deprecated schema version")
+			require.Contains(t, degradedErr.Message, tc.errorContains)
 			require.Equal(t, lokiv1.ReasonInvalidObjectStorageSchema, degradedErr.Reason)
 			require.False(t, degradedErr.Requeue)
 		})
