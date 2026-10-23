@@ -1883,6 +1883,94 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	}
 }
 
+// TestStore_TSDBHeadLabelsOutsideTenantBounds queries labels through an
+// ingester's store (the call Ingester.Label makes) while the chunks are still in
+// the TSDB head. The window overlaps another tenant's chunk, so the heads are
+// consulted, but it misses all of this tenant's chunks, so nothing may come back.
+func TestStore_TSDBHeadLabelsOutsideTenantBounds(t *testing.T) {
+	tempDir := t.TempDir()
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	tsdbShipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&tsdbShipperConfig)
+	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
+	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
+	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.IngesterName = "ingester-1"
+
+	cfg := Config{
+		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "objects")},
+		TSDBShipperConfig: tsdbShipperConfig,
+	}
+
+	start := parseDate("2019-01-01")
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(start)},
+				IndexType:  "tsdb",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v13",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+			},
+		},
+	}
+
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
+	require.NoError(t, err)
+	defer store.Stop()
+
+	periodConfig, err := schemaConfig.SchemaForTime(timeToModelTime(start))
+	require.NoError(t, err)
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
+	put := func(userID, ls string, from, to time.Time) {
+		chk := newChunk(chunkfmt, headfmt, logproto.Stream{
+			Labels:  ls,
+			Entries: []logproto.Entry{{Timestamp: from, Line: "a"}, {Timestamp: to, Line: "b"}},
+		})
+		chk.UserID = userID
+		require.NoError(t, store.PutOne(ctx, chk.From, chk.Through, chk))
+	}
+	put("fake", `{app="db", env="prod"}`, start.Add(time.Hour), start.Add(70*time.Minute))
+	put("fake", `{app="web", env="dev"}`, start.Add(time.Hour), start.Add(70*time.Minute))
+	put("other", `{app="other"}`, start, start.Add(3*time.Hour))
+
+	eq := labels.MustNewMatcher(labels.MatchEqual, "app", "db")
+	excludeEq := labels.MustNewMatcher(labels.MatchNotRegexp, "app", "d.*")
+
+	for _, tc := range []struct {
+		desc          string
+		from, through time.Time
+		matchers      []*labels.Matcher
+		names, values []string
+	}{
+		{desc: "misses tenant", from: start.Add(20 * time.Minute), through: start.Add(30 * time.Minute), matchers: []*labels.Matcher{eq}},
+		{desc: "misses tenant, contradictory", from: start.Add(20 * time.Minute), through: start.Add(30 * time.Minute), matchers: []*labels.Matcher{eq, excludeEq}},
+		{desc: "overlaps tenant", from: start.Add(time.Hour), through: start.Add(2 * time.Hour), matchers: []*labels.Matcher{eq}, names: []string{"app", "env"}, values: []string{"prod"}},
+		{desc: "overlaps tenant, contradictory", from: start.Add(time.Hour), through: start.Add(2 * time.Hour), matchers: []*labels.Matcher{eq, excludeEq}},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			from, through := timeToModelTime(tc.from), timeToModelTime(tc.through)
+
+			names, err := store.LabelNamesForMetricName(ctx, "fake", from, through, "logs", tc.matchers...)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.names, names)
+
+			values, err := store.LabelValuesForMetricName(ctx, "fake", from, through, "logs", "env", tc.matchers...)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.values, values)
+		})
+	}
+}
+
 func TestStore_SyncStopInteraction(t *testing.T) {
 	tempDir := t.TempDir()
 

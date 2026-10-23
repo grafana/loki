@@ -194,6 +194,50 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 
 }
 
+// Test_TenantHeads_LabelsOutsideTenantBounds covers label queries whose window
+// overlaps the heads (because of another tenant's data) but misses this
+// tenant's head. They must return nothing rather than series with no data in
+// the window, or series the matchers exclude.
+func Test_TenantHeads_LabelsOutsideTenantBounds(t *testing.T) {
+	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	chks := index.ChunkMetas{{MinTime: 1000, MaxTime: 2000, KB: 1, Entries: 1}}
+	for _, s := range []string{`{app="db", env="prod"}`, `{app="web", env="dev"}`} {
+		ls := mustParseLabels(s)
+		h.Append("tenant", ls, labels.StableHash(ls), chks)
+	}
+	// Another tenant's data widens the heads' bounds over every window below.
+	other := mustParseLabels(`{app="other"}`)
+	h.Append("other", other, labels.StableHash(other), index.ChunkMetas{{MinTime: 0, MaxTime: 5000, KB: 1, Entries: 1}})
+
+	eq := labels.MustNewMatcher(labels.MatchEqual, "app", "db")
+	// A non-literal regex, so it is resolved by scanning the label's values.
+	excludeEq := labels.MustNewMatcher(labels.MatchNotRegexp, "app", "d.*")
+
+	for _, tc := range []struct {
+		desc          string
+		from, through model.Time
+		matchers      []*labels.Matcher
+		names, values []string
+	}{
+		{desc: "before head", from: 0, through: 500, matchers: []*labels.Matcher{eq}},
+		{desc: "after head", from: 3000, through: 4000, matchers: []*labels.Matcher{eq}},
+		{desc: "before head, contradictory", from: 0, through: 500, matchers: []*labels.Matcher{eq, excludeEq}},
+		{desc: "before head, no matchers", from: 0, through: 500},
+		{desc: "overlaps head", from: 1500, through: 2500, matchers: []*labels.Matcher{eq}, names: []string{"app", "env"}, values: []string{"prod"}},
+		{desc: "overlaps head, contradictory", from: 1500, through: 2500, matchers: []*labels.Matcher{eq, excludeEq}},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			names, err := h.LabelNames(context.Background(), "tenant", tc.from, tc.through, tc.matchers...)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.names, names)
+
+			values, err := h.LabelValues(context.Background(), "tenant", tc.from, tc.through, "env", tc.matchers...)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.values, values)
+		})
+	}
+}
+
 // test head recover from wal
 func Test_HeadManager_RecoverHead(t *testing.T) {
 	now := time.Now()

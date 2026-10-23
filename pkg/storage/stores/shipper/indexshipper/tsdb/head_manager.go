@@ -824,8 +824,14 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	if !ok {
 		return
 	}
+	// The head's reader isn't scoped to the query window, so skip the head
+	// when the window misses it. Otherwise label queries with matchers return
+	// series that have no data in the window.
+	if int64(through) < tenant.MinTime() || int64(from) > tenant.MaxTime() {
+		return nil, false
+	}
 
-	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
+	idx = NewTSDBIndex(tenant.Index())
 	if f := t.getChunkFilter(); f != nil {
 		idx.SetChunkFilterer(f)
 	}

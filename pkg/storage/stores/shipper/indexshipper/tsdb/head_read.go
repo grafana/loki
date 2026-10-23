@@ -14,7 +14,6 @@
 package tsdb
 
 import (
-	"math"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -26,20 +25,16 @@ import (
 )
 
 // Index returns an IndexReader against the block.
+//
+// Like a TSDB file reader, it is not scoped to a query window: label and
+// postings lookups see every series in the head. Callers skip the head when the
+// window misses its bounds (see tenantHeads.tenantIndex).
 func (h *Head) Index() IndexReader {
-	return h.indexRange(math.MinInt64, math.MaxInt64)
-}
-
-func (h *Head) indexRange(mint, maxt int64) *headIndexReader {
-	if hmin := h.MinTime(); hmin > mint {
-		mint = hmin
-	}
-	return &headIndexReader{head: h, mint: mint, maxt: maxt}
+	return &headIndexReader{head: h}
 }
 
 type headIndexReader struct {
-	head       *Head
-	mint, maxt int64
+	head *Head
 }
 
 func (h *headIndexReader) Bounds() (int64, int64) {
@@ -53,14 +48,10 @@ func (h *headIndexReader) Close() error {
 }
 
 // LabelValues returns label values present in the head for the
-// specific label name that are within the time range mint to maxt.
+// specific label name.
 // If matchers are specified the returned result set is reduced
 // to label values of metrics matching the matchers.
 func (h *headIndexReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
-	if h.maxt < h.head.MinTime() || h.mint > h.head.MaxTime() {
-		return []string{}, nil
-	}
-
 	if len(matchers) == 0 {
 		return h.head.postings.LabelValues(name), nil
 	}
@@ -68,13 +59,8 @@ func (h *headIndexReader) LabelValues(name string, matchers ...*labels.Matcher) 
 	return labelValuesWithMatchers(h, name, matchers...)
 }
 
-// LabelNames returns all the unique label names present in the head
-// that are within the time range mint to maxt.
+// LabelNames returns all the unique label names present in the head.
 func (h *headIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
-	if h.maxt < h.head.MinTime() || h.mint > h.head.MaxTime() {
-		return []string{}, nil
-	}
-
 	if len(matchers) == 0 {
 		labelNames := h.head.postings.LabelNames()
 		sort.Strings(labelNames)
