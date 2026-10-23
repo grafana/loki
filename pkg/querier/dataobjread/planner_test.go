@@ -3,7 +3,9 @@ package dataobjread
 import (
 	"context"
 	"errors"
+	"iter"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -217,6 +219,64 @@ func TestPlanner_Plan(t *testing.T) {
 		require.ErrorContains(t, err, "was listed twice")
 	})
 
+	t.Run("it plans the tasks of a batch before the metastore yields the next batch of the same object", func(t *testing.T) {
+		fixture := newObjectsFixture(t, fixtureStreams...)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		t.Cleanup(objects.release)
+
+		laterSection := *fixture.descriptors[0]
+		laterSection.SectionIdx += 100
+		ms := &streamingMetastore{
+			batches: []metastore.DataobjSectionDescriptors{fixture.descriptors, {&laterSection}},
+			next:    make(chan struct{}),
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		it := NewPlanner(ms, objects, nil).Plan(ctx, plainQuery(t))
+		require.True(t, it.Next(), "no task arrived before the second batch")
+		tasks := []ReadTask{it.At()}
+		close(ms.next)
+
+		rest, err := drainTasks(it)
+		require.NoError(t, err)
+		require.Len(t, append(tasks, rest...), len(fixture.descriptors)+1)
+	})
+
+	t.Run("a section that two batches list fails the query rather than counting it twice", func(t *testing.T) {
+		fixture := newObjectsFixture(t, fixtureStreams...)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		t.Cleanup(objects.release)
+
+		repeated := *fixture.descriptors[0]
+		ms := &streamingMetastore{batches: []metastore.DataobjSectionDescriptors{fixture.descriptors, {&repeated}}}
+
+		_, err := drainTasks(NewPlanner(ms, objects, nil).Plan(t.Context(), plainQuery(t)))
+		require.ErrorContains(t, err, "was listed twice")
+	})
+
+	t.Run("aborting the iterator stops a running resolution and reports no error", func(t *testing.T) {
+		fixture := newObjectsFixture(t, fixtureStreams...)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		t.Cleanup(objects.release)
+
+		laterSection := *fixture.descriptors[0]
+		laterSection.SectionIdx += 100
+		ms := &streamingMetastore{
+			batches: []metastore.DataobjSectionDescriptors{fixture.descriptors, {&laterSection}},
+			next:    make(chan struct{}),
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		it := NewPlanner(ms, objects, nil).Plan(ctx, plainQuery(t))
+		require.True(t, it.Next())
+		it.Abort(nil)
+
+		require.NoError(t, it.Err())
+	})
+
 	t.Run("a resolution error surfaces through the iterator", func(t *testing.T) {
 		wantErr := errors.New("metastore is down")
 		readPlanner, _ := newTestPlanner(t, &fixedMetastore{err: wantErr})
@@ -302,13 +362,13 @@ type panickingMetastore struct {
 	message string
 }
 
-func (m panickingMetastore) Sections(context.Context, metastore.SectionsRequest) (metastore.SectionsResponse, error) {
+func (m panickingMetastore) SectionsStream(context.Context, metastore.SectionsRequest) iter.Seq2[metastore.DataobjSectionDescriptors, error] {
 	panic(m.message)
 }
 
-// fixedMetastore resolves to descriptors a test supplies, so a test can present the planner with
-// a section list a real metastore would not produce. Every other method is nil, so a call the
-// planner should not make panics rather than returning an empty answer.
+// fixedMetastore yields the descriptors a test supplies as one batch, then err when it is set. A
+// test uses it to present the planner with a section list a real metastore would not produce.
+// Every other method is nil, so a call the planner should not make panics.
 type fixedMetastore struct {
 	metastore.Metastore
 
@@ -319,12 +379,43 @@ type fixedMetastore struct {
 	gotRequest metastore.SectionsRequest
 }
 
-func (m *fixedMetastore) Sections(_ context.Context, req metastore.SectionsRequest) (metastore.SectionsResponse, error) {
+func (m *fixedMetastore) SectionsStream(_ context.Context, req metastore.SectionsRequest) iter.Seq2[metastore.DataobjSectionDescriptors, error] {
 	m.gotRequest = req
-	if m.err != nil {
-		return metastore.SectionsResponse{}, m.err
+	return func(yield func(metastore.DataobjSectionDescriptors, error) bool) {
+		if len(m.descriptors) > 0 && !yield(m.descriptors, nil) {
+			return
+		}
+		if m.err != nil {
+			yield(nil, m.err)
+		}
 	}
-	return metastore.SectionsResponse{Sections: m.descriptors}, nil
+}
+
+// streamingMetastore yields the batches a test supplies. When next is set, the stream receives
+// from next before each batch after the first. A test closes next to release the later batches.
+type streamingMetastore struct {
+	metastore.Metastore
+
+	batches []metastore.DataobjSectionDescriptors
+	next    chan struct{}
+}
+
+func (m *streamingMetastore) SectionsStream(ctx context.Context, _ metastore.SectionsRequest) iter.Seq2[metastore.DataobjSectionDescriptors, error] {
+	return func(yield func(metastore.DataobjSectionDescriptors, error) bool) {
+		for i, batch := range m.batches {
+			if i > 0 && m.next != nil {
+				select {
+				case <-m.next:
+				case <-ctx.Done():
+					yield(nil, ctx.Err())
+					return
+				}
+			}
+			if !yield(batch, nil) {
+				return
+			}
+		}
+	}
 }
 
 // drainTasks collects every task the planner produces.

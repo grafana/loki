@@ -117,8 +117,8 @@ func (m *MultiObjectBuilder) Reset() {
 // getBuilders returns all builders, sorted by tenant and then by ascending
 // window start time.
 //
-// The order does not depend on Go's map iteration, so every flush gets the
-// builders in the same order. This makes tests and operational reasoning
+// The order does not depend on Go's map iteration, so the same builders always
+// come back in the same order. This makes tests and operational reasoning
 // simpler.
 func (m *MultiObjectBuilder) getBuilders() []builder {
 	scopes := slices.SortedFunc(maps.Keys(m.builders), compareScopes)

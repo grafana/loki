@@ -2,6 +2,11 @@ local checkoutAction = 'actions/checkout@11d5960a326750d5838078e36cf38b85af67726
 local setupNodeAction = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020';  // v4
 
 {
+  // smallRunner is the runner label for jobs that only run a short script or
+  // status check. A full ubuntu-x64 runner does not make them faster, and its
+  // pool is busy, so these jobs wait longer for it.
+  smallRunner: 'ubuntu-x64-small',
+
   step: {
     new: function(name, uses=null) {
       name: name,
