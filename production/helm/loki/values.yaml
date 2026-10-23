@@ -4125,7 +4125,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 2.5.0
+    tag: 2.14.1@sha256:092dbe0c335fba9af414a27630ca68f34df6185784fa847d9954187e69dbfdd7
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
