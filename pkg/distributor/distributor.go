@@ -1150,12 +1150,46 @@ func (d *Distributor) normalizeStructuredMetadata(metadata []logproto.LabelAdapt
 		return labels.EmptyLabels(), false, nil
 	}
 	labelNamer := otlptranslator.LabelNamer{}
-	builder := labels.NewBuilder(logproto.FromLabelAdaptersToLabels(metadata))
-	changed := false
-	for _, lbl := range metadata {
+
+	// Most metadata is already valid. Scan for the first label whose name or
+	// value has to be rewritten or removed, and only pay for a labels.Builder
+	// from there on: an untouched builder would return its base unchanged.
+	first, firstName := -1, ""
+	for i, lbl := range metadata {
 		name, err := labelNamer.Build(lbl.Name)
 		if err != nil {
 			return labels.EmptyLabels(), false, err
+		}
+		if name != lbl.Name || lbl.Value == "" || strings.ContainsRune(lbl.Value, utf8.RuneError) {
+			first, firstName = i, name
+			break
+		}
+	}
+	base := logproto.FromLabelAdaptersToLabels(metadata)
+	if first < 0 {
+		if !normalizeLevel {
+			return base, false, nil
+		}
+		value := base.Get(constants.LevelLabel)
+		normalized := normalizeLogLevel(value)
+		if normalized == value {
+			return base, false, nil
+		}
+		builder := labels.NewBuilder(base)
+		builder.Set(constants.LevelLabel, normalized)
+		return builder.Labels(), true, nil
+	}
+
+	builder := labels.NewBuilder(base)
+	changed := false
+	for i := first; i < len(metadata); i++ {
+		lbl := metadata[i]
+		name := firstName // Already built by the scan above.
+		if i != first {
+			var err error
+			if name, err = labelNamer.Build(lbl.Name); err != nil {
+				return labels.EmptyLabels(), false, err
+			}
 		}
 		if name != lbl.Name {
 			builder.Del(lbl.Name)
