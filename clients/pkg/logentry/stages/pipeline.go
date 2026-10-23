@@ -127,7 +127,7 @@ func (p *Pipeline) Name() string {
 	return StageTypePipeline
 }
 
-// Wrap implements EntryMiddleware
+// Wrap returns an EntryHandler that runs entries through the pipeline before forwarding them to next.
 func (p *Pipeline) Wrap(next util.EntryHandler) util.EntryHandler {
 	handlerIn := make(chan util.Entry)
 	nextChan := next.Chan()
