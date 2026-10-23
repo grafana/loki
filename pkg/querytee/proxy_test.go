@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
@@ -38,7 +39,7 @@ func (testComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonS
 func Test_NewProxy(t *testing.T) {
 	tests := map[string]struct {
 		configure     func(cfg *ProxyConfig)
-		lokiCfg       *LokiParsedConfig
+		lokiLimits    *LokiLimits
 		expectedErr   string
 		expectedRoles []BackendRole
 	}{
@@ -124,7 +125,7 @@ func Test_NewProxy(t *testing.T) {
 				testData.configure(&cfg)
 			}
 
-			p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil, testData.lokiCfg)
+			p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil, testData.lokiLimits)
 
 			if testData.expectedErr != "" {
 				require.EqualError(t, err, testData.expectedErr)
@@ -395,7 +396,7 @@ func TestProxy_SecondaryBackend(t *testing.T) {
 	}
 
 	// The tenant "enabled" holds data objects from 48 hours ago until 3 hours ago.
-	lokiCfg := newTestLokiParsedConfig(t, 3*time.Hour, time.Now().Add(-48*time.Hour))
+	lokiLimits := newTestLokiLimits(t, time.Now().Add(-48*time.Hour))
 	routes := []Route{{Path: constants.PathLokiQueryRange, RouteName: "api_v1_query_range", Methods: []string{"GET"}, ResponseComparator: &testComparator{}}}
 
 	// startProxy starts a proxy with the dataobj strategy in front of a primary, a secondary and an
@@ -411,8 +412,9 @@ func TestProxy_SecondaryBackend(t *testing.T) {
 		cfg.PrimaryBackend.Hostname = "0"
 		cfg.SecondaryBackend.Hostname = "1"
 		cfg.SecondaryBackend.SelectionStrategy = selectionStrategyDataObj
+		cfg.DataObj = DataObjConfig{Enabled: true, StorageLag: 3 * time.Hour}
 
-		p, err := NewProxy(cfg, log.NewNopLogger(), routes, nil, nil, lokiCfg)
+		p, err := NewProxy(cfg, log.NewNopLogger(), routes, nil, nil, lokiLimits)
 		require.NoError(t, err)
 		require.NoError(t, p.Start())
 		t.Cleanup(func() { _ = p.Stop() })
@@ -502,6 +504,47 @@ func TestProxyConfig_RegisterFlags(t *testing.T) {
 		require.NoError(t, fs.Parse([]string{"-secondary-backend.selection-strategy=dataobj"}))
 
 		require.Equal(t, selectionStrategyDataObj, cfg.SecondaryBackend.SelectionStrategy)
+	})
+
+	t.Run("sets the data object config", func(t *testing.T) {
+		fs, cfg := newFlagSet()
+
+		require.NoError(t, fs.Parse([]string{"-dataobj.enabled=true", "-dataobj.storage-lag=5h"}))
+
+		require.Equal(t, DataObjConfig{Enabled: true, StorageLag: 5 * time.Hour}, cfg.DataObj)
+	})
+}
+
+func TestDataObjConfig_RegisterFlags(t *testing.T) {
+	t.Run("registers the flags with the name, default and description of the Loki flags", func(t *testing.T) {
+		var lokiCfg dataobjconfig.Config
+		lokiFlags := flag.NewFlagSet("loki", flag.ContinueOnError)
+		lokiCfg.RegisterFlags(lokiFlags)
+
+		var cfg DataObjConfig
+		teeFlags := flag.NewFlagSet("querytee", flag.ContinueOnError)
+		cfg.RegisterFlags(teeFlags)
+
+		for _, name := range []string{"dataobj.enabled", "dataobj.storage-lag"} {
+			want := lokiFlags.Lookup(name)
+			require.NotNil(t, want, name)
+			got := teeFlags.Lookup(name)
+			require.NotNil(t, got, name)
+			require.Equal(t, want.DefValue, got.DefValue, name)
+			require.Equal(t, want.Usage, got.Usage, name)
+		}
+	})
+
+	t.Run("sets the Loki defaults when no flag is set", func(t *testing.T) {
+		cfg := parseDataObjFlags(t)
+
+		require.Equal(t, DataObjConfig{Enabled: false, StorageLag: dataobjconfig.DefaultStorageLag}, cfg)
+	})
+
+	t.Run("sets the config from the flags", func(t *testing.T) {
+		cfg := parseDataObjFlags(t, "-dataobj.enabled=true", "-dataobj.storage-lag=5h")
+
+		require.Equal(t, DataObjConfig{Enabled: true, StorageLag: 5 * time.Hour}, cfg)
 	})
 }
 
@@ -677,5 +720,16 @@ func newTestProxyConfig() ProxyConfig {
 	var cfg ProxyConfig
 	flagext.DefaultValues(&cfg)
 	cfg.ServerServicePort = 0
+	return cfg
+}
+
+func parseDataObjFlags(t *testing.T, args ...string) DataObjConfig {
+	t.Helper()
+
+	var cfg DataObjConfig
+	fs := flag.NewFlagSet("querytee", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	cfg.RegisterFlags(fs)
+	require.NoError(t, fs.Parse(args))
 	return cfg
 }

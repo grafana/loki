@@ -47,7 +47,9 @@ It never falls back to another backend. The proxy collects the responses of the 
 
 The `dataobj` strategy applies the eligibility check of the query-frontend with the limits of the secondary backend's Loki cluster.
 Set `-config.file=<path>` to the Loki config file of that cluster, and `-runtime-config.file=<path>` for per-tenant limits.
-When the Loki config file sets `dataobj.enabled` to `false`, the strategy selects no read.
+The proxy reads only the `limits_config` block of the config file.
+Set `-dataobj.enabled` and `-dataobj.storage-lag` to the values of that cluster. They have the same names and defaults as the Loki flags.
+When `-dataobj.enabled` is `false`, the strategy selects no read.
 The strategy selects a query when the query-frontend marks it eligible for data objects, whatever share of the time range data objects hold.
 
 The `loki_querytee_secondary_backend_decisions_total` metric counts the reads by the decision to send them to the secondary backend, or the reason not to.

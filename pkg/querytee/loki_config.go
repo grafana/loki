@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/drone/envsubst"
 	"github.com/go-kit/log"
@@ -18,13 +17,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.yaml.in/yaml/v4"
 
-	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // LimitsConfig configures how querytee loads the limits of a Loki cluster. The flag names match the
-// ones in Loki. The config file is read for the dataobj and limits_config blocks only. The runtime
-// config is read for the overrides only. When neither file is set, querytee loads no limits.
+// ones in Loki. The config file is read for the limits_config block only. The runtime config is read
+// for the overrides only. When neither file is set, querytee loads no limits.
 type LimitsConfig struct {
 	ConfigFile    string
 	ExpandEnv     bool
@@ -33,17 +31,13 @@ type LimitsConfig struct {
 
 // RegisterFlags registers the flags of the limits config.
 func (cfg *LimitsConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.ConfigFile, "config.file", "", "Path of a Loki config file. querytee reads only the limits_config and dataobj blocks.")
+	f.StringVar(&cfg.ConfigFile, "config.file", "", "Path of a Loki config file. querytee reads only the limits_config block.")
 	f.BoolVar(&cfg.ExpandEnv, "config.expand-env", false, "Expand ${var} or $var in the Loki config file with the value of the environment variable.")
 	cfg.RuntimeConfig.RegisterFlags(f)
 }
 
 // lokiConfig is the part of a Loki config file that querytee reads.
 type lokiConfig struct {
-	DataObj struct {
-		Enabled    bool          `yaml:"enabled"`
-		StorageLag time.Duration `yaml:"storage_lag"`
-	} `yaml:"dataobj"`
 	LimitsConfig validation.Limits `yaml:"limits_config"`
 }
 
@@ -52,15 +46,11 @@ type overridesConfig struct {
 	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
 }
 
-// LokiParsedConfig holds the settings that querytee loaded from the config files of a Loki cluster.
+// LokiLimits holds the limits that querytee loaded from the config files of a Loki cluster.
 //
 // The runtime config reloads while querytee runs, so Overrides sees changed per-tenant limits.
-// DataObjEnabled, DataObjStorageLag and the limits_config defaults stay as loaded at start-up.
-type LokiParsedConfig struct {
-	// DataObjEnabled and DataObjStorageLag are the dataobj.enabled and dataobj.storage_lag settings.
-	DataObjEnabled    bool
-	DataObjStorageLag time.Duration
-
+// The limits_config defaults stay as loaded at start-up.
+type LokiLimits struct {
 	// Overrides resolves the limits of a tenant: the per-tenant overrides of the runtime config on
 	// top of the defaults of limits_config.
 	Overrides *validation.Overrides
@@ -68,16 +58,15 @@ type LokiParsedConfig struct {
 	runtimeConfig *runtimeconfig.Manager
 }
 
-// LoadLokiConfig loads the Loki config and runtime config files that the config names. It waits for the
-// first load of the runtime config. It returns nil when the config names no file.
-func LoadLokiConfig(ctx context.Context, cfg LimitsConfig, logger log.Logger, registerer prometheus.Registerer) (*LokiParsedConfig, error) {
+// LoadLokiLimits loads the limits from the Loki config and runtime config files that the config names.
+// It waits for the first load of the runtime config. It returns nil when the config names no file.
+func LoadLokiLimits(ctx context.Context, cfg LimitsConfig, logger log.Logger, registerer prometheus.Registerer) (*LokiLimits, error) {
 	if cfg.ConfigFile == "" && len(cfg.RuntimeConfig.LoadPath) == 0 {
 		return nil, nil
 	}
 
 	var fileCfg lokiConfig
 	flagext.DefaultValues(&fileCfg.LimitsConfig)
-	fileCfg.DataObj.StorageLag = dataobjconfig.DefaultStorageLag
 	if cfg.ConfigFile != "" {
 		if err := readLokiConfig(cfg.ConfigFile, cfg.ExpandEnv, &fileCfg); err != nil {
 			return nil, fmt.Errorf("reading the Loki config file %s: %w", cfg.ConfigFile, err)
@@ -87,10 +76,7 @@ func LoadLokiConfig(ctx context.Context, cfg LimitsConfig, logger log.Logger, re
 	// A tenant override inherits the defaults of limits_config, as it does in Loki.
 	validation.SetDefaultLimitsForYAMLUnmarshalling(fileCfg.LimitsConfig)
 
-	parsed := &LokiParsedConfig{
-		DataObjEnabled:    fileCfg.DataObj.Enabled,
-		DataObjStorageLag: fileCfg.DataObj.StorageLag,
-	}
+	parsed := &LokiLimits{}
 
 	var tenantLimits validation.TenantLimits
 	if len(cfg.RuntimeConfig.LoadPath) > 0 {
@@ -118,8 +104,8 @@ func LoadLokiConfig(ctx context.Context, cfg LimitsConfig, logger log.Logger, re
 	return parsed, nil
 }
 
-// Stop stops the reload of the runtime config. It is safe to call on a nil LokiParsedConfig.
-func (l *LokiParsedConfig) Stop(ctx context.Context) error {
+// Stop stops the reload of the runtime config. It is safe to call on a nil LokiLimits.
+func (l *LokiLimits) Stop(ctx context.Context) error {
 	if l == nil || l.runtimeConfig == nil {
 		return nil
 	}

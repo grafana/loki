@@ -21,6 +21,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 )
@@ -67,15 +68,29 @@ func (cfg *SecondaryBackendConfig) Validate() error {
 }
 
 // newSelectionStrategy builds the selection strategy that the config names.
-func newSelectionStrategy(cfg SecondaryBackendConfig, lokiCfg *LokiParsedConfig) (SelectionStrategy, error) {
+func newSelectionStrategy(cfg SecondaryBackendConfig, dataObjCfg DataObjConfig, lokiLimits *LokiLimits) (SelectionStrategy, error) {
 	switch cfg.SelectionStrategy {
 	case selectionStrategyAll:
 		return allStrategy{}, nil
 	case selectionStrategyDataObj:
-		return newDataObjStrategy(lokiCfg)
+		return newDataObjStrategy(dataObjCfg, lokiLimits)
 	default:
 		return nil, fmt.Errorf("unknown selection strategy %q", cfg.SelectionStrategy)
 	}
+}
+
+// DataObjConfig holds the data object settings of the secondary backend's Loki cluster. The flags
+// have the names, defaults and descriptions of the Loki flags. querytee does not read these
+// settings from the Loki config file.
+type DataObjConfig struct {
+	Enabled    bool
+	StorageLag time.Duration
+}
+
+// RegisterFlags registers the flags of the data object config.
+func (cfg *DataObjConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "dataobj.enabled", false, "Enable data objects.")
+	f.DurationVar(&cfg.StorageLag, "dataobj.storage-lag", dataobjconfig.DefaultStorageLag, "Delay after which data objects hold all the data.")
 }
 
 type ProxyConfig struct {
@@ -92,6 +107,7 @@ type ProxyConfig struct {
 
 	PrimaryBackend   PrimaryBackendConfig
 	SecondaryBackend SecondaryBackendConfig
+	DataObj          DataObjConfig
 }
 
 // backendRole returns the role of the backend at the given index of the backend list. It returns
@@ -130,6 +146,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.PrimaryBackend.RegisterFlags(f)
 	cfg.SecondaryBackend.RegisterFlags(f)
+	cfg.DataObj.RegisterFlags(f)
 
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare the responses of the secondary backend with the responses of the primary backend on supported routes. Requires a secondary backend.")
@@ -175,7 +192,7 @@ func NewProxy(
 	logger log.Logger,
 	readRoutes, writeRoutes []Route,
 	registerer prometheus.Registerer,
-	lokiCfg *LokiParsedConfig,
+	lokiLimits *LokiLimits,
 ) (*Proxy, error) {
 	if err := cfg.SecondaryBackend.Validate(); err != nil {
 		return nil, err
@@ -248,7 +265,7 @@ func NewProxy(
 			return nil, fmt.Errorf("more than one configured backend has the hostname of the secondary backend")
 		}
 
-		strategy, err := newSelectionStrategy(cfg.SecondaryBackend, lokiCfg)
+		strategy, err := newSelectionStrategy(cfg.SecondaryBackend, cfg.DataObj, lokiLimits)
 		if err != nil {
 			return nil, err
 		}
