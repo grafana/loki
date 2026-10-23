@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"math"
 	"sync"
 	"testing"
 
@@ -27,6 +28,7 @@ func TestMultiIndexSelectsFingerprintFiles(t *testing.T) {
 		want   []Index
 	}{
 		{"without filter reads every file", nil, files},
+		{"maximum fingerprint remains readable", boundedFilter{math.MaxUint64, math.MaxUint64}, []Index{files[1], files[2]}},
 		{"first half includes historical unsplit file", index.NewShard(0, 2), []Index{files[0], files[2]}},
 		{"last quarter includes historical unsplit file", index.NewShard(3, 4), []Index{files[1], files[2]}},
 	} {
