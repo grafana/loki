@@ -428,8 +428,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 }
 
 // logFailedQueryUsage emits the failed-query usage line: what the query consumed
-// before failing, plus the classified failure cause. Its field set is
-// deliberately minimal, so the line cannot be read as a regular query stats line.
+// before failing, plus the classified failure cause and the request context
+// used to identify the query in regular query stats logs.
 func logFailedQueryUsage(
 	ctx context.Context,
 	req queryrangebase.Request,
@@ -455,19 +455,28 @@ func logFailedQueryUsage(
 	status, _ := server.ClientHTTPStatusAndError(err)
 	query := p.QueryString()
 
-	level.Info(failedQueryUsageLogger(ctx)).Log(
+	logValues := []any{
 		"msg", "failed query usage",
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"query_type", loggedQueryType(ctx, req),
 		"range_type", string(logql.GetRangeType(p)),
 		"length", p.End().Sub(p.Start()),
+		"start_delta", time.Since(p.Start()),
+		"end_delta", time.Since(p.End()),
+		"step", p.Step(),
+		"limit", p.Limit(),
 		"status", strconv.Itoa(status),
 		"duration", stats.ConvertSecondsToNanoseconds(discardedStats.Summary.ExecTime),
 		"total_bytes", util.HumanizeBytes(uint64(discardedStats.Summary.TotalBytesProcessed)),
 		"failure_category", category,
 		"failure_reason", reason,
-	)
+	}
+	// Match regular query logs: attribution such as source, user and dashboard
+	// is supplied through query tags and logged with lowercase field names.
+	logValues = append(logValues, httpreq.TagsToKeyValues(httpreq.ExtractQueryTagsFromContext(ctx))...)
+	level.Info(failedQueryUsageLogger(ctx)).Log(logValues...)
 
 	failedQueryUsageRecordedTotal.WithLabelValues(category).Inc()
 }
