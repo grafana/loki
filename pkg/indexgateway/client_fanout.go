@@ -58,7 +58,10 @@ func (s *GatewayClient) perIndex() bool {
 // indexOwnerAddrs returns the addresses of the gateways that own the index of
 // tenantID in table.
 func (s *GatewayClient) indexOwnerAddrs(tenantID, table string) ([]string, error) {
-	rs, err := s.ownership.Owners(tenantID, table, IndexOwnersRead)
+	if s.cfg.TableRange.PeriodConfig.IndexTables.ShardFactor > 1 {
+		return nil, errors.New("fingerprint-sharded ownership requires shard-aware client routing")
+	}
+	rs, err := s.ownership.Owners(tenantID, table, WholeIndexShard, IndexOwnersRead)
 	if err != nil {
 		return nil, errors.Wrapf(err, "index gateway get owners of table %s", table)
 	}
