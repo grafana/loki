@@ -71,3 +71,27 @@ func TestInspectFile_IndexPointers(t *testing.T) {
 	require.True(t, start.Equal(row.StartTs))
 	require.True(t, end.Equal(row.EndTs))
 }
+
+func TestNormalizeSectionTimestamps(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+
+	minTs := time.Date(2026, 6, 3, 8, 0, 0, 123456789, loc)
+	maxTs := time.Date(2026, 6, 3, 9, 30, 0, 987654321, loc)
+
+	sections := []SectionMetadata{
+		{Type: "streams", MinTimestamp: minTs, MaxTimestamp: maxTs},
+		{Type: "indexpointers", MinTimestamp: minTs, MaxTimestamp: maxTs},
+	}
+
+	normalizeSectionTimestamps(sections)
+
+	for i, s := range sections {
+		require.Equalf(t, time.UTC, s.MinTimestamp.Location(), "section %d MinTimestamp location", i)
+		require.Equalf(t, time.UTC, s.MaxTimestamp.Location(), "section %d MaxTimestamp location", i)
+		require.Zerof(t, s.MinTimestamp.Nanosecond(), "section %d MinTimestamp nanosecond", i)
+		require.Zerof(t, s.MaxTimestamp.Nanosecond(), "section %d MaxTimestamp nanosecond", i)
+		require.Truef(t, minTs.Truncate(time.Second).Equal(s.MinTimestamp), "section %d MinTimestamp value", i)
+		require.Truef(t, maxTs.Truncate(time.Second).Equal(s.MaxTimestamp), "section %d MaxTimestamp value", i)
+	}
+}
