@@ -38,22 +38,29 @@ func (s *InternalStreamAdapter) EntryCount() int {
 }
 
 // FromPushRequest wraps each flat stream in one resource and scope with no shared attributes.
-// Entry slices are shared with req; wrapper storage is allocated once per request.
+// Entry slices are shared with req. Each stream gets its own wrapper storage, so keeping
+// one stream (for example in the pattern tee buffer) does not keep the others alive.
 func FromPushRequest(req *PushRequest) *InternalPushRequest {
 	streams := make([]InternalStreamAdapter, len(req.Streams))
-	resources := make([]ResourceLogs, len(req.Streams))
-	scopes := make([]ScopeLogs, len(req.Streams))
 	for i, stream := range req.Streams {
-		scopes[i].Entries = stream.Entries
-		// Cap each group slice so appends cannot overwrite another stream's groups.
-		resources[i].ScopeLogs = scopes[i : i+1 : i+1]
 		streams[i] = InternalStreamAdapter{
 			Labels:       stream.Labels,
 			Hash:         stream.Hash,
-			ResourceLogs: resources[i : i+1 : i+1],
+			ResourceLogs: []ResourceLogs{{ScopeLogs: []ScopeLogs{{Entries: stream.Entries}}}},
 		}
 	}
 	return &InternalPushRequest{Streams: streams, Format: req.Format}
+}
+
+// FlatView returns a flat push request for read-only use, flattening each stream
+// with [InternalStreamAdapter.FlatView]; it reverses FromPushRequest. Do not
+// modify the returned entries or their metadata.
+func (r *InternalPushRequest) FlatView() *PushRequest {
+	flat := &PushRequest{Streams: make([]Stream, len(r.Streams)), Format: r.Format}
+	for i := range r.Streams {
+		flat.Streams[i] = r.Streams[i].FlatView()
+	}
+	return flat
 }
 
 // FromStream wraps a flat stream in one resource and scope with no shared attributes.
