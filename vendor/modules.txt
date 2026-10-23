@@ -63,8 +63,8 @@ cloud.google.com/go/bigtable/internal
 cloud.google.com/go/bigtable/internal/directaccess
 cloud.google.com/go/bigtable/internal/option
 cloud.google.com/go/bigtable/internal/transport
-# cloud.google.com/go/compute/metadata v0.9.0
-## explicit; go 1.24.0
+# cloud.google.com/go/compute/metadata v0.10.0
+## explicit; go 1.26.0
 cloud.google.com/go/compute/metadata
 # cloud.google.com/go/iam v1.14.0
 ## explicit; go 1.26.0
