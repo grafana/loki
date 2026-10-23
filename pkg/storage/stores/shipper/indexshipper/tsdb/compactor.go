@@ -289,9 +289,15 @@ type compactedIndex struct {
 	tableInterval model.Interval
 	periodConfig  config.PeriodConfig
 
-	indexChunks     map[string][]tsdbindex.ChunkMeta
-	deleteChunks    map[string][]tsdbindex.ChunkMeta
+	indexChunks     map[string]seriesChunks
+	deleteChunks    map[string]seriesChunks
 	seriesToCleanup map[string]struct{}
+}
+
+// seriesChunks holds the chunks lined up to be added to or removed from a series.
+type seriesChunks struct {
+	lbls   labels.Labels
+	chunks []tsdbindex.ChunkMeta
 }
 
 func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string, periodConfig config.PeriodConfig, builder *Builder) *compactedIndex {
@@ -302,8 +308,8 @@ func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string
 		workingDir:      workingDir,
 		periodConfig:    periodConfig,
 		tableInterval:   retention.ExtractIntervalFromTableName(tableName),
-		indexChunks:     map[string][]tsdbindex.ChunkMeta{},
-		deleteChunks:    map[string][]tsdbindex.ChunkMeta{},
+		indexChunks:     map[string]seriesChunks{},
+		deleteChunks:    map[string]seriesChunks{},
 		seriesToCleanup: map[string]struct{}{},
 	}
 }
@@ -318,9 +324,10 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 		UserID: c.userID,
 	}
 	series := retention.NewSeries()
-	for seriesID, stream := range c.builder.streams {
+	for stream := range c.builder.allStreams() {
+		// the series ID is persisted by the deletion manager to track progress, so it must stay labels.String().
 		series.Reset(
-			getUnsafeBytes(seriesID),
+			getUnsafeBytes(stream.labels.String()),
 			getUnsafeBytes(c.userID),
 			withoutTenantLabel(stream.labels),
 		)
@@ -362,9 +369,12 @@ func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 	b := labels.NewBuilder(lbls)
 	b.Del(model.MetricNameLabel)
-	ls := b.Labels().String()
+	ls := b.Labels()
+	seriesID := ls.String()
 
-	c.indexChunks[ls] = append(c.indexChunks[ls], tsdbindex.ChunkMeta{
+	sc := c.indexChunks[seriesID]
+	sc.lbls = ls
+	sc.chunks = append(sc.chunks, tsdbindex.ChunkMeta{
 		Checksum:   chunkRef.Checksum,
 		MinTime:    int64(chunkRef.From),
 		MaxTime:    int64(chunkRef.Through),
@@ -372,35 +382,33 @@ func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 		KB:         sizeInKB,
 		Entries:    logEntriesCount,
 	})
+	c.indexChunks[seriesID] = sc
 
 	return true, nil
 }
 
 // CleanupSeries removes the series from the builder(including its chunks) and deletes the list of chunks lined up for deletion.
 func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
-	seriesID := lbls.String()
-	if _, ok := c.builder.streams[seriesID]; !ok {
-		return fmt.Errorf("series cleanup not allowed on non-existing series %s", seriesID)
+	if !c.builder.deleteStream(lbls) {
+		return fmt.Errorf("series cleanup not allowed on non-existing series %s", lbls.String())
 	}
-	delete(c.builder.streams, seriesID)
-	delete(c.deleteChunks, seriesID)
+	delete(c.deleteChunks, lbls.String())
 	return nil
 }
 
 // RemoveChunk notes details of the chunk to remove. Returns true/false for existence of the chunk.
-func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error) {
+func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID string) (bool, error) {
 	chk, err := chunk.ParseExternalKey(string(userID), chunkID)
 	if err != nil {
 		return false, err
 	}
 
-	seriesID := labels.String()
 	chunkMeta := tsdbindex.ChunkMeta{
 		Checksum: chk.Checksum,
 		MinTime:  int64(from),
 		MaxTime:  int64(through),
 	}
-	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	hasChunk, err := c.builder.HasChunk(lbls, chunkMeta)
 	if err != nil {
 		return false, err
 	}
@@ -408,23 +416,22 @@ func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, la
 		return false, nil
 	}
 
-	c.deleteChunks[seriesID] = append(c.deleteChunks[seriesID], tsdbindex.ChunkMeta{
-		Checksum: chk.Checksum,
-		MinTime:  int64(from),
-		MaxTime:  int64(through),
-	})
+	seriesID := lbls.String()
+	sc := c.deleteChunks[seriesID]
+	sc.lbls = lbls
+	sc.chunks = append(sc.chunks, chunkMeta)
+	c.deleteChunks[seriesID] = sc
 
 	return true, nil
 }
 
 func (c *compactedIndex) ChunkExists(_ []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
-	seriesID := lbls.String()
 	chunkMeta := tsdbindex.ChunkMeta{
 		Checksum: chunkRef.Checksum,
 		MinTime:  int64(chunkRef.From),
 		MaxTime:  int64(chunkRef.Through),
 	}
-	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	hasChunk, err := c.builder.HasChunk(lbls, chunkMeta)
 	if err != nil {
 		return false, err
 	}
@@ -437,9 +444,9 @@ func (c *compactedIndex) Cleanup() {}
 // ToIndexFile creates an indexFile from the chunksmetas stored in the builder.
 // Before building the index, it takes care of the lined up updates i.e deletes and adding of new chunks.
 func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
-	for seriesID, chks := range c.deleteChunks {
-		for _, chk := range chks {
-			chunkFound, err := c.builder.DropChunk(seriesID, chk)
+	for seriesID, sc := range c.deleteChunks {
+		for _, chk := range sc.chunks {
+			chunkFound, err := c.builder.DropChunk(sc.lbls, chk)
 			if err != nil {
 				return nil, err
 			}
@@ -450,9 +457,9 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	}
 	c.deleteChunks = nil
 
-	for ls, metas := range c.indexChunks {
-		for i := range metas {
-			err := c.builder.InsertChunk(ls, metas[i])
+	for _, sc := range c.indexChunks {
+		for i := range sc.chunks {
+			err := c.builder.InsertChunk(sc.lbls, sc.chunks[i])
 			if err != nil {
 				return nil, err
 			}
@@ -461,11 +468,7 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	c.indexChunks = nil
 
 	// cleanup any empty streams due to chunk removals above
-	for seriesID, stream := range c.builder.streams {
-		if len(stream.chunks) == 0 {
-			delete(c.builder.streams, seriesID)
-		}
-	}
+	c.builder.dropEmptyStreams()
 
 	id, err := c.builder.Build(c.ctx, c.workingDir, func(from, through model.Time, checksum uint32) Identifier {
 		id := SingleTenantTSDBIdentifier{
