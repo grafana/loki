@@ -49,9 +49,9 @@ func setupReconcileTable(t *testing.T, tempDir string, users ...string) {
 	}
 }
 
-func newReconcileTable(t *testing.T, tempDir string, rec *openRecorder) *table {
-	tbl := NewTable(tableName, filepath.Join(tempDir, cacheDirName, tableName), buildTestStorageClient(t, tempDir),
-		rec.open(t), newMetrics(nil), testDownloadTimeout).(*table)
+func newReconcileTable(t *testing.T, tempDir string, rec *openRecorder, opts tableOptions) *table {
+	tbl := newTable(tableName, filepath.Join(tempDir, cacheDirName, tableName), buildTestStorageClient(t, tempDir),
+		rec.open(t), newMetrics(nil), testDownloadTimeout, opts).(*table)
 	t.Cleanup(tbl.Close)
 	return tbl
 }
@@ -69,7 +69,7 @@ func forEachNames(t *testing.T, tbl *table, userID string) []string {
 func TestTable_QueryReadyProvenance(t *testing.T) {
 	tempDir := t.TempDir()
 	setupReconcileTable(t, tempDir, "u1", "u2")
-	tbl := newReconcileTable(t, tempDir, newOpenRecorder())
+	tbl := newReconcileTable(t, tempDir, newOpenRecorder(), tableOptions{})
 	require.NoError(t, tbl.EnsureQueryReadiness(context.Background(), []string{"u1"}))
 	require.True(t, tbl.indexSets["u1"].QueryReady())
 	require.True(t, tbl.indexSets[""].QueryReady())
@@ -82,7 +82,7 @@ func TestTable_QueryReadyProvenance(t *testing.T) {
 func TestTable_DropNotOwned(t *testing.T) {
 	tempDir := t.TempDir()
 	setupReconcileTable(t, tempDir, "u1", "u2", "u3")
-	tbl := newReconcileTable(t, tempDir, newOpenRecorder())
+	tbl := newReconcileTable(t, tempDir, newOpenRecorder(), tableOptions{})
 	ctx := context.Background()
 
 	require.NoError(t, tbl.EnsureQueryReadiness(ctx, []string{"u1", "u2"}))
@@ -185,7 +185,7 @@ func TestTableManager_DropFilter(t *testing.T) {
 func TestTable_PromotionKeepsServing(t *testing.T) {
 	tempDir := t.TempDir()
 	setupReconcileTable(t, tempDir, "u1")
-	tbl := newReconcileTable(t, tempDir, newOpenRecorder())
+	tbl := newReconcileTable(t, tempDir, newOpenRecorder(), tableOptions{})
 	ctx := context.Background()
 	forEachNames(t, tbl, "u1") // on demand
 
