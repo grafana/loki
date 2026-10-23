@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
@@ -20,17 +21,30 @@ import (
 // RegisterHandlers registers HTTP handlers for the logline-scheduler target.
 func RegisterHandlers(srv *server.Server, svc *Service, logger log.Logger) error {
 	level.Info(logger).Log("msg", "registering scheduler handlers")
-	srv.HTTP.HandleFunc(schedulerapi.JobPath, svc.handleJobRequest)
-	srv.HTTP.HandleFunc(schedulerapi.AbandonPath, svc.handleAbandonJob)
-	srv.HTTP.HandleFunc(schedulerapi.StatusPath, svc.handleStatus)
-	srv.HTTP.HandleFunc(schedulerapi.StoreDumpPath, svc.handleStoreDump)
+	srv.HTTP.HandleFunc(schedulerapi.JobPath, svc.whenRunning(svc.handleJobRequest))
+	srv.HTTP.HandleFunc(schedulerapi.AbandonPath, svc.whenRunning(svc.handleAbandonJob))
+	srv.HTTP.HandleFunc(schedulerapi.StatusPath, svc.whenRunning(svc.handleStatus))
+	srv.HTTP.HandleFunc(schedulerapi.StoreDumpPath, svc.whenRunning(svc.handleStoreDump))
 
 	// Deprecated routes, see schedulerapi.LegacyJobPath.
-	srv.HTTP.HandleFunc(schedulerapi.LegacyJobPath, svc.handleJobRequest)
-	srv.HTTP.HandleFunc(schedulerapi.LegacyAbandonPath, svc.handleAbandonJob)
-	srv.HTTP.HandleFunc(schedulerapi.LegacyStatusPath, svc.handleStatus)
-	srv.HTTP.HandleFunc(schedulerapi.LegacyStoreDumpPath, svc.handleStoreDump)
+	srv.HTTP.HandleFunc(schedulerapi.LegacyJobPath, svc.whenRunning(svc.handleJobRequest))
+	srv.HTTP.HandleFunc(schedulerapi.LegacyAbandonPath, svc.whenRunning(svc.handleAbandonJob))
+	srv.HTTP.HandleFunc(schedulerapi.LegacyStatusPath, svc.whenRunning(svc.handleStatus))
+	srv.HTTP.HandleFunc(schedulerapi.LegacyStoreDumpPath, svc.whenRunning(svc.handleStoreDump))
 	return nil
+}
+
+// whenRunning answers 503 until the service is running. The HTTP server is a
+// dependency of the scheduler, so it serves requests before starting() has
+// loaded the job store. Compactors retry on 5xx.
+func (s *Service) whenRunning(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if state := s.State(); state != services.Running {
+			http.Error(w, fmt.Sprintf("scheduler is not running: %s", state), http.StatusServiceUnavailable)
+			return
+		}
+		h(w, r)
+	}
 }
 
 // handleJobRequest serves job assignments to workers.
