@@ -75,6 +75,41 @@ func TestEngine_checkIntervalLimit(t *testing.T) {
 	}
 }
 
+func TestHasFullRangeVector(t *testing.T) {
+	tests := []struct {
+		name       string
+		query      string
+		queryRange time.Duration
+		want       bool
+	}{
+		{
+			name:       "exact match",
+			query:      `sum(rate({app="payments"}[6h]))`,
+			queryRange: 6 * time.Hour,
+			want:       true,
+		},
+		{
+			name:       "shorter range vector",
+			query:      `sum(rate({app="payments"}[1h]))`,
+			queryRange: 6 * time.Hour,
+			want:       false,
+		},
+		{
+			name:       "zero query range",
+			query:      `sum(rate({app="payments"}[6h]))`,
+			queryRange: 0,
+			want:       false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			expr := syntax.MustParseExpr(tc.query)
+			require.Equal(t, tc.want, HasFullRangeVector(expr, tc.queryRange))
+		})
+	}
+}
+
 func TestEngine_LogsRateUnwrap(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
