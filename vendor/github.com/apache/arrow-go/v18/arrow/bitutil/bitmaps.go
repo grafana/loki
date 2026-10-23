@@ -167,6 +167,39 @@ func (b *BitmapWriter) AppendBools(in []bool) int {
 	return space
 }
 
+// AppendBitmap writes bits directly from a source bitmap to this bitmap writer,
+// avoiding the intermediate []bool conversion. Returns the number of bits written.
+func (b *BitmapWriter) AppendBitmap(srcBitmap []byte, srcOffset int64, length int64) int64 {
+	space := int64(min(b.length-b.pos, int(length)))
+	if space == 0 {
+		return 0
+	}
+
+	bitOffset := bits.TrailingZeros32(uint32(b.bitMask))
+	dstOffset := int64(b.byteOffset)*8 + int64(bitOffset)
+
+	// Flush curByte to buffer before CopyBitmap overwrites it
+	// Similar to how AppendBools writes curByte to appslice[0]
+	b.buf[b.byteOffset] = b.curByte
+
+	// Use CopyBitmap for efficient bit-level copying
+	CopyBitmap(srcBitmap, int(srcOffset), int(space), b.buf, int(dstOffset))
+
+	// Update writer state
+	b.pos += int(space)
+	newBitOffset := (bitOffset + int(space)) % 8
+	b.bitMask = BitMask[newBitOffset]
+	b.byteOffset += (bitOffset + int(space)) / 8
+
+	// Reload curByte to reflect the current byte's state after CopyBitmap
+	// We must reload even if pos == length, as Finish() may need to write curByte
+	if b.byteOffset < len(b.buf) {
+		b.curByte = b.buf[b.byteOffset]
+	}
+
+	return space
+}
+
 // Finish flushes the final byte out to the byteslice in case it was not already
 // on a byte aligned boundary.
 func (b *BitmapWriter) Finish() {

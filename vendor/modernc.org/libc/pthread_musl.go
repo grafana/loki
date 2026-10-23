@@ -172,9 +172,9 @@ func Xpthread_exit(tls *TLS, result uintptr) {
 			break
 		}
 	}
-	if state == _DT_JOINABLE {
-		(*sync.Mutex)(unsafe.Pointer(tls.pthread + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex))).Unlock()
-	}
+	mu := (*sync.Mutex)(unsafe.Pointer(tls.pthread + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex)))
+	mu.TryLock()
+	mu.Unlock()
 	atomic.StoreInt32((*int32)(unsafe.Pointer(tls.pthread+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_EXITED)
 	tls.Close()
 	runtime.Goexit()
@@ -187,7 +187,7 @@ func Xpthread_join(tls *TLS, t Tpthread_t, res uintptr) (r int32) {
 
 	(*sync.Mutex)(unsafe.Pointer(t + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex))).Lock()
 	if res != 0 {
-		*(*uintptr)(unsafe.Pointer(res)) = (*t__pthread)(unsafe.Pointer(tls.pthread)).Fresult
+		*(*uintptr)(unsafe.Pointer(res)) = (*t__pthread)(unsafe.Pointer(t)).Fresult
 	}
 	return 0
 }
@@ -283,20 +283,20 @@ func Xpthread_mutex_lock(tls *TLS, m uintptr) int32 {
 		return 0
 	case PTHREAD_MUTEX_RECURSIVE:
 		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
-			(*pthreadMutex)(unsafe.Pointer(m)).count = 1
+			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
 			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			return 0
 		}
 
 		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
-			(*pthreadMutex)(unsafe.Pointer(m)).count++
+			atomic.AddInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
 			return 0
 		}
 
 		for {
 			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
-				(*pthreadMutex)(unsafe.Pointer(m)).count = 1
+				atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
 				return 0
 			}
 
@@ -463,9 +463,9 @@ func Xpthread_mutexattr_settype(tls *TLS, a uintptr, typ int32) int32 {
 }
 
 func Xpthread_detach(tls *TLS, t uintptr) int32 {
-	state := atomic.SwapInt32((*int32)(unsafe.Pointer(tls.pthread+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_DETACHED)
+	state := atomic.SwapInt32((*int32)(unsafe.Pointer(t+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_DETACHED)
 	switch state {
-	case _DT_EXITED, _DT_DETACHED:
+	case _DT_JOINABLE, _DT_EXITED, _DT_DETACHED:
 		return 0
 	default:
 		panic(todo("", tls.ID, state))
@@ -480,6 +480,65 @@ func Xpthread_equal(tls *TLS, t, u uintptr) int32 {
 // int pthread_sigmask(int how, const sigset_t *restrict set, sigset_t *restrict old)
 func _pthread_sigmask(tls *TLS, now int32, set, old uintptr) int32 {
 	// ignored
+	return 0
+}
+
+type barrierState struct {
+	mu         sync.Mutex
+	cond       *sync.Cond
+	count      uint32
+	tripCount  uint32
+	generation uint32
+}
+
+var (
+	barriers   = map[uintptr]*barrierState{}
+	barriersMu sync.Mutex
+)
+
+// int pthread_barrier_init(pthread_barrier_t *restrict barrier, const pthread_barrierattr_t *restrict attr, unsigned count);
+func Xpthread_barrier_init(tls *TLS, barrier, attr uintptr, count uint32) int32 {
+	if count == 0 {
+		return EINVAL
+	}
+	barriersMu.Lock()
+	defer barriersMu.Unlock()
+	state := &barrierState{tripCount: count}
+	state.cond = sync.NewCond(&state.mu)
+	barriers[barrier] = state
+	return 0
+}
+
+// int pthread_barrier_destroy(pthread_barrier_t *barrier);
+func Xpthread_barrier_destroy(tls *TLS, barrier uintptr) int32 {
+	barriersMu.Lock()
+	defer barriersMu.Unlock()
+	delete(barriers, barrier)
+	return 0
+}
+
+// int pthread_barrier_wait(pthread_barrier_t *barrier);
+func Xpthread_barrier_wait(tls *TLS, barrier uintptr) int32 {
+	barriersMu.Lock()
+	state := barriers[barrier]
+	barriersMu.Unlock()
+	if state == nil {
+		return EINVAL
+	}
+	state.mu.Lock()
+	gen := state.generation
+	state.count++
+	if state.count >= state.tripCount {
+		state.count = 0
+		state.generation++
+		state.cond.Broadcast()
+		state.mu.Unlock()
+		return -1 // PTHREAD_BARRIER_SERIAL_THREAD
+	}
+	for gen == state.generation {
+		state.cond.Wait()
+	}
+	state.mu.Unlock()
 	return 0
 }
 

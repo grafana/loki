@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -22,11 +19,14 @@ const (
 type SKUName = generated.SKUName
 
 const (
-	SKUNameStandardLRS   SKUName = generated.SKUNameStandardLRS
-	SKUNameStandardGRS   SKUName = generated.SKUNameStandardGRS
-	SKUNameStandardRAGRS SKUName = generated.SKUNameStandardRAGRS
-	SKUNameStandardZRS   SKUName = generated.SKUNameStandardZRS
-	SKUNamePremiumLRS    SKUName = generated.SKUNamePremiumLRS
+	SKUNameStandardLRS    SKUName = generated.SKUNameStandardLRS
+	SKUNameStandardGRS    SKUName = generated.SKUNameStandardGRS
+	SKUNameStandardRAGRS  SKUName = generated.SKUNameStandardRAGRS
+	SKUNameStandardZRS    SKUName = generated.SKUNameStandardZRS
+	SKUNamePremiumLRS     SKUName = generated.SKUNamePremiumLRS
+	SKUNamePremiumZRS     SKUName = generated.SKUNamePremiumZRS
+	SKUNameStandardGZRS   SKUName = generated.SKUNameStandardGZRS
+	SKUNameStandardRAGZRS SKUName = generated.SKUNameStandardRAGZRS
 )
 
 // PossibleSKUNameValues returns the possible values for the SKUName const type.
