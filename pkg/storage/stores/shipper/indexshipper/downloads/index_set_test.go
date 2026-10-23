@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -259,4 +261,87 @@ func TestIndexSet_ForEach_ErrorPropagation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// evenIndexFiles keeps the files whose index number is even, standing in for
+// the files of the shards an index gateway owns.
+func evenIndexFiles(files []storage.IndexFile) ([]storage.IndexFile, error) {
+	var kept []storage.IndexFile
+	for _, f := range files {
+		n, err := strconv.Atoi(f.Name[strings.LastIndex(f.Name, "-")+1:])
+		if err != nil {
+			return nil, err
+		}
+		if n%2 == 0 {
+			kept = append(kept, f)
+		}
+	}
+	return kept, nil
+}
+
+// TestIndexSet_FileFilter checks that the file filter applies to index sets
+// kept ready for queries only: one downloaded on demand holds every file, and
+// drops the files the filter leaves out once it is marked query ready.
+func TestIndexSet_FileFilter(t *testing.T) {
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	setupIndexesAtPath(t, userID, filepath.Join(objectStoragePath, tableName, userID), 0, 10)
+	all := buildListOfExpectedIndexes(userID, 0, 10)
+	var even []string
+	for i, name := range all {
+		if i%2 == 0 {
+			even = append(even, name)
+		}
+	}
+
+	storageClient := buildTestStorageClient(t, tempDir)
+	baseIndexSet := storage.NewIndexSet(storageClient, true)
+	newSet := func(t *testing.T, queryReady bool) *indexSet {
+		t.Helper()
+		set, err := newIndexSet(tableName, userID, filepath.Join(t.TempDir(), tableName, userID), baseIndexSet,
+			func(path string) (index.Index, error) {
+				return openMockIndexFile(t, path), nil
+			}, util_log.Logger, testDownloadTimeout, queryReady)
+		require.NoError(t, err)
+		set.fileFilter = evenIndexFiles
+		t.Cleanup(set.Close)
+		return set
+	}
+	names := func(set *indexSet) []string {
+		var got []string
+		require.NoError(t, set.ForEach(context.Background(), func(_ bool, idx index.Index) error {
+			got = append(got, filepath.Base(idx.Path()))
+			return nil
+		}))
+		return got
+	}
+
+	t.Run("kept ready for queries from the start downloads only the filtered files", func(t *testing.T) {
+		set := newSet(t, true)
+		require.NoError(t, set.Init(false, util_log.Logger))
+		require.ElementsMatch(t, even, names(set))
+	})
+
+	t.Run("downloaded on demand holds every file until it is query ready", func(t *testing.T) {
+		set := newSet(t, false)
+		require.NoError(t, set.Init(true, util_log.Logger))
+		require.ElementsMatch(t, all, names(set))
+
+		// a sync while still on demand keeps everything
+		require.NoError(t, set.Sync(context.Background()))
+		require.ElementsMatch(t, all, names(set))
+
+		// once query ready, the next sync drops the files the filter leaves out
+		set.MarkQueryReady()
+		require.NoError(t, set.Sync(context.Background()))
+		require.ElementsMatch(t, even, names(set))
+	})
+
+	t.Run("a filter error fails the sync", func(t *testing.T) {
+		set := newSet(t, true)
+		set.fileFilter = func([]storage.IndexFile) ([]storage.IndexFile, error) {
+			return nil, context.DeadlineExceeded
+		}
+		require.ErrorIs(t, set.Init(false, util_log.Logger), context.DeadlineExceeded)
+	})
 }
