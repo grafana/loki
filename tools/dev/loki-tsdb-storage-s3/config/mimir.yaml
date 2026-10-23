@@ -1,0 +1,38 @@
+target: all
+multitenancy_enabled: false
+server:
+  http_listen_port: 9009
+  log_level: warn
+common:
+  storage:
+    backend: s3
+    s3:
+      endpoint: silo:9000
+      region: silo
+      access_key_id: loki
+      secret_access_key: supersecret
+      insecure: true
+      bucket_lookup_type: path
+blocks_storage:
+  s3:
+    bucket_name: mimir-blocks
+  tsdb:
+    dir: /data/tsdb
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+ruler_storage:
+  s3:
+    bucket_name: mimir-ruler
+alertmanager_storage:
+  s3:
+    bucket_name: mimir-alertmanager
+compactor:
+  data_dir: /data/compactor
+ingester:
+  ring:
+    replication_factor: 1
+store_gateway:
+  sharding_ring:
+    replication_factor: 1
+activity_tracker:
+  filepath: /data/metrics-activity.log
