@@ -252,6 +252,12 @@ For information on managing recording rules, refer to the [Recording Rules](http
 
 Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via `lokitool`. You can download `lokitool` from the [Loki Releases page](https://github.com/grafana/loki/releases) under Assets. Note that versions of Loki older than 3.1 used `cortextool` instead of `lokitool`.
 
+`lokitool` is also published as a container image, `grafana/lokitool`, tagged with the Loki version it was built from. This is convenient in CI pipelines that validate rule files, for example:
+
+```sh
+docker run --rm -v "$(pwd)/rules:/rules" grafana/lokitool:<version> rules check /rules/rules.yaml
+```
+
 {{< admonition type="note" >}}
 lokitool is intended to run against multi-tenant Loki. The commands need an `--id=` flag set to the Loki instance ID or set the environment variable `LOKI_TENANT_ID`. If Loki is running in single tenant mode, the required ID is `fake`.
 {{< /admonition >}}
