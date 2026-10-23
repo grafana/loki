@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
-// maxLoggedQueryLength cuts the query in the log line of a pair.
+// maxLoggedQueryLength is the number of bytes of the query that the "secondary pair" log line keeps.
 const maxLoggedQueryLength = 1000
 
 var errNoPrimaryBackend = errors.New("no primary backend")
@@ -154,13 +154,6 @@ func (h *FanOutHandler) doWithPrimary(ctx context.Context, req queryrangebase.Re
 			// The primary backend failed or returned an error status. The client gets that
 			// response. The proxy does not fall back to another backend.
 			if result.err != nil {
-				level.Warn(h.logger).Log(
-					"msg", "primary backend failed",
-					"route", h.routeName,
-					"backend", result.backend.name,
-					"status", result.backendResp.status,
-					"err", result.err,
-				)
 				return &NonDecodableResponse{
 					StatusCode: result.backendResp.status,
 					Body:       result.backendResp.body,
@@ -243,7 +236,6 @@ func (h *FanOutHandler) collectRemainingAndCompare(req queryrangebase.Request, r
 // compareStats observes the ratios of the stats of the secondary over the stats of the primary, and
 // logs the pair of responses with the stats of each backend.
 func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, secondary *backendResult, tenantID, result, cause string) {
-	// statsLogFields returns the log fields of the stats of one backend.
 	statsLogFields := func(prefix string, s stats.Result) []any {
 		dataobj := s.Querier.Store.Dataobj
 		cacheEntriesFound, cacheEntriesRequested := resultCacheEntries(s.Caches)
@@ -293,6 +285,12 @@ func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, second
 	}
 	if hasSecondaryStats {
 		keyvals = append(keyvals, statsLogFields("secondary", secondaryStats)...)
+	}
+	if primary.err != nil {
+		keyvals = append(keyvals, "primary_err", primary.err)
+	}
+	if secondary.err != nil {
+		keyvals = append(keyvals, "secondary_err", secondary.err)
 	}
 	level.Info(h.logger).Log(keyvals...)
 }
@@ -449,8 +447,8 @@ func statusCodeFromError(err error) int {
 	return http.StatusInternalServerError
 }
 
-// responseStats returns the query stats of a response. It reports false when the response carries
-// none.
+// responseStats returns the query stats of a response. It reports false when the response type has
+// no stats. A response of a type with stats returns them, and they are zero when the body had none.
 func responseStats(resp queryrangebase.Response) (stats.Result, bool) {
 	switch r := resp.(type) {
 	case *queryrange.LokiPromResponse:
@@ -466,6 +464,9 @@ func responseStats(resp queryrangebase.Response) (stats.Result, bool) {
 // http_other.
 func errorCause(r *BackendResponse) string {
 	switch {
+	// A request error with status 504 is a timeout. makeBackendRequests sets that status when the
+	// error wraps context.DeadlineExceeded. A 504 answer from the backend has no request error, and
+	// counts as http_5xx.
 	case r.err != nil && r.status == http.StatusGatewayTimeout:
 		return "timeout"
 	case r.err != nil:

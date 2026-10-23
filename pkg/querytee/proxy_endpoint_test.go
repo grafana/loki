@@ -243,7 +243,6 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		proxyBackend1,
 		proxyBackend2,
 	}
-	// endpoint := createTestEndpoint(backends, "test", nil)
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 	endpoint := NewProxyEndpoint(backends, "test", metrics, logger)

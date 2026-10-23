@@ -1,15 +1,14 @@
 package querytee
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,15 +42,19 @@ func TestFanOutHandler_Do(t *testing.T) {
 		Limit:   100,
 	}
 
-	newHandler := func(comp comparator.ResponsesComparator, backends ...*ProxyBackend) *FanOutHandler {
+	newHandlerWithLogger := func(logger log.Logger, comp comparator.ResponsesComparator, backends ...*ProxyBackend) *FanOutHandler {
 		return NewFanOutHandler(FanOutHandlerConfig{
 			Backends:   backends,
 			Codec:      queryrange.DefaultCodec,
-			Logger:     log.NewNopLogger(),
+			Logger:     logger,
 			Metrics:    NewProxyMetrics(prometheus.NewRegistry()),
 			RouteName:  routeName,
 			Comparator: comp,
 		})
+	}
+
+	newHandler := func(comp comparator.ResponsesComparator, backends ...*ProxyBackend) *FanOutHandler {
+		return newHandlerWithLogger(log.NewNopLogger(), comp, backends...)
 	}
 
 	comparedCount := func(handler *FanOutHandler, backend *ProxyBackend, result, cause string) float64 {
@@ -64,11 +67,16 @@ func TestFanOutHandler_Do(t *testing.T) {
 		return fmt.Sprintf(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"test"},"values":[["1000000000","line"]]}],"stats":{"summary":{"totalBytesProcessed":%d,"queueTime":%d},"cache":{%q:{"entriesFound":%d}}}}}`, bytesProcessed, queueTime, cache, cacheEntriesFound)
 	}
 
-	// bytesRatio returns the count and the sum of the observed ratios of the bytes processed.
-	bytesRatio := func(t *testing.T, handler *FanOutHandler, queriersLoadStatus, resultCacheStatus string) (uint64, float64) {
+	// bodyWithSummary returns a response body whose stats carry the given summary.
+	bodyWithSummary := func(summary string) string {
+		return fmt.Sprintf(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"test"},"values":[["1000000000","line"]]}],"stats":{"summary":%s}}}`, summary)
+	}
+
+	// statRatio returns the count and the sum of the observed ratios of a stat.
+	statRatio := func(t *testing.T, handler *FanOutHandler, stat, queriersLoadStatus, resultCacheStatus string) (uint64, float64) {
 		t.Helper()
 
-		ratio, err := handler.metrics.secondaryBackendStatsRatio.GetMetricWithLabelValues(routeName, "bytes_processed", queriersLoadStatus, resultCacheStatus)
+		ratio, err := handler.metrics.secondaryBackendStatsRatio.GetMetricWithLabelValues(routeName, stat, queriersLoadStatus, resultCacheStatus)
 		require.NoError(t, err)
 		var observed dto.Metric
 		require.NoError(t, ratio.(prometheus.Metric).Write(&observed))
@@ -91,7 +99,7 @@ func TestFanOutHandler_Do(t *testing.T) {
 		require.Equal(t, "primary line", lokiResp.Data.Result[0].Entries[0].Line)
 	})
 
-	t.Run("returns the primary response without waiting for a blocked secondary backend and compares the pair once it answers", func(t *testing.T) {
+	t.Run("returns the primary response without waiting for a blocked secondary backend and compares the pair after the request context ends", func(t *testing.T) {
 		release := make(chan struct{})
 		unblock := sync.OnceFunc(func() { close(release) })
 		defer unblock()
@@ -120,7 +128,6 @@ func TestFanOutHandler_Do(t *testing.T) {
 			t.Fatal("Do did not return while the secondary backend was blocked")
 		}
 
-		// The request ends before the secondary answers, as it does when the client gets its response.
 		cancel()
 		unblock()
 		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
@@ -146,37 +153,23 @@ func TestFanOutHandler_Do(t *testing.T) {
 		comp := &recordingComparator{}
 		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, secondaryBody)
 		handler := newHandler(comp,
-			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusInternalServerError, ""),
+			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusGatewayTimeout, ""),
 			secondary,
 		)
 
 		_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
 
-		require.EqualError(t, err, "failed to decode response from backend-1: rpc error: code = Code(500) desc = ")
+		require.EqualError(t, err, "failed to decode response from backend-1: rpc error: code = Code(504) desc = ")
 		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonSkipped, "http_5xx") == 1 }, 5*time.Second, 10*time.Millisecond)
 		require.Empty(t, comp.recorded())
 	})
 
-	t.Run("counts a timeout of the secondary backend with its cause", func(t *testing.T) {
-		release := make(chan struct{})
-		defer close(release)
-		secondary := newTestBackendWithHandler(t, "backend-2", RoleSecondary, func(http.ResponseWriter, *http.Request) { <-release })
-		secondary.timeout = 50 * time.Millisecond
-		handler := newHandler(&recordingComparator{},
-			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, primaryBody),
-			secondary,
-		)
-
-		_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
-
-		require.NoError(t, err)
-		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonFailed, "timeout") == 1 }, 5*time.Second, 10*time.Millisecond)
-	})
-
-	t.Run("counts a match and observes the ratios of the stats when both backends answer", func(t *testing.T) {
-		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, bodyWithStats(250, 0, "result", 0))
+	t.Run("counts a match and observes the ratio of every stat with a primary value when both backends answer", func(t *testing.T) {
+		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK,
+			bodyWithSummary(`{"totalBytesProcessed":250,"totalLinesProcessed":300,"execTime":1,"queueTime":0.02,"splits":8,"shards":3}`))
 		handler := newHandler(staticComparator{summary: &comparator.ComparisonSummary{}},
-			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithStats(1000, 0, "result", 0)),
+			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK,
+				bodyWithSummary(`{"totalBytesProcessed":1000,"totalLinesProcessed":400,"execTime":2,"queueTime":0.05,"splits":4}`)),
 			secondary,
 		)
 
@@ -184,9 +177,19 @@ func TestFanOutHandler_Do(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
-		count, sum := bytesRatio(t, handler, "both_idle", "both_miss")
-		require.Equal(t, uint64(1), count)
-		require.InDelta(t, 0.25, sum, 1e-9)
+		for stat, expectedRatio := range map[string]float64{
+			"bytes_processed": 0.25,
+			"lines_processed": 0.75,
+			"exec_time":       0.5,
+			"queue_time":      0.4,
+			"splits":          2,
+		} {
+			count, sum := statRatio(t, handler, stat, "both_idle", "both_miss")
+			require.Equal(t, uint64(1), count, stat)
+			require.InDelta(t, expectedRatio, sum, 1e-9, stat)
+		}
+		count, _ := statRatio(t, handler, "shards", "both_idle", "both_miss")
+		require.Zero(t, count)
 	})
 
 	for name, tc := range map[string]struct {
@@ -205,13 +208,9 @@ func TestFanOutHandler_Do(t *testing.T) {
 			primaryBody: bodyWithStats(1000, 1, "result", 1), secondaryBody: bodyWithStats(500, 1, "result", 1),
 			expectedLoad: "both_busy", expectedCache: "both_hit",
 		},
-		"labels the ratios primary_hit when only the primary found an entry in the instant metric results cache": {
-			primaryBody: bodyWithStats(1000, 0, "instantMetricResult", 1), secondaryBody: bodyWithStats(500, 0, "result", 0),
-			expectedLoad: "both_idle", expectedCache: "primary_hit",
-		},
-		"labels the ratios secondary_hit when only the secondary found an entry in the log results cache": {
-			primaryBody: bodyWithStats(1000, 0, "result", 0), secondaryBody: bodyWithStats(500, 0, "logResult", 1),
-			expectedLoad: "both_idle", expectedCache: "secondary_hit",
+		"labels the ratios both_hit when the primary found an entry in the instant metric results cache and the secondary in the log results cache": {
+			primaryBody: bodyWithStats(1000, 0, "instantMetricResult", 1), secondaryBody: bodyWithStats(500, 0, "logResult", 1),
+			expectedLoad: "both_idle", expectedCache: "both_hit",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -225,29 +224,11 @@ func TestFanOutHandler_Do(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
-			count, sum := bytesRatio(t, handler, tc.expectedLoad, tc.expectedCache)
+			count, sum := statRatio(t, handler, "bytes_processed", tc.expectedLoad, tc.expectedCache)
 			require.Equal(t, uint64(1), count)
 			require.InDelta(t, 0.5, sum, 1e-9)
 		})
 	}
-
-	t.Run("counts a mismatch with the cause of the comparator when the bodies differ", func(t *testing.T) {
-		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, secondaryBody)
-		handler := newHandler(staticComparator{
-			summary: &comparator.ComparisonSummary{MismatchCause: comparator.CauseSampleValueMismatch},
-			err:     comparator.ErrComparisonMismatch,
-		},
-			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, primaryBody),
-			secondary,
-		)
-
-		_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
-
-		require.NoError(t, err)
-		require.Eventually(t, func() bool {
-			return comparedCount(handler, secondary, comparisonMismatch, comparator.CauseSampleValueMismatch) == 1
-		}, 5*time.Second, 10*time.Millisecond)
-	})
 
 	t.Run("counts a failed pair with the compare_error cause when the comparator fails", func(t *testing.T) {
 		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, secondaryBody)
@@ -263,9 +244,10 @@ func TestFanOutHandler_Do(t *testing.T) {
 	})
 
 	t.Run("counts a failed pair with the cause of the failure when the secondary backend answers with an error status", func(t *testing.T) {
-		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusBadRequest, "")
-		handler := newHandler(&recordingComparator{},
-			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, primaryBody),
+		logs := &syncBuffer{}
+		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusBadRequest, "invalid query")
+		handler := newHandlerWithLogger(log.NewLogfmtLogger(logs), &recordingComparator{},
+			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithStats(1000, 0, "result", 0)),
 			secondary,
 		)
 
@@ -273,51 +255,103 @@ func TestFanOutHandler_Do(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonFailed, "http_4xx") == 1 }, 5*time.Second, 10*time.Millisecond)
+		count, _ := statRatio(t, handler, "bytes_processed", "both_idle", "both_miss")
+		require.Zero(t, count)
+		require.Contains(t, logs.String(), "secondary_err=")
+		require.Contains(t, logs.String(), "desc = invalid query")
 	})
-}
 
-func TestResponseStats(t *testing.T) {
-	const query = `sum(count_over_time({app="a"}[5m]))`
-	req := &queryrange.LokiRequest{Query: query, Plan: &plan.QueryPlan{AST: syntax.MustParseExpr(query)}}
-
-	decode := func(t *testing.T, body string) *queryrange.LokiPromResponse {
-		t.Helper()
-
-		resp, err := queryrange.DefaultCodec.DecodeResponse(t.Context(), &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(body)),
-		}, req)
+	t.Run("counts a failed pair with the transport cause when the secondary backend refuses the connection", func(t *testing.T) {
+		closed := httptest.NewServer(nil)
+		closedURL, err := url.Parse(closed.URL)
 		require.NoError(t, err)
+		closed.Close()
+		secondary, err := NewProxyBackend("backend-2", closedURL, time.Second, RoleSecondary)
+		require.NoError(t, err)
+		handler := newHandler(&recordingComparator{},
+			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, primaryBody),
+			secondary,
+		)
 
-		promResp, ok := resp.(*queryrange.LokiPromResponse)
-		require.True(t, ok, "expected LokiPromResponse type")
-		return promResp
-	}
+		_, err = handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
 
-	t.Run("reads the stats that the codec decodes from a frontend response", func(t *testing.T) {
-		resp := decode(t, `{"status":"success","data":{"resultType":"matrix","result":[],"stats":{
-			"summary":{"totalBytesProcessed":1234,"queueTime":2},
-			"querier":{"store":{"dataobj":{"prePredicateDecompressedRows":3}}},
-			"cache":{"result":{"entriesFound":1}}
-		}}}`)
-
-		result, ok := responseStats(resp)
-		require.True(t, ok)
-		require.Equal(t, int64(1234), result.Summary.TotalBytesProcessed)
-		require.Equal(t, float64(2), result.Summary.QueueTime)
-		require.Equal(t, int32(1), result.Caches.Result.EntriesFound)
+		require.NoError(t, err)
+		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonFailed, "transport") == 1 }, 5*time.Second, 10*time.Millisecond)
 	})
 
-	t.Run("reads no data object work from a response without data object stats", func(t *testing.T) {
-		result, ok := responseStats(decode(t, `{"status":"success","data":{"resultType":"matrix","result":[]}}`))
-		require.True(t, ok)
-		require.Zero(t, result.Querier.Store.Dataobj.PrePredicateDecompressedRows)
+	t.Run("returns the primary error and counts a skipped pair with the timeout cause when the primary backend times out", func(t *testing.T) {
+		release := make(chan struct{})
+		defer close(release)
+		primary := newTestBackendWithHandler(t, "backend-1", RolePrimary, func(http.ResponseWriter, *http.Request) { <-release })
+		primary.timeout = 50 * time.Millisecond
+		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, secondaryBody)
+		handler := newHandler(&recordingComparator{}, primary, secondary)
+
+		_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
+
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonSkipped, "timeout") == 1 }, 5*time.Second, 10*time.Millisecond)
 	})
 
-	t.Run("reports no stats for a response of an unknown type", func(t *testing.T) {
-		_, ok := responseStats(&NonDecodableResponse{})
-		require.False(t, ok)
+	t.Run("logs a mismatch at the warn level and the compared pair with the stats of both backends", func(t *testing.T) {
+		logs := &syncBuffer{}
+		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, bodyWithStats(500, 0, "result", 0))
+		handler := newHandlerWithLogger(log.NewLogfmtLogger(logs), staticComparator{
+			summary: &comparator.ComparisonSummary{MismatchCause: comparator.CauseSampleValueMismatch},
+			err:     comparator.ErrComparisonMismatch,
+		},
+			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithStats(1000, 0, "result", 0)),
+			secondary,
+		)
+
+		_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
+
+		require.NoError(t, err)
+		require.Eventually(t, func() bool {
+			return comparedCount(handler, secondary, comparisonMismatch, comparator.CauseSampleValueMismatch) == 1
+		}, 5*time.Second, 10*time.Millisecond)
+		output := logs.String()
+		for _, expected := range []string{
+			`level=warn msg="compared responses were not equal"`,
+			`msg="secondary pair"`,
+			"route=test_route",
+			"tenant=test-tenant",
+			"result=mismatch",
+			"cause=sample_value_mismatch",
+			"primary_bytes_processed=1000",
+			"secondary_bytes_processed=500",
+		} {
+			require.Contains(t, output, expected)
+		}
+		count, sum := statRatio(t, handler, "bytes_processed", "both_idle", "both_miss")
+		require.Equal(t, uint64(1), count)
+		require.InDelta(t, 0.5, sum, 1e-9)
+	})
+
+	t.Run("observes the ratio of the stats of a metric query", func(t *testing.T) {
+		const query = `sum(count_over_time({app="a"}[5m]))`
+		metricReq := &queryrange.LokiRequest{
+			Query:   query,
+			Plan:    &plan.QueryPlan{AST: syntax.MustParseExpr(query)},
+			StartTs: time.Now().Add(-1 * time.Hour),
+			EndTs:   time.Now(),
+		}
+		matrixBody := func(bytesProcessed int) string {
+			return fmt.Sprintf(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"totalBytesProcessed":%d}}}}`, bytesProcessed)
+		}
+		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, matrixBody(500))
+		handler := newHandler(staticComparator{summary: &comparator.ComparisonSummary{}},
+			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, matrixBody(1000)),
+			secondary,
+		)
+
+		_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), metricReq)
+
+		require.NoError(t, err)
+		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
+		count, sum := statRatio(t, handler, "bytes_processed", "both_idle", "both_miss")
+		require.Equal(t, uint64(1), count)
+		require.InDelta(t, 0.5, sum, 1e-9)
 	})
 }
 
@@ -386,6 +420,26 @@ func (c *recordingComparator) recorded() []comparedBodies {
 	defer c.mu.Unlock()
 
 	return slices.Clone(c.calls)
+}
+
+// syncBuffer is a buffer that the goroutine of the comparison and the test can use at the same time.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
 }
 
 // staticComparator returns a fixed comparison outcome.

@@ -21,7 +21,7 @@ const (
 	// unknownTenant is the tenant label of a request whose tenants cannot be read.
 	unknownTenant = "unknown"
 
-	// idleQueueTime is the longest primary queue time that still counts as an idle primary.
+	// idleQueueTime is the longest queue time that still counts as an idle backend.
 	idleQueueTime = 100 * time.Millisecond
 )
 
@@ -58,7 +58,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 		}, []string{"backend", "backend_alias", "method", "route", "issuer"}),
 		responsesComparedTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querytee_responses_compared_total",
-			Help: "Total number of responses compared per route and backend name by result.",
+			Help: "Total number of responses compared per route and backend name by result and cause.",
 		}, []string{"backend", "backend_alias", "route", "result", "cause", "issuer", "tenant"}),
 		missingMetrics: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "loki_querytee_missing_metrics_series",
@@ -130,10 +130,12 @@ func (m *ProxyMetrics) observeSecondaryBackendStats(route string, primary, secon
 	}
 }
 
-// resultCacheEntries returns the number of entries that the results caches of the query-frontend
-// found and requested for a query. A query uses the cache of its type: the range query results
-// cache, the instant metric results cache or the log results cache.
+// resultCacheEntries returns the entries that the query results caches of the query-frontend found
+// and requested.
 func resultCacheEntries(caches stats.Caches) (found, requested int32) {
+	// The query-frontend keeps one results cache for each query type: range query, instant metric
+	// and log. A query uses one of them, so the sum is the count of that cache. The other caches in
+	// stats.Caches serve other types of request, so they do not count.
 	for _, cache := range []stats.Cache{caches.Result, caches.InstantMetricResult, caches.LogResult} {
 		found += cache.EntriesFound
 		requested += cache.EntriesRequested

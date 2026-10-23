@@ -119,10 +119,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 
 	level.Debug(p.logger).Log("msg", "Received request", "path", r.URL.Path, "query", query)
 
-	wg.Add(len(p.backends))
-	for _, b := range p.backends {
-		go func(backend *ProxyBackend) {
-			defer wg.Done()
+	for _, backend := range p.backends {
+		wg.Go(func() {
 			var (
 				bodyReader io.ReadCloser
 				lvl        = level.Debug
@@ -149,7 +147,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 			).Observe(res.duration.Seconds())
 
 			resCh <- res
-		}(b)
+		})
 	}
 
 	// Wait until all backend requests completed.

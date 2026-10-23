@@ -76,8 +76,9 @@ The `loki_querytee_responses_compared_total` metric counts the comparisons by `r
 | `fail`     | The secondary request failed, the secondary did not answer with status 200, or the comparator could not compare the bodies. |
 | `skipped`  | The primary failed or did not answer with status 200, or no samples remain after the proxy skips samples.                   |
 
-The `cause` label says how the bodies differ for a `mismatch`, and why a backend failed for a `fail` or a `skipped` pair.
-For a failed backend, the cause belongs to the secondary for a `fail`, and to the primary for a `skipped` pair:
+The `cause` label says how the bodies differ for a `mismatch`.
+For a `fail` or a `skipped` pair, it says why the proxy could not compare the bodies.
+When a backend failed, the cause describes the secondary for a `fail`, and the primary for a `skipped` pair:
 
 | Cause                                | Result            | Meaning                                                                                         |
 | ------------------------------------ | ----------------- | ----------------------------------------------------------------------------------------------- |
@@ -87,8 +88,8 @@ For a failed backend, the cause belongs to the secondary for a `fail`, and to th
 | `http_5xx`                           | `fail`, `skipped` | The backend answered with a 5xx status.                                                         |
 | `http_other`                         | `fail`, `skipped` | The backend answered with another status that is not 200.                                       |
 | `compare_error`                      | `fail`            | The comparator could not compare the bodies.                                                    |
-| `status_mismatch`                    | `mismatch`        | The `status` of the responses differs.                                                          |
-| `result_type_mismatch`               | `mismatch`        | The result types differ.                                                                        |
+| `status_mismatch`                    | `mismatch`        | The `status` fields of the response bodies differ, for example `success` and `error`.           |
+| `result_type_mismatch`               | `mismatch`        | The `resultType` fields of the response bodies differ.                                          |
 | `metric_count_mismatch`              | `mismatch`        | The responses have a different number of series.                                                |
 | `metric_missing`                     | `mismatch`        | A series of the primary's response is missing from the secondary's response.                    |
 | `sample_count_mismatch`              | `mismatch`        | A series has a different number of samples.                                                     |
@@ -111,6 +112,18 @@ The proxy skips the samples from the last `-proxy.compare-skip-recent-samples` (
 When several `result` rows apply, the proxy checks the cases in this order and uses the first that matches: the primary request failed, the secondary request failed, the primary status is not 200, the secondary status is not 200.
 
 The `loki_querytee_secondary_backend_stats_ratio` metric observes the ratio of a query stat of the secondary over the same stat of the primary.
+The proxy observes it for each compared pair when both backends return a decoded response.
+It skips a stat when the primary value is zero.
+
+| Label                  | Values                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `route`                | The route of the compared request.                                                  |
+| `stat`                 | `bytes_processed`, `lines_processed`, `exec_time`, `queue_time`, `splits`, `shards` |
+| `queriers_load_status` | `both_idle`, `primary_busy`, `secondary_busy`, `both_busy`                          |
+| `result_cache_status`  | `both_miss`, `primary_hit`, `secondary_hit`, `both_hit`                             |
+
+A backend is busy when its query waited more than 100ms in the queue.
+A backend hits the cache when the range query, instant metric or log results cache of its query-frontend found at least one entry.
 
 To also report the number of missing series in the `loki_querytee_missing_metrics_series` metric, set `-proxy.compare-report-missing-series=true`.
 This flag requires `-proxy.compare-responses=true`.
