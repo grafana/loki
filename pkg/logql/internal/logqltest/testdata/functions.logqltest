@@ -120,13 +120,13 @@ load
   {app="a", k="s"} "k=p" @ 20s [repeat every 20s for 3] [metadata k="m"]
   {app="noise"} "noise" @ 30s
 
-# With the parser, stream keeps the base `k` and parsed wins the single `k_extracted` slot, so the
-# structured metadata value "m" is dropped.
+# With the parser, stream keeps the base `k` and the structured metadata value keeps `k_extracted`, so
+# the parsed value "p" is dropped.
 eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "k", "(.*)")
-  {app="a", k="s", k_extracted="p", out="s"} 3
+  {app="a", k="s", k_extracted="m", out="s"} 3
 eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "k_extracted", "(.*)")
-  {app="a", k="s", k_extracted="p", out="p"} 3
-# Without the parser the metadata value is the only loser, so it keeps `k_extracted`.
+  {app="a", k="s", k_extracted="m", out="m"} 3
+# Without the parser the result is the same.
 eval instant at 60s label_replace(count_over_time({app="a"} [1m]), "out", "$1", "k_extracted", "(.*)")
   {app="a", k="s", k_extracted="m", out="m"} 3
 
