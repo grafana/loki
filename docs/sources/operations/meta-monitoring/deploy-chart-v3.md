@@ -177,7 +177,7 @@ Now that you have prepared your environment and collected the necessary credenti
 
    ```bash
     kubectl get pods -n meta
-    ```
+   ```
 
     You should see a list of pods running in the `meta` namespace.
 
