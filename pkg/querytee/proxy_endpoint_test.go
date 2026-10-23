@@ -21,13 +21,13 @@ import (
 )
 
 // createTestEndpoint creates a ProxyEndpoint with properly initialized handler pipeline
-func createTestEndpoint(t *testing.T, backends []*ProxyBackend, routeName string, comparator comparator.ResponsesComparator, reportMissingSeries bool) *ProxyEndpoint {
+func createTestEndpoint(t *testing.T, backends []*ProxyBackend, routeName string, comparator comparator.ResponsesComparator) *ProxyEndpoint {
 	t.Helper()
 
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 
-	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comparator, reportMissingSeries)
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger)
 	handlerFactory := NewHandlerFactory(HandlerFactoryConfig{
 		Backends: backends,
 		Codec:    queryrange.DefaultCodec,
@@ -83,7 +83,7 @@ func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			endpoint := NewProxyEndpoint(testData.backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+			endpoint := NewProxyEndpoint(testData.backends, "test", NewProxyMetrics(nil), log.NewNopLogger())
 
 			// Send the responses from a dedicated goroutine.
 			resCh := make(chan *BackendResponse)
@@ -135,7 +135,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 		proxyBackend1,
 		proxyBackend2,
 	}
-	endpoint := createTestEndpoint(t, backends, "test", nil, false)
+	endpoint := createTestEndpoint(t, backends, "test", nil)
 
 	for _, tc := range []struct {
 		name    string
@@ -243,10 +243,10 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		proxyBackend1,
 		proxyBackend2,
 	}
-	// endpoint := createTestEndpoint(backends, "test", nil, false)
+	// endpoint := createTestEndpoint(backends, "test", nil)
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
-	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+	endpoint := NewProxyEndpoint(backends, "test", metrics, logger)
 
 	for _, tc := range []struct {
 		name    string
