@@ -368,7 +368,7 @@ The LokiStack is in a degraded state and will not reconcile. Log ingestion and q
 
 ### Summary
 
-The LokiStack has entered a degraded state due to a configuration issue or validation failure. The operator will not reconcile the LokiStack until the underlying problem is resolved. Check the degraded condition reason for specific details.
+The LokiStack has entered a degraded state, likely due to a configuration issue or validation failure. The operator will not reconcile the LokiStack until the underlying problem is resolved. Check the degraded condition reason for specific details.
 
 ### Severity
 

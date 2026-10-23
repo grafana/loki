@@ -189,8 +189,7 @@ tests:
               description: |-
                 The LokiStack "mystack" in namespace "my-ns" is in a degraded state due to "InvalidObjectStorageSchema".
                 The LokiStack will not reconcile until the underlying issue is resolved.
-                Refer to the runbook for troubleshooting steps.
-              summary: "LokiStack is in a degraded state and will not reconcile."
+              summary: "LokiStack instance is in a degraded state."
               runbook_url: "[[ .RunbookURL ]]#Lokistack-Degraded"
       - eval_time: 16m
         alertname: LokiIngesterFlushFailureRateCritical
