@@ -227,7 +227,7 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 // with grafana/dskit (pulled in via github.com/grafana/loki/v3): dskit's etcd mock
 // still uses Cmp.Target/TargetUnion/Result APIs removed in etcd 3.7.
 replace (
-	go.etcd.io/etcd/api/v3 => go.etcd.io/etcd/api/v3 v3.6.14
+	go.etcd.io/etcd/api/v3 => go.etcd.io/etcd/api/v3 v3.7.2
 	go.etcd.io/etcd/client/pkg/v3 => go.etcd.io/etcd/client/pkg/v3 v3.6.14
 	go.etcd.io/etcd/client/v3 => go.etcd.io/etcd/client/v3 v3.7.2
 )
