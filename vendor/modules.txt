@@ -1108,7 +1108,7 @@ github.com/google/pprof/profile
 # github.com/google/renameio/v2 v2.0.2
 ## explicit; go 1.25
 github.com/google/renameio/v2
-# github.com/google/s2a-go v0.1.9
+# github.com/google/s2a-go v0.1.11
 ## explicit; go 1.20
 github.com/google/s2a-go
 github.com/google/s2a-go/fallback
