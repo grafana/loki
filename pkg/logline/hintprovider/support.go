@@ -22,7 +22,7 @@ import (
 //     post-parser extracted-field filters after a high-confidence extractor
 //     (see collectPostParserLabelFilterLiterals)
 //   - accepted ops: equality, or regex. A regex contributes the literals every
-//     match must contain (regexliteral.Required), e.g. ".*foo.*bar" gives
+//     match must contain (regexliteral.Literals), e.g. ".*foo.*bar" gives
 //     "foo" and "bar"
 //   - OR branches are not mandatory and are ignored
 //   - unsupported filters are ignored when a mandatory positive literal remains
@@ -108,7 +108,7 @@ func extractMandatoryPositiveFilterLiterals(filter *syntax.LineFilterExpr) []str
 	case logql_log.LineMatchEqual:
 		return []string{filter.Match}
 	case logql_log.LineMatchRegexp:
-		return regexliteral.Required(filter.Match)
+		return regexliteral.Literals(filter.Match)
 	default:
 		return nil
 	}
@@ -298,7 +298,7 @@ func extractMatcherLiterals(m *labels.Matcher) []string {
 	case labels.MatchRegexp:
 		// Label regexes are anchored, but the value is looked up as a
 		// substring of the indexed text, so required literals still apply.
-		return regexliteral.Required(m.Value)
+		return regexliteral.Literals(m.Value)
 	default:
 		return nil
 	}
