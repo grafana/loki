@@ -200,8 +200,7 @@ groups:
       description: |-
         The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" is in a degraded state due to "{{ $labels.reason }}".
         The LokiStack will not reconcile until the underlying issue is resolved.
-        Refer to the runbook for troubleshooting steps.
-      summary: "LokiStack is in a degraded state and will not reconcile."
+      summary: "LokiStack instance is in a degraded state."
       runbook_url: "[[ .RunbookURL ]]#Lokistack-Degraded"
     expr: |
       sum (
