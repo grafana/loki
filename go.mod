@@ -261,7 +261,7 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/memberlist v0.7.0 // indirect
 	github.com/hashicorp/serf v0.11.0 // indirect
-	github.com/huandu/xstrings v1.6.2 // indirect
+	github.com/huandu/xstrings v1.6.3 // indirect
 	github.com/jaegertracing/jaeger-idl v0.14.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/kamstrup/intmap v0.5.2 // indirect
