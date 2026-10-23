@@ -39,8 +39,8 @@ func RegisterHandlers(srv *server.Server, svc *Service, logger log.Logger) error
 // loaded the job store. Compactors retry on 5xx.
 func (s *Service) whenRunning(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.State() != services.Running {
-			http.Error(w, "scheduler is not running", http.StatusServiceUnavailable)
+		if state := s.State(); state != services.Running {
+			http.Error(w, fmt.Sprintf("scheduler is not running: %s", state), http.StatusServiceUnavailable)
 			return
 		}
 		h(w, r)

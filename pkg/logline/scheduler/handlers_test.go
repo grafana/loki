@@ -75,6 +75,7 @@ func TestRegisterHandlers_UnavailableUntilRunning(t *testing.T) {
 		rec := httptest.NewRecorder()
 		srv.HTTP.ServeHTTP(rec, httptest.NewRequest(req.method, req.path, nil))
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, req.path)
+		require.Equal(t, "scheduler is not running: New\n", rec.Body.String(), req.path)
 	}
 }
 
