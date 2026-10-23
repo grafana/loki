@@ -27,18 +27,19 @@ var errUnsupportedRequest = errors.New("the request is not a range or instant qu
 // would read it from data objects. It runs the frontend eligibility check with the limits of the
 // secondary backend's Loki cluster. It selects no other request. It is safe for concurrent use.
 type dataObjStrategy struct {
-	lokiCfg *LokiParsedConfig
-	now     func() time.Time
+	cfg        DataObjConfig
+	lokiLimits *LokiLimits
+	now        func() time.Time
 }
 
-func newDataObjStrategy(lokiCfg *LokiParsedConfig) (*dataObjStrategy, error) {
-	if lokiCfg == nil {
+func newDataObjStrategy(cfg DataObjConfig, lokiLimits *LokiLimits) (*dataObjStrategy, error) {
+	if lokiLimits == nil {
 		return nil, errors.New("the dataobj selection strategy needs the Loki config of the secondary backend: set -config.file and, for per-tenant limits, -runtime-config.file")
 	}
-	if lokiCfg.Overrides == nil {
+	if lokiLimits.Overrides == nil {
 		return nil, errors.New("the dataobj selection strategy needs the tenant limits")
 	}
-	return &dataObjStrategy{lokiCfg: lokiCfg, now: time.Now}, nil
+	return &dataObjStrategy{cfg: cfg, lokiLimits: lokiLimits, now: time.Now}, nil
 }
 
 // Select implements SelectionStrategy.
@@ -51,7 +52,7 @@ func (s *dataObjStrategy) Select(tenants []string, req queryrangebase.Request) S
 		return Selection{Selected: false, Reason: reasonUnsupportedQuery}
 	}
 
-	res := queryrange.ResolveDataObj(s.lokiCfg.DataObjEnabled, s.lokiCfg.DataObjStorageLag, s.lokiCfg.Overrides, tenants, expr, req.GetStart(), req.GetEnd(), s.now)
+	res := queryrange.ResolveDataObj(s.cfg.Enabled, s.cfg.StorageLag, s.lokiLimits.Overrides, tenants, expr, req.GetStart(), req.GetEnd(), s.now)
 	if !res.Eligible() {
 		return Selection{Selected: false, Reason: string(res.Outcome)}
 	}

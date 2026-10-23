@@ -12,17 +12,12 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-
-	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 )
 
-func TestLoadLokiConfig(t *testing.T) {
+func TestLoadLokiLimits(t *testing.T) {
 	const lokiConfigYAML = `
 server:
   http_listen_port: 3100
-dataobj:
-  enabled: true
-  storage_lag: 2h
 limits_config:
   stream_first_execution_enabled: true
   dataobj_query_start_time: "2026-01-01"
@@ -43,13 +38,13 @@ configs:
 	}
 
 	t.Run("loads no config when no file is set", func(t *testing.T) {
-		lokiCfg, err := LoadLokiConfig(t.Context(), LimitsConfig{}, log.NewNopLogger(), prometheus.NewRegistry())
+		lokiLimits, err := LoadLokiLimits(t.Context(), LimitsConfig{}, log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, err)
-		require.Nil(t, lokiCfg)
-		require.NoError(t, lokiCfg.Stop(t.Context()))
+		require.Nil(t, lokiLimits)
+		require.NoError(t, lokiLimits.Stop(t.Context()))
 	})
 
-	t.Run("reads the data object settings, the default limits and the tenant overrides", func(t *testing.T) {
+	t.Run("reads the default limits and the tenant overrides", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, filepath.Join(dir, "config.yaml"), lokiConfigYAML)
 		writeFile(t, filepath.Join(dir, "runtime.yaml"), runtimeConfigYAML)
@@ -58,19 +53,16 @@ configs:
 			ConfigFile:    filepath.Join(dir, "config.yaml"),
 			RuntimeConfig: runtimeconfig.Config{LoadPath: flagext.StringSliceCSV{filepath.Join(dir, "runtime.yaml")}, ReloadPeriod: time.Minute},
 		}
-		lokiCfg, err := LoadLokiConfig(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
+		lokiLimits, err := LoadLokiLimits(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, err)
 
-		require.True(t, lokiCfg.DataObjEnabled)
-		require.Equal(t, 2*time.Hour, lokiCfg.DataObjStorageLag)
+		require.True(t, lokiLimits.Overrides.StreamFirstExecutionEnabled("other"))
+		require.Equal(t, startTime(2026, time.January), lokiLimits.Overrides.DataObjQueryStartTime("other"))
 
-		require.True(t, lokiCfg.Overrides.StreamFirstExecutionEnabled("other"))
-		require.Equal(t, startTime(2026, time.January), lokiCfg.Overrides.DataObjQueryStartTime("other"))
-
-		require.False(t, lokiCfg.Overrides.StreamFirstExecutionEnabled("tenant-a"))
-		require.Equal(t, startTime(2026, time.January), lokiCfg.Overrides.DataObjQueryStartTime("tenant-a"))
-		require.True(t, lokiCfg.Overrides.StreamFirstExecutionEnabled("tenant-b"))
-		require.Equal(t, startTime(2026, time.March), lokiCfg.Overrides.DataObjQueryStartTime("tenant-b"))
+		require.False(t, lokiLimits.Overrides.StreamFirstExecutionEnabled("tenant-a"))
+		require.Equal(t, startTime(2026, time.January), lokiLimits.Overrides.DataObjQueryStartTime("tenant-a"))
+		require.True(t, lokiLimits.Overrides.StreamFirstExecutionEnabled("tenant-b"))
+		require.Equal(t, startTime(2026, time.March), lokiLimits.Overrides.DataObjQueryStartTime("tenant-b"))
 	})
 
 	t.Run("applies a changed override after the runtime config reloads", func(t *testing.T) {
@@ -79,24 +71,15 @@ configs:
 		writeFile(t, runtimePath, runtimeConfigYAML)
 
 		cfg := LimitsConfig{RuntimeConfig: runtimeconfig.Config{LoadPath: flagext.StringSliceCSV{runtimePath}, ReloadPeriod: 20 * time.Millisecond}}
-		lokiCfg, err := LoadLokiConfig(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
+		lokiLimits, err := LoadLokiLimits(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, err)
-		require.False(t, lokiCfg.Overrides.StreamFirstExecutionEnabled("tenant-a"))
+		require.False(t, lokiLimits.Overrides.StreamFirstExecutionEnabled("tenant-a"))
 
 		writeFile(t, runtimePath, "overrides:\n  tenant-a:\n    stream_first_execution_enabled: true\n")
 		require.Eventually(t, func() bool {
-			return lokiCfg.Overrides.StreamFirstExecutionEnabled("tenant-a")
+			return lokiLimits.Overrides.StreamFirstExecutionEnabled("tenant-a")
 		}, 5*time.Second, 10*time.Millisecond)
-		require.NoError(t, lokiCfg.Stop(t.Context()))
-	})
-
-	t.Run("uses the Loki default storage lag when the config does not set it", func(t *testing.T) {
-		dir := t.TempDir()
-		writeFile(t, filepath.Join(dir, "config.yaml"), "dataobj:\n  enabled: true\n")
-
-		lokiCfg, err := LoadLokiConfig(t.Context(), LimitsConfig{ConfigFile: filepath.Join(dir, "config.yaml")}, log.NewNopLogger(), prometheus.NewRegistry())
-		require.NoError(t, err)
-		require.Equal(t, dataobjconfig.DefaultStorageLag, lokiCfg.DataObjStorageLag)
+		require.NoError(t, lokiLimits.Stop(t.Context()))
 	})
 
 	t.Run("returns an error when the runtime config reload period is not positive", func(t *testing.T) {
@@ -104,7 +87,7 @@ configs:
 		writeFile(t, filepath.Join(dir, "runtime.yaml"), runtimeConfigYAML)
 
 		cfg := LimitsConfig{RuntimeConfig: runtimeconfig.Config{LoadPath: flagext.StringSliceCSV{filepath.Join(dir, "runtime.yaml")}}}
-		_, err := LoadLokiConfig(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
+		_, err := LoadLokiLimits(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
 
 		require.EqualError(t, err, "-runtime-config.reload-period must be positive, got 0s")
 	})
@@ -113,7 +96,7 @@ configs:
 		path := filepath.Join(t.TempDir(), "missing.yaml")
 		cfg := LimitsConfig{RuntimeConfig: runtimeconfig.Config{LoadPath: flagext.StringSliceCSV{path}, ReloadPeriod: time.Minute}}
 
-		_, err := LoadLokiConfig(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
+		_, err := LoadLokiLimits(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
 
 		require.EqualError(t, err, fmt.Sprintf("loading the runtime config: failed to load runtime config: read %[1]q: open %[1]s: no such file or directory", path))
 	})
@@ -121,7 +104,7 @@ configs:
 	t.Run("returns an error when the config file does not exist", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "missing.yaml")
 
-		_, err := LoadLokiConfig(t.Context(), LimitsConfig{ConfigFile: path}, log.NewNopLogger(), prometheus.NewRegistry())
+		_, err := LoadLokiLimits(t.Context(), LimitsConfig{ConfigFile: path}, log.NewNopLogger(), prometheus.NewRegistry())
 
 		require.EqualError(t, err, fmt.Sprintf("reading the Loki config file %[1]s: open %[1]s: no such file or directory", path))
 	})

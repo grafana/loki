@@ -69,29 +69,27 @@ func main() {
 		exit(1)
 	}
 
-	// Load the config of the Loki cluster of the secondary backend.
-	lokiCfg, err := querytee.LoadLokiConfig(context.Background(), cfg.Limits, util_log.Logger, registry)
+	// Load the limits of the Loki cluster of the secondary backend.
+	lokiLimits, err := querytee.LoadLokiLimits(context.Background(), cfg.Limits, util_log.Logger, registry)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "Unable to load the Loki config", "err", err.Error())
+		level.Error(util_log.Logger).Log("msg", "Unable to load the Loki limits", "err", err.Error())
 		exit(1)
 	}
-	if lokiCfg != nil {
+	if lokiLimits != nil {
 		level.Info(util_log.Logger).Log(
-			"msg", "Loaded the Loki config",
+			"msg", "Loaded the Loki limits",
 			"config_file", cfg.Limits.ConfigFile,
 			"runtime_config_file", cfg.Limits.RuntimeConfig.LoadPath.String(),
-			"dataobj_enabled", lokiCfg.DataObjEnabled,
-			"dataobj_storage_lag", lokiCfg.DataObjStorageLag,
 		)
 	}
 	defer func() {
-		if err := lokiCfg.Stop(context.Background()); err != nil {
+		if err := lokiLimits.Stop(context.Background()); err != nil {
 			level.Error(util_log.Logger).Log("msg", "Unable to stop the Loki config reload", "err", err)
 		}
 	}()
 
 	// Run the proxy.
-	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), lokiWriteRoutes(), registry, lokiCfg)
+	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), lokiWriteRoutes(), registry, lokiLimits)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		exit(1)

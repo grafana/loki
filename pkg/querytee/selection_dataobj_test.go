@@ -13,9 +13,10 @@ import (
 
 func TestDataObjStrategy_Select(t *testing.T) {
 	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
-	lokiCfg := newTestLokiParsedConfig(t, 3*time.Hour, now.Add(-48*time.Hour))
+	lokiLimits := newTestLokiLimits(t, now.Add(-48*time.Hour))
+	dataObjCfg := DataObjConfig{Enabled: true, StorageLag: 3 * time.Hour}
 
-	strategy, err := newDataObjStrategy(lokiCfg)
+	strategy, err := newDataObjStrategy(dataObjCfg, lokiLimits)
 	require.NoError(t, err)
 	strategy.now = func() time.Time { return now }
 
@@ -84,9 +85,8 @@ func TestDataObjStrategy_Select(t *testing.T) {
 	})
 
 	t.Run("does not select a query when data objects are disabled", func(t *testing.T) {
-		disabledCfg := *lokiCfg
-		disabledCfg.DataObjEnabled = false
-		disabledStrategy, err := newDataObjStrategy(&disabledCfg)
+		disabledCfg := DataObjConfig{Enabled: false, StorageLag: dataObjCfg.StorageLag}
+		disabledStrategy, err := newDataObjStrategy(disabledCfg, lokiLimits)
 		require.NoError(t, err)
 		req := &queryrange.LokiRequest{Query: eligibleQuery, StartTs: now.Add(-24 * time.Hour), EndTs: now.Add(-12 * time.Hour)}
 
@@ -109,9 +109,9 @@ func (f fixedTenantLimits) TenantLimits(userID string) *validation.Limits { retu
 
 func (f fixedTenantLimits) AllByUserID() map[string]*validation.Limits { return f }
 
-// newTestLokiParsedConfig returns a config where the tenant "enabled" reads data objects from dataObjStart on,
+// newTestLokiLimits returns a config where the tenant "enabled" reads data objects from dataObjStart on,
 // and every other tenant has stream-first off.
-func newTestLokiParsedConfig(t *testing.T, storageLag time.Duration, dataObjStart time.Time) *LokiParsedConfig {
+func newTestLokiLimits(t *testing.T, dataObjStart time.Time) *LokiLimits {
 	t.Helper()
 
 	overrides, err := validation.NewOverrides(validation.Limits{}, fixedTenantLimits{
@@ -121,5 +121,5 @@ func newTestLokiParsedConfig(t *testing.T, storageLag time.Duration, dataObjStar
 		},
 	})
 	require.NoError(t, err)
-	return &LokiParsedConfig{DataObjEnabled: true, DataObjStorageLag: storageLag, Overrides: overrides}
+	return &LokiLimits{Overrides: overrides}
 }
