@@ -37,6 +37,18 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Bloom filters are deprecated
+
+Query acceleration using bloom filters is deprecated and will be removed in a future release.
+This covers the Bloom Planner, Bloom Builder, and Bloom Gateway components and the following settings:
+
+- The `bloom_build` and `bloom_gateway` configuration blocks.
+- The `storage_config.bloom_shipper` configuration block.
+- The per-tenant `bloom_*` settings in `limits_config`, for example `bloom_creation_enabled` and `bloom_gateway_enable_filtering`.
+
+The components and settings still work. Each bloom component logs a deprecation warning on startup.
+The `deprecated-config-checker` tool flags the deprecated settings.
+
 ### Breaking change: Compactor and retention metrics are renamed 
 
 A number of legacy Prometheus metrics prefixed with `loki_boltdb_shipper_*` are renamed to `loki_tsdb_shipper_*`.
@@ -90,6 +102,16 @@ Schedulers and queriers already accept both encodings, so mixed frontends during
 
 A query such as `| __error__ > 0`, `| __error__ != 1s`, `| __error_details__ == 1MB`, or `| __error__ = ip("1.2.3.4")` now fails to parse. These two labels always hold a string (or are unset), so a numeric, duration, bytes, or IP comparison against them could never find a match; such a query used to parse successfully and then silently return no results. This also applies after `| unwrap`. Use a string comparison instead, for example `| __error__ != ""` or `| __error__=""`.
 
+### Breaking change: Errored samples in metric queries now follow the query's grouping and `__error__` filter
+
+Metric queries report errored log lines in a more consistent way now.
+
+Previously, an errored line's sample kept every stream label and every structured metadata key, ignoring the query's `by (...)` or `without (...)` grouping. Lines from the same stream that differed only in a label the grouping didn't name could form separate series. Now an errored sample reports the same labels a successful line would report for that grouping, plus `__error__` and `__error_details__`. `sum()` and `count()` totals are unchanged, but `first_over_time()`, `last_over_time()`, `quantile_over_time()`, and other range aggregations that accept a grouping can report fewer series, or different values, once errored lines collapse into the group they belong to. A failing query's `pipeline error` message now names the grouped labels instead of the whole label set; remove the grouping to identify the affected stream.
+
+Separately, whether a metric query fails on an errored sample, or returns it, now depends only on whether a `__error__` label filter in the pipeline asks to keep it (for example `| __error__ != ""`). It no longer depends on how the query is grouped: previously, `sum by (pod) (count_over_time({app="a"} | json | __error__!="" [1m]))` could return errored samples while the same pipeline written with `max`, `without (...)`, or no grouping instead failed the query.
+
+For the full set of rules, see [Pipeline Errors in Metric Queries](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_reference/#pipeline-errors-in-metric-queries).
+
 ### `frontend.compress_responses` default changed to `true`
 
 The default value of `frontend.compress_responses` changed to `true`. A bug in Loki 3.4.0 unintentionally switched it to `false`. If you don't want the query-frontend to compress HTTP responses, set `frontend.compress_responses` to `false` explicitly.
@@ -99,10 +121,6 @@ The default value of `frontend.compress_responses` changed to `true`. A bug in L
 The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
-
-### Optional chunk fetch error propagation
-
-`chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
 
 ### Breaking change: Removal of the `row_shards` schema setting
 

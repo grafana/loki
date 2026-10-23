@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -133,64 +132,6 @@ func TestThread_drainPipeline_RecordsPhasesOnFailure(t *testing.T) {
 			require.Equal(t, 1, testutil.CollectAndCount(th.Metrics.taskSendSeconds))
 		})
 	}
-}
-
-func TestThread_runJob_IgnoresClosedSourceBindErrors(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		peers := newTestPeerPair(t)
-
-		limitNode := &physical.Limit{NodeID: ulid.Make(), Fetch: 1}
-
-		var graph dag.Graph[physical.Node]
-		graph.Add(limitNode)
-
-		var (
-			closedStream = &workflow.Stream{ULID: ulid.Make()}
-			openStream   = &workflow.Stream{ULID: ulid.Make()}
-
-			closedSource = &streamSource{}
-			openSource   = &streamSource{}
-		)
-
-		closedSource.Close()
-
-		go func() {
-			rows := arrowtest.Rows{map[string]any{"a": int64(1), "b": "x"}}
-			record := rows.Record(memory.DefaultAllocator, rows.Schema())
-			_ = openSource.Write(t.Context(), record)
-			openSource.Close()
-		}()
-
-		job := &threadJob{
-			Context:   t.Context(),
-			Scheduler: peers.workerPeer,
-			Task: &workflow.Task{
-				ULID:     ulid.Make(),
-				TenantID: "test-tenant",
-				Fragment: physical.FromGraph(graph),
-				Sources: map[physical.Node][]*workflow.Stream{
-					limitNode: {closedStream, openStream},
-				},
-				Sinks: map[physical.Node][]*workflow.Stream{},
-			},
-			Sources: map[ulid.ULID]*streamSource{
-				closedStream.ULID: closedSource,
-				openStream.ULID:   openSource,
-			},
-			Sinks: map[ulid.ULID]*streamSink{},
-			Close: func() {},
-		}
-
-		th := &thread{
-			Logger:  log.NewNopLogger(),
-			Metrics: newMetrics(),
-		}
-		th.runJob(t.Context(), job)
-
-		outcome := peers.waitForTaskResult(t, 2*time.Second)
-		require.Equal(t, workflow.TaskOutcomeCompleted, outcome, "expected task to complete even with one closed source")
-		require.Empty(t, peers.taskResults, "worker should emit exactly one task result")
-	})
 }
 
 func TestThread_runJob_ReportsInvalidTask(t *testing.T) {

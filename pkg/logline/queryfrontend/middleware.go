@@ -29,7 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/querylimits"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
@@ -72,18 +71,6 @@ const (
 const LoglineSkipCacheHeader = "X-Logline-Skip-Cache"
 
 type hintPrefetchKeyType struct{}
-type shardPlanningRerunGuardKeyType struct{}
-
-type shardPlanningDecision struct {
-	eligible bool
-	reason   string
-	overlaps []hintprovider.HintTimeRange
-}
-
-type provisionalQueryResult struct {
-	resp queryrangebase.Response
-	err  error
-}
 
 // hintPrefetchResult holds pre-computed logline index lookup results, shared
 // between the prefetch and filter middleware layers via context.
@@ -333,24 +320,6 @@ func hintPrefetchFromContext(ctx context.Context) *hintPrefetchResult {
 	return v
 }
 
-func withShardPlanningRerunGuard(ctx context.Context) context.Context {
-	return context.WithValue(ctx, shardPlanningRerunGuardKeyType{}, true)
-}
-
-func shardPlanningRerunGuardFromContext(ctx context.Context) bool {
-	v, _ := ctx.Value(shardPlanningRerunGuardKeyType{}).(bool)
-	return v
-}
-
-func withShardPlanningQueryLimits(ctx context.Context, strategy string) context.Context {
-	limits := querylimits.QueryLimits{}
-	if existing := querylimits.ExtractQueryLimitsFromContext(ctx); existing != nil {
-		limits = *existing
-	}
-	limits.TSDBShardingStrategy = strategy
-	return querylimits.InjectQueryLimitsIntoContext(ctx, limits)
-}
-
 func intervalDuration(start, end time.Time) time.Duration {
 	if !end.After(start) {
 		return 0
@@ -387,10 +356,6 @@ func newLoglinePrefetchHandler(
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
-	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
-		cfg.ShardPlanning.Enabled = defaultShardPlanningEnabled
-	}
-	cfg.ShardPlanning.applyDefaults()
 	return &loglinePrefetchHandler{
 		next:                 next,
 		hintProvider:         hp,
@@ -399,7 +364,6 @@ func newLoglinePrefetchHandler(
 		ngramLength:          cfg.NgramLength,
 		hintTimeout:          cfg.HintTimeout,
 		queryIngestersWithin: cfg.QueryIngestersWithin,
-		shardPlanning:        cfg.ShardPlanning,
 		limits:               limits,
 		metrics:              metrics,
 		logger:               logger,
@@ -415,7 +379,6 @@ type loglinePrefetchHandler struct {
 	hintTimeout          time.Duration
 	dryRunInflight       atomic.Int32
 	queryIngestersWithin time.Duration
-	shardPlanning        ShardPlanningConfig
 	limits               logline_query_limits.Limits
 	metrics              *Metrics
 	logger               log.Logger
@@ -493,8 +456,7 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 
 	var totalBytes uint64
 	for _, group := range matcherGroups {
-		adjustedFrom, adjustedThrough := group.Widen(from, through)
-		adjustedFrom = metricStepAlignStart(adjustedFrom, group.Interval, stepMillis)
+		adjustedFrom, adjustedThrough := metricLookupBounds(group, from, through, stepMillis)
 
 		resp, err := h.next.Do(ctx, &logproto.IndexStatsRequest{
 			From:     model.Time(adjustedFrom.UnixMilli()),
@@ -518,60 +480,26 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	return totalBytes, nil
 }
 
-// metricStepAlignStart moves a metric read start back by one query step.
-// Prefetch runs before step alignment, which floors the request start by less
-// than one step. A log selector has a zero interval, so its start stays put.
-func metricStepAlignStart(start time.Time, interval time.Duration, stepMillis int64) time.Time {
-	if interval <= 0 || stepMillis <= 0 {
-		return start
+// metricLookupBounds rounds onto the step, then widens by the range and offset.
+// Prefetch runs before the splitter, which floors the start and rounds the end up.
+// A zero interval or a zero step is only widened.
+func metricLookupBounds(group syntax.MatcherRange, from, through time.Time, stepMillis int64) (time.Time, time.Time) {
+	if group.Interval > 0 && stepMillis > 0 {
+		from, through = alignMetricStep(from, through, stepMillis)
 	}
-	return start.Add(-time.Duration(stepMillis) * time.Millisecond)
+	return group.Widen(from, through)
 }
 
-func (h *loglinePrefetchHandler) observeShardPlanning(result, reason string) {
-	if h == nil || h.metrics == nil || h.metrics.shardPlanningTotal == nil {
-		return
+// alignMetricStep matches metricQuerySplitter.alignStartEnd: floor the start and
+// round the end up to the next step.
+func alignMetricStep(start, end time.Time, stepMillis int64) (time.Time, time.Time) {
+	stepNs := stepMillis * int64(time.Millisecond)
+	startNs := start.UnixNano()
+	endNs := end.UnixNano()
+	if mod := endNs % stepNs; mod != 0 {
+		endNs += stepNs - mod
 	}
-	h.metrics.shardPlanningTotal.WithLabelValues(result, reason).Inc()
-}
-
-func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResult, from, through time.Time) shardPlanningDecision {
-	if result == nil {
-		return shardPlanningDecision{reason: "hint_error"}
-	}
-	if result.err != nil {
-		if errors.Is(result.err, hintprovider.ErrUnsupported) {
-			return shardPlanningDecision{reason: "unsupported"}
-		}
-		return shardPlanningDecision{reason: "hint_error"}
-	}
-	if through.After(result.ingesterCutoff) {
-		return shardPlanningDecision{reason: "ingester_window"}
-	}
-	for _, hint := range result.ranges {
-		if hint.IsPassthrough() {
-			return shardPlanningDecision{reason: "passthrough_range"}
-		}
-	}
-
-	overlaps := rangesOverlapping(result.ranges, from, through)
-
-	queryDuration := intervalDuration(from, through)
-	if queryDuration == 0 {
-		return shardPlanningDecision{reason: "time_reduction_too_small", overlaps: overlaps}
-	}
-	// Eligibility follows the ranges queriers will scan: the sum of raw
-	// clipped hints, not the k-envelope unions those hints used to fill.
-	cumulative := hintCoverageDuration(overlaps, from, through)
-	timeReductionRatio := float64(queryDuration-cumulative) / float64(queryDuration)
-	if timeReductionRatio < 0 {
-		timeReductionRatio = 0
-	}
-	if timeReductionRatio < h.shardPlanning.MinTimeReductionRatio {
-		return shardPlanningDecision{reason: "time_reduction_too_small", overlaps: overlaps}
-	}
-
-	return shardPlanningDecision{eligible: true, reason: "eligible", overlaps: overlaps}
+	return time.Unix(0, startNs-startNs%stepNs).UTC(), time.Unix(0, endNs).UTC()
 }
 
 // dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
@@ -629,7 +557,7 @@ func isAbsentOverTimeAgg(expr syntax.Expr) bool {
 	}
 }
 
-func dryRunLogReport(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
+func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
 	if resp == nil {
 		return verification.Report{HintRanges: len(hintRanges)}
 	}
@@ -762,8 +690,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
 	readStart, readEnd := from, through
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		readStart, readEnd = groups[0].Widen(from, through)
-		readStart = metricStepAlignStart(readStart, groups[0].Interval, req.GetStep())
+		readStart, readEnd = metricLookupBounds(groups[0], from, through, req.GetStep())
 	}
 	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
@@ -927,7 +854,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 	case *queryrange.LokiPromResponse:
 		vr = dryRunMetricReport(expr, r, lookup.ranges, eligibleEnd)
 	case *queryrange.LokiResponse:
-		vr = dryRunLogReport(lookup.ranges, r, eligibleEnd)
+		vr = verifyDryRunHints(lookup.ranges, r, eligibleEnd)
 	default:
 		level.Warn(logger).Log(
 			"msg", "logline dry-run verification skipped due non-Loki response",
@@ -979,10 +906,6 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.next.Do(ctx, req)
 	}
 	logger := util_log.WithContext(ctx, h.logger)
-	if shardPlanningRerunGuardFromContext(ctx) {
-		h.observeShardPlanning("fallback", "rerun_guard")
-		return h.next.Do(ctx, req)
-	}
 	if httpreq.ExtractHeader(ctx, LoglineSkipCacheHeader) != "" {
 		ctx = hintprovider.WithSkipCache(ctx)
 		level.Debug(logger).Log("msg", "hint cache skipped by request header", "header", LoglineSkipCacheHeader)
@@ -1137,72 +1060,12 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 
 	ctx = withHintPrefetch(ctx, result)
 	defer h.observeHintWait(result)
-	if !h.shardPlanning.Enabled {
-		resp, err := h.next.Do(ctx, req)
-		if err != nil {
-			return resp, err
-		}
-
-		attachLoglineStats(resp, result)
-		return resp, nil
+	resp, err := h.next.Do(ctx, req)
+	if err != nil {
+		return resp, err
 	}
-
-	// Shard planning races hint prefetch against a provisional query. If hints
-	// finish first and narrow enough, cancel the in-flight query and rerun with
-	// power_of_two sharding. Otherwise keep the provisional query result.
-	provisionalQueryCtx, cancelProvisionalQuery := context.WithCancel(ctx)
-	defer cancelProvisionalQuery()
-	provisionalQueryDone := make(chan provisionalQueryResult, 1)
-	go func() {
-		resp, err := h.next.Do(provisionalQueryCtx, req)
-		provisionalQueryDone <- provisionalQueryResult{resp: resp, err: err}
-	}()
-
-	select {
-	case provisional := <-provisionalQueryDone:
-		h.observeShardPlanning("provisional_query", "query_finished_first")
-		if provisional.err != nil {
-			return provisional.resp, provisional.err
-		}
-		attachLoglineStats(provisional.resp, result)
-		return provisional.resp, nil
-	case <-result.done:
-		select {
-		case provisional := <-provisionalQueryDone:
-			h.observeShardPlanning("provisional_query", "query_finished_first")
-			if provisional.err != nil {
-				return provisional.resp, provisional.err
-			}
-			attachLoglineStats(provisional.resp, result)
-			return provisional.resp, nil
-		default:
-		}
-
-		decision := h.shardPlanningDecision(result, from, through)
-		if !decision.eligible {
-			h.observeShardPlanning("fallback", decision.reason)
-			provisional := <-provisionalQueryDone
-			if provisional.err != nil {
-				return provisional.resp, provisional.err
-			}
-			attachLoglineStats(provisional.resp, result)
-			return provisional.resp, nil
-		}
-
-		// Hints finished first with enough time reduction — cancel the provisional
-		// query and rerun with power_of_two sharding.
-		h.observeShardPlanning("cancel_then_rerun", decision.reason)
-		cancelProvisionalQuery()
-
-		rerunCtx := withShardPlanningRerunGuard(ctx)
-		rerunCtx = withShardPlanningQueryLimits(rerunCtx, shardPlanningStrategyPowerOfTwo)
-		resp, err := h.next.Do(rerunCtx, req)
-		if err != nil {
-			return resp, err
-		}
-		attachLoglineStats(resp, result)
-		return resp, nil
-	}
+	attachLoglineStats(resp, result)
+	return resp, nil
 }
 
 // observeHintWait records the hint wait of a live query. Call it once per
@@ -1324,8 +1187,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
 	resp, err := h.next.Do(ctx, withHintRanges(lokiReq, hints))
 	// The count travels on the sub-request's response, so the split and shard
-	// merges add it up and discarded responses (retries, canceled provisional
-	// queries) drop it.
+	// merges add it up and discarded responses (retries) drop it.
 	if err == nil {
 		switch r := resp.(type) {
 		case *queryrange.LokiResponse:
@@ -1433,14 +1295,15 @@ func isCancel(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-// rangesOverlap reports whether any range overlaps [start, end].
+// rangesOverlap reports whether any half-open hint [Start, End) overlaps (start, end].
+// A hint that only ends at start shares no time with the window.
 // Assumes ranges are sorted by Start. It does not allocate.
 func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
 	if len(ranges) == 0 {
 		return false
 	}
 	idx := sort.Search(len(ranges), func(i int) bool {
-		return !ranges[i].End.Before(start)
+		return ranges[i].End.After(start)
 	})
 	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }

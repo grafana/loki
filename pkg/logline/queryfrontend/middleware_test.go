@@ -237,10 +237,6 @@ func buildStack(
 	querier queryrangebase.Handler,
 	limits ...logline_query_limits.Limits,
 ) queryrangebase.Handler {
-	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
-		cfg.ShardPlanning.Enabled = false
-		cfg.ShardPlanning.MinTimeReductionRatio = defaultShardPlanningMinReductionRatio
-	}
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 	var settings logline_query_limits.Limits = mockLimits{}
 	if len(limits) > 0 {
@@ -258,10 +254,6 @@ func buildStackWithLogger(
 	querier queryrangebase.Handler,
 	limits ...logline_query_limits.Limits,
 ) queryrangebase.Handler {
-	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
-		cfg.ShardPlanning.Enabled = false
-		cfg.ShardPlanning.MinTimeReductionRatio = defaultShardPlanningMinReductionRatio
-	}
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, logger)
 	var settings logline_query_limits.Limits = mockLimits{}
 	if len(limits) > 0 {
@@ -2278,10 +2270,7 @@ func hintWaitStack(
 		return emptyStreamResponse(), nil
 	})
 	filter := NewLoglineFilterMiddleware(filterTimeout, metrics, nil).Wrap(querier)
-	cfg := Config{
-		RequireOptInHeader: true,
-		ShardPlanning:      ShardPlanningConfig{Enabled: false, MinTimeReductionRatio: defaultShardPlanningMinReductionRatio},
-	}
+	cfg := Config{RequireOptInHeader: true}
 	prefetch := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, metrics, nil)
 	return prefetch.Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		return split(ctx, req, filter)
@@ -2438,6 +2427,19 @@ func TestRangesOverlapping(t *testing.T) {
 	// Empty input.
 	require.Nil(t, rangesOverlapping(nil, base, base.Add(time.Hour)))
 	require.False(t, rangesOverlap(nil, base, base.Add(time.Hour)))
+}
+
+func TestRangesOverlap_ExclusiveHintEnd(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	hint := []hintprovider.HintTimeRange{{
+		Start: base,
+		End:   base.Add(5 * time.Minute),
+	}}
+
+	// Lookback (5m, 10m] shares nothing with [0, 5m).
+	require.False(t, rangesOverlap(hint, base.Add(5*time.Minute), base.Add(10*time.Minute)))
+	// A hint that starts at the lookback end includes that instant.
+	require.True(t, rangesOverlap(hint, base.Add(-time.Minute), base))
 }
 
 func testTime(n int) time.Time {
@@ -2621,13 +2623,14 @@ func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 	}
 }
 
-func TestDryRun_MetricRange_StepExtendsLookupStart(t *testing.T) {
+func TestDryRun_MetricRange_StepExtendsLookup(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	reqStart := now.Add(-1 * time.Hour)
 	step := time.Minute
 	interval := 5 * time.Minute
-	lookupFrom := reqStart.Add(-interval - step)
-	lookupThrough := now
+	alignedStart, alignedEnd := alignMetricStep(reqStart, now, step.Milliseconds())
+	lookupFrom := alignedStart.Add(-interval)
+	lookupThrough := alignedEnd
 
 	var statsFrom, statsThrough model.Time
 	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
