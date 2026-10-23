@@ -35,30 +35,10 @@ var ErrInvalidLayout = errors.New("index has no valid stream layout")
 // [ErrMixedLayouts] if the sections disagree, and one that wraps
 // [ErrInvalidLayout] if the layout cannot be read.
 func TenantLayout(ctx context.Context, obj *dataobj.Object, tenant string) (layout streams.Layout, ok bool, err error) {
-	var recorded, unrecorded int
-	for _, section := range obj.Sections().Filter(stats.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
-		opened, err := stats.Open(ctx, section)
-		if err != nil {
-			return streams.Layout{}, false, fmt.Errorf("opening stats section: %w", err)
-		}
-		got, recordsLayout, err := opened.Layout()
-		if err != nil {
-			return streams.Layout{}, false, fmt.Errorf("%w: reading stats layout: %w", ErrInvalidLayout, err)
-		}
-		if !recordsLayout {
-			unrecorded++
-			continue
-		}
-		if recorded > 0 && !got.Equal(layout) {
-			return streams.Layout{}, false, fmt.Errorf("%w: stats sections record %v and %v", ErrMixedLayouts, layout, got)
-		}
-		layout = got
-		recorded++
+	layout, recorded, unrecorded, err := recordedTenantLayout(ctx, obj, tenant)
+	if err != nil {
+		return streams.Layout{}, false, err
 	}
-
 	switch {
 	case recorded > 0 && unrecorded > 0:
 		return streams.Layout{}, false, fmt.Errorf("%w: %d stats sections record a layout and %d do not", ErrMixedLayouts, recorded, unrecorded)
@@ -73,6 +53,36 @@ func TenantLayout(ctx context.Context, obj *dataobj.Object, tenant string) (layo
 	default:
 		return streams.Layout{}, false, nil
 	}
+}
+
+// recordedTenantLayout returns the layout that the stats sections of tenant
+// record, with the count of sections that record one and that do not. It
+// returns an error that wraps [ErrMixedLayouts] if two sections record
+// different layouts.
+func recordedTenantLayout(ctx context.Context, obj *dataobj.Object, tenant string) (layout streams.Layout, recorded, unrecorded int, err error) {
+	for _, section := range obj.Sections().Filter(stats.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		opened, err := stats.Open(ctx, section)
+		if err != nil {
+			return streams.Layout{}, 0, 0, fmt.Errorf("opening stats section: %w", err)
+		}
+		got, recordsLayout, err := opened.Layout()
+		if err != nil {
+			return streams.Layout{}, 0, 0, fmt.Errorf("%w: reading stats layout: %w", ErrInvalidLayout, err)
+		}
+		if !recordsLayout {
+			unrecorded++
+			continue
+		}
+		if recorded > 0 && !got.Equal(layout) {
+			return streams.Layout{}, 0, 0, fmt.Errorf("%w: stats sections record %v and %v", ErrMixedLayouts, layout, got)
+		}
+		layout = got
+		recorded++
+	}
+	return layout, recorded, unrecorded, nil
 }
 
 // legacyTenantLayout derives the layout of an index whose stats sections
