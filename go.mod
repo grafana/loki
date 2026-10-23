@@ -213,7 +213,7 @@ require (
 	github.com/containerd/containerd/v2 v2.2.9 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
-	github.com/dlclark/regexp2 v1.11.5 // indirect
+	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
