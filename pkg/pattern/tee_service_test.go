@@ -3,10 +3,12 @@ package pattern
 import (
 	"context"
 	"flag"
+	goruntime "runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"weak"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
@@ -476,6 +478,55 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		require.Contains(t, tenantBuf, buffered(s4))
 	})
 
+}
+
+func TestPatternTee_UnbufferedStreamsAreNotRetained(t *testing.T) {
+	// FromPushRequest backs every stream's resource and scope with one array
+	// per request. A buffered stream that still points into those arrays
+	// keeps the entries of all the other streams alive until the tee flushes,
+	// and MaxBufferedBytes never counts them.
+	for _, tc := range []struct {
+		name string
+		// dropOther passes both streams to Duplicate and sets the limit so
+		// that the second one is dropped. Otherwise only the first is passed,
+		// as for a stream the distributor rejected.
+		dropOther bool
+	}{
+		{name: "stream not passed to the tee"},
+		{name: "stream dropped at the buffer limit", dropOther: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tee, _ := getTestTee(t)
+			other := duplicateFirstOfTwo(tee, tc.dropOther)
+			require.Len(t, tee.buf["test"], 1)
+
+			// Weak pointers are cleared once their target is unreachable.
+			for range 3 {
+				goruntime.GC()
+			}
+			require.Nil(t, other.Value(), "entries of a stream the tee did not buffer must be collectable")
+			goruntime.KeepAlive(tee)
+		})
+	}
+}
+
+// duplicateFirstOfTwo tees the first stream of a two-stream request and
+// returns a weak pointer to the second stream's entries. It must not be
+// inlined, so that no local in the caller keeps the request alive.
+//
+//go:noinline
+func duplicateFirstOfTwo(tee *TeeService, dropOther bool) weak.Pointer[push.Entry] {
+	req := logproto.FromPushRequest(&logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{app="teed"}`, Entries: []push.Entry{{Timestamp: time.Unix(1, 0), Line: "teed"}}},
+		{Labels: `{app="other"}`, Entries: []push.Entry{{Timestamp: time.Unix(1, 0), Line: "other"}}},
+	}})
+	streams := []distributor.KeyedStream{{HashKey: 1, Stream: req.Streams[0]}}
+	if dropOther {
+		streams = append(streams, distributor.KeyedStream{HashKey: 2, Stream: req.Streams[1]})
+		tee.cfg.TeeConfig.MaxBufferedBytes = req.Streams[0].Size()
+	}
+	tee.Duplicate(context.Background(), "test", streams, nil)
+	return weak.Make(&req.Streams[1].ResourceLogs[0].ScopeLogs[0].Entries[0])
 }
 
 func TestPatternTee_PushFallback(t *testing.T) {
