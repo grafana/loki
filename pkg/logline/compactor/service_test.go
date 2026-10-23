@@ -176,6 +176,76 @@ func TestAbandonCurrentJob_DoesNotRetryOn4xx(t *testing.T) {
 	require.Equal(t, 1, attempts, "should not retry on 4xx")
 }
 
+func TestStopping_ReportsJobStateToScheduler(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		setup    func(j *compactorJob)
+		wantPath string
+	}{
+		{
+			name:     "running job is abandoned",
+			setup:    func(j *compactorJob) { j.setRunning("job1") },
+			wantPath: schedulerapi.LegacyAbandonPath,
+		},
+		{
+			name:     "unacknowledged completed job is reported",
+			setup:    func(j *compactorJob) { j.markCompletedPendingAck("job1") },
+			wantPath: schedulerapi.CompletePath,
+		},
+		{
+			name:  "idle compactor sends nothing",
+			setup: func(*compactorJob) {},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestService(t)
+
+			var (
+				mu    sync.Mutex
+				calls []string
+			)
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				calls = append(calls, r.Method+" "+r.URL.Path+" "+schedulerapi.WorkerID(r)+" "+schedulerapi.JobID(r))
+				mu.Unlock()
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer ts.Close()
+
+			svc.cfg.Compaction.SchedulerAddress = ts.URL
+			tc.setup(&svc.job)
+
+			require.NoError(t, svc.stopping(nil))
+
+			var want []string
+			if tc.wantPath != "" {
+				want = []string{"POST " + tc.wantPath + " test-compactor job1"}
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, want, calls)
+		})
+	}
+}
+
+func TestReportCompletedJob_DoesNotRetryOn404(t *testing.T) {
+	svc := newTestService(t)
+
+	var attempts int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusNotFound) // scheduler that predates the complete route
+	}))
+	defer ts.Close()
+
+	svc.cfg.Compaction.SchedulerAddress = ts.URL
+	svc.job.markCompletedPendingAck("job1")
+
+	svc.reportCompletedJob()
+
+	require.Equal(t, 1, attempts, "should not retry on 404")
+}
+
 func TestRunLoop_ResendsCompletedJobIDUntilSchedulerAnswers(t *testing.T) {
 	for _, tc := range []struct {
 		name string

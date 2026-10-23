@@ -66,6 +66,8 @@ After a successful compaction, `runLoop` marks the job completed pending ack. Ev
 
 Dropping the ID on a failed request is not safe. Until a store poll sees the merged index, the scheduler still holds the job for this compactor, and `getByWorker` hands it back to be compacted again, which breaks the scheduler's "compacted at most once" invariant. Resending is safe because the scheduler only removes a job that still exists and belongs to this compactor. A failed job is never marked completed, so its ID is never sent.
 
+If the compactor stops while a report is still unacknowledged, `stopping()` sends it to the scheduler's complete endpoint with the same backoff as abandon (`reportCompletedJob`). The endpoint removes the job the same way the job request does, without assigning new work. Abandoning it instead would return its sources to the planner and get them compacted again by another compactor. Without the report, a compactor that comes back under the same ID (a container restart in the same pod, a StatefulSet, or an explicit `compactor_id`) is handed the finished job again. A scheduler that predates the endpoint answers 404, which is not retried. The job then waits for tick-based detection, as before.
+
 ### Compactor ID defaults to hostname
 
 If `logline.compaction.compactor_id` is not configured, `Validate()` falls back to `os.Hostname()`. In a StatefulSet, this gives each pod a stable, unique identity without extra config.

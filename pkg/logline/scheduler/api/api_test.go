@@ -81,6 +81,16 @@ func TestNewAbandonRequest(t *testing.T) {
 	require.Equal(t, LegacyAbandonPath, req.URL.Path)
 }
 
+func TestNewCompleteRequest(t *testing.T) {
+	req, err := NewCompleteRequest(context.Background(), "http://scheduler:3100", "w1", "job789")
+	require.NoError(t, err)
+
+	require.Equal(t, "POST", req.Method)
+	require.Equal(t, CompletePath, req.URL.Path)
+	require.Equal(t, "w1", req.URL.Query().Get(ParamWorkerID))
+	require.Equal(t, "job789", req.URL.Query().Get(ParamJobID))
+}
+
 func TestJobID(t *testing.T) {
 	req := httptest.NewRequest("POST", AbandonPath+"?"+ParamWorkerID+"=w1&"+ParamJobID+"=job123", nil)
 	require.Equal(t, "job123", JobID(req))

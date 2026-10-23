@@ -18,6 +18,8 @@ const (
 	AbandonPath   = "/logline/api/v1/compaction/abandon"
 	StatusPath    = "/logline/api/v1/compaction/status"
 	StoreDumpPath = "/logline/api/v1/store"
+	// CompletePath has no legacy route. Schedulers that predate it answer 404.
+	CompletePath = "/logline/api/v1/compaction/complete"
 )
 
 // Deprecated:
@@ -102,6 +104,16 @@ func NewAbandonRequest(ctx context.Context, baseURL, workerID, jobID string) (*h
 	abandonURL := baseURL + LegacyAbandonPath + "?" + ParamWorkerID + "=" + url.QueryEscape(workerID) +
 		"&" + ParamJobID + "=" + url.QueryEscape(jobID)
 	return http.NewRequestWithContext(ctx, http.MethodPost, abandonURL, nil)
+}
+
+// NewCompleteRequest builds an HTTP POST request reporting that the worker
+// finished a job, without asking for a new one (e.g. during shutdown). The
+// scheduler removes the job and keeps its sources out of planning until a store
+// poll sees the merged index.
+func NewCompleteRequest(ctx context.Context, baseURL, workerID, jobID string) (*http.Request, error) {
+	completeURL := baseURL + CompletePath + "?" + ParamWorkerID + "=" + url.QueryEscape(workerID) +
+		"&" + ParamJobID + "=" + url.QueryEscape(jobID)
+	return http.NewRequestWithContext(ctx, http.MethodPost, completeURL, nil)
 }
 
 // WorkerID extracts the worker ID from an inbound HTTP request.
