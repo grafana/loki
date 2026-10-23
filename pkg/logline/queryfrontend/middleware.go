@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -441,7 +442,7 @@ func resolveMode(header string, tenantMode, defaultMode Mode, requireOptInHeader
 	return mode, false
 }
 
-func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time) (uint64, error) {
+func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time, stepMillis int64) (uint64, error) {
 	matcherGroups, err := syntax.MatcherGroups(expr)
 	if err != nil {
 		return 0, err
@@ -451,19 +452,15 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 		matcherGroups = append(matcherGroups, syntax.MatcherRange{})
 	}
 
-	start := model.Time(from.UnixMilli())
-	end := model.Time(through.UnixMilli())
 	ctx = queryrange.WithInternalRequest(ctx)
 
 	var totalBytes uint64
 	for _, group := range matcherGroups {
-		diff := group.Interval + group.Offset
-		adjustedFrom := start.Add(-diff)
-		adjustedThrough := end.Add(-group.Offset)
+		adjustedFrom, adjustedThrough := metricLookupBounds(group, from, through, stepMillis)
 
 		resp, err := h.next.Do(ctx, &logproto.IndexStatsRequest{
-			From:     adjustedFrom,
-			Through:  adjustedThrough,
+			From:     model.Time(adjustedFrom.UnixMilli()),
+			Through:  model.Time(adjustedThrough.UnixMilli()),
 			Matchers: syntax.MatchersString(group.Matchers),
 		})
 		if err != nil {
@@ -481,6 +478,83 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	}
 
 	return totalBytes, nil
+}
+
+// metricLookupBounds rounds onto the step, then widens by the range and offset.
+// Prefetch runs before the splitter, which floors the start and rounds the end up.
+// A zero interval or a zero step is only widened.
+func metricLookupBounds(group syntax.MatcherRange, from, through time.Time, stepMillis int64) (time.Time, time.Time) {
+	if group.Interval > 0 && stepMillis > 0 {
+		from, through = alignMetricStep(from, through, stepMillis)
+	}
+	return group.Widen(from, through)
+}
+
+// alignMetricStep matches metricQuerySplitter.alignStartEnd: floor the start and
+// round the end up to the next step.
+func alignMetricStep(start, end time.Time, stepMillis int64) (time.Time, time.Time) {
+	stepNs := stepMillis * int64(time.Millisecond)
+	startNs := start.UnixNano()
+	endNs := end.UnixNano()
+	if mod := endNs % stepNs; mod != 0 {
+		endNs += stepNs - mod
+	}
+	return time.Unix(0, startNs-startNs%stepNs).UTC(), time.Unix(0, endNs).UTC()
+}
+
+// dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
+// The hint may not be the line that produced the sample. TotalEntries counts the positive
+// steps whose lookback ended at or before the ingester cutoff. A miss records that whole lookback.
+func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
+	report := verification.Report{HintRanges: len(hints)}
+	// For now, we don't check absent_over_time for correctness
+	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
+		return report
+	}
+	group := metricMatcherGroup(expr)
+	for _, stream := range promResp.Response.Data.Result {
+		for _, sample := range stream.Samples {
+			if sample.Value <= 0 {
+				continue
+			}
+			step := time.UnixMilli(sample.TimestampMs)
+			winStart, winEnd := group.Widen(step, step)
+			if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
+				continue
+			}
+			report.TotalEntries++
+			if !rangesOverlap(hints, winStart, winEnd) {
+				report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
+					Start: winStart,
+					End:   winEnd,
+				})
+				continue
+			}
+			report.CoveredEntries++
+		}
+	}
+	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
+	return report
+}
+
+// metricMatcherGroup returns the single matcher group for a supported metric query.
+func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
+	groups, err := syntax.MatcherGroups(expr)
+	if err != nil || len(groups) != 1 {
+		return syntax.MatcherRange{}
+	}
+	return groups[0]
+}
+
+func isAbsentOverTimeAgg(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return isAbsentOverTimeAgg(e.Left)
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeAbsent
+	default:
+		return false
+	}
 }
 
 func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
@@ -612,12 +686,18 @@ func (h *loglinePrefetchHandler) doDryRun(
 	queryBytes uint64,
 ) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, h.logger)
-	eligibleEnd := through
+	// A supported metric query has one log selector, so it has one matcher group.
+	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
+	readStart, readEnd := from, through
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		readStart, readEnd = metricLookupBounds(groups[0], from, through, lokiReq.Step)
+	}
+	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
 		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
-		if cutoff.After(from) && cutoff.Before(through) {
+		if cutoff.After(readStart) && cutoff.Before(readEnd) {
 			eligibleEnd = cutoff
-		} else if !cutoff.After(from) {
+		} else if !cutoff.After(readStart) {
 			// Entire query is in the ingester window — nothing to verify.
 			return h.next.Do(ctx, req)
 		}
@@ -656,7 +736,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 			prefetchCtx,
 			tenant,
 			expr,
-			model.TimeFromUnixNano(from.UnixNano()),
+			model.TimeFromUnixNano(readStart.UnixNano()),
 			model.TimeFromUnixNano(eligibleEnd.UnixNano()),
 		)
 		lookup.duration = time.Since(start)
@@ -730,7 +810,8 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	hintSummary := summarizeDryRunHints(lookup.ranges, from, through, eligibleEnd, lokiReq.Direction)
+	hintSummary := summarizeDryRunHints(lookup.ranges, readStart, readEnd, eligibleEnd, lokiReq.Direction)
+	queryType, _ := logql.QueryType(expr)
 
 	// Hint lookup succeeded. If the query timed out we can still report
 	// the hint data — mark correct=true since the hints themselves were
@@ -741,6 +822,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		}
 		logValues := []any{
 			"msg", "logline dry-run verification",
+			"query_type", queryType,
 			"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
 			"hint_duration", lookup.duration,
 			"hint_ranges", len(lookup.ranges),
@@ -762,16 +844,19 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	lokiResp, ok := resp.(*queryrange.LokiResponse)
-	if !ok {
+	var vr verification.Report
+	switch r := resp.(type) {
+	case *queryrange.LokiPromResponse:
+		vr = dryRunMetricReport(expr, r, lookup.ranges, eligibleEnd)
+	case *queryrange.LokiResponse:
+		vr = verifyDryRunHints(lookup.ranges, r, eligibleEnd)
+	default:
 		level.Warn(logger).Log(
 			"msg", "logline dry-run verification skipped due non-Loki response",
 			"response_type", fmt.Sprintf("%T", resp),
 		)
 		return resp, queryErr
 	}
-
-	vr := verifyDryRunHints(lookup.ranges, lokiResp, eligibleEnd)
 	correct := vr.Correct()
 	label := "correct"
 	if !correct {
@@ -783,6 +868,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 
 	logValues := []any{
 		"msg", "logline dry-run verification",
+		"query_type", queryType,
 		"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
 		"hint_duration", lookup.duration,
 		"hint_ranges", len(lookup.ranges),
@@ -796,6 +882,11 @@ func (h *loglinePrefetchHandler) doDryRun(
 		"covered_entries", vr.CoveredEntries,
 		"false_negatives", vr.FalseNegatives,
 		"correct", correct,
+	}
+	if len(vr.FalseNegativeRanges) > 0 {
+		logValues = append(logValues,
+			"false_negative_ranges", hintprovider.FormatHintRanges(vr.FalseNegativeRanges),
+		)
 	}
 	logValues = appendHintStats(logValues, lookup.stats)
 	level.Info(logger).Log(logValues...)
@@ -830,10 +921,10 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.next.Do(ctx, req)
 	}
 
-	// Metric queries (SampleExpr) return numeric series, not log entries,
-	// so there is nothing to narrow or verify.
 	if _, ok := expr.(syntax.SampleExpr); ok {
-		return h.next.Do(ctx, req)
+		if mode != ModeDryRun || len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
+			return h.next.Do(ctx, req)
+		}
 	}
 
 	// Shared eligibility: supported query shape.
@@ -848,7 +939,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	through := lokiReq.EndTs.UTC()
 	queryBytes := uint64(0)
 	if minQueryBytes > 0 {
-		queryBytes, err = h.getQueryBytes(ctx, expr, from, through)
+		queryBytes, err = h.getQueryBytes(ctx, expr, from, through, lokiReq.Step)
 		if err != nil {
 			level.Warn(logger).Log(
 				"msg", "failed to get query stats for logline gating; skipping hint lookup",
@@ -1043,26 +1134,34 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.next.Do(ctx, req)
 	}
 
-	if intervalEnd.After(result.ingesterCutoff) {
+	// A metric split reads before its start. Overlap and clipping use that window
+	// so a lookback match is not treated as a miss. Log queries widen by zero.
+	expr, _ := syntax.ParseExpr(lokiReq.Query)
+	readStart, readEnd := intervalStart, intervalEnd
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
+	}
+
+	if readEnd.After(result.ingesterCutoff) {
 		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
 		return h.next.Do(ctx, req)
 	}
 
-	overlapping := rangesOverlapping(result.ranges, intervalStart, intervalEnd)
+	overlapping := rangesOverlapping(result.ranges, readStart, readEnd)
 	if len(overlapping) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedLokiResponse(lokiReq), nil
+		return skippedResponse(lokiReq, expr), nil
 	}
 
-	hints := clipHintRangesForInterval(overlapping, intervalStart, intervalEnd)
+	hints := clipHintRangesForInterval(overlapping, readStart, readEnd)
 	if len(hints) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedLokiResponse(lokiReq), nil
+		return skippedResponse(lokiReq, expr), nil
 	}
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
 	// the querier scans the interval normally.
-	if passthroughCoversInterval(overlapping, hints, intervalStart, intervalEnd) {
+	if passthroughCoversInterval(overlapping, hints, readStart, readEnd) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
 		return h.next.Do(ctx, req)
 	}
@@ -1071,14 +1170,32 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	resp, err := h.next.Do(ctx, withHintRanges(lokiReq, hints))
 	// The count travels on the sub-request's response, so the split and shard
 	// merges add it up and discarded responses (retries) drop it.
-	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok && err == nil {
-		lokiResp.Statistics.LoglineStats().NarrowedRequests++
+	if err == nil {
+		switch r := resp.(type) {
+		case *queryrange.LokiResponse:
+			r.Statistics.LoglineStats().NarrowedRequests++
+		case *queryrange.LokiPromResponse:
+			r.Statistics.LoglineStats().NarrowedRequests++
+		}
 	}
 	return resp, err
 }
 
+func skippedResponse(req *queryrange.LokiRequest, expr syntax.Expr) queryrangebase.Response {
+	if _, ok := expr.(syntax.SampleExpr); ok {
+		return skippedMetricResponse()
+	}
+	return skippedLokiResponse(req)
+}
+
 func skippedLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
 	resp := emptyLokiResponse(req)
+	resp.Statistics.LoglineStats().SkippedRequests = 1
+	return resp
+}
+
+func skippedMetricResponse() *queryrange.LokiPromResponse {
+	resp := emptyMetricResponse()
 	resp.Statistics.LoglineStats().SkippedRequests = 1
 	return resp
 }
@@ -1160,6 +1277,19 @@ func isCancel(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
+// rangesOverlap reports whether any half-open hint [Start, End) overlaps (start, end].
+// A hint that only ends at start shares no time with the window.
+// Assumes ranges are sorted by Start. It does not allocate.
+func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+	if len(ranges) == 0 {
+		return false
+	}
+	idx := sort.Search(len(ranges), func(i int) bool {
+		return ranges[i].End.After(start)
+	})
+	return idx < len(ranges) && !ranges[idx].Start.After(end)
+}
+
 // rangesOverlapping returns hint ranges that overlap [start, end].
 // Assumes ranges are sorted by Start.
 func rangesOverlapping(ranges []hintprovider.HintTimeRange, start, end time.Time) []hintprovider.HintTimeRange {
@@ -1204,6 +1334,18 @@ func emptyLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
 		Data: queryrange.LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result:     []logproto.Stream{},
+		},
+	}
+}
+
+func emptyMetricResponse() *queryrange.LokiPromResponse {
+	return &queryrange.LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result:     []queryrangebase.SampleStream{},
+			},
 		},
 	}
 }
