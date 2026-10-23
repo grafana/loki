@@ -67,7 +67,6 @@ type Fetcher struct {
 
 	l2CacheHandoff                   time.Duration
 	skipQueryWritebackCacheOlderThan time.Duration
-	propagateChunkFetchErrors        bool
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
@@ -87,7 +86,7 @@ type decodeResponse struct {
 }
 
 // New makes a new ChunkFetcher.
-func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration, propagateChunkFetchErrors bool) (*Fetcher, error) {
+func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:                           schema,
 		storage:                          storage,
@@ -96,7 +95,6 @@ func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.
 		l2CacheHandoff:                   l2CacheHandoff,
 		cacheStubs:                       cacheStubs,
 		skipQueryWritebackCacheOlderThan: skipQueryWritebackOlderThan,
-		propagateChunkFetchErrors:        propagateChunkFetchErrors,
 		decodeRequests:                   make(chan decodeRequest),
 	}
 
@@ -249,9 +247,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 			level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 		}
 
-		if c.propagateChunkFetchErrors {
-			return nil, storageErr
-		}
+		return nil, storageErr
 	}
 
 	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {

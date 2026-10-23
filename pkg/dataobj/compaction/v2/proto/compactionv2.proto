@@ -14,7 +14,7 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 // SectionRef identifies one section in object storage with its sort-key bounds.
 //
 // The section's sort-key is the tuple (sort_schema_label_values, __timestamp__)
-// per the tenant's sort_schema. To order sections correctly without imposing
+// per the sort_schema of the index. To order sections correctly without imposing
 // encoding contracts on the caller, the proto splits this tuple across two
 // field categories:
 //
@@ -46,5 +46,8 @@ message RunRef {
 message TaskSpec {
   string tenant = 1 [(gogoproto.jsontag) = "tenant"];
   repeated RunRef runs = 2 [(gogoproto.jsontag) = "runs"];
-  repeated string sort_schema = 3 [(gogoproto.jsontag) = "sort_schema"];
+
+  // Field 3 held the sort schema. Do not reuse it.
+  reserved 3;
+  reserved "sort_schema";
 }

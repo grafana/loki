@@ -36,8 +36,8 @@ type (
 )
 
 const (
-	statsKey        ctxKeyType = "stats"
-	partialStatsKey ctxKeyType = "partial-stats"
+	statsKey              ctxKeyType = "stats"
+	discardedWorkStatsKey ctxKeyType = "discarded-work-stats"
 )
 
 // Context is the statistics context. It is passed through the query path and accumulates statistics.
@@ -102,41 +102,49 @@ func FromContext(ctx context.Context) *Context {
 	return v
 }
 
-// PartialContext accumulates statistics from sub-queries that completed before
-// the overall query failed. It has its own context key so that the nested stats
-// Contexts opened deeper in the query path do not shadow it.
-type PartialContext struct {
+// DiscardedWorkContext accumulates statistics for completed work whose results
+// will not contribute statistics through the normal response path. This includes
+// successful child queries whose parent query later fails.
+//
+// Producers must record each result either here or through the normal response
+// path, never both. The root query merges a snapshot into its response on success
+// or uses the snapshot for failed-query reporting on error.
+// Its own context key prevents nested stats Contexts from shadowing it.
+type DiscardedWorkContext struct {
 	mtx    sync.Mutex
 	result Result
 }
 
-func NewPartialContext(ctx context.Context) (*PartialContext, context.Context) {
-	pc := &PartialContext{}
-	ctx = context.WithValue(ctx, partialStatsKey, pc)
-	return pc, ctx
+// NewDiscardedWorkContext installs a new collector for discarded-work statistics.
+func NewDiscardedWorkContext(ctx context.Context) (*DiscardedWorkContext, context.Context) {
+	discardedWork := &DiscardedWorkContext{}
+	ctx = context.WithValue(ctx, discardedWorkStatsKey, discardedWork)
+	return discardedWork, ctx
 }
 
-func PartialFromContext(ctx context.Context) (*PartialContext, bool) {
-	v, ok := ctx.Value(partialStatsKey).(*PartialContext)
+// DiscardedWorkFromContext returns the discarded-work collector, if installed.
+func DiscardedWorkFromContext(ctx context.Context) (*DiscardedWorkContext, bool) {
+	v, ok := ctx.Value(discardedWorkStatsKey).(*DiscardedWorkContext)
 	return v, ok
 }
 
-// JoinPartial merges res into the PartialContext installed in ctx, and is a
-// no-op if there is none, so fan-out sites can call it unconditionally.
-func JoinPartial(ctx context.Context, res Result) {
-	pc, ok := PartialFromContext(ctx)
+// JoinDiscardedWork merges res into the DiscardedWorkContext installed in ctx.
+// It is a no-op if no collector is installed.
+func JoinDiscardedWork(ctx context.Context, res Result) {
+	discardedWork, ok := DiscardedWorkFromContext(ctx)
 	if !ok {
 		return
 	}
-	pc.mtx.Lock()
-	defer pc.mtx.Unlock()
-	pc.result.Merge(res)
+	discardedWork.mtx.Lock()
+	defer discardedWork.mtx.Unlock()
+	discardedWork.result.Merge(res)
 }
 
-func (pc *PartialContext) Result() Result {
-	pc.mtx.Lock()
-	defer pc.mtx.Unlock()
-	return pc.result
+// Result returns a snapshot without clearing statistics or stopping further writes.
+func (c *DiscardedWorkContext) Result() Result {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.result
 }
 
 // Ingester returns the ingester statistics accumulated so far.
@@ -313,9 +321,6 @@ func (s *Store) Merge(m Store) {
 	s.TotalChunksScanned += m.TotalChunksScanned
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
-	}
-	if m.QueryUsedV2Engine {
-		s.QueryUsedV2Engine = true
 	}
 }
 
@@ -526,10 +531,6 @@ func (r Result) QueryReferencedStructuredMetadata() bool {
 	return r.Querier.Store.QueryReferencedStructured || r.Ingester.Store.QueryReferencedStructured
 }
 
-func (r Result) QueryUsedV2Engine() bool {
-	return r.Querier.Store.QueryUsedV2Engine
-}
-
 func (c *Context) AddIngesterBatch(size int64) {
 	atomic.AddInt64(&c.ingester.TotalBatches, 1)
 	atomic.AddInt64(&c.ingester.TotalLinesSent, size)
@@ -612,8 +613,7 @@ func (c *Context) AddChunksRef(i int64) {
 }
 
 // AddChunkFetchFailures counts chunks that could not be fetched or decoded for
-// the query, even when propagateChunkFetchErrors chose to tolerate the
-// failure instead of failing the whole query.
+// the query, which always fails the query outright.
 func (c *Context) AddChunkFetchFailures(i int64) {
 	atomic.AddInt64(&c.store.ChunkFetchFailures, i)
 }
@@ -798,10 +798,6 @@ func (c *Context) SetQueryReferencedStructuredMetadata() {
 	c.store.QueryReferencedStructured = true
 }
 
-func (c *Context) SetQueryUsedV2Engine() {
-	c.store.QueryUsedV2Engine = true
-}
-
 // AddQuerierExecTime accumulates the querier execution time.
 func (c *Context) AddQuerierExecTime(d time.Duration) {
 	atomic.AddInt64(&c.querierExecTime, int64(d))
@@ -871,13 +867,7 @@ func (r Result) KVList() []any {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
-		"Querier.QueryUsedV2Engine", r.Querier.Store.QueryUsedV2Engine,
 		"Querier.ChunkFetchFailures", r.Querier.Store.ChunkFetchFailures,
-	}
-
-	if r.QueryUsedV2Engine() {
-		// Specifying prefix in case r.Ingester.Store ever uses the new engine.
-		result = append(result, r.Querier.Store.Dataobj.kvList("Querier.")...)
 	}
 
 	result = append(result, r.Caches.kvList()...)
@@ -961,24 +951,5 @@ func (c Caches) kvList() []any {
 		"Cache.TaskResult.EntriesRequested", c.TaskResult.EntriesRequested,
 		"Cache.TaskResult.EntriesFound", c.TaskResult.EntriesFound,
 		"Cache.TaskResult.BytesReceived", humanize.Bytes(uint64(c.TaskResult.BytesReceived)),
-	}
-}
-
-func (d Dataobj) kvList(prefix string) []any {
-	return []any{
-		prefix + "Dataobj.PrePredicateDecompressedRows", d.PrePredicateDecompressedRows,
-		prefix + "Dataobj.PrePredicateDecompressedBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedBytes)),
-		prefix + "Dataobj.PrePredicateDecompressedStructuredMetadataBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedStructuredMetadataBytes)),
-		prefix + "Dataobj.PostPredicateRows", d.PostPredicateRows,
-		prefix + "Dataobj.PostPredicateDecompressedBytes", humanize.Bytes(uint64(d.PostPredicateDecompressedBytes)),
-		prefix + "Dataobj.PostPredicateStructuredMetadataBytes", humanize.Bytes(uint64(d.PostPredicateStructuredMetadataBytes)),
-		prefix + "Dataobj.PostFilterRows", d.PostFilterRows,
-		prefix + "Dataobj.PagesScanned", d.PagesScanned,
-		prefix + "Dataobj.PagesDownloaded", d.PagesDownloaded,
-		prefix + "Dataobj.PagesDownloadedBytes", humanize.Bytes(uint64(d.PagesDownloadedBytes)),
-		prefix + "Dataobj.PageBatches", d.PageBatches,
-		prefix + "Dataobj.TotalRowsAvailable", d.TotalRowsAvailable,
-		prefix + "Dataobj.TotalPageDownloadTime", time.Duration(d.TotalPageDownloadTime),
-		prefix + "Dataobj.WireBytesTransferred", humanize.Bytes(uint64(d.WireBytesTransferred)),
 	}
 }

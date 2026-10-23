@@ -13,12 +13,8 @@ import (
 type FakeSubResourceClient struct {
 	ApplyStub        func(context.Context, runtime.ApplyConfiguration, ...client.SubResourceApplyOption) error
 	applyMutex       sync.RWMutex
-	applyArgsForCall []struct {
-		arg1 context.Context
-		arg2 runtime.ApplyConfiguration
-		arg3 []client.SubResourceApplyOption
-	}
-	applyReturns struct {
+	applyArgsForCall []FakeSubResourceClientApplyArgs
+	applyReturns     struct {
 		result1 error
 	}
 	applyReturnsOnCall map[int]struct {
@@ -26,13 +22,8 @@ type FakeSubResourceClient struct {
 	}
 	CreateStub        func(context.Context, client.Object, client.Object, ...client.SubResourceCreateOption) error
 	createMutex       sync.RWMutex
-	createArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 client.Object
-		arg4 []client.SubResourceCreateOption
-	}
-	createReturns struct {
+	createArgsForCall []FakeSubResourceClientCreateArgs
+	createReturns     struct {
 		result1 error
 	}
 	createReturnsOnCall map[int]struct {
@@ -40,13 +31,8 @@ type FakeSubResourceClient struct {
 	}
 	GetStub        func(context.Context, client.Object, client.Object, ...client.SubResourceGetOption) error
 	getMutex       sync.RWMutex
-	getArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 client.Object
-		arg4 []client.SubResourceGetOption
-	}
-	getReturns struct {
+	getArgsForCall []FakeSubResourceClientGetArgs
+	getReturns     struct {
 		result1 error
 	}
 	getReturnsOnCall map[int]struct {
@@ -54,13 +40,8 @@ type FakeSubResourceClient struct {
 	}
 	PatchStub        func(context.Context, client.Object, client.Patch, ...client.SubResourcePatchOption) error
 	patchMutex       sync.RWMutex
-	patchArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 client.Patch
-		arg4 []client.SubResourcePatchOption
-	}
-	patchReturns struct {
+	patchArgsForCall []FakeSubResourceClientPatchArgs
+	patchReturns     struct {
 		result1 error
 	}
 	patchReturnsOnCall map[int]struct {
@@ -68,32 +49,68 @@ type FakeSubResourceClient struct {
 	}
 	UpdateStub        func(context.Context, client.Object, ...client.SubResourceUpdateOption) error
 	updateMutex       sync.RWMutex
-	updateArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.SubResourceUpdateOption
-	}
-	updateReturns struct {
+	updateArgsForCall []FakeSubResourceClientUpdateArgs
+	updateReturns     struct {
 		result1 error
 	}
 	updateReturnsOnCall map[int]struct {
 		result1 error
 	}
 	invocations      map[string][][]interface{}
+	callOrder        []string
 	invocationsMutex sync.RWMutex
 }
 
+// FakeSubResourceClientApplyArgs holds the arguments of one call to Apply.
+type FakeSubResourceClientApplyArgs struct {
+	Arg1 context.Context
+	Arg2 runtime.ApplyConfiguration
+	Arg3 []client.SubResourceApplyOption
+}
+
+// FakeSubResourceClientCreateArgs holds the arguments of one call to Create.
+type FakeSubResourceClientCreateArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 client.Object
+	Arg4 []client.SubResourceCreateOption
+}
+
+// FakeSubResourceClientGetArgs holds the arguments of one call to Get.
+type FakeSubResourceClientGetArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 client.Object
+	Arg4 []client.SubResourceGetOption
+}
+
+// FakeSubResourceClientPatchArgs holds the arguments of one call to Patch.
+type FakeSubResourceClientPatchArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 client.Patch
+	Arg4 []client.SubResourcePatchOption
+}
+
+// FakeSubResourceClientUpdateArgs holds the arguments of one call to Update.
+type FakeSubResourceClientUpdateArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 []client.SubResourceUpdateOption
+}
+
 func (fake *FakeSubResourceClient) Apply(arg1 context.Context, arg2 runtime.ApplyConfiguration, arg3 ...client.SubResourceApplyOption) error {
+	var arg3Copy []client.SubResourceApplyOption
+	if arg3 != nil {
+		arg3Copy = make([]client.SubResourceApplyOption, len(arg3))
+		copy(arg3Copy, arg3)
+	}
 	fake.applyMutex.Lock()
 	ret, specificReturn := fake.applyReturnsOnCall[len(fake.applyArgsForCall)]
-	fake.applyArgsForCall = append(fake.applyArgsForCall, struct {
-		arg1 context.Context
-		arg2 runtime.ApplyConfiguration
-		arg3 []client.SubResourceApplyOption
-	}{arg1, arg2, arg3})
+	fake.applyArgsForCall = append(fake.applyArgsForCall, FakeSubResourceClientApplyArgs{arg1, arg2, arg3Copy})
 	stub := fake.ApplyStub
 	fakeReturns := fake.applyReturns
-	fake.recordInvocation("Apply", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("Apply", []interface{}{arg1, arg2, arg3Copy})
 	fake.applyMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3...)
@@ -120,7 +137,15 @@ func (fake *FakeSubResourceClient) ApplyArgsForCall(i int) (context.Context, run
 	fake.applyMutex.RLock()
 	defer fake.applyMutex.RUnlock()
 	argsForCall := fake.applyArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3
+}
+
+func (fake *FakeSubResourceClient) ApplyArgs() []FakeSubResourceClientApplyArgs {
+	fake.applyMutex.RLock()
+	defer fake.applyMutex.RUnlock()
+	args := make([]FakeSubResourceClientApplyArgs, len(fake.applyArgsForCall))
+	copy(args, fake.applyArgsForCall)
+	return args
 }
 
 func (fake *FakeSubResourceClient) ApplyReturns(result1 error) {
@@ -147,17 +172,17 @@ func (fake *FakeSubResourceClient) ApplyReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeSubResourceClient) Create(arg1 context.Context, arg2 client.Object, arg3 client.Object, arg4 ...client.SubResourceCreateOption) error {
+	var arg4Copy []client.SubResourceCreateOption
+	if arg4 != nil {
+		arg4Copy = make([]client.SubResourceCreateOption, len(arg4))
+		copy(arg4Copy, arg4)
+	}
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
-	fake.createArgsForCall = append(fake.createArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 client.Object
-		arg4 []client.SubResourceCreateOption
-	}{arg1, arg2, arg3, arg4})
+	fake.createArgsForCall = append(fake.createArgsForCall, FakeSubResourceClientCreateArgs{arg1, arg2, arg3, arg4Copy})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
-	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3, arg4})
+	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3, arg4Copy})
 	fake.createMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3, arg4...)
@@ -184,7 +209,15 @@ func (fake *FakeSubResourceClient) CreateArgsForCall(i int) (context.Context, cl
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3, argsForCall.Arg4
+}
+
+func (fake *FakeSubResourceClient) CreateArgs() []FakeSubResourceClientCreateArgs {
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
+	args := make([]FakeSubResourceClientCreateArgs, len(fake.createArgsForCall))
+	copy(args, fake.createArgsForCall)
+	return args
 }
 
 func (fake *FakeSubResourceClient) CreateReturns(result1 error) {
@@ -211,17 +244,17 @@ func (fake *FakeSubResourceClient) CreateReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeSubResourceClient) Get(arg1 context.Context, arg2 client.Object, arg3 client.Object, arg4 ...client.SubResourceGetOption) error {
+	var arg4Copy []client.SubResourceGetOption
+	if arg4 != nil {
+		arg4Copy = make([]client.SubResourceGetOption, len(arg4))
+		copy(arg4Copy, arg4)
+	}
 	fake.getMutex.Lock()
 	ret, specificReturn := fake.getReturnsOnCall[len(fake.getArgsForCall)]
-	fake.getArgsForCall = append(fake.getArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 client.Object
-		arg4 []client.SubResourceGetOption
-	}{arg1, arg2, arg3, arg4})
+	fake.getArgsForCall = append(fake.getArgsForCall, FakeSubResourceClientGetArgs{arg1, arg2, arg3, arg4Copy})
 	stub := fake.GetStub
 	fakeReturns := fake.getReturns
-	fake.recordInvocation("Get", []interface{}{arg1, arg2, arg3, arg4})
+	fake.recordInvocation("Get", []interface{}{arg1, arg2, arg3, arg4Copy})
 	fake.getMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3, arg4...)
@@ -248,7 +281,15 @@ func (fake *FakeSubResourceClient) GetArgsForCall(i int) (context.Context, clien
 	fake.getMutex.RLock()
 	defer fake.getMutex.RUnlock()
 	argsForCall := fake.getArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3, argsForCall.Arg4
+}
+
+func (fake *FakeSubResourceClient) GetArgs() []FakeSubResourceClientGetArgs {
+	fake.getMutex.RLock()
+	defer fake.getMutex.RUnlock()
+	args := make([]FakeSubResourceClientGetArgs, len(fake.getArgsForCall))
+	copy(args, fake.getArgsForCall)
+	return args
 }
 
 func (fake *FakeSubResourceClient) GetReturns(result1 error) {
@@ -275,17 +316,17 @@ func (fake *FakeSubResourceClient) GetReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeSubResourceClient) Patch(arg1 context.Context, arg2 client.Object, arg3 client.Patch, arg4 ...client.SubResourcePatchOption) error {
+	var arg4Copy []client.SubResourcePatchOption
+	if arg4 != nil {
+		arg4Copy = make([]client.SubResourcePatchOption, len(arg4))
+		copy(arg4Copy, arg4)
+	}
 	fake.patchMutex.Lock()
 	ret, specificReturn := fake.patchReturnsOnCall[len(fake.patchArgsForCall)]
-	fake.patchArgsForCall = append(fake.patchArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 client.Patch
-		arg4 []client.SubResourcePatchOption
-	}{arg1, arg2, arg3, arg4})
+	fake.patchArgsForCall = append(fake.patchArgsForCall, FakeSubResourceClientPatchArgs{arg1, arg2, arg3, arg4Copy})
 	stub := fake.PatchStub
 	fakeReturns := fake.patchReturns
-	fake.recordInvocation("Patch", []interface{}{arg1, arg2, arg3, arg4})
+	fake.recordInvocation("Patch", []interface{}{arg1, arg2, arg3, arg4Copy})
 	fake.patchMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3, arg4...)
@@ -312,7 +353,15 @@ func (fake *FakeSubResourceClient) PatchArgsForCall(i int) (context.Context, cli
 	fake.patchMutex.RLock()
 	defer fake.patchMutex.RUnlock()
 	argsForCall := fake.patchArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3, argsForCall.Arg4
+}
+
+func (fake *FakeSubResourceClient) PatchArgs() []FakeSubResourceClientPatchArgs {
+	fake.patchMutex.RLock()
+	defer fake.patchMutex.RUnlock()
+	args := make([]FakeSubResourceClientPatchArgs, len(fake.patchArgsForCall))
+	copy(args, fake.patchArgsForCall)
+	return args
 }
 
 func (fake *FakeSubResourceClient) PatchReturns(result1 error) {
@@ -339,16 +388,17 @@ func (fake *FakeSubResourceClient) PatchReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeSubResourceClient) Update(arg1 context.Context, arg2 client.Object, arg3 ...client.SubResourceUpdateOption) error {
+	var arg3Copy []client.SubResourceUpdateOption
+	if arg3 != nil {
+		arg3Copy = make([]client.SubResourceUpdateOption, len(arg3))
+		copy(arg3Copy, arg3)
+	}
 	fake.updateMutex.Lock()
 	ret, specificReturn := fake.updateReturnsOnCall[len(fake.updateArgsForCall)]
-	fake.updateArgsForCall = append(fake.updateArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.SubResourceUpdateOption
-	}{arg1, arg2, arg3})
+	fake.updateArgsForCall = append(fake.updateArgsForCall, FakeSubResourceClientUpdateArgs{arg1, arg2, arg3Copy})
 	stub := fake.UpdateStub
 	fakeReturns := fake.updateReturns
-	fake.recordInvocation("Update", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("Update", []interface{}{arg1, arg2, arg3Copy})
 	fake.updateMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3...)
@@ -375,7 +425,15 @@ func (fake *FakeSubResourceClient) UpdateArgsForCall(i int) (context.Context, cl
 	fake.updateMutex.RLock()
 	defer fake.updateMutex.RUnlock()
 	argsForCall := fake.updateArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3
+}
+
+func (fake *FakeSubResourceClient) UpdateArgs() []FakeSubResourceClientUpdateArgs {
+	fake.updateMutex.RLock()
+	defer fake.updateMutex.RUnlock()
+	args := make([]FakeSubResourceClientUpdateArgs, len(fake.updateArgsForCall))
+	copy(args, fake.updateArgsForCall)
+	return args
 }
 
 func (fake *FakeSubResourceClient) UpdateReturns(result1 error) {
@@ -411,9 +469,18 @@ func (fake *FakeSubResourceClient) Invocations() map[string][][]interface{} {
 	return copiedInvocations
 }
 
+func (fake *FakeSubResourceClient) CallOrder() []string {
+	fake.invocationsMutex.RLock()
+	defer fake.invocationsMutex.RUnlock()
+	order := make([]string, len(fake.callOrder))
+	copy(order, fake.callOrder)
+	return order
+}
+
 func (fake *FakeSubResourceClient) recordInvocation(key string, args []interface{}) {
 	fake.invocationsMutex.Lock()
 	defer fake.invocationsMutex.Unlock()
+	fake.callOrder = append(fake.callOrder, key)
 	if fake.invocations == nil {
 		fake.invocations = map[string][][]interface{}{}
 	}

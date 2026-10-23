@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testing.T) {
+func TestProxyEndpoint_SecondaryBackendContinuesAfterPrimaryCompletes(t *testing.T) {
 	// Create an in-memory span exporter to capture spans
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(
@@ -37,7 +37,7 @@ func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testin
 	backendBCompleted := make(chan bool, 1)
 
 	// Create test servers for backends
-	// Backend A (preferred) - completes quickly
+	// Backend A (primary) - completes quickly
 	serverA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		backendACalled <- true
 		time.Sleep(10 * time.Millisecond) // Quick response
@@ -47,7 +47,7 @@ func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testin
 	}))
 	defer serverA.Close()
 
-	// Backend B - takes longer, simulating Goldfish processing
+	// Backend B (secondary) - takes longer than the primary
 	serverB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		backendBCalled <- true
 
@@ -75,9 +75,9 @@ func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testin
 	require.NoError(t, err)
 
 	// Create backends
-	backendA, err := NewProxyBackend("cell-a", urlA, 5*time.Second, true)
+	backendA, err := NewProxyBackend("cell-a", urlA, 5*time.Second, RolePrimary)
 	require.NoError(t, err)
-	backendB, err := NewProxyBackend("cell-b", urlB, 5*time.Second, false)
+	backendB, err := NewProxyBackend("cell-b", urlB, 5*time.Second, RoleSecondary)
 	require.NoError(t, err)
 
 	// Create proxy endpoint
@@ -137,7 +137,7 @@ func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testin
 		t.Fatal("Backend B did not complete")
 	}
 
-	// Verify response is from backend A (preferred)
+	// Verify response is from backend A (primary)
 	require.Equal(t, 200, recorder.Code)
 	require.Contains(t, recorder.Body.String(), "success")
 

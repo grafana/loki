@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -62,8 +63,7 @@ func TestInstancePushQuery(t *testing.T) {
 		newIngesterMetrics(nil, "test"),
 		drain.DefaultConfig(),
 		&fakeLimits{},
-		ringClient,
-		ingesterID,
+		&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
@@ -236,8 +236,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			newIngesterMetrics(nil, "test"),
 			drain.DefaultConfig(),
 			&fakeLimits{},
-			ringClient,
-			ingesterID,
+			&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 			mockWriter,
 			mockWriter,
 			aggregation.NewMetrics(nil),
@@ -468,8 +467,7 @@ func TestInstancePushSkipsInternalStreams(t *testing.T) {
 				newIngesterMetrics(nil, "test"),
 				drain.DefaultConfig(),
 				&fakeLimits{},
-				&fakeRingClient{ring: fakeRing},
-				ingesterID,
+				&ringOwner{ringClient: &fakeRingClient{ring: fakeRing}, ingesterID: ingesterID},
 				nil,
 				nil,
 				aggregation.NewMetrics(nil),
@@ -567,8 +565,7 @@ func TestIngesterShutdownFlush(t *testing.T) {
 		newIngesterMetrics(nil, "test"),
 		drain.DefaultConfig(),
 		&fakeLimits{patternPersistenceEnabled: true},
-		ringClient,
-		ingesterID,
+		&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
@@ -650,8 +647,7 @@ func TestIngesterShutdownFlushMaintainsChunkBoundaries(t *testing.T) {
 		newIngesterMetrics(nil, "test"),
 		drain.DefaultConfig(),
 		&fakeLimits{patternPersistenceEnabled: true},
-		ringClient,
-		ingesterID,
+		&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
@@ -894,6 +890,7 @@ func TestVolumeFilteringEndToEnd(t *testing.T) {
 			})
 		mockWriter.On("Stop")
 
+		cfg.LifecyclerConfig.ID = ingesterID
 		ingester, err := New(
 			cfg,
 			limits,
@@ -903,9 +900,6 @@ func TestVolumeFilteringEndToEnd(t *testing.T) {
 			log.NewNopLogger(),
 		)
 		require.NoError(t, err)
-
-		// Override ingester ID for testing
-		ingester.lifecycler.ID = ingesterID
 
 		// Create instance
 		inst, err := ingester.GetOrCreateInstance("test-tenant")
@@ -1032,4 +1026,71 @@ func TestConfigurationValidation(t *testing.T) {
 		err := cfg.Validate()
 		require.NoError(t, err, "should pass validation with valid configuration")
 	})
+}
+
+type fakeOwner struct {
+	owned bool
+	err   error
+}
+
+func (f fakeOwner) Owns(_, _ string) (bool, error) { return f.owned, f.err }
+
+func TestInstancePushOwnership(t *testing.T) {
+	tests := []struct {
+		name            string
+		owner           streamOwner
+		expectedErr     bool
+		expectedStreams int
+	}{
+		{
+			name:            "owned stream is mined for patterns",
+			owner:           fakeOwner{owned: true},
+			expectedStreams: 1,
+		},
+		{
+			name:  "unowned stream is not mined for patterns",
+			owner: fakeOwner{owned: false},
+		},
+		{
+			name:        "ownership error is returned",
+			owner:       fakeOwner{err: errors.New("ring unavailable")},
+			expectedErr: true,
+		},
+		{
+			name:            "noop owner mines every stream",
+			owner:           allStreamsOwner{},
+			expectedStreams: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			inst, err := newInstance(
+				"tenant-0",
+				log.NewNopLogger(),
+				newIngesterMetrics(nil, "test"),
+				drain.DefaultConfig(),
+				&fakeLimits{},
+				tc.owner,
+				nil,
+				nil,
+				aggregation.NewMetrics(nil),
+				0.99,
+			)
+			require.NoError(t, err)
+
+			err = inst.Push(t.Context(), &push.PushRequest{
+				Streams: []push.Stream{{
+					Labels:  `{service_name="svc"}`,
+					Entries: []push.Entry{{Timestamp: time.Now(), Line: "ts=1 msg=foo"}},
+				}},
+			})
+			if tc.expectedErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.expectedStreams, inst.streams.Len())
+		})
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"time"
 
@@ -45,9 +46,9 @@ type mockBuilder struct {
 	// full, when true, forces IsFull to report the builder as full regardless
 	// of the underlying builder's estimated size.
 	full bool
-	// flushCloser, when set, is returned by Flush in place of the underlying
-	// builder's closer, letting tests observe and fail the release of the
-	// unsorted object.
+	// flushCloser, when set, is returned by FlushAndSort in place of the
+	// underlying builder's closer, letting tests observe and fail the release
+	// of the flushed object.
 	flushCloser *countingCloser
 }
 
@@ -71,16 +72,12 @@ func (m *mockBuilder) IsFull() bool {
 	return m.full || m.builder.IsFull()
 }
 
-func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return m.builder.CopyAndSort(ctx, obj)
-}
-
-func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
+func (m *mockBuilder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return nil, nil, err
 	}
-	obj, closer, err := m.builder.Flush()
+	obj, closer, err := m.builder.FlushAndSort(ctx)
 	if err != nil || m.flushCloser == nil {
 		return obj, closer, err
 	}
@@ -125,11 +122,14 @@ type mockFlusher struct {
 	// onFlush, if set, runs before each flush returns. It runs without the
 	// lock, so it must be safe for concurrent use.
 	onFlush func()
+	// builders holds the builder of each Flush call, in call order.
+	builders []builder
 }
 
-func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Object, io.Closer, string, error) {
+func (m *mockFlusher) Flush(_ context.Context, b builder, _ string) (*dataobj.Object, io.Closer, string, error) {
 	m.mtx.Lock()
 	m.flushes++
+	m.builders = append(m.builders, b)
 	path := fmt.Sprintf("object_%03d", m.flushes)
 	m.open++
 	m.maxOpen = max(m.maxOpen, m.open)
@@ -229,6 +229,78 @@ func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason
 	return nil
 }
 
+// gatedFlushCommitter blocks each Flush until the test sends its result on
+// results, or until the context is canceled. It records the offset, reason
+// and builders of each Flush when the Flush starts, and the largest number of
+// flushes that ran at the same time. It does not use the builders. It is safe
+// for concurrent use.
+type gatedFlushCommitter struct {
+	results chan error
+
+	mtx        sync.Mutex
+	offsets    []int64
+	reasons    []string
+	builders   [][]builder
+	running    int
+	maxRunning int
+}
+
+func newGatedFlushCommitter() *gatedFlushCommitter {
+	return &gatedFlushCommitter{results: make(chan error)}
+}
+
+func (m *gatedFlushCommitter) Flush(ctx context.Context, builders []builder, reason string, offset int64) error {
+	m.mtx.Lock()
+	m.offsets = append(m.offsets, offset)
+	m.reasons = append(m.reasons, reason)
+	m.builders = append(m.builders, builders)
+	m.running++
+	m.maxRunning = max(m.maxRunning, m.running)
+	m.mtx.Unlock()
+
+	defer func() {
+		m.mtx.Lock()
+		m.running--
+		m.mtx.Unlock()
+	}()
+
+	select {
+	case err := <-m.results:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// startedOffsets returns the offsets of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedOffsets() []int64 {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.offsets)
+}
+
+// startedReasons returns the reasons of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedReasons() []string {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.reasons)
+}
+
+// startedBuilders returns the builders of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedBuilders() [][]builder {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.builders)
+}
+
+// maxConcurrentFlushes returns the largest number of flushes that ran at the
+// same time.
+func (m *gatedFlushCommitter) maxConcurrentFlushes() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return m.maxRunning
+}
+
 // testBuilderFactory creates real [logsobj.Builder] instances backed by an
 // in-memory scratch store. All builders share a single, unregistered
 // [logsobj.BuilderMetrics] instance, mirroring how the production factory
@@ -269,25 +341,37 @@ func (m *mockMultiBuilder) IsFull() bool {
 	return m.forceFull || m.MultiObjectBuilder.IsFull()
 }
 
+// fixedCountMultiBuilder wraps the production [MultiObjectBuilder] and reports
+// itself full after fullAfter appends since the last Reset. Its flushes then
+// depend only on the order of the records, not on their size.
+type fixedCountMultiBuilder struct {
+	*MultiObjectBuilder
+	fullAfter int
+	appends   int
+}
+
+var _ multiBuilder = (*fixedCountMultiBuilder)(nil)
+
+func (m *fixedCountMultiBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+	m.appends++
+	return m.MultiObjectBuilder.Append(tenant, stream, recTime)
+}
+
+func (m *fixedCountMultiBuilder) IsFull() bool {
+	return m.appends >= m.fullAfter
+}
+
+func (m *fixedCountMultiBuilder) Reset() {
+	m.appends = 0
+	m.MultiObjectBuilder.Reset()
+}
+
 // newTestMultiBuilder returns a multiBuilder backed by real per-scope
 // builders, suitable for driving the processor in tests.
 func newTestMultiBuilder() *mockMultiBuilder {
 	return &mockMultiBuilder{
 		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
 	}
-}
-
-// mockSorter returns the object it is given, so the flusher can be driven
-// without performing a real sort.
-type mockSorter struct {
-	// closer is handed to the flusher on every sort, letting tests assert
-	// whether ownership of the sorted object was transferred to the caller or
-	// released by the flusher.
-	closer countingCloser
-}
-
-func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return obj, &m.closer, nil
 }
 
 type mockUploader struct {

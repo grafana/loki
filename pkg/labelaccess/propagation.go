@@ -212,7 +212,6 @@ func ExtractLabelMatchersContext(ctx context.Context) (LabelPolicySet, error) {
 }
 
 // InjectLabelMatchersContext injects label matchers into the context using httpreq.InjectHeader.
-// This ensures the headers are propagated through the V2 engine's scheduler/worker mechanism.
 func InjectLabelMatchersContext(ctx context.Context, matchers LabelPolicySet) context.Context {
 	// Collect all encoded policies first, then join with comma.
 	// httpreq.InjectHeader uses Set() which replaces, so we must inject all values at once.

@@ -1,6 +1,7 @@
 local common = import 'common.libsonnet';
 local job = common.job;
 local step = common.step;
+local smallRunner = common.smallRunner;
 local _validationJob = common.validationJob;
 
 local setupValidationDeps = function(job) job {
@@ -40,7 +41,7 @@ local validationJob = _validationJob();
     + step.withWorkingDirectory('release'),
 
   // Test jobs
-  collectPackages: job.new()
+  collectPackages: job.new(smallRunner)
                    + job.withSteps([
                      common.checkout,
                      common.fixDubiousOwnership,
@@ -182,7 +183,7 @@ local validationJob = _validationJob();
     )
   ),
 
-  failCheck: job.new()
+  failCheck: job.new(smallRunner)
              + job.withNeeds([
                'checkFiles',
                'golangciLint',
@@ -203,7 +204,7 @@ local validationJob = _validationJob();
                |||),
              ]),
 
-  check: job.new()
+  check: job.new(smallRunner)
          + job.withNeeds([
            'checkFiles',
            'golangciLint',

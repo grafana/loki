@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -32,15 +31,9 @@ type Pipeline interface {
 }
 
 var (
-	errNotImplemented  = errors.New("pipeline not implemented")
 	errPipelineNotOpen = errors.New("pipeline not opened")
 	EOF                = fmt.Errorf("pipeline exhausted: %w", io.EOF) //nolint:revive,staticcheck
 )
-
-type state struct {
-	batch arrow.RecordBatch
-	err   error
-}
 
 type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
 
@@ -76,11 +69,7 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if p.read == nil {
 		return nil, EOF
 	}
-	rec, err := p.read(ctx, p.inputs)
-
-	assertions.CheckColumnDuplicates(rec)
-
-	return rec, err
+	return p.read(ctx, p.inputs)
 }
 
 // Close implements Pipeline.
@@ -100,118 +89,6 @@ func errorPipeline(ctx context.Context, err error) Pipeline {
 	})
 }
 
-func emptyPipeline() Pipeline {
-	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
-		return nil, EOF
-	})
-}
-
-// prefetchWrapper wraps a [Pipeline] with pre-fetching capability,
-// reading data in a separate goroutine to enable concurrent processing.
-type prefetchWrapper struct {
-	Pipeline // the pipeline that is wrapped
-
-	initialized bool                    // internal state to indicate whether the pre-fetching goroutine is running
-	ch          chan state              // the results channel for pre-fetched items
-	cancel      context.CancelCauseFunc // cancellation function for the context
-}
-
-var _ Pipeline = (*prefetchWrapper)(nil)
-
-// newPrefetchingPipeline creates a new prefetching pipeline wrapper that reads data from the underlying pipeline
-// in a separate goroutine. This allows for concurrent processing where data can be fetched ahead of time
-// while the consumer is processing the current batch.
-//
-// The prefetching pipeline maintains a buffered channel with capacity 1 to store the next batch,
-// enabling pipeline parallelism and potentially improving throughput.
-//
-// The function accepts a [context.Context] `ctx` and a [Pipeline] `p`, which is the underlying pipeline to wrap
-// with pre-fetching capability.
-//
-// Returns a [prefetchWrapper] that implements the [Pipeline] interface.
-func newPrefetchingPipeline(p Pipeline) *prefetchWrapper {
-	return &prefetchWrapper{
-		Pipeline: p,
-		ch:       make(chan state),
-	}
-}
-
-// Open implements [Pipeline].
-func (p *prefetchWrapper) Open(ctx context.Context) error {
-	return p.Pipeline.Open(ctx)
-}
-
-// Read implements [Pipeline].
-func (p *prefetchWrapper) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	p.init(ctx)
-	return p.read(ctx)
-}
-
-func (p *prefetchWrapper) init(ctx context.Context) {
-	if p.initialized {
-		return
-	}
-
-	p.initialized = true
-
-	ctx, p.cancel = context.WithCancelCause(ctx)
-	go p.prefetch(ctx) // nolint:errcheck
-}
-
-func (p prefetchWrapper) prefetch(ctx context.Context) error {
-	// Close channel on exit
-	defer close(p.ch)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			var s state
-			s.batch, s.err = p.Pipeline.Read(ctx)
-			if s.err != nil {
-				p.ch <- s
-				return s.err
-			}
-
-			// Sending to channel will block until the batch is read by the parent pipeline.
-			// If the context is cancelled while waiting to send, we return.
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case p.ch <- s:
-			}
-		}
-	}
-}
-
-func (p *prefetchWrapper) read(_ context.Context) (arrow.RecordBatch, error) {
-	state := <-p.ch
-
-	// Reading from a channel that is closed while waiting yields a zero-value.
-	// In that case, the pipeline should produce an error state.
-	if state.err == nil && state.batch == nil {
-		return nil, context.Canceled
-	}
-	return state.batch, state.err
-}
-
-// Close implements [Pipeline].
-func (p *prefetchWrapper) Close() {
-	if p.cancel != nil {
-		p.cancel(errors.New("pipeline is closed"))
-
-		// Wait for the prefetch goroutine to finish. This avoids race conditions
-		// where we close a pipeline right before it's read.
-		//
-		// This check can only be done if p.cancel is non-nil, otherwise we may
-		// deadlock if [prefetchWrapper.Close] is called before
-		// [prefetchWrapper.init].
-		<-p.ch
-	}
-	p.Pipeline.Close()
-}
-
 type lazyPipeline struct {
 	ctor func(ctx context.Context, inputs []Pipeline) Pipeline
 
@@ -219,12 +96,9 @@ type lazyPipeline struct {
 	built  Pipeline
 }
 
-// newLazyPipeline allows for defering construction of a [Pipeline] to query
-// execution time instead of planning time. This is useful for pipelines which
-// are expensive to construct, or have dependencies which are only available
-// during execution.
-//
-// The ctor function will be invoked on the first call to [Pipeline.Open].
+// newLazyPipeline defers building a [Pipeline] until the first call to
+// [Pipeline.Open]. Use it for pipelines that are expensive to build or that
+// depend on data only available during execution.
 func newLazyPipeline(ctor func(ctx context.Context, inputs []Pipeline) Pipeline, inputs []Pipeline) *lazyPipeline {
 	return &lazyPipeline{
 		ctor:   ctor,

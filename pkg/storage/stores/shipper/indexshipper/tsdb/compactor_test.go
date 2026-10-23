@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -624,8 +627,8 @@ func TestCompactor_Compact(t *testing.T) {
 
 						// verify the chunkmetas in the builder
 						actualChunks := map[string]index.ChunkMetas{}
-						for seriesID, stream := range initializedIndexSets[userID].(*mockIndexSet).compactedIndex.(*compactedIndex).builder.streams {
-							actualChunks[seriesID] = stream.chunks
+						for stream := range initializedIndexSets[userID].(*mockIndexSet).compactedIndex.(*compactedIndex).builder.allStreams() {
+							actualChunks[stream.labels.String()] = stream.chunks
 						}
 
 						// now convert the compactedIndex to index.Index and verify the chunkmetas again
@@ -862,7 +865,7 @@ func TestCompactedIndex(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			compactedIndex := testCtx.buildCompactedIndex()
 
-			existingChunk := compactedIndex.builder.streams[testCtx.lbls1.String()].chunks[0]
+			existingChunk := compactedIndex.builder.getStream(testCtx.lbls1).chunks[0]
 
 			// trying to remove a chunk for inexistent stream should return false for chunk existence
 			inexistentStream := testCtx.lbls1.MatchLabels(false, "a")
@@ -950,6 +953,37 @@ func TestIteratorContextCancelation(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestIteratorStopsEarly(t *testing.T) {
+	errStop := fmt.Errorf("stop")
+	for name, tc := range map[string]struct {
+		callback    func(cancel context.CancelFunc) error
+		expectedErr error
+	}{
+		"callback error": {
+			callback:    func(context.CancelFunc) error { return errStop },
+			expectedErr: errStop,
+		},
+		"context canceled during iteration": {
+			callback:    func(cancel context.CancelFunc) error { cancel(); return nil },
+			expectedErr: context.Canceled,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			compactedIndex := setupCompactedIndex(t).buildCompactedIndex()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			calls := 0
+			err := compactedIndex.ForEachSeries(ctx, func(_ retention.Series) error {
+				calls++
+				return tc.callback(cancel)
+			})
+			require.ErrorIs(t, err, tc.expectedErr)
+			require.Equal(t, 1, calls)
+		})
+	}
 }
 
 // TestCompactedIndexForEachSeriesPropagatesIngestedAt proves the passive
@@ -1185,7 +1219,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 
 	// Verify builder has the expected data
 	builder.FinalizeChunks()
-	require.Greater(t, len(builder.streams), 0)
+	require.Greater(t, builder.numStreams(), 0)
 }
 
 func TestCompactTable_ClosesFilesOnError(t *testing.T) {
@@ -1262,4 +1296,260 @@ func TestCompactTable_ClosesFilesOnError(t *testing.T) {
 	}
 	require.Empty(t, remainingTSDB,
 		"expected all downloaded TSDB files to be cleaned up after error, but found: %v", remainingTSDB)
+}
+
+// TestCompactedIndex_RoundTrip drives a compactedIndex over random series the way retention and deletion do:
+// iterate the series, remove chunks, clean up emptied series and index rewritten chunks. It then verifies the
+// built index holds exactly the expected series and chunks. Every case is repeated with hashes that force the
+// Builder's stream collision handling, all of which must produce byte-identical indexes.
+func TestCompactedIndex_RoundTrip(t *testing.T) {
+	const numSeries = 500
+
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
+		Schema: "v13",
+	}
+	schemaCfg := config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}
+	now := model.Now()
+	tableName := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})[0].Prefix
+	tableStart := int64(retention.ExtractIntervalFromTableName(tableName).Start)
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+	userID := buildUserID(0)
+
+	hashes := []func(labels.Labels) uint64{
+		labels.Labels.Hash,
+		func(labels.Labels) uint64 { return 0 },                  // every stream collides
+		func(ls labels.Labels) uint64 { return ls.Hash() % 8 },   // many streams per hash
+		func(ls labels.Labels) uint64 { return ls.Hash() % 251 }, // a few streams per hash
+	}
+
+	for seed := uint64(1); seed <= 5; seed++ {
+		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+			rng := rand.New(rand.NewPCG(seed, seed))
+			series := genRoundTripSeries(rng, numSeries, tableStart)
+			byID := make(map[string]*roundTripSeries, len(series))
+			for _, rs := range series {
+				byID[rs.ls.String()] = rs
+			}
+
+			var firstIndex []byte
+			for i, hash := range hashes {
+				builder := NewBuilder(indexFormat)
+				builder.hash = hash
+				for _, add := range roundTripAdds(rng, series) {
+					// copy the labels on every call so lookups can't rely on sharing memory with the stored labels
+					builder.AddSeries(add.s.ls.Copy(), add.s.fp, add.chunks)
+				}
+				builder.FinalizeChunks()
+				c := newCompactedIndex(context.Background(), tableName, userID, t.TempDir(), periodConfig, builder)
+
+				// remove chunks while iterating, as retention does, and check every series is visited once with its
+				// original chunks
+				visited := map[string]bool{}
+				require.NoError(t, c.ForEachSeries(context.Background(), func(s retention.Series) error {
+					rs := byID[string(s.SeriesID())]
+					require.NotNil(t, rs, "unexpected series %s", s.SeriesID())
+					require.True(t, labels.Equal(rs.ls, s.Labels()))
+					require.False(t, visited[rs.ls.String()], "series %s visited twice", rs.ls)
+					visited[rs.ls.String()] = true
+
+					var chunkIDs []string
+					for _, chk := range s.Chunks() {
+						chunkIDs = append(chunkIDs, chk.ChunkID)
+					}
+					require.ElementsMatch(t, rs.chunkIDs(schemaCfg, userID, rs.initial), chunkIDs)
+
+					for _, chk := range rs.removed {
+						removed, err := c.RemoveChunk(chk.From(), chk.Through(), []byte(userID), s.Labels(), rs.chunkID(schemaCfg, userID, chk))
+						require.NoError(t, err)
+						require.True(t, removed)
+					}
+					// a chunk the series never had
+					missing := index.ChunkMeta{MinTime: tableStart, MaxTime: tableStart + 1, Checksum: rng.Uint32()}
+					removed, err := c.RemoveChunk(missing.From(), missing.Through(), []byte(userID), s.Labels(), rs.chunkID(schemaCfg, userID, missing))
+					require.NoError(t, err)
+					require.False(t, removed)
+					return nil
+				}))
+				require.Len(t, visited, len(series))
+
+				for _, rs := range series {
+					if rs.cleanup {
+						require.NoError(t, c.CleanupSeries([]byte(userID), rs.ls.Copy()))
+					}
+					for _, chk := range rs.added {
+						// the store hands IndexChunk labels with the __name__ the chunk store convention adds
+						lbls := labels.NewBuilder(rs.ls).Set(model.MetricNameLabel, "logs").Labels()
+						indexed, err := c.IndexChunk(chunkMetaToChunkRef(userID, chk, rs.ls), lbls, 0, chk.KB, chk.Entries)
+						require.NoError(t, err)
+						require.True(t, indexed)
+					}
+					if !rs.cleanup {
+						// removed and indexed chunks are only applied by ToIndexFile, so every initial chunk still exists
+						chk := rs.initial[rng.IntN(len(rs.initial))]
+						exists, err := c.ChunkExists([]byte(userID), rs.ls, chunkMetaToChunkRef(userID, chk, rs.ls))
+						require.NoError(t, err)
+						require.True(t, exists)
+					}
+				}
+				require.Error(t, c.CleanupSeries([]byte(userID), labels.FromStrings("missing", "series")))
+
+				data := verifyRoundTripIndex(t, c, byID)
+				if i == 0 {
+					firstIndex = data
+					continue
+				}
+				require.Equal(t, firstIndex, data, "index built with hash %d differs from the real hash", i)
+			}
+		})
+	}
+}
+
+type roundTripSeries struct {
+	ls      labels.Labels
+	fp      model.Fingerprint
+	initial index.ChunkMetas
+	removed index.ChunkMetas // removed during iteration
+	cleanup bool             // CleanupSeries is called after all chunks are removed
+	added   index.ChunkMetas // indexed after iteration
+}
+
+// expected returns the chunks the series should have in the built index.
+func (s *roundTripSeries) expected() index.ChunkMetas {
+	var out index.ChunkMetas
+	for _, chk := range s.initial {
+		if !slices.Contains(s.removed, chk) {
+			out = append(out, chk)
+		}
+	}
+	out = append(out, s.added...)
+	sort.Sort(out)
+	return out
+}
+
+func (s *roundTripSeries) chunkID(schemaCfg config.SchemaConfig, userID string, chk index.ChunkMeta) string {
+	return schemaCfg.ExternalKey(logproto.ChunkRef{UserID: userID, Fingerprint: uint64(s.fp), From: chk.From(), Through: chk.Through(), Checksum: chk.Checksum})
+}
+
+func (s *roundTripSeries) chunkIDs(schemaCfg config.SchemaConfig, userID string, chks index.ChunkMetas) []string {
+	ids := make([]string, 0, len(chks))
+	for _, chk := range chks {
+		ids = append(ids, s.chunkID(schemaCfg, userID, chk))
+	}
+	return ids
+}
+
+// genRoundTripSeries generates n distinct random series along with the updates to apply to each.
+func genRoundTripSeries(rng *rand.Rand, n int, tableStart int64) []*roundTripSeries {
+	// label names include ones that aren't legacy-valid and values that labels.String() has to quote/escape,
+	// since the series ID handed to retention is labels.String()
+	names := []string{"cluster", "namespace", "pod", "container", "job", "level", "service.name", "ünïcode"}
+	values := []string{"prod", `with "quotes"`, `back\slash`, "new\nline", "ünïcode", "\xff\xfe", `{a="b"}`, ", "}
+
+	const hourMs = int64(time.Hour / time.Millisecond)
+	chunks := func(n int) index.ChunkMetas {
+		out := make(index.ChunkMetas, 0, n)
+		for range n {
+			minTime := tableStart + rng.Int64N(22*hourMs) // keep chunks within the day table
+			out = append(out, index.ChunkMeta{
+				MinTime:  minTime,
+				MaxTime:  minTime + 1 + rng.Int64N(hourMs),
+				Checksum: rng.Uint32(),
+				KB:       rng.Uint32N(1 << 10),
+				Entries:  rng.Uint32N(1 << 10),
+			})
+		}
+		return out
+	}
+
+	var series []*roundTripSeries
+	seen := map[string]struct{}{}
+	for len(series) < n {
+		m := map[string]string{}
+		for range 1 + rng.IntN(5) {
+			value := fmt.Sprintf("value-%d", rng.IntN(1000))
+			if rng.IntN(2) == 0 {
+				value = values[rng.IntN(len(values))]
+			}
+			m[names[rng.IntN(len(names))]] = value
+		}
+		ls := labels.FromMap(m)
+		if _, ok := seen[ls.String()]; ok {
+			continue
+		}
+		seen[ls.String()] = struct{}{}
+		s := &roundTripSeries{ls: ls, fp: model.Fingerprint(labels.StableHash(ls)), initial: chunks(1 + rng.IntN(8))}
+
+		// an even mix of the updates retention and deletion make, including leaving a series as is
+		switch rng.IntN(5) {
+		case 0: // remove one chunk
+			s.removed = s.initial[rng.IntN(len(s.initial)):][:1]
+		case 1: // remove every chunk and clean up the series
+			s.removed, s.cleanup = s.initial, true
+		case 2: // remove every chunk without cleaning up, leaving an empty stream that must not be written
+			s.removed = s.initial
+		case 3: // rewrite a chunk: remove it and index its replacement
+			s.removed = s.initial[:1]
+			s.added = chunks(1)
+		}
+		series = append(series, s)
+	}
+	return series
+}
+
+type roundTripAdd struct {
+	s      *roundTripSeries
+	chunks index.ChunkMetas
+}
+
+// roundTripAdds splits each series' chunks over several shuffled AddSeries calls, with some chunks repeated, the
+// way a series shows up in several source indexes during compaction.
+func roundTripAdds(rng *rand.Rand, series []*roundTripSeries) []roundTripAdd {
+	var adds []roundTripAdd
+	for _, s := range series {
+		chks := s.initial
+		for len(chks) > 0 {
+			n := 1 + rng.IntN(len(chks))
+			batch := slices.Clone(chks[:n])
+			if rng.IntN(3) == 0 {
+				batch = append(batch, s.initial[rng.IntN(len(s.initial))])
+			}
+			adds = append(adds, roundTripAdd{s: s, chunks: batch})
+			chks = chks[n:]
+		}
+	}
+	rng.Shuffle(len(adds), func(i, j int) { adds[i], adds[j] = adds[j], adds[i] })
+	return adds
+}
+
+// verifyRoundTripIndex builds the index, checks it against the expected series and returns the index file.
+func verifyRoundTripIndex(t *testing.T, c *compactedIndex, series map[string]*roundTripSeries) []byte {
+	idx, err := c.ToIndexFile()
+	require.NoError(t, err)
+	defer idx.Close()
+
+	actual := map[string]index.ChunkMetas{}
+	err = idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		rs := series[ls.String()]
+		require.NotNil(t, rs, "unexpected series %s", ls)
+		require.Equal(t, rs.fp, fp)
+		require.NotContains(t, actual, ls.String(), "series %s returned twice", ls)
+		actual[ls.String()] = slices.Clone(chks)
+		return false
+	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+	require.NoError(t, err)
+
+	expected := map[string]index.ChunkMetas{}
+	for k, rs := range series {
+		if chks := rs.expected(); len(chks) > 0 {
+			expected[k] = chks
+		}
+	}
+	require.Equal(t, expected, actual)
+
+	data, err := os.ReadFile(idx.Path())
+	require.NoError(t, err)
+	return data
 }

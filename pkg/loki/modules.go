@@ -50,7 +50,6 @@ import (
 	dataobjbuilder "github.com/grafana/loki/v3/pkg/dataobj/builder"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/distributor"
-	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -127,9 +126,6 @@ const (
 	QueryLimiter                    = "query-limiter"
 	QueryLimitsInterceptors         = "query-limits-interceptors"
 	QueryLimitsTripperware          = "query-limits-tripperware"
-	QueryEngine                     = "query-engine"
-	QueryEngineScheduler            = "query-engine-scheduler"
-	QueryEngineWorker               = "query-engine-worker"
 	Store                           = "store"
 	RulerStorage                    = "ruler-storage"
 	Ruler                           = "ruler"
@@ -170,7 +166,6 @@ const (
 	LabelAccessInterceptors         = "label-access-interceptors"
 	LabelAccessStoreWrapper         = "label-access-store-wrapper"
 	LabelAccessIngesterWrapper      = "label-access-ingester-wrapper"
-	LabelAccessV2Engine             = "label-access-v2-engine"
 	LabelAccessTripperware          = "label-access-tripperware"
 	Filterers                       = "filterers"
 	AuthTripperware                 = "auth-tripperware"
@@ -181,6 +176,18 @@ const (
 	indexGatewayRingKey = "index-gateway"
 	bloomGatewayRingKey = "bloom-gateway"
 )
+
+// Builds a slice of services to wait for, except the other server,
+// as they would deadlock and wait on each other.
+func (t *Loki) serverServicesToWaitFor() []services.Service {
+	svs := []services.Service(nil)
+	for m, s := range t.serviceMap {
+		if m != Server && m != InternalServer {
+			svs = append(svs, s)
+		}
+	}
+	return svs
+}
 
 func (t *Loki) initServer() (services.Service, error) {
 	prometheus.MustRegister(version.NewCollector(constants.Loki))
@@ -202,18 +209,7 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server = serv
 
-	servicesToWaitFor := func() []services.Service {
-		svs := []services.Service(nil)
-		for m, s := range t.serviceMap {
-			// Server should not wait for itself.
-			if m != Server {
-				svs = append(svs, s)
-			}
-		}
-		return svs
-	}
-
-	s := NewServerService(t.Server, servicesToWaitFor)
+	s := NewServerService(t.Server, t.serverServicesToWaitFor)
 
 	// Best effort to propagate the org ID from the start.
 	h := func(next http.Handler) http.Handler {
@@ -262,18 +258,7 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 
 	t.InternalServer = serv
 
-	servicesToWaitFor := func() []services.Service {
-		svs := []services.Service(nil)
-		for m, s := range t.serviceMap {
-			// Server should not wait for itself.
-			if m != InternalServer {
-				svs = append(svs, s)
-			}
-		}
-		return svs
-	}
-
-	s := NewServerService(t.InternalServer, servicesToWaitFor)
+	s := NewServerService(t.InternalServer, t.serverServicesToWaitFor)
 
 	return s, nil
 }
@@ -565,18 +550,6 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 		}
 	}
 
-	var (
-		dataObjBucket    objstore.Bucket
-		dataObjMetastore metastore.Metastore
-	)
-	if t.Cfg.QueryEngine.Enable || t.Cfg.DataObj.Enabled {
-		dataObjBucket, err = t.getDataObjBucket("dataobj-querier")
-		if err != nil {
-			return nil, err
-		}
-		dataObjMetastore = metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-	}
-
 	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
 	// data-object store.
 	var (
@@ -592,6 +565,12 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 	}()
 
 	if t.Cfg.DataObj.Enabled {
+		dataObjBucket, err := t.getDataObjBucket("dataobj-querier")
+		if err != nil {
+			return nil, err
+		}
+		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+
 		var storeOpts []querier.DataObjStoreOption
 
 		if t.lbacChunkFilterer != nil {
@@ -660,7 +639,7 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 		serverutil.NewPrepopulateMiddleware(),
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, dataObjMetastore, t.Querier, t.Overrides, dataObjBucket, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -908,6 +887,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		return nil, nil
 	}
 	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Pattern.KafkaIngestion.KafkaConfig = t.Cfg.KafkaConfig
 	t.PatternIngester, err = pattern.New(
 		t.Cfg.Pattern,
 		t.Overrides,
@@ -946,6 +926,10 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 
 	if !t.Cfg.Pattern.Enabled {
 		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
+		return nil, nil
+	}
+	if t.Cfg.Pattern.KafkaIngestion.Enabled {
+		_ = level.Info(logger).Log("msg", "pattern ingester tee service disabled because the pattern ingester consumes from Kafka")
 		return nil, nil
 	}
 	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
@@ -1197,37 +1181,9 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	v2Router := queryrange.RouterConfig{
-		Enabled: t.Cfg.QueryEngine.EnableEngineRouter,
-	}
-
-	if t.Cfg.QueryEngine.EnableEngineRouter {
-		start, end := t.Cfg.QueryEngine.ValidQueryRange()
-
-		level.Debug(util_log.Logger).Log(
-			"msg", "initializing v2 engine router",
-			"start_time", start,
-			"end_time", end,
-			"destination", t.Cfg.QueryEngine.DownstreamAddress,
-		)
-
-		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryEngine.DownstreamAddress, http.DefaultTransport, queryrange.DefaultCodec)
-		if err != nil {
-			return nil, fmt.Errorf("creating downstream round tripper for v2 engine: %w", err)
-		}
-
-		v2Router = queryrange.RouterConfig{
-			Enabled:  true,
-			V2Range:  t.Cfg.QueryEngine.ValidQueryRange,
-			Validate: engine_v2.IsQuerySupported,
-			Handler:  handler,
-		}
-	}
-
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
-		v2Router,
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
@@ -1439,174 +1395,6 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		}
 		return nil
 	}), nil
-}
-
-func (t *Loki) initV2QueryEngine() (services.Service, error) {
-	if !t.Cfg.QueryEngine.Enable {
-		return nil, nil
-	}
-
-	store, err := t.getDataObjBucket("query-engine")
-	if err != nil {
-		return nil, err
-	}
-
-	logger := log.With(util_log.Logger, "component", "query-engine")
-	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-
-	params := engine_v2.Params{
-		Logger:     logger,
-		Registerer: prometheus.DefaultRegisterer,
-
-		Config: t.Cfg.QueryEngine,
-
-		Scheduler: t.queryEngineV2Scheduler,
-		Limits:    t.Overrides,
-
-		Metastore: ms,
-	}
-
-	if t.Cfg.QueryEngine.EnableDeleteReqFiltering {
-		client, err := t.deleteRequestsClient("query-engine", t.Overrides)
-		if err != nil {
-			return nil, err
-		}
-
-		params.DeleteGetter = client
-	}
-
-	engine, err := engine_v2.New(params)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(rfratto): Validate that no other module which responds to these
-	// paths is enabled.
-	if t.Cfg.QueryEngine.Distributed {
-		toMerge := []middleware.Interface{
-			httpreq.ExtractQueryMetricsMiddleware(),
-			httpreq.ExtractQueryTagsMiddleware(),
-			// Propagate all headers but the authorization header to avoid security issues.
-			httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
-			serverutil.RecoveryHTTPMiddleware,
-			t.HTTPAuthMiddleware,
-			serverutil.NewPrepopulateMiddleware(),
-		}
-
-		httpMiddleware := middleware.Merge(toMerge...)
-
-		engineHandler, err := engine_v2.Handler(t.Cfg.QueryEngine, logger, engine, t.Overrides, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, fmt.Errorf("creating engine handler: %w", err)
-		}
-		handler := httpMiddleware.Wrap(engineHandler)
-
-		t.Server.HTTP.Path(constants.PathLokiQueryRange).Methods("GET", "POST").Handler(handler)
-		t.Server.HTTP.Path(constants.PathLokiQuery).Methods("GET", "POST").Handler(handler)
-	}
-
-	t.queryEngineV2 = engine
-	return nil, nil
-}
-
-func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
-	if !t.Cfg.QueryEngine.Enable {
-		return nil, nil
-	}
-
-	// Determine the advertise address. Results in nil if not running
-	// distributed execution.
-	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
-	advertiseAddr, err := t.Cfg.QueryEngine.AdvertiseAddr(listenPort)
-	if err != nil {
-		return nil, err
-	}
-
-	sched, err := engine_v2.NewScheduler(engine_v2.SchedulerParams{
-		Logger: log.With(util_log.Logger, "component", "query-engine-scheduler"),
-
-		AdvertiseAddr: advertiseAddr,
-		Endpoint:      "/api/v2/frame",
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if err := sched.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
-		return nil, err
-	}
-	sched.Service().AddListener(services.NewListener(
-		nil, nil, nil,
-		func(_ services.State) { sched.UnregisterMetrics(prometheus.DefaultRegisterer) },
-		func(_ services.State, _ error) { sched.UnregisterMetrics(prometheus.DefaultRegisterer) },
-	))
-
-	// Only register HTTP handler when running distributed query execution
-	if t.Cfg.QueryEngine.Distributed {
-		sched.RegisterSchedulerServer(t.Server.HTTP)
-	}
-
-	t.queryEngineV2Scheduler = sched
-	return sched.Service(), nil
-}
-
-func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
-	if !t.Cfg.QueryEngine.Enable {
-		return nil, nil
-	}
-
-	// Determine the advertise address. Results in nil if not running
-	// distributed execution.
-	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
-	advertiseAddr, err := t.Cfg.QueryEngine.AdvertiseAddr(listenPort)
-	if err != nil {
-		return nil, err
-	}
-
-	store, err := t.getDataObjBucket("query-engine-worker")
-	if err != nil {
-		return nil, err
-	}
-
-	logger := log.With(util_log.Logger, "component", "query-engine-worker")
-
-	workerParams := engine_v2.WorkerParams{
-		Logger: logger,
-		Bucket: store,
-
-		Config:   t.Cfg.QueryEngine.Worker,
-		Executor: t.Cfg.QueryEngine.Executor,
-
-		LocalScheduler: t.queryEngineV2Scheduler,
-
-		AdvertiseAddr: advertiseAddr,
-		Endpoint:      "/api/v2/frame",
-
-		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
-
-		StreamFilterer: t.Cfg.QueryEngine.Executor.StreamFilterer,
-	}
-
-	worker, err := engine_v2.NewWorker(workerParams, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := worker.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
-		return nil, err
-	}
-	worker.Service().AddListener(services.NewListener(
-		nil, nil, nil,
-		func(_ services.State) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
-		func(_ services.State, _ error) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
-	))
-
-	// Only register HTTP handler when running distributed query execution
-	if t.Cfg.QueryEngine.Distributed {
-		worker.RegisterWorkerServer(t.Server.HTTP)
-	}
-
-	return worker.Service(), nil
 }
 
 func (t *Loki) initRulerStorage() (_ services.Service, err error) {
@@ -2342,8 +2130,6 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		return nil, err
 	}
 
-	// Register scheduler metrics; mirror the query-engine-scheduler
-	// pattern so a clean shutdown unregisters them.
 	if err := c.Scheduler().RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
 		return nil, err
 	}
@@ -2360,12 +2146,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		c.Scheduler().RegisterSchedulerServer(t.Server.HTTP)
 	}
 
-	// Return the Compactor wrapper rather than c.Scheduler().Service():
-	// the wrapper's BasicService runs the coordinator polling loop in
-	// running() (a no-op stub today; real loop arrives in a follow-up
-	// change). Mirroring initV2QueryEngineScheduler's pattern of
-	// returning the inner service directly would prevent the
-	// coordinator loop from ever running.
+	// Return the Planner rather than c.Scheduler().Service(). The Planner
+	// service runs the coordinator loop. The scheduler service alone would
+	// never run it.
 	t.dataObjCompactionPlanner = c
 	return c, nil
 }
@@ -2389,14 +2172,11 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
 	// IndexMerge executor writes merged-index objects to the same namespace
 	// the ToC pointers (written by the planner via its prefixed indexBucket)
-	// resolve to. metastore.NewObjectMetastore applies the prefix internally,
-	// so it still receives the unprefixed `store`.
+	// resolve to.
 	indexBucket := store
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-
-	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
 		Config: t.Cfg.DataObj.Compaction.Worker,
@@ -2405,11 +2185,9 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		// LogMerge executor reads them through the unprefixed store rather than
 		// the index-prefixed bucket used for index I/O and ToC.
 		DataBucket:   store,
-		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
-		UploaderCfg:  t.Cfg.DataObj.Uploader,
 		Logger:       logger,
 		Registerer:   prometheus.DefaultRegisterer,
 	})

@@ -28,33 +28,33 @@ func TestPackPipelineNodes(t *testing.T) {
 		{
 			name: "root and child link by index",
 			nodes: []pipelineNode{
-				{OperatorID: rootID, OpType: "Limit", SelfDuration: 50 * time.Millisecond, BatchesOut: 10, BatchesIn: 4, RowsIn: 400, RowsOut: 1000},
-				{OperatorID: leafID, ParentOperatorID: rootID, OpType: "Projection/PARSE_LOGFMT", SelfDuration: 30 * time.Millisecond, BatchesOut: 4, RowsOut: 400},
+				{OperatorID: rootID, OpType: "IndexFilter", SelfDuration: 50 * time.Millisecond, BatchesOut: 10, BatchesIn: 4, RowsIn: 400, RowsOut: 1000},
+				{OperatorID: leafID, ParentOperatorID: rootID, OpType: "IndexMerge", SelfDuration: 30 * time.Millisecond, BatchesOut: 4, RowsOut: 400},
 			},
 			want: `[
-				{"op":"Limit","parent":-1,"self_ms":50,"batches_in":4,"batches_out":10,"rows_in":400,"rows_out":1000},
-				{"op":"Projection/PARSE_LOGFMT","parent":0,"self_ms":30,"batches_in":0,"batches_out":4,"rows_in":0,"rows_out":400}
+				{"op":"IndexFilter","parent":-1,"self_ms":50,"batches_in":4,"batches_out":10,"rows_in":400,"rows_out":1000},
+				{"op":"IndexMerge","parent":0,"self_ms":30,"batches_in":0,"batches_out":4,"rows_in":0,"rows_out":400}
 			]`,
 		},
 		{
 			name: "multi-level tree links to the right index",
 			nodes: []pipelineNode{
-				{OperatorID: rootID, OpType: "Limit"},
-				{OperatorID: midID, ParentOperatorID: rootID, OpType: "Filter"},
-				{OperatorID: leafID, ParentOperatorID: midID, OpType: "DataObjScan"},
+				{OperatorID: rootID, OpType: "IndexFilter"},
+				{OperatorID: midID, ParentOperatorID: rootID, OpType: "IndexMerge"},
+				{OperatorID: leafID, ParentOperatorID: midID, OpType: "LogMerge"},
 			},
 			want: `[
-				{"op":"Limit","parent":-1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0},
-				{"op":"Filter","parent":0,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0},
-				{"op":"DataObjScan","parent":1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0}
+				{"op":"IndexFilter","parent":-1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0},
+				{"op":"IndexMerge","parent":0,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0},
+				{"op":"LogMerge","parent":1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0}
 			]`,
 		},
 		{
 			name: "parent not in set falls back to -1",
 			nodes: []pipelineNode{
-				{OperatorID: leafID, ParentOperatorID: absent, OpType: "DataObjScan"},
+				{OperatorID: leafID, ParentOperatorID: absent, OpType: "LogMerge"},
 			},
-			want: `[{"op":"DataObjScan","parent":-1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0}]`,
+			want: `[{"op":"LogMerge","parent":-1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0}]`,
 		},
 	}
 	for _, tt := range tests {
@@ -93,18 +93,18 @@ func TestBuildPipelineNodes(t *testing.T) {
 			name: "operator tree with self-time, batches_in and parent linkage",
 			input: []pipelineRegionStat{
 				// Root operator; its parent is a non-operator region.
-				{ID: rootID, ParentID: external, Name: "Limit.Read", ReadCalls: 10, RowsOut: 1000, ReadDuration: 100 * time.Millisecond},
+				{ID: rootID, ParentID: external, Name: "IndexFilter.Read", ReadCalls: 10, RowsOut: 1000, ReadDuration: 100 * time.Millisecond},
 				// Two direct children of root.
-				{ID: leftID, ParentID: rootID, Name: "Filter.Read", ReadCalls: 4, RowsOut: 400, ReadDuration: 30 * time.Millisecond},
-				{ID: rightID, ParentID: rootID, Name: "DataObjScan.Read", ReadCalls: 3, RowsOut: 300, ReadDuration: 20 * time.Millisecond},
+				{ID: leftID, ParentID: rootID, Name: "IndexMerge.Read", ReadCalls: 4, RowsOut: 400, ReadDuration: 30 * time.Millisecond},
+				{ID: rightID, ParentID: rootID, Name: "LogMerge.Read", ReadCalls: 3, RowsOut: 300, ReadDuration: 20 * time.Millisecond},
 				// Grandchild under the left child.
-				{ID: grandID, ParentID: leftID, Name: "Projection.Read", ReadCalls: 2, RowsOut: 200, ReadDuration: 25 * time.Millisecond},
+				{ID: grandID, ParentID: leftID, Name: "LogMerge.Read", ReadCalls: 2, RowsOut: 200, ReadDuration: 25 * time.Millisecond},
 			},
 			want: map[xcap.ID]pipelineNode{
 				rootID: {
 					OperatorID:       rootID,
 					ParentOperatorID: xcap.ID{}, // parent is a non-operator region.
-					OpType:           "Limit",
+					OpType:           "IndexFilter",
 					SelfDuration:     50 * time.Millisecond, // 100 - (30 + 20)
 					BatchesOut:       10,
 					BatchesIn:        7, // 4 + 3
@@ -114,7 +114,7 @@ func TestBuildPipelineNodes(t *testing.T) {
 				leftID: {
 					OperatorID:       leftID,
 					ParentOperatorID: rootID,
-					OpType:           "Filter",
+					OpType:           "IndexMerge",
 					SelfDuration:     5 * time.Millisecond, // 30 - 25
 					BatchesOut:       4,
 					BatchesIn:        2,
@@ -124,7 +124,7 @@ func TestBuildPipelineNodes(t *testing.T) {
 				rightID: {
 					OperatorID:       rightID,
 					ParentOperatorID: rootID,
-					OpType:           "DataObjScan",
+					OpType:           "LogMerge",
 					SelfDuration:     20 * time.Millisecond, // no children
 					BatchesOut:       3,
 					BatchesIn:        0,
@@ -133,7 +133,7 @@ func TestBuildPipelineNodes(t *testing.T) {
 				grandID: {
 					OperatorID:       grandID,
 					ParentOperatorID: leftID,
-					OpType:           "Projection",
+					OpType:           "LogMerge",
 					SelfDuration:     25 * time.Millisecond, // no children
 					BatchesOut:       2,
 					BatchesIn:        0,
@@ -145,7 +145,7 @@ func TestBuildPipelineNodes(t *testing.T) {
 			name: "self-time clamps at zero when children exceed parent",
 			input: []pipelineRegionStat{
 				{ID: rootID, ParentID: external, Name: "Merge.Read", ReadCalls: 1, ReadDuration: 10 * time.Millisecond},
-				{ID: leftID, ParentID: rootID, Name: "Filter.Read", ReadCalls: 1, ReadDuration: 40 * time.Millisecond},
+				{ID: leftID, ParentID: rootID, Name: "IndexMerge.Read", ReadCalls: 1, ReadDuration: 40 * time.Millisecond},
 			},
 			want: map[xcap.ID]pipelineNode{
 				rootID: {
@@ -158,7 +158,7 @@ func TestBuildPipelineNodes(t *testing.T) {
 				leftID: {
 					OperatorID:       leftID,
 					ParentOperatorID: rootID,
-					OpType:           "Filter",
+					OpType:           "IndexMerge",
 					SelfDuration:     40 * time.Millisecond,
 					BatchesOut:       1,
 				},
