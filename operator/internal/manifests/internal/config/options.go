@@ -275,6 +275,7 @@ type OTLPAttribute struct {
 
 type TLSOptions struct {
 	Ciphers       []string
+	Groups        []string
 	MinTLSVersion string
 	Paths         TLSFilePaths
 	ServerNames   TLSServerNames
@@ -282,6 +283,25 @@ type TLSOptions struct {
 
 func (o TLSOptions) CipherSuitesString() string {
 	return strings.Join(o.Ciphers, ",")
+}
+
+// CurvePreferencesString converts OpenShift's IANA group names to the Go names
+// accepted by Loki's server configuration, preserving the preference order.
+func (o TLSOptions) CurvePreferencesString() string {
+	groups := make([]string, len(o.Groups))
+	for i, group := range o.Groups {
+		switch group {
+		case "secp256r1":
+			groups[i] = "CurveP256"
+		case "secp384r1":
+			groups[i] = "CurveP384"
+		case "secp521r1":
+			groups[i] = "CurveP521"
+		default:
+			groups[i] = group
+		}
+	}
+	return strings.Join(groups, ",")
 }
 
 type TLSFilePaths struct {

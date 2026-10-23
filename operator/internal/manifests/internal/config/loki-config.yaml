@@ -563,6 +563,9 @@ internal_server:
   http_listen_address: ""
   tls_min_version: {{ .TLS.MinTLSVersion }}
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+{{- if .TLS.Groups }}
+  tls_curve_preferences: {{ .TLS.CurvePreferencesString }}
+{{- end }}
   http_tls_config:
     cert_file: {{ .TLS.Paths.HTTP.Certificate }}
     key_file: {{ .TLS.Paths.HTTP.Key }}
@@ -581,6 +584,9 @@ server:
 {{- if or .Gates.HTTPEncryption .Gates.GRPCEncryption }}
   tls_min_version: {{ .TLS.MinTLSVersion }}
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+{{- if .TLS.Groups }}
+  tls_curve_preferences: {{ .TLS.CurvePreferencesString }}
+{{- end }}
 {{- if .Gates.HTTPEncryption }}
   http_tls_config:
     cert_file: {{ .TLS.Paths.HTTP.Certificate }}

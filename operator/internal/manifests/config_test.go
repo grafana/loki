@@ -41,6 +41,21 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	assert.JSONEq(t, string(expected), string(actual))
 }
 
+func TestConfigOptions_TLSProfile(t *testing.T) {
+	opts := randomConfigOptions()
+	opts.TLSProfile = TLSProfileSpec{
+		MinTLSVersion: "VersionTLS12",
+		Ciphers:       []string{"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"},
+		Groups:        []string{"X25519MLKEM768", "X25519", "secp256r1", "secp384r1"},
+	}
+
+	tls := ConfigOptions(opts).TLS
+	require.Equal(t, opts.TLSProfile.MinTLSVersion, tls.MinTLSVersion)
+	require.Equal(t, opts.TLSProfile.Ciphers, tls.Ciphers)
+	require.Equal(t, opts.TLSProfile.Groups, tls.Groups)
+	require.Equal(t, "X25519MLKEM768,X25519,CurveP256,CurveP384", tls.CurvePreferencesString())
+}
+
 func testTimeoutConfig() TimeoutConfig {
 	return TimeoutConfig{
 		Loki: config.HTTPTimeoutConfig{

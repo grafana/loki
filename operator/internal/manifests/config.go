@@ -128,6 +128,7 @@ func ConfigOptions(opt Options) config.Options {
 		Gates: opt.Gates,
 		TLS: config.TLSOptions{
 			Ciphers:       opt.TLSProfile.Ciphers,
+			Groups:        opt.TLSProfile.Groups,
 			MinTLSVersion: opt.TLSProfile.MinTLSVersion,
 			Paths: config.TLSFilePaths{
 				CA: signingCAPath(),
