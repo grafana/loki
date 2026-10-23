@@ -1,6 +1,6 @@
 module github.com/grafana/loki/operator/api/loki
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/stretchr/testify v1.12.1
