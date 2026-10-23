@@ -124,7 +124,7 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
 	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 0, "Experimental: Maximum number of requests this index gateway client may have in flight at once. Requests arriving when the limit is reached are rejected immediately with an HTTP 503 status instead of waiting, which bounds the resources this process commits to an index gateway that is slow, saturated, or unreachable. The limit applies per client: one client is built per schema period config, so the process-wide number of in-flight requests can reach this value multiplied by the number of clients. 0 disables the limit.")
 	f.IntVar(&i.MaxRetries, prefix+".max-retries", -1, "Experimental: Maximum number of other index gateway instances a failed request is retried against. Each instance is tried at most once, so a request makes at most this many retries plus one attempt in total. Bounding this stops a single request from walking every replica, which can otherwise block the calling goroutine for the sum of every replica's timeout. -1 preserves the existing behavior: up to 2 retries for GetShards and all candidate instances for other requests. 0 disables retries.")
-	f.StringVar(&i.Sharding, prefix+".sharding", ShardingDefault, "Experimental: How requests are routed to index gateways in ring mode. 'default' sends each request to a gateway of the tenant's shuffle shard. 'per_index' splits each request for a schema period with a sharded_path_prefix by index table and sends each part to the gateways that own that table's index for the tenant, then merges the answers; requests for other periods are routed as with 'default'. 'per_index' requires -index-gateway.mode=ring and is meant to be used with -index-gateway.per-index-ownership.enabled.")
+	f.StringVar(&i.Sharding, prefix+".sharding", ShardingDefault, "Experimental: How requests are routed to index gateways in ring mode. 'default' sends each request to a gateway of the tenant's shuffle shard. 'per_index' splits each request for a schema period with a sharded_path_prefix by index table and fingerprint shard and sends each part to the gateways that own it, then merges the answers; requests for other periods are routed as with 'default'. 'per_index' requires -index-gateway.mode=ring and is meant to be used with -index-gateway.per-index-ownership.enabled.")
 	f.IntVar(&i.PerIndexMaxConcurrency, prefix+".per-index-max-concurrency", 8, "Experimental: Maximum number of parts of one request sent at once when -"+prefix+".sharding=per_index. Each part counts towards -"+prefix+".max-in-flight-requests.")
 }
 
@@ -341,42 +341,54 @@ func (s *GatewayClient) Stop() {
 }
 
 func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
-	return callIndexGateway(ctx, s, "GetChunkRef", in, in.From, in.Through,
-		func(r *logproto.GetChunkRefRequest, from, through model.Time) { r.From, r.Through = from, through },
+	return callIndexGateway(ctx, s, "GetChunkRef", in, in.From, in.Through, in.Matchers, true,
+		func(r *logproto.GetChunkRefRequest, from, through model.Time, matchers string) {
+			r.From, r.Through, r.Matchers = from, through, matchers
+		},
 		logproto.IndexGatewayClient.GetChunkRef, mergeChunkRefResponses)
 }
 
 func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
-	return callIndexGateway(ctx, s, "GetSeries", in, in.From, in.Through,
-		func(r *logproto.GetSeriesRequest, from, through model.Time) { r.From, r.Through = from, through },
+	return callIndexGateway(ctx, s, "GetSeries", in, in.From, in.Through, in.Matchers, true,
+		func(r *logproto.GetSeriesRequest, from, through model.Time, matchers string) {
+			r.From, r.Through, r.Matchers = from, through, matchers
+		},
 		logproto.IndexGatewayClient.GetSeries, mergeSeriesResponses)
 }
 
 func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	return callIndexGateway(ctx, s, "LabelNamesForMetricName", in, in.From, in.Through,
-		func(r *logproto.LabelNamesForMetricNameRequest, from, through model.Time) {
-			r.From, r.Through = from, through
+	// The index does not take a shard label for label names, so the parts
+	// are not narrowed to their shard: every owner answers from all it holds
+	// and the union is the same.
+	return callIndexGateway(ctx, s, "LabelNamesForMetricName", in, in.From, in.Through, in.Matchers, false,
+		func(r *logproto.LabelNamesForMetricNameRequest, from, through model.Time, matchers string) {
+			r.From, r.Through, r.Matchers = from, through, matchers
 		},
 		logproto.IndexGatewayClient.LabelNamesForMetricName, mergeLabelResponses)
 }
 
 func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	return callIndexGateway(ctx, s, "LabelValuesForMetricName", in, in.From, in.Through,
-		func(r *logproto.LabelValuesForMetricNameRequest, from, through model.Time) {
-			r.From, r.Through = from, through
+	// The index ignores a shard label for label values; see LabelNamesForMetricName.
+	return callIndexGateway(ctx, s, "LabelValuesForMetricName", in, in.From, in.Through, in.Matchers, false,
+		func(r *logproto.LabelValuesForMetricNameRequest, from, through model.Time, matchers string) {
+			r.From, r.Through, r.Matchers = from, through, matchers
 		},
 		logproto.IndexGatewayClient.LabelValuesForMetricName, mergeLabelResponses)
 }
 
 func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	return callIndexGateway(ctx, s, "GetStats", in, in.From, in.Through,
-		func(r *logproto.IndexStatsRequest, from, through model.Time) { r.From, r.Through = from, through },
+	return callIndexGateway(ctx, s, "GetStats", in, in.From, in.Through, in.Matchers, true,
+		func(r *logproto.IndexStatsRequest, from, through model.Time, matchers string) {
+			r.From, r.Through, r.Matchers = from, through, matchers
+		},
 		logproto.IndexGatewayClient.GetStats, mergeStatsResponses)
 }
 
 func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	return callIndexGateway(ctx, s, "GetVolume", in, in.From, in.Through,
-		func(r *logproto.VolumeRequest, from, through model.Time) { r.From, r.Through = from, through },
+	return callIndexGateway(ctx, s, "GetVolume", in, in.From, in.Through, in.Matchers, true,
+		func(r *logproto.VolumeRequest, from, through model.Time, matchers string) {
+			r.From, r.Through, r.Matchers = from, through, matchers
+		},
 		logproto.IndexGatewayClient.GetVolume,
 		func(resps []*logproto.VolumeResponse) *logproto.VolumeResponse {
 			return mergeVolumeResponses(resps, in.Limit)
@@ -384,27 +396,37 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 }
 
 // callIndexGateway sends a unary request in covering [from, through]. With
-// per_index sharding it is split by table, each part getting a copy of in with
-// its range set by setRange, and the answers are combined with merge.
-// Otherwise, or when the range reads no table of this client's period, in is
-// sent to one gateway as it is.
+// per_index sharding it is split by table and by the shards of the tenant's
+// index that the shard label of matchers reads (every shard without one),
+// each part getting a copy of in with its range and, with narrow, its
+// shard-narrowed matchers set by setPart (see narrowMatchers), and the
+// answers are combined with merge. A request that is a single part is sent as
+// it is. Otherwise, or when the range reads no table of this client's period,
+// in is sent to one gateway as it is.
 func callIndexGateway[Req, Resp any](
 	ctx context.Context,
 	s *GatewayClient,
 	op string,
 	in *Req,
 	from, through model.Time,
-	setRange func(r *Req, from, through model.Time),
+	matchers string,
+	narrow bool,
+	setPart func(r *Req, from, through model.Time, matchers string),
 	call func(c logproto.IndexGatewayClient, ctx context.Context, in *Req, opts ...grpc.CallOption) (Resp, error),
 	merge func([]Resp) Resp,
 ) (Resp, error) {
 	var zero Resp
 	if s.perIndex() {
-		resps, ok, err := fanOut(ctx, s, op, from, through, func(ctx context.Context, client logproto.IndexGatewayClient, partFrom, partThrough model.Time) (Resp, error) {
+		filter := requestShard(matchers)
+		resps, ok, err := fanOut(ctx, s, op, from, through, filter, func(ctx context.Context, client logproto.IndexGatewayClient, p requestPart) (Resp, error) {
 			req := in
-			if partFrom != from || partThrough != through {
+			narrowed := matchers
+			if narrow {
+				narrowed = narrowMatchers(matchers, filter, p.Shard)
+			}
+			if p.From != from || p.Through != through || narrowed != matchers {
 				part := *in
-				setRange(&part, partFrom, partThrough)
+				setPart(&part, p.From, p.Through, narrowed)
 				req = &part
 			}
 			return call(client, ctx, req)
@@ -473,6 +495,9 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 			if err != nil {
 				return nil, errors.Wrap(err, "index gateway client get tenant ID")
 			}
+			if s.shardFactor() > 1 {
+				return nil, errors.New("GetShards with fingerprint-sharded ownership is not supported yet")
+			}
 			// TODO(twhitney): For now, we are just tracking how often a request spans
 			// table boundaries. Shards are not merged across tables, a request
 			// spanning tables goes to the owners of its first table. They
@@ -487,7 +512,7 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 				tables = "multi"
 			}
 			s.fanoutMetrics.getShardsRequests.WithLabelValues(tables).Inc()
-			if err := s.doOnIndexOwners(ctx, tenantID, parts[0].Table, maxRetries, callback); err != nil {
+			if err := s.doOnIndexOwners(ctx, tenantID, parts[0].Table, WholeIndexShard, maxRetries, callback); err != nil {
 				return nil, err
 			}
 			return res, nil
@@ -731,6 +756,7 @@ func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Durati
 // fanoutMetrics are the metrics of per_index sharding.
 type fanoutMetrics struct {
 	requestTables     *prometheus.HistogramVec
+	requestParts      *prometheus.HistogramVec
 	boundaryParts     *prometheus.CounterVec
 	getShardsRequests *prometheus.CounterVec
 }
@@ -743,6 +769,12 @@ func newFanoutMetrics(r prometheus.Registerer) *fanoutMetrics {
 			Help:      "Number of index tables a request is split into with per_index sharding. Each table is a separate index gateway request.",
 			Buckets:   []float64{1, 2, 3, 4, 7, 14, 31},
 		}, []string{"operation"}),
+		requestParts: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_request_parts",
+			Help:      "Number of parts a request is split into with per_index sharding: one per index table and per fingerprint-range shard of the tenant's index. Each part is a separate index gateway request.",
+			Buckets:   []float64{1, 2, 4, 8, 16, 32, 64, 128, 256},
+		}, []string{"operation"}),
 		boundaryParts: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "index_gateway_client_boundary_parts_total",
@@ -751,7 +783,7 @@ func newFanoutMetrics(r prometheus.Registerer) *fanoutMetrics {
 		getShardsRequests: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "index_gateway_client_get_shards_requests_total",
-			Help:      "GetShards requests sent with per_index sharding, by whether they read a single index table or several. A request that reads several tables is sent whole to the owners of its first table.",
+			Help:      "GetShards requests sent with per_index sharding, by whether they read a single index table or several. A request that reads a single table is planned by the owners of each shard of the tenant's index; one that reads several tables is sent whole to the owners of the first shard of its first table.",
 		}, []string{"tables"}),
 	}
 }

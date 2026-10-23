@@ -120,6 +120,8 @@ func TestSplitByTable(t *testing.T) {
 type fanoutCall struct {
 	addr, op      string
 	from, through model.Time
+	// matchers is the request's matchers, or its query for GetShards.
+	matchers string
 }
 
 // recordingGateways fakes index gateways: it records every call and answers
@@ -134,9 +136,9 @@ type recordingGateways struct {
 	maxInFlight int
 }
 
-func (g *recordingGateways) record(addr, op string, from, through model.Time) error {
+func (g *recordingGateways) record(addr, op string, from, through model.Time, matchers string) error {
 	g.mu.Lock()
-	g.calls = append(g.calls, fanoutCall{addr: addr, op: op, from: from, through: through})
+	g.calls = append(g.calls, fanoutCall{addr: addr, op: op, from: from, through: through, matchers: matchers})
 	g.inFlight++
 	g.maxInFlight = max(g.maxInFlight, g.inFlight)
 	block := g.block
@@ -176,7 +178,7 @@ type recordingConn struct {
 }
 
 func (c *recordingConn) GetChunkRef(_ context.Context, in *logproto.GetChunkRefRequest, _ ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
-	if err := c.g.record(c.addr, "GetChunkRef", in.From, in.Through); err != nil {
+	if err := c.g.record(c.addr, "GetChunkRef", in.From, in.Through, in.Matchers); err != nil {
 		return nil, err
 	}
 	// One chunk per part, plus one shared by every part.
@@ -190,21 +192,21 @@ func (c *recordingConn) GetChunkRef(_ context.Context, in *logproto.GetChunkRefR
 }
 
 func (c *recordingConn) GetSeries(_ context.Context, in *logproto.GetSeriesRequest, _ ...grpc.CallOption) (*logproto.GetSeriesResponse, error) {
-	if err := c.g.record(c.addr, "GetSeries", in.From, in.Through); err != nil {
+	if err := c.g.record(c.addr, "GetSeries", in.From, in.Through, in.Matchers); err != nil {
 		return nil, err
 	}
 	return &logproto.GetSeriesResponse{}, nil
 }
 
 func (c *recordingConn) GetStats(_ context.Context, in *logproto.IndexStatsRequest, _ ...grpc.CallOption) (*logproto.IndexStatsResponse, error) {
-	if err := c.g.record(c.addr, "GetStats", in.From, in.Through); err != nil {
+	if err := c.g.record(c.addr, "GetStats", in.From, in.Through, in.Matchers); err != nil {
 		return nil, err
 	}
 	return &logproto.IndexStatsResponse{Streams: 1, Chunks: 2, Bytes: 3, Entries: 4}, nil
 }
 
 func (c *recordingConn) GetShards(_ context.Context, in *logproto.ShardsRequest, _ ...grpc.CallOption) (logproto.IndexGateway_GetShardsClient, error) {
-	if err := c.g.record(c.addr, "GetShards", in.From, in.Through); err != nil {
+	if err := c.g.record(c.addr, "GetShards", in.From, in.Through, in.Query); err != nil {
 		return nil, err
 	}
 	return &mockShardsClient{}, nil
@@ -225,6 +227,13 @@ type fanoutFixture struct {
 
 func newFanoutFixture(t *testing.T, mutate func(*ClientConfig)) *fanoutFixture {
 	t.Helper()
+	return newShardedFanoutFixture(t, mutate, 0)
+}
+
+// newShardedFanoutFixture is newFanoutFixture with the sharded index copy of
+// the client's period split into k shards.
+func newShardedFanoutFixture(t *testing.T, mutate func(*ClientConfig), k int) *fanoutFixture {
+	t.Helper()
 
 	instances := newTestInstances(0, 6)
 	addrs := make([]string, 0, len(instances))
@@ -242,6 +251,7 @@ func newFanoutFixture(t *testing.T, mutate func(*ClientConfig)) *fanoutFixture {
 	if mutate != nil {
 		mutate(&cfg)
 	}
+	cfg.TableRange.PeriodConfig.IndexTables.ShardFactor = k
 
 	o, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: 3}, nil)
 	require.NoError(t, err)
