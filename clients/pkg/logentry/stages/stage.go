@@ -109,13 +109,13 @@ func initCreators() {
 			return NewCRI(params.logger, params.config, params.registerer)
 		},
 		StageTypeJSON: func(params StageCreationParams) (Stage, error) {
-			return newJSONStage(params.logger, params.config)
+			return newJSONStage(params.config)
 		},
 		StageTypeLogfmt: func(params StageCreationParams) (Stage, error) {
-			return newLogfmtStage(params.logger, params.config)
+			return newLogfmtStage(params.config)
 		},
 		StageTypeRegex: func(params StageCreationParams) (Stage, error) {
-			return newRegexStage(params.logger, params.config)
+			return newRegexStage(params.config)
 		},
 		StageTypeMetric: func(params StageCreationParams) (Stage, error) {
 			return newMetricStage(params.logger, params.config, params.registerer)
@@ -127,25 +127,25 @@ func initCreators() {
 			return newLabelDropStage(params.config)
 		},
 		StageTypeTimestamp: func(params StageCreationParams) (Stage, error) {
-			return newTimestampStage(params.logger, params.config)
+			return newTimestampStage(params.config)
 		},
 		StageTypeOutput: func(params StageCreationParams) (Stage, error) {
-			return newOutputStage(params.logger, params.config)
+			return newOutputStage(params.config)
 		},
 		StageTypeMatch: func(params StageCreationParams) (Stage, error) {
 			return newMatcherStage(params.logger, params.jobName, params.config, params.registerer)
 		},
 		StageTypeTemplate: func(params StageCreationParams) (Stage, error) {
-			return newTemplateStage(params.logger, params.config)
+			return newTemplateStage(params.config)
 		},
 		StageTypeTenant: func(params StageCreationParams) (Stage, error) {
-			return newTenantStage(params.logger, params.config)
+			return newTenantStage(params.config)
 		},
 		StageTypeReplace: func(params StageCreationParams) (Stage, error) {
-			return newReplaceStage(params.logger, params.config)
+			return newReplaceStage(params.config)
 		},
 		StageTypeDrop: func(params StageCreationParams) (Stage, error) {
-			return newDropStage(params.logger, params.config, params.registerer)
+			return newDropStage(params.config, params.registerer)
 		},
 		StageTypeSampling: func(params StageCreationParams) (Stage, error) {
 			return newSamplingStage(params.logger, params.config, params.registerer)
@@ -154,16 +154,16 @@ func initCreators() {
 			return newLimitStage(params.logger, params.config, params.registerer)
 		},
 		StageTypeMultiline: func(params StageCreationParams) (Stage, error) {
-			return newMultilineStage(params.logger, params.config)
+			return newMultilineStage(params.config)
 		},
 		StageTypePack: func(params StageCreationParams) (Stage, error) {
-			return newPackStage(params.logger, params.config, params.registerer)
+			return newPackStage(params.config, params.registerer)
 		},
 		StageTypeLabelAllow: func(params StageCreationParams) (Stage, error) {
 			return newLabelAllowStage(params.config)
 		},
 		StageTypeStaticLabels: func(params StageCreationParams) (Stage, error) {
-			return newStaticLabelsStage(params.logger, params.config)
+			return newStaticLabelsStage(params.config)
 		},
 		StageTypeDecolorize: func(params StageCreationParams) (Stage, error) {
 			return newDecolorizeStage(params.config)
