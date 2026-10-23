@@ -141,7 +141,7 @@ help: ## Display this help
 .PHONY: fluent-bit-image fluent-bit-test
 .PHONY: fluentd-image fluentd-test
 .PHONY: loki-image build-image build-image-push
-.PHONY: benchmark-store check-mod
+.PHONY: benchmark-store check-mod check-local-replaces
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
@@ -659,10 +659,11 @@ check-local-replaces:
 	done
 
 # support go modules
-check-mod: check-local-replaces
+check-mod:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
+	@$(MAKE) check-local-replaces
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
