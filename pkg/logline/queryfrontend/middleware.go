@@ -82,6 +82,7 @@ type hintPrefetchResult struct {
 	queryStart     time.Time     // original query start
 	queryEnd       time.Time     // original query end
 	ingesterCutoff time.Time     // data after this is in ingester window only
+	minDate        time.Time     // data before this has no index coverage; zero if unknown
 	lookupDuration time.Duration // wall time of the lookup, set before done is closed
 	done           chan struct{} // closed when lookup completes
 	wait           waitTracker   // time sub-requests spent waiting for done
@@ -202,6 +203,7 @@ const (
 	outcomeSizeEstimateFailed   = "size_estimate_failed"
 	outcomeLookupFailed         = "lookup_failed"
 	outcomeLookupTimeout        = "lookup_timeout"
+	outcomeAnsweredBeforeLookup = "answered_before_lookup"
 	outcomeCanceled             = "canceled"
 )
 
@@ -210,14 +212,18 @@ const (
 const tinyDataSkippedRatio = 0.25
 
 // loglineOutcome derives the outcome of a query that went through the hint
-// lookup from its final logline statistics.
-func loglineOutcome(l *logqlstats.Logline) string {
+// lookup from its final logline statistics. lookupTimedOut reports whether a
+// sub-request stopped waiting for the lookup.
+func loglineOutcome(l *logqlstats.Logline, lookupTimedOut bool) string {
 	switch l.HintStatus {
 	case hintStatusUnsupported:
 		return outcomeUnsupportedQuery
 	case hintStatusError:
 		return outcomeLookupFailed
 	case hintStatusIncomplete:
+		if !lookupTimedOut {
+			return outcomeAnsweredBeforeLookup
+		}
 		return outcomeLookupTimeout
 	case hintStatusCanceled:
 		return outcomeCanceled
@@ -259,7 +265,7 @@ func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult
 		}
 	}
 	setLoglineChunkStats(&lokiResp.Statistics)
-	l.Outcome = loglineOutcome(l)
+	l.Outcome = loglineOutcome(l, result.stats.Snapshot().PrefetchTimeouts > 0)
 }
 
 // setLoglineChunkStats copies the shard planning chunk counts and their ratio
@@ -999,63 +1005,29 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		queryEnd:       through,
 		queryBytes:     queryBytes,
 		ingesterCutoff: ingesterCutoff,
+		minDate:        h.minDate(),
 		stats:          hintprovider.NewQueryStats(),
 		done:           make(chan struct{}),
 	}
 
-	prefetchCtx := ctx
-	go func() {
-		defer close(result.done)
-
-		start := time.Now()
-		defer func() {
-			dur := time.Since(start)
-			result.lookupDuration = dur
-			h.metrics.hintProviderDuration.Observe(dur.Seconds())
-			if isCancel(result.err) {
-				level.Info(logger).Log("msg", "hint prefetch canceled", "duration", dur)
-				return
-			}
-			// The metrics.go line carries the status, lookup time and range
-			// count and duration. This line keeps the remaining detail.
-			logValues := []any{
-				"msg", "hint prefetch completed",
-				"query_bytes", result.queryBytes,
-				"hint_ranges_detail", hintprovider.FormatHintRanges(result.ranges),
-				"err", result.err,
-			}
-			if result.stats != nil {
-				result.stats.SetWallTime(dur)
-				snap := result.stats.Snapshot()
-				logValues = append(logValues,
-					"prefetch_calls", snap.PrefetchCalls,
-					"prefetch_timeouts", snap.PrefetchTimeouts,
-				)
-			}
-			level.Debug(logger).Log(appendHintStats(logValues, result.stats)...)
-		}()
-
-		eligibleEnd := ingesterCutoff
-		if !eligibleEnd.After(from) {
-			return
+	// Pass-through sub-requests don't wait for the lookup, so the query can
+	// return before it finishes.
+	prefetchCtx, cancelPrefetch := context.WithCancel(ctx)
+	defer cancelPrefetch()
+	if ingesterCutoff.After(maxTime(from, result.minDate)) {
+		go h.lookupHints(prefetchCtx, logger, tenant, expr, result)
+	} else {
+		// Every sub-request passes through, so nothing reads the lookup. When
+		// the stored part of the query predates the index, report the range the
+		// lookup would have returned so stats treat the query as not indexed.
+		if ingesterCutoff.After(from) {
+			result.ranges = []hintprovider.HintTimeRange{{
+				End:    result.minDate,
+				Source: hintprovider.HintSourcePreMinDate,
+			}}
 		}
-
-		eligibleFrom := model.TimeFromUnixNano(from.UnixNano())
-		eligibleThrough := model.TimeFromUnixNano(eligibleEnd.UnixNano())
-
-		hints, stats, err := h.hintProvider.ProvideHints(prefetchCtx, tenant, expr, eligibleFrom, eligibleThrough)
-		if stats != nil {
-			result.stats.Merge(stats)
-		}
-		if err != nil {
-			result.err = err
-			return
-		}
-		if hints != nil {
-			result.ranges = hints.TimeRanges // already normalized+sorted
-			h.metrics.hintRangesReturned.Observe(float64(len(result.ranges)))
-		}
-	}()
+		close(result.done)
+	}
 
 	ctx = withHintPrefetch(ctx, result)
 	defer h.observeHintWait(result)
@@ -1072,6 +1044,72 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 func (h *loglinePrefetchHandler) observeHintWait(result *hintPrefetchResult) {
 	wait := result.wait.duration(time.Now())
 	h.metrics.hintWaitDuration.WithLabelValues(result.status()).Observe(wait.Seconds())
+}
+
+// lookupHints looks up hint ranges for [result.queryStart, result.ingesterCutoff]
+// and closes result.done when it finishes.
+func (h *loglinePrefetchHandler) lookupHints(
+	ctx context.Context,
+	logger log.Logger,
+	tenant string,
+	expr syntax.Expr,
+	result *hintPrefetchResult,
+) {
+	defer close(result.done)
+
+	start := time.Now()
+	defer func() {
+		dur := time.Since(start)
+		result.lookupDuration = dur
+		if isCancel(result.err) {
+			h.metrics.hintLookupsCanceled.Inc()
+			level.Info(logger).Log("msg", "hint prefetch canceled", "duration", dur)
+			return
+		}
+		h.metrics.hintProviderDuration.Observe(dur.Seconds())
+		// The metrics.go line carries the status, lookup time and range
+		// count and duration. This line keeps the remaining detail.
+		logValues := []any{
+			"msg", "hint prefetch completed",
+			"query_bytes", result.queryBytes,
+			"hint_ranges_detail", hintprovider.FormatHintRanges(result.ranges),
+			"err", result.err,
+		}
+		if result.stats != nil {
+			result.stats.SetWallTime(dur)
+			snap := result.stats.Snapshot()
+			logValues = append(logValues,
+				"prefetch_calls", snap.PrefetchCalls,
+				"prefetch_timeouts", snap.PrefetchTimeouts,
+			)
+		}
+		level.Debug(logger).Log(appendHintStats(logValues, result.stats)...)
+	}()
+
+	eligibleFrom := model.TimeFromUnixNano(result.queryStart.UnixNano())
+	eligibleThrough := model.TimeFromUnixNano(result.ingesterCutoff.UnixNano())
+
+	hints, stats, err := h.hintProvider.ProvideHints(ctx, tenant, expr, eligibleFrom, eligibleThrough)
+	if stats != nil {
+		result.stats.Merge(stats)
+	}
+	if err != nil {
+		result.err = err
+		return
+	}
+	if hints != nil {
+		result.ranges = hints.TimeRanges // already normalized+sorted
+		h.metrics.hintRangesReturned.Observe(float64(len(result.ranges)))
+	}
+}
+
+// minDate returns the first date the index covers, or zero when the hint
+// provider doesn't report one.
+func (h *loglinePrefetchHandler) minDate() time.Time {
+	if p, ok := h.hintProvider.(interface{ MinDate() time.Time }); ok {
+		return p.MinDate().UTC()
+	}
+	return time.Time{}
 }
 
 // nextWithOutcome runs the query without a hint lookup. In live mode it records
@@ -1130,6 +1168,25 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	intervalStart := lokiReq.StartTs.UTC()
 	intervalEnd := lokiReq.EndTs.UTC()
 
+	// A metric split reads before its start. Overlap and clipping use that window
+	// so a lookback match is not treated as a miss. Log queries widen by zero.
+	expr, _ := syntax.ParseExpr(lokiReq.Query)
+	readStart, readEnd := intervalStart, intervalEnd
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
+	}
+
+	// These intervals pass through whatever the lookup returns, so they run
+	// without waiting for it.
+	if readEnd.After(result.ingesterCutoff) {
+		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
+		return h.next.Do(ctx, req)
+	}
+	if !readEnd.After(result.minDate) {
+		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
+		return h.next.Do(ctx, req)
+	}
+
 	timedOut, err := result.waitForLookup(ctx, h.hintTimeout)
 	if err != nil {
 		return nil, err
@@ -1148,19 +1205,6 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 			h.metrics.hintPassthrough.WithLabelValues("error").Inc()
 			level.Warn(logger).Log("msg", "hint provider error, passing through", "err", result.err)
 		}
-		return h.next.Do(ctx, req)
-	}
-
-	// A metric split reads before its start. Overlap and clipping use that window
-	// so a lookback match is not treated as a miss. Log queries widen by zero.
-	expr, _ := syntax.ParseExpr(lokiReq.Query)
-	readStart, readEnd := intervalStart, intervalEnd
-	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
-	}
-
-	if readEnd.After(result.ingesterCutoff) {
-		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
 		return h.next.Do(ctx, req)
 	}
 

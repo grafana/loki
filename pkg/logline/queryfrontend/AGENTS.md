@@ -23,7 +23,9 @@ or attach hint ranges for time intervals that the logline index proves contain n
    - **Forward** one request with the clipped raw hint ranges attached. Request bounds
      stay the split interval. Queriers use the ranges to skip storage work.
    - **Pass through** if the interval is in the ingester window, is covered only by a
-     pre-min-date sentinel, or on error/timeout
+     pre-min-date sentinel, or on error/timeout. Ingester-window and pre-min-date
+     intervals pass through before waiting for the lookup, so a limited query can
+     return from them while the lookup is still running.
 
 ## Key integration points
 
@@ -47,6 +49,23 @@ The logline index only covers data in object storage. Recent data still in inges
 is always passed through. The `ingesterCutoff` is computed from
 `QueryIngestersWithin` (from Loki's querier config).
 
+### Pass-through intervals don't wait for the lookup
+
+Ingester-window and pre-min-date intervals pass through whatever the lookup returns,
+so the filter dispatches them without waiting. This changes what some signals count:
+
+- `logline_query_frontend_passthrough_sub_requests_total` counts these intervals even
+  when the lookup fails or times out. `logline_query_frontend_hint_passthrough_total`
+  and `QueryStats.PrefetchCalls` only count sub-requests that waited for the lookup.
+- A lookup still running when the query returns is canceled. It counts in
+  `logline_query_frontend_hint_lookups_canceled_total` and not in
+  `logline_query_frontend_hint_provider_duration_seconds`, which only observes
+  lookups that finished.
+- When no sub-request can use the lookup, the prefetch middleware doesn't start it.
+  If the part of the query outside the ingester window predates the index, the
+  middleware records the pre-min-date range the lookup would have returned, so the
+  hint status, ranges and outcome match a query that ran the lookup.
+
 ### Hint timeout
 
 If the async hint lookup doesn't complete within `HintTimeout` (default 15s), the
@@ -69,8 +88,9 @@ The prefetch middleware reports the wait once per live query that starts a hint
 lookup: on the response as `Logline.HintWaitTime` (`logline_hint_wait_time` on the
 `metrics.go` line) and in the `logline_query_frontend_hint_wait_seconds` histogram.
 The histogram also counts failed queries, and records a zero when the hints were ready
-before any sub-request needed them. Dry-run queries and queries skipped before the
-lookup aren't observed.
+before any sub-request needed them or when no sub-request could use them, so the
+lookup didn't run. Dry-run queries and queries skipped before the lookup aren't
+observed.
 
 The histogram's `status` label is the hint status when the query returns, not whether
 a sub-request timed out. `incomplete` includes queries that the results cache answered
@@ -105,7 +125,9 @@ why it didn't:
 1. The three early skips in the prefetch handler record `unsupported_query`,
    `size_estimate_failed` and `query_too_small`, in live mode only.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
-   `lookup_timeout`, `canceled` or `recent_data_only`.
+   `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
+   A lookup still running when the query returns is `lookup_timeout` if a
+   sub-request gave up waiting for it, and `answered_before_lookup` otherwise.
 3. Without shard planning, the outcome is `skip_ratio_unavailable`.
 4. If no sub-request was skipped or narrowed, it is `time_range_not_indexed`.
 5. A ratio below `tinyDataSkippedRatio` (0.25) is `tiny_data_skipped`, and anything else
@@ -119,7 +141,7 @@ why it didn't:
 | `integration.go` | `WrapMiddleware` / `WrapMiddlewareWithStore` — builds and composes the full stack |
 | `config.go` | `Config`, the `logline.query` section: enable switch, parallelism, timeouts, cache settings |
 | `limits/definitions.go` | The per-tenant `Limits` interface |
-| `metrics.go` | Prometheus metrics for hint provider duration, hint wait, ranges returned, passthrough/skip/narrow counts |
+| `metrics.go` | Prometheus metrics for hint provider duration, canceled lookups, hint wait, ranges returned, passthrough/skip/narrow counts |
 
 ## Running tests
 
