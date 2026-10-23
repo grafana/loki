@@ -80,6 +80,7 @@ type Reader struct {
 	queryAppend     string
 	labelSelector   string
 	validateOTLP    bool
+	disableTail     bool
 }
 
 func buildLabelSelector(labels, sName, sValue, lName, lVal string) (string, error) {
@@ -129,6 +130,7 @@ func NewReader(writer io.Writer,
 	queryAppend string,
 	labels string,
 	validateOTLP bool,
+	disableTail bool,
 ) (*Reader, error) {
 	if user != "" && bearerTokenFile != "" {
 		return nil, fmt.Errorf("at most one of basic authentication and bearer token authentication may be configured")
@@ -223,18 +225,26 @@ func NewReader(writer io.Writer,
 		queryAppend:     queryAppend,
 		labelSelector:   labelSel,
 		validateOTLP:    validateOTLP,
+		disableTail:     disableTail,
 	}
 
-	go rd.run()
+	if disableTail {
+		go func() {
+			<-rd.quit
+			close(rd.done)
+		}()
+	} else {
+		go rd.run()
 
-	go func() {
-		<-rd.quit
-		if rd.conn != nil {
-			fmt.Fprintf(rd.w, "shutting down reader\n")
-			rd.shuttingDown = true
-			_ = rd.conn.Close()
-		}
-	}()
+		go func() {
+			<-rd.quit
+			if rd.conn != nil {
+				fmt.Fprintf(rd.w, "shutting down reader\n")
+				rd.shuttingDown = true
+				_ = rd.conn.Close()
+			}
+		}()
+	}
 
 	return &rd, nil
 }

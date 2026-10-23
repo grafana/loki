@@ -50,6 +50,7 @@ func main() {
 	push := flag.Bool("push", false, "Push the logs directly to given Loki address")
 	pushProtocol := flag.String("push-protocol", writer.PushProtocolLoki, "Write protocol: loki or otlp (requires -push)")
 	useTLS := flag.Bool("tls", false, "Does the loki connection use TLS?")
+	disableTail := flag.Bool("disable-tail", false, "Disable the websocket-based tail for reading log entries from Loki. Verification falls back to query_range polling only and websocket misses are not reported. Each polling query returns at most 1000 entries, so this is not suited to write rates above that per wait period.")
 	certFile := flag.String("cert-file", "", "Client PEM encoded X.509 certificate for optional use with TLS connection to Loki")
 	keyFile := flag.String("key-file", "", "Client PEM encoded X.509 key for optional use with TLS connection to Loki")
 	caFile := flag.String("ca-file", "", "Client certificate authority for optional use with TLS connection to Loki")
@@ -241,12 +242,12 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *pathPrefix, *user, *pass, *bearerTokenFile, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels, *pushProtocol == writer.PushProtocolOTLP)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *pathPrefix, *user, *pass, *bearerTokenFile, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels, *pushProtocol == writer.PushProtocolOTLP, *disableTail)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)
 		}
-		c.comparator = comparator.NewComparator(os.Stderr, *wait, *maxWait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *spotCheckWait, *metricTestInterval, *metricTestQueryRange, *cacheTestInterval, *cacheTestQueryRange, *cacheTestQueryNow, *interval, *buckets, sentChan, receivedChan, c.reader, true)
+		c.comparator = comparator.NewComparator(os.Stderr, *wait, *maxWait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *spotCheckWait, *metricTestInterval, *metricTestQueryRange, *cacheTestInterval, *cacheTestQueryRange, *cacheTestQueryNow, *interval, *buckets, sentChan, receivedChan, c.reader, true, *disableTail)
 	}
 
 	startCanary()
