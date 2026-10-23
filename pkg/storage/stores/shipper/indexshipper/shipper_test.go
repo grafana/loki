@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 func TestConfig_Validate(t *testing.T) {
@@ -44,6 +45,7 @@ func TestConfig_ForPeriod(t *testing.T) {
 	unsharded := config.PeriodConfig{IndexTables: config.IndexPeriodicTableConfig{PathPrefix: "index/"}}
 	sharded := config.PeriodConfig{IndexTables: config.IndexPeriodicTableConfig{PathPrefix: "index/", ShardedPathPrefix: "index_sharded/", ShardFactor: 8}}
 	filterTenants := func(_ string, tenants []string) ([]string, error) { return tenants, nil }
+	filterFiles := func(_, _ string, files []storage.IndexFile) ([]storage.IndexFile, error) { return files, nil }
 
 	t.Run("without per-index ownership every period reads path_prefix", func(t *testing.T) {
 		for _, p := range []config.PeriodConfig{unsharded, sharded} {
@@ -58,6 +60,7 @@ func TestConfig_ForPeriod(t *testing.T) {
 		TenantFilter:              filterTenants,
 		SkipInitialQueryReadiness: true,
 		DropFilter:                filterTenants,
+		FileFilter:                filterFiles,
 	}
 
 	t.Run("with per-index ownership a sharded period reads the sharded copy with the filters", func(t *testing.T) {
@@ -67,6 +70,7 @@ func TestConfig_ForPeriod(t *testing.T) {
 		require.NotNil(t, cfg.TenantFilter)
 		require.True(t, cfg.SkipInitialQueryReadiness)
 		require.NotNil(t, cfg.DropFilter)
+		require.NotNil(t, cfg.FileFilter)
 	})
 
 	t.Run("with per-index ownership another period reads path_prefix without the filters", func(t *testing.T) {
@@ -76,5 +80,6 @@ func TestConfig_ForPeriod(t *testing.T) {
 		require.Nil(t, cfg.TenantFilter)
 		require.False(t, cfg.SkipInitialQueryReadiness)
 		require.Nil(t, cfg.DropFilter)
+		require.Nil(t, cfg.FileFilter)
 	})
 }

@@ -52,6 +52,18 @@ type Limits interface {
 // It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterTenants
 type TenantFilter func(table string, tenants []string) ([]string, error)
 
+// FileFilter answers which of the index files of a tenant in a table this
+// instance must keep ready for queries. It is applied when a user index set
+// kept ready for queries syncs with storage: files it does not return are not
+// downloaded, and are removed if present. Index sets downloaded on demand by
+// a query are not filtered, so a gateway that is not an owner can still answer
+// a query from the whole index. With fingerprint-sharded index files, the
+// index gateway keeps the files whose fingerprint range overlaps a shard it
+// owns.
+//
+// It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterFiles
+type FileFilter func(table, tenant string, files []storage.IndexFile) ([]storage.IndexFile, error)
+
 type TableManager interface {
 	Stop()
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
@@ -83,6 +95,10 @@ type Config struct {
 	// index sets are not evicted this way, but are governed by CacheTTL. The
 	// index gateway with per-index ownership sets it.
 	DropFilter TenantFilter
+	// FileFilter, if set, limits the files a user index set kept ready for
+	// queries downloads and keeps (see FileFilter). The index gateway with
+	// per-index ownership sets it.
+	FileFilter FileFilter
 }
 
 type tableManager struct {
@@ -282,7 +298,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 				return nil, err
 			}
 
-			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout)
+			table = newTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout, tm.tableOptions())
 			tm.tables[tableName] = table
 		}
 	}
@@ -357,6 +373,10 @@ func (tm *tableManager) cleanupCache() error {
 	}
 
 	return nil
+}
+
+func (tm *tableManager) tableOptions() tableOptions {
+	return tableOptions{fileFilter: tm.cfg.FileFilter}
 }
 
 // EnsureQueryReadiness implements TableManager. With Config.DropFilter, it
@@ -565,8 +585,8 @@ func (tm *tableManager) loadLocalTables() error {
 
 		level.Info(tm.logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
-		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
-			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout)
+		table, err := loadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
+			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout, tm.tableOptions())
 		if err != nil {
 			return err
 		}

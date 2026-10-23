@@ -993,9 +993,13 @@ func (t *Loki) initStore() (services.Service, error) {
 		// Read the sharded index copy of the schema periods that have one, and
 		// preload only the indexes this gateway owns, after it has joined the
 		// ring and can tell which those are.
-		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
+		tables := config.GetIndexStoreTableRanges(types.IndexTypeTSDB, t.Cfg.SchemaConfig.Configs)
+		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr(), tables)
 		t.Cfg.StorageConfig.TSDBShipperConfig.PerIndexOwnership = true
 		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
+		// Of a tenant's index, keep only the files of the fingerprint-range
+		// shards this gateway owns.
+		t.Cfg.StorageConfig.TSDBShipperConfig.FileFilter = filter.FilterFiles
 		t.Cfg.StorageConfig.TSDBShipperConfig.SkipInitialQueryReadiness = true
 		// Evict indexes this gateway no longer owns, judged from ACTIVE instances
 		t.Cfg.StorageConfig.TSDBShipperConfig.DropFilter = filter.FilterTenantsToDrop
