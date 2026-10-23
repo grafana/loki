@@ -158,7 +158,14 @@ func (b *Builder) dropEmptyStreams() {
 // FinalizeChunks sorts and dedupes the chunks of every stream. It must be called before the chunks are modified.
 func (b *Builder) FinalizeChunks() {
 	for s := range b.allStreams() {
-		s.chunks = s.chunks.Finalize()
+		chks := s.chunks.Finalize()
+		// The chunks are held until Build, so drop more than a quarter of spare capacity, left by appending
+		// chunks from many source indexes or by Finalize returning a pooled slice when it removed duplicates.
+		// A smaller spare can come from allocation size classes, which a copy would just reproduce.
+		if cap(chks)-len(chks) > len(chks)/4 {
+			chks = slices.Clone(chks)
+		}
+		s.chunks = chks
 	}
 	b.chunksFinalized = true
 }

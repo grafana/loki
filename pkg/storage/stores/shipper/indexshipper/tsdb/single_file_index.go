@@ -58,7 +58,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 
 	builder := NewBuilder(desiredVer)
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-		builder.AddSeries(lbls.Copy(), fp, chks)
+		builder.AddSeries(lbls, fp, chks)
 		return false
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -215,8 +215,10 @@ func (i *TSDBIndex) getChunkFilter() chunk.RequestChunkFilterer {
 	return f
 }
 
-// fn must NOT capture it's arguments. They're reused across series iterations and returned to
-// a pool after completion.
+// fn must NOT capture the chunks. They're reused across series iterations and returned to
+// a pool after completion. When the index is backed by a file, the labels never alias the file
+// and aren't reused across series, so they may be retained after the index is closed; the
+// compactor relies on this to avoid copying them.
 // Iteration will stop if the callback returns true.
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)
