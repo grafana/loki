@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -65,6 +66,23 @@ func CreateOrRotateCertificates(ctx context.Context, log logr.Logger, req ctrl.R
 	}
 
 	ll.Info("certificate manifests built", "count", len(objects))
+
+	// Check for ownership conflicts before creating or updating resources
+	conflicts, err := CheckResourceOwnership(ctx, ll, k, s, req, &stack, objects)
+	if err != nil {
+		return err
+	}
+	if len(conflicts) > 0 {
+		conflictList := strings.Join(conflicts, "; ")
+		return &status.DegradedError{
+			Message: fmt.Sprintf(
+				"Resource ownership conflict detected for certificate rotation, this instance reconciliation is blocked until the conflict is resolved, conflicting resources: %s",
+				conflictList,
+			),
+			Reason:  lokiv1.ReasonResourceOwnershipConflict,
+			Requeue: true,
+		}
+	}
 
 	var errCount int32
 
