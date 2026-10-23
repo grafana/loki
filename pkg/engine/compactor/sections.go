@@ -29,7 +29,8 @@ import (
 const prefetchBytes = 2 * 1024 * 1024
 
 // errCorruptIndex reports an index whose sections of one tenant do not share
-// one stream layout. No retry can fix it, so compaction skips it.
+// one stream layout, or whose layout cannot be read. No retry can fix it, so
+// compaction skips it.
 var errCorruptIndex = errors.New("corrupt index")
 
 // indexEntry is one index object listed in a ToC for a particular tenant.
@@ -332,10 +333,10 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 // indexLayout returns the stream layout of the data objects that obj indexes
 // for tenant. ok is false if the index has no stats section for tenant. It
 // returns an error that wraps errCorruptIndex if the sections of the index do
-// not share one layout.
+// not share one layout, or if the layout cannot be read.
 func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath string) (layout streams.Layout, ok bool, err error) {
 	layout, ok, err = indexobj.TenantLayout(ctx, obj, tenant)
-	if errors.Is(err, indexobj.ErrMixedLayouts) {
+	if errors.Is(err, indexobj.ErrMixedLayouts) || errors.Is(err, indexobj.ErrInvalidLayout) {
 		return streams.Layout{}, false, fmt.Errorf("%w: index %s: %w", errCorruptIndex, idxPath, err)
 	}
 	if err != nil {

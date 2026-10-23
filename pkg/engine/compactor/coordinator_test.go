@@ -2642,6 +2642,27 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
 	})
 
+	t.Run("IndexMerge skips an index with an invalid layout and still groups the other indexes", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/healthy", []stats.Stat{{ObjectPath: "logs/a", SortSchema: "label:service_name"}})
+		// The zero layout records a shard count but no stream order, which
+		// readers reject.
+		builder := dataobj.NewBuilder(nil)
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000), streams.Layout{})
+		statsBuilder.SetTenant("acme")
+		statsBuilder.Append(stats.Stat{ObjectPath: "logs/b"})
+		require.NoError(t, builder.Append(statsBuilder))
+		invalid, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		uploadObject(ctx, t, bucket, "indexes/invalid", invalid)
+
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		_, err = c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/healthy"}, {Path: "indexes/invalid"}})
+		require.NoError(t, err)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
+	})
+
 	t.Run("LogMerge skips a corrupt index, counts it, and reports no planning error", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildMixedLayoutIndex(ctx, t, bucket, "acme", "indexes/corrupt")

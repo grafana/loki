@@ -165,7 +165,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant, labelReason}),
 		corruptIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_corrupt_indexes_total",
-			Help: "Times a compaction phase skipped an index because its sections do not share one stream layout. Each phase that reads the index increments it again, so a nonzero rate means a corrupt index is still in the ToC.",
+			Help: "Times a compaction phase skipped an index because its sections do not share one stream layout, or its layout cannot be read. Each phase that reads the index increments it again, so a nonzero rate means a corrupt index is still in the ToC.",
 		}, []string{labelTenant, labelPhase}),
 		lastPlanTimestampSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_last_plan_timestamp_seconds",
