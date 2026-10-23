@@ -39,6 +39,7 @@ type AccessTokens interface {
 	FromUserAssertionClientCertificate(ctx context.Context, authParameters authority.AuthParams, userAssertion string, assertion string) (accesstokens.TokenResponse, error)
 	FromDeviceCodeResult(ctx context.Context, authParameters authority.AuthParams, deviceCodeResult accesstokens.DeviceCodeResult) (accesstokens.TokenResponse, error)
 	FromSamlGrant(ctx context.Context, authParameters authority.AuthParams, samlGrant wstrust.SamlTokenInfo) (accesstokens.TokenResponse, error)
+	FromUserFederatedIdentityCredential(ctx context.Context, authParameters authority.AuthParams, cred *accesstokens.Credential) (accesstokens.TokenResponse, error)
 }
 
 // FetchAuthority will be implemented by authority.Authority.
@@ -170,6 +171,17 @@ func (t *Client) OnBehalfOf(ctx context.Context, authParams authority.AuthParams
 	return tr, nil
 }
 
+// UserFederatedIdentityCredential acquires a user-scoped token using the user_fic grant type.
+func (t *Client) UserFederatedIdentityCredential(ctx context.Context, authParams authority.AuthParams, cred *accesstokens.Credential) (accesstokens.TokenResponse, error) {
+	if err := scopeError(authParams); err != nil {
+		return accesstokens.TokenResponse{}, err
+	}
+	if err := t.resolveEndpoint(ctx, &authParams, ""); err != nil {
+		return accesstokens.TokenResponse{}, err
+	}
+	return t.AccessTokens.FromUserFederatedIdentityCredential(ctx, authParams, cred)
+}
+
 func (t *Client) Refresh(ctx context.Context, reqType accesstokens.AppType, authParams authority.AuthParams, cc *accesstokens.Credential, refreshToken accesstokens.RefreshToken) (accesstokens.TokenResponse, error) {
 	if err := scopeError(authParams); err != nil {
 		return accesstokens.TokenResponse{}, err
@@ -299,8 +311,9 @@ func isWaitDeviceCodeErr(err error) bool {
 		return false
 	}
 	var dCErr deviceCodeError
-	defer c.Resp.Body.Close()
 	body, err := io.ReadAll(c.Resp.Body)
+	// A close error can't change the result after the response body has been consumed.
+	_ = c.Resp.Body.Close()
 	if err != nil {
 		return false
 	}
