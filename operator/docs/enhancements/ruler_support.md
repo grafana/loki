@@ -1,5 +1,6 @@
 ---
 title: Ruler Support
+state: committed
 description: Support for Loki Ruler and alerting/recording rules
 authors:
   - "@periklis"
