@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
+	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -306,4 +307,27 @@ func TestServerServicesToWaitFor(t *testing.T) {
 	}}
 
 	require.Equal(t, []services.Service{ingester}, l.serverServicesToWaitFor())
+}
+
+func TestLoglineStoreConfigBorrowsIngesterWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		queryIngestersWithin time.Duration
+		want                 time.Duration
+	}{
+		{name: "querier value", queryIngestersWithin: 3 * time.Hour, want: 3 * time.Hour},
+		{name: "unset falls back to default", queryIngestersWithin: 0, want: loglinestore.DefaultQueryIngestersWithin},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := &Loki{}
+			l.Cfg.Logline.Store.MinDate = "2026-01-01"
+			l.Cfg.Querier.QueryIngestersWithin = tc.queryIngestersWithin
+
+			cfg := l.loglineStoreConfig()
+			require.Equal(t, tc.want, cfg.QueryIngestersWithin)
+			require.Equal(t, "2026-01-01", cfg.MinDate)
+			// The shared section stays untouched.
+			require.Zero(t, l.Cfg.Logline.Store.QueryIngestersWithin)
+		})
+	}
 }
