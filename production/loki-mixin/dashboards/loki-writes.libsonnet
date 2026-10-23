@@ -15,16 +15,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               [],
 
                           matchers:: {
-                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
+                            cortexgateway: [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'cortex-gw(-internal)?')],
                             distributor: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(distributor|loki-single-binary)')]
-                            else [utils.selector.re('job', '($namespace)/distributor')],
+                            then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(distributor|loki-single-binary)')]
+                            else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'distributor')],
                             ingester: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|loki-single-binary)')]
-                            else [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*)')],
+                            then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester.*|ingester.*|loki-single-binary)')]
+                            else [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester.*|ingester.*)')],
                             ingester_zone: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|loki-single-binary)')]
-                            else [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*)')],
+                            then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester-.*|ingester-zone-.*|loki-single-binary)')]
+                            else [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester-.*|ingester-zone-.*)')],
                           },
 
                           local selector(matcherId) =
