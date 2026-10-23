@@ -17,7 +17,6 @@ func Test_addLabelStage_Process(t *testing.T) {
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util_log.InitLogger(cfg, nil, false)
-	Debug = true
 
 	tests := []struct {
 		name           string

@@ -2,11 +2,9 @@ package stages
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -76,16 +74,10 @@ func processLabelsConfigs(logger log.Logger, extracted map[string]interface{}, c
 		if lValue, ok := extracted[source]; ok {
 			s, err := getString(lValue)
 			if err != nil {
-				if Debug {
-					level.Debug(logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue))
-				}
 				continue
 			}
 			labelValue := model.LabelValue(s)
 			if !labelValue.IsValid() {
-				if Debug {
-					level.Debug(logger).Log("msg", "invalid label value parsed", "value", labelValue)
-				}
 				continue
 			}
 			consumer(model.LabelName(source), model.LabelName(lName), labelValue)

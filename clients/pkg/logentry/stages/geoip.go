@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"reflect"
 	"time"
 
 	"github.com/go-kit/log"
@@ -133,24 +132,15 @@ func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interfa
 	var ip net.IP
 	if g.cfgs.Source != nil {
 		if _, ok := extracted[*g.cfgs.Source]; !ok {
-			if Debug {
-				level.Debug(g.logger).Log("msg", "source does not exist in the set of extracted values", "source", *g.cfgs.Source)
-			}
 			return
 		}
 
 		value, err := getString(extracted[*g.cfgs.Source])
 		if err != nil {
-			if Debug {
-				level.Debug(g.logger).Log("msg", "failed to convert source value to string", "source", *g.cfgs.Source, "err", err, "type", reflect.TypeOf(extracted[*g.cfgs.Source]))
-			}
 			return
 		}
 		ip = net.ParseIP(value)
 		if ip == nil {
-			if Debug {
-				level.Debug(g.logger).Log("msg", "failed to parse IP address", "source", *g.cfgs.Source, "value", value)
-			}
 			return
 		}
 	}
@@ -158,9 +148,6 @@ func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interfa
 	// Convert net.IP to netip.Addr for geoip2 v2 API
 	addr, ok := netip.AddrFromSlice(ip)
 	if !ok {
-		if Debug {
-			level.Debug(g.logger).Log("msg", "failed to convert IP to netip.Addr", "ip", ip)
-		}
 		return
 	}
 

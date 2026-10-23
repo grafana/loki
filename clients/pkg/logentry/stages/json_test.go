@@ -353,7 +353,7 @@ func TestValidateJSONDrop(t *testing.T) {
 		DropMalformed: true,
 		Expressions:   map[string]string{"page": "page"},
 	}
-	s, err := newJSONStage(util_log.Logger, matchConfig)
+	s, err := newJSONStage(matchConfig)
 	assert.NoError(t, err, "withMatcher() error = %v", err)
 	assert.NotNil(t, s, "newJSONStage failed to create the pipeline stage and was nil")
 	out := processEntries(s, newEntry(map[string]interface{}{

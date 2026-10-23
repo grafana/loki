@@ -1,13 +1,11 @@
 package stages
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -37,14 +35,6 @@ var testTimestampLogLine = `
 }
 `
 
-var testTimestampLogLineWithMissingKey = `
-{
-	"app":"loki",
-	"component": ["parser","type"],
-	"level" : "WARN"
-}
-`
-
 func TestTimestampPipeline(t *testing.T) {
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testTimestampYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -59,23 +49,6 @@ var (
 	validLocationString   = "America/New_York"
 	validLocation, _      = time.LoadLocation(validLocationString)
 )
-
-func TestPipelineWithMissingKey_Timestamp(t *testing.T) {
-	var buf bytes.Buffer
-	w := log.NewSyncWriter(&buf)
-	logger := log.NewLogfmtLogger(w)
-	pl, err := NewPipeline(logger, loadConfig(testTimestampYaml), nil, prometheus.DefaultRegisterer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	Debug = true
-	_ = processEntries(pl, newEntry(nil, nil, testTimestampLogLineWithMissingKey, time.Now()))
-
-	expectedLog := fmt.Sprintf("level=debug msg=\"%s\" err=\"can't convert <nil> to string\" type=null", ErrTimestampConversionFailed)
-	if !(strings.Contains(buf.String(), expectedLog)) {
-		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
-	}
-}
 
 func TestTimestampValidation(t *testing.T) {
 	tests := map[string]struct {
@@ -296,7 +269,7 @@ func TestTimestampStage_Process(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			st, err := newTimestampStage(util_log.Logger, test.config)
+			st, err := newTimestampStage(test.config)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -435,7 +408,7 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 			// Ensure the test has been correctly set
 			require.Equal(t, len(testData.inputEntries), len(testData.expectedTimestamps))
 
-			s, err := newTimestampStage(util_log.Logger, testData.config)
+			s, err := newTimestampStage(testData.config)
 			require.NoError(t, err)
 
 			for i, inputEntry := range testData.inputEntries {
