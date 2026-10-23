@@ -176,7 +176,11 @@ func (o *Options) validate() error {
 // empty, an attempt will be made to detect credentials from the environment
 // (see [cloud.google.com/go/auth/credentials.DetectDefault]). Only service
 // account, impersonated service account, external account and Compute
-// credentials are supported.
+// credentials are supported. Note: If the provided external account
+// configuration (e.g., Workload Identity Federation) is configured to
+// impersonate a service account, the returned credentials will yield ID tokens
+// representing that target service account, rather than the external workload
+// principal that initiated the request.
 func NewCredentials(opts *Options) (*auth.Credentials, error) {
 	if err := opts.validate(); err != nil {
 		return nil, err
