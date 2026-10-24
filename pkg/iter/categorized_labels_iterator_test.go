@@ -1,6 +1,7 @@
 package iter
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -142,4 +143,45 @@ func TestNewCategorizeLabelsIterator(t *testing.T) {
 			require.ElementsMatch(t, tc.expectedStreams, streams)
 		})
 	}
+}
+
+func TestCategorizeLabelsIteratorErr(t *testing.T) {
+	wantErr := errors.New("retries exceeded")
+
+	t.Run("wrapped iterator fails before any entry", func(t *testing.T) {
+		itr := NewCategorizeLabelsIterator(&erroringEntryIterator{err: wantErr})
+
+		require.False(t, itr.Next())
+		require.ErrorIs(t, itr.Err(), wantErr)
+	})
+
+	t.Run("wrapped iterator fails after an entry", func(t *testing.T) {
+		itr := NewCategorizeLabelsIterator(&erroringEntryIterator{
+			labels: labels.FromStrings("namespace", "default").String(),
+			entries: []logproto.Entry{{
+				Timestamp: time.Unix(0, 1),
+				Line:      "line",
+			}},
+			err: wantErr,
+		})
+
+		require.True(t, itr.Next())
+		require.NoError(t, itr.Err())
+		require.False(t, itr.Next())
+		require.ErrorIs(t, itr.Err(), wantErr)
+	})
+
+	t.Run("label parse error is returned", func(t *testing.T) {
+		itr := NewCategorizeLabelsIterator(&erroringEntryIterator{
+			labels: "not labels",
+			entries: []logproto.Entry{{
+				Timestamp:          time.Unix(0, 1),
+				Line:               "line",
+				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+			}},
+		})
+
+		require.False(t, itr.Next())
+		require.ErrorContains(t, itr.Err(), "failed to parse series labels to categorize labels")
+	})
 }
