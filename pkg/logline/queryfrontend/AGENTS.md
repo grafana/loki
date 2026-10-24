@@ -66,6 +66,18 @@ so the filter dispatches them without waiting. This changes what some signals co
   middleware records the pre-min-date range the lookup would have returned, so the
   hint status, ranges and outcome match a query that ran the lookup.
 
+### Detected fields
+
+The prefetch middleware also handles `DetectedFieldsRequest`, for both
+`detected_fields` and `detected_field/{name}/values`. The detected fields handler turns
+it into one `BACKWARD` `LokiRequest` limited to the line limit, and the filter treats
+that request like any log query.
+
+Detected fields only look up hints in live mode. Dry-run verifies hints against the log
+lines or samples in the response, and a detected fields response has neither. The hints
+are the same ones log queries get, so dry-run on log and metric queries covers their
+correctness.
+
 ### Hint timeout
 
 If the async hint lookup doesn't complete within `HintTimeout` (default 15s), the
