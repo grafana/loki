@@ -2,6 +2,7 @@ package pool
 
 import (
 	"bytes"
+	"math"
 	"sync"
 )
 
@@ -12,7 +13,8 @@ type BufferPool struct {
 }
 
 // NewBuffer a new Pool with size buckets for minSize to maxSize
-// increasing by the given factor.
+// increasing by the given finite factor greater than 1. Bucket sizes grow by
+// at least one byte when multiplication rounds down to the current size.
 func NewBuffer(minSize, maxSize int, factor float64) *BufferPool {
 	if minSize < 1 {
 		panic("invalid minimum pool size")
@@ -20,14 +22,25 @@ func NewBuffer(minSize, maxSize int, factor float64) *BufferPool {
 	if maxSize < 1 {
 		panic("invalid maximum pool size")
 	}
-	if factor < 1 {
+	if factor <= 1 || math.IsNaN(factor) || math.IsInf(factor, 0) {
 		panic("invalid factor")
 	}
 
 	var sizes []int
 
-	for s := minSize; s <= maxSize; s = int(float64(s) * factor) {
+	for s := minSize; s <= maxSize; {
 		sizes = append(sizes, s)
+		next := float64(s) * factor
+		// On 64-bit systems float64(maxInt) rounds up to 2^63, which
+		// cannot be converted to int. Stop before that conversion.
+		if next >= float64(int(^uint(0)>>1)) {
+			break
+		}
+		nextSize := int(next)
+		if nextSize <= s {
+			nextSize = s + 1
+		}
+		s = nextSize
 	}
 
 	return &BufferPool{
