@@ -249,18 +249,22 @@ func (b *Builder) Build(
 	// load the newly compacted index to grab checksum, promptly close
 	dst := createFn(model.Time(from), model.Time(through), reader.Checksum())
 
-	reader.Close()
+	// The mmap must be released before the rename: Windows refuses to rename a file that is still mapped.
+	closeErr := reader.Close()
 	defer func() {
 		if err != nil {
 			os.RemoveAll(tmpPath)
 		}
 	}()
+	if closeErr != nil {
+		return id, fmt.Errorf("close staging index %s: %w", tmpPath, closeErr)
+	}
 
 	if err := chunk_util.EnsureDirectory(filepath.Dir(dst.Path())); err != nil {
 		return id, err
 	}
 	dstPath := dst.Path()
-	if err := os.Rename(tmpPath, dstPath); err != nil {
+	if err := renameWithRetry(ctx, os.Rename, isTransientRenameErr, renameAttempts, renameBackoff, tmpPath, dstPath); err != nil {
 		return id, err
 	}
 
