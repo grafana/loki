@@ -7,6 +7,8 @@
 _obj
 _test
 bin
+.gocache/
+.gomodcache/
 
 # Architecture specific extensions/prefixes
 *.[568vq]
@@ -30,3 +32,4 @@ _testmain.go
 cover.html
 README.html
 .idea
+.claude/
