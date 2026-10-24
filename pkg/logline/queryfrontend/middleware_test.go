@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -296,6 +298,87 @@ func buildStatsAwareQuerier(
 	})
 }
 
+// detectedFieldsLimits are the limits the detected fields handler reads before
+// it sends its log request. They allow any line limit and matchers.
+type detectedFieldsLimits struct{ queryrange.Limits }
+
+func (detectedFieldsLimits) MaxEntriesLimitPerQuery(context.Context, string) int { return 0 }
+func (detectedFieldsLimits) RequiredLabels(context.Context, string) []string     { return nil }
+func (detectedFieldsLimits) RequiredNumberLabels(context.Context, string) int    { return 0 }
+
+// buildRoutedStack wires prefetch and filter like buildStack, with a router in
+// place of the Loki tripperware. The router answers index stats requests with
+// statsBytes and sends detected fields requests through the real detected
+// fields tripperware, which calls the filter with its own log request.
+func buildRoutedStack(
+	t *testing.T,
+	hp *mockHintProvider,
+	cfg Config,
+	limits logline_query_limits.Limits,
+	statsBytes uint64,
+	statsCalls *int,
+	querier queryrangebase.Handler,
+) queryrangebase.Handler {
+	t.Helper()
+	metrics := newTestMetrics()
+	filtered := NewLoglineFilterMiddleware(10*time.Second, metrics, nil).Wrap(querier)
+	detectedFieldsMW, err := queryrange.NewDetectedFieldsTripperware(detectedFieldsLimits{}, identityMiddleware{}, identityMiddleware{})
+	require.NoError(t, err)
+	detectedFields := detectedFieldsMW.Wrap(filtered)
+	router := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*queryrange.DetectedFieldsRequest); ok {
+			return detectedFields.Do(ctx, req)
+		}
+		return filtered.Do(ctx, req)
+	})
+	stats := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: statsBytes}, nil, statsCalls, router)
+	return prefetchMiddlewareForTest(hp, cfg, limits, metrics, nil).Wrap(stats)
+}
+
+// newTestDetectedFieldsRequest builds a detected fields request, or a field
+// values request when field is set, with a line limit of 1000.
+func newTestDetectedFieldsRequest(query string, from, through time.Time, field string) *queryrange.DetectedFieldsRequest {
+	path := "/loki/api/v1/detected_fields"
+	if field != "" {
+		path = "/loki/api/v1/detected_field/" + field + "/values"
+	}
+	req := queryrange.NewDetectedFieldsRequest(from, through, 1000, 100, 0, query, path)
+	if field != "" {
+		req.AsProto().Values = true
+		req.AsProto().Name = field
+	}
+	return req
+}
+
+// logfmtQuerier records the log requests it receives and answers each with one
+// logfmt line, so a detected fields response has fields to report. A metric
+// request gets one sample instead.
+type logfmtQuerier struct {
+	reqs          []*queryrange.LokiRequest
+	encodingFlags []httpreq.EncodingFlags
+}
+
+func (q *logfmtQuerier) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	lokiReq := req.(*queryrange.LokiRequest)
+	q.reqs = append(q.reqs, lokiReq)
+	q.encodingFlags = append(q.encodingFlags, httpreq.ExtractEncodingFlagsFromCtx(ctx))
+	if _, err := syntax.ParseSampleExpr(lokiReq.Query); err == nil {
+		return metricMatrixResponse(1, lokiReq.EndTs), nil
+	}
+	return streamResponseWithEntries(logproto.Entry{
+		Timestamp: lokiReq.EndTs.Add(-time.Minute),
+		Line:      `level=error msg=timeout`,
+	}), nil
+}
+
+func detectedFieldLabels(resp *queryrange.DetectedFieldsResponse) []string {
+	var names []string
+	for _, f := range resp.Response.Fields {
+		names = append(names, f.Label)
+	}
+	return names
+}
+
 func findLogLine(logs, contains string) string {
 	for line := range strings.SplitSeq(logs, "\n") {
 		if strings.Contains(line, contains) {
@@ -349,89 +432,113 @@ func TestPrefetchFilter_NonLokiRequest(t *testing.T) {
 	require.Equal(t, 0, hp.Calls(), "hint provider should not be called for non-LokiRequest")
 }
 
-func TestPrefetchFilter_DetectedFieldsRequests(t *testing.T) {
+func TestPrefetchFilter_DetectedFieldsLiveHints(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
+	from := now.Add(-time.Hour)
 	hintStart := now.Add(-45 * time.Minute)
 	hintEnd := now.Add(-30 * time.Minute)
 
-	tests := []struct {
-		name   string
-		path   string
-		values bool
+	for _, tc := range []struct {
+		name       string
+		field      string
+		wantFields []string
+		wantValues []string
 	}{
-		{
-			name: "fields",
-			path: "/loki/api/v1/detected_fields",
-		},
-		{
-			name:   "field values",
-			path:   "/loki/api/v1/detected_field/message/values",
-			values: true,
-		},
-	}
-
-	for _, tc := range tests {
+		{name: "fields", wantFields: []string{"level", "msg"}},
+		{name: "field values", field: "level", wantValues: []string{"error"}},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			hp := &mockHintProvider{
-				hints: &hintprovider.Hints{
-					TimeRanges: []hintprovider.HintTimeRange{
-						{Start: hintStart, End: hintEnd},
-					},
-				},
-			}
-			metrics := newTestMetrics()
+			hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+				{Start: hintStart, End: hintEnd},
+			}}}
+			querier := &logfmtQuerier{}
+			handler := buildRoutedStack(t, hp, Config{RequireOptInHeader: true, NgramLength: 6}, mockLimits{}, 0, nil, querier)
 
-			var got *queryrange.LokiRequest
-			querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				got = req.(*queryrange.LokiRequest)
-				return emptyStreamResponse(), nil
-			})
-			filter := NewLoglineFilterMiddleware(10*time.Second, metrics, nil).Wrap(querier)
-			detectedFields := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				detectedReq := req.(*queryrange.DetectedFieldsRequest)
-				_, err := filter.Do(ctx, &queryrange.LokiRequest{
-					Query:     detectedReq.GetQuery(),
-					StartTs:   detectedReq.GetStart(),
-					EndTs:     detectedReq.GetEnd(),
-					Direction: logproto.BACKWARD,
-				})
-				return &queryrange.DetectedFieldsResponse{
-					Response: &logproto.DetectedFieldsResponse{},
-				}, err
-			})
-			prefetch := prefetchMiddlewareForTest(
-				hp,
-				Config{RequireOptInHeader: true},
-				mockLimits{},
-				metrics,
-				nil,
-			)
-			handler := prefetch.Wrap(detectedFields)
-
-			req := queryrange.NewDetectedFieldsRequest(
-				now.Add(-time.Hour),
-				now,
-				1000,
-				100,
-				0,
-				`{job="test"} |= "error"`,
-				tc.path,
-			)
-			req.AsProto().Values = tc.values
-			if tc.values {
-				req.AsProto().Name = "message"
-			}
-
+			req := newTestDetectedFieldsRequest(`{job="test"} |= "timeout"`, from, now, tc.field)
 			resp, err := handler.Do(testTenantContextWithLive(), req)
 			require.NoError(t, err)
-			require.IsType(t, &queryrange.DetectedFieldsResponse{}, resp)
+
 			require.Equal(t, 1, hp.Calls())
-			require.NotNil(t, got)
+			gotFrom, gotThrough := hp.Window()
+			require.Equal(t, model.TimeFromUnixNano(from.UnixNano()), gotFrom)
+			require.Equal(t, model.TimeFromUnixNano(now.UnixNano()), gotThrough)
+
+			require.Len(t, querier.reqs, 1, "detected fields sends one log request")
+			got := querier.reqs[0]
 			require.Equal(t, req.GetQuery(), got.Query)
-			require.Equal(t, req.GetStart(), got.StartTs)
-			require.Equal(t, req.GetEnd(), got.EndTs)
+			require.Equal(t, from, got.StartTs)
+			require.Equal(t, now, got.EndTs)
 			require.Equal(t, logproto.BACKWARD, got.Direction)
+			require.Equal(t, uint32(1000), got.Limit)
 			require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, got.HintRanges)
+			require.True(t, querier.encodingFlags[0].Has(httpreq.FlagCategorizeLabels),
+				"the filter keeps the categorize-labels flag the detected fields handler sets")
+
+			dfResp, ok := resp.(*queryrange.DetectedFieldsResponse)
+			require.True(t, ok, "got %T", resp)
+			require.ElementsMatch(t, tc.wantFields, detectedFieldLabels(dfResp))
+			require.ElementsMatch(t, tc.wantValues, dfResp.Response.Values)
+		})
+	}
+}
+
+func TestPrefetchFilter_DetectedFieldsNoMatchingHintsSkipsQuerier(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{hints: &hintprovider.Hints{}}
+	querier := &logfmtQuerier{}
+	handler := buildRoutedStack(t, hp, Config{RequireOptInHeader: true, NgramLength: 6}, mockLimits{}, 0, nil, querier)
+
+	resp, err := handler.Do(testTenantContextWithLive(), newTestDetectedFieldsRequest(`{job="test"} |= "timeout"`, now.Add(-time.Hour), now, ""))
+	require.NoError(t, err)
+
+	require.Equal(t, 1, hp.Calls())
+	require.Empty(t, querier.reqs, "no hint range overlaps the request, so the filter skips it")
+	dfResp, ok := resp.(*queryrange.DetectedFieldsResponse)
+	require.True(t, ok, "got %T", resp)
+	require.Empty(t, dfResp.Response.Fields)
+	require.Empty(t, dfResp.Response.Values)
+}
+
+func TestPrefetchFilter_DetectedFieldsSkipsLookup(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	live := Config{RequireOptInHeader: true, NgramLength: 6}
+
+	for _, tc := range []struct {
+		name  string
+		ctx   context.Context
+		cfg   Config
+		query string
+		// A metric query is rejected by the detected fields handler.
+		wantStatus int32
+	}{
+		{name: "query without a line filter", ctx: testTenantContextWithLive(), cfg: live, query: `{job="test"}`},
+		{name: "search term shorter than the n-gram length", ctx: testTenantContextWithLive(), cfg: live, query: `{job="test"} |= "err"`},
+		{name: "pattern filter", ctx: testTenantContextWithLive(), cfg: live, query: `{job="test"} |> "<_> timeout <_>"`},
+		{name: "metric query", ctx: testTenantContextWithLive(), cfg: live, query: `sum(count_over_time({job="test"} |= "timeout" [5m]))`, wantStatus: http.StatusBadRequest},
+		{name: "logline off header", ctx: testTenantContextWithForceDisable(), cfg: live, query: `{job="test"} |= "timeout"`},
+		{name: "tenant not opted in", ctx: testTenantContext(), cfg: live, query: `{job="test"} |= "timeout"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{hints: &hintprovider.Hints{}}
+			querier := &logfmtQuerier{}
+			handler := buildRoutedStack(t, hp, tc.cfg, mockLimits{}, 0, nil, querier)
+
+			resp, err := handler.Do(tc.ctx, newTestDetectedFieldsRequest(tc.query, now.Add(-time.Hour), now, ""))
+			require.Equal(t, 0, hp.Calls())
+
+			if tc.wantStatus != 0 {
+				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok, "got %v", err)
+				require.Equal(t, tc.wantStatus, httpResp.Code)
+				require.Empty(t, querier.reqs)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, querier.reqs, 1)
+			require.Empty(t, querier.reqs[0].HintRanges)
+			dfResp, ok := resp.(*queryrange.DetectedFieldsResponse)
+			require.True(t, ok, "got %T", resp)
+			require.ElementsMatch(t, []string{"level", "msg"}, detectedFieldLabels(dfResp))
 		})
 	}
 }
