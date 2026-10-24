@@ -783,7 +783,7 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte,
 			if baseLiteral != nil && idx != len(reg.Sub)-1 {
 				return nil, false
 			}
-			if idx == 0 {
+			if literals == 0 {
 				leadingOpenEnded = true
 			} else {
 				trailingOpenEnded = true
