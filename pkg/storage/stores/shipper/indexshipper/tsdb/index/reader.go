@@ -69,8 +69,9 @@ type Reader interface {
 // arrive out of order then a performance cost may be paid.
 type SeriesScan interface {
 	// Series populates lbls and chks for the series identified by id.
-	// The caller owns the labels written to lbls: they must not alias memory,
-	// use a shared buffer or be invalidated by the implementation in any way.
+	// The caller owns the labels written to lbls: they must not alias memory the
+	// implementation later modifies or frees (such as a reused buffer or the index
+	// file), so they stay valid after later calls and after the index is closed.
 	Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error)
 
 	// ChunkStats returns aggregated chunk statistics for the series
