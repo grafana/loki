@@ -220,35 +220,64 @@ func TestSingleIdx(t *testing.T) {
 
 // TestTSDBIndex_ForSeriesLabelsOutliveIndex checks that ForSeries hands out labels which aren't reused across
 // series and survive the index being closed, so the compactor can retain them without copying. With stringlabels
-// it catches a reused label buffer; with slicelabels it also catches label strings aliasing the unmapped file.
+// it catches a reused label buffer; with slicelabels it also catches label strings aliasing the unmapped file and
+// the head reusing the caller's label slice.
 func TestTSDBIndex_ForSeriesLabelsOutliveIndex(t *testing.T) {
 	var streams []stream
 	for i := range 100 {
 		streams = append(streams, buildStream(labels.FromStrings("foo", fmt.Sprintf("bar-%d", i), "pod", fmt.Sprintf("pod-%d", i)), buildChunkMetas(0, 1), ""))
 	}
-	path := setupPerTenantIndex(t, index.FormatV3, streams, t.TempDir(), time.Unix(0, 0))
 
-	idx, err := OpenShippableTSDB(path, index.MmapOptions{})
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name string
+		// open returns the index and a func that closes it and releases what backs it.
+		open func(t *testing.T) (*TSDBIndex, func())
+	}{
+		{
+			name: "file",
+			open: func(t *testing.T) (*TSDBIndex, func()) {
+				path := setupPerTenantIndex(t, index.FormatV3, streams, t.TempDir(), time.Unix(0, 0))
+				idx, err := OpenShippableTSDB(path, index.MmapOptions{})
+				require.NoError(t, err)
+				return idx.(*TSDBFile).Index.(*TSDBIndex), func() {
+					require.NoError(t, idx.Close())
+					require.NoError(t, os.Remove(path))
+				}
+			},
+		},
+		{
+			name: "head",
+			open: func(_ *testing.T) (*TSDBIndex, func()) {
+				head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
+				for _, s := range streams {
+					_, _ = head.Append(s.labels, uint64(s.fp), s.chunks)
+				}
+				return NewTSDBIndex(head.Index()), func() {}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			idx, closeIdx := tc.open(t)
 
-	var retained []labels.Labels
-	err = idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(ls labels.Labels, _ model.Fingerprint, _ []index.ChunkMeta) (stop bool) {
-		retained = append(retained, ls)
-		return false
-	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
-	require.NoError(t, idx.Close())
-	require.NoError(t, err)
-	require.NoError(t, os.Remove(path))
+			var retained []labels.Labels
+			err := idx.ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(ls labels.Labels, _ model.Fingerprint, _ []index.ChunkMeta) (stop bool) {
+				retained = append(retained, ls)
+				return false
+			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+			closeIdx()
+			require.NoError(t, err)
 
-	expected := make([]string, 0, len(streams))
-	for _, s := range streams {
-		expected = append(expected, s.labels.String())
+			expected := make([]string, 0, len(streams))
+			for _, s := range streams {
+				expected = append(expected, s.labels.String())
+			}
+			actual := make([]string, 0, len(retained))
+			for _, ls := range retained {
+				actual = append(actual, ls.String())
+			}
+			require.ElementsMatch(t, expected, actual)
+		})
 	}
-	actual := make([]string, 0, len(retained))
-	for _, ls := range retained {
-		actual = append(actual, ls.String())
-	}
-	require.ElementsMatch(t, expected, actual)
 }
 
 func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {

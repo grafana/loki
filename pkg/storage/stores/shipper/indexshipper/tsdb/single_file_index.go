@@ -216,9 +216,8 @@ func (i *TSDBIndex) getChunkFilter() chunk.RequestChunkFilterer {
 }
 
 // fn must NOT capture the chunks. They're reused across series iterations and returned to
-// a pool after completion. When the index is backed by a file, the labels never alias the file
-// and aren't reused across series, so they may be retained after the index is closed; the
-// compactor relies on this to avoid copying them.
+// a pool after completion. The labels may be retained, even after the index is closed (see
+// index.SeriesScan.Series); the compactor relies on this to avoid copying them.
 // Iteration will stop if the callback returns true.
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)

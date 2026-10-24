@@ -159,10 +159,9 @@ func (b *Builder) dropEmptyStreams() {
 func (b *Builder) FinalizeChunks() {
 	for s := range b.allStreams() {
 		chks := s.chunks.Finalize()
-		// The chunks are held until Build, so drop more than a quarter of spare capacity, left by appending
-		// chunks from many source indexes or by Finalize returning a pooled slice when it removed duplicates.
-		// A smaller spare can come from allocation size classes, which a copy would just reproduce.
-		if cap(chks)-len(chks) > len(chks)/4 {
+		// The chunks are held until Build, if we are holding a large buffer unnecessarily
+		// then release and copy to a new slice to reduce heap pressure.
+		if cap(chks)-len(chks) > len(chks)/4 { // 4 has been tested in real world compactions but is large untuned.
 			chks = slices.Clone(chks)
 		}
 		s.chunks = chks
