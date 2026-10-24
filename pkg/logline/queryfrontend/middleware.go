@@ -486,6 +486,25 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	return totalBytes, nil
 }
 
+// lookupBounds returns the range a hint lookup for the query reads.
+// A supported metric query has one log selector, so it has one matcher group.
+// A log query has one too, with a zero interval and offset, so it is unchanged.
+func lookupBounds(expr syntax.Expr, from, through time.Time, stepMillis int64) (time.Time, time.Time) {
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		return metricLookupBounds(groups[0], from, through, stepMillis)
+	}
+	return from, through
+}
+
+// ingesterWindowStart returns the oldest time queriers read from ingesters, or
+// the zero time when QueryIngestersWithin is unset.
+func (h *loglinePrefetchHandler) ingesterWindowStart(now time.Time) time.Time {
+	if h.queryIngestersWithin <= 0 {
+		return time.Time{}
+	}
+	return now.Add(-h.queryIngestersWithin).UTC()
+}
+
 // metricLookupBounds rounds onto the step, then widens by the range and offset.
 // Prefetch runs before the splitter, which floors the start and rounds the end up.
 // A zero interval or a zero step is only widened.
@@ -689,18 +708,13 @@ func (h *loglinePrefetchHandler) doDryRun(
 	direction logproto.Direction,
 	expr syntax.Expr,
 	from, through time.Time,
+	readStart, readEnd time.Time,
+	cutoff time.Time,
 	queryBytes uint64,
 ) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, h.logger)
-	// A supported metric query has one log selector, so it has one matcher group.
-	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
-	readStart, readEnd := from, through
-	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		readStart, readEnd = metricLookupBounds(groups[0], from, through, req.GetStep())
-	}
 	eligibleEnd := readEnd
-	if h.queryIngestersWithin > 0 {
-		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
+	if !cutoff.IsZero() {
 		if cutoff.After(readStart) && cutoff.Before(readEnd) {
 			// An instant query has one sample, and its lookback ends at readEnd.
 			// That sample would be left out of the report, so skip the lookup.
@@ -953,8 +967,13 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// Shared eligibility: stats-based byte threshold.
 	from := req.GetStart().UTC()
 	through := req.GetEnd().UTC()
+	readStart, readEnd := lookupBounds(expr, from, through, req.GetStep())
+	cutoff := h.ingesterWindowStart(time.Now())
+	// A lookup that would read only the ingester window never runs, so the
+	// size estimate would be an index-stats call for nothing.
+	recentOnly := !cutoff.IsZero() && !cutoff.After(readStart)
 	queryBytes := uint64(0)
-	if minQueryBytes > 0 {
+	if minQueryBytes > 0 && !recentOnly {
 		queryBytes, err = h.getQueryBytes(ctx, expr, from, through, req.GetStep())
 		if err != nil {
 			level.Warn(logger).Log(
@@ -986,12 +1005,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	if mode == ModeDryRun {
-		return h.doDryRun(ctx, req, direction, expr, from, through, queryBytes)
+		return h.doDryRun(ctx, req, direction, expr, from, through, readStart, readEnd, cutoff, queryBytes)
 	}
 
 	ingesterCutoff := through
-	if h.queryIngestersWithin > 0 {
-		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
+	if !cutoff.IsZero() {
 		if cutoff.After(from) && cutoff.Before(through) {
 			ingesterCutoff = cutoff
 		} else if !cutoff.After(from) {
