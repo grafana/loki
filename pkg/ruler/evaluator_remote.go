@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
@@ -32,6 +33,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -165,7 +167,14 @@ func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*
 
 // DialQueryFrontend creates and initializes a new httpgrpc.HTTPClient taking a QueryFrontendConfig configuration.
 func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
-	dialOptions, err := cfg.ClientConfig.DialOption(nil, nil, middleware.NoOpInvalidClusterValidationReporter)
+	clientConfig := cfg.ClientConfig
+	if clientConfig.MaxRecvMsgSize == 0 {
+		clientConfig.MaxRecvMsgSize = 100 << 20
+	}
+	if clientConfig.MaxSendMsgSize == 0 {
+		clientConfig.MaxSendMsgSize = 100 << 20
+	}
+	dialOptions, err := clientConfig.DialOption(nil, nil, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
@@ -354,8 +363,115 @@ type QueryFrontendConfig struct {
 	ClientConfig grpcclient.Config `yaml:",inline"`
 }
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *QueryFrontendConfig) UnmarshalYAML(value *yaml.Node) error {
+	flagext.DefaultValues(&c.ClientConfig)
+
+	type rawQueryFrontendConfig struct {
+		Address          string             `yaml:"address"`
+		ClientConfig     *grpcclient.Config `yaml:"client_config,omitempty"`
+		GRPCClientConfig *grpcclient.Config `yaml:"grpc_client_config,omitempty"`
+		Inlined          grpcclient.Config  `yaml:",inline"`
+	}
+
+	raw := rawQueryFrontendConfig{
+		Address: c.Address,
+		Inlined: c.ClientConfig,
+	}
+
+	hasGRPCClientConfig := false
+	hasClientConfig := false
+	if value.Kind == yaml.MappingNode {
+		for i := 0; i < len(value.Content); i += 2 {
+			if value.Content[i].Value == "grpc_client_config" {
+				hasGRPCClientConfig = true
+				cfgCopy := c.ClientConfig
+				raw.GRPCClientConfig = &cfgCopy
+			}
+			if value.Content[i].Value == "client_config" {
+				hasClientConfig = true
+				cfgCopy := c.ClientConfig
+				raw.ClientConfig = &cfgCopy
+			}
+		}
+	}
+
+	if err := value.Load(&raw, yaml.WithKnownFields(true)); err != nil {
+		return err
+	}
+
+	c.Address = raw.Address
+	c.ClientConfig = raw.Inlined
+	if hasGRPCClientConfig && raw.GRPCClientConfig != nil {
+		// Overlay nested grpc_client_config values without discarding inlined fields (e.g. tls_enabled)
+		overlayClientConfig(&c.ClientConfig, raw.GRPCClientConfig)
+	} else if hasClientConfig && raw.ClientConfig != nil {
+		overlayClientConfig(&c.ClientConfig, raw.ClientConfig)
+	}
+
+	return nil
+}
+
+func (c *QueryFrontendConfig) Validate() error {
+	return c.ClientConfig.Validate()
+}
+
 func (c *QueryFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Address, "ruler.evaluation.query-frontend.address", "", "GRPC listen address of the query-frontend(s). Must be a DNS address (prefixed with dns:///) to enable client side load balancing.")
 
 	c.ClientConfig.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)
+}
+
+func overlayClientConfig(dst *grpcclient.Config, src *grpcclient.Config) {
+	if src == nil {
+		return
+	}
+	if src.MaxRecvMsgSize != 0 {
+		dst.MaxRecvMsgSize = src.MaxRecvMsgSize
+	}
+	if src.MaxSendMsgSize != 0 {
+		dst.MaxSendMsgSize = src.MaxSendMsgSize
+	}
+	if src.GRPCCompression != "" {
+		dst.GRPCCompression = src.GRPCCompression
+	}
+	if src.RateLimit != 0 {
+		dst.RateLimit = src.RateLimit
+	}
+	if src.RateLimitBurst != 0 {
+		dst.RateLimitBurst = src.RateLimitBurst
+	}
+	if src.BackoffOnRatelimits {
+		dst.BackoffOnRatelimits = src.BackoffOnRatelimits
+	}
+	if src.BackoffConfig.MaxRetries != 0 {
+		dst.BackoffConfig = src.BackoffConfig
+	}
+	if src.InitialStreamWindowSize != 0 {
+		dst.InitialStreamWindowSize = src.InitialStreamWindowSize
+	}
+	if src.InitialConnectionWindowSize != 0 {
+		dst.InitialConnectionWindowSize = src.InitialConnectionWindowSize
+	}
+	if src.TLSEnabled {
+		dst.TLSEnabled = src.TLSEnabled
+	}
+	if src.TLS.CertPath != "" || src.TLS.KeyPath != "" || src.TLS.CAPath != "" || src.TLS.ServerName != "" {
+		dst.TLS = src.TLS
+	}
+	if src.ConnectTimeout != 0 {
+		dst.ConnectTimeout = src.ConnectTimeout
+	}
+	if src.ConnectBackoffBaseDelay != 0 {
+		dst.ConnectBackoffBaseDelay = src.ConnectBackoffBaseDelay
+	}
+	if src.ConnectBackoffMaxDelay != 0 {
+		dst.ConnectBackoffMaxDelay = src.ConnectBackoffMaxDelay
+	}
+	if src.KeepaliveTime != 0 {
+		dst.KeepaliveTime = src.KeepaliveTime
+	}
+	if src.KeepaliveTimeout != 0 {
+		dst.KeepaliveTimeout = src.KeepaliveTimeout
+	}
 }

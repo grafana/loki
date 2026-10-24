@@ -5748,8 +5748,10 @@ evaluation:
 
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
+    # Can be specified as a nested grpc_client_config block or inlined directly under query_frontend.
     # The CLI flags prefix for this block configuration is:
     # ruler.evaluation.query-frontend
+    [grpc_client_config: <grpc_client>]
     [<grpc_client>]
 ```
 
