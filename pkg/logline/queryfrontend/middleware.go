@@ -907,7 +907,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 
 func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	switch req.(type) {
-	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest:
+	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest, *queryrange.DetectedFieldsRequest:
 	default:
 		return h.next.Do(ctx, req)
 	}
@@ -983,6 +983,10 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		direction = r.GetDirection()
 	case *queryrange.LokiInstantRequest:
 		direction = r.GetDirection()
+	case *queryrange.DetectedFieldsRequest:
+		// Detected fields fetches logs backwards when it creates its downstream
+		// LokiRequest. Keep dry-run hint summaries consistent with that request.
+		direction = logproto.BACKWARD
 	}
 
 	if mode == ModeDryRun {

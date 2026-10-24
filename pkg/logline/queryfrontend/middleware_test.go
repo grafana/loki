@@ -349,6 +349,93 @@ func TestPrefetchFilter_NonLokiRequest(t *testing.T) {
 	require.Equal(t, 0, hp.Calls(), "hint provider should not be called for non-LokiRequest")
 }
 
+func TestPrefetchFilter_DetectedFieldsRequests(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hintStart := now.Add(-45 * time.Minute)
+	hintEnd := now.Add(-30 * time.Minute)
+
+	tests := []struct {
+		name   string
+		path   string
+		values bool
+	}{
+		{
+			name: "fields",
+			path: "/loki/api/v1/detected_fields",
+		},
+		{
+			name:   "field values",
+			path:   "/loki/api/v1/detected_field/message/values",
+			values: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{
+				hints: &hintprovider.Hints{
+					TimeRanges: []hintprovider.HintTimeRange{
+						{Start: hintStart, End: hintEnd},
+					},
+				},
+			}
+			metrics := newTestMetrics()
+
+			var got *queryrange.LokiRequest
+			querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				got = req.(*queryrange.LokiRequest)
+				return emptyStreamResponse(), nil
+			})
+			filter := NewLoglineFilterMiddleware(10*time.Second, metrics, nil).Wrap(querier)
+			detectedFields := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				detectedReq := req.(*queryrange.DetectedFieldsRequest)
+				_, err := filter.Do(ctx, &queryrange.LokiRequest{
+					Query:     detectedReq.GetQuery(),
+					StartTs:   detectedReq.GetStart(),
+					EndTs:     detectedReq.GetEnd(),
+					Direction: logproto.BACKWARD,
+				})
+				return &queryrange.DetectedFieldsResponse{
+					Response: &logproto.DetectedFieldsResponse{},
+				}, err
+			})
+			prefetch := prefetchMiddlewareForTest(
+				hp,
+				Config{RequireOptInHeader: true},
+				mockLimits{},
+				metrics,
+				nil,
+			)
+			handler := prefetch.Wrap(detectedFields)
+
+			req := queryrange.NewDetectedFieldsRequest(
+				now.Add(-time.Hour),
+				now,
+				1000,
+				100,
+				0,
+				`{job="test"} |= "error"`,
+				tc.path,
+			)
+			req.AsProto().Values = tc.values
+			if tc.values {
+				req.AsProto().Name = "message"
+			}
+
+			resp, err := handler.Do(testTenantContextWithLive(), req)
+			require.NoError(t, err)
+			require.IsType(t, &queryrange.DetectedFieldsResponse{}, resp)
+			require.Equal(t, 1, hp.Calls())
+			require.NotNil(t, got)
+			require.Equal(t, req.GetQuery(), got.Query)
+			require.Equal(t, req.GetStart(), got.StartTs)
+			require.Equal(t, req.GetEnd(), got.EndTs)
+			require.Equal(t, logproto.BACKWARD, got.Direction)
+			require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, got.HintRanges)
+		})
+	}
+}
+
 func TestPrefetchFilter_ParseError(t *testing.T) {
 	hp := &mockHintProvider{}
 	nextCalled := 0
