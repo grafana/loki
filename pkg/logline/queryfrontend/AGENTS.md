@@ -49,18 +49,6 @@ The logline index only covers data in object storage. Recent data still in inges
 is always passed through. The `ingesterCutoff` is computed from
 `QueryIngestersWithin` (from Loki's querier config).
 
-### Detected fields
-
-The prefetch middleware also handles `DetectedFieldsRequest`, for both
-`detected_fields` and `detected_field/{name}/values`. The detected fields handler turns
-it into one `BACKWARD` `LokiRequest` limited to the line limit, and the filter treats
-that request like any log query.
-
-Detected fields only look up hints in live mode. Dry-run verifies hints against the log
-lines or samples in the response, and a detected fields response has neither. The hints
-are the same ones log queries get, so dry-run on log and metric queries covers their
-correctness.
-
 ### Pass-through intervals don't wait for the lookup
 
 Ingester-window and pre-min-date intervals pass through whatever the lookup returns,
