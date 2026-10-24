@@ -14,6 +14,7 @@ linters:
     - errorlint
     - exhaustive
     - exhaustruct
+    - exhaustruct_v5
     - forbidigo
     - forcetypeassert
     - funlen
@@ -32,6 +33,7 @@ linters:
     - maintidx
     - misspell
     - mnd
+    - modernize
     - nakedret
     - nestif
     - nilnil
@@ -52,3 +54,8 @@ linters:
     - varnamelen
     - wrapcheck
     - wsl
+    - gomodguard
+  settings:
+    govet:
+      disable:
+        - inline
