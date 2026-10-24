@@ -133,6 +133,31 @@ You can use [record accessor](https://docs.fluentd.org/plugin-helper-overview/ap
 </match>
 ```
 
+### Adding structured metadata
+
+Use the `<structured_metadata>...</structured_metadata>` block to attach fields from the record as [structured metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/).
+The key on the left is the name sent to Loki. Provide an optional value on the right to reference fields using [record accessor syntax](https://docs.fluentd.org/plugin-helper-overview/api-plugin-helper-record_accessor#syntax).
+
+```conf
+<match mytag>
+  @type loki
+  # ...
+  <structured_metadata>
+    pod $.kubernetes['pod_name']
+    user user
+  </structured_metadata>
+  structured_metadata_map_keys $.kubernetes.labels,$.kubernetes.annotations
+  # ...
+</match>
+```
+
+Field names are sanitized the same way as labels (`.` `/` `-` are replaced with `_`). Ensure the Loki tenant has `allow_structured_metadata` enabled in the [configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) or Loki will reject the payload.
+
+When you need to copy many key/value pairs, set `structured_metadata_map_keys` to a comma-separated
+list of record accessors (each must start with `$`) that resolve to maps (for example
+`$.kubernetes.labels,$.kubernetes.annotations`). Each map entry becomes structured metadata with a sanitized key;
+non-string values are serialized to JSON. Accessors that do not resolve to maps are ignored.
+
 ### Extracting Kubernetes labels
 
 Since Kubernetes labels are a list of nested key-value pairs, a separate option is available to extract them.
