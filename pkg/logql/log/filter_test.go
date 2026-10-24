@@ -134,12 +134,14 @@ func Test_LabelRegexFilterIsAnchored(t *testing.T) {
 		// affected by the bug: one-sided patterns must be fully anchored.
 		{"al.*"},
 		{".*al"},
+		{".*.*al"},
 		{"(?i)AL.*"},
 		{"(?i).*AL"},
 		// not affected, per the issue: already anchored / substring-equivalent.
 		{"al"},
 		{"al|beta"},
 		{".*al.*"},
+		{".*.*al.*"},
 		{"pre.*ha"},
 		{"al[a-z]*"},
 		// concat-alternates: the regexp parser factors a common prefix out of an
