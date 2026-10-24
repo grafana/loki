@@ -22,7 +22,6 @@ package router
 import (
 	"fmt"
 
-	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/xds/httpfilter"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -48,7 +47,7 @@ type builder struct {
 
 func (builder) TypeURLs() []string { return []string{TypeURL} }
 
-func (builder) ParseFilterConfig(cfg proto.Message) (httpfilter.FilterConfig, error) {
+func (builder) ParseFilterConfig(cfg proto.Message, _ httpfilter.ParseOptions) (httpfilter.FilterConfig, error) {
 	// The gRPC router filter does not currently use any fields from the
 	// config.  Verify type only.
 	if cfg == nil {
@@ -65,7 +64,7 @@ func (builder) ParseFilterConfig(cfg proto.Message) (httpfilter.FilterConfig, er
 	return config{}, nil
 }
 
-func (builder) ParseFilterConfigOverride(override proto.Message) (httpfilter.FilterConfig, error) {
+func (builder) ParseFilterConfigOverride(override proto.Message, _ httpfilter.ParseOptions) (httpfilter.FilterConfig, error) {
 	if override != nil {
 		return nil, fmt.Errorf("router: unexpected config override specified: %v", override)
 	}
@@ -104,7 +103,7 @@ func (filter) BuildClientInterceptor(cfg, override httpfilter.FilterConfig) (htt
 	return nil, nil
 }
 
-func (filter) BuildServerInterceptor(cfg, override httpfilter.FilterConfig) (iresolver.ServerInterceptor, error) {
+func (filter) BuildServerInterceptor(cfg, override httpfilter.FilterConfig) (httpfilter.ServerInterceptor, error) {
 	if _, ok := cfg.(config); !ok {
 		return nil, fmt.Errorf("router: incorrect config type provided (%T): %v", cfg, cfg)
 	}
