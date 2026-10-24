@@ -28,13 +28,13 @@ func _parseHhMmSs(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 	var _ /* s at bp+8 */ int32
 	_, _ = ms, rScale
 	ms = float64(0)
-	if _getDigits(tls, zDate, __ccgo_ts+1204, libc.VaList(bp+24, bp, bp+4)) != int32(2) {
+	if _getDigits(tls, zDate, __ccgo_ts+1224, libc.VaList(bp+24, bp, bp+4)) != int32(2) {
 		return int32(1)
 	}
 	zDate = zDate + uintptr(5)
 	if libc.Int32FromUint8(**(**uint8)(__ccgo_up(zDate))) == int32(':') {
 		zDate = zDate + 1
-		if _getDigits(tls, zDate, __ccgo_ts+1212, libc.VaList(bp+24, bp+8)) != int32(1) {
+		if _getDigits(tls, zDate, __ccgo_ts+1232, libc.VaList(bp+24, bp+8)) != int32(1) {
 			return int32(1)
 		}
 		zDate = zDate + uintptr(2)
@@ -55,6 +55,9 @@ func _parseHhMmSs(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 		}
 	} else {
 		**(**int32)(__ccgo_up(bp + 8)) = 0
+	}
+	if **(**int32)(__ccgo_up(bp)) == int32(24) && (**(**int32)(__ccgo_up(bp + 4)) != 0 || **(**int32)(__ccgo_up(bp + 8)) != 0 || ms != float64(0)) {
+		return int32(1)
 	}
 	(*TDateTime)(unsafe.Pointer(p)).FvalidJD = uint8(0)
 	libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(0), 0, 0x1)
@@ -116,7 +119,7 @@ func _parseTimezone(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 		}
 	}
 	zDate = zDate + 1
-	if _getDigits(tls, zDate, __ccgo_ts+1196, libc.VaList(bp+16, bp, bp+4)) != int32(2) {
+	if _getDigits(tls, zDate, __ccgo_ts+1216, libc.VaList(bp+16, bp, bp+4)) != int32(2) {
 		return int32(1)
 	}
 	zDate = zDate + uintptr(5)

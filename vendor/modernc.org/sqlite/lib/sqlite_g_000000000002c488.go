@@ -266,12 +266,12 @@ func _sqlite3DbStrNDup(tls *libc.TLS, db uintptr, z uintptr, n Tu64) (r uintptr)
 //	**      built-in function.
 //	*/
 func _sqlite3NestedParse(tls *libc.TLS, pParse uintptr, zFormat uintptr, va uintptr) {
-	bp := tls.Alloc(144)
-	defer tls.Free(144)
+	bp := tls.Alloc(160)
+	defer tls.Free(160)
 	var ap Tva_list
 	var db, zSql uintptr
 	var savedDbFlags Tu32
-	var _ /* saveBuf at bp+0 */ [136]int8
+	var _ /* saveBuf at bp+0 */ [152]int8
 	_, _, _, _ = ap, db, savedDbFlags, zSql
 	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
 	savedDbFlags = (*Tsqlite3)(unsafe.Pointer(db)).FmDbFlags
@@ -296,12 +296,12 @@ func _sqlite3NestedParse(tls *libc.TLS, pParse uintptr, zFormat uintptr, va uint
 		return
 	}
 	(*TParse)(unsafe.Pointer(pParse)).Fnested = (*TParse)(unsafe.Pointer(pParse)).Fnested + 1
-	libc.Xmemcpy(tls, bp, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), libc.Uint64FromInt64(424)-uint64(libc.UintptrFromInt32(0)+288))
-	libc.Xmemset(tls, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), 0, libc.Uint64FromInt64(424)-uint64(libc.UintptrFromInt32(0)+288))
+	libc.Xmemcpy(tls, bp, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), libc.Uint64FromInt64(440)-uint64(libc.UintptrFromInt32(0)+288))
+	libc.Xmemset(tls, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), 0, libc.Uint64FromInt64(440)-uint64(libc.UintptrFromInt32(0)+288))
 	**(**Tu32)(__ccgo_up(db + 44)) |= uint32(DBFLAG_PreferBuiltin)
 	_sqlite3RunParser(tls, pParse, zSql)
 	(*Tsqlite3)(unsafe.Pointer(db)).FmDbFlags = savedDbFlags
 	_sqlite3DbFree(tls, db, zSql)
-	libc.Xmemcpy(tls, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), bp, libc.Uint64FromInt64(424)-uint64(libc.UintptrFromInt32(0)+288))
+	libc.Xmemcpy(tls, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), bp, libc.Uint64FromInt64(440)-uint64(libc.UintptrFromInt32(0)+288))
 	(*TParse)(unsafe.Pointer(pParse)).Fnested = (*TParse)(unsafe.Pointer(pParse)).Fnested - 1
 }
