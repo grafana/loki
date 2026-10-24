@@ -1171,7 +1171,7 @@
       }
     }
   },
-  "revision": "20251103",
+  "revision": "20260820",
   "rootUrl": "https://cloudresourcemanager.googleapis.com/",
   "schemas": {
     "Ancestor": {
@@ -1400,6 +1400,18 @@
       },
       "type": "object"
     },
+    "CreateBoundaryMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by CreateBoundary. Currently empty.",
+      "id": "CreateBoundaryMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "CreateCapabilityConfigMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by CreateCapabilityConfig. Currently empty.",
+      "id": "CreateCapabilityConfigMetadata",
+      "properties": {},
+      "type": "object"
+    },
     "CreateFolderMetadata": {
       "description": "Metadata pertaining to the Folder creation process.",
       "id": "CreateFolderMetadata",
@@ -1450,6 +1462,18 @@
     "CreateTagValueMetadata": {
       "description": "Runtime operation information for creating a TagValue.",
       "id": "CreateTagValueMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "DeleteBoundaryMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by DeleteBoundary. Currently empty.",
+      "id": "DeleteBoundaryMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "DeleteCapabilityConfigMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by DeleteCapabilityConfig. Currently empty.",
+      "id": "DeleteCapabilityConfigMetadata",
       "properties": {},
       "type": "object"
     },
@@ -2045,6 +2069,11 @@
           "format": "google-datetime",
           "type": "string"
         },
+        "isManagementProject": {
+          "description": "Output only. If `true`, this project is a Management Project. A Management Project manages dedicated project groups for specific purposes (e.g., agent management or app management).",
+          "readOnly": true,
+          "type": "boolean"
+        },
         "labels": {
           "additionalProperties": {
             "type": "string"
@@ -2277,6 +2306,24 @@
     "UndeleteProjectRequest": {
       "description": "The request sent to the UndeleteProject method.",
       "id": "UndeleteProjectRequest",
+      "properties": {},
+      "type": "object"
+    },
+    "UpdateBoundaryConfigMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by UpdateBoundaryConfig. Currently empty.",
+      "id": "UpdateBoundaryConfigMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "UpdateBoundaryMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by UpdateBoundary. Currently empty.",
+      "id": "UpdateBoundaryMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "UpdateCapabilityConfigMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by UpdateCapabilityConfig. Currently empty.",
+      "id": "UpdateCapabilityConfigMetadata",
       "properties": {},
       "type": "object"
     },
