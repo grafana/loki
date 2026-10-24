@@ -174,6 +174,8 @@ func (m *GcpAuthnFilterConfig) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for TokenMetadataKey
+
 	// no validation rules for Cluster
 
 	if d := m.GetTimeout(); d != nil {
@@ -204,6 +206,35 @@ func (m *GcpAuthnFilterConfig) validate(all bool) error {
 				errors = append(errors, err)
 			}
 
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetAudience()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, GcpAuthnFilterConfigValidationError{
+					field:  "Audience",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, GcpAuthnFilterConfigValidationError{
+					field:  "Audience",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetAudience()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return GcpAuthnFilterConfigValidationError{
+				field:  "Audience",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
 		}
 	}
 
@@ -309,15 +340,122 @@ func (m *Audience) validate(all bool) error {
 
 	var errors []error
 
-	if utf8.RuneCountInString(m.GetUrl()) < 1 {
-		err := AudienceValidationError{
-			field:  "Url",
-			reason: "value length must be at least 1 runes",
+	// no validation rules for Url
+
+	if all {
+		switch v := interface{}(m.GetAccessToken()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, AudienceValidationError{
+					field:  "AccessToken",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, AudienceValidationError{
+					field:  "AccessToken",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
 		}
-		if !all {
-			return err
+	} else if v, ok := interface{}(m.GetAccessToken()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return AudienceValidationError{
+				field:  "AccessToken",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
 		}
-		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetBoundJwt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, AudienceValidationError{
+					field:  "BoundJwt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, AudienceValidationError{
+					field:  "BoundJwt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetBoundJwt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return AudienceValidationError{
+				field:  "BoundJwt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetBoundAccessToken()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, AudienceValidationError{
+					field:  "BoundAccessToken",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, AudienceValidationError{
+					field:  "BoundAccessToken",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetBoundAccessToken()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return AudienceValidationError{
+				field:  "BoundAccessToken",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetIamAccessToken()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, AudienceValidationError{
+					field:  "IamAccessToken",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, AudienceValidationError{
+					field:  "IamAccessToken",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetIamAccessToken()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return AudienceValidationError{
+				field:  "IamAccessToken",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
 	}
 
 	if len(errors) > 0 {
@@ -534,26 +672,19 @@ func (m *TokenHeader) validate(all bool) error {
 
 	var errors []error
 
-	if utf8.RuneCountInString(m.GetName()) < 1 {
-		err := TokenHeaderValidationError{
-			field:  "Name",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+	if m.GetName() != "" {
 
-	if !_TokenHeader_Name_Pattern.MatchString(m.GetName()) {
-		err := TokenHeaderValidationError{
-			field:  "Name",
-			reason: "value does not match regex pattern \"^[^\\x00\\n\\r]*$\"",
+		if !_TokenHeader_Name_Pattern.MatchString(m.GetName()) {
+			err := TokenHeaderValidationError{
+				field:  "Name",
+				reason: "value does not match regex pattern \"^[^\\x00\\n\\r]*$\"",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
 		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
+
 	}
 
 	if !_TokenHeader_ValuePrefix_Pattern.MatchString(m.GetValuePrefix()) {
@@ -565,6 +696,35 @@ func (m *TokenHeader) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetPreserveExisting()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, TokenHeaderValidationError{
+					field:  "PreserveExisting",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, TokenHeaderValidationError{
+					field:  "PreserveExisting",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetPreserveExisting()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return TokenHeaderValidationError{
+				field:  "PreserveExisting",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
 	}
 
 	if len(errors) > 0 {
@@ -647,3 +807,605 @@ var _ interface {
 var _TokenHeader_Name_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
 
 var _TokenHeader_ValuePrefix_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
+
+// Validate checks the field values on Audience_AccessToken with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *Audience_AccessToken) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Audience_AccessToken with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// Audience_AccessTokenMultiError, or nil if none found.
+func (m *Audience_AccessToken) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Audience_AccessToken) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	for idx, item := range m.GetScopes() {
+		_, _ = idx, item
+
+		if utf8.RuneCountInString(item) < 1 {
+			err := Audience_AccessTokenValidationError{
+				field:  fmt.Sprintf("Scopes[%v]", idx),
+				reason: "value length must be at least 1 runes",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+		if !_Audience_AccessToken_Scopes_Pattern.MatchString(item) {
+			err := Audience_AccessTokenValidationError{
+				field:  fmt.Sprintf("Scopes[%v]", idx),
+				reason: "value does not match regex pattern \"^[^\\\\s,]+$\"",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return Audience_AccessTokenMultiError(errors)
+	}
+
+	return nil
+}
+
+// Audience_AccessTokenMultiError is an error wrapping multiple validation
+// errors returned by Audience_AccessToken.ValidateAll() if the designated
+// constraints aren't met.
+type Audience_AccessTokenMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Audience_AccessTokenMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Audience_AccessTokenMultiError) AllErrors() []error { return m }
+
+// Audience_AccessTokenValidationError is the validation error returned by
+// Audience_AccessToken.Validate if the designated constraints aren't met.
+type Audience_AccessTokenValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e Audience_AccessTokenValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e Audience_AccessTokenValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e Audience_AccessTokenValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e Audience_AccessTokenValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e Audience_AccessTokenValidationError) ErrorName() string {
+	return "Audience_AccessTokenValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e Audience_AccessTokenValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sAudience_AccessToken.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = Audience_AccessTokenValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = Audience_AccessTokenValidationError{}
+
+var _Audience_AccessToken_Scopes_Pattern = regexp.MustCompile("^[^\\s,]+$")
+
+// Validate checks the field values on Audience_BoundJwt with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *Audience_BoundJwt) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Audience_BoundJwt with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// Audience_BoundJwtMultiError, or nil if none found.
+func (m *Audience_BoundJwt) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Audience_BoundJwt) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetUrl()) < 1 {
+		err := Audience_BoundJwtValidationError{
+			field:  "Url",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return Audience_BoundJwtMultiError(errors)
+	}
+
+	return nil
+}
+
+// Audience_BoundJwtMultiError is an error wrapping multiple validation errors
+// returned by Audience_BoundJwt.ValidateAll() if the designated constraints
+// aren't met.
+type Audience_BoundJwtMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Audience_BoundJwtMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Audience_BoundJwtMultiError) AllErrors() []error { return m }
+
+// Audience_BoundJwtValidationError is the validation error returned by
+// Audience_BoundJwt.Validate if the designated constraints aren't met.
+type Audience_BoundJwtValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e Audience_BoundJwtValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e Audience_BoundJwtValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e Audience_BoundJwtValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e Audience_BoundJwtValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e Audience_BoundJwtValidationError) ErrorName() string {
+	return "Audience_BoundJwtValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e Audience_BoundJwtValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sAudience_BoundJwt.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = Audience_BoundJwtValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = Audience_BoundJwtValidationError{}
+
+// Validate checks the field values on Audience_BoundAccessToken with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *Audience_BoundAccessToken) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Audience_BoundAccessToken with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// Audience_BoundAccessTokenMultiError, or nil if none found.
+func (m *Audience_BoundAccessToken) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Audience_BoundAccessToken) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	for idx, item := range m.GetScopes() {
+		_, _ = idx, item
+
+		if utf8.RuneCountInString(item) < 1 {
+			err := Audience_BoundAccessTokenValidationError{
+				field:  fmt.Sprintf("Scopes[%v]", idx),
+				reason: "value length must be at least 1 runes",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+		if !_Audience_BoundAccessToken_Scopes_Pattern.MatchString(item) {
+			err := Audience_BoundAccessTokenValidationError{
+				field:  fmt.Sprintf("Scopes[%v]", idx),
+				reason: "value does not match regex pattern \"^[^\\\\s,]+$\"",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return Audience_BoundAccessTokenMultiError(errors)
+	}
+
+	return nil
+}
+
+// Audience_BoundAccessTokenMultiError is an error wrapping multiple validation
+// errors returned by Audience_BoundAccessToken.ValidateAll() if the
+// designated constraints aren't met.
+type Audience_BoundAccessTokenMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Audience_BoundAccessTokenMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Audience_BoundAccessTokenMultiError) AllErrors() []error { return m }
+
+// Audience_BoundAccessTokenValidationError is the validation error returned by
+// Audience_BoundAccessToken.Validate if the designated constraints aren't met.
+type Audience_BoundAccessTokenValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e Audience_BoundAccessTokenValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e Audience_BoundAccessTokenValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e Audience_BoundAccessTokenValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e Audience_BoundAccessTokenValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e Audience_BoundAccessTokenValidationError) ErrorName() string {
+	return "Audience_BoundAccessTokenValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e Audience_BoundAccessTokenValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sAudience_BoundAccessToken.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = Audience_BoundAccessTokenValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = Audience_BoundAccessTokenValidationError{}
+
+var _Audience_BoundAccessToken_Scopes_Pattern = regexp.MustCompile("^[^\\s,]+$")
+
+// Validate checks the field values on Audience_IAMAccessToken with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *Audience_IAMAccessToken) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Audience_IAMAccessToken with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// Audience_IAMAccessTokenMultiError, or nil if none found.
+func (m *Audience_IAMAccessToken) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Audience_IAMAccessToken) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetAccount()) < 1 {
+		err := Audience_IAMAccessTokenValidationError{
+			field:  "Account",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if utf8.RuneCountInString(m.GetAuthorization()) < 1 {
+		err := Audience_IAMAccessTokenValidationError{
+			field:  "Authorization",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return Audience_IAMAccessTokenMultiError(errors)
+	}
+
+	return nil
+}
+
+// Audience_IAMAccessTokenMultiError is an error wrapping multiple validation
+// errors returned by Audience_IAMAccessToken.ValidateAll() if the designated
+// constraints aren't met.
+type Audience_IAMAccessTokenMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Audience_IAMAccessTokenMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Audience_IAMAccessTokenMultiError) AllErrors() []error { return m }
+
+// Audience_IAMAccessTokenValidationError is the validation error returned by
+// Audience_IAMAccessToken.Validate if the designated constraints aren't met.
+type Audience_IAMAccessTokenValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e Audience_IAMAccessTokenValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e Audience_IAMAccessTokenValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e Audience_IAMAccessTokenValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e Audience_IAMAccessTokenValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e Audience_IAMAccessTokenValidationError) ErrorName() string {
+	return "Audience_IAMAccessTokenValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e Audience_IAMAccessTokenValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sAudience_IAMAccessToken.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = Audience_IAMAccessTokenValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = Audience_IAMAccessTokenValidationError{}
+
+// Validate checks the field values on TokenHeader_PreserveExisting with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *TokenHeader_PreserveExisting) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on TokenHeader_PreserveExisting with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// TokenHeader_PreserveExistingMultiError, or nil if none found.
+func (m *TokenHeader_PreserveExisting) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *TokenHeader_PreserveExisting) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if len(errors) > 0 {
+		return TokenHeader_PreserveExistingMultiError(errors)
+	}
+
+	return nil
+}
+
+// TokenHeader_PreserveExistingMultiError is an error wrapping multiple
+// validation errors returned by TokenHeader_PreserveExisting.ValidateAll() if
+// the designated constraints aren't met.
+type TokenHeader_PreserveExistingMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m TokenHeader_PreserveExistingMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m TokenHeader_PreserveExistingMultiError) AllErrors() []error { return m }
+
+// TokenHeader_PreserveExistingValidationError is the validation error returned
+// by TokenHeader_PreserveExisting.Validate if the designated constraints
+// aren't met.
+type TokenHeader_PreserveExistingValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e TokenHeader_PreserveExistingValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e TokenHeader_PreserveExistingValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e TokenHeader_PreserveExistingValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e TokenHeader_PreserveExistingValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e TokenHeader_PreserveExistingValidationError) ErrorName() string {
+	return "TokenHeader_PreserveExistingValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e TokenHeader_PreserveExistingValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sTokenHeader_PreserveExisting.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = TokenHeader_PreserveExistingValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = TokenHeader_PreserveExistingValidationError{}

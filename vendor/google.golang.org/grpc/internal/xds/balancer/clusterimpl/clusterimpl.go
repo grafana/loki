@@ -41,6 +41,7 @@ import (
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/credentials/xds"
 	"google.golang.org/grpc/internal/grpclog"
+	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
 	xdsinternal "google.golang.org/grpc/internal/xds"
 
@@ -82,7 +83,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		loadWrapper:     loadstore.NewWrapper(),
 		requestCountMax: defaultRequestCountMax,
 	}
-	b.xdsHIPtr.Store(xds.NewHandshakeInfo(nil, nil, nil, false, "", false, false))
+	b.xdsHIPtr.Store(xds.NewHandshakeInfo(nil, nil, nil, "", false, false, false))
 	b.logger = prefixLogger(b)
 	b.child = gracefulswitch.NewBalancer(b, bOpts)
 	b.logger.Infof("Created")
@@ -127,13 +128,11 @@ type clusterImplBalancer struct {
 	lrsServer        *bootstrap.ServerConfig // Load reporting server configuration.
 	dropCategories   []DropConfig            // The categories for drops.
 	child            *gracefulswitch.Balancer
-	xdsHIPtr         atomic.Pointer[xds.HandshakeInfo] // Accessed atomically as it is shared between the balancer and the transport.
+	xdsHIPtr         atomic.Pointer[grpcsync.RefCounted[*xds.HandshakeInfo]] // Accessed atomically as it is shared between the balancer and the transport.
 	xdsCredsInUse    bool
 
-	// The certificate providers are cached here to that they can be closed when
-	// a new provider is to be created.
-	cachedRoot     certprovider.Provider
-	cachedIdentity certprovider.Provider
+	// The active security configuration received from the control plane.
+	securityConfig *xdsresource.SecurityConfig
 
 	// The following fields are protected by mu, since they are accessed in
 	// balancer API methods and in methods called from the child policy.
@@ -149,6 +148,19 @@ type clusterImplBalancer struct {
 	requestCounter           *xdsclient.ClusterRequestsCounter           // Tracks total inflight requests for a given service.
 	telemetryLabels          map[string]string                           // Telemetry labels to set on picks, from LB config.
 	lrsReportEndpointMetrics *xdsresource.LRSReportEndpointMetricsConfig // LRS metrics to propagate.
+}
+
+// dropRequestsPerMillion scales a drop overload's numerator and denominator to
+// a number of requests to drop per million. numerator can be as large as a
+// million (a 100% drop), so the multiplication is done in uint64 to avoid
+// overflowing a uint32, and the result is capped at a million because a drop
+// ratio above 100% is treated as 100%.
+func dropRequestsPerMillion(numerator, denominator uint32) uint32 {
+	rpm := uint64(numerator) * million / uint64(denominator)
+	if rpm > million {
+		rpm = million
+	}
+	return uint32(rpm)
 }
 
 // handleClusterConfigLocked updates the internal state of the balancer with the
@@ -172,7 +184,7 @@ func (b *clusterImplBalancer) handleClusterConfigLocked(clusterConfig xdsresourc
 		for _, d := range edsUpdate.Drops {
 			newDrops = append(newDrops, DropConfig{
 				Category:           d.Category,
-				RequestsPerMillion: d.Numerator * million / d.Denominator,
+				RequestsPerMillion: dropRequestsPerMillion(d.Numerator, d.Denominator),
 			})
 		}
 		if !slices.Equal(b.dropCategories, newDrops) {
@@ -313,6 +325,33 @@ func buildProviderFunc(configs map[string]*certprovider.BuildableConfig, instanc
 	return provider, nil
 }
 
+func (b *clusterImplBalancer) buildProviders(config *xdsresource.SecurityConfig) (certprovider.Provider, certprovider.Provider, error) {
+	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs()
+	var rootProvider certprovider.Provider
+	if config.UseSystemRootCerts {
+		rootProvider = systemRootCertsProvider{}
+	} else {
+		rp, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		rootProvider = rp
+	}
+
+	var identityProvider certprovider.Provider
+	if name, cert := config.IdentityInstanceName, config.IdentityCertName; name != "" {
+		ip, err := buildProvider(cpc, name, cert, true, false)
+		if err != nil {
+			if rootProvider != nil {
+				rootProvider.Close()
+			}
+			return nil, nil, err
+		}
+		identityProvider = ip
+	}
+	return rootProvider, identityProvider, nil
+}
+
 // handleSecurityConfig processes the security configuration received from the
 // management server, creates appropriate certificate provider plugins, and
 // updates the HandshakeInfo which is added as an address attribute in
@@ -321,7 +360,7 @@ func (b *clusterImplBalancer) handleSecurityConfig(config *xdsresource.SecurityC
 	// If xdsCredentials are not in use, i.e, the user did not want to get
 	// security configuration from an xDS server, we should not be acting on the
 	// received security config here. Doing so poses a security threat.
-	if !b.xdsCredsInUse {
+	if !b.xdsCredsInUse || config.Equal(b.securityConfig) {
 		return nil
 	}
 
@@ -329,48 +368,25 @@ func (b *clusterImplBalancer) handleSecurityConfig(config *xdsresource.SecurityC
 	// not sent any security configuration. The xdsCredentials implementation
 	// handles this by delegating to its fallback credentials.
 	if config == nil {
-		// We need to explicitly set the fields to nil here since this might be
-		// a case of switching from a good security configuration to an empty
-		// one where fallback credentials are to be used.
-		b.xdsHIPtr.Store(xds.NewHandshakeInfo(nil, nil, nil, false, "", false, false))
+		b.securityConfig = nil
+		oldHI := b.xdsHIPtr.Swap(xds.NewHandshakeInfo(nil, nil, nil, "", false, false, false))
+		if oldHI != nil {
+			oldHI.Decrement()
+		}
 		return nil
-
 	}
 
-	// A root provider is required whether we are using TLS or mTLS.
-	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs()
-	var rootProvider certprovider.Provider
-	if config.UseSystemRootCerts {
-		rootProvider = systemRootCertsProvider{}
-	} else {
-		rp, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
-		if err != nil {
-			return err
-		}
-		rootProvider = rp
+	rootProvider, identityProvider, err := b.buildProviders(config)
+	if err != nil {
+		return err
 	}
 
-	// The identity provider is only present when using mTLS.
-	var identityProvider certprovider.Provider
-	if name, cert := config.IdentityInstanceName, config.IdentityCertName; name != "" {
-		var err error
-		identityProvider, err = buildProvider(cpc, name, cert, true, false)
-		if err != nil {
-			return err
-		}
+	newHI := xds.NewHandshakeInfo(rootProvider, identityProvider, config.SubjectAltNameMatchers, config.SNI, false, config.AutoSNISANValidation, config.UseAutoHostSNI)
+	b.securityConfig = config
+	oldHI := b.xdsHIPtr.Swap(newHI)
+	if oldHI != nil {
+		oldHI.Decrement()
 	}
-
-	// Close the old providers and cache the new ones.
-	if b.cachedRoot != nil {
-		b.cachedRoot.Close()
-	}
-	if b.cachedIdentity != nil {
-		b.cachedIdentity.Close()
-	}
-	b.cachedRoot = rootProvider
-	b.cachedIdentity = identityProvider
-
-	b.xdsHIPtr.Store(xds.NewHandshakeInfo(rootProvider, identityProvider, config.SubjectAltNameMatchers, false, config.SNI, config.AutoSNISANValidation, config.UseAutoHostSNI))
 	return nil
 }
 
@@ -499,12 +515,11 @@ func (b *clusterImplBalancer) Close() {
 		b.cancelLoadReport(stopCtx)
 		b.cancelLoadReport = nil
 	}
-	if b.cachedRoot != nil {
-		b.cachedRoot.Close()
+	oldHI := b.xdsHIPtr.Swap(nil)
+	if oldHI != nil {
+		oldHI.Decrement()
 	}
-	if b.cachedIdentity != nil {
-		b.cachedIdentity.Close()
-	}
+	b.securityConfig = nil
 	b.logger.Infof("Shutdown")
 }
 
