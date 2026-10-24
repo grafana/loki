@@ -314,13 +314,13 @@ func buildRoutedStack(
 	t *testing.T,
 	hp *mockHintProvider,
 	cfg Config,
+	metrics *Metrics,
 	limits logline_query_limits.Limits,
 	statsBytes uint64,
 	statsCalls *int,
 	querier queryrangebase.Handler,
 ) queryrangebase.Handler {
 	t.Helper()
-	metrics := newTestMetrics()
 	filtered := NewLoglineFilterMiddleware(10*time.Second, metrics, nil).Wrap(querier)
 	detectedFieldsMW, err := queryrange.NewDetectedFieldsTripperware(detectedFieldsLimits{}, identityMiddleware{}, identityMiddleware{})
 	require.NoError(t, err)
@@ -452,7 +452,7 @@ func TestPrefetchFilter_DetectedFieldsLiveHints(t *testing.T) {
 				{Start: hintStart, End: hintEnd},
 			}}}
 			querier := &logfmtQuerier{}
-			handler := buildRoutedStack(t, hp, Config{RequireOptInHeader: true, NgramLength: 6}, mockLimits{}, 0, nil, querier)
+			handler := buildRoutedStack(t, hp, Config{RequireOptInHeader: true, NgramLength: 6}, newTestMetrics(), mockLimits{}, 0, nil, querier)
 
 			req := newTestDetectedFieldsRequest(`{job="test"} |= "timeout"`, from, now, tc.field)
 			resp, err := handler.Do(testTenantContextWithLive(), req)
@@ -486,7 +486,7 @@ func TestPrefetchFilter_DetectedFieldsNoMatchingHintsSkipsQuerier(t *testing.T) 
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{hints: &hintprovider.Hints{}}
 	querier := &logfmtQuerier{}
-	handler := buildRoutedStack(t, hp, Config{RequireOptInHeader: true, NgramLength: 6}, mockLimits{}, 0, nil, querier)
+	handler := buildRoutedStack(t, hp, Config{RequireOptInHeader: true, NgramLength: 6}, newTestMetrics(), mockLimits{}, 0, nil, querier)
 
 	resp, err := handler.Do(testTenantContextWithLive(), newTestDetectedFieldsRequest(`{job="test"} |= "timeout"`, now.Add(-time.Hour), now, ""))
 	require.NoError(t, err)
@@ -499,31 +499,43 @@ func TestPrefetchFilter_DetectedFieldsNoMatchingHintsSkipsQuerier(t *testing.T) 
 	require.Empty(t, dfResp.Response.Values)
 }
 
+// Dry-run verifies hints against log lines or samples, and a detected fields
+// response has neither, so detected fields only look up hints in live mode.
 func TestPrefetchFilter_DetectedFieldsSkipsLookup(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
-	live := Config{RequireOptInHeader: true, NgramLength: 6}
+	const supported = `{job="test"} |= "timeout"`
+	const metric = `sum(count_over_time({job="test"} |= "timeout" [5m]))`
+	optIn := Config{RequireOptInHeader: true, NgramLength: 6}
 
 	for _, tc := range []struct {
-		name  string
-		ctx   context.Context
-		cfg   Config
-		query string
+		name   string
+		ctx    context.Context
+		cfg    Config
+		limits mockLimits
+		query  string
 		// A metric query is rejected by the detected fields handler.
 		wantStatus int32
 	}{
-		{name: "query without a line filter", ctx: testTenantContextWithLive(), cfg: live, query: `{job="test"}`},
-		{name: "search term shorter than the n-gram length", ctx: testTenantContextWithLive(), cfg: live, query: `{job="test"} |= "err"`},
-		{name: "pattern filter", ctx: testTenantContextWithLive(), cfg: live, query: `{job="test"} |> "<_> timeout <_>"`},
-		{name: "metric query", ctx: testTenantContextWithLive(), cfg: live, query: `sum(count_over_time({job="test"} |= "timeout" [5m]))`, wantStatus: http.StatusBadRequest},
-		{name: "logline off header", ctx: testTenantContextWithForceDisable(), cfg: live, query: `{job="test"} |= "timeout"`},
-		{name: "tenant not opted in", ctx: testTenantContext(), cfg: live, query: `{job="test"} |= "timeout"`},
+		{name: "dry run header", ctx: testTenantContextWithDryRun(), cfg: optIn, query: supported},
+		{name: "dry run tenant mode", ctx: testTenantContext(), cfg: optIn, limits: mockLimits{modes: map[string]Mode{"test": ModeDryRun}}, query: supported},
+		{name: "dry run default", ctx: testTenantContext(), cfg: Config{DryRun: true, NgramLength: 6}, query: supported},
+		{name: "dry run metric query", ctx: testTenantContextWithDryRun(), cfg: optIn, query: metric, wantStatus: http.StatusBadRequest},
+		{name: "live metric query", ctx: testTenantContextWithLive(), cfg: optIn, query: metric, wantStatus: http.StatusBadRequest},
+		{name: "query without a line filter", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"}`},
+		{name: "search term shorter than the n-gram length", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"} |= "err"`},
+		{name: "pattern filter", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"} |> "<_> timeout <_>"`},
+		{name: "logline off header", ctx: testTenantContextWithForceDisable(), cfg: optIn, query: supported},
+		{name: "tenant not opted in", ctx: testTenantContext(), cfg: optIn, query: supported},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			hp := &mockHintProvider{hints: &hintprovider.Hints{}}
 			querier := &logfmtQuerier{}
-			handler := buildRoutedStack(t, hp, tc.cfg, mockLimits{}, 0, nil, querier)
+			metrics := newTestMetrics()
+			handler := buildRoutedStack(t, hp, tc.cfg, metrics, tc.limits, 0, nil, querier)
 
 			resp, err := handler.Do(tc.ctx, newTestDetectedFieldsRequest(tc.query, now.Add(-time.Hour), now, ""))
+			// Dry-run counts the lookup before it starts it in the background.
+			require.Zero(t, testutil.ToFloat64(metrics.dryRunTotal))
 			require.Equal(t, 0, hp.Calls())
 
 			if tc.wantStatus != 0 {

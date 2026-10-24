@@ -927,6 +927,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	if passthrough {
 		return h.next.Do(ctx, req)
 	}
+	// Dry-run verifies hints against the log lines or samples in the response.
+	// A detected fields response has neither, so the lookup would be wasted.
+	if _, ok := req.(*queryrange.DetectedFieldsRequest); ok && mode != ModeLive {
+		return h.next.Do(ctx, req)
+	}
 
 	expr, err := syntax.ParseExpr(req.GetQuery())
 	if err != nil {
@@ -983,10 +988,6 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		direction = r.GetDirection()
 	case *queryrange.LokiInstantRequest:
 		direction = r.GetDirection()
-	case *queryrange.DetectedFieldsRequest:
-		// Detected fields fetches logs backwards when it creates its downstream
-		// LokiRequest. Keep dry-run hint summaries consistent with that request.
-		direction = logproto.BACKWARD
 	}
 
 	if mode == ModeDryRun {
