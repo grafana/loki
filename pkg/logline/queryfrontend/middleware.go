@@ -487,6 +487,33 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	return totalBytes, nil
 }
 
+// firstStepWindowEnd returns the end of the oldest step's lookback, given the
+// start of the read window.
+// A supported metric query has one log selector, so it has one matcher group.
+// A log selector has a zero interval, so its first window ends at readStart.
+func firstStepWindowEnd(expr syntax.Expr, readStart time.Time) time.Time {
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		return readStart.Add(groups[0].Interval)
+	}
+	return readStart
+}
+
+// dryRunScoresNoStep reports whether the first step's window ends after the
+// ingester cutoff. Every later window does too, so the dry-run report would
+// skip them all.
+func dryRunScoresNoStep(cutoff, firstWindowEnd time.Time) bool {
+	return !cutoff.IsZero() && cutoff.Before(firstWindowEnd)
+}
+
+// ingesterWindowStart returns the oldest time queriers read from ingesters, or
+// the zero time when QueryIngestersWithin is unset.
+func (h *loglinePrefetchHandler) ingesterWindowStart(now time.Time) time.Time {
+	if h.queryIngestersWithin <= 0 {
+		return time.Time{}
+	}
+	return now.Add(-h.queryIngestersWithin).UTC()
+}
+
 // dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
 // The hint may not be the line that produced the sample. TotalEntries counts the positive
 // steps whose lookback ended at or before the ingester cutoff. A miss records that whole lookback.
@@ -668,27 +695,17 @@ func (h *loglinePrefetchHandler) doDryRun(
 	direction logproto.Direction,
 	expr syntax.Expr,
 	qb querybounds.QueryBounds,
+	firstWindowEnd, cutoff time.Time,
 	queryBytes uint64,
 ) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, h.logger)
-
-	readStart, readEnd := qb.ReadStart, qb.ReadEnd
-	firstWindowEnd := readStart
-	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		// End of the oldest lookback. A log selector has a zero interval, so this stays at readStart.
-		firstWindowEnd = readStart.Add(groups[0].Interval)
+	if dryRunScoresNoStep(cutoff, firstWindowEnd) {
+		return h.next.Do(ctx, req)
 	}
+	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 	eligibleEnd := readEnd
-	if h.queryIngestersWithin > 0 {
-		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
-		// If the oldest window ends after the ingester cutoff, every later step does too.
-		// The correctness report would skip them all, so skip the hint lookup.
-		if cutoff.Before(firstWindowEnd) {
-			return h.next.Do(ctx, req)
-		}
-		if cutoff.Before(readEnd) {
-			eligibleEnd = cutoff
-		}
+	if !cutoff.IsZero() && cutoff.Before(readEnd) {
+		eligibleEnd = cutoff
 	}
 
 	if !h.dryRunInflight.CompareAndSwap(0, 1) {
@@ -938,8 +955,17 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// Shared eligibility: stats-based byte threshold.
 	readStart := qb.ReadStart
 	readEnd := qb.ReadEnd
+	firstWindowEnd := firstStepWindowEnd(expr, readStart)
+	cutoff := h.ingesterWindowStart(time.Now())
+	// A lookup that would read only the ingester window never runs, so the
+	// size estimate would be an index-stats call for nothing. Neither does a
+	// dry-run lookup whose report would score no step.
+	recentOnly := !cutoff.IsZero() && !cutoff.After(readStart)
+	if mode == ModeDryRun {
+		recentOnly = dryRunScoresNoStep(cutoff, firstWindowEnd)
+	}
 	queryBytes := uint64(0)
-	if minQueryBytes > 0 {
+	if minQueryBytes > 0 && !recentOnly {
 		queryBytes, err = h.getQueryBytes(ctx, expr, readStart, readEnd)
 		if err != nil {
 			level.Warn(logger).Log(
@@ -971,12 +997,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	if mode == ModeDryRun {
-		return h.doDryRun(ctx, req, direction, expr, qb, queryBytes)
+		return h.doDryRun(ctx, req, direction, expr, qb, firstWindowEnd, cutoff, queryBytes)
 	}
 
 	ingesterCutoff := readEnd
-	if h.queryIngestersWithin > 0 {
-		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
+	if !cutoff.IsZero() {
 		if cutoff.After(readStart) && cutoff.Before(readEnd) {
 			ingesterCutoff = cutoff
 		} else if !cutoff.After(readStart) {
