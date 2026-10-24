@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/gophercloud/gophercloud/v2"
@@ -13,6 +15,7 @@ import (
 
 var (
 	// ErrPageNotAvailable is returned from a Pager when a next or previous page is requested, but does not exist.
+	// Deprecated: This error is no longer used by Gophercloud.
 	ErrPageNotAvailable = errors.New("the requested page does not exist")
 )
 
@@ -32,6 +35,16 @@ type Page interface {
 
 	// GetBody returns the Page Body. This is used in the `AllPages` method.
 	GetBody() any
+}
+
+// KeyedPage may optionally be implemented by a Page whose body is a JSON
+// object keyed by a resource name (e.g. {"servers": [...]}). AllPages uses
+// this to determine the correct key when constructing the combined page,
+// avoiding a heuristic scan of the response body.
+type KeyedPage interface {
+	// ResourceKey returns the JSON object key that contains the resource
+	// list, e.g. "servers" or "networks".
+	ResourceKey() string
 }
 
 // Pager knows how to advance through a specific resource collection, one page at a time.
@@ -166,20 +179,33 @@ func (p Pager) AllPages(ctx context.Context) (Page, error) {
 	switch pb := firstPage.GetBody().(type) {
 	case map[string]any:
 		// key is the map key for the page body if the body type is `map[string]any`.
+		// Prefer the static key from KeyedPage when available, falling back to
+		// scanning the first page body if not. We do discovery here before iterating:
+		// EachPage skips empty pages, so the callback may never run.
 		var key string
+		if kp, ok := firstPage.(KeyedPage); ok {
+			key = kp.ResourceKey()
+		} else {
+			for k, v := range pb {
+				if !strings.HasSuffix(k, "links") {
+					if _, ok := v.([]any); ok {
+						key = k
+						break
+					}
+				}
+			}
+		}
 		// Iterate over the pages to concatenate the bodies.
 		err = p.EachPage(ctx, func(_ context.Context, page Page) (bool, error) {
 			b := page.GetBody().(map[string]any)
-			for k, v := range b {
-				// If it's a linked page, we don't want the `links`, we want the other one.
-				if !strings.HasSuffix(k, "links") {
-					// check the field's type. we only want []any (which is really []map[string]any)
-					switch vt := v.(type) {
-					case []any:
-						key = k
-						pagesSlice = append(pagesSlice, vt...)
-					}
+			if v, ok := b[key].([]any); ok {
+				pagesSlice = append(pagesSlice, v...)
+			} else {
+				err = gophercloud.ErrMissingResourceKey{
+					Expected: key,
+					Actual:   slices.Collect(maps.Keys(b)),
 				}
+				return false, err
 			}
 			return true, nil
 		})

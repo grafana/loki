@@ -72,19 +72,46 @@ func (r Result) extractIntoPtr(to any, label string) error {
 		return r.ExtractInto(&to)
 	}
 
+	// Decode into map[string]any with UseNumber so integers that do not fit
+	// in float64 survive the extra marshal/unmarshal below. ExtractInto() is
+	// not used here because it would decode numbers into any as float64.
 	var m map[string]any
-	err := r.ExtractInto(&m)
-	if err != nil {
-		return err
+	if reader, ok := r.Body.(io.Reader); ok {
+		if readCloser, ok := reader.(io.Closer); ok {
+			defer readCloser.Close()
+		}
+		dec := json.NewDecoder(reader)
+		dec.UseNumber()
+		if err := dec.Decode(&m); err != nil {
+			return err
+		}
+	} else {
+		b, err := json.Marshal(r.Body)
+		if err != nil {
+			return err
+		}
+		dec := json.NewDecoder(bytes.NewReader(b))
+		dec.UseNumber()
+		if err := dec.Decode(&m); err != nil {
+			return err
+		}
 	}
 
-	b, err := json.Marshal(m[label])
+	// Check if the expected label exists in the response
+	value, exists := m[label]
+	if !exists && len(m) > 0 {
+		// Key doesn't exist but response has other data - this is an error
+		// If len(m) == 0, we allow empty responses (e.g., tokens API where data is in headers)
+		return fmt.Errorf("expected response key %q not found in response", label)
+	}
+
+	b, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
 
 	toValue := reflect.ValueOf(to)
-	if toValue.Kind() == reflect.Ptr {
+	if toValue.Kind() == reflect.Pointer {
 		toValue = toValue.Elem()
 	}
 
@@ -117,6 +144,9 @@ func (r Result) extractIntoPtr(to any, label string) error {
 						// a struct that is never used, but it's good enough to
 						// trigger the UnmarshalJSON method.
 						for i := 0; i < newType.NumField(); i++ {
+							if newType.Field(i).Kind() != reflect.Struct {
+								continue
+							}
 							s := newType.Field(i).Addr().Interface()
 
 							// Unmarshal is used rather than NewDecoder to also work
@@ -189,7 +219,7 @@ func (r Result) ExtractIntoStructPtr(to any, label string) error {
 	}
 
 	t := reflect.TypeOf(to)
-	if k := t.Kind(); k != reflect.Ptr {
+	if k := t.Kind(); k != reflect.Pointer {
 		return fmt.Errorf("expected pointer, got %v", k)
 	}
 
@@ -224,7 +254,7 @@ func (r Result) ExtractIntoSlicePtr(to any, label string) error {
 	}
 
 	t := reflect.TypeOf(to)
-	if k := t.Kind(); k != reflect.Ptr {
+	if k := t.Kind(); k != reflect.Pointer {
 		return fmt.Errorf("expected pointer, got %v", k)
 	}
 
