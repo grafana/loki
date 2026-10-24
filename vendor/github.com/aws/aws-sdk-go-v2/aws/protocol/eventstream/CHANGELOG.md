@@ -1,3 +1,7 @@
+# v1.7.23 (2026-10-21)
+
+* **Bug Fix**: Enforce event stream header key value length limit instead of truncating
+
 # v1.7.22 (2026-10-09.2)
 
 * **Dependency Update**: Update to smithy-go v1.28.5.
