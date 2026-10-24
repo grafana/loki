@@ -8,7 +8,9 @@ import (
 	"io"
 )
 
-// Encoding is type alias for detected UTF encoding.
+var _ io.Reader = (*Reader)(nil)
+
+// Encoding is a UTF encoding identified by a BOM.
 type Encoding int
 
 // Constants to identify detected UTF encodings.
@@ -52,14 +54,20 @@ func (e Encoding) String() string {
 
 const maxConsecutiveEmptyReads = 100
 
-// Skip creates Reader which automatically detects BOM (Unicode Byte Order Mark) and removes it as necessary.
-// It also returns the encoding detected by the BOM.
-// If the detected encoding is not needed, you can call the SkipOnly function.
+// Skip returns a Reader that reads from rd without its leading BOM (Unicode Byte Order Mark),
+// and the encoding indicated by that BOM, or Unknown if no supported BOM was detected.
+//
+// Skip reads up to 4 bytes from rd before it returns, so it may block. An error
+// that occurs while reading them is not returned by Skip: the returned Reader's Read
+// returns it once, after the bytes that remain after BOM removal.
+//
+// If rd is already a *Reader, Skip returns rd itself and the encoding it detected,
+// without reading from it. Use SkipOnly if the encoding is not needed.
 func Skip(rd io.Reader) (*Reader, Encoding) {
 	// Is it already a Reader?
 	b, ok := rd.(*Reader)
 	if ok {
-		return b, Unknown
+		return b, b.enc
 	}
 
 	enc, left, err := detectUtf(rd)
@@ -67,25 +75,30 @@ func Skip(rd io.Reader) (*Reader, Encoding) {
 		rd:  rd,
 		buf: left,
 		err: err,
+		enc: enc,
 	}, enc
 }
 
-// SkipOnly creates Reader which automatically detects BOM (Unicode Byte Order Mark) and removes it as necessary.
+// SkipOnly is like Skip but does not return the encoding. It also reads from rd
+// immediately and may block, and an error from that read is returned later by Read.
 func SkipOnly(rd io.Reader) *Reader {
 	r, _ := Skip(rd)
 	return r
 }
 
-// Reader implements automatic BOM (Unicode Byte Order Mark) checking and
-// removing as necessary for an io.Reader object.
+// Reader is an io.Reader that returns the bytes of the underlying reader
+// without the leading BOM (Unicode Byte Order Mark). Create it with Skip or SkipOnly.
+// Reader does not close the underlying reader.
 type Reader struct {
 	rd  io.Reader // reader provided by the client
 	buf []byte    // buffered data
 	err error     // last error
+	enc Encoding  // encoding
 }
 
-// Read is an implementation of io.Reader interface.
-// The bytes are taken from the underlying Reader, but it checks for BOMs, removing them as necessary.
+// Read implements io.Reader. The BOM is detected once, by Skip or SkipOnly:
+// Read returns the bytes read past the BOM during detection, then any error
+// hit during detection (once), then reads from the underlying reader directly.
 func (r *Reader) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -129,7 +142,9 @@ func detectUtf(rd io.Reader) (enc Encoding, buf []byte, err error) {
 		return UTF8, nilIfEmpty(buf[3:]), err
 	}
 
-	if (err != nil && err != io.EOF) || (len(buf) < 2) {
+	// A non-EOF error before all 4 bytes are read leaves FF FE ambiguous (it may start UTF-32LE);
+	// FE FF is kept Unknown in this case too, for compatibility.
+	if (err != nil && err != io.EOF && len(buf) < 4) || len(buf) < 2 {
 		return Unknown, nilIfEmpty(buf), err
 	}
 
@@ -154,7 +169,7 @@ func readBOM(rd io.Reader) (buf []byte, err error) {
 		}
 		if n > 0 {
 			nEmpty = 0
-		} else {
+		} else if err == nil {
 			nEmpty++
 			if nEmpty >= maxConsecutiveEmptyReads {
 				err = io.ErrNoProgress
