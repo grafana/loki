@@ -179,8 +179,8 @@ require (
 	cloud.google.com/go/monitoring v1.31.0 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.55.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.55.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.62.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0 // indirect
 	github.com/andybalholm/brotli v1.2.6 // indirect
 	github.com/apache/thrift v0.25.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
@@ -476,7 +476,7 @@ require (
 	go.etcd.io/etcd/client/pkg/v3 v3.6.14 // indirect
 	go.etcd.io/etcd/client/v3 v3.6.12 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.69.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect

@@ -241,11 +241,11 @@ github.com/DmitriyVTitov/size
 # github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0
 ## explicit; go 1.25.0
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp
-# github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.55.0
-## explicit; go 1.24.0
+# github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.62.0
+## explicit; go 1.26.0
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric
-# github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.55.0
-## explicit; go 1.24.0
+# github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0
+## explicit; go 1.26.0
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping
 # github.com/IBM/go-sdk-core/v5 v5.21.4
 ## explicit; go 1.25.0
@@ -2238,7 +2238,7 @@ go.opentelemetry.io/contrib/detectors/gcp
 # go.opentelemetry.io/contrib/exporters/autoexport v0.64.0
 ## explicit; go 1.24.0
 go.opentelemetry.io/contrib/exporters/autoexport
-# go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0
+# go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.69.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/internal
@@ -2279,10 +2279,9 @@ go.opentelemetry.io/otel/semconv/v1.37.0/otelconv
 go.opentelemetry.io/otel/semconv/v1.37.0/rpcconv
 go.opentelemetry.io/otel/semconv/v1.39.0
 go.opentelemetry.io/otel/semconv/v1.39.0/otelconv
-go.opentelemetry.io/otel/semconv/v1.40.0
-go.opentelemetry.io/otel/semconv/v1.40.0/rpcconv
 go.opentelemetry.io/otel/semconv/v1.41.0
 go.opentelemetry.io/otel/semconv/v1.41.0/httpconv
+go.opentelemetry.io/otel/semconv/v1.41.0/rpcconv
 go.opentelemetry.io/otel/semconv/v1.43.0
 go.opentelemetry.io/otel/semconv/v1.43.0/otelconv
 # go.opentelemetry.io/otel/exporters/jaeger v1.17.0
