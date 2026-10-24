@@ -1359,6 +1359,98 @@ func TestPrefetchFilter_TenantMinQueryBytesZero_DisablesStatsGating(t *testing.T
 	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
+// The index-stats call only decides whether to start a lookup. A lookup that
+// would read only the ingester window never starts, so it needs no estimate.
+func TestPrefetchFilter_IngesterWindowSkipsQueryStats(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	const logQuery = `{job="test"} |= "timeout"`
+	const metricQuery = `sum(count_over_time({job="test"} |= "timeout" [5m]))`
+
+	for _, tc := range []struct {
+		name                 string
+		ctx                  context.Context
+		queryIngestersWithin time.Duration
+		req                  *queryrange.LokiRequest
+		// The stats call reports bytes above the threshold, so a query that
+		// gets the size estimate also starts a lookup.
+		wantLookup bool
+	}{
+		{
+			name:                 "log query inside the window",
+			ctx:                  testTenantContextWithLive(),
+			queryIngestersWithin: 2 * time.Hour,
+			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
+		},
+		{
+			name:                 "log query starting before the window",
+			ctx:                  testTenantContextWithLive(),
+			queryIngestersWithin: 30 * time.Minute,
+			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
+			wantLookup:           true,
+		},
+		{
+			name:       "log query without an ingester window",
+			ctx:        testTenantContextWithLive(),
+			req:        newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
+			wantLookup: true,
+		},
+		{
+			name:                 "dry run log query inside the window",
+			ctx:                  testTenantContextWithDryRun(),
+			queryIngestersWithin: 2 * time.Hour,
+			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
+		},
+		{
+			name:                 "dry run metric lookback inside the window",
+			ctx:                  testTenantContextWithDryRun(),
+			queryIngestersWithin: 2 * time.Hour,
+			req:                  newTestLokiRequest(metricQuery, now.Add(-time.Hour), now),
+		},
+		{
+			// The range starts inside the window, but its first step reads 5m before it.
+			name:                 "dry run metric lookback starting before the window",
+			ctx:                  testTenantContextWithDryRun(),
+			queryIngestersWithin: time.Hour,
+			req:                  newTestLokiRequest(metricQuery, now.Add(-58*time.Minute), now),
+			wantLookup:           true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-2 * time.Hour), End: now},
+			}}}
+			queryCalls := 0
+			next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				queryCalls++
+				if _, err := syntax.ParseSampleExpr(req.GetQuery()); err == nil {
+					return metricMatrixResponse(1, now), nil
+				}
+				return emptyStreamResponse(), nil
+			})
+			statsCalls := 0
+			querier := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: 1 << 30}, nil, &statsCalls, next)
+			metrics := newTestMetrics()
+			cfg := Config{RequireOptInHeader: true, NgramLength: 6, QueryIngestersWithin: tc.queryIngestersWithin}
+			handler := buildStack(hp, cfg, metrics, querier, mockLimits{defaultMinQueryBytes: 1})
+
+			_, err := handler.Do(tc.ctx, tc.req)
+			require.NoError(t, err)
+			require.Equal(t, 1, queryCalls, "the query runs either way")
+
+			if !tc.wantLookup {
+				require.Equal(t, 0, statsCalls)
+				require.Equal(t, 0, hp.Calls())
+				// Dry-run counts the lookup before it starts it in the background.
+				require.Zero(t, testutil.ToFloat64(metrics.dryRunTotal))
+				return
+			}
+			require.Equal(t, 1, statsCalls)
+			// The lookup runs in the background and may finish after the query.
+			require.Eventually(t, func() bool { return hp.Calls() == 1 }, time.Second, time.Millisecond)
+		})
+	}
+}
+
 func TestPrefetchFilter_HintPrefetchCompletedLogIncludesQueryBytes(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
@@ -2363,6 +2455,7 @@ func TestPrefetchFilter_LoglineOutcome(t *testing.T) {
 		{name: "no shard planning", wantOutcome: outcomeSkipRatioUnavailable},
 		{name: "every sub-request passed through", hints: preMinDateHints, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeTimeRangeNotIndexed},
 		{name: "whole query in ingester window", queryIngestersWithin: 2 * time.Hour, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeRecentDataOnly},
+		{name: "whole query in ingester window skips the size estimate", minQueryBytes: 500, indexStatsErr: errors.New("stats unavailable"), queryIngestersWithin: 2 * time.Hour, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeRecentDataOnly},
 		{name: "lookup reports unsupported query", hintErr: hintprovider.ErrUnsupported, wantOutcome: outcomeUnsupportedQuery},
 		{name: "lookup failed", hintErr: errors.New("index unavailable"), wantOutcome: outcomeLookupFailed},
 		{name: "lookup canceled", hintErr: context.Canceled, wantOutcome: outcomeCanceled},
