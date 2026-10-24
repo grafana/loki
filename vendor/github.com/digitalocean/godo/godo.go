@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.194.1"
+	libraryVersion = "1.230.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -59,6 +59,7 @@ type Client struct {
 	Apps                AppsService
 	Balance             BalanceService
 	BillingHistory      BillingHistoryService
+	Prepayment          PrepaymentService
 	CDNs                CDNService
 	Certificates        CertificatesService
 	Databases           DatabasesService
@@ -73,12 +74,15 @@ type Client struct {
 	Functions           FunctionsService
 	Images              ImagesService
 	ImageActions        ImageActionsService
+	Insights            InsightsService
 	Invoices            InvoicesService
 	Keys                KeysService
 	Kubernetes          KubernetesService
 	LoadBalancers       LoadBalancersService
+	MicroVMs            MicroVMsService
 	Monitoring          MonitoringService
 	Security            SecurityService
+	Secrets             SecretsService
 	Nfs                 NfsService
 	NfsActions          NfsActionsService
 	OneClick            OneClickService
@@ -99,10 +103,15 @@ type Client struct {
 	UptimeChecks        UptimeChecksService
 	VectorDBs           VectorDBsService
 	VPCs                VPCsService
+	Routes              RoutesService
 	PartnerAttachment   PartnerAttachmentService
-	GradientAI          GradientAIService
+	AgentPlatform       AgentPlatformService
+	ActionGateway       *ActionGatewayService
+	HostedAgents        HostedAgentsService
+	HostedAgentTriggers HostedAgentTriggersService
 	DedicatedInference  DedicatedInferenceService
 	BatchInference      BatchInferenceService
+	Signals             SignalsService
 	BYOIPPrefixes       BYOIPPrefixesService
 
 	// Serverless Inference resources at https://inference.do-ai.run.
@@ -113,6 +122,8 @@ type Client struct {
 	Models           *ModelService
 	Responses        *ResponseService
 	AsyncInvocations *AsyncInvocationService
+	Audio            *AudioService
+	Video            *VideoService
 	// Optional function called after every successful request made to the DO APIs
 	onRequestCompleted RequestCompletionCallback
 
@@ -121,6 +132,8 @@ type Client struct {
 
 	// Optional rate limiter to ensure QoS.
 	rateLimiter *rate.Limiter
+	// Optional Action Gateway MCP origin override for development and testing.
+	actionGatewayMCPBaseURL *url.URL
 
 	// Optional retry values. Setting the RetryConfig.RetryMax value enables automatically retrying requests
 	// that fail with 429 or 500-level response codes using the go-retryablehttp client
@@ -218,6 +231,16 @@ type ErrorResponse struct {
 
 	// Attempts is the number of times the request was attempted when retries are enabled.
 	Attempts int
+
+	// NestedError captures the alternate {"error":{"code":...,"message":...}}
+	// envelope returned by some DigitalOcean services (e.g. the hosted-agents
+	// harness-api) instead of the top-level {"message":...} shape. When the
+	// top-level Message is empty, Error() falls back to this message so callers
+	// see the server's reason rather than a bare status code.
+	NestedError *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
 }
 
 // Rate contains the rate limit for the current client.
@@ -301,6 +324,7 @@ func NewClient(httpClient *http.Client) *Client {
 	c.Apps = &AppsServiceOp{client: c}
 	c.Balance = &BalanceServiceOp{client: c}
 	c.BillingHistory = &BillingHistoryServiceOp{client: c}
+	c.Prepayment = &PrepaymentServiceOp{client: c}
 	c.CDNs = &CDNServiceOp{client: c}
 	c.Certificates = &CertificatesServiceOp{client: c}
 	c.Databases = &DatabasesServiceOp{client: c}
@@ -314,12 +338,15 @@ func NewClient(httpClient *http.Client) *Client {
 	c.Functions = &FunctionsServiceOp{client: c}
 	c.Images = &ImagesServiceOp{client: c}
 	c.ImageActions = &ImageActionsServiceOp{client: c}
+	c.Insights = &InsightsServiceOp{client: c}
 	c.Invoices = &InvoicesServiceOp{client: c}
 	c.Keys = &KeysServiceOp{client: c}
 	c.Kubernetes = &KubernetesServiceOp{client: c}
 	c.LoadBalancers = &LoadBalancersServiceOp{client: c}
+	c.MicroVMs = &MicroVMsServiceOp{client: c}
 	c.Monitoring = &MonitoringServiceOp{client: c}
 	c.Security = &SecurityServiceOp{client: c}
+	c.Secrets = &SecretsServiceOp{client: c}
 	c.Nfs = &NfsServiceOp{client: c}
 	c.NfsActions = &NfsActionsServiceOp{client: c}
 	c.VPCNATGateways = &VPCNATGatewaysServiceOp{client: c}
@@ -342,11 +369,16 @@ func NewClient(httpClient *http.Client) *Client {
 	c.UptimeChecks = &UptimeChecksServiceOp{client: c}
 	c.VectorDBs = &VectorDBsServiceOp{client: c}
 	c.VPCs = &VPCsServiceOp{client: c}
+	c.Routes = &RoutesServiceOp{client: c}
 	c.PartnerAttachment = &PartnerAttachmentServiceOp{client: c}
-	c.GradientAI = &GradientAIServiceOp{client: c}
+	c.AgentPlatform = &AgentPlatformServiceOp{client: c}
+	c.ActionGateway = newActionGatewayService(c)
+	c.HostedAgents = &HostedAgentsServiceOp{client: c}
+	c.HostedAgentTriggers = &HostedAgentTriggersServiceOp{client: c}
 	c.DedicatedInference = &DedicatedInferenceServiceOp{client: c}
 	batchInferenceURL, _ := url.Parse(defaultBatchInferenceBaseURL)
 	c.BatchInference = &BatchInferenceServiceOp{client: c, baseURL: batchInferenceURL}
+	c.Signals = &SignalsServiceOp{client: c}
 	serverlessInferenceURL, _ := url.Parse(defaultServerlessInferenceBaseURL)
 	t := newInferenceTransport(c, serverlessInferenceURL)
 	c.Chat = &ChatService{Completions: &ChatCompletionService{inferenceTransport: t}}
@@ -356,6 +388,8 @@ func NewClient(httpClient *http.Client) *Client {
 	c.Models = &ModelService{inferenceTransport: t}
 	c.Responses = &ResponseService{inferenceTransport: t}
 	c.AsyncInvocations = &AsyncInvocationService{inferenceTransport: t}
+	c.Audio = &AudioService{Speech: &SpeechService{inferenceTransport: t}}
+	c.Video = &VideoService{Generations: &VideoGenerationService{inferenceTransport: t}}
 
 	c.headers = make(map[string]string)
 
@@ -678,12 +712,17 @@ func (r *ErrorResponse) Error() string {
 		attempted = fmt.Sprintf("; giving up after %d attempt(s)", r.Attempts)
 	}
 
+	message := r.Message
+	if message == "" && r.NestedError != nil {
+		message = r.NestedError.Message
+	}
+
 	if r.RequestID != "" {
 		return fmt.Sprintf("%v %v: %d (request %q) %v%s",
-			r.Response.Request.Method, r.Response.Request.URL, r.Response.StatusCode, r.RequestID, r.Message, attempted)
+			r.Response.Request.Method, r.Response.Request.URL, r.Response.StatusCode, r.RequestID, message, attempted)
 	}
 	return fmt.Sprintf("%v %v: %d %v%s",
-		r.Response.Request.Method, r.Response.Request.URL, r.Response.StatusCode, r.Message, attempted)
+		r.Response.Request.Method, r.Response.Request.URL, r.Response.StatusCode, message, attempted)
 }
 
 // CheckResponse checks the API response for errors, and returns them if present. A response is considered an

@@ -3,29 +3,33 @@ package godo
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const (
 	defaultServerlessInferenceBaseURL = "https://inference.do-ai.run/"
 
 	serverlessInferenceAsyncInvokePath   = "v1/async-invoke"
+	serverlessInferenceAudioSpeechPath   = "v1/audio/speech"
 	serverlessInferenceChatCompletions   = "v1/chat/completions"
 	serverlessInferenceEmbeddingsPath    = "v1/embeddings"
 	serverlessInferenceImagesGenerations = "v1/images/generations"
 	serverlessInferenceMessagesPath      = "v1/messages"
 	serverlessInferenceModelsPath        = "v1/models"
 	serverlessInferenceResponsesPath     = "v1/responses"
+	serverlessInferenceVideosPath        = "v1/videos"
 )
 
 // Serverless Inference resources at https://inference.do-ai.run are exposed
 // as top-level fields on godo.Client (Models, Chat, Embeddings, ImageGenerations,
-// Messages, Responses, AsyncInvocations)
+// Messages, Responses, AsyncInvocations, Audio, Video)
 // See https://docs.digitalocean.com/reference/api/reference/serverless-inference/.
 
 func newInferenceTransport(client *Client, baseURL *url.URL) *inferenceTransport {
@@ -160,6 +164,99 @@ func (s *AsyncInvocationService) Get(ctx context.Context, requestID string) (*As
 }
 
 // =====================================================================
+// /v1/videos (+ /v1/videos/{id}/content)
+// =====================================================================
+
+// VideoService hosts the Generations sub-service for async video generation.
+type VideoService struct {
+	Generations *VideoGenerationService
+}
+
+// VideoGenerationService exposes async video create/poll and content download
+// against /v1/videos.
+type VideoGenerationService struct {
+	*inferenceTransport
+}
+
+// VideoGenerateParams is the request body for POST /v1/videos.
+type VideoGenerateParams struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+	Size   string `json:"size,omitempty"`
+	FPS    *int   `json:"fps,omitempty"`
+}
+
+// VideoGenerationOutput holds a completed video download location when present.
+type VideoGenerationOutput struct {
+	URL string `json:"url,omitempty"`
+}
+
+// VideoGeneration is returned by video create and poll endpoints.
+type VideoGeneration struct {
+	ID         string                 `json:"id"`
+	Object     string                 `json:"object,omitempty"`
+	CreatedAt  int64                  `json:"created_at,omitempty"`
+	Model      string                 `json:"model,omitempty"`
+	Status     string                 `json:"status"`
+	Output     *VideoGenerationOutput `json:"output,omitempty"`
+	Error      json.RawMessage        `json:"error,omitempty"`
+	XRequestID *string                `json:"x_request_id,omitempty"`
+}
+
+// Create starts an asynchronous video generation job (POST /v1/videos).
+func (s *VideoGenerationService) Create(ctx context.Context, body *VideoGenerateParams) (*VideoGeneration, *Response, error) {
+	if body == nil {
+		return nil, nil, errors.New("serverless inference: body is required")
+	}
+	req, err := s.newRequest(ctx, http.MethodPost, serverlessInferenceVideosPath, body)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(VideoGeneration)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// Get fetches the current status of a video generation job (GET /v1/videos/{id}).
+func (s *VideoGenerationService) Get(ctx context.Context, id string) (*VideoGeneration, *Response, error) {
+	if id == "" {
+		return nil, nil, errors.New("serverless inference: id is required")
+	}
+	path := fmt.Sprintf("%s/%s", serverlessInferenceVideosPath, id)
+	req, err := s.newRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(VideoGeneration)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// Content downloads the generated MP4 bytes for a completed video.
+func (s *VideoGenerationService) Content(ctx context.Context, id string) ([]byte, *Response, error) {
+	if id == "" {
+		return nil, nil, errors.New("serverless inference: id is required")
+	}
+	path := fmt.Sprintf("%s/%s/content", serverlessInferenceVideosPath, id)
+	req, err := s.newRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	var buf bytes.Buffer
+	resp, err := s.client.Do(ctx, req, &buf)
+	if err != nil {
+		return nil, resp, err
+	}
+	return buf.Bytes(), resp, nil
+}
+
+// =====================================================================
 // /v1/chat/completions
 // =====================================================================
 
@@ -175,27 +272,130 @@ type ChatCompletionService struct {
 
 // ChatCompletionMessage is a single message in the chat conversation.
 type ChatCompletionMessage struct {
-	Role             string                   `json:"role"`
-	Content          *string                  `json:"content,omitempty"`
-	ReasoningContent *string                  `json:"reasoning_content,omitempty"`
-	Refusal          *string                  `json:"refusal,omitempty"`
-	ToolCallID       string                   `json:"tool_call_id,omitempty"`
-	ToolCalls        []ChatCompletionToolCall `json:"tool_calls,omitempty"`
+	Role             string                        `json:"role"`
+	Content          *ChatCompletionMessageContent `json:"content,omitempty"`
+	ReasoningContent *string                       `json:"reasoning_content,omitempty"`
+	Refusal          *string                       `json:"refusal,omitempty"`
+	ToolCallID       string                        `json:"tool_call_id,omitempty"`
+	ToolCalls        []ChatCompletionToolCall      `json:"tool_calls,omitempty"`
+}
+
+// ChatCompletionMessageContent is message content: a string or multimodal parts.
+// Use StringContent or ContentParts (or the UserMessage* helpers) to construct it.
+type ChatCompletionMessageContent struct {
+	text  *string
+	parts []ChatCompletionContentPart
+}
+
+// StringContent builds string message content.
+func StringContent(content string) *ChatCompletionMessageContent {
+	return &ChatCompletionMessageContent{text: &content}
+}
+
+// ContentParts builds multimodal message content from text and/or image parts.
+func ContentParts(parts ...ChatCompletionContentPart) *ChatCompletionMessageContent {
+	return &ChatCompletionMessageContent{parts: parts}
+}
+
+// Text returns the string content when the value is a string, or concatenates
+// text parts. Returns "" when content is nil or has no text.
+func (c *ChatCompletionMessageContent) Text() string {
+	if c == nil {
+		return ""
+	}
+	if c.text != nil {
+		return *c.text
+	}
+	var b bytes.Buffer
+	for _, part := range c.parts {
+		if part.Type == "text" {
+			b.WriteString(part.Text)
+		}
+	}
+	return b.String()
+}
+
+// Parts returns multimodal content parts when present.
+func (c *ChatCompletionMessageContent) Parts() []ChatCompletionContentPart {
+	if c == nil {
+		return nil
+	}
+	return c.parts
+}
+
+// MarshalJSON encodes content as a JSON string or as a content-part array.
+func (c ChatCompletionMessageContent) MarshalJSON() ([]byte, error) {
+	if c.parts != nil {
+		return json.Marshal(c.parts)
+	}
+	if c.text != nil {
+		return json.Marshal(*c.text)
+	}
+	return []byte("null"), nil
+}
+
+// UnmarshalJSON accepts a JSON string or an array of content parts.
+func (c *ChatCompletionMessageContent) UnmarshalJSON(data []byte) error {
+	*c = ChatCompletionMessageContent{}
+	if bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+	if len(data) > 0 && data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		c.text = &s
+		return nil
+	}
+	var parts []ChatCompletionContentPart
+	if err := json.Unmarshal(data, &parts); err != nil {
+		return err
+	}
+	c.parts = parts
+	return nil
+}
+
+// ChatCompletionContentPart is one entry in multimodal chat message content.
+type ChatCompletionContentPart struct {
+	Type     string                      `json:"type"`
+	Text     string                      `json:"text,omitempty"`
+	ImageURL *ChatCompletionContentImage `json:"image_url,omitempty"`
+}
+
+// ChatCompletionContentImage holds an image URL or data URI for VLM inputs.
+type ChatCompletionContentImage struct {
+	URL string `json:"url"`
+}
+
+// TextPart builds a text content part.
+func TextPart(text string) ChatCompletionContentPart {
+	return ChatCompletionContentPart{Type: "text", Text: text}
+}
+
+// ImageURLPart builds an image_url content part from an HTTPS URL or data URI.
+func ImageURLPart(url string) ChatCompletionContentPart {
+	return ChatCompletionContentPart{Type: "image_url", ImageURL: &ChatCompletionContentImage{URL: url}}
 }
 
 // UserMessage builds a ChatCompletionMessage with role "user".
 func UserMessage(content string) ChatCompletionMessage {
-	return ChatCompletionMessage{Role: "user", Content: &content}
+	return ChatCompletionMessage{Role: "user", Content: StringContent(content)}
+}
+
+// UserMessageParts builds a multimodal user message for vision-language models.
+func UserMessageParts(parts ...ChatCompletionContentPart) ChatCompletionMessage {
+	return ChatCompletionMessage{Role: "user", Content: ContentParts(parts...)}
 }
 
 // SystemMessage builds a ChatCompletionMessage with role "system".
 func SystemMessage(content string) ChatCompletionMessage {
-	return ChatCompletionMessage{Role: "system", Content: &content}
+	return ChatCompletionMessage{Role: "system", Content: StringContent(content)}
 }
 
 // AssistantMessage builds a ChatCompletionMessage with role "assistant".
 func AssistantMessage(content string) ChatCompletionMessage {
-	return ChatCompletionMessage{Role: "assistant", Content: &content}
+	return ChatCompletionMessage{Role: "assistant", Content: StringContent(content)}
 }
 
 // ChatCompletionToolCall is a tool invocation produced by the model.
@@ -212,10 +412,39 @@ type ChatCompletionToolCallFunc struct {
 	Arguments string `json:"arguments"`
 }
 
-// ChatCompletionTool is a tool definition exposed to the model.
+// ChatCompletionTool is a tool definition exposed to the model. Type selects
+// the tool kind: "function" for client-side function calling, or a DigitalOcean
+// server-side tool such as "web_search", "web_fetch", "mcp",
+// "knowledge_base_retrieval", "model_synthesis", or "tool_search".
 type ChatCompletionTool struct {
-	Type     string                     `json:"type"`
-	Function ChatCompletionToolFunction `json:"function"`
+	Type     string                      `json:"type"`
+	Function *ChatCompletionToolFunction `json:"function,omitempty"`
+
+	// DeferLoading marks function or MCP tools for on-demand loading with tool_search.
+	DeferLoading *bool `json:"defer_loading,omitempty"`
+
+	// web_search / web_fetch
+	MaxUses    *int `json:"max_uses,omitempty"`
+	MaxResults *int `json:"max_results,omitempty"`
+
+	// mcp
+	ServerLabel   string   `json:"server_label,omitempty"`
+	ServerURL     string   `json:"server_url,omitempty"`
+	Authorization string   `json:"authorization,omitempty"`
+	AllowedTools  []string `json:"allowed_tools,omitempty"`
+
+	// knowledge_base_retrieval
+	KnowledgeBaseID string `json:"knowledge_base_id,omitempty"`
+
+	// model_synthesis
+	Preset          string   `json:"preset,omitempty"`
+	Model           string   `json:"model,omitempty"`
+	AnalysisModels  []string `json:"analysis_models,omitempty"`
+	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
+	MaxToolCalls    *int     `json:"max_tool_calls,omitempty"`
+	MaxTokens       *int     `json:"max_tokens,omitempty"`
+	AllowedDomains  []string `json:"allowed_domains,omitempty"`
+	BlockedDomains  []string `json:"blocked_domains,omitempty"`
 }
 
 // ChatCompletionToolFunction describes a callable function tool.
@@ -609,6 +838,95 @@ func (s *ImageGenerationService) GenerateStreaming(ctx context.Context, body *Im
 }
 
 // =====================================================================
+// /v1/audio/speech
+// =====================================================================
+
+// AudioService hosts the Speech sub-service for text-to-speech.
+type AudioService struct {
+	Speech *SpeechService
+}
+
+// SpeechService exposes POST /v1/audio/speech.
+type SpeechService struct {
+	*inferenceTransport
+}
+
+// SpeechNewParams is the request body for POST /v1/audio/speech.
+type SpeechNewParams struct {
+	Model          string `json:"model"`
+	Input          string `json:"input"`
+	Voice          string `json:"voice,omitempty"`
+	ResponseFormat string `json:"response_format,omitempty"`
+	Instructions   string `json:"instructions,omitempty"`
+}
+
+// SpeechAudio is a single audio entry in a JSON speech envelope.
+type SpeechAudio struct {
+	B64JSON string `json:"b64_json"`
+}
+
+// SpeechResponse is returned by POST /v1/audio/speech.
+// The live endpoint returns raw audio bytes (Content-Type audio/mpeg, audio/wav,
+// etc.). Some docs also describe a JSON data[].b64_json envelope; both are accepted.
+type SpeechResponse struct {
+	ContentType string
+	Audio       []byte
+
+	Created int64         `json:"created,omitempty"`
+	Data    []SpeechAudio `json:"data,omitempty"`
+}
+
+// Bytes returns the decoded audio payload from a binary or JSON speech response.
+func (r *SpeechResponse) Bytes() ([]byte, error) {
+	if r == nil {
+		return nil, errors.New("serverless inference: nil speech response")
+	}
+	if len(r.Audio) > 0 {
+		return r.Audio, nil
+	}
+	if len(r.Data) == 0 || r.Data[0].B64JSON == "" {
+		return nil, errors.New("serverless inference: no audio data returned")
+	}
+	return base64.StdEncoding.DecodeString(r.Data[0].B64JSON)
+}
+
+// New creates speech audio from text input.
+func (s *SpeechService) New(ctx context.Context, body *SpeechNewParams) (*SpeechResponse, *Response, error) {
+	if body == nil {
+		return nil, nil, errors.New("serverless inference: body is required")
+	}
+	req, err := s.newRequest(ctx, http.MethodPost, serverlessInferenceAudioSpeechPath, body)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := s.client.DoStream(ctx, req)
+	if err != nil {
+		return nil, resp, err
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	root := &SpeechResponse{ContentType: resp.Header.Get("Content-Type")}
+	ct := strings.ToLower(root.ContentType)
+	if strings.Contains(ct, "application/json") || (len(raw) > 0 && raw[0] == '{') {
+		if err := json.Unmarshal(raw, root); err != nil {
+			return nil, resp, err
+		}
+		if audio, err := root.Bytes(); err == nil {
+			root.Audio = audio
+		}
+		return root, resp, nil
+	}
+
+	root.Audio = raw
+	return root, resp, nil
+}
+
+// =====================================================================
 // /v1/messages
 // =====================================================================
 
@@ -855,12 +1173,169 @@ type ResponseStreamOptions struct {
 	IncludeUsage *bool `json:"include_usage,omitempty"`
 }
 
-// ResponseTool is a tool definition for the Responses API.
+// ResponseTool is a tool definition for the Responses API. Type selects the
+// tool kind: "function" for client-side function calling, or a DigitalOcean
+// server-side tool such as "web_search", "web_fetch", "mcp",
+// "knowledge_base_retrieval", "model_synthesis", or "tool_search".
 type ResponseTool struct {
 	Type        string                 `json:"type"`
 	Name        string                 `json:"name,omitempty"`
 	Description string                 `json:"description,omitempty"`
 	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+
+	// DeferLoading marks function or MCP tools for on-demand loading with tool_search.
+	DeferLoading *bool `json:"defer_loading,omitempty"`
+
+	// web_search / web_fetch
+	MaxUses    *int `json:"max_uses,omitempty"`
+	MaxResults *int `json:"max_results,omitempty"`
+
+	// mcp
+	ServerLabel   string   `json:"server_label,omitempty"`
+	ServerURL     string   `json:"server_url,omitempty"`
+	Authorization string   `json:"authorization,omitempty"`
+	AllowedTools  []string `json:"allowed_tools,omitempty"`
+
+	// knowledge_base_retrieval
+	KnowledgeBaseID string `json:"knowledge_base_id,omitempty"`
+
+	// model_synthesis
+	Preset          string   `json:"preset,omitempty"`
+	Model           string   `json:"model,omitempty"`
+	AnalysisModels  []string `json:"analysis_models,omitempty"`
+	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
+	MaxToolCalls    *int     `json:"max_tool_calls,omitempty"`
+	MaxTokens       *int     `json:"max_tokens,omitempty"`
+	AllowedDomains  []string `json:"allowed_domains,omitempty"`
+	BlockedDomains  []string `json:"blocked_domains,omitempty"`
+}
+
+// FunctionTool builds a Responses API function tool.
+func FunctionTool(name, description string, parameters map[string]interface{}) ResponseTool {
+	return ResponseTool{Type: "function", Name: name, Description: description, Parameters: parameters}
+}
+
+// ChatFunctionTool builds a Chat Completions function tool.
+func ChatFunctionTool(name, description string, parameters map[string]interface{}) ChatCompletionTool {
+	return ChatCompletionTool{
+		Type:     "function",
+		Function: &ChatCompletionToolFunction{Name: name, Description: description, Parameters: parameters},
+	}
+}
+
+// WebSearchTool builds a Responses API web_search tool.
+func WebSearchTool(maxUses, maxResults *int) ResponseTool {
+	return ResponseTool{Type: "web_search", MaxUses: maxUses, MaxResults: maxResults}
+}
+
+// ChatWebSearchTool builds a Chat Completions web_search tool.
+func ChatWebSearchTool(maxUses, maxResults *int) ChatCompletionTool {
+	return ChatCompletionTool{Type: "web_search", MaxUses: maxUses, MaxResults: maxResults}
+}
+
+// WebFetchTool builds a Responses API web_fetch tool.
+func WebFetchTool(maxUses *int) ResponseTool {
+	return ResponseTool{Type: "web_fetch", MaxUses: maxUses}
+}
+
+// ChatWebFetchTool builds a Chat Completions web_fetch tool.
+func ChatWebFetchTool(maxUses *int) ChatCompletionTool {
+	return ChatCompletionTool{Type: "web_fetch", MaxUses: maxUses}
+}
+
+// MCPToolParams holds fields for an MCP server-side tool.
+type MCPToolParams struct {
+	ServerLabel   string
+	ServerURL     string
+	Authorization string
+	AllowedTools  []string
+	DeferLoading  *bool
+}
+
+// MCPTool builds a Responses API mcp tool.
+func MCPTool(p MCPToolParams) ResponseTool {
+	return ResponseTool{
+		Type:          "mcp",
+		ServerLabel:   p.ServerLabel,
+		ServerURL:     p.ServerURL,
+		Authorization: p.Authorization,
+		AllowedTools:  p.AllowedTools,
+		DeferLoading:  p.DeferLoading,
+	}
+}
+
+// ChatMCPTool builds a Chat Completions mcp tool.
+func ChatMCPTool(p MCPToolParams) ChatCompletionTool {
+	return ChatCompletionTool{
+		Type:          "mcp",
+		ServerLabel:   p.ServerLabel,
+		ServerURL:     p.ServerURL,
+		Authorization: p.Authorization,
+		AllowedTools:  p.AllowedTools,
+		DeferLoading:  p.DeferLoading,
+	}
+}
+
+// KnowledgeBaseRetrievalTool builds a Responses API knowledge_base_retrieval tool.
+func KnowledgeBaseRetrievalTool(knowledgeBaseID string) ResponseTool {
+	return ResponseTool{Type: "knowledge_base_retrieval", KnowledgeBaseID: knowledgeBaseID}
+}
+
+// ChatKnowledgeBaseRetrievalTool builds a Chat Completions knowledge_base_retrieval tool.
+func ChatKnowledgeBaseRetrievalTool(knowledgeBaseID string) ChatCompletionTool {
+	return ChatCompletionTool{Type: "knowledge_base_retrieval", KnowledgeBaseID: knowledgeBaseID}
+}
+
+// ModelSynthesisToolParams holds fields for a model_synthesis tool.
+type ModelSynthesisToolParams struct {
+	Preset          string
+	Model           string
+	AnalysisModels  []string
+	ReasoningEffort string
+	MaxToolCalls    *int
+	MaxTokens       *int
+	AllowedDomains  []string
+	BlockedDomains  []string
+}
+
+// ModelSynthesisTool builds a Responses API model_synthesis tool.
+func ModelSynthesisTool(p ModelSynthesisToolParams) ResponseTool {
+	return ResponseTool{
+		Type:            "model_synthesis",
+		Preset:          p.Preset,
+		Model:           p.Model,
+		AnalysisModels:  p.AnalysisModels,
+		ReasoningEffort: p.ReasoningEffort,
+		MaxToolCalls:    p.MaxToolCalls,
+		MaxTokens:       p.MaxTokens,
+		AllowedDomains:  p.AllowedDomains,
+		BlockedDomains:  p.BlockedDomains,
+	}
+}
+
+// ChatModelSynthesisTool builds a Chat Completions model_synthesis tool.
+func ChatModelSynthesisTool(p ModelSynthesisToolParams) ChatCompletionTool {
+	return ChatCompletionTool{
+		Type:            "model_synthesis",
+		Preset:          p.Preset,
+		Model:           p.Model,
+		AnalysisModels:  p.AnalysisModels,
+		ReasoningEffort: p.ReasoningEffort,
+		MaxToolCalls:    p.MaxToolCalls,
+		MaxTokens:       p.MaxTokens,
+		AllowedDomains:  p.AllowedDomains,
+		BlockedDomains:  p.BlockedDomains,
+	}
+}
+
+// ToolSearchTool builds a Responses API tool_search tool.
+func ToolSearchTool() ResponseTool {
+	return ResponseTool{Type: "tool_search"}
+}
+
+// ChatToolSearchTool builds a Chat Completions tool_search tool.
+func ChatToolSearchTool() ChatCompletionTool {
+	return ChatCompletionTool{Type: "tool_search"}
 }
 
 // ResponseNewParams is the request body for POST /v1/responses.

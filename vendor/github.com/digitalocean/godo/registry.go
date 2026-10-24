@@ -65,6 +65,7 @@ type RegistryDockerCredentialsRequest struct {
 
 // Registry represents a registry.
 type Registry struct {
+	UUID                       string    `json:"uuid,omitempty"`
 	Name                       string    `json:"name,omitempty"`
 	StorageUsageBytes          uint64    `json:"storage_usage_bytes,omitempty"`
 	StorageUsageBytesUpdatedAt time.Time `json:"storage_usage_bytes_updated_at,omitempty"`
@@ -635,6 +636,7 @@ const (
 type RegistriesService interface {
 	Get(context.Context, string) (*Registry, *Response, error)
 	List(context.Context) ([]*Registry, *Response, error)
+	ListByUUID(context.Context, string) ([]*Registry, *Response, error)
 	Create(context.Context, *RegistryCreateRequest) (*Registry, *Response, error)
 	Delete(context.Context, string) (*Response, error)
 	DockerCredentials(context.Context, string, *RegistryDockerCredentialsRequest) (*DockerCredentials, *Response, error)
@@ -673,7 +675,26 @@ func (svc *RegistriesServiceOp) List(ctx context.Context) ([]*Registry, *Respons
 	return root.Registries, resp, nil
 }
 
-// Get returns the details of a named Registry.
+// ListByUUID returns the Registries filtered by UUID.
+func (svc *RegistriesServiceOp) ListByUUID(ctx context.Context, uuid string) ([]*Registry, *Response, error) {
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, registriesPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	q := req.URL.Query()
+	q.Set("uuid", uuid)
+	req.URL.RawQuery = q.Encode()
+
+	root := new(registriesRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Registries, resp, nil
+}
+
+// Get returns the details of a Registry identified by name or UUID.
 func (svc *RegistriesServiceOp) Get(ctx context.Context, registry string) (*Registry, *Response, error) {
 	path := fmt.Sprintf("%s/%s", registriesPath, registry)
 	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
