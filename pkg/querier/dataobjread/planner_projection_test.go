@@ -493,6 +493,10 @@ func TestNewProjectionPlan(t *testing.T) {
 			require.Equal(t, test.wantMetadata, metadata)
 			requirePredicatesEqual(t, test.wantRowPredicates, predicates)
 
+			names, ok := plan.MetadataNames()
+			require.Equal(t, test.wantMetadata, names)
+			require.Equal(t, test.wantMetadata != nil, ok)
+
 			if len(predicates) > 0 && plan.lineFilter != nil {
 				message, ok := predicates[len(predicates)-1].(logs.LogMessageFilterRowPredicate)
 				require.True(t, ok, "want the message predicate last, got %T", predicates[len(predicates)-1])

@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -24,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/dataobjread"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -624,6 +626,12 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		}
 
 		extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+	} else {
+		// Only an unwrapped extractor can skip structured metadata: a wrapper may read any of it.
+		ctx, err = withStructuredMetadataProjection(ctx, expr, req)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var chunkFilterer chunk.Filterer
@@ -665,6 +673,25 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	default:
 		return nil, fmt.Errorf("unknown sample order %v", req.Order)
 	}
+}
+
+// withStructuredMetadataProjection returns ctx carrying the structured metadata names that the
+// extractor of expr and the request's deletes read, so the chunks skip resolving the others. It
+// returns ctx unchanged when they may read any name.
+func withStructuredMetadataProjection(ctx context.Context, expr syntax.SampleExpr, req logql.SelectSampleParams) (context.Context, error) {
+	deletes, err := dataobjread.DeleteSelectors(req)
+	if err != nil {
+		return nil, err
+	}
+	projection, err := dataobjread.NewProjectionPlan(expr, deletes)
+	if err != nil {
+		return nil, err
+	}
+	names, ok := projection.MetadataNames()
+	if !ok {
+		return ctx, nil
+	}
+	return chunkenc.WithStructuredMetadataProjection(ctx, names), nil
 }
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {

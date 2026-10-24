@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/logql"
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -209,6 +210,34 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 // every line. It returns nil when the query has no such stage. The unpushed query is then the whole
 // query.
 func (p ProjectionPlan) UnpushedExpr() syntax.SampleExpr { return p.unpushedExpr }
+
+// MetadataNames returns the names of the metadata the query and its deletes read, sorted. ok is
+// false when they may read any metadata, so none can be left out.
+func (p ProjectionPlan) MetadataNames() (names []string, ok bool) {
+	return p.metadataNames, !p.needAllMetadata
+}
+
+// DeleteSelectors parses the selectors of the request's delete requests, which
+// [NewProjectionPlan] takes to account for the metadata their pipelines read.
+//
+// The selectors are parsed again inside deletion.SetupExtractor, which builds the filters. That
+// is a few parses against a full read, and sharing them would mean a new accessor on the deletion
+// package, so the duplicate parse stands.
+func DeleteSelectors(req logql.SelectSampleParams) ([]syntax.LogSelectorExpr, error) {
+	deletes := req.GetDeletes()
+	if len(deletes) == 0 {
+		return nil, nil
+	}
+	out := make([]syntax.LogSelectorExpr, 0, len(deletes))
+	for _, del := range deletes {
+		expr, err := syntax.ParseLogSelector(del.Selector, true)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, expr)
+	}
+	return out, nil
+}
 
 // forStreams returns the columns to return and the predicates to push for a section whose streams
 // carry the given label names. The message predicate of a line filter is the last predicate. The
