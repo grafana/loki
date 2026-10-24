@@ -530,6 +530,9 @@ type LogfmtExpressionParser struct {
 	dec         *logfmt.Decoder
 	keys        internedStringSet
 	strict      bool
+
+	// written holds the label names that the current line wrote.
+	written map[string]struct{}
 }
 
 func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (*LogfmtExpressionParser, error) {
@@ -554,6 +557,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
 		strict:      strict,
+		written:     make(map[string]struct{}, len(paths)),
 	}, nil
 }
 
@@ -573,10 +577,8 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	keys := make(map[string]string, len(l.expressions))
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
-		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
-			lbs.Set(ParsedLabel, id, "")
-		}
 	}
+	clear(l.written)
 
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
@@ -631,16 +633,31 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = key + DuplicateSuffix
 				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
-					// Don't extract duplicates if we don't have to
-					break
+					// Don't extract duplicates if we don't have to. The next key of the line may
+					// still be needed.
+					continue
 				}
 			}
 
 			lbs.Set(ParsedLabel, key, string(val))
+			l.written[key] = struct{}{}
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
 			}
+		}
+	}
+
+	// Every name of an expression gets a label, empty when the line has no such key. This happens
+	// after the loop: an empty label that the loop had set in advance would count as extracted, so
+	// it would block a renamed key and make AllRequiredExtracted stop the loop too early. A name
+	// that a stream label or structured metadata holds gets no label.
+	for id := range l.expressions {
+		if _, ok := l.written[id]; ok {
+			continue
+		}
+		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
+			lbs.Set(ParsedLabel, id, "")
 		}
 	}
 
