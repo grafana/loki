@@ -514,7 +514,8 @@ func TestPrefetchFilter_DetectedFieldsSkipsLookup(t *testing.T) {
 		limits mockLimits
 		query  string
 		// A metric query is rejected by the detected fields handler.
-		wantStatus int32
+		wantStatus     int32
+		wantStatsCalls int
 	}{
 		{name: "dry run header", ctx: testTenantContextWithDryRun(), cfg: optIn, query: supported},
 		{name: "dry run tenant mode", ctx: testTenantContext(), cfg: optIn, limits: mockLimits{modes: map[string]Mode{"test": ModeDryRun}}, query: supported},
@@ -524,6 +525,7 @@ func TestPrefetchFilter_DetectedFieldsSkipsLookup(t *testing.T) {
 		{name: "query without a line filter", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"}`},
 		{name: "search term shorter than the n-gram length", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"} |= "err"`},
 		{name: "pattern filter", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"} |> "<_> timeout <_>"`},
+		{name: "below the byte threshold", ctx: testTenantContextWithLive(), cfg: optIn, limits: mockLimits{defaultMinQueryBytes: 1}, query: supported, wantStatsCalls: 1},
 		{name: "logline off header", ctx: testTenantContextWithForceDisable(), cfg: optIn, query: supported},
 		{name: "tenant not opted in", ctx: testTenantContext(), cfg: optIn, query: supported},
 	} {
@@ -531,12 +533,14 @@ func TestPrefetchFilter_DetectedFieldsSkipsLookup(t *testing.T) {
 			hp := &mockHintProvider{hints: &hintprovider.Hints{}}
 			querier := &logfmtQuerier{}
 			metrics := newTestMetrics()
-			handler := buildRoutedStack(t, hp, tc.cfg, metrics, tc.limits, 0, nil, querier)
+			statsCalls := 0
+			handler := buildRoutedStack(t, hp, tc.cfg, metrics, tc.limits, 0, &statsCalls, querier)
 
 			resp, err := handler.Do(tc.ctx, newTestDetectedFieldsRequest(tc.query, now.Add(-time.Hour), now, ""))
 			// Dry-run counts the lookup before it starts it in the background.
 			require.Zero(t, testutil.ToFloat64(metrics.dryRunTotal))
 			require.Equal(t, 0, hp.Calls())
+			require.Equal(t, tc.wantStatsCalls, statsCalls)
 
 			if tc.wantStatus != 0 {
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
