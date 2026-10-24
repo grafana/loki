@@ -770,7 +770,7 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte,
 	var baseLiteralIsCaseInsensitive bool
 	leadingOpenEnded := false
 	trailingOpenEnded := false
-	for idx, sub := range reg.Sub {
+	for _, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
 			// only one literal is allowed.
 			if literals != 0 {
@@ -793,7 +793,7 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte,
 			if baseLiteral != nil && sub != reg.Sub[len(reg.Sub)-1] {
 				return nil, false
 			}
-			if idx == 0 {
+			if literals == 0 {
 				leadingOpenEnded = true
 			} else {
 				trailingOpenEnded = true
