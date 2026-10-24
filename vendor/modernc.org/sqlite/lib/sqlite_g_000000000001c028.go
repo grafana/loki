@@ -61,8 +61,6 @@ func Xsqlite3_os_init(tls *libc.TLS) (r int32) {
 	 **    DMS         UNIX_SHM_BASE+8    128
 	 */
 	/* Byte offset of the deadman-switch */
-	/* Initialize temp file dir array. */
-	_unixTempFileInit(tls)
 	return SQLITE_OK
 }
 
