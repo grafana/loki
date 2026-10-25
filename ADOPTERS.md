@@ -8,3 +8,4 @@
 * [Norwegian Refugee Council](https://www.nrc.no/)
 * [Dropbox](https://www.dropbox.com/)
 * [ASML](https://www.asml.com/)
+* [Wordfully](https://wordfully.ai)
