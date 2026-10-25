@@ -2339,7 +2339,7 @@ k8s.io/utils/clock
 k8s.io/utils/internal/third_party/forked/golang/net
 k8s.io/utils/keymutex
 k8s.io/utils/net
-# modernc.org/libc v1.79.0
+# modernc.org/libc v1.79.1
 ## explicit; go 1.26.0
 modernc.org/libc
 modernc.org/libc/errno
