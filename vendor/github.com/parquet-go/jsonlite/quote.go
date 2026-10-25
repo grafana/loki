@@ -76,18 +76,21 @@ const (
 )
 
 // escapeIndex finds the index of the first char in `s` that requires escaping.
-// A char requires escaping if it's outside of the range of [0x20, 0x7F] or if
-// it includes a double quote or backslash. If no chars in `s` require escaping,
-// the return value is -1.
+// A char requires escaping if it's a control character (< 0x20), a double
+// quote, or a backslash. Bytes >= 0x80 are left alone so that UTF-8 sequences
+// pass through unchanged — per RFC 8259 any byte >= 0x20 other than `"` and
+// `\` is legal in a JSON string. If no chars in `s` require escaping, the
+// return value is -1.
 func escapeIndex(s string) int {
 	var i int
 	if len(s) >= 8 {
 		chunks := unsafe.Slice((*uint64)(unsafe.Pointer(unsafe.StringData(s))), len(s)/8)
 		for j, n := range chunks {
-			// combine masks before checking for the MSB of each byte. We include
-			// `n` in the mask to check whether any of the *input* byte MSBs were
-			// set (i.e. the byte was outside the ASCII range).
-			mask := n | below(n, 0x20) | contains(n, '"') | contains(n, '\\')
+			// The bit tricks in below/contains only yield correct results for
+			// bytes < 0x80, so we mask out high bytes with `^n & msb` before
+			// combining. A high byte in `n` clears its own mask bit, leaving
+			// only real escape hits detectable in `mask & msb`.
+			mask := (below(n, 0x20) | contains(n, '"') | contains(n, '\\')) &^ n
 			if (mask & msb) != 0 {
 				return j*8 + bits.TrailingZeros64(mask&msb)/8
 			}
@@ -97,7 +100,7 @@ func escapeIndex(s string) int {
 
 	for ; i < len(s); i++ {
 		c := s[i]
-		if c < 0x20 || c > 0x7f || c == '"' || c == '\\' {
+		if c < 0x20 || c == '"' || c == '\\' {
 			return i
 		}
 	}
