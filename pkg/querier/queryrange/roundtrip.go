@@ -1348,6 +1348,6 @@ func NewDetectedFieldsTripperware(
 		limitedHandler := limitedTripperware.Wrap(next)
 		logHandler := logTripperware.Wrap(next)
 
-		return NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
+		return StatsCollectorMiddleware().Wrap(NewDetectedFieldsHandler(limitedHandler, logHandler, limits))
 	}), nil
 }

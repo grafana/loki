@@ -1149,3 +1149,25 @@ func TestFailedQueryUsageRequestContext(t *testing.T) {
 		})
 	}
 }
+
+// Check that detected fields query is detected as such for reporting.
+func TestDetectedFieldsTripperware_RecordsDetectedFieldsQueryType(t *testing.T) {
+	data := &queryData{}
+	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, data), "test-tenant")
+
+	logPipeline := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return StatsCollectorMiddleware().Wrap(next)
+	})
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiResponse{Status: "success"}, nil
+	})
+
+	mw, err := NewDetectedFieldsTripperware(fakeLimits{maxQueryParallelism: 1}, logPipeline, logPipeline)
+	require.NoError(t, err)
+
+	now := time.Now()
+	_, err = mw.Wrap(next).Do(ctx, NewDetectedFieldsRequest(now.Add(-time.Hour), now, 100, 100, 10, `{foo="bar"}`, "/loki/api/v1/detected_fields"))
+	require.NoError(t, err)
+	require.True(t, data.recorded)
+	require.Equal(t, queryTypeDetectedFields, data.queryType)
+}

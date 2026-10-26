@@ -32,15 +32,17 @@ import (
 )
 
 const (
-	QueryTypeMetric       = "metric"
-	QueryTypeFilter       = "filter"
-	QueryTypeLimited      = "limited"
-	QueryTypeLabels       = "labels"
-	QueryTypeSeries       = "series"
-	QueryTypeStats        = "stats"
-	QueryTypeLoglineIndex = "logline_index"
-	QueryTypeShards       = "shards"
-	QueryTypeVolume       = "volume"
+	QueryTypeMetric         = "metric"
+	QueryTypeFilter         = "filter"
+	QueryTypeLimited        = "limited"
+	QueryTypeLabels         = "labels"
+	QueryTypeSeries         = "series"
+	QueryTypeStats          = "stats"
+	QueryTypeLoglineIndex   = "logline_index"
+	QueryTypeShards         = "shards"
+	QueryTypeVolume         = "volume"
+	QueryTypeDetectedFields = "detected_fields"
+	QueryTypeDetectedLabels = "detected_labels"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -706,7 +708,7 @@ func RecordDetectedFieldsQueryMetrics(ctx context.Context, log log.Logger, start
 	var (
 		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
-		queryType   = QueryTypeVolume
+		queryType   = QueryTypeDetectedFields
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -726,8 +728,8 @@ func RecordDetectedFieldsQueryMetrics(ctx context.Context, log log.Logger, start
 		"start_delta", time.Since(start),
 		"end_delta", time.Since(end),
 		"length", end.Sub(start),
+		"duration", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.ExecTime),
 		"status", status,
-		// "duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 	)
 	// TODO(twhitney): add stats and exec time
 	// execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
@@ -844,7 +846,7 @@ func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start
 	var (
 		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
-		queryType   = QueryTypeVolume
+		queryType   = QueryTypeDetectedLabels
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -856,7 +858,6 @@ func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start
 	rangeType := "range"
 
 	level.Info(logger).Log(
-		"api", "detected_labels",
 		"latency", latencyType,
 		"query_type", queryType,
 		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
