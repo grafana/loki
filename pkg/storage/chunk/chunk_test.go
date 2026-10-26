@@ -125,6 +125,35 @@ func TestChunkCodec(t *testing.T) {
 	}
 }
 
+// IngestedAt is serialized into the chunk header. Chunks written before it was stored at day
+// precision carry a millisecond value, so both forms must decode to the value that was written.
+func TestChunkCodecIngestedAt(t *testing.T) {
+	decodeContext := NewDecodeContext()
+
+	for _, tc := range []struct {
+		name       string
+		ingestedAt model.Time
+	}{
+		{"zero (live chunk)", 0},
+		{"millisecond precision (written before day rounding)", 1792752435882},
+		{"day aligned", 1792800000000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := dummyChunkFor(model.Now(), labelsForDummyChunks)
+			c.IngestedAt = tc.ingestedAt
+			require.NoError(t, c.Encode())
+			encoded, err := c.Encoded()
+			require.NoError(t, err)
+
+			key := fmt.Sprintf("%s/%x:%x:%x:%x", c.UserID, c.Fingerprint, int64(c.From), int64(c.Through), c.Checksum)
+			have, err := ParseExternalKey(userID, key)
+			require.NoError(t, err)
+			require.NoError(t, have.Decode(decodeContext, encoded))
+			require.Equal(t, tc.ingestedAt, have.IngestedAt)
+		})
+	}
+}
+
 func TestParseExternalKey(t *testing.T) {
 	for _, c := range []struct {
 		key   string
