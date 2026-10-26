@@ -1,7 +1,6 @@
 package compactor
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -38,22 +37,18 @@ func newLogTaskSplitter(logger log.Logger, maxSize uint64, sections []v2.Section
 	return logTaskSplitter{logger: logger, maxSize: maxSize, keys: keys}
 }
 
-// fullLogSortPrefixRange is the range of every sort prefix, from
-// [streams.MinSortPrefix] to [streams.SortPrefixLimit].
-var fullLogSortPrefixRange = func() v2.KeyRange[logSortPrefix] {
-	r, err := v2.NewKeyRange(logSortPrefix{prefix: streams.MinSortPrefix()}, logSortPrefix{prefix: streams.SortPrefixLimit()}, compareLogSortPrefix)
-	if err != nil {
-		panic(fmt.Sprintf("full sort prefix range: %v", err))
-	}
-	return r
-}()
-
 // split returns the tasks that together do the work of spec. Every task gets
-// an explicit key range, and the ranges together cover every sort prefix.
+// an explicit key range.
 //
 // If spec fits in one task, split returns spec alone with the full range.
-// Otherwise each returned task holds only the sections with a sort prefix in
-// its key range. A section without per-key sizes goes to every task.
+// Otherwise the first range starts at the smallest sort prefix of spec, the
+// last range ends at [streams.SortPrefixLimit], and each task holds only the
+// sections with a sort prefix in its range. A section without per-key sizes
+// goes to every task.
+//
+// The ranges hold every sort prefix that the index lists for spec. A stream
+// that the index misses can fall outside every range. The coordinator then
+// finds fewer kept records than the sections hold and does not publish.
 func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.TaskSpec {
 	var keys []v2.KeySize[logSortPrefix]
 	for _, run := range spec.Runs {
@@ -61,8 +56,8 @@ func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.
 			keys = append(keys, s.keys[sectionKeyOf(section)]...)
 		}
 	}
-	splits := v2.SplitKeyRanges(keys, compareLogSortPrefix, s.maxSize, fullLogSortPrefixRange)
-	if len(splits) == 1 {
+	splits := v2.SplitKeyRanges(keys, compareLogSortPrefix, s.maxSize, logSortPrefix{prefix: streams.SortPrefixLimit()})
+	if len(splits) <= 1 {
 		spec.KeyRange = v2.FullKeyRangeProto()
 		return []*compactionv2pb.TaskSpec{spec}
 	}
@@ -70,10 +65,11 @@ func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.
 	tasks := make([]*compactionv2pb.TaskSpec, 0, len(splits))
 	for _, split := range splits {
 		if split.Oversized {
+			key := split.Range.Start()
 			level.Warn(s.logger).Log(
 				"msg", "log-compaction: sort prefix is larger than the maximum task size, giving it a task of its own",
-				"shard_bucket", split.First.prefix.ShardBucket,
-				"sort_prefix", strings.Join(split.First.labels, ","),
+				"shard_bucket", key.prefix.ShardBucket,
+				"sort_prefix", strings.Join(key.labels, ","),
 				"size", split.Size,
 				"max_task_size", s.maxSize,
 			)

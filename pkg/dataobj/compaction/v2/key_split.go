@@ -40,27 +40,24 @@ func (r KeyRange[K]) Contains(key K, compare CompareFunc[K]) bool {
 }
 
 // KeySplit is one range of a split by [SplitKeyRanges] and the input keys in
-// it.
+// it. The range starts at its smallest input key.
 type KeySplit[K any] struct {
 	Range KeyRange[K]
-
-	// First is the smallest input key in the range. It is the start of the
-	// range if the range holds no input key.
-	First K
 
 	// Size is the total size of the input keys in the range.
 	Size uint64
 
-	// Oversized reports whether the range holds one input key larger than
-	// the budget of the split. The last range can exceed the budget without
-	// being oversized.
+	// Oversized reports whether the range holds one key larger than the
+	// budget of the split. That key is the start of the range, unless keys of
+	// size 0 come before it. A last range that exceeds the budget after a
+	// merge is not oversized.
 	Oversized bool
 }
 
-// SplitKeyRanges splits full into contiguous ranges of about budget bytes of
-// keys each. The first range starts at the start of full, the last range ends
-// at its end, and each other bound is shared by two neighbouring ranges. Every
-// key in full falls in exactly one range, including keys absent from keys.
+// SplitKeyRanges splits the keys in keys into contiguous ranges of about
+// budget bytes each. Each range starts at its smallest key, the last range
+// ends at end, and each other range ends where the next one starts. Every key
+// from the smallest input key up to end falls in exactly one range.
 //
 // The same key can occur many times in keys, for example once per section.
 // SplitKeyRanges adds up the sizes of equal keys and never splits a key across
@@ -72,24 +69,26 @@ type KeySplit[K any] struct {
 //     within 110% of budget. This avoids a small last range. A range that
 //     holds one oversized key never merges.
 //
-// SplitKeyRanges returns full alone if keys is empty. It panics if budget is
-// 0 or if a key is outside full.
-func SplitKeyRanges[K any](keys []KeySize[K], compare CompareFunc[K], budget uint64, full KeyRange[K]) []KeySplit[K] {
+// SplitKeyRanges returns nil if keys is empty. It panics if budget is 0 or if
+// a key is not below end.
+func SplitKeyRanges[K any](keys []KeySize[K], compare CompareFunc[K], budget uint64, end K) []KeySplit[K] {
 	if budget == 0 {
 		panic(fmt.Sprintf("key range budget must be > 0, got %d", budget))
+	}
+	if len(keys) == 0 {
+		return nil
 	}
 
 	sorted := slices.Clone(keys)
 	slices.SortStableFunc(sorted, func(a, b KeySize[K]) int { return compare(a.Key, b.Key) })
-	if len(sorted) > 0 && (!full.Contains(sorted[0].Key, compare) || !full.Contains(sorted[len(sorted)-1].Key, compare)) {
-		panic("key outside the split range")
+	if compare(sorted[len(sorted)-1].Key, end) >= 0 {
+		panic("key not below the end of the split")
 	}
 
-	// Cuts happen only at input keys above the start of the current range,
-	// so every range built here has its start below its end.
+	// Each range starts at an input key and ends at a larger input key or at
+	// end, so every range built here has its start below its end.
 	var splits []KeySplit[K]
-	current := KeySplit[K]{Range: KeyRange[K]{start: full.start}, First: full.start}
-	currentHasKey := false
+	current := KeySplit[K]{Range: KeyRange[K]{start: sorted[0].Key}}
 	for i := 0; i < len(sorted); {
 		key := sorted[i].Key
 		var size uint64
@@ -103,21 +102,18 @@ func SplitKeyRanges[K any](keys []KeySize[K], compare CompareFunc[K], budget uin
 			current.Range.end = key
 			splits = append(splits, current)
 			current = KeySplit[K]{Range: KeyRange[K]{start: key}}
-			currentHasKey = false
 		}
-		if !currentHasKey {
-			current.First = key
-			current.Oversized = size > budget
-			currentHasKey = true
+		if size > budget {
+			current.Oversized = true
 		}
 		current.Size += size
 	}
-	current.Range.end = full.end
+	current.Range.end = end
 
 	if n := len(splits); n > 0 {
 		previous := splits[n-1]
 		if !previous.Oversized && !current.Oversized && previous.Size+current.Size <= budget+budget/10 {
-			splits[n-1].Range.end = full.end
+			splits[n-1].Range.end = end
 			splits[n-1].Size += current.Size
 			return splits
 		}

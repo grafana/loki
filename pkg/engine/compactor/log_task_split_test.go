@@ -40,7 +40,6 @@ func sortPrefixOf(service string) *compactionv2pb.SortPrefix {
 
 var (
 	fullKeyRange         = v2.FullKeyRangeProto()
-	minSortPrefixProto   = fullKeyRange.Start
 	sortPrefixLimitProto = fullKeyRange.End
 )
 
@@ -72,7 +71,7 @@ func TestLogTaskSplitter(t *testing.T) {
 			{
 				Tenant:   "acme",
 				Runs:     []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{a.Ref}}, {Sections: []*compactionv2pb.SectionRef{b.Ref}}},
-				KeyRange: &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: sortPrefixOf("cart")},
+				KeyRange: &compactionv2pb.KeyRange{Start: sortPrefixOf("auth"), End: sortPrefixOf("cart")},
 			},
 			{
 				Tenant:   "acme",
