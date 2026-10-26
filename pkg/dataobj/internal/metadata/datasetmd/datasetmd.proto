@@ -235,6 +235,10 @@ message Statistics {
 // and shard_count, and no column_sorts. The layout describes the stream IDs
 // that the STREAMS section defines and that the LOG sections of the same
 // tenant use. A STREAMS section without SortInfo records no layout.
+//
+// A STATS section sets column_sorts, and also schema_labels, stream_order,
+// and shard_count to record the layout of the data objects that its rows
+// describe. A STATS section that sets only column_sorts records no layout.
 message SortInfo {
   message ColumnSort {
     // Index of the column in the columns list.
@@ -255,16 +259,17 @@ message SortInfo {
 
   // schema_labels are the fully-qualified labels of the stream key, in order.
   // Each entry has the form "label:<name>" (e.g. "label:service_name"). Set
-  // only in STREAMS sections.
+  // only in STREAMS and STATS sections that record a layout.
   repeated string schema_labels = 2;
 
   // stream_order is the stream key that orders the stream IDs. Set only in
-  // STREAMS sections. Independently written objects with the same layout have
-  // comparable stream orders.
+  // STREAMS and STATS sections that record a layout. Independently written
+  // objects with the same layout have comparable stream orders.
   StreamOrder stream_order = 3;
 
   // shard_count is the bucket count of the shard layout of the shard bucket
-  // column. Set only in STREAMS sections, where it must not be zero.
+  // column. Set only in STREAMS and STATS sections that record a layout,
+  // where it must not be zero.
   uint32 shard_count = 4;
 }
 

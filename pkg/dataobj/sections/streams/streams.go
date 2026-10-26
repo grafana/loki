@@ -101,9 +101,17 @@ func (s *Section) Layout() (layout Layout, ok bool, err error) {
 	if si == nil {
 		return Layout{}, false, nil
 	}
-	layout, err = layoutFromSortInfo(si)
+	// A streams section writes SortInfo only to record a layout, so any other
+	// SortInfo is invalid.
+	if len(si.ColumnSorts) > 0 {
+		return Layout{}, false, fmt.Errorf("streams section has %d column sorts, want none", len(si.ColumnSorts))
+	}
+	layout, ok, err = LayoutFromSortInfo(si)
 	if err != nil {
 		return Layout{}, false, err
+	}
+	if !ok {
+		return Layout{}, false, fmt.Errorf("unsupported stream order %s", si.StreamOrder)
 	}
 	return layout, true, nil
 }

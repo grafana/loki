@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -15,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/loser"
@@ -47,13 +47,13 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	}
 
 	// Classify sections from all runs, grouped by source object.
-	objects, err := c.classifyRuns(ctx, node)
+	objects, layout, err := c.classifyRuns(ctx, node)
 	if err != nil {
 		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
 
 	// Create index object builder
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore)
+	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
@@ -123,8 +123,11 @@ func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *index
 // classifyRuns opens each unique source object once and groups its mergable
 // sections by type (postings, stats), preserving section order within each
 // object. Non-mergable section types (streams, pointers, indexPointers) are
-// silently ignored. It validates that all stats sections share the same SortSchema
-func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, error) {
+// silently ignored.
+//
+// classifyRuns also returns the stream layout of the source indexes, and an
+// error if they do not share one, because the output records one layout.
+func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, streams.Layout, error) {
 	// Deduplicate source objects by path. One object may be referenced by
 	// multiple SectionRefs in the same or different runs; we open and scan it
 	// exactly once.
@@ -137,7 +140,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			}
 			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
 			if openErr != nil {
-				return nil, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
+				return nil, streams.Layout{}, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}
 			objects[sectionRef.ObjectPath] = obj
 		}
@@ -152,12 +155,12 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 
 	// For each unique source object, scan its sections and classify by type,
 	// preserving section order. Unknown section types (streams, pointers,
-	// indexPointers) are skipped silently. Make sure all stats sections share
-	// the same sort schema (checked from the first row of each). statsSeen
-	// counts stats sections across all objects, for stable error messages.
+	// indexPointers) are skipped silently.
 	grouped := make([]objectSections, 0, len(paths))
-	var firstSortSchema string
-	statsSeen := 0
+	var (
+		layout       streams.Layout
+		layoutSource string
+	)
 	for _, path := range paths {
 		obj := objects[path]
 		group := objectSections{path: path}
@@ -171,48 +174,28 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			case postings.CheckSection(sec):
 				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
-				sortSchema, readErr := readStatsSortSchema(ctx, sec)
-				if readErr != nil {
-					return nil, fmt.Errorf("reading stats section %d SortSchema: %w", statsSeen, readErr)
-				}
-				if statsSeen == 0 {
-					firstSortSchema = sortSchema
-				} else if sortSchema != firstSortSchema {
-					return nil, fmt.Errorf(
-						"stats sections have mismatched SortSchema: section 0 has %q, section %d has %q",
-						firstSortSchema, statsSeen, sortSchema,
-					)
-				}
-				statsSeen++
 				group.stats = append(group.stats, sec)
 				// default: skip silently (streams/pointers/indexPointers etc.)
 			}
+		}
+		// Only stats sections record a layout, so an object without them does
+		// not constrain the layout of the output.
+		if len(group.stats) > 0 {
+			objLayout, _, err := indexobj.TenantLayout(ctx, obj, node.Tenant)
+			if err != nil {
+				return nil, streams.Layout{}, fmt.Errorf("reading stream layout of index %q: %w", path, err)
+			}
+			if layoutSource != "" && !objLayout.Equal(layout) {
+				return nil, streams.Layout{}, fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, objLayout, layoutSource, layout)
+			}
+			layout, layoutSource = objLayout, path
 		}
 		if len(group.postings) > 0 || len(group.stats) > 0 {
 			grouped = append(grouped, group)
 		}
 	}
 
-	return grouped, nil
-}
-
-// readStatsSortSchema opens a stats section and returns the SortSchema from
-// its first row. Returns an empty string if the section has no rows.
-func readStatsSortSchema(ctx context.Context, sec *dataobj.Section) (string, error) {
-	statsSec, err := stats.Open(ctx, sec)
-	if err != nil {
-		return "", fmt.Errorf("opening stats section: %w", err)
-	}
-	reader := stats.NewRowReader(ctx, statsSec)
-	defer reader.Close()
-	var row stats.Stat
-	if reader.Next() {
-		row = reader.At()
-	}
-	if err := reader.Err(); err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	return row.SortSchema, nil
+	return grouped, layout, nil
 }
 
 // objectSections holds one source object's mergable sections, split by type and

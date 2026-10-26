@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
@@ -1386,7 +1387,7 @@ func TestCompactTenant_FailsOnIncompleteDiscovery(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	_, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
 
-	require.ErrorContains(t, err, "discover index section bounds")
+	require.ErrorContains(t, err, "index=indexes/missing")
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
 }
@@ -2605,5 +2606,93 @@ func TestAssignArtifactPaths(t *testing.T) {
 		require.Error(t, assignArtifactPaths(entries, artifacts))
 		require.Empty(t, entries[0].Path)
 		require.Empty(t, entries[1].Path)
+	})
+}
+
+// buildMixedLayoutIndex writes an index at path whose two stats sections of
+// tenant record different layouts.
+func buildMixedLayoutIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string) {
+	t.Helper()
+	builder := dataobj.NewBuilder(nil)
+	for _, schema := range []string{"label:service_name", "label:namespace"} {
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000), streams.NewLayout(streams.DefaultShardLayout(), []string{schema}))
+		statsBuilder.SetTenant(tenant)
+		statsBuilder.Append(stats.Stat{ObjectPath: path + "/" + schema, SortSchema: schema, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100})
+		require.NoError(t, builder.Append(statsBuilder))
+	}
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	uploadObject(ctx, t, bucket, path, obj)
+}
+
+func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+
+	t.Run("IndexMerge skips a corrupt index without an error and counts it", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildMixedLayoutIndex(ctx, t, bucket, "acme", "indexes/corrupt")
+		runner := &fakeRunner{}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		_, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/corrupt"}})
+		require.NoError(t, err)
+		require.Empty(t, runner.snapshot())
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
+	})
+
+	t.Run("IndexMerge skips an index with an invalid layout and still groups the other indexes", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/healthy", []stats.Stat{{ObjectPath: "logs/a", SortSchema: "label:service_name"}})
+		// The zero layout records a shard count but no stream order, which
+		// readers reject.
+		builder := dataobj.NewBuilder(nil)
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000), streams.Layout{})
+		statsBuilder.SetTenant("acme")
+		statsBuilder.Append(stats.Stat{ObjectPath: "logs/b"})
+		require.NoError(t, builder.Append(statsBuilder))
+		invalid, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		uploadObject(ctx, t, bucket, "indexes/invalid", invalid)
+
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		_, err = c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/healthy"}, {Path: "indexes/invalid"}})
+		require.NoError(t, err)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
+	})
+
+	t.Run("LogMerge skips a corrupt index, counts it, and reports no planning error", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildMixedLayoutIndex(ctx, t, bucket, "acme", "indexes/corrupt")
+		writeToCReferencing(ctx, t, bucket, "acme", window, "indexes/corrupt")
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		plans, anyError := c.planLogCompactions(ctx, "acme")
+		require.False(t, anyError)
+		require.Empty(t, plans)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
+	})
+}
+
+func TestNewLayoutKey(t *testing.T) {
+	sixteen, err := streams.ShardLayoutFromBuckets(16)
+	require.NoError(t, err)
+
+	t.Run("gives equal keys to equal layouts", func(t *testing.T) {
+		require.Equal(t,
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})),
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})))
+	})
+
+	t.Run("gives different keys to layouts that differ only in shard buckets", func(t *testing.T) {
+		require.NotEqual(t,
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})),
+			newLayoutKey(streams.NewLayout(sixteen, []string{"label:app"})))
+	})
+
+	t.Run("gives no real layout the zero key", func(t *testing.T) {
+		require.NotEqual(t, layoutKey{}, newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), nil)))
 	})
 }

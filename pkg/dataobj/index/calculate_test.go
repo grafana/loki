@@ -556,6 +556,19 @@ func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
 		require.ErrorIs(t, err, ErrUnprocessableObject)
 	})
 
+	t.Run("returns an error for an object with another layout than the objects already in the index", func(t *testing.T) {
+		builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
+		appSource := buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}), true)
+		require.NoError(t, calculator.Calculate(t.Context(), log.NewNopLogger(), appSource, "objects/app"))
+
+		serviceSource := buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}), true)
+		err = calculator.Calculate(t.Context(), log.NewNopLogger(), serviceSource, "objects/service")
+		require.ErrorContains(t, err, "already has stream layout")
+		require.NotErrorIs(t, err, ErrUnprocessableObject)
+	})
+
 	t.Run("returns an unprocessable object error when the streams section records no layout", func(t *testing.T) {
 		_, err := calculate(t, buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), nil), false))
 		require.ErrorIs(t, err, ErrUnprocessableObject)
