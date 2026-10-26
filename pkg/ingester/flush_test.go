@@ -45,6 +45,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	storagetypes "github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -380,11 +381,37 @@ func TestMaybeSetIngestedAt(t *testing.T) {
 			if tc.wantSet {
 				require.NotEqual(t, model.Time(0), ch.IngestedAt)
 				require.GreaterOrEqual(t, int64(ch.IngestedAt), int64(before))
+				// Day precision, like the index, so replicas agree on the value.
+				require.Equal(t, ch.IngestedAt, model.Time(tsdbindex.NormalizeIngestedAt(int64(ch.IngestedAt), int64(ch.Through))))
+				require.Zero(t, int64(ch.IngestedAt)%int64(24*time.Hour/time.Millisecond))
 			} else {
 				require.Equal(t, model.Time(0), ch.IngestedAt)
 			}
 		})
 	}
+}
+
+// IngestedAt is part of the encoded chunk, so replicas that flush the same backfilled chunk
+// at different milliseconds must still produce the same checksum, and thus chunk key,
+// for the chunk to be deduplicated.
+func TestBackfillChunkChecksumIgnoresIngestionTimeWithinDay(t *testing.T) {
+	const day = model.Time(20_000 * 24 * 60 * 60 * 1000)
+
+	checksum := func(flushedAt model.Time) uint32 {
+		desc := buildChunkDesc(t)
+		from, through := util.RoundToMilliseconds(desc.chunk.Bounds())
+		ch := chunk.NewChunk(
+			"foo", 1, labels.FromStrings("app", "foo", constants.BackfillLabel, "true"),
+			chunkenc.NewFacade(desc.chunk, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+			from, through,
+		)
+		ch.IngestedAt = model.Time(tsdbindex.NormalizeIngestedAt(int64(flushedAt), int64(ch.Through)))
+		require.NoError(t, ch.Encode())
+		return ch.Checksum
+	}
+
+	require.Equal(t, checksum(day+1_000), checksum(day+9_000))
+	require.NotEqual(t, checksum(day+1_000), checksum(day+48*model.Time(time.Hour/time.Millisecond)))
 }
 
 func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
