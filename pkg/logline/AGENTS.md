@@ -81,6 +81,7 @@ a frozen algorithm: revert. Do not update the expected values.
 
 ## Compaction requires one version per job
 
-The scheduler groups sources by resolved `Version` (and shard settings and document
-interval), and the compactor verifies it again before merging. Mixed-version merges would
-require re-indexing under one canonical version.
+The scheduler groups sources by resolved `Version` (and shard settings, document
+interval, and document shard bits), and the compactor verifies it again before merging.
+Mixed-version merges would require re-indexing under one canonical version. The scheduler
+skips v5 indexes with document shard bits until the v5 merge supports them.

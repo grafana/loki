@@ -30,7 +30,8 @@ recoverable from the file yet.
   output. A configured interval or shard bits that disagree with the inputs
   are an error. The merge dedupes documents by time bounds, which would
   collapse the cells of one interval, so it rejects indexes with any document
-  shard bits.
+  shard bits. The compaction scheduler (`scheduler.compactionKeyFor`) skips
+  those indexes; lift that skip when the merge supports document shards.
 - Footer-4 v5 files are time-only to readers. When docIDs start carrying the
   shard, readers must refuse footer-4 v5 files or read them as time-only.
   They must not decode docIDs with the shard bits in `ReservedMid`.
