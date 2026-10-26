@@ -3,6 +3,7 @@ package stats
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -27,9 +28,16 @@ func columnarEncode(rows []Stat, layout streams.Layout, enc *columnar.Encoder, p
 		return nil
 	}
 
-	// All rows within a section share the same SortSchema, because a builder
-	// holds the rows of one layout.
-	labelKeys := schemaLabelNames(rows[0].SortSchema)
+	// The layout defines the label columns. Every row must carry its schema
+	// labels as SortSchema, because readers of legacy sections take the
+	// schema from the rows.
+	sortSchema := strings.Join(layout.SchemaLabels(), ",")
+	for i, r := range rows {
+		if r.SortSchema != sortSchema {
+			return fmt.Errorf("row %d has sort schema %q, but the section layout has %q", i, r.SortSchema, sortSchema)
+		}
+	}
+	labelKeys := schemaLabelNames(sortSchema)
 
 	// Build fixed column builders.
 	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, pageSizeHint, pageMaxRowCount)

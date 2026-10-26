@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ func TestTenantLayout(t *testing.T) {
 		for i, layout := range layouts {
 			statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
 			statsBuilder.SetTenant(tenant)
-			statsBuilder.Append(stats.Stat{ObjectPath: "logs/obj", SectionIndex: int64(i)})
+			statsBuilder.Append(stats.Stat{ObjectPath: "logs/obj", SectionIndex: int64(i), SortSchema: strings.Join(layout.SchemaLabels(), ",")})
 			require.NoError(t, builder.Append(statsBuilder))
 		}
 		obj, closer, err := builder.Flush()
@@ -49,21 +50,6 @@ func TestTenantLayout(t *testing.T) {
 
 	t.Run("returns a mixed layouts error when stats sections record different layouts", func(t *testing.T) {
 		_, _, err := TenantLayout(t.Context(), buildStats(t, "acme", appLayout, clusterLayout), "acme")
-		require.ErrorIs(t, err, ErrMixedLayouts)
-	})
-
-	t.Run("returns a mixed layouts error for a legacy index whose stats rows have different sort schemas", func(t *testing.T) {
-		builder := dataobj.NewBuilder(nil)
-		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), appLayout)
-		statsBuilder.SetTenant("acme")
-		statsBuilder.Append(stats.Stat{ObjectPath: "logs/a", SortSchema: "label:app"})
-		statsBuilder.Append(stats.Stat{ObjectPath: "logs/b", SortSchema: "label:cluster"})
-		require.NoError(t, builder.Append(statsBuilder))
-		obj, closer, err := builder.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-
-		_, err = legacyTenantLayout(t.Context(), obj, "acme")
 		require.ErrorIs(t, err, ErrMixedLayouts)
 	})
 

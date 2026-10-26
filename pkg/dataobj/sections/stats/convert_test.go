@@ -8,13 +8,12 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 func TestFromRecordBatch_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), streams.NewLayout(streams.DefaultShardLayout(), nil))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name,label:job"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -102,7 +101,7 @@ func TestFromRecordBatch_RoundTrip(t *testing.T) {
 func TestFromRecordBatch_ParityWithDecodeRow(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), streams.NewLayout(streams.DefaultShardLayout(), nil))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name,label:job"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -167,7 +166,7 @@ func TestFromRecordBatch_ParityWithDecodeRow(t *testing.T) {
 func TestFromRecordBatch_DestShorterThanBatch(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), streams.NewLayout(streams.DefaultShardLayout(), nil))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -238,7 +237,7 @@ func TestFromRecordBatch_DestShorterThanBatch(t *testing.T) {
 func TestFromRecordBatch_ReusedDestNoStaleValues(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), streams.NewLayout(streams.DefaultShardLayout(), nil))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",

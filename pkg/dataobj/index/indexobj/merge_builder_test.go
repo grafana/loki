@@ -53,7 +53,7 @@ func TestMergeBuilder_AppendStat(t *testing.T) {
 	stat := stats.Stat{
 		ObjectPath:       "/path/to/obj1",
 		SectionIndex:     0,
-		SortSchema:       "sort_key_1",
+		SortSchema:       "label:app",
 		Labels:           map[string]string{"level": "info"},
 		MinTimestamp:     ts.UnixNano(),
 		MaxTimestamp:     ts.UnixNano(),
@@ -468,7 +468,7 @@ func TestMergeBuilder_Reset(t *testing.T) {
 	stat := stats.Stat{
 		ObjectPath:       "/path/obj1",
 		SectionIndex:     0,
-		SortSchema:       "sort_key_1",
+		SortSchema:       "label:app",
 		Labels:           map[string]string{},
 		MinTimestamp:     ts.UnixNano(),
 		MaxTimestamp:     ts.UnixNano(),
@@ -491,7 +491,7 @@ func TestMergeBuilder_Reset(t *testing.T) {
 	stat2 := stats.Stat{
 		ObjectPath:       "/path/obj1",
 		SectionIndex:     0,
-		SortSchema:       "sort_key_1",
+		SortSchema:       "label:app",
 		Labels:           map[string]string{},
 		MinTimestamp:     ts.UnixNano(),
 		MaxTimestamp:     ts.UnixNano(),
