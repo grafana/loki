@@ -364,10 +364,12 @@ type fakeParseHints struct {
 	count      int
 	keepGoing  bool
 	extractAll bool
+	extracted  map[string]struct{}
 }
 
-func (p *fakeParseHints) Extracted(_ string) bool {
-	return false
+func (p *fakeParseHints) Extracted(key string) bool {
+	_, ok := p.extracted[key]
+	return ok
 }
 
 func (p *fakeParseHints) ShouldExtract(key string) bool {
@@ -383,8 +385,12 @@ func (p *fakeParseHints) NoLabels() bool {
 	return false
 }
 
-func (p *fakeParseHints) RecordExtracted(_ string) {
+func (p *fakeParseHints) RecordExtracted(key string) {
 	p.count++
+	if p.extracted == nil {
+		p.extracted = map[string]struct{}{}
+	}
+	p.extracted[key] = struct{}{}
 }
 
 func (p *fakeParseHints) AllRequiredExtracted() bool {
@@ -394,6 +400,7 @@ func (p *fakeParseHints) AllRequiredExtracted() bool {
 func (p *fakeParseHints) Reset() {
 	p.checkCount = 0
 	p.count = 0
+	clear(p.extracted)
 }
 
 func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
