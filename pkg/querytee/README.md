@@ -50,6 +50,9 @@ Set `-config.file=<path>` to the Loki config file of that cluster, and `-runtime
 The proxy reads only the `limits_config` block of the config file.
 Set `-dataobj.enabled` and `-dataobj.storage-lag` to the values of that cluster. They have the same names and defaults as the Loki flags.
 When `-dataobj.enabled` is `false`, the strategy selects no read.
+Set `-querier.stream-first-execution-enabled` to the value of that cluster. It has the same name and default as the Loki flag.
+The flag follows the precedence of Loki: a flag that you set takes precedence over the `stream_first_execution_enabled` value of the `limits_config` block, and the `limits_config` value takes precedence over the default of the flag.
+A value in a tenant override takes precedence over both.
 The strategy selects a query when the query-frontend marks it eligible for data objects, whatever share of the time range data objects hold.
 
 The `loki_querytee_secondary_backend_decisions_total` metric counts the reads by the decision to send them to the secondary backend, or the reason not to.
