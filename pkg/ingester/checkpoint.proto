@@ -33,6 +33,12 @@ message Chunk {
   bytes data = 7;
   // data to be unmarshaled into a MemChunk's headBlock
   bytes head = 8;
+  // highest timestamp of the ingested (e.g. Kafka) records that fed this chunk.
+  // Used to stamp the same IngestedAt on every replica flushing the chunk.
+  google.protobuf.Timestamp ingestedAt = 9 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
 }
 
 // Series is a {de,}serializable intermediate type for Series.

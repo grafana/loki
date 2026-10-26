@@ -459,6 +459,77 @@ func TestUnorderedPush(t *testing.T) {
 	require.Equal(t, false, sItr.Next())
 }
 
+func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
+	newTestStream := func() *stream {
+		return newStream(
+			chunkfmt,
+			headfmt,
+			&cfg,
+			limiter.rateLimitStrategy,
+			"fake",
+			model.Fingerprint(0),
+			labels.FromStrings("foo", "bar"),
+			NewStreamRateCalculator(),
+			NilMetrics,
+			nil,
+			nil,
+			retentionHours,
+			noPolicy,
+		)
+	}
+
+	early := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
+	late := early.Add(time.Minute)
+
+	push := func(s *stream, ctx context.Context, line string, ts int64) {
+		t.Helper()
+		_, err := s.Push(ctx, []logproto.Entry{{Timestamp: time.Unix(ts, 0), Line: line}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+		require.NoError(t, err)
+	}
+
+	t.Run("highest record timestamp is kept whatever the push order", func(t *testing.T) {
+		inOrder := newTestStream()
+		push(inOrder, withRecordTimestamp(context.Background(), early), "a", 1)
+		push(inOrder, withRecordTimestamp(context.Background(), late), "b", 2)
+
+		reversed := newTestStream()
+		push(reversed, withRecordTimestamp(context.Background(), late), "b", 2)
+		push(reversed, withRecordTimestamp(context.Background(), early), "a", 1)
+
+		require.Len(t, inOrder.chunks, 1)
+		require.Len(t, reversed.chunks, 1)
+		require.Equal(t, late, inOrder.chunks[0].ingestedAt)
+		require.Equal(t, late, reversed.chunks[0].ingestedAt)
+	})
+
+	t.Run("each chunk only gets the timestamps of the records that fed it", func(t *testing.T) {
+		s := newTestStream()
+		push(s, withRecordTimestamp(context.Background(), late), "a", 1)
+		_ = s.cutChunk(context.Background())
+		push(s, withRecordTimestamp(context.Background(), early), "b", 2)
+
+		require.Len(t, s.chunks, 2)
+		require.Equal(t, late, s.chunks[0].ingestedAt)
+		require.Equal(t, early, s.chunks[1].ingestedAt)
+	})
+
+	t.Run("no record timestamp leaves it unset", func(t *testing.T) {
+		s := newTestStream()
+		push(s, context.Background(), "a", 1)
+		push(s, withRecordTimestamp(context.Background(), time.Time{}), "b", 2)
+
+		require.Len(t, s.chunks, 1)
+		require.True(t, s.chunks[0].ingestedAt.IsZero())
+	})
+}
+
 func TestPushRateLimit(t *testing.T) {
 	l := validation.Limits{
 		PerStreamRateLimit:      10,

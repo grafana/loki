@@ -98,6 +98,27 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
+
+	// ingestedAt is the highest timestamp of the ingested records (e.g. Kafka records) whose
+	// entries went into this chunk. It is zero when the entries did not come with one.
+	ingestedAt time.Time
+}
+
+type recordTimestampKey struct{}
+
+// withRecordTimestamp returns a context carrying the timestamp of the record being pushed, e.g. a
+// Kafka record. Zero timestamps are ignored.
+func withRecordTimestamp(ctx context.Context, ts time.Time) context.Context {
+	if ts.IsZero() {
+		return ctx
+	}
+	return context.WithValue(ctx, recordTimestampKey{}, ts)
+}
+
+// recordTimestamp returns the timestamp of the record being pushed, if the context carries one.
+func recordTimestamp(ctx context.Context) (time.Time, bool) {
+	ts, ok := ctx.Value(recordTimestampKey{}).(time.Time)
+	return ts, ok
 }
 
 type entryWithError struct {
@@ -328,6 +349,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 	var invalid []entryWithError
 	storedEntries := make([]logproto.Entry, 0, len(entries))
+	recordTs, hasRecordTs := recordTimestamp(ctx)
 	for i := 0; i < len(entries); i++ {
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
@@ -344,6 +366,11 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 				outOfOrderBytes += util.EntryTotalSize(&entries[i])
 			}
 			continue
+		}
+		// The highest record timestamp doesn't depend on the order records are pushed in, so
+		// replicas consuming the same records end up with the same value for the same chunk.
+		if hasRecordTs && recordTs.After(chunk.ingestedAt) {
+			chunk.ingestedAt = recordTs
 		}
 		if dup {
 			s.handleLoggingOfDuplicateEntry(entries[i])

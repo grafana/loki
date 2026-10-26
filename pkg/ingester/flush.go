@@ -583,7 +583,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 
 		// For backfilled chunks, stamp the flush time as IngestedAt so retention
 		// can be measured from ingestion rather than from the log timestamps.
-		i.maybeSetIngestedAt(&ch, firstTime)
+		i.maybeSetIngestedAt(&ch, firstTime, c.ingestedAt)
 
 		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
 		// for the duration of encode. Store Put remains unlocked.
@@ -620,12 +620,15 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	desc.flushed = time.Now()
 }
 
-// maybeSetIngestedAt stamps the flush time as the chunk's IngestedAt for chunks
-// belonging to backfilled streams (those carrying the __backfill__ label), so that
-// under TSDB FormatV4 (schema v14) retention can be measured from ingestion rather
-// than from the log timestamps. Live chunks, and chunks whose period does not
-// support FormatV4, keep the zero value and fall back to Through-based retention.
-func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time) {
+// maybeSetIngestedAt stamps the chunk's IngestedAt for chunks belonging to backfilled
+// streams (those carrying the __backfill__ label), so that under TSDB FormatV4 (schema v14)
+// retention can be measured from ingestion rather than from the log timestamps. Live chunks,
+// and chunks whose period does not support FormatV4, keep the zero value and fall back to
+// Through-based retention.
+//
+// recordTime is the highest timestamp of the ingested (e.g. Kafka) records that fed the chunk,
+// or zero if there is none.
+func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, recordTime time.Time) {
 	if ch.Metric.Get(constants.BackfillLabel) != "true" {
 		return
 	}
@@ -642,17 +645,26 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time) {
 		return
 	}
 
-	// Stamp the flush time. Backfilled chunks are flushed shortly after they are
-	// ingested, so at the day precision used by the index this matches ingestion.
-	// The value is rounded up to the day the way the index stores it so it is also identical
-	// across replicas flushing the same chunk within the same day. IngestedAt is
-	// part of the encoded chunk, so a millisecond-precision value would give each
-	// replica a different checksum and chunk key and prevent deduplication.
-	//
-	// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
-	// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
-	// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
-	ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(ch.Through)))
+	// IngestedAt is part of the encoded chunk, so replicas flushing the same chunk must stamp the
+	// same value or each of them gets a different checksum and chunk key and the chunk is not
+	// deduplicated.
+	if recordTime.IsZero() {
+		// No record timestamp (e.g. a push that didn't come from Kafka), so stamp the flush time.
+		// Backfilled chunks are flushed shortly after they are ingested, so at the day precision
+		// used by the index this matches ingestion. The value is rounded up to the day the way the
+		// index stores it, so it is identical across replicas flushing the same chunk within the
+		// same day.
+		//
+		// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
+		// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
+		// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
+		ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(ch.Through)))
+		return
+	}
+
+	// Replicas of a partition consume the same records, so the record timestamp is the same on
+	// all of them and is used as is.
+	ch.IngestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.

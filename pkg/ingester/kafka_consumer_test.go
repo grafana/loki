@@ -52,7 +52,9 @@ var (
 
 type fakePusher struct {
 	pushes []*logproto.PushRequest
-	t      *testing.T
+	// recordTimestamps holds the record timestamp carried by the context of each push, if any.
+	recordTimestamps []time.Time
+	t                *testing.T
 }
 
 func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logproto.PushResponse, error) {
@@ -70,6 +72,8 @@ func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logpr
 		req.Streams = append(req.Streams, newStream)
 	}
 	f.pushes = append(f.pushes, req)
+	ts, _ := recordTimestamp(ctx)
+	f.recordTimestamps = append(f.recordTimestamps, ts)
 	return nil, nil
 }
 
@@ -100,6 +104,37 @@ func TestConsumer(t *testing.T) {
 			require.Equal(t, want, got)
 		})
 	}
+}
+
+func TestConsumerPassesRecordTimestamp(t *testing.T) {
+	recordTime := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
+
+	pusher := &fakePusher{t: t}
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 1)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
+	require.NoError(t, err)
+
+	var toPush []partition.Record
+	for i, ts := range []time.Time{recordTime, {}} {
+		for _, record := range encodeFlat(t, streamBar) {
+			toPush = append(toPush, partition.Record{
+				Ctx:       context.Background(),
+				TenantID:  tenantID,
+				Content:   record.Value,
+				Offset:    int64(i + 1),
+				Timestamp: ts,
+			})
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	recordChan := make(chan []partition.Record)
+	wait := consumer.Start(ctx, recordChan)
+	recordChan <- toPush
+	cancel()
+	wait()
+
+	// A record without a timestamp doesn't set one on the context.
+	require.Equal(t, []time.Time{recordTime, {}}, pusher.recordTimestamps)
 }
 
 // consume runs the records of each stream through a consumer and returns what reached the
