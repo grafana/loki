@@ -66,15 +66,13 @@ func TestPlanDispatcherRun(t *testing.T) {
 		}, actors)
 	})
 
-	t.Run("fails a plan whose root node is not a compaction node", func(t *testing.T) {
-		var g dag.Graph[physical.Node]
-		g.Add(&physical.Limit{})
+	t.Run("fails a plan without a root node", func(t *testing.T) {
 		runner := &fakeRunner{}
 		d := &planDispatcher{runPlan: runner.run}
 
-		_, err := d.Run(context.Background(), "acme", []*physical.Plan{physical.FromGraph(g)})
-		require.ErrorContains(t, err, "unsupported compaction plan root")
-		require.Empty(t, runner.snapshot(), "an unsupported plan must not run")
+		_, err := d.Run(t.Context(), "acme", []*physical.Plan{physical.FromGraph(dag.Graph[physical.Node]{})})
+		require.EqualError(t, err, "compaction plan root: plan has no root node")
+		require.Empty(t, runner.snapshot(), "a plan without a root must not run")
 	})
 
 	for _, tc := range []struct {

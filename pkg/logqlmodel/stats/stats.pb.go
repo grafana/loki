@@ -118,7 +118,8 @@ type Logline struct {
 	// Whether the index skipped data, or why it didn't: data_skipped,
 	// tiny_data_skipped, skip_ratio_unavailable, time_range_not_indexed,
 	// recent_data_only, unsupported_query, query_too_small,
-	// size_estimate_failed, lookup_failed, lookup_timeout or canceled.
+	// size_estimate_failed, lookup_failed, lookup_timeout,
+	// answered_before_lookup or canceled.
 	Outcome string `protobuf:"bytes,1,opt,name=outcome,proto3" json:"outcome"`
 	// How the hint lookup ended: ok, unsupported, error, canceled, incomplete or
 	// ingester_window. Empty when the query was skipped before the lookup.
@@ -862,8 +863,7 @@ type Store struct {
 	PipelineWrapperFilteredLines int64   `protobuf:"varint,7,opt,name=pipelineWrapperFilteredLines,proto3" json:"pipelineWrapperFilteredLines"`
 	Dataobj                      Dataobj `protobuf:"bytes,8,opt,name=dataobj,proto3" json:"dataobj"`
 	// Total number of chunks that failed to be fetched or decoded for the query,
-	// counted even when propagateChunkFetchErrors tolerated the failure instead
-	// of failing the query outright.
+	// which always fails the query outright.
 	ChunkFetchFailures int64 `protobuf:"varint,15,opt,name=chunkFetchFailures,proto3" json:"chunkFetchFailures"`
 	// Chunk refs left to read after time and logline hint filtering. Unlike
 	// totalChunksRef it leaves out the chunks those filters dropped, and unlike

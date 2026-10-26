@@ -76,7 +76,7 @@ func BelowMinCompactionSize(runs []Run, minSize uint64) bool {
 // Special cases:
 //   - len(runs) == 0 -> returns nil (no tasks).
 //   - k >= P         -> returns a single TaskSpec containing all runs.
-func Plan(runs []Run, tenant string, k int, sortSchema []string) []*compactionv2pb.TaskSpec {
+func Plan(runs []Run, tenant string, k int) []*compactionv2pb.TaskSpec {
 	if k <= 0 {
 		panic(fmt.Sprintf("k must be > 0, got %d", k))
 	}
@@ -94,9 +94,8 @@ func Plan(runs []Run, tenant string, k int, sortSchema []string) []*compactionv2
 	for start := 0; start < len(refs); start += k {
 		end := min(start+k, len(refs))
 		tasks = append(tasks, &compactionv2pb.TaskSpec{
-			Tenant:     tenant,
-			Runs:       refs[start:end],
-			SortSchema: sortSchema,
+			Tenant: tenant,
+			Runs:   refs[start:end],
 		})
 	}
 	return tasks

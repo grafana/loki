@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -23,7 +25,12 @@ import (
 // It can even receive multiple writes for the same stream with the caveat
 // that chunks must be added in order and not duplicated
 type Builder struct {
-	streams         map[string]*stream
+	// streams is keyed by labels hash rather than labels.String() so the
+	// builder doesn't hold a second copy of every series' labels. Streams whose
+	// hash collides with an existing entry are kept in collisions.
+	streams         map[uint64]*stream
+	collisions      map[uint64][]*stream
+	hash            func(labels.Labels) uint64 // overridable in tests to force collisions
 	chunksFinalized bool
 	version         int
 }
@@ -34,41 +41,142 @@ type stream struct {
 	chunks index.ChunkMetas
 }
 
+// NewBuilder returns a Builder that writes indexes in the given format version.
 func NewBuilder(version int) *Builder {
 	return &Builder{
-		streams: make(map[string]*stream),
+		streams: make(map[uint64]*stream),
+		hash:    labels.Labels.Hash,
 		version: version,
 	}
 }
 
+// AddSeries adds chunks to the stream with the given labels, creating the stream if it doesn't exist.
 func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
-	id := ls.String()
-	s, ok := b.streams[id]
-	if !ok {
+	h := b.hash(ls)
+	s := b.getStreamWithHash(ls, h)
+	if s == nil {
 		s = &stream{
 			labels: ls,
 			fp:     fp,
 		}
-		b.streams[id] = s
+		b.putStream(h, s)
 	}
 
 	s.chunks = append(s.chunks, chks...)
 }
 
+// getStream returns the stream with the given labels or nil if it doesn't exist.
+func (b *Builder) getStream(ls labels.Labels) *stream {
+	return b.getStreamWithHash(ls, b.hash(ls))
+}
+
+func (b *Builder) getStreamWithHash(ls labels.Labels, h uint64) *stream {
+	if s, ok := b.streams[h]; ok && labels.Equal(s.labels, ls) {
+		return s
+	}
+	for _, s := range b.collisions[h] {
+		if labels.Equal(s.labels, ls) {
+			return s
+		}
+	}
+	return nil
+}
+
+func (b *Builder) putStream(h uint64, s *stream) {
+	if _, ok := b.streams[h]; !ok {
+		b.streams[h] = s
+		return
+	}
+	if b.collisions == nil {
+		b.collisions = make(map[uint64][]*stream)
+	}
+	b.collisions[h] = append(b.collisions[h], s)
+}
+
+// deleteStream removes the stream with the given labels and reports whether it existed.
+func (b *Builder) deleteStream(ls labels.Labels) bool {
+	h := b.hash(ls)
+	if s, ok := b.streams[h]; ok && labels.Equal(s.labels, ls) {
+		delete(b.streams, h)
+		return true
+	}
+
+	cs := b.collisions[h]
+	for i, s := range cs {
+		if !labels.Equal(s.labels, ls) {
+			continue
+		}
+		if len(cs) == 1 {
+			delete(b.collisions, h)
+		} else {
+			b.collisions[h] = slices.Delete(cs, i, i+1)
+		}
+		return true
+	}
+	return false
+}
+
+// allStreams iterates every stream in the builder. Streams must not be added or removed while iterating.
+func (b *Builder) allStreams() iter.Seq[*stream] {
+	return func(yield func(*stream) bool) {
+		for _, s := range b.streams {
+			if !yield(s) {
+				return
+			}
+		}
+		for _, cs := range b.collisions {
+			for _, s := range cs {
+				if !yield(s) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (b *Builder) numStreams() int {
+	n := len(b.streams)
+	for _, cs := range b.collisions {
+		n += len(cs)
+	}
+	return n
+}
+
+// dropEmptyStreams removes all the streams without any chunks.
+func (b *Builder) dropEmptyStreams() {
+	var empty []labels.Labels
+	for s := range b.allStreams() {
+		if len(s.chunks) == 0 {
+			empty = append(empty, s.labels)
+		}
+	}
+	for _, ls := range empty {
+		b.deleteStream(ls)
+	}
+}
+
+// FinalizeChunks sorts and dedupes the chunks of every stream. It must be called before the chunks are modified.
 func (b *Builder) FinalizeChunks() {
-	for id := range b.streams {
-		b.streams[id].chunks = b.streams[id].chunks.Finalize()
+	for s := range b.allStreams() {
+		chks := s.chunks.Finalize()
+		// The chunks are held until Build, if we are holding a large buffer unnecessarily
+		// then release and copy to a new slice to reduce heap pressure.
+		if cap(chks)-len(chks) > len(chks)/4 { // 4 has been tested in real world compactions but is large untuned.
+			chks = slices.Clone(chks)
+		}
+		s.chunks = chks
 	}
 	b.chunksFinalized = true
 }
 
-func (b *Builder) InsertChunk(streamID string, chk index.ChunkMeta) error {
+// InsertChunk adds a chunk to the stream with the given labels. The stream must exist.
+func (b *Builder) InsertChunk(ls labels.Labels, chk index.ChunkMeta) error {
 	if !b.chunksFinalized {
 		return fmt.Errorf("chunk insertion is only allowed on finalized chunks")
 	}
 
-	s, ok := b.streams[streamID]
-	if !ok {
+	s := b.getStream(ls)
+	if s == nil {
 		return fmt.Errorf("chunk insertion is only allowed on existing streams")
 	}
 
@@ -76,13 +184,14 @@ func (b *Builder) InsertChunk(streamID string, chk index.ChunkMeta) error {
 	return nil
 }
 
-func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) {
+// DropChunk removes a chunk from the stream with the given labels and reports whether it was found. The stream must exist.
+func (b *Builder) DropChunk(ls labels.Labels, chk index.ChunkMeta) (bool, error) {
 	if !b.chunksFinalized {
 		return false, fmt.Errorf("dropping of chunk is only allowed on finalized chunks")
 	}
 
-	s, ok := b.streams[streamID]
-	if !ok {
+	s := b.getStream(ls)
+	if s == nil {
 		return false, fmt.Errorf("dropping of chunk is only allowed on existing streams")
 	}
 
@@ -91,19 +200,21 @@ func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) 
 	return chunkFound, nil
 }
 
-func (b *Builder) HasChunk(streamID string, chk index.ChunkMeta) (bool, error) {
+// HasChunk reports whether the stream with the given labels has the chunk.
+func (b *Builder) HasChunk(ls labels.Labels, chk index.ChunkMeta) (bool, error) {
 	if !b.chunksFinalized {
 		return false, fmt.Errorf("checking chunk existence is only allowed on finalized chunks")
 	}
 
-	s, ok := b.streams[streamID]
-	if !ok {
+	s := b.getStream(ls)
+	if s == nil {
 		return false, nil
 	}
 
 	return s.chunks.HasChunk(chk), nil
 }
 
+// Build writes the index to scratchDir and moves it to the path of the Identifier returned by createFn.
 func (b *Builder) Build(
 	ctx context.Context,
 	scratchDir string,
@@ -169,10 +280,8 @@ func (b *Builder) build(
 	// TODO(owen-d): multithread
 
 	// Sort series
-	streams := make([]*stream, 0, len(b.streams))
-	for _, s := range b.streams {
-		streams = append(streams, s)
-	}
+	streams := make([]*stream, 0, b.numStreams())
+	streams = slices.AppendSeq(streams, b.allStreams())
 
 	// Use the supplied fingerprints instead of hashing labels for two reasons:
 	// 1) Correctness: fingerprints differ from label hashes because
@@ -221,6 +330,7 @@ func (b *Builder) build(
 	return writer.Close(reader)
 }
 
+// BuildInMemory builds the index in memory and returns its bytes.
 func (b *Builder) BuildInMemory(
 	ctx context.Context,
 	// Determines how to create the resulting Identifier and file name.

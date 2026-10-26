@@ -48,15 +48,5 @@ func NewBuilderFactory(
 // NewBuilder returns a new builder, or an error. The returned builder shares
 // the factory's [BuilderMetrics].
 func (f *BuilderFactory) NewBuilder() (*Builder, error) {
-	return f.newBuilderWithMetrics(f.metrics)
-}
-
-// NewSorterBuilder returns a new builder with "fake" non-registered metrics.
-// TODO(ivkalita): This is temporary to prevent "sorting" builder metrics from messing up the real builder metrics.
-func (f *BuilderFactory) NewSorterBuilder() (*Builder, error) {
-	return f.newBuilderWithMetrics(NewBuilderMetrics())
-}
-
-func (f *BuilderFactory) newBuilderWithMetrics(metrics *BuilderMetrics) (*Builder, error) {
-	return NewBuilder(f.cfg, f.scratchStore, metrics, f.logger, f.overrides)
+	return NewBuilder(f.cfg, f.scratchStore, f.metrics, f.logger, f.overrides)
 }

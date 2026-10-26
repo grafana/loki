@@ -621,9 +621,9 @@ type flushingMockFlusher struct {
 	closer  countingCloser
 }
 
-func (m *flushingMockFlusher) Flush(_ context.Context, b builder, _ string) (*dataobj.Object, io.Closer, string, error) {
+func (m *flushingMockFlusher) Flush(ctx context.Context, b builder, _ string) (*dataobj.Object, io.Closer, string, error) {
 	m.flushes++
-	obj, closer, err := b.Flush()
+	obj, closer, err := b.FlushAndSort(ctx)
 	if err != nil {
 		return nil, nil, "", err
 	}

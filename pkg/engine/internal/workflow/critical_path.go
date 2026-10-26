@@ -25,15 +25,13 @@ func (wf *Workflow) flushTaskSummaries() {
 		onPath[task] = struct{}{}
 	}
 
-	// TODO(rfratto): make Workflow.Close a hard barrier; a fail-fast query can drop
-	// a sibling that finishes at the instant of teardown (failing task unaffected).
 	for t, s := range wf.taskResults {
 		_, critical := onPath[t]
 		wf.printTaskSummary(t, s.result, critical)
 	}
 }
 
-// criticalPath approximates the query's critical path through the task DAG,
+// criticalPath approximates the workflow's critical path through the task DAG,
 // returning the tasks on the path ordered from root (position 0) down to a
 // leaf.
 //
@@ -51,9 +49,8 @@ func (wf *Workflow) flushTaskSummaries() {
 // which matches the intent.
 //
 // If the graph has multiple roots, criticalPath starts from the root with the
-// latest finish time. Query workflows have a single root today (the physical
-// planner enforces exactly one root node), so this only matters for
-// hypothetical multi-root graphs.
+// latest finish time. planWorkflow builds a single task, so this only matters
+// for hypothetical multi-root graphs.
 //
 // A task missing from summaries is treated as having finish time 0, so a path
 // is still produced even if some finish times were never recorded.

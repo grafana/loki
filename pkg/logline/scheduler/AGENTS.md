@@ -127,6 +127,8 @@ Tick frequency equals the store's `PollInterval` (default 15m). Job expiration g
 
 Every route is served under `/logline/api/v1/...` and, deprecated, under the old `/api/v1/...` paths. Compactors still call the old paths so a compactor and scheduler of different versions can talk to each other during a rollout. To retire the old paths, switch the compactor to the `/logline` paths and roll it out first, then stop serving the old ones.
 
+Every route answers `503 Service Unavailable` until the service is running. The HTTP server is a dependency of the scheduler, so it serves requests before `starting()` has loaded the job store. Compactors retry on 5xx.
+
 ```
 GET /logline/api/v1/compaction/job?worker_id=<id>[&last_completed_job_id=<id>]
 

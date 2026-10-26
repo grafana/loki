@@ -6,6 +6,8 @@ Runs compaction jobs, as the `logline-compactor` target. Requests jobs from the 
 
 The compactor has no config section of its own. `Config` is assembled from `logline.compaction` plus `logline.index.density_threshold`, so merged indexes apply the same density threshold the builder used. New settings go into those sections, never into a section named after this package.
 
+`logline.compaction.postings_encoding` picks the postings encoding of merged indexes (`delta-varint` by default, or `elias-fano`). It applies to the output only: the merge reads each source in the encoding recorded in its header, so a deployment can switch either way without rewriting existing indexes. Enable `elias-fano` only once every component that reads its indexes supports it.
+
 ## Invariants
 
 These must never be broken. Violating any causes stale work, wasted resources, or data corruption.

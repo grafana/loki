@@ -123,8 +123,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)
 	}
-	sorter := logsobj.NewSorter(builderFactory, reg)
-	flusher := newFlusher(sorter, uploader, logger, reg)
+	flusher := newFlusher(uploader, logger, reg)
 
 	idxBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
 	indexer, err := index.NewSimpleIndexer(

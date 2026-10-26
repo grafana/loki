@@ -177,6 +177,18 @@ const (
 	bloomGatewayRingKey = "bloom-gateway"
 )
 
+// Builds a slice of services to wait for, except the other server,
+// as they would deadlock and wait on each other.
+func (t *Loki) serverServicesToWaitFor() []services.Service {
+	svs := []services.Service(nil)
+	for m, s := range t.serviceMap {
+		if m != Server && m != InternalServer {
+			svs = append(svs, s)
+		}
+	}
+	return svs
+}
+
 func (t *Loki) initServer() (services.Service, error) {
 	prometheus.MustRegister(version.NewCollector(constants.Loki))
 	// unregister default go collector
@@ -197,18 +209,7 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server = serv
 
-	servicesToWaitFor := func() []services.Service {
-		svs := []services.Service(nil)
-		for m, s := range t.serviceMap {
-			// Server should not wait for itself.
-			if m != Server {
-				svs = append(svs, s)
-			}
-		}
-		return svs
-	}
-
-	s := NewServerService(t.Server, servicesToWaitFor)
+	s := NewServerService(t.Server, t.serverServicesToWaitFor)
 
 	// Best effort to propagate the org ID from the start.
 	h := func(next http.Handler) http.Handler {
@@ -257,18 +258,7 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 
 	t.InternalServer = serv
 
-	servicesToWaitFor := func() []services.Service {
-		svs := []services.Service(nil)
-		for m, s := range t.serviceMap {
-			// Server should not wait for itself.
-			if m != InternalServer {
-				svs = append(svs, s)
-			}
-		}
-		return svs
-	}
-
-	s := NewServerService(t.InternalServer, servicesToWaitFor)
+	s := NewServerService(t.InternalServer, t.serverServicesToWaitFor)
 
 	return s, nil
 }
@@ -551,7 +541,7 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 			context.Background(),
 			t.Cfg.SchemaConfig,
 			t.Cfg.StorageConfig.ObjectStore,
-			t.Cfg.Logline.Store,
+			t.loglineStoreConfig(),
 			logger,
 			prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, prometheus.DefaultRegisterer),
 		)
@@ -897,6 +887,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		return nil, nil
 	}
 	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Pattern.KafkaIngestion.KafkaConfig = t.Cfg.KafkaConfig
 	t.PatternIngester, err = pattern.New(
 		t.Cfg.Pattern,
 		t.Overrides,
@@ -935,6 +926,10 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 
 	if !t.Cfg.Pattern.Enabled {
 		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
+		return nil, nil
+	}
+	if t.Cfg.Pattern.KafkaIngestion.Enabled {
+		_ = level.Info(logger).Log("msg", "pattern ingester tee service disabled because the pattern ingester consumes from Kafka")
 		return nil, nil
 	}
 	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
@@ -2176,14 +2171,11 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
 	// IndexMerge executor writes merged-index objects to the same namespace
 	// the ToC pointers (written by the planner via its prefixed indexBucket)
-	// resolve to. metastore.NewObjectMetastore applies the prefix internally,
-	// so it still receives the unprefixed `store`.
+	// resolve to.
 	indexBucket := store
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-
-	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
 		Config: t.Cfg.DataObj.Compaction.Worker,
@@ -2192,7 +2184,6 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		// LogMerge executor reads them through the unprefixed store rather than
 		// the index-prefixed bucket used for index I/O and ToC.
 		DataBucket:   store,
-		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
@@ -2413,6 +2404,19 @@ func (dh ignoreSignalHandler) Stop() {
 	close(dh)
 }
 
+// loglineStoreConfig returns the shared logline.store section with the
+// ingester window borrowed from querier.query_ingesters_within. The store has
+// no flag for it, and the query frontend narrows with the same value, so every
+// target that builds a store must go through here to classify indexes alike.
+func (t *Loki) loglineStoreConfig() loglinestore.Config {
+	cfg := t.Cfg.Logline.Store
+	cfg.QueryIngestersWithin = t.Cfg.Querier.QueryIngestersWithin
+	if cfg.QueryIngestersWithin == 0 {
+		cfg.QueryIngestersWithin = loglinestore.DefaultQueryIngestersWithin
+	}
+	return cfg
+}
+
 func (t *Loki) initLoglineBuilderPartitionRing() (services.Service, error) {
 	logger := log.With(util_log.Logger, "module", LoglineIndexBuilder)
 
@@ -2446,7 +2450,7 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 	wrapped, storeService, cleanup, err := loglinequeryfrontend.WrapMiddleware(
 		cfg,
 		loglinequeryfrontend.Deps{
-			Store:                t.Cfg.Logline.Store,
+			Store:                t.loglineStoreConfig(),
 			SchemaConfig:         t.Cfg.SchemaConfig,
 			ObjectStore:          t.Cfg.StorageConfig.ObjectStore,
 			ResultsCache:         t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig,
@@ -2478,7 +2482,7 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		t.Cfg.Logline.Store,
+		t.loglineStoreConfig(),
 		logger,
 		prometheus.WrapRegistererWith(prometheus.Labels{"component": "index-builder"}, prometheus.DefaultRegisterer),
 	)
@@ -2505,13 +2509,11 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 	logger := log.With(util_log.Logger, "module", LoglineCorrectness)
 
-	// Borrowed fields with no correctness flags. QueryIngestersWithin is the
-	// same querier window the query frontend uses so IndexesForRange and
-	// IndexesExcludedByIngesterWindow match production narrowing. NgramLength
-	// is owned by logline.index; the index does not record it, so a reader
-	// must use the value the builder did.
-	storeCfg := t.Cfg.Logline.Store
-	storeCfg.QueryIngestersWithin = t.Cfg.Logline.Correctness.QueryIngestersWithin
+	// NgramLength has no correctness flag. It is owned by logline.index, and
+	// the index does not record it, so a reader must use the value the builder
+	// did. The store's ingester window comes from loglineStoreConfig, so
+	// IndexesForRange and IndexesExcludedByIngesterWindow match production
+	// narrowing.
 	cfg := t.Cfg.Logline.Correctness
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
 
@@ -2519,7 +2521,7 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		storeCfg,
+		t.loglineStoreConfig(),
 		logger,
 		prometheus.WrapRegistererWith(prometheus.Labels{"component": "correctness"}, prometheus.DefaultRegisterer),
 	)
@@ -2550,7 +2552,7 @@ func (t *Loki) initLoglineScheduler() (services.Service, error) {
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		t.Cfg.Logline.Store,
+		t.loglineStoreConfig(),
 		logger,
 		prometheus.WrapRegistererWith(prometheus.Labels{"component": "compaction-scheduler"}, prometheus.DefaultRegisterer),
 	)
@@ -2594,7 +2596,7 @@ func (t *Loki) initLoglineCompactor() (services.Service, error) {
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		t.Cfg.Logline.Store,
+		t.loglineStoreConfig(),
 		logger,
 		prometheus.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, prometheus.DefaultRegisterer),
 	)

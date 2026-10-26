@@ -81,8 +81,9 @@ func (cfg *Config) ValidateQueryConfig() error {
 // ValidateCorrectness checks the config the correctness target needs.
 //
 // Correctness.QueryIngestersWithin must already hold a copy of
-// querier.query_ingesters_within. NgramLength and Store.QueryIngestersWithin
-// are filled at construction in initLoglineCorrectness, not here. Validation
+// querier.query_ingesters_within. NgramLength is filled at construction in
+// initLoglineCorrectness and Store.QueryIngestersWithin in loglineStoreConfig,
+// not here. Validation
 // applies defaults as a side effect, so it must run before the config is used.
 func (cfg *Config) ValidateCorrectness() error {
 	if err := cfg.Index.Validate(); err != nil {

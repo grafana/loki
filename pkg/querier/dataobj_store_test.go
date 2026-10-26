@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	stditer "iter"
 	"sort"
 	"sync"
 	"testing"
@@ -181,8 +182,11 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a selector with no stream matcher fails rather than returning an empty result", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
-		_, err := store.selectSamplesIter(testCtx(t), `sum by (app) (count_over_time({__name__=~".+"}[1m]))`, at(0), at(10))
-		require.ErrorContains(t, err, "at least one stream matcher")
+		it, err := store.selectSamplesIter(testCtx(t), `sum by (app) (count_over_time({__name__=~".+"}[1m]))`, at(0), at(10))
+		require.NoError(t, err)
+		require.False(t, it.Next())
+		require.EqualError(t, it.Err(), "resolving data object sections: at least one stream matcher is required")
+		require.Error(t, it.Close(), "Close must report the failure the query ended with")
 	})
 
 	t.Run("sum(count_over_time) counts every line of the matching stream", func(t *testing.T) {
@@ -613,18 +617,22 @@ func (f denyEverythingFilterer) ShouldFilter(labels.Labels) bool { return true }
 
 func (f denyEverythingFilterer) RequiredLabelNames() []string { return nil }
 
-// fixedMetastore returns the descriptors a test supplies from every Sections call. A test uses it
-// for an object that no real index can describe, such as one that holds two tenants: the index
-// Calculator rejects such an object. Its embedded Metastore is nil, so a call to any other
-// method panics rather than returning an empty answer.
+// fixedMetastore yields the descriptors a test supplies as one batch from every SectionsStream
+// call. A test uses it for an object that no real index can describe, such as one that holds two
+// tenants. Its embedded Metastore is nil, so a call to any other method panics rather than
+// returning an empty answer.
 type fixedMetastore struct {
 	metastore.Metastore
 
 	descriptors metastore.DataobjSectionDescriptors
 }
 
-func (m *fixedMetastore) Sections(context.Context, metastore.SectionsRequest) (metastore.SectionsResponse, error) {
-	return metastore.SectionsResponse{Sections: m.descriptors}, nil
+func (m *fixedMetastore) SectionsStream(context.Context, metastore.SectionsRequest) stditer.Seq2[metastore.DataobjSectionDescriptors, error] {
+	return func(yield func(metastore.DataobjSectionDescriptors, error) bool) {
+		if len(m.descriptors) > 0 {
+			yield(m.descriptors, nil)
+		}
+	}
 }
 
 // chunkStoreSpy counts the SelectSamples calls that reach the chunk store.

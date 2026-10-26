@@ -33,10 +33,8 @@ var (
 const maxConcurrentSectionOpens = 64
 
 // postingsResultSchema is the pointers-section Arrow schema the resolver's
-// results are serialized into, so the postings reader is a drop-in for the
-// legacy reader on the shared ArrowRecordBatchReader seam. This schema is only
-// the wire format consumers already decode via pointers.FromRecordBatch /
-// pointers.InternalLabelsColumn.
+// results are serialized into. It is the wire format that consumers decode via
+// pointers.FromRecordBatch and pointers.InternalLabelsColumn.
 var postingsResultSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "path.path.utf8", Type: arrow.BinaryTypes.String},
 	{Name: "section.int64", Type: arrow.PrimitiveTypes.Int64},
