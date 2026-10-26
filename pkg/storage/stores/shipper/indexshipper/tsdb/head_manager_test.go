@@ -221,6 +221,8 @@ func Test_TenantHeads_LabelsOutsideTenantBounds(t *testing.T) {
 	}{
 		{desc: "before head", from: 0, through: 500, matchers: []*labels.Matcher{eq}},
 		{desc: "after head", from: 3000, through: 4000, matchers: []*labels.Matcher{eq}},
+		{desc: "window ends on head start", from: 0, through: 1000, matchers: []*labels.Matcher{eq}},
+		{desc: "window starts on head end", from: 2000, through: 3000, matchers: []*labels.Matcher{eq}, names: []string{"app", "env"}, values: []string{"prod"}},
 		{desc: "before head, contradictory", from: 0, through: 500, matchers: []*labels.Matcher{eq, excludeEq}},
 		{desc: "before head, no matchers", from: 0, through: 500},
 		{desc: "overlaps head", from: 1500, through: 2500, matchers: []*labels.Matcher{eq}, names: []string{"app", "env"}, values: []string{"prod"}},

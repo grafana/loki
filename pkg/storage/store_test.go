@@ -1954,6 +1954,7 @@ func TestStore_TSDBHeadLabelsOutsideTenantBounds(t *testing.T) {
 	}{
 		{desc: "misses tenant", from: start.Add(20 * time.Minute), through: start.Add(30 * time.Minute), matchers: []*labels.Matcher{eq}},
 		{desc: "misses tenant, contradictory", from: start.Add(20 * time.Minute), through: start.Add(30 * time.Minute), matchers: []*labels.Matcher{eq, excludeEq}},
+		{desc: "window ends on tenant start", from: start.Add(20 * time.Minute), through: start.Add(time.Hour), matchers: []*labels.Matcher{eq}},
 		{desc: "overlaps tenant", from: start.Add(time.Hour), through: start.Add(2 * time.Hour), matchers: []*labels.Matcher{eq}, names: []string{"app", "env"}, values: []string{"prod"}},
 		{desc: "overlaps tenant, contradictory", from: start.Add(time.Hour), through: start.Add(2 * time.Hour), matchers: []*labels.Matcher{eq, excludeEq}},
 	} {
