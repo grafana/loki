@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -2076,6 +2077,8 @@ func BenchmarkLogfmtExpressionParserNames(b *testing.B) {
 		{"names that the line lacks", labels.FromStrings("cluster", "qa"), []string{"missing_a", "missing_b", "missing_c", "missing_d"}, nil},
 		// A grouping on every name lets the parser stop as soon as it has read them all.
 		{"grouping on every name", labels.FromStrings("cluster", "qa"), names, NewParserHint(names, names, false, false, "")},
+		// The grouping does not need the renamed name, so the parser stops at the first key.
+		{"grouping that does not need the renamed name", labels.FromStrings("cluster", "qa", "level", "stream"), []string{"level"}, NewParserHint([]string{"level"}, []string{"level"}, false, false, "")},
 	}
 	for _, bb := range benchmarks {
 		b.Run(bb.name, func(b *testing.B) {
@@ -2254,4 +2257,93 @@ func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 	b.Reset()
 	_, _ = parser.Process(0, []byte(`a=1 b=2`), b)
 	require.Equal(t, labels.FromStrings("app", "x", "a", "1", "b", "2"), b.LabelsResult().Labels())
+}
+
+// askedHints records the names that a parser asks the hints about.
+type askedHints struct {
+	ParserHint
+	asked []string
+}
+
+func (h *askedHints) ShouldExtract(key string) bool {
+	h.asked = append(h.asked, key)
+	return h.ParserHint.ShouldExtract(key)
+}
+
+// readFillers reports whether the parser asked about a key that comes after the keys of the query.
+func (h *askedHints) readFillers() bool {
+	for _, k := range h.asked {
+		if strings.HasPrefix(k, "filler_") {
+			return true
+		}
+	}
+	return false
+}
+
+// A key that a stream label holds is renamed. When the grouping does not need the renamed name, the parser
+// stops reading the line unless another name of an expression is still wanted.
+func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
+	var fillers strings.Builder
+	for i := 0; i < 29; i++ {
+		fmt.Fprintf(&fillers, " filler_%d=v%d", i, i)
+	}
+
+	tests := []struct {
+		name        string
+		names       []string
+		required    []string
+		line        string
+		want        labels.Labels
+		wantFillers bool
+	}{
+		{
+			name:     "the only name clashes and the grouping does not need the renamed one",
+			names:    []string{"app"},
+			required: []string{"app"},
+			line:     "app=y" + fillers.String(),
+			want:     labels.FromStrings("app", "x"),
+		},
+		{
+			name:     "no other name is needed",
+			names:    []string{"app", "b"},
+			required: []string{"app"},
+			line:     "app=y" + fillers.String() + " b=1",
+			want:     labels.FromStrings("app", "x", "b", ""),
+		},
+		{
+			name:     "the other name comes before the renamed key",
+			names:    []string{"app", "b"},
+			required: []string{"app", "b"},
+			line:     "b=1 app=y" + fillers.String(),
+			want:     labels.FromStrings("app", "x", "b", "1"),
+		},
+		{
+			name:        "another name is needed and comes later",
+			names:       []string{"app", "b"},
+			required:    []string{"app", "b"},
+			line:        "app=y" + fillers.String() + " b=1",
+			want:        labels.FromStrings("app", "x", "b", "1"),
+			wantFillers: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exprs := make([]LabelExtractionExpr, 0, len(tt.names))
+			for _, n := range tt.names {
+				exprs = append(exprs, NewLabelExtractionExpr(n, n))
+			}
+			parser, err := NewLogfmtExpressionParser(exprs, false)
+			require.NoError(t, err)
+
+			hints := &askedHints{ParserHint: NewParserHint(tt.required, tt.required, false, false, "")}
+			base := labels.FromStrings("app", "x")
+			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+			b.parserKeyHints = hints
+			b.Reset()
+			_, ok := parser.Process(0, []byte(tt.line), b)
+			require.True(t, ok)
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
+			require.Equal(t, tt.wantFillers, hints.readFillers(), "asked: %v", hints.asked)
+		})
+	}
 }
