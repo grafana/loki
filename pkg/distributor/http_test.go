@@ -807,9 +807,14 @@ func TestDistributorMaxInflightBytesLimit(t *testing.T) {
 		return req
 	}
 
+	bytesReceived := func() float64 {
+		return testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki))
+	}
+
 	rec := httptest.NewRecorder()
 	d.PushHandler(rec, newRequest())
 	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(1025), bytesReceived())
 
 	// Set the max inflight bytes to 1KB and simulate 1KB already inflight, the request should be rejected.
 	d.cfg.MaxInflightBytes = 1024
@@ -818,10 +823,13 @@ func TestDistributorMaxInflightBytesLimit(t *testing.T) {
 	d.PushHandler(rec, newRequest())
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	require.Contains(t, rec.Body.String(), errServiceUnavailableMaxLoad.Error())
+	// The request was rejected before parsing, so its bytes must not be counted as received.
+	require.Equal(t, float64(1025), bytesReceived())
 
 	// Once the inflight bytes drop below the limit the request is accepted again.
 	d.inflightBytes.Store(0)
 	rec = httptest.NewRecorder()
 	d.PushHandler(rec, newRequest())
 	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(2050), bytesReceived())
 }
