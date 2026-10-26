@@ -464,12 +464,15 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 			}
 			inputs.sectionRecords = append(inputs.sectionRecords, v2.SectionRecords{ObjectPath: id.path, SectionIndex: id.index, Records: records})
 
-			// Skip the sections of an object with no stream in the key range,
-			// so the task downloads none of their pages. A record of a stream
-			// that the streams section does not hold still fails a merge: each
-			// stream of the object is in the range of another task, and that
-			// task reads the section.
-			if len(source.streams) == 0 {
+			// Skip the sections of an object whose streams the key range all
+			// dropped, so the task downloads none of their pages. The task
+			// still counts their records.
+			//
+			// A record of a stream that the streams section does not hold still
+			// fails a merge. The task whose range holds the object's streams
+			// reads the section. An object whose streams section holds no
+			// stream is read here, so its records fail at the remap.
+			if len(source.streams) == 0 && len(source.droppedStreamIDs) > 0 {
 				continue
 			}
 			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, DropStreamIDs: source.droppedStreamIDs})

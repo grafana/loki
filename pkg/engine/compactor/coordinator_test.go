@@ -579,7 +579,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 	t.Run("returns an error and does not swap when a split merge loses records", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
 		split := plan
-		split.merges = []logMergeGroup{{tasks: []int{0, 1}, sections: []sectionKey{{"logs/a", 0}, {"logs/b", 0}}}}
+		split.merges = []logMergeGroup{{tasks: []int{0, 1}, sections: sectionSet(sectionKey{"logs/a", 0}, sectionKey{"logs/b", 0})}}
 		runner.respond = func(_ context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 			return &v2.ResultArtifact{Path: "indexes/out", LogCounts: &v2.LogMergeCounts{
 				KeptRecords: 1,
@@ -591,6 +591,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		}
 
 		stats, err := c.executeLogCompaction(t.Context(), "acme", split)
+		require.ErrorIs(t, err, errRecordCountMismatch)
 		require.ErrorContains(t, err, "wrote 2 records, but its 2 input sections hold 4")
 		require.Zero(t, stats)
 		require.Len(t, runner.snapshot(), 2)
@@ -1656,6 +1657,27 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Zero(t, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("failed", "acme")))
 		require.Equal(t, 200.0, pendingBytes(c), "the failed index keeps its bytes")
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonExecute)))
+	})
+
+	t.Run("counts a record count mismatch under its own reason and keeps the index", func(t *testing.T) {
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTwoWindowCoordinator(t, runner, replacer)
+		runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			counts := &v2.LogMergeCounts{}
+			for _, run := range mergeNodeRuns(t, plan) {
+				for _, section := range run.Sections {
+					counts.Sections = append(counts.Sections, v2.SectionRecords{ObjectPath: section.ObjectPath, SectionIndex: section.SectionIndex, Records: 1})
+				}
+			}
+			return &v2.ResultArtifact{Path: "artifact", LogCounts: counts}, nil
+		}
+
+		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
+		require.Empty(t, replacer.snapshot())
+		require.Equal(t, 2.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonRecordCount)))
+		require.Zero(t, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonExecute)))
+		require.Equal(t, 400.0, pendingBytes(c), "the failed indexes keep their bytes")
 	})
 
 	t.Run("resets pending bytes to the new plan total on the next phase", func(t *testing.T) {

@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"time"
@@ -26,6 +27,10 @@ type logCompactionPlan struct {
 	merges []logMergeGroup
 }
 
+// errRecordCountMismatch reports that the tasks of a merge did not write each
+// input record exactly once.
+var errRecordCountMismatch = errors.New("log merge record counts do not match")
+
 // sectionKey identifies one logs section by object path and section index.
 type sectionKey struct {
 	path  string
@@ -40,34 +45,34 @@ func sectionKeyOf(ref *compactionv2pb.SectionRef) sectionKey {
 // together.
 type logMergeGroup struct {
 	// tasks holds the indexes in logCompactionPlan.tasks of the tasks of the
-	// merge.
+	// merge. Only [logCompactionPlan.addMerge] sets it.
 	tasks []int
 
 	// sections holds every input section of the merge, once each.
-	sections []sectionKey
+	sections map[sectionKey]struct{}
 }
 
-func newLogMergeGroup(merge *compactionv2pb.TaskSpec, firstTask, numTasks int) logMergeGroup {
-	group := logMergeGroup{tasks: make([]int, numTasks)}
-	for i := range group.tasks {
-		group.tasks[i] = firstTask + i
-	}
-	seen := make(map[sectionKey]struct{})
+// addMerge appends the tasks of merge to p and records them as one group for
+// [logCompactionPlan.checkRecordCounts]. tasks must together do the work of
+// merge.
+func (p *logCompactionPlan) addMerge(merge *compactionv2pb.TaskSpec, tasks []*compactionv2pb.TaskSpec) {
+	group := logMergeGroup{sections: make(map[sectionKey]struct{})}
 	for _, run := range merge.Runs {
 		for _, ref := range run.Sections {
-			key := sectionKeyOf(ref)
-			if _, ok := seen[key]; !ok {
-				seen[key] = struct{}{}
-				group.sections = append(group.sections, key)
-			}
+			group.sections[sectionKeyOf(ref)] = struct{}{}
 		}
 	}
-	return group
+	for _, task := range tasks {
+		group.tasks = append(group.tasks, len(p.tasks))
+		p.tasks = append(p.tasks, newLogMergeTask(task))
+	}
+	p.merges = append(p.merges, group)
 }
 
 // checkRecordCounts checks that the tasks of every merge together wrote each
 // input record exactly once. artifacts must be the artifacts of p.tasks, in
-// task order.
+// task order. A failed check returns an error that wraps
+// errRecordCountMismatch.
 //
 // The record count of a section comes from the section itself, not from the
 // index that the planner reads. So the check also catches a split that left a
@@ -83,7 +88,7 @@ func (p logCompactionPlan) checkRecordCounts(artifacts []v2.ResultArtifact) erro
 	}
 	for _, merge := range p.merges {
 		if err := merge.checkRecordCounts(artifacts); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", errRecordCountMismatch, err)
 		}
 	}
 	return nil
@@ -103,6 +108,9 @@ func (g logMergeGroup) checkRecordCounts(artifacts []v2.ResultArtifact) error {
 		kept += counts.KeptRecords
 		for _, section := range counts.Sections {
 			key := sectionKey{path: section.ObjectPath, index: section.SectionIndex}
+			if _, ok := g.sections[key]; !ok {
+				return fmt.Errorf("log merge task %d reported logs section %s#%d, which is not an input of its merge", task, key.path, key.index)
+			}
 			if previous, ok := reported[key]; ok && previous != section.Records {
 				return fmt.Errorf("tasks report %d and %d records for logs section %s#%d", previous, section.Records, key.path, key.index)
 			}
@@ -111,7 +119,7 @@ func (g logMergeGroup) checkRecordCounts(artifacts []v2.ResultArtifact) error {
 	}
 
 	var want int64
-	for _, key := range g.sections {
+	for key := range g.sections {
 		records, ok := reported[key]
 		if !ok {
 			return fmt.Errorf("no task of the merge read logs section %s#%d", key.path, key.index)

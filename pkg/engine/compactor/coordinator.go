@@ -289,28 +289,17 @@ func (c *coordinator) planLogMerge(
 	if c.cfg.LogMaxTaskSize > 0 {
 		split = newLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), sections).split
 	}
-	var (
-		specs  []*compactionv2pb.TaskSpec
-		groups []logMergeGroup
-	)
+	plan := logCompactionPlan{window: window, sourceIndex: sourceIndex}
+	var specs []*compactionv2pb.TaskSpec
 	for _, merge := range merges {
 		tasks := split(merge)
-		groups = append(groups, newLogMergeGroup(merge, len(specs), len(tasks)))
+		plan.addMerge(merge, tasks)
 		specs = append(specs, tasks...)
 	}
 
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmerged))
 	logMergeTaskDetails(entryLogger, specs)
 
-	plan := logCompactionPlan{
-		window:      window,
-		sourceIndex: sourceIndex,
-		tasks:       make([]logCompactionTask, 0, len(specs)+1),
-		merges:      groups,
-	}
-	for _, spec := range specs {
-		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
-	}
 	if len(unmerged) > 0 {
 		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmerged))
 	}
@@ -755,12 +744,22 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 			if ctx.Err() != nil {
 				return phaseOutcomeError
 			}
-			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
-				"tenant", tenant, "window", plan.window, "index", plan.sourceIndex.Path, "err", err)
 			reason := failReasonExecute
-			if errors.Is(err, errStalePlan) {
+			switch {
+			case errors.Is(err, errStalePlan):
 				reason = failReasonStalePlan
+			case errors.Is(err, errRecordCountMismatch):
+				reason = failReasonRecordCount
 			}
+			logLevel := level.Warn
+			if reason == failReasonRecordCount {
+				// The tasks would have lost or duplicated records. Every
+				// cycle re-plans the same merge, so this repeats until the
+				// cause is fixed.
+				logLevel = level.Error
+			}
+			logLevel(c.logger).Log("msg", "log-merge phase: index failed",
+				"tenant", tenant, "window", plan.window, "index", plan.sourceIndex.Path, "reason", reason, "err", err)
 			c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, reason).Inc()
 			anyError = true
 			continue

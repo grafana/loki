@@ -70,10 +70,49 @@ func TestLogMergeTaskLogStats(t *testing.T) {
 	})
 }
 
+func sectionSet(keys ...sectionKey) map[sectionKey]struct{} {
+	set := make(map[sectionKey]struct{}, len(keys))
+	for _, key := range keys {
+		set[key] = struct{}{}
+	}
+	return set
+}
+
+func TestLogCompactionPlanAddMerge(t *testing.T) {
+	ref := func(path string, index int64) *compactionv2pb.SectionRef {
+		return &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: index}
+	}
+	spec := func(refs ...*compactionv2pb.SectionRef) *compactionv2pb.TaskSpec {
+		return &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{{Sections: refs}}}
+	}
+
+	t.Run("gives each merge the indexes of its own tasks across many merges", func(t *testing.T) {
+		var plan logCompactionPlan
+		first := spec(ref("a", 0), ref("b", 0))
+		second := spec(ref("c", 0))
+		plan.addMerge(first, []*compactionv2pb.TaskSpec{spec(ref("a", 0)), spec(ref("a", 0), ref("b", 0))})
+		plan.addMerge(second, []*compactionv2pb.TaskSpec{spec(ref("c", 0)), spec(ref("c", 0)), spec(ref("c", 0))})
+		plan.tasks = append(plan.tasks, indexFilterTask{})
+
+		require.Len(t, plan.tasks, 6)
+		require.Equal(t, []int{0, 1}, plan.merges[0].tasks)
+		require.Equal(t, []int{2, 3, 4}, plan.merges[1].tasks)
+		require.Equal(t, sectionSet(sectionKey{"a", 0}, sectionKey{"b", 0}), plan.merges[0].sections)
+		require.Equal(t, sectionSet(sectionKey{"c", 0}), plan.merges[1].sections)
+	})
+
+	t.Run("records a section that two runs of a merge share once", func(t *testing.T) {
+		var plan logCompactionPlan
+		merge := &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{ref("a", 0)}}, {Sections: []*compactionv2pb.SectionRef{ref("a", 0)}}}}
+		plan.addMerge(merge, []*compactionv2pb.TaskSpec{merge})
+		require.Equal(t, sectionSet(sectionKey{"a", 0}), plan.merges[0].sections)
+	})
+}
+
 func TestLogCompactionPlanCheckRecordCounts(t *testing.T) {
 	a0 := v2.SectionRecords{ObjectPath: "logs/a", SectionIndex: 0, Records: 10}
 	b0 := v2.SectionRecords{ObjectPath: "logs/b", SectionIndex: 0, Records: 6}
-	splitMerge := logMergeGroup{tasks: []int{0, 1}, sections: []sectionKey{{"logs/a", 0}, {"logs/b", 0}}}
+	splitMerge := logMergeGroup{tasks: []int{0, 1}, sections: sectionSet(sectionKey{"logs/a", 0}, sectionKey{"logs/b", 0})}
 	counted := func(kept int64, sections ...v2.SectionRecords) v2.ResultArtifact {
 		return v2.ResultArtifact{Path: "index", LogCounts: &v2.LogMergeCounts{KeptRecords: kept, Sections: sections}}
 	}
@@ -114,6 +153,12 @@ func TestLogCompactionPlanCheckRecordCounts(t *testing.T) {
 			wantErr:   "tasks report 10 and 11 records for logs section logs/a#0",
 		},
 		{
+			name:      "fails when a task reports a section that is not an input of its merge",
+			merges:    []logMergeGroup{splitMerge},
+			artifacts: []v2.ResultArtifact{counted(7, a0, b0), counted(9, a0, v2.SectionRecords{ObjectPath: "logs/c", Records: 0})},
+			wantErr:   "reported logs section logs/c#0, which is not an input of its merge",
+		},
+		{
 			name:      "fails when a task of a split merge reports no counts",
 			merges:    []logMergeGroup{splitMerge},
 			artifacts: []v2.ResultArtifact{counted(7, a0, b0), {Path: "index"}},
@@ -121,12 +166,12 @@ func TestLogCompactionPlanCheckRecordCounts(t *testing.T) {
 		},
 		{
 			name:      "passes when the only task of a merge reports no counts",
-			merges:    []logMergeGroup{{tasks: []int{0}, sections: []sectionKey{{"logs/a", 0}}}},
+			merges:    []logMergeGroup{{tasks: []int{0}, sections: sectionSet(sectionKey{"logs/a", 0})}},
 			artifacts: []v2.ResultArtifact{{Path: "index"}},
 		},
 		{
 			name:      "ignores tasks outside every merge",
-			merges:    []logMergeGroup{{tasks: []int{0}, sections: []sectionKey{{"logs/a", 0}}}},
+			merges:    []logMergeGroup{{tasks: []int{0}, sections: sectionSet(sectionKey{"logs/a", 0})}},
 			artifacts: []v2.ResultArtifact{counted(10, a0), {Path: "filtered-index"}},
 		},
 	}
@@ -138,7 +183,15 @@ func TestLogCompactionPlanCheckRecordCounts(t *testing.T) {
 				require.NoError(t, err)
 				return
 			}
+			require.ErrorIs(t, err, errRecordCountMismatch)
 			require.ErrorContains(t, err, tc.wantErr)
 		})
 	}
+
+	t.Run("fails without the mismatch error when the artifacts do not match the tasks", func(t *testing.T) {
+		plan := logCompactionPlan{tasks: make([]logCompactionTask, 2)}
+		err := plan.checkRecordCounts([]v2.ResultArtifact{{Path: "index"}})
+		require.ErrorContains(t, err, "got 1 artifacts for 2 tasks")
+		require.NotErrorIs(t, err, errRecordCountMismatch)
+	})
 }
