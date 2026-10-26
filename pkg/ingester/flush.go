@@ -648,6 +648,10 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time) {
 	// across replicas flushing the same chunk within the same day. IngestedAt is
 	// part of the encoded chunk, so a millisecond-precision value would give each
 	// replica a different checksum and chunk key and prevent deduplication.
+	//
+	// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
+	// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
+	// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
 	ch.IngestedAt = model.Time(tsdbindex.NormalizeIngestedAt(int64(model.Now()), int64(ch.Through)))
 }
 
