@@ -97,7 +97,7 @@ func legacyTenantLayout(ctx context.Context, obj *dataobj.Object, tenant string)
 	if sortSchema != "" {
 		schemaLabels = strings.Split(sortSchema, ",")
 	}
-	return streams.NewLayout(streams.DefaultShardLayout(), schemaLabels), nil
+	return streams.NewLayout(streams.LegacyShardLayout(), schemaLabels), nil
 }
 
 func legacySortSchema(ctx context.Context, obj *dataobj.Object, tenant string) (string, error) {
