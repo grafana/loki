@@ -37,6 +37,13 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Statistics in detected-field query responses
+
+The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON
+responses now include a top-level `stats` object containing the underlying log query's
+statistics. Existing `fields`, `values`, and `limit` fields retain their format.
+Clients that validate response fields strictly must allow the new `stats` field.
+
 ### Bloom filters are deprecated
 
 Query acceleration using bloom filters is deprecated and will be removed in a future release.
