@@ -57,7 +57,7 @@ func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) e
 	hasMatcher := func(name string) bool {
 		return slices.ContainsFunc(matchers, func(m *labels.Matcher) bool { return m.Name == name })
 	}
-	if !constants.IsInternalStream(hasMatcher) {
+	if !constants.IsPatternIngesterStream(hasMatcher) {
 		return nil
 	}
 

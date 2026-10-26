@@ -160,7 +160,7 @@ func (i *instance) skipStream(stream logproto.Stream) (bool, error) {
 	if err != nil {
 		return false, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
-	return constants.IsInternalStream(lbls.Has), nil
+	return constants.IsPatternIngesterStream(lbls.Has), nil
 }
 
 // streamOwner decides whether this ingester builds patterns for a stream.

@@ -19,6 +19,7 @@ func TestIsInternalStream(t *testing.T) {
 	} {
 		has := func(name string) bool { return slices.Contains(tc.labels, name) }
 		require.Equal(t, tc.expected, IsInternalStream(has), "labels %v", tc.labels)
+		require.Equal(t, tc.expected, IsPatternIngesterStream(has), "labels %v", tc.labels)
 	}
 }
 

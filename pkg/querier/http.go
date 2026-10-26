@@ -356,12 +356,12 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, e
 }
 
 func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
-	resp.Series = slices.DeleteFunc(resp.Series, isInternalSeries)
+	resp.Series = slices.DeleteFunc(resp.Series, isPatternIngesterSeries)
 	return resp
 }
 
-func isInternalSeries(s logproto.SeriesIdentifier) bool {
-	return constants.IsInternalStream(func(name string) bool {
+func isPatternIngesterSeries(s logproto.SeriesIdentifier) bool {
+	return constants.IsPatternIngesterStream(func(name string) bool {
 		return slices.ContainsFunc(s.Labels, func(l logproto.SeriesIdentifier_LabelsEntry) bool { return l.Key == name })
 	})
 }

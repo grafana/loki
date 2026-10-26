@@ -16,9 +16,17 @@ const (
 	LogsDrilldownAppName = "grafana-lokiexplore-app"
 )
 
-// IsInternalStream reports whether a stream is one Loki writes for its own use, such as
-// aggregated metrics and patterns. has reports whether the stream has a given label.
+// IsInternalStream reports whether a stream is one Loki writes for its own use. has reports
+// whether the stream has a given label. Today the only internal streams are the ones the pattern
+// ingester writes, so this is the same as IsPatternIngesterStream, but the two may diverge if
+// other components start writing streams of their own.
 func IsInternalStream(has func(name string) bool) bool {
+	return IsPatternIngesterStream(has)
+}
+
+// IsPatternIngesterStream reports whether a stream is one the pattern ingester writes, such as
+// aggregated metrics and patterns. has reports whether the stream has a given label.
+func IsPatternIngesterStream(has func(name string) bool) bool {
 	return has(AggregatedMetricLabel) || has(PatternLabel)
 }
 
