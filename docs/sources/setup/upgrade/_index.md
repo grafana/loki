@@ -37,15 +37,6 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Data object log compaction can split merges by size
-
-The experimental `dataobj.compaction.logs_max_task_size` setting splits a large log merge into tasks by stream sort prefix.
-It's `0`, which disables the split, by default.
-
-Upgrade every compaction worker before you set it.
-A worker from an earlier release ignores the key range of a task and merges whole sections, so tasks that share a section would write its records twice.
-The compactor detects this case: it refuses to publish a split merge whose tasks don't report record counts, and logs an error instead.
-
 ### Statistics in detected-field query responses
 
 The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON
