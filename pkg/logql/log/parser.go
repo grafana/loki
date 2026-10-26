@@ -612,15 +612,13 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		return line, true
 	}
 
-	// Every renamed label and its original name, to retrieve it later in the extraction phase
-	keys := l.origKeys
 	clear(l.written)
 
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
 	alwaysExtract := func(key string) bool {
 		// Any key in the expression list should always be extracted.
-		_, ok := keys[key]
+		_, ok := l.origKeys[key]
 		return ok
 	}
 
@@ -658,7 +656,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			val = nil
 		}
 
-		for id, orig := range keys {
+		for id, orig := range l.origKeys {
 			if key == orig {
 				key = id
 				break
