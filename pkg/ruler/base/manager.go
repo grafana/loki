@@ -131,7 +131,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
-			delete(r.notifierCfgHash, userID)
+			r.deleteNotifier(userID)
 			level.Info(r.logger).Log("msg", "deleted rule manager and local rule files", "user", userID)
 		}
 	}
@@ -172,11 +172,10 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			go manager.Run()
 			r.userManagers[user] = manager
 		} else if amCfgChanged {
-			// AM config changed but manager already exists: rebuild notifier and update manager.
+			// AM config changed but manager already exists: update notifier config in place.
+			// Log the error but continue so rule syncs are not blocked by a bad AM config.
 			if _, err = r.getOrCreateNotifier(user); err != nil {
-				r.lastReloadSuccessful.WithLabelValues(user).Set(0)
-				level.Error(r.logger).Log("msg", "unable to recreate notifier after alertmanager config change", "user", user, "err", err)
-				return
+				level.Error(r.logger).Log("msg", "unable to update notifier after alertmanager config change, rule sync will continue", "user", user, "err", err)
 			}
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), nil)
@@ -207,12 +206,15 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
 }
 
-func alertManagerConfigHash(amOverrides *rulerconfig.AlertManagerConfig) [sha256.Size]byte {
-	if amOverrides == nil {
+// notifierConfigHash produces a hash of the alertmanager config that is sensitive
+// to credential changes.
+func notifierConfigHash(amCfg *rulerconfig.AlertManagerConfig) [sha256.Size]byte {
+	if amCfg == nil {
 		return [sha256.Size]byte{}
 	}
-	b, _ := yaml.Marshal(amOverrides)
-	return sha256.Sum256(b)
+	copy := *amCfg
+	copy.NotificationQueueCapacity = 0
+	return sha256.Sum256([]byte(fmt.Sprintf("%v", copy)))
 }
 
 // amConfigChanged returns true if the alertmanager config for the given user has changed
@@ -223,8 +225,18 @@ func (r *DefaultMultiTenantManager) amConfigChanged(userID string) bool {
 	if _, exists := r.notifiers[userID]; !exists {
 		return false
 	}
-	currentHash := alertManagerConfigHash(r.limits.RulerAlertManagerConfig(userID))
-	return r.notifierCfgHash[userID] != currentHash
+	return r.notifierCfgHash[userID] != notifierConfigHash(r.limits.RulerAlertManagerConfig(userID))
+}
+
+func (r *DefaultMultiTenantManager) deleteNotifier(userID string) {
+	r.notifiersMtx.Lock()
+	defer r.notifiersMtx.Unlock()
+	if n, ok := r.notifiers[userID]; ok {
+		n.stop()
+		delete(r.notifiers, userID)
+	}
+	delete(r.notifiersCfg, userID)
+	delete(r.notifierCfgHash, userID)
 }
 
 func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
@@ -232,7 +244,15 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 	defer r.notifiersMtx.Unlock()
 
 	amOverrides := r.limits.RulerAlertManagerConfig(userID)
-	currentHash := alertManagerConfigHash(amOverrides)
+	currentHash := notifierConfigHash(amOverrides)
+	amCfg := r.cfg.AlertManagerConfig
+	if amOverrides != nil {
+		amCfg = applyAlertmanagerDefaults(*amOverrides)
+	}
+	nCfg, err := buildNotifierConfig(&amCfg, r.cfg.ExternalLabels)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build notifier config for tenant %s: %w", userID, err)
+	}
 
 	// If a notifier already exists for this tenant, check whether the alertmanager
 	// config changed. If it did, update the notifier config in place so that the
@@ -244,42 +264,16 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 			return n.notifier, nil
 		}
 		level.Info(r.logger).Log("msg", "ruler alertmanager config changed, updating notifier", "user", userID)
-		amCfg := r.cfg.AlertManagerConfig
-		if amOverrides != nil {
-			amCfg = applyAlertmanagerDefaults(*amOverrides)
+		if err := n.applyConfig(nCfg); err != nil {
+			return nil, err
 		}
-		nCfg, err := buildNotifierConfig(&amCfg, r.cfg.ExternalLabels)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update notifier config for tenant %s: %w", userID, err)
-		}
-		if nCfg != nil {
-			if err := n.applyConfig(nCfg); err != nil {
-				return nil, err
-			}
-			r.notifiersCfg[userID] = nCfg
-		}
+		r.notifiersCfg[userID] = nCfg
 		r.notifierCfgHash[userID] = currentHash
 		return n.notifier, nil
 	}
 
-	nCfg, ok := r.notifiersCfg[userID]
-	if !ok {
-		amCfg := r.cfg.AlertManagerConfig
-
-		// Apply the tenant specific alertmanager config when defined
-		if amOverrides != nil {
-			amCfg = applyAlertmanagerDefaults(*amOverrides)
-		}
-
-		var err error
-		nCfg, err = buildNotifierConfig(&amCfg, r.cfg.ExternalLabels)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build notifier config for tenant %s: %w", userID, err)
-		}
-
-		if nCfg != nil {
-			r.notifiersCfg[userID] = nCfg
-		}
+	if nCfg != nil {
+		r.notifiersCfg[userID] = nCfg
 	}
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
