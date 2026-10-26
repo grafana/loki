@@ -906,7 +906,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 
 func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	switch req.(type) {
-	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest:
+	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest, *queryrange.DetectedFieldsRequest:
 	default:
 		return h.next.Do(ctx, req)
 	}
@@ -924,6 +924,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	minQueryBytes := h.limits.LoglineQueryMinQueryBytesForIndex(tenant)
 	mode, passthrough := resolveMode(header, tenantMode, h.defaultMode, h.requireOptInHeader)
 	if passthrough {
+		return h.next.Do(ctx, req)
+	}
+	// Dry-run verifies hints against the log lines or samples in the response.
+	// A detected fields response has neither, so the lookup would be wasted.
+	if _, ok := req.(*queryrange.DetectedFieldsRequest); ok && mode != ModeLive {
 		return h.next.Do(ctx, req)
 	}
 
