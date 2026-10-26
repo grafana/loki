@@ -154,6 +154,13 @@ var queries = []benchQuery{
 		streamFirstSupported: true,
 	},
 	{
+		// The shard metadata cycles through 50 values by line, so the filter keeps 2% of the lines.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s | shard="shard-07" | logfmt [24h]))`, selectorAll),
+		description:          "high input, low output, metadata equality before a parser that keeps 2%",
+		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
 		expr:                 fmt.Sprintf("sum by(%s) (sum_over_time(%s | logfmt | unwrap value [5m]))", labelMediumCardName, selectorAll),
 		description:          "high input, medium output, unwrap",
 		instant:              false,

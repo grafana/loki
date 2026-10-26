@@ -39,6 +39,8 @@ eval instant at 60s count_over_time({app="s"} | name!~"al.*" [1m])
   {app="s", name="beta"} 2
 eval instant at 60s count_over_time({app="s"} | name=~"alph" [1m])
   expect empty
+eval instant at 60s sum by (name) (count_over_time({app="s"} | name="alpha" | logfmt [1m]))
+  {name="alpha"} 4
 # structured metadata
 eval instant at 60s count_over_time({app="m"} | name="alpha" [1m])
   {app="m", name="alpha"} 5
@@ -54,9 +56,31 @@ eval instant at 60s count_over_time({app="m"} | name!~"al.*" [1m])
   {app="m", name="beta"} 2
 eval instant at 60s count_over_time({app="m"} | name=~"alph" [1m])
   expect empty
+# A label filter before a parser reads the stored metadata.
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name="alpha" | logfmt [1m]))
+  {name="alpha"} 5
+eval range from 40s to 80s step 20s sum by (name) (count_over_time({app="m"} | name="alpha" | logfmt [1m]))   # overlapping
+  {name="alpha"} 3 5 5
+eval range from 60s to 180s step 120s sum by (name) (count_over_time({app="m"} | name="alpha" | logfmt [1m])) # non-overlapping
+  {name="alpha"} 5 _
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name!="alpha" | logfmt [1m]))
+  {name="beta"} 2
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name=~"al.*" | logfmt [1m]))
+  {name="alpha"} 5
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name!~"al.*" | logfmt [1m]))
+  {name="beta"} 2
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name=~"alph" | logfmt [1m]))
+  expect empty
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name="alpha" or name="beta" | logfmt [1m]))
+  {name="alpha"} 5
+  {name="beta"} 2
 # {app=~".+"} selects the match from every source at once; the sources repeat at different cadences.
 eval instant at 60s count_over_time({app=~".+"} | logfmt | name="alpha" [1m])
   {app="p", name="alpha"} 3
+  {app="s", name="alpha"} 4
+  {app="m", name="alpha"} 5
+# A label filter before a parser skips the lines whose name only the parser creates (app="p").
+eval instant at 60s sum by (app, name) (count_over_time({app=~".+"} | name="alpha" | logfmt [1m]))
   {app="s", name="alpha"} 4
   {app="m", name="alpha"} 5
 
@@ -103,6 +127,9 @@ eval instant at 60s count_over_time({app="p"} | logfmt | name=~".+" [1m])
   {app="p", name="alpha"} 3
 eval instant at 60s count_over_time({app="p"} | logfmt --keep-empty | name=~".+" [1m])
   {app="p", name="alpha"} 3
+# Before the parser, app="p" has no stored name, so name="" keeps every line.
+eval instant at 60s sum(count_over_time({app="p"} | name="" | logfmt | name="alpha" [1m]))
+  {} 3
 # stream label
 eval instant at 60s count_over_time({app="s"} | name="" [1m])
   {app="s"} 7
@@ -135,6 +162,21 @@ eval instant at 60s count_over_time({app="m"} | name=~".*" [1m])
   {app="m"} 4
 eval instant at 60s count_over_time({app="m"} | name=~".+" [1m])
   {app="m", name="alpha"} 3
+# A label filter on structured metadata before the parser.
+eval instant at 60s sum(count_over_time({app="m"} | name="" | logfmt [1m]))
+  {} 6
+eval range from 40s to 80s step 20s sum(count_over_time({app="m"} | name="" | logfmt [1m]))   # overlapping
+  {} 3 6 6
+eval range from 60s to 180s step 120s sum(count_over_time({app="m"} | name="" | logfmt [1m])) # non-overlapping
+  {} 6 _
+eval instant at 60s sum(count_over_time({app="m"} | name!="" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="m"} | name=~".*" | logfmt [1m]))
+  {} 9
+eval instant at 60s sum(count_over_time({app="m"} | name=~".+" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="m"} | name="" or name="alpha" | logfmt [1m]))
+  {} 9
 
 # string label filter: regexp matching.
 clear

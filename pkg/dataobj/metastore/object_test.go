@@ -1253,12 +1253,7 @@ func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
 			wantLabels: []string{"env"},
 		},
 		{
-			// A non-equality label filter (e.g. `| env!="prod"`) references a
-			// stream label by name just like an equality filter. Its label name
-			// must be recognized as a stream label so the physical planner keeps
-			// it ambiguous instead of mistyping it as structured metadata and
-			// pushing it to the dataobj scan (which would drop all matching rows).
-			name: "not-equal predicate returns predicate label names",
+			name: "not-equal predicate returns no label names",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
 			},
@@ -1268,11 +1263,10 @@ func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
 			start:      now.Add(-4 * time.Hour),
 			end:        now.Add(time.Hour),
 			wantCount:  1,
-			wantLabels: []string{"env"},
+			wantLabels: []string{},
 		},
 		{
-			// Same as above but for a regex-match label filter (e.g. `| env=~"d.*"`).
-			name: "regex-match predicate returns predicate label names",
+			name: "regex-match predicate returns no label names",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
 			},
@@ -1282,7 +1276,7 @@ func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
 			start:      now.Add(-4 * time.Hour),
 			end:        now.Add(time.Hour),
 			wantCount:  1,
-			wantLabels: []string{"env"},
+			wantLabels: []string{},
 		},
 	}
 

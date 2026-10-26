@@ -73,8 +73,8 @@ type StageHints struct {
 	// replace a label, or set __error__.
 	CanModifyLabels bool
 
-	// ReadsErrorLabel reports whether the stage compares __error__ or __error_details__, whatever
-	// it does with the value.
+	// ReadsErrorLabel reports whether the result of the stage depends on the error of the line.
+	// A comparison of __error__ or __error_details__ does, whatever it does with the value.
 	//
 	// Only a label filter reports it. A converting comparison against either label cannot report
 	// it, and the parser rejects that form instead.
