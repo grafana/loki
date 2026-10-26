@@ -39,7 +39,7 @@ cloud.google.com/go/compute/metadata
 ## explicit; go 1.26.0
 cloud.google.com/go/iam
 cloud.google.com/go/iam/apiv1/iampb
-# cloud.google.com/go/monitoring v1.31.0
+# cloud.google.com/go/monitoring v1.32.0
 ## explicit; go 1.26.0
 cloud.google.com/go/monitoring/apiv3/v2
 cloud.google.com/go/monitoring/apiv3/v2/monitoringpb
