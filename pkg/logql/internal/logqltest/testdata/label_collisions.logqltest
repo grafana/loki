@@ -1,31 +1,36 @@
 #
 # Label collisions: what happens when a name comes from more than one of the stream labels, the
-# structured metadata, and the parsed fields. This file is the matrix of the cases. Each tag, such
-# as `D2` or `F7`, names one case, and the `load` line that carries it holds the data of that case.
+# structured metadata, and the parsed fields. This file has one group of cases for each kind of
+# collision. A comment on a `load` line says what the stream has. A comment above an `eval` says
+# what the query shows.
 #
 
-# F9. The expression form of logfmt names the keys: `logfmt foo, foo_extracted, bar`. A renamed key
+# The expression form of logfmt names the keys: `logfmt foo, foo_extracted, bar`. A renamed key
 # whose final name is also a name of the expression must not stop the parser, because the key after
-# the pair is still needed (F9a, F9b). The empty label that stands for a missing key must not take
-# the place of the renamed value (F9c). A grouping on every name must read every name (F9d).
+# the pair is still needed. The empty label that stands for a missing key must not take the place of
+# the renamed value. A grouping on every name must read every name.
 clear
 load
-  {app="f9a", foo="l"}   "foo=p foo_extracted=lit bar=b" @ 10s # F9a: the renamed key comes first
-  {app="f9b", foo="l"}   "foo_extracted=lit foo=p bar=b" @ 10s # F9b: the literal key comes first
-  {app="f9c", foo="l"}   "foo=p bar=b"                   @ 10s # F9c: no literal key
-  {app="f9d"}            "a=1 b=2"                       @ 10s # F9d: no clash, two names
+  {app="f9a", foo="l"}   "foo=p foo_extracted=lit bar=b" @ 10s # the renamed key comes first
+  {app="f9b", foo="l"}   "foo_extracted=lit foo=p bar=b" @ 10s # the literal key comes first
+  {app="f9c", foo="l"}   "foo=p bar=b"                   @ 10s # no literal key
+  {app="f9d"}            "a=1 b=2"                       @ 10s # no clash, two names
   {app="noise", foo="l"} "foo=x bar=y"                   @ 10s
 
+# The parser reads `bar` after the pair, in both key orders. The literal key wins. Without a literal
+# key, the renamed value stays, and no empty label takes its place.
 eval select from 0 to 30s forward {app=~"f9[abc]"} | logfmt foo, foo_extracted, bar
   {app="f9a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="f9b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="f9c", foo="l"} "foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
+# A grouping on `foo_extracted` and `bar` reads both names.
 eval instant at 60s sum by (foo_extracted, bar) (count_over_time({app=~"f9[abc]"} | logfmt foo, foo_extracted, bar [1m]))
   {foo_extracted="lit", bar="b"} 2
   {foo_extracted="p", bar="b"} 1
 eval range from 40s to 60s step 20s sum by (foo_extracted, bar) (count_over_time({app=~"f9[abc]"} | logfmt foo, foo_extracted, bar [1m])) # overlapping
   {foo_extracted="lit", bar="b"} 2 2
   {foo_extracted="p", bar="b"} 1 1
+# A grouping on every name reads every name, also when nothing clashes.
 eval instant at 60s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m]))
   {a="1", b="2"} 1
 eval range from 40s to 60s step 20s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m])) # overlapping
