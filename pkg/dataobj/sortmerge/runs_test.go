@@ -99,7 +99,7 @@ func TestMixedRunIterator(t *testing.T) {
 		logs.Record{StreamID: 3, Timestamp: time.Unix(3, 0)},
 	)
 
-	streamIDsOf := func(t *testing.T, input RemappedSection) ([]int64, error) {
+	streamIDsOf := func(input RemappedSection) ([]int64, error) {
 		var ids []int64
 		for res := range MixedRunIterator(context.Background(), []Run{{input}}) {
 			record, err := res.Value()
@@ -112,19 +112,19 @@ func TestMixedRunIterator(t *testing.T) {
 	}
 
 	t.Run("keeps every record when no stream is dropped", func(t *testing.T) {
-		ids, err := streamIDsOf(t, RemappedSection{Section: sec, Remap: map[int64]int64{1: 1, 2: 2, 3: 3}})
+		ids, err := streamIDsOf(RemappedSection{Section: sec, Remap: map[int64]int64{1: 1, 2: 2, 3: 3}})
 		require.NoError(t, err)
 		require.Equal(t, []int64{1, 2, 3}, ids)
 	})
 
 	t.Run("skips the records of dropped streams without remap entries for them", func(t *testing.T) {
-		ids, err := streamIDsOf(t, RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, DropStreamIDs: []int64{1, 3}})
+		ids, err := streamIDsOf(RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, DropStreamIDs: []int64{1, 3}})
 		require.NoError(t, err)
 		require.Equal(t, []int64{2}, ids)
 	})
 
 	t.Run("fails on a record of a stream that is neither dropped nor remapped", func(t *testing.T) {
-		_, err := streamIDsOf(t, RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, DropStreamIDs: []int64{1}})
+		_, err := streamIDsOf(RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, DropStreamIDs: []int64{1}})
 		require.ErrorContains(t, err, "absent from stream remap")
 	})
 }
