@@ -237,6 +237,10 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			},
 			Min: newLogSortPrefix(0, []string{"auth"}),
 			Max: newLogSortPrefix(0, []string{"billing"}),
+			Keys: []v2.KeySize[logSortPrefix]{
+				{Key: newLogSortPrefix(0, []string{"auth"}), Size: 300},
+				{Key: newLogSortPrefix(0, []string{"billing"}), Size: 200},
+			},
 		},
 	}, refs)
 }
@@ -292,8 +296,9 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: newLogSortPrefix(0, []string{"auth", "eu"}),
-			Max: newLogSortPrefix(0, []string{"auth", "eu"}),
+			Min:  newLogSortPrefix(0, []string{"auth", "eu"}),
+			Max:  newLogSortPrefix(0, []string{"auth", "eu"}),
+			Keys: []v2.KeySize[logSortPrefix]{{Key: newLogSortPrefix(0, []string{"auth", "eu"}), Size: 100}},
 		},
 	}, refs)
 }

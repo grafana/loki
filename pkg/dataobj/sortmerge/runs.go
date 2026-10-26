@@ -18,6 +18,11 @@ import (
 type RemappedSection struct {
 	Section *dataobj.Section
 	Remap   map[int64]int64
+
+	// StreamIDs limits the section to the records of these local stream IDs.
+	// Remap must hold every ID in StreamIDs. A nil StreamIDs keeps every
+	// record, and an empty non-nil StreamIDs keeps none.
+	StreamIDs []int64
 }
 
 // Run is a sequence of sections sorted by global stream ID ascending, then
@@ -224,7 +229,7 @@ func openRemappedSection(ctx context.Context, input RemappedSection, bufferSize 
 	if err != nil {
 		return nil, fmt.Errorf("opening logs section: %w", err)
 	}
-	seq, err := openSectionSequence(ctx, sec, bufferSize)
+	seq, err := openSectionSequence(ctx, sec, bufferSize, input.StreamIDs)
 	if err != nil {
 		return nil, err
 	}

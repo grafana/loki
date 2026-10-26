@@ -429,6 +429,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 					}
 				}
 				key := newLogSortPrefix(stat.ShardBucket, labels)
+				keySize := v2.KeySize[logSortPrefix]{Key: key, Size: uint64(stat.UncompressedSize)}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
@@ -443,11 +444,13 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 							MaxTimestamp:     stat.MaxTimestamp,
 							UncompressedSize: stat.UncompressedSize,
 						},
-						Min: key,
-						Max: key,
+						Min:  key,
+						Max:  key,
+						Keys: []v2.KeySize[logSortPrefix]{keySize},
 					}
 					continue
 				}
+				bounded.Keys = append(bounded.Keys, keySize)
 
 				if compareLogSortPrefix(key, bounded.Min) < 0 {
 					bounded.Min = key

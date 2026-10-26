@@ -1161,6 +1161,16 @@ dataobj:
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
 
+    # Experimental: Target uncompressed input size of one LogMerge task, for
+    # example 100GB. The planner splits a larger merge into tasks by stream sort
+    # prefix and never splits one sort prefix. A sort prefix above this size
+    # gets a task of its own, and the last task can exceed the size by up to
+    # 10%. 0 disables the split. Enable it only after every compaction worker
+    # runs a version that supports it, because older workers ignore the key
+    # range of a task and duplicate records.
+    # CLI flag: -dataobj.compaction.logs.max-task-size
+    [logs_max_task_size: <int> | default = 0B]
+
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout

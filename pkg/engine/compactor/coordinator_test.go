@@ -454,6 +454,30 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Equal(t, uint64(250), totalLogInputBytes(plan))
 	})
 
+	t.Run("splits a merge above the maximum task size into one task per key range", func(t *testing.T) {
+		billing := map[string]string{"service_name": "billing"}
+		c, _, _ := newPlanner(t, []stats.Stat{
+			stat("logs/log-0", "label:service_name", auth, 10, 20),
+			stat("logs/log-0", "label:service_name", billing, 10, 20),
+			stat("logs/log-1", "label:service_name", auth, 15, 30),
+			stat("logs/log-1", "label:service_name", billing, 15, 30),
+		}, "acme")
+		c.cfg.LogMaxTaskSize = 250
+
+		plan, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
+		require.NoError(t, err)
+
+		require.Len(t, plan.tasks, 2)
+		cut := &compactionv2pb.SortPrefix{ShardBucket: 0, SchemaValues: []string{"billing"}}
+		wantRanges := []*compactionv2pb.KeyRange{{End: cut}, {Start: cut}}
+		for i, task := range plan.tasks {
+			merge, ok := task.(logMergeTask)
+			require.True(t, ok)
+			require.Equal(t, wantRanges[i], merge.spec.KeyRange)
+			require.Equal(t, []string{"logs/log-0", "logs/log-1"}, planObjectPaths(t, merge.physicalPlan("acme", window)))
+		}
+	})
+
 	t.Run("returns no work when the index has no sections for the tenant", func(t *testing.T) {
 		c, _, _ := newPlanner(t, []stats.Stat{
 			stat("logs/log-0", "label:service_name", auth, 10, 20),

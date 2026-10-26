@@ -21,6 +21,11 @@ type LogMerge struct {
 	// Runs are the K piles the merge consumes; each RunRef references LOG
 	// sections in object storage.
 	Runs []*compactionv2pb.RunRef
+
+	// KeyRange limits the merge to the streams in the range. Sections in Runs
+	// can hold streams outside it, and the merge drops their records. A nil
+	// KeyRange keeps every stream.
+	KeyRange *compactionv2pb.KeyRange
 }
 
 // ID implements the Node interface.

@@ -42,7 +42,7 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 			return nil, fmt.Errorf("failed to open logs section: %w", err)
 		}
 
-		seq, err := openSectionSequence(ctx, sec, bufferSize)
+		seq, err := openSectionSequence(ctx, sec, bufferSize, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +83,9 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 		}), nil
 }
 
-func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int) (*sectionSequence, error) {
+// openSectionSequence opens a cursor over the rows of sec. A non-nil streamIDs
+// limits the rows to those stream IDs, as [RemappedSection.StreamIDs] does.
+func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int, streamIDs []int64) (*sectionSequence, error) {
 	ds, err := logs.MakeColumnarDataset(sec)
 	if err != nil {
 		return nil, fmt.Errorf("creating columnar dataset: %w", err)
@@ -92,12 +94,40 @@ func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int)
 	if err != nil {
 		return nil, err
 	}
-	r := dataset.NewRowReader(dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, PrefetchAllOnOpen: false})
+	var predicates []dataset.Predicate
+	if streamIDs != nil {
+		predicate, err := streamIDPredicate(sec, columns, streamIDs)
+		if err != nil {
+			return nil, err
+		}
+		predicates = append(predicates, predicate)
+	}
+	r := dataset.NewRowReader(dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, Predicates: predicates, PrefetchAllOnOpen: false})
 	if err := r.Open(ctx); err != nil {
 		_ = r.Close()
 		return nil, fmt.Errorf("opening dataset row reader: %w", err)
 	}
 	return &sectionSequence{section: sec, DatasetSequence: logs.NewDatasetSequence(r, bufferSize)}, nil
+}
+
+// streamIDPredicate returns a predicate that keeps the rows of streamIDs.
+// columns must be the dataset columns of sec, in the order of sec.Columns().
+func streamIDPredicate(sec *logs.Section, columns []dataset.Column, streamIDs []int64) (dataset.Predicate, error) {
+	if len(streamIDs) == 0 {
+		return dataset.FalsePredicate{}, nil
+	}
+	for i, column := range sec.Columns() {
+		if column.Type == logs.ColumnTypeStreamID {
+			// Rows of one stream are adjacent, so the memoized set skips most
+			// map lookups. The set is not safe for concurrent use, and only
+			// this sequence's reader uses it.
+			return dataset.InPredicate{
+				Column: columns[i],
+				Values: dataset.NewMemoizedInt64ValueSetOf(streamIDs...),
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("logs section has no stream ID column")
 }
 
 // sectionSequence wraps a section cursor. When remap is non-nil it rewrites the

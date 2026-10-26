@@ -319,6 +319,17 @@ func TestE2ECompactionConvergence(t *testing.T) {
 			wantTasks: map[string]int{"log-merge": 3, "index-filter": 2},
 		})
 	})
+
+	t.Run("a merge above the maximum task size splits into key range tasks that keep every record once", func(t *testing.T) {
+		// Without a maximum, these sources compact in four merges. A 100KB
+		// maximum splits the same merges into 13 tasks. The disjoint task
+		// outputs still converge to one sorted run.
+		runConvergenceTest(t, convergenceCase{
+			layouts:     fiveSourceLayouts(),
+			maxTaskSize: 100_000,
+			wantTasks:   map[string]int{"log-merge": 13, "index-filter": 2},
+		})
+	})
 }
 
 // convergenceCase configures runConvergenceTest.
@@ -336,6 +347,10 @@ type convergenceCase struct {
 
 	// wantTasks, when set, is the number of log tasks run for each actor.
 	wantTasks map[string]int
+
+	// maxTaskSize, when non-zero, is the maximum input size of one LogMerge
+	// task. Zero disables the split.
+	maxTaskSize uint64
 }
 
 // runConvergenceTest creates one overlapping object for every layout and
@@ -380,6 +395,7 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 		require.NoError(t, err)
 		scenario.coordinator.logMergePlanningStrategy = strategy
 	}
+	scenario.coordinator.cfg.LogMaxTaskSize = flagext.Bytes(test.maxTaskSize)
 	actors := recordLogActors(scenario.coordinator)
 	indexes := scenario.stored.Indexes(ctx, t, tenant)
 	require.Len(t, indexes, len(test.layouts))

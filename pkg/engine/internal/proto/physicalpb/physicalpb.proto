@@ -64,6 +64,9 @@ message LogMerge {
   // Field 4 held the sort schema. Do not reuse it.
   reserved 4;
   reserved "sort_schema";
+  // key_range limits the merge to the streams in the range. A missing
+  // key_range keeps every stream.
+  proto.KeyRange key_range = 5;
 }
 
 // IndexFilter copies the postings and stats rows of the listed log objects

@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -192,6 +193,11 @@ type logSource struct {
 	streams            map[int64]streams.Stream
 	layout             streams.Layout
 	remap              map[int64]int64
+
+	// streamIDs holds the IDs of streams if the key range of the merge
+	// dropped any stream of the object. It is nil if the merge keeps every
+	// stream, so reads of the object need no filter.
+	streamIDs []int64
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
@@ -217,6 +223,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		}
 	}
 	srcBucket := c.dataObjectBucket()
+	keyRange := sortPrefixRange(node.KeyRange)
 
 	// Gather the assigned log sections and the tenant's streams section.
 	sources := make([]*logSource, 0, len(paths))
@@ -266,16 +273,69 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		if err != nil {
 			return nil, fmt.Errorf("resolving streams for object %q: %w", path, err)
 		}
+		streamIDs, err := keepStreamsInRange(srcStreams, layout, keyRange)
+		if err != nil {
+			return nil, fmt.Errorf("filtering streams for object %q: %w", path, err)
+		}
 
 		sources = append(sources, &logSource{
 			path:               path,
 			streams:            srcStreams,
 			layout:             layout,
 			logSectionsByIndex: logSections,
+			streamIDs:          streamIDs,
 		})
 	}
 
 	return sources, nil
+}
+
+// sortPrefixRange returns the stream sort prefixes in r. A nil r holds every
+// prefix.
+func sortPrefixRange(r *compactionv2pb.KeyRange) v2.KeyRange[streams.SortPrefix] {
+	var out v2.KeyRange[streams.SortPrefix]
+	if r == nil {
+		return out
+	}
+	if r.Start != nil {
+		start := streams.NewSortPrefix(r.Start.ShardBucket, r.Start.SchemaValues)
+		out.Start = &start
+	}
+	if r.End != nil {
+		end := streams.NewSortPrefix(r.End.ShardBucket, r.End.SchemaValues)
+		out.End = &end
+	}
+	return out
+}
+
+// keepStreamsInRange deletes the streams outside keyRange from byID. It
+// returns the IDs that remain, or nil if it deleted no stream.
+//
+// It derives each sort prefix from the stream labels and layout, as the stats
+// section that the planner cuts by does.
+func keepStreamsInRange(byID map[int64]streams.Stream, layout streams.Layout, keyRange v2.KeyRange[streams.SortPrefix]) ([]int64, error) {
+	if keyRange.Start == nil && keyRange.End == nil {
+		return nil, nil
+	}
+
+	total := len(byID)
+	kept := make([]int64, 0, total)
+	for id, stream := range byID {
+		schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, layout.SchemaLabels())
+		if err != nil {
+			return nil, err
+		}
+		prefix := layout.ShardLayout().NewSortKey(stream.Labels, schemaKey).Prefix()
+		if keyRange.Contains(prefix, streams.SortPrefix.Compare) {
+			kept = append(kept, id)
+			continue
+		}
+		delete(byID, id)
+	}
+	if len(kept) == total {
+		return nil, nil
+	}
+	return kept, nil
 }
 
 // sourcesLayout returns the layout that every source shares. It returns an
@@ -393,7 +453,10 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 			}
 			sec := source.logSectionsByIndex[id.index]
 			seen[id] = struct{}{}
-			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap})
+			if source.streamIDs != nil && len(source.streamIDs) == 0 {
+				continue
+			}
+			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, StreamIDs: source.streamIDs})
 		}
 		if len(run) > 0 {
 			inputs.runs = append(inputs.runs, run)

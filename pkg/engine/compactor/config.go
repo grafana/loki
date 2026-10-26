@@ -70,6 +70,15 @@ type Config struct {
 	// this floor are skipped.
 	LogMinCompactionSize flagext.Bytes `yaml:"logs_min_compaction_size"`
 
+	// LogMaxTaskSize is the target uncompressed input size of one LogMerge
+	// task. The planner splits a larger merge into tasks by stream sort
+	// prefix. 0 disables the split.
+	//
+	// Workers that predate the split drop the key range of a task and merge
+	// whole sections. Tasks that share a section then write its records
+	// twice, so the split stays off until every worker supports it.
+	LogMaxTaskSize flagext.Bytes `yaml:"logs_max_task_size"`
+
 	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
 	// call. NOT a task TTL — applied as context.WithTimeout around the metastore
 	// RPC; on expiry the cycle aborts inline and the next polling tick re-plans.
@@ -207,6 +216,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.LogMinCompactionSize.Set("4MB")
 	f.Var(&cfg.LogMinCompactionSize, prefix+"logs.min-compaction-size",
 		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Windows below this floor are skipped.")
+	f.Var(&cfg.LogMaxTaskSize, prefix+"logs.max-task-size",
+		"Experimental: Target uncompressed input size of one LogMerge task, for example 100GB. The planner splits a larger merge into tasks by stream sort prefix and never splits one sort prefix. A sort prefix above this size gets a task of its own, and the last task can exceed the size by up to 10%. 0 disables the split. Enable it only after every compaction worker runs a version that supports it, because older workers ignore the key range of a task and duplicate records.")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,

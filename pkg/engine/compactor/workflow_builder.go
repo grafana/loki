@@ -50,6 +50,7 @@ func buildLogMergePlan(
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
 		Runs:           task.Runs,
+		KeyRange:       task.KeyRange,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
