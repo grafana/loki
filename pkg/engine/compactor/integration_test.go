@@ -782,3 +782,92 @@ func TestE2ECompactionLegacyObjects(t *testing.T) {
 		require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-b", "compaction must rewrite the legacy objects")
 	})
 }
+
+// TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes pins the planner side of
+// the key range contract to the worker side. The planner cuts by the sort
+// prefixes of the stats rows that the index calculator writes. The worker
+// derives each stream's prefix from its labels. If they disagree, a split
+// task can miss records.
+func TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes(t *testing.T) {
+	const tenant = "acme"
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	base := window.Add(time.Hour)
+
+	tests := []struct {
+		name    string
+		schema  []string
+		streams []string
+	}{
+		{
+			name:    "agree for a one-label schema",
+			schema:  []string{"label:app"},
+			streams: []string{`{app="api"}`, `{app="web"}`, `{app="db"}`},
+		},
+		{
+			name:    "agree for a multi-label schema",
+			schema:  []string{"label:app", "label:cluster"},
+			streams: []string{`{app="api",cluster="prod"}`, `{app="api",cluster="dev"}`, `{app="web",cluster="prod"}`},
+		},
+		{
+			name:    "agree when a stream has no value for a schema label",
+			schema:  []string{"label:app", "label:cluster"},
+			streams: []string{`{app="api"}`, `{cluster="prod"}`, `{app="api",cluster="prod"}`},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			layout := streams.NewLayout(streams.DefaultShardLayout(), tc.schema)
+			entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(tc.schema...))
+			for i, ls := range tc.streams {
+				entries.ForStream(ls).Entry(int(base.Unix())+i, "{}", fmt.Sprintf("line-%d", i))
+			}
+			source := newScenarioLogSource(t, "objects/source-0", tenant, entries, layout)
+			scenario := compactortest.New(ctx, t, window, []compactortest.Source{source})
+
+			refs, err := logSectionRefsFor(ctx, scenario.Bucket, tenant, compactortest.IndexPath(0))
+			require.NoError(t, err)
+
+			obj, err := dataobj.FromBucket(ctx, scenario.Bucket, source.Path, 0)
+			require.NoError(t, err)
+			tenantSections, err := sections.ForTenant(obj.Sections(), tenant)
+			require.NoError(t, err)
+			streamsSection, err := streams.Open(ctx, tenantSections.Streams)
+			require.NoError(t, err)
+			labelsByID := make(map[int64]labels.Labels)
+			for res := range streams.IterSection(ctx, streamsSection) {
+				stream, err := res.Value()
+				require.NoError(t, err)
+				labelsByID[stream.ID] = stream.Labels.Copy()
+			}
+
+			for i, section := range obj.Sections().Filter(logs.CheckSection) {
+				if section.Tenant != tenant {
+					continue
+				}
+				logsSection, err := logs.Open(ctx, section)
+				require.NoError(t, err)
+				workerPrefixes := make(map[streams.SortPrefix]bool)
+				for res := range logs.IterSection(ctx, logsSection) {
+					record, err := res.Value()
+					require.NoError(t, err)
+					ls := labelsByID[record.StreamID]
+					schemaKey, err := logsobj.ComputeSchemaKey(ls, tc.schema)
+					require.NoError(t, err)
+					workerPrefixes[layout.ShardLayout().NewSortKey(ls, schemaKey).Prefix()] = true
+				}
+
+				plannerPrefixes := make(map[streams.SortPrefix]bool)
+				for _, ref := range refs {
+					if ref.Ref.ObjectPath == source.Path && ref.Ref.SectionIndex == int64(i) {
+						for _, key := range ref.Keys {
+							plannerPrefixes[key.Key.prefix] = true
+						}
+					}
+				}
+				require.NotEmpty(t, workerPrefixes, "logs section %d", i)
+				require.Equal(t, workerPrefixes, plannerPrefixes, "logs section %d", i)
+			}
+		})
+	}
+}

@@ -10,18 +10,44 @@ import (
 )
 
 func TestResultRecordRoundTrip(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-	in := ResultArtifact{Path: "indexes/tenants/acme/ab/cdef"}
-	rec, err := in.ToRecordBatch(mem)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, rec.NumRows())
+	tests := []struct {
+		name string
+		in   ResultArtifact
+	}{
+		{
+			name: "keeps the path of an artifact without log counts",
+			in:   ResultArtifact{Path: "indexes/tenants/acme/ab/cdef"},
+		},
+		{
+			name: "keeps the log counts of a LogMerge artifact",
+			in: ResultArtifact{Path: "indexes/tenants/acme/ab/cdef", LogCounts: &LogMergeCounts{
+				KeptRecords: 7,
+				Sections: []SectionRecords{
+					{ObjectPath: "objects/a", SectionIndex: 0, Records: 5},
+					{ObjectPath: "objects/b", SectionIndex: 3, Records: 4},
+				},
+			}},
+		},
+		{
+			name: "keeps log counts with no sections",
+			in:   ResultArtifact{Path: "indexes/tenants/acme/ab/cdef", LogCounts: &LogMergeCounts{Sections: []SectionRecords{}}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
+			defer mem.AssertSize(t, 0)
+			rec, err := tc.in.ToRecordBatch(mem)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, rec.NumRows())
 
-	var out ResultArtifact
-	err = out.FromRecordBatch(rec)
-	rec.Release()
-	require.NoError(t, err)
-	require.Equal(t, in, out)
+			var out ResultArtifact
+			err = out.FromRecordBatch(rec)
+			rec.Release()
+			require.NoError(t, err)
+			require.Equal(t, tc.in, out)
+		})
+	}
 }
 
 func TestResultArtifactToRecordBatchInvalid(t *testing.T) {

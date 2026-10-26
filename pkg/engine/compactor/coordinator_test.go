@@ -576,6 +576,27 @@ func TestExecuteLogCompaction(t *testing.T) {
 		require.Empty(t, replacer.snapshot())
 	})
 
+	t.Run("returns an error and does not swap when a split merge loses records", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		split := plan
+		split.merges = []logMergeGroup{{tasks: []int{0, 1}, sections: []sectionKey{{"logs/a", 0}, {"logs/b", 0}}}}
+		runner.respond = func(_ context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+			return &v2.ResultArtifact{Path: "indexes/out", LogCounts: &v2.LogMergeCounts{
+				KeptRecords: 1,
+				Sections: []v2.SectionRecords{
+					{ObjectPath: "logs/a", Records: 2},
+					{ObjectPath: "logs/b", Records: 2},
+				},
+			}}, nil
+		}
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", split)
+		require.ErrorContains(t, err, "wrote 2 records, but its 2 input sections hold 4")
+		require.Zero(t, stats)
+		require.Len(t, runner.snapshot(), 2)
+		require.Empty(t, replacer.snapshot())
+	})
+
 	t.Run("swaps the source index for one entry per task with the artifact paths", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
 

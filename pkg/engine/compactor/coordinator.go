@@ -283,9 +283,14 @@ func (c *coordinator) planLogMerge(
 	}
 
 	splitter := newLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), sections)
-	var specs []*compactionv2pb.TaskSpec
+	var (
+		specs  []*compactionv2pb.TaskSpec
+		groups []logMergeGroup
+	)
 	for _, merge := range merges {
-		specs = append(specs, splitter.split(merge)...)
+		tasks := splitter.split(merge)
+		groups = append(groups, newLogMergeGroup(merge, len(specs), len(tasks)))
+		specs = append(specs, tasks...)
 	}
 
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmerged))
@@ -295,6 +300,7 @@ func (c *coordinator) planLogMerge(
 		window:      window,
 		sourceIndex: sourceIndex,
 		tasks:       make([]logCompactionTask, 0, len(specs)+1),
+		merges:      groups,
 	}
 	for _, spec := range specs {
 		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
@@ -334,6 +340,9 @@ func (c *coordinator) executeLogCompaction(
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.physicalPlans(tenant))
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
+	}
+	if err := plan.checkRecordCounts(artifacts); err != nil {
+		return compactionStats{}, fmt.Errorf("check log compaction record counts for source index %s: %w", plan.sourceIndex.Path, err)
 	}
 	entries := plan.tocEntries()
 	if err := assignArtifactPaths(entries, artifacts); err != nil {

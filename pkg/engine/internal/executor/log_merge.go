@@ -88,6 +88,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		dups            duplicateCounter
 		inputBytesBatch int64
 		count           int
+		keptRecords     int64
 	)
 	batchRecords := 1000
 	observeBatch := func() {
@@ -114,6 +115,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
+		keptRecords++
 	}
 	// Count any remaining records that haven't been added to the metric yet
 	observeBatch()
@@ -159,7 +161,14 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	)
 
 	c.logMergeObserver.ObserveLogMerge(node.Tenant, stats.logMergeObservedStats, duration)
-	return &v2.ResultArtifact{Path: idxPath}, nil
+
+	artifact := &v2.ResultArtifact{Path: idxPath}
+	// Coordinators that predate key ranges send no range and cannot decode
+	// log counts, so only a task with a range reports them.
+	if node.KeyRange != nil {
+		artifact.LogCounts = &v2.LogMergeCounts{KeptRecords: keptRecords, Sections: inputs.sectionRecords}
+	}
+	return artifact, nil
 }
 
 const (
@@ -408,6 +417,10 @@ type logMergeInputs struct {
 	layout  streams.Layout
 	runs    []sortmerge.Run
 	table   *logsobj.MultiSourceRankedStreams
+
+	// sectionRecords holds the record count of every input section, once per
+	// section.
+	sectionRecords []v2.SectionRecords
 }
 
 func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogMerge) (*logMergeInputs, error) {
@@ -454,6 +467,11 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 			}
 			sec := source.logSectionsByIndex[id.index]
 			seen[id] = struct{}{}
+			records, err := sectionRecordCount(ctx, sec)
+			if err != nil {
+				return nil, fmt.Errorf("logs section %q#%d: %w", id.path, id.index, err)
+			}
+			inputs.sectionRecords = append(inputs.sectionRecords, v2.SectionRecords{ObjectPath: id.path, SectionIndex: id.index, Records: records})
 			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, DropStreamIDs: source.droppedStreamIDs})
 		}
 		if len(run) > 0 {
@@ -461,6 +479,14 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 		}
 	}
 	return inputs, nil
+}
+
+func sectionRecordCount(ctx context.Context, section *dataobj.Section) (int64, error) {
+	sec, err := logs.Open(ctx, section)
+	if err != nil {
+		return 0, fmt.Errorf("opening logs section: %w", err)
+	}
+	return sec.RowCount()
 }
 
 // logObjectWriter consumes the globally-sorted merged record stream and builds
