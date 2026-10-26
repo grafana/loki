@@ -71,8 +71,6 @@ var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
 
-	errServiceUnavailableMaxLoad = httpgrpc.Error(503, "The server cannot accept more requests at this time.")
-
 	// the rune error replacement is rejected by Prometheus hence replacing them with space.
 	removeInvalidUtf = func(r rune) rune {
 		if r == utf8.RuneError {
@@ -522,17 +520,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // It modifies req in place.
 // The returned error is the last one seen.
 func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
-	requestSize := int64(req.Size())
-
-	newInflightBytes := d.inflightBytes.Add(requestSize)
-	d.m.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
-	defer d.inflightBytes.Add(-requestSize)
-
-	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
-	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
-		return nil, errServiceUnavailableMaxLoad
-	}
-
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err

@@ -24,6 +24,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
+var (
+	errServiceUnavailableMaxLoad = errors.New("The server cannot accept more requests at this time.")
+)
+
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	d.pushHandler(w, r, loghttppush.ParseLokiRequest, loghttppush.HTTPError, constants.Loki)
@@ -59,6 +63,15 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
 			return
 		}
+	}
+
+	// This check happens after the circuit breaker so the circuit breaker can count occurences of
+	// the error.
+	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
+	if maxInflightBytes > 0 && d.inflightBytes.Load() >= maxInflightBytes {
+		circuitBreakerErr = errServiceUnavailableMaxLoad
+		errorWriter(w, circuitBreakerErr.Error(), http.StatusServiceUnavailable, logger)
+		return
 	}
 
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
@@ -123,6 +136,11 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			return
 		}
 	}
+
+	requestSize := int64(req.Size())
+	newInflightBytes := d.inflightBytes.Add(requestSize)
+	d.m.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
+	defer d.inflightBytes.Add(-requestSize)
 
 	// Gather information about the different types of push formats Loki receives
 	d.m.pushStatsCount.WithLabelValues(tenantID, pushStats.ContentType, pushStats.ContentEncoding, pushStats.ContentVersion, format).Inc()
