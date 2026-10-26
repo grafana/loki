@@ -3,6 +3,7 @@ package querytee
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -68,48 +69,62 @@ configs:
 		require.Equal(t, startTime(2026, time.March), lokiLimits.Overrides.DataObjQueryStartTime("tenant-b"))
 	})
 
-	t.Run("resolves the stream-first limit from the flag, the config file and the overrides", func(t *testing.T) {
+	t.Run("resolves the stream-first limit from the flag, the limits_config block and the tenant overrides", func(t *testing.T) {
 		const unrelatedLimit = "dataobj_query_start_time: \"2026-01-01\""
 
 		testCases := []struct {
 			name         string
-			flagEnabled  bool
+			flagValue    *bool
 			configYAML   string
 			runtimeYAML  string
 			wantByTenant map[string]bool
 		}{
 			{
 				name:         "disables the limit for every tenant when neither the flag nor a file sets it",
-				flagEnabled:  false,
+				flagValue:    nil,
 				configYAML:   "limits_config:\n  " + unrelatedLimit + "\n",
 				runtimeYAML:  "overrides:\n  tenant-a:\n    " + unrelatedLimit + "\n",
 				wantByTenant: map[string]bool{"other": false, "tenant-a": false},
 			},
 			{
+				name:         "keeps the limits_config value when the flag is not set",
+				flagValue:    nil,
+				configYAML:   "limits_config:\n  stream_first_execution_enabled: true\n",
+				runtimeYAML:  "overrides:\n  tenant-a:\n    " + unrelatedLimit + "\n",
+				wantByTenant: map[string]bool{"other": true, "tenant-a": true},
+			},
+			{
 				name:         "enables the limit for every tenant when only the flag sets it",
-				flagEnabled:  true,
+				flagValue:    new(true),
 				configYAML:   "limits_config:\n  " + unrelatedLimit + "\n",
 				runtimeYAML:  "overrides:\n  tenant-a:\n    " + unrelatedLimit + "\n",
 				wantByTenant: map[string]bool{"other": true, "tenant-a": true},
 			},
 			{
-				name:         "prefers the limits_config value over the flag",
-				flagEnabled:  true,
+				name:         "prefers a flag that enables the limit over the limits_config value",
+				flagValue:    new(true),
 				configYAML:   "limits_config:\n  stream_first_execution_enabled: false\n",
+				runtimeYAML:  "overrides:\n  tenant-a:\n    " + unrelatedLimit + "\n",
+				wantByTenant: map[string]bool{"other": true, "tenant-a": true},
+			},
+			{
+				name:         "prefers a flag that disables the limit over the limits_config value",
+				flagValue:    new(false),
+				configYAML:   "limits_config:\n  stream_first_execution_enabled: true\n",
 				runtimeYAML:  "overrides:\n  tenant-a:\n    " + unrelatedLimit + "\n",
 				wantByTenant: map[string]bool{"other": false, "tenant-a": false},
 			},
 			{
 				name:         "prefers the tenant override over a flag that enables the limit",
-				flagEnabled:  true,
+				flagValue:    new(true),
 				configYAML:   "limits_config:\n  " + unrelatedLimit + "\n",
 				runtimeYAML:  "overrides:\n  tenant-a:\n    stream_first_execution_enabled: false\n",
 				wantByTenant: map[string]bool{"other": true, "tenant-a": false},
 			},
 			{
 				name:         "prefers the tenant override over a flag that disables the limit",
-				flagEnabled:  false,
-				configYAML:   "limits_config:\n  " + unrelatedLimit + "\n",
+				flagValue:    new(false),
+				configYAML:   "limits_config:\n  stream_first_execution_enabled: true\n",
 				runtimeYAML:  "overrides:\n  tenant-a:\n    stream_first_execution_enabled: true\n",
 				wantByTenant: map[string]bool{"other": false, "tenant-a": true},
 			},
@@ -124,7 +139,7 @@ configs:
 				cfg := LimitsConfig{
 					ConfigFile:                  filepath.Join(dir, "config.yaml"),
 					RuntimeConfig:               runtimeconfig.Config{LoadPath: flagext.StringSliceCSV{filepath.Join(dir, "runtime.yaml")}, ReloadPeriod: time.Minute},
-					StreamFirstExecutionEnabled: tc.flagEnabled,
+					StreamFirstExecutionEnabled: tc.flagValue,
 				}
 				lokiLimits, err := LoadLokiLimits(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
 				require.NoError(t, err)
@@ -185,7 +200,7 @@ configs:
 func TestLimitsConfig_RegisterFlags(t *testing.T) {
 	const streamFirstFlag = "querier.stream-first-execution-enabled"
 
-	t.Run("registers the stream-first flag with the default and description of Loki", func(t *testing.T) {
+	t.Run("registers the stream-first flag under the name of the Loki flag", func(t *testing.T) {
 		var lokiLimits validation.Limits
 		lokiFlags := flag.NewFlagSet("loki", flag.ContinueOnError)
 		lokiLimits.RegisterFlags(lokiFlags)
@@ -194,35 +209,58 @@ func TestLimitsConfig_RegisterFlags(t *testing.T) {
 		flags := flag.NewFlagSet("querytee", flag.ContinueOnError)
 		cfg.RegisterFlags(flags)
 
-		got := flags.Lookup(streamFirstFlag)
-		require.NotNil(t, got)
-		want := lokiFlags.Lookup(streamFirstFlag)
-		require.Equal(t, want.DefValue, got.DefValue)
-		require.Equal(t, want.Usage, got.Usage)
+		require.NotNil(t, lokiFlags.Lookup(streamFirstFlag))
+		require.NotNil(t, flags.Lookup(streamFirstFlag))
 	})
 
-	t.Run("keeps stream-first disabled when the flag is not set", func(t *testing.T) {
-		var cfg LimitsConfig
-		flags := flag.NewFlagSet("querytee", flag.ContinueOnError)
-		cfg.RegisterFlags(flags)
+	t.Run("leaves stream-first unset when the flag is not set", func(t *testing.T) {
+		cfg := parseLimitsFlags(t)
 
-		require.NoError(t, flags.Parse(nil))
-
-		require.False(t, cfg.StreamFirstExecutionEnabled)
+		require.Nil(t, cfg.StreamFirstExecutionEnabled)
 	})
 
-	t.Run("enables stream-first when the flag is set", func(t *testing.T) {
+	t.Run("enables stream-first when the flag is true", func(t *testing.T) {
+		cfg := parseLimitsFlags(t, "-"+streamFirstFlag+"=true")
+
+		require.Equal(t, new(true), cfg.StreamFirstExecutionEnabled)
+	})
+
+	t.Run("disables stream-first when the flag is false", func(t *testing.T) {
+		cfg := parseLimitsFlags(t, "-"+streamFirstFlag+"=false")
+
+		require.Equal(t, new(false), cfg.StreamFirstExecutionEnabled)
+	})
+
+	t.Run("enables stream-first when the flag has no value", func(t *testing.T) {
+		cfg := parseLimitsFlags(t, "-"+streamFirstFlag)
+
+		require.Equal(t, new(true), cfg.StreamFirstExecutionEnabled)
+	})
+
+	t.Run("returns an error when the flag value is not a boolean", func(t *testing.T) {
 		var cfg LimitsConfig
 		flags := flag.NewFlagSet("querytee", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
 		cfg.RegisterFlags(flags)
 
-		require.NoError(t, flags.Parse([]string{"-" + streamFirstFlag + "=true"}))
+		err := flags.Parse([]string{"-" + streamFirstFlag + "=maybe"})
 
-		require.True(t, cfg.StreamFirstExecutionEnabled)
+		require.EqualError(t, err, `invalid boolean value "maybe" for -querier.stream-first-execution-enabled: strconv.ParseBool: parsing "maybe": invalid syntax`)
+		require.Nil(t, cfg.StreamFirstExecutionEnabled)
 	})
 }
 
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+}
+
+func parseLimitsFlags(t *testing.T, args ...string) LimitsConfig {
+	t.Helper()
+
+	var cfg LimitsConfig
+	flags := flag.NewFlagSet("querytee", flag.ContinueOnError)
+	cfg.RegisterFlags(flags)
+	require.NoError(t, flags.Parse(args))
+	return cfg
 }

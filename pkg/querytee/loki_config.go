@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	"github.com/drone/envsubst"
 	"github.com/go-kit/log"
@@ -24,13 +25,15 @@ import (
 // ones in Loki. The config file is read for the limits_config block only. The runtime config is read
 // for the overrides only. When neither file is set, querytee loads no limits.
 //
-// StreamFirstExecutionEnabled is the default of the stream_first_execution_enabled limit. A value in
-// the limits_config block or in a tenant override takes precedence over it.
+// The precedence of a limit is the one of Loki: the default of the flag, then the limits_config
+// block, then a flag that the command line sets. A tenant override takes precedence over all of them.
 type LimitsConfig struct {
-	ConfigFile                  string
-	ExpandEnv                   bool
-	RuntimeConfig               runtimeconfig.Config
-	StreamFirstExecutionEnabled bool
+	ConfigFile    string
+	ExpandEnv     bool
+	RuntimeConfig runtimeconfig.Config
+
+	// StreamFirstExecutionEnabled is nil when the command line does not set the flag.
+	StreamFirstExecutionEnabled *bool
 }
 
 // RegisterFlags registers the flags of the limits config.
@@ -38,7 +41,14 @@ func (cfg *LimitsConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ConfigFile, "config.file", "", "Path of a Loki config file. querytee reads only the limits_config block.")
 	f.BoolVar(&cfg.ExpandEnv, "config.expand-env", false, "Expand ${var} or $var in the Loki config file with the value of the environment variable.")
 	cfg.RuntimeConfig.RegisterFlags(f)
-	f.BoolVar(&cfg.StreamFirstExecutionEnabled, "querier.stream-first-execution-enabled", false, "When enabled, Loki evaluates eligible metric queries in stream-first order, which reads samples one stream at a time instead of in timestamp order. The query-frontend and the querier read this setting.")
+	f.BoolFunc("querier.stream-first-execution-enabled", "When enabled, Loki evaluates eligible metric queries in stream-first order, which reads samples one stream at a time instead of in timestamp order.", func(value string) error {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.StreamFirstExecutionEnabled = &enabled
+		return nil
+	})
 }
 
 // lokiConfig is the part of a Loki config file that querytee reads.
@@ -72,10 +82,9 @@ func LoadLokiLimits(ctx context.Context, cfg LimitsConfig, logger log.Logger, re
 
 	var fileCfg lokiConfig
 	flagext.DefaultValues(&fileCfg.LimitsConfig)
-	fileCfg.LimitsConfig.StreamFirstExecutionEnabled = cfg.StreamFirstExecutionEnabled
 
 	// The limits_config block decodes on top of the global defaults when they exist. Set them to the
-	// flag values first, so that a global left by an earlier load cannot replace the flag values.
+	// flag defaults first, so that a global left by an earlier load cannot replace them.
 	validation.SetDefaultLimitsForYAMLUnmarshalling(fileCfg.LimitsConfig)
 	if cfg.ConfigFile != "" {
 		if err := readLokiConfig(cfg.ConfigFile, cfg.ExpandEnv, &fileCfg); err != nil {
@@ -83,7 +92,12 @@ func LoadLokiLimits(ctx context.Context, cfg LimitsConfig, logger log.Logger, re
 		}
 	}
 
-	// A tenant override inherits the defaults of limits_config, as it does in Loki.
+	// A flag that the command line sets takes precedence over the limits_config block, as it does in Loki.
+	if cfg.StreamFirstExecutionEnabled != nil {
+		fileCfg.LimitsConfig.StreamFirstExecutionEnabled = *cfg.StreamFirstExecutionEnabled
+	}
+
+	// A tenant override inherits these defaults, as it does in Loki. A value in the override takes precedence.
 	validation.SetDefaultLimitsForYAMLUnmarshalling(fileCfg.LimitsConfig)
 
 	parsed := &LokiLimits{}
