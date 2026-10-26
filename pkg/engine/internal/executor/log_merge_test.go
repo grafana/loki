@@ -1110,7 +1110,7 @@ func prefixRange(t *testing.T, start, end streams.SortPrefix) v2.KeyRange[stream
 	return r
 }
 
-func TestDoLogObjectMerge_KeyRange(t *testing.T) {
+func TestDoLogObjectMerge(t *testing.T) {
 	ctx := context.Background()
 	const tenant = "T"
 	sortSchema := []string{"label:app"}

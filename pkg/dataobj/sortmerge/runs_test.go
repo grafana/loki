@@ -92,7 +92,7 @@ func TestMixedRunIterator_SectionTransitions(t *testing.T) {
 	require.Equal(t, map[string]string{"a": "value", "b": "value", "c": "value", "d": "value", "e": "value"}, metadata)
 }
 
-func TestMixedRunIterator_DropStreamIDs(t *testing.T) {
+func TestMixedRunIterator(t *testing.T) {
 	sec := buildRunSection(t,
 		logs.Record{StreamID: 1, Timestamp: time.Unix(1, 0)},
 		logs.Record{StreamID: 2, Timestamp: time.Unix(2, 0)},

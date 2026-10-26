@@ -81,7 +81,7 @@ func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.
 		tasks = append(tasks, &compactionv2pb.TaskSpec{
 			Tenant:   spec.Tenant,
 			Runs:     s.runsInRange(spec.Runs, split.Range),
-			KeyRange: keyRangeProto(split.Range),
+			KeyRange: &compactionv2pb.KeyRange{Start: sortPrefixProto(split.Range.Start()), End: sortPrefixProto(split.Range.End())},
 		})
 	}
 	return tasks
@@ -94,7 +94,11 @@ func (s logTaskSplitter) runsInRange(runs []*compactionv2pb.RunRef, keyRange v2.
 	for _, run := range runs {
 		var sections []*compactionv2pb.SectionRef
 		for _, section := range run.Sections {
-			if s.sectionInRange(section, keyRange) {
+			// A section without per-key sizes goes to every task.
+			keys := s.keys[sectionKeyOf(section)]
+			if len(keys) == 0 || slices.ContainsFunc(keys, func(key v2.KeySize[logSortPrefix]) bool {
+				return keyRange.Contains(key.Key, compareLogSortPrefix)
+			}) {
 				sections = append(sections, section)
 			}
 		}
@@ -103,17 +107,6 @@ func (s logTaskSplitter) runsInRange(runs []*compactionv2pb.RunRef, keyRange v2.
 		}
 	}
 	return out
-}
-
-func (s logTaskSplitter) sectionInRange(section *compactionv2pb.SectionRef, keyRange v2.KeyRange[logSortPrefix]) bool {
-	keys := s.keys[sectionKeyOf(section)]
-	return len(keys) == 0 || slices.ContainsFunc(keys, func(key v2.KeySize[logSortPrefix]) bool {
-		return keyRange.Contains(key.Key, compareLogSortPrefix)
-	})
-}
-
-func keyRangeProto(r v2.KeyRange[logSortPrefix]) *compactionv2pb.KeyRange {
-	return &compactionv2pb.KeyRange{Start: sortPrefixProto(r.Start()), End: sortPrefixProto(r.End())}
 }
 
 func sortPrefixProto(key logSortPrefix) *compactionv2pb.SortPrefix {

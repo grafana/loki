@@ -69,12 +69,12 @@ func TestResultArtifactFromRecordBatchInvalid(t *testing.T) {
 		null    bool
 		wantErr string
 	}{
-		{name: "missing", wantErr: "missing record"},
-		{name: "empty", schema: ResultRecordSchema, wantErr: "got 0 rows, want 1"},
-		{name: "multiple", schema: ResultRecordSchema, paths: []string{"a", "b"}, wantErr: "got 2 rows, want 1"},
-		{name: "empty path", schema: ResultRecordSchema, paths: []string{""}, wantErr: "empty path"},
-		{name: "null path", schema: ResultRecordSchema, null: true, wantErr: "null path"},
-		{name: "wrong schema", schema: arrow.NewSchema([]arrow.Field{{Name: "path", Type: arrow.PrimitiveTypes.Int64}}, nil), wantErr: "schema does not match"},
+		{name: "returns an error when the record is missing", wantErr: "missing record"},
+		{name: "returns an error for a record with no rows", schema: ResultRecordSchema, wantErr: "got 0 rows, want 1"},
+		{name: "returns an error for a record with two rows", schema: ResultRecordSchema, paths: []string{"a", "b"}, wantErr: "got 2 rows, want 1"},
+		{name: "returns an error for an empty path", schema: ResultRecordSchema, paths: []string{""}, wantErr: "empty path"},
+		{name: "returns an error for a null path", schema: ResultRecordSchema, null: true, wantErr: "null path"},
+		{name: "returns an error for an unknown schema", schema: arrow.NewSchema([]arrow.Field{{Name: "path", Type: arrow.PrimitiveTypes.Int64}}, nil), wantErr: "schema does not match"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mem := memory.NewCheckedAllocator(memory.DefaultAllocator)

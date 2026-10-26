@@ -87,10 +87,9 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		inputBytesTotal int64
 		dups            duplicateCounter
 		inputBytesBatch int64
-		count           int
 		keptRecords     int64
 	)
-	batchRecords := 1000
+	const batchRecords = 1000
 	observeBatch := func() {
 		c.logMergeObserver.ObserveLogMergeInputBytes(inputBytesBatch)
 		inputBytesTotal += inputBytesBatch
@@ -105,17 +104,15 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		}
 		size := rec.UncompressedSize()
 		inputBytesBatch += size
-		count++
-		if count%batchRecords == 0 {
+		keptRecords++
+		if keptRecords%batchRecords == 0 {
 			observeBatch()
 			inputBytesBatch = 0
-			count = 0
 		}
 		dups.observe(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
-		keptRecords++
 	}
 	// Count any remaining records that haven't been added to the metric yet
 	observeBatch()

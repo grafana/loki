@@ -72,16 +72,16 @@ func (a ResultArtifact) ToRecordBatch(mem memory.Allocator) (arrow.RecordBatch, 
 	if err := a.Validate(); err != nil {
 		return nil, err
 	}
-	if a.LogCounts == nil {
-		b := array.NewRecordBuilder(mem, ResultRecordSchema)
-		defer b.Release()
-		b.Field(0).(*array.StringBuilder).Append(a.Path)
-		return b.NewRecordBatch(), nil
+	schema := ResultRecordSchema
+	if a.LogCounts != nil {
+		schema = LogMergeResultRecordSchema
 	}
-
-	b := array.NewRecordBuilder(mem, LogMergeResultRecordSchema)
+	b := array.NewRecordBuilder(mem, schema)
 	defer b.Release()
 	b.Field(0).(*array.StringBuilder).Append(a.Path)
+	if a.LogCounts == nil {
+		return b.NewRecordBatch(), nil
+	}
 	b.Field(1).(*array.Int64Builder).Append(a.LogCounts.KeptRecords)
 
 	paths := b.Field(2).(*array.ListBuilder)
