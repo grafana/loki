@@ -2,7 +2,6 @@ package indexobj
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -54,24 +52,6 @@ func TestTenantLayout(t *testing.T) {
 		require.ErrorIs(t, err, ErrMixedLayouts)
 	})
 
-	t.Run("returns an invalid layout error for a legacy index whose postings rows have no shard buckets", func(t *testing.T) {
-		b, err := NewMergeBuilder(testBuilderConfig, nil, "acme", appLayout)
-		require.NoError(t, err)
-		require.NoError(t, b.AppendStat("acme", stats.Stat{ObjectPath: "logs/obj", SortSchema: "label:app"}))
-		require.NoError(t, b.AppendPostingsLabelEntry("acme", postings.LabelEntry{ObjectPath: "logs/obj", ColumnName: "app", LabelValue: "a"}))
-		obj, closer, err := b.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-
-		_, err = legacyTenantLayout(t.Context(), obj, "acme")
-		require.ErrorIs(t, err, ErrInvalidLayout)
-	})
-
-	t.Run("returns an invalid layout error for a legacy index without postings rows", func(t *testing.T) {
-		_, err := legacyTenantLayout(t.Context(), buildStats(t, "acme", appLayout), "acme")
-		require.ErrorIs(t, err, ErrInvalidLayout)
-	})
-
 	t.Run("returns a mixed layouts error for a legacy index whose stats rows have different sort schemas", func(t *testing.T) {
 		builder := dataobj.NewBuilder(nil)
 		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), appLayout)
@@ -87,24 +67,12 @@ func TestTenantLayout(t *testing.T) {
 		require.ErrorIs(t, err, ErrMixedLayouts)
 	})
 
-	t.Run("returns a mixed layouts error for a legacy index whose postings rows have different shard buckets", func(t *testing.T) {
-		b, err := NewMergeBuilder(testBuilderConfig, nil, "acme", appLayout)
-		require.NoError(t, err)
-		require.NoError(t, b.AppendStat("acme", stats.Stat{ObjectPath: "logs/obj", SortSchema: "label:app"}))
-		for i, buckets := range []int64{32, 16} {
-			require.NoError(t, b.AppendPostingsLabelEntry("acme", postings.LabelEntry{
-				ObjectPath: "logs/obj", ColumnName: "app", LabelValue: fmt.Sprint(i), ShardBuckets: buckets,
-			}))
-		}
-		obj, closer, err := b.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-
-		_, err = legacyTenantLayout(t.Context(), obj, "acme")
-		require.ErrorIs(t, err, ErrMixedLayouts)
+	t.Run("returns an invalid layout error for a legacy index without stats rows", func(t *testing.T) {
+		_, err := legacyTenantLayout(t.Context(), buildStats(t, "other", appLayout), "acme")
+		require.ErrorIs(t, err, ErrInvalidLayout)
 	})
 
-	t.Run("derives the layout of a legacy index from its stats and postings rows", func(t *testing.T) {
+	t.Run("derives the layout of a legacy index from its stats rows and the default shard layout", func(t *testing.T) {
 		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "legacy", "legacy-index.dataobj"))
 		require.NoError(t, err)
 		obj, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))

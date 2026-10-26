@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -18,8 +17,8 @@ import (
 var ErrMixedLayouts = errors.New("index sections do not share one stream layout")
 
 // ErrInvalidLayout reports an index whose stream layout for one tenant cannot
-// be read: a stats section records an invalid layout, or a legacy index lacks
-// the rows that the legacy layout comes from. No retry can fix it.
+// be read: a stats section records an invalid layout, or a legacy index has no
+// stats rows to take the sort schema from. No retry can fix it.
 var ErrInvalidLayout = errors.New("index has no valid stream layout")
 
 // TenantLayout returns the stream layout of the data objects that obj indexes
@@ -27,8 +26,8 @@ var ErrInvalidLayout = errors.New("index has no valid stream layout")
 //
 // Every stats section of tenant must record the same layout. If none records
 // a layout, as in indexes written before stats sections recorded one,
-// TenantLayout derives it from the sort schema of the stats rows and the shard
-// bucket count of the postings rows.
+// TenantLayout derives it from the sort schema of the stats rows, with the
+// default shard layout.
 //
 // ok is false if obj has no stats section for tenant, so the index describes
 // no data object of tenant. TenantLayout returns an error that wraps
@@ -87,25 +86,18 @@ func recordedTenantLayout(ctx context.Context, obj *dataobj.Object, tenant strin
 
 // legacyTenantLayout derives the layout of an index whose stats sections
 // record none. Writers of such indexes recorded the sort schema on every stats
-// row and the shard bucket count on every postings row.
+// row. They always used the default shard layout, because no other shard
+// factor was valid.
 func legacyTenantLayout(ctx context.Context, obj *dataobj.Object, tenant string) (streams.Layout, error) {
 	sortSchema, err := legacySortSchema(ctx, obj, tenant)
 	if err != nil {
 		return streams.Layout{}, err
 	}
-	buckets, err := legacyShardBuckets(ctx, obj, tenant)
-	if err != nil {
-		return streams.Layout{}, err
-	}
-	shardLayout, err := streams.ShardLayoutFromBuckets(buckets)
-	if err != nil {
-		return streams.Layout{}, fmt.Errorf("%w: decoding legacy shard layout: %w", ErrInvalidLayout, err)
-	}
 	var schemaLabels []string
 	if sortSchema != "" {
 		schemaLabels = strings.Split(sortSchema, ",")
 	}
-	return streams.NewLayout(shardLayout, schemaLabels), nil
+	return streams.NewLayout(streams.DefaultShardLayout(), schemaLabels), nil
 }
 
 func legacySortSchema(ctx context.Context, obj *dataobj.Object, tenant string) (string, error) {
@@ -141,53 +133,4 @@ func legacySortSchema(ctx context.Context, obj *dataobj.Object, tenant string) (
 		return "", fmt.Errorf("%w: legacy index has no stats rows for tenant %s", ErrInvalidLayout, tenant)
 	}
 	return sortSchema, nil
-}
-
-func legacyShardBuckets(ctx context.Context, obj *dataobj.Object, tenant string) (uint32, error) {
-	var (
-		buckets int64
-		found   bool
-	)
-	for _, section := range obj.Sections().Filter(postings.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
-		opened, err := postings.Open(ctx, section)
-		if err != nil {
-			return 0, fmt.Errorf("opening postings section: %w", err)
-		}
-		var columns []*postings.Column
-		for _, column := range opened.Columns() {
-			if column.Type == postings.ColumnTypeShardBuckets {
-				columns = append(columns, column)
-			}
-		}
-		if len(columns) != 1 {
-			return 0, fmt.Errorf("%w: legacy postings section has no shard buckets column", ErrInvalidLayout)
-		}
-
-		inner := postings.NewReader(postings.ReaderOptions{Columns: columns})
-		if err := inner.Open(ctx); err != nil {
-			return 0, fmt.Errorf("opening postings reader: %w", err)
-		}
-		err = func() (err error) {
-			reader := postings.NewRowReader(ctx, inner)
-			defer util.CloseAndHandleError(reader, &err)
-			for reader.Next() {
-				row := reader.At()
-				if found && row.ShardBuckets != buckets {
-					return fmt.Errorf("%w: postings rows have %d and %d shard buckets", ErrMixedLayouts, buckets, row.ShardBuckets)
-				}
-				buckets, found = row.ShardBuckets, true
-			}
-			return reader.Err()
-		}()
-		if err != nil {
-			return 0, err
-		}
-	}
-	if !found {
-		return 0, fmt.Errorf("%w: legacy index has no postings rows for tenant %s", ErrInvalidLayout, tenant)
-	}
-	return uint32(buckets), nil
 }
