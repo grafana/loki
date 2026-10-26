@@ -410,6 +410,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Equal(t, window, plan.window)
 		require.Len(t, plan.tasks, 1)
 		require.IsType(t, logMergeTask{}, plan.tasks[0])
+		require.Equal(t, fullKeyRange, plan.tasks[0].(logMergeTask).spec.KeyRange, "an unsplit merge carries the full key range")
 		require.Empty(t, plan.tasks[0].tocEntry().Path, "paths are assigned at execution")
 		require.Equal(t, uint64(200), totalLogInputBytes(plan))
 		require.Empty(t, runner.snapshot())
@@ -469,7 +470,7 @@ func TestPlanLogCompaction(t *testing.T) {
 
 		require.Len(t, plan.tasks, 2)
 		cut := &compactionv2pb.SortPrefix{ShardBucket: 0, SchemaValues: []string{"billing"}}
-		wantRanges := []*compactionv2pb.KeyRange{{End: cut}, {Start: cut}}
+		wantRanges := []*compactionv2pb.KeyRange{{Start: minSortPrefixProto, End: cut}, {Start: cut, End: sortPrefixLimitProto}}
 		for i, task := range plan.tasks {
 			merge, ok := task.(logMergeTask)
 			require.True(t, ok)

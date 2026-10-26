@@ -51,13 +51,16 @@ message TaskSpec {
   reserved 3;
   reserved "sort_schema";
 
-  // key_range limits the task to the streams in the range. A missing
-  // key_range keeps every stream.
+  // key_range limits the task to the streams in the range. Planners always
+  // set it. Workers treat a missing key_range as the full key space, for
+  // tasks from planners that predate key ranges.
   KeyRange key_range = 4 [(gogoproto.jsontag) = "key_range"];
 }
 
-// KeyRange is the half-open range [start, end) of stream sort prefixes. A
-// missing start has no lower bound, and a missing end has no upper bound.
+// KeyRange is the half-open range [start, end) of stream sort prefixes. Both
+// bounds are required, and start must be below end. The full key space starts
+// at (shard_bucket 0, no schema values) and ends at (shard_bucket 65536, no
+// schema values), which is above the prefix of every stream.
 message KeyRange {
   SortPrefix start = 1 [(gogoproto.jsontag) = "start"];
   SortPrefix end = 2 [(gogoproto.jsontag) = "end"];

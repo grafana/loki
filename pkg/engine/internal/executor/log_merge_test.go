@@ -1098,6 +1098,11 @@ func appSortPrefixProto(t *testing.T, app string, sortSchema []string) *compacti
 	return &compactionv2pb.SortPrefix{ShardBucket: appSortPrefix(t, app, sortSchema).ShardBucket, SchemaValues: []string{app}}
 }
 
+var (
+	minSortPrefixProto   = &compactionv2pb.SortPrefix{}
+	sortPrefixLimitProto = &compactionv2pb.SortPrefix{ShardBucket: streams.SortPrefixLimit().ShardBucket}
+)
+
 func TestDoLogObjectMerge_KeyRange(t *testing.T) {
 	ctx := context.Background()
 	const tenant = "T"
@@ -1144,12 +1149,12 @@ func TestDoLogObjectMerge_KeyRange(t *testing.T) {
 		below := mergeRecords(t, dataBucket, &physical.LogMerge{
 			Tenant:   tenant,
 			Runs:     runs,
-			KeyRange: &compactionv2pb.KeyRange{End: appSortPrefixProto(t, cutApp, sortSchema)},
+			KeyRange: &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, cutApp, sortSchema)},
 		})
 		above := mergeRecords(t, dataBucket, &physical.LogMerge{
 			Tenant:   tenant,
 			Runs:     runs,
-			KeyRange: &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, cutApp, sortSchema)},
+			KeyRange: &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, cutApp, sortSchema), End: sortPrefixLimitProto},
 		})
 
 		for k := range below {
@@ -1181,9 +1186,9 @@ func TestDoLogObjectMerge_KeyRange(t *testing.T) {
 			tenant: {{labels: `{app="b"}`, entries: wideLinesAt(day, 4)}},
 		})
 
-		keyRange := &compactionv2pb.KeyRange{End: appSortPrefixProto(t, "b", sortSchema)}
+		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", sortSchema)}
 		if appSortPrefix(t, "a", sortSchema).Compare(appSortPrefix(t, "b", sortSchema)) > 0 {
-			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", sortSchema)}
+			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", sortSchema), End: sortPrefixLimitProto}
 		}
 		got := mergeRecords(t, dataBucket, &physical.LogMerge{
 			Tenant:   tenant,
@@ -1212,9 +1217,11 @@ func TestKeepStreamsInRange(t *testing.T) {
 		lowID, highID = 2, 1
 	}
 
-	t.Run("keeps every stream and returns nil when the range has no bounds", func(t *testing.T) {
+	full := v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: streams.SortPrefixLimit()}
+
+	t.Run("keeps every stream and returns nil for the full range", func(t *testing.T) {
 		byID := newStreams()
-		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{})
+		ids, err := keepStreamsInRange(byID, layout, full)
 		require.NoError(t, err)
 		require.Nil(t, ids)
 		require.Len(t, byID, 2)
@@ -1222,7 +1229,7 @@ func TestKeepStreamsInRange(t *testing.T) {
 
 	t.Run("keeps every stream and returns nil when every stream is in range", func(t *testing.T) {
 		byID := newStreams()
-		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: &low})
+		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: low, End: streams.SortPrefixLimit()})
 		require.NoError(t, err)
 		require.Nil(t, ids)
 		require.Len(t, byID, 2)
@@ -1230,7 +1237,7 @@ func TestKeepStreamsInRange(t *testing.T) {
 
 	t.Run("deletes the streams outside the range and returns the IDs it keeps", func(t *testing.T) {
 		byID := newStreams()
-		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{End: &high})
+		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: high})
 		require.NoError(t, err)
 		require.Equal(t, []int64{lowID}, ids)
 		require.Contains(t, byID, lowID)
@@ -1239,13 +1246,57 @@ func TestKeepStreamsInRange(t *testing.T) {
 
 	t.Run("returns an empty non-nil list when no stream is in range", func(t *testing.T) {
 		byID := newStreams()
-		end := low
-		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{End: &end})
+		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: low})
 		require.NoError(t, err)
 		require.NotNil(t, ids)
 		require.Empty(t, ids)
 		require.Empty(t, byID)
 	})
+}
+
+func TestSortPrefixRange(t *testing.T) {
+	full := v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: streams.SortPrefixLimit()}
+	at := func(bucket uint32, values ...string) *compactionv2pb.SortPrefix {
+		return &compactionv2pb.SortPrefix{ShardBucket: bucket, SchemaValues: values}
+	}
+
+	t.Run("returns the full range when the range is missing", func(t *testing.T) {
+		got, err := sortPrefixRange(nil)
+		require.NoError(t, err)
+		require.Equal(t, full, got)
+	})
+
+	t.Run("returns the range with both bounds", func(t *testing.T) {
+		got, err := sortPrefixRange(&compactionv2pb.KeyRange{Start: at(1, "a"), End: at(2, "b")})
+		require.NoError(t, err)
+		require.Equal(t, v2.KeyRange[streams.SortPrefix]{
+			Start: streams.NewSortPrefix(1, []string{"a"}),
+			End:   streams.NewSortPrefix(2, []string{"b"}),
+		}, got)
+	})
+
+	t.Run("accepts the full range from the coordinator", func(t *testing.T) {
+		got, err := sortPrefixRange(&compactionv2pb.KeyRange{Start: minSortPrefixProto, End: sortPrefixLimitProto})
+		require.NoError(t, err)
+		require.Equal(t, full, got)
+	})
+
+	errorCases := []struct {
+		name string
+		r    *compactionv2pb.KeyRange
+	}{
+		{name: "returns an error when the start is missing", r: &compactionv2pb.KeyRange{End: at(2)}},
+		{name: "returns an error when the end is missing", r: &compactionv2pb.KeyRange{Start: at(1)}},
+		{name: "returns an error when the start equals the end", r: &compactionv2pb.KeyRange{Start: at(1, "a"), End: at(1, "a")}},
+		{name: "returns an error when the start is above the end", r: &compactionv2pb.KeyRange{Start: at(2), End: at(1)}},
+		{name: "returns an error when the end is above the sort prefix limit", r: &compactionv2pb.KeyRange{Start: at(0), End: at(streams.SortPrefixLimit().ShardBucket, "a")}},
+	}
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := sortPrefixRange(tc.r)
+			require.Error(t, err)
+		})
+	}
 }
 
 // streamAgg is a per-output-stream aggregate read back from a compacted object's

@@ -23,8 +23,10 @@ type LogMerge struct {
 	Runs []*compactionv2pb.RunRef
 
 	// KeyRange limits the merge to the streams in the range. Sections in Runs
-	// can hold streams outside it, and the merge drops their records. A nil
-	// KeyRange keeps every stream.
+	// can hold streams outside it, and the merge drops their records.
+	//
+	// The coordinator always sets both bounds. A nil KeyRange holds every
+	// stream, for plans from coordinators that predate key ranges.
 	KeyRange *compactionv2pb.KeyRange
 }
 

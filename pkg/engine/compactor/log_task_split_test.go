@@ -8,6 +8,7 @@ import (
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // splitTestSection returns a section of object path that holds the given
@@ -37,23 +38,30 @@ func sortPrefixOf(service string) *compactionv2pb.SortPrefix {
 	return &compactionv2pb.SortPrefix{ShardBucket: 0, SchemaValues: []string{service}}
 }
 
+var (
+	minSortPrefixProto   = &compactionv2pb.SortPrefix{}
+	sortPrefixLimitProto = &compactionv2pb.SortPrefix{ShardBucket: streams.SortPrefixLimit().ShardBucket}
+	fullKeyRange         = &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: sortPrefixLimitProto}
+)
+
 func TestLogTaskSplitter(t *testing.T) {
 	a := splitTestSection("a", map[string]uint64{"auth": 60, "billing": 30})
 	b := splitTestSection("b", map[string]uint64{"billing": 30, "cart": 40})
 	c := splitTestSection("c", map[string]uint64{"cart": 30, "dns": 70})
 	sections := []v2.Section[logSortPrefix]{a, b, c}
 
-	t.Run("returns the task unchanged when the split is disabled", func(t *testing.T) {
+	t.Run("returns the task with the full key range when the split is disabled", func(t *testing.T) {
 		spec := splitTestSpec([]v2.Section[logSortPrefix]{a, b, c})
 		got := newLogTaskSplitter(log.NewNopLogger(), 0, sections).split(spec)
 		require.Equal(t, []*compactionv2pb.TaskSpec{spec}, got)
+		require.Equal(t, fullKeyRange, got[0].KeyRange)
 	})
 
-	t.Run("returns the task unchanged without a key range when it fits in one task", func(t *testing.T) {
+	t.Run("returns the task with the full key range when it fits in one task", func(t *testing.T) {
 		spec := splitTestSpec([]v2.Section[logSortPrefix]{a, b, c})
 		got := newLogTaskSplitter(log.NewNopLogger(), 1000, sections).split(spec)
 		require.Equal(t, []*compactionv2pb.TaskSpec{spec}, got)
-		require.Nil(t, got[0].KeyRange)
+		require.Equal(t, fullKeyRange, got[0].KeyRange)
 	})
 
 	t.Run("gives a section that crosses a cut to both tasks", func(t *testing.T) {
@@ -67,7 +75,7 @@ func TestLogTaskSplitter(t *testing.T) {
 			{
 				Tenant:   "acme",
 				Runs:     []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{a.Ref}}, {Sections: []*compactionv2pb.SectionRef{b.Ref}}},
-				KeyRange: &compactionv2pb.KeyRange{End: sortPrefixOf("cart")},
+				KeyRange: &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: sortPrefixOf("cart")},
 			},
 			{
 				Tenant:   "acme",
@@ -77,7 +85,7 @@ func TestLogTaskSplitter(t *testing.T) {
 			{
 				Tenant:   "acme",
 				Runs:     []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{c.Ref}}},
-				KeyRange: &compactionv2pb.KeyRange{Start: sortPrefixOf("dns")},
+				KeyRange: &compactionv2pb.KeyRange{Start: sortPrefixOf("dns"), End: sortPrefixLimitProto},
 			},
 		}, got)
 	})

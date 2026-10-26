@@ -223,7 +223,10 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		}
 	}
 	srcBucket := c.dataObjectBucket()
-	keyRange := sortPrefixRange(node.KeyRange)
+	keyRange, err := sortPrefixRange(node.KeyRange)
+	if err != nil {
+		return nil, fmt.Errorf("invalid LogMerge task: %w", err)
+	}
 
 	// Gather the assigned log sections and the tenant's streams section.
 	sources := make([]*logSource, 0, len(paths))
@@ -290,22 +293,30 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 	return sources, nil
 }
 
-// sortPrefixRange returns the stream sort prefixes in r. A nil r holds every
-// prefix.
-func sortPrefixRange(r *compactionv2pb.KeyRange) v2.KeyRange[streams.SortPrefix] {
-	var out v2.KeyRange[streams.SortPrefix]
+// sortPrefixRange returns the stream sort prefixes in r. It returns an error
+// if r misses a bound, if its start is not below its end, or if its end is
+// above [streams.SortPrefixLimit].
+//
+// A nil r holds every prefix. Coordinators that predate key ranges send no
+// range, and their tasks merge every stream.
+func sortPrefixRange(r *compactionv2pb.KeyRange) (v2.KeyRange[streams.SortPrefix], error) {
 	if r == nil {
-		return out
+		return v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: streams.SortPrefixLimit()}, nil
 	}
-	if r.Start != nil {
-		start := streams.NewSortPrefix(r.Start.ShardBucket, r.Start.SchemaValues)
-		out.Start = &start
+	if r.Start == nil || r.End == nil {
+		return v2.KeyRange[streams.SortPrefix]{}, errors.New("key range must have a start and an end")
 	}
-	if r.End != nil {
-		end := streams.NewSortPrefix(r.End.ShardBucket, r.End.SchemaValues)
-		out.End = &end
+	out := v2.KeyRange[streams.SortPrefix]{
+		Start: streams.NewSortPrefix(r.Start.ShardBucket, r.Start.SchemaValues),
+		End:   streams.NewSortPrefix(r.End.ShardBucket, r.End.SchemaValues),
 	}
-	return out
+	if out.Start.Compare(out.End) >= 0 {
+		return v2.KeyRange[streams.SortPrefix]{}, fmt.Errorf("key range start %v is not below its end %v", out.Start, out.End)
+	}
+	if out.End.Compare(streams.SortPrefixLimit()) > 0 {
+		return v2.KeyRange[streams.SortPrefix]{}, fmt.Errorf("key range end %v is above the sort prefix limit", out.End)
+	}
+	return out, nil
 }
 
 // keepStreamsInRange deletes the streams outside keyRange from byID. It
@@ -314,10 +325,6 @@ func sortPrefixRange(r *compactionv2pb.KeyRange) v2.KeyRange[streams.SortPrefix]
 // It derives each sort prefix from the stream labels and layout, as the stats
 // section that the planner cuts by does.
 func keepStreamsInRange(byID map[int64]streams.Stream, layout streams.Layout, keyRange v2.KeyRange[streams.SortPrefix]) ([]int64, error) {
-	if keyRange.Start == nil && keyRange.End == nil {
-		return nil, nil
-	}
-
 	total := len(byID)
 	kept := make([]int64, 0, total)
 	for id, stream := range byID {

@@ -180,8 +180,9 @@ func (m *RunRef) GetSections() []*SectionRef {
 type TaskSpec struct {
 	Tenant string    `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant"`
 	Runs   []*RunRef `protobuf:"bytes,2,rep,name=runs,proto3" json:"runs"`
-	// key_range limits the task to the streams in the range. A missing
-	// key_range keeps every stream.
+	// key_range limits the task to the streams in the range. Planners always
+	// set it. Workers treat a missing key_range as the full key space, for
+	// tasks from planners that predate key ranges.
 	KeyRange *KeyRange `protobuf:"bytes,4,opt,name=key_range,json=keyRange,proto3" json:"key_range"`
 }
 
@@ -238,8 +239,10 @@ func (m *TaskSpec) GetKeyRange() *KeyRange {
 	return nil
 }
 
-// KeyRange is the half-open range [start, end) of stream sort prefixes. A
-// missing start has no lower bound, and a missing end has no upper bound.
+// KeyRange is the half-open range [start, end) of stream sort prefixes. Both
+// bounds are required, and start must be below end. The full key space starts
+// at (shard_bucket 0, no schema values) and ends at (shard_bucket 65536, no
+// schema values), which is above the prefix of every stream.
 type KeyRange struct {
 	Start *SortPrefix `protobuf:"bytes,1,opt,name=start,proto3" json:"start"`
 	End   *SortPrefix `protobuf:"bytes,2,opt,name=end,proto3" json:"end"`

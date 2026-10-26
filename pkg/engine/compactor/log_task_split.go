@@ -8,6 +8,7 @@ import (
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // logTaskSplitter splits LogMerge tasks into tasks of about maxSize bytes of
@@ -32,13 +33,19 @@ func newLogTaskSplitter(logger log.Logger, maxSize uint64, sections []v2.Section
 	return logTaskSplitter{logger: logger, maxSize: maxSize, keys: keys}
 }
 
-// split returns the tasks that together do the work of spec. It returns spec
-// alone if the split is disabled or spec fits in one task.
+// split returns the tasks that together do the work of spec. Every task gets
+// an explicit key range, and the ranges together cover the full key space,
+// from [streams.MinSortPrefix] to [streams.SortPrefixLimit].
 //
-// Each returned task holds only the sections with a sort prefix in its key
-// range. A section without per-key sizes goes to every task.
+// If the split is disabled or spec fits in one task, split returns spec alone
+// with the full range. Otherwise each returned task holds only the sections
+// with a sort prefix in its key range. A section without per-key sizes goes
+// to every task.
 func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.TaskSpec {
+	start := logSortPrefix{prefix: streams.MinSortPrefix()}
+	end := logSortPrefix{prefix: streams.SortPrefixLimit()}
 	if s.maxSize == 0 {
+		spec.KeyRange = keyRangeProto(v2.KeyRange[logSortPrefix]{Start: start, End: end})
 		return []*compactionv2pb.TaskSpec{spec}
 	}
 
@@ -48,8 +55,9 @@ func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.
 			keys = append(keys, s.keys[section]...)
 		}
 	}
-	ranges := v2.SplitKeyRanges(keys, compareLogSortPrefix, s.maxSize)
-	if len(ranges) <= 1 {
+	ranges := v2.SplitKeyRanges(keys, compareLogSortPrefix, s.maxSize, start, end)
+	if len(ranges) == 1 {
+		spec.KeyRange = keyRangeProto(ranges[0])
 		return []*compactionv2pb.TaskSpec{spec}
 	}
 
@@ -67,7 +75,7 @@ func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.
 		tasks = append(tasks, &compactionv2pb.TaskSpec{
 			Tenant:   spec.Tenant,
 			Runs:     s.runsInRange(spec.Runs, keyRange),
-			KeyRange: &compactionv2pb.KeyRange{Start: sortPrefixProto(keyRange.Start), End: sortPrefixProto(keyRange.End)},
+			KeyRange: keyRangeProto(keyRange),
 		})
 	}
 	return tasks
@@ -104,9 +112,10 @@ func (s logTaskSplitter) sectionInRange(section *compactionv2pb.SectionRef, keyR
 	return false
 }
 
-func sortPrefixProto(key *logSortPrefix) *compactionv2pb.SortPrefix {
-	if key == nil {
-		return nil
-	}
+func keyRangeProto(r v2.KeyRange[logSortPrefix]) *compactionv2pb.KeyRange {
+	return &compactionv2pb.KeyRange{Start: sortPrefixProto(r.Start), End: sortPrefixProto(r.End)}
+}
+
+func sortPrefixProto(key logSortPrefix) *compactionv2pb.SortPrefix {
 	return &compactionv2pb.SortPrefix{ShardBucket: key.prefix.ShardBucket, SchemaValues: key.labels}
 }

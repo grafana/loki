@@ -65,7 +65,8 @@ message LogMerge {
   reserved 4;
   reserved "sort_schema";
   // key_range limits the merge to the streams in the range. A missing
-  // key_range keeps every stream.
+  // key_range holds every stream, for plans from coordinators that predate
+  // key ranges.
   proto.KeyRange key_range = 5;
 }
 
