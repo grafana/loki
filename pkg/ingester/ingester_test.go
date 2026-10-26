@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.uber.org/atomic"
+	"go.uber.org/goleak"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -1841,4 +1842,21 @@ func sortLabels(series []logproto.SeriesIdentifier) {
 			return series[i].Labels[j].Key < series[i].Labels[k].Key
 		})
 	}
+}
+
+// Verify the autoforget goroutine dies with the Ingester
+func TestAutoForgetStopsWithIngester(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.AutoForgetUnhealthy = true
+	cfg.LifecyclerConfig.HeartbeatPeriod = time.Millisecond
+
+	// Grab the snapshot after the config, since goleak needs
+	// to ignore the mock KV client subroutine.
+	leaks := goleak.IgnoreCurrent()
+	t.Cleanup(func() { goleak.VerifyNone(t, leaks) })
+
+	// Autoforget routine starts with ingester
+	_, ing := newTestStore(t, cfg, nil)
+	// Stop the ingester (autoforget should die), leaving no new leaks
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
