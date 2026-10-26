@@ -561,6 +561,37 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 	}, nil
 }
 
+// wantsOtherName reports whether a name of an expression other than current that the line has not
+// written yet may still be wanted: the name, or its renamed form when a stream label or structured
+// metadata holds it, passes the hints. The parser stops reading a line when this is false.
+func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current string) bool {
+	// The common query has one expression, so there is no other name.
+	if len(l.expressions) == 1 {
+		return false
+	}
+	hints := lbs.ParserLabelHints()
+	for id := range l.expressions {
+		if id == current {
+			continue
+		}
+		name := id
+		renamed := lbs.BaseHas(id) || lbs.HasInCategory(id, StructuredMetadataLabel)
+		if renamed {
+			name = id + DuplicateSuffix
+		}
+		if _, ok := l.written[name]; ok {
+			continue
+		}
+		if renamed && hints.Extracted(name) {
+			continue
+		}
+		if hints.ShouldExtract(name) {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	// If there are no expressions, extract common labels
 	// and add the suffix "_extracted"
@@ -631,10 +662,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 		if _, ok := l.expressions[key]; ok {
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+				id := key
 				key = key + DuplicateSuffix
 				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 					// Don't extract duplicates if we don't have to. The next key of the line may
-					// still be needed.
+					// still be needed, so stop only when no other name is left to read.
+					if !l.wantsOtherName(lbs, id) {
+						break
+					}
 					continue
 				}
 			}
