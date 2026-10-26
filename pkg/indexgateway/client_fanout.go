@@ -170,6 +170,13 @@ func (s *GatewayClient) doOnIndexOwners(
 	return s.tryAddrs(tenantID, addrs, maxRetries, callback)
 }
 
+// fanOutRequest is the range and fingerprint filter of a request to fan out.
+type fanOutRequest struct {
+	op            string
+	from, through model.Time
+	filter        index.FingerprintFilter
+}
+
 // fanOut splits [from, through] by index table, and each table by the shards
 // of the tenant's index the request's fingerprint filter reads, and calls
 // call for each part on the owners of its (table, shard), with at most
@@ -183,17 +190,16 @@ func (s *GatewayClient) doOnIndexOwners(
 func fanOut[T any](
 	ctx context.Context,
 	s *GatewayClient,
-	op string,
-	from, through model.Time,
-	filter index.FingerprintFilter,
+	req fanOutRequest,
 	call func(ctx context.Context, client logproto.IndexGatewayClient, part requestPart) (T, error),
 ) (results []T, ok bool, err error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, true, errors.Wrap(err, "index gateway client get tenant ID")
 	}
+	op, from, through := req.op, req.from, req.through
 
-	tables, parts := s.splitByTableAndShard(tenantID, from, through, filter)
+	tables, parts := s.splitByTableAndShard(tenantID, from, through, req.filter)
 	if len(parts) == 0 {
 		return nil, false, nil
 	}
