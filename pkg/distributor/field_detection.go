@@ -41,20 +41,9 @@ var (
 
 	errKeyFound = errors.New("key found")
 
-	levelPatterns = []struct {
-		word  string
-		level string
-	}{
-		{"trace", constants.LogLevelTrace},
-		{"debug", constants.LogLevelDebug},
-		{"fatal", constants.LogLevelFatal},
-		{"critical", constants.LogLevelCritical},
-		{"error", constants.LogLevelError},
-		{"err", constants.LogLevelError},
-		{"warning", constants.LogLevelWarn},
-		{"warn", constants.LogLevelWarn},
-		{"info", constants.LogLevelInfo},
-	}
+	// Lookup tables for isLeftWordDelim and isRightWordDelim. Must be ASCII.
+	leftWordDelims  = delimTable(" \t\n[({\"'=|")
+	rightWordDelims = delimTable(" \t\n[](){}:,!\"'=|")
 )
 
 func allowedLabelsForLevel(allowedFields []string) []string {
@@ -381,59 +370,93 @@ func isJSON(line string) bool {
 	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
 }
 
-// isLeftWordBoundary checks the character to the left of a potential keyword match.
-// Colons are intentionally excluded: they indicate a key:value compound (e.g. misc:error)
-// where the keyword is not a standalone log level.
-// Operates on bytes since log lines are expected to be ASCII.
-func isLeftWordBoundary(s string, pos int) bool {
-	if pos < 0 || pos >= len(s) {
-		return true
+// delimTable creates a table for different delims.
+func delimTable(delims string) [256]bool {
+	var tmp [256]bool
+	for i := 0; i < len(delims); i++ {
+		tmp[delims[i]] = true
 	}
-	c := s[pos]
-	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == '(' || c == '{' || c == '"' || c == '\'' || c == '=' || c == '|'
+	return tmp
 }
 
-// isRightWordBoundary checks the character to the right of a potential keyword match.
-// Colons are allowed here to support "level:" prefix patterns (e.g. "debug: message").
-// Equals and quotes are allowed to support key=value and key="value" patterns.
-// Operates on bytes since log lines are expected to be ASCII.
-func isRightWordBoundary(s string, pos int) bool {
-	if pos < 0 || pos >= len(s) {
-		return true
-	}
-	c := s[pos]
-	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == ']' || c == '(' || c == ')' || c == '{' || c == '}' || c == ':' || c == ',' || c == '!' || c == '"' || c == '\'' || c == '=' || c == '|'
+// isLeftWordDelim checks the character to the left of a potential match.
+// Colons are excluded as these indicate a tuple such as misc:error where
+// the level is not a separate word.
+func isLeftWordDelim(c rune) bool {
+	return c >= 0 && c < rune(len(leftWordDelims)) && leftWordDelims[c]
 }
 
-func indexOfBoundedLevel(log, level string) int {
-	offset := 0
-	for {
-		pos := strings.Index(log[offset:], level)
-		if pos == -1 {
-			return -1
+// isRightWordDelim checks the character to the right of a potential match.
+// Colons are allowed here to support "level:" prefix patterns such as
+// "debug: message". Equals and quotes are allowed to match key=value and
+// key="value".
+func isRightWordDelim(c rune) bool {
+	return c >= 0 && c < rune(len(rightWordDelims)) && rightWordDelims[c]
+}
+
+// hasPrefixWithDelim checks if s starts with prefix, ASCII case-insensitve,
+// and that the match consumes all of s or is followed with a delimiter.
+// prefix must be lowercase ASCII letters.
+func hasPrefixWithDelim(s, prefix string) bool {
+	if len(s) < len(prefix) {
+		return false
+	}
+	// or with 0x20 folds ASCII upper case to lower case.
+	for i := 0; i < len(prefix); i++ {
+		if s[i]|0x20 != prefix[i] {
+			return false
 		}
-		abs := offset + pos
-		if isLeftWordBoundary(log, abs-1) && isRightWordBoundary(log, abs+len(level)) {
-			return abs
-		}
-		offset = abs + 1
 	}
+	return len(s) == len(prefix) || isRightWordDelim(rune(s[len(prefix)]))
 }
 
-func detectLevelFromLogLine(log string) string {
-	lowerLog := strings.ToLower(log)
-	idx, bestGuess := len(lowerLog), constants.LogLevelUnknown
-
-	for _, p := range levelPatterns {
-		pos := indexOfBoundedLevel(lowerLog, p.word)
-		if pos == -1 || pos >= idx {
+// detectLevelFromLogLine returns the first level in the log line.
+// It is zero-allocation.
+func detectLevelFromLogLine(s string) string {
+	for i := 0; i < len(s); i++ {
+		// A level must start the line or follow a left-word delimiter.
+		if i > 0 && !isLeftWordDelim(rune(s[i-1])) {
 			continue
 		}
-		idx = pos
-		bestGuess = p.level
-		if idx == 0 {
-			break
+		// In ASCII, an upper-case letter and its lower-case form differ in the
+		// 5th bit (0x20). For example, 'E' is 0x45 and 'e' is 0x65. If we OR an
+		// ASCII uppercase letter with 0x20 it transforms it to lowercase.
+		// This means s[i]|0x20 == 'e' matches both E and e without allocating or
+		// calling strings.ToLower.
+		//
+		// Benchmarks show it is 20% faster to do a switch with an if inside each
+		// case, rather than a sequence of if else if branches for both s[i] and
+		// hasPrefixWithDelim.
+		switch s[i] | 0x20 {
+		case 'c':
+			if hasPrefixWithDelim(s[i:], "critical") {
+				return constants.LogLevelCritical
+			}
+		case 'd':
+			if hasPrefixWithDelim(s[i:], "debug") {
+				return constants.LogLevelDebug
+			}
+		case 'e':
+			if hasPrefixWithDelim(s[i:], "error") || hasPrefixWithDelim(s[i:], "err") {
+				return constants.LogLevelError
+			}
+		case 'f':
+			if hasPrefixWithDelim(s[i:], "fatal") {
+				return constants.LogLevelFatal
+			}
+		case 'i':
+			if hasPrefixWithDelim(s[i:], "info") {
+				return constants.LogLevelInfo
+			}
+		case 't':
+			if hasPrefixWithDelim(s[i:], "trace") {
+				return constants.LogLevelTrace
+			}
+		case 'w':
+			if hasPrefixWithDelim(s[i:], "warning") || hasPrefixWithDelim(s[i:], "warn") {
+				return constants.LogLevelWarn
+			}
 		}
 	}
-	return bestGuess
+	return constants.LogLevelUnknown
 }
