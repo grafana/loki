@@ -3729,6 +3729,17 @@ backoff_config:
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
 
+# After a duration of this time if the client doesn't see any activity it pings
+# the server to see if the transport is still alive. This also determines the
+# socket's TCP_USER_TIMEOUT together with keepalive-timeout.
+# CLI flag: -<prefix>.keepalive-time
+[keepalive_time: <duration> | default = 20s]
+
+# After having pinged for keepalive check, the client waits for a duration of
+# this time and if no activity is seen even after that the connection is closed.
+# CLI flag: -<prefix>.keepalive-timeout
+[keepalive_timeout: <duration> | default = 10s]
+
 cluster_validation:
   # Primary cluster validation label.
   # CLI flag: -<prefix>.cluster-validation.label
@@ -5075,6 +5086,24 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.notify-interval
 [notify_interval: <duration> | default = 0s]
 
+# Size of the internal queue for messages received from other nodes. Increasing
+# this value may help to avoid dropping messages when the node is processing a
+# large number of messages from other nodes.
+# CLI flag: -memberlist.received-messages-queue-size
+[received_messages_queue_size: <int> | default = 1024]
+
+# Size of the per-key internal queue for processing messages received from other
+# nodes. Increasing this value may help to avoid dropping per-key updates when
+# the node is processing many updates for the same key.
+# CLI flag: -memberlist.processed-messages-queue-size
+[processed_messages_queue_size: <int> | default = 1024]
+
+# Compression algorithm used for outgoing messages when
+# -memberlist.compression-enabled is true. Supported values: lzw, snappy.
+# Ignored when -memberlist.compression-enabled is false.
+# CLI flag: -memberlist.compression-algorithm
+[compression_algorithm: <string> | default = "lzw"]
+
 # Gossip address to advertise to other members in the cluster. Used for NAT
 # traversal.
 # CLI flag: -memberlist.advertise-addr
@@ -5180,6 +5209,23 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.watch-prefix-buffer-size
 [watch_prefix_buffer_size: <int> | default = 128]
 
+# Minimum delay between CAS retries after a version mismatch. 0 disables the
+# delay.
+# CLI flag: -memberlist.cas-retry-min-backoff
+[cas_retry_min_backoff: <duration> | default = 0s]
+
+# Maximum delay between CAS retries after a version mismatch. Only takes effect
+# if cas-retry-min-backoff is also set.
+# CLI flag: -memberlist.cas-retry-max-backoff
+[cas_retry_max_backoff: <duration> | default = 10s]
+
+# Cache the serialized form of each key, so that push/pull sync doesn't
+# re-encode entries that haven't changed since the last sync. Reduces CPU and
+# lock contention in large clusters, at the cost of memory proportional to the
+# size of the KV store.
+# CLI flag: -memberlist.local-state-cache-enabled
+[local_state_cache_enabled: <boolean> | default = false]
+
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
@@ -5226,6 +5272,24 @@ zone_aware_routing:
   # Role of this node in the cluster. Valid values: member, bridge.
   # CLI flag: -memberlist.zone-aware-routing.role
   [role: <string> | default = "member"]
+
+propagation_delay_tracker:
+  # Enable the propagation delay tracker to measure gossip propagation delay.
+  # CLI flag: -memberlist.propagation-delay-tracker.enabled
+  [enabled: <boolean> | default = false]
+
+  # How often to publish beacons for propagation tracking.
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-interval
+  [beacon_interval: <duration> | default = 1m]
+
+  # How long a beacon lives before being garbage collected.
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-lifetime
+  [beacon_lifetime: <duration> | default = 10m]
+
+  # Log warning when beacon propagation delay exceeds this threshold. 0 disables
+  # logging.
+  # CLI flag: -memberlist.propagation-delay-tracker.log-beacons-latency-longer-than
+  [log_beacons_latency_longer_than: <duration> | default = 0s]
 ```
 
 ### named_stores_config
@@ -6045,10 +6109,34 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 # CLI flag: -runtime-config.reload-period
 [period: <duration> | default = 10s]
 
-# Comma separated list of yaml files with the configuration that can be updated
-# at runtime. Runtime config files will be merged from left to right.
+# Comma separated list of yaml files or URLs with the configuration that can be
+# updated at runtime. Runtime config files will be merged from left to right. An
+# entry can end with semicolon-separated parameters that say what happens when
+# it cannot be read: ";optional-on-startup" lets the process start without it,
+# but a later failure still fails the reload;
+# ";optional-keep-last-value-on-failure" also lets the process start without it,
+# and a later failure keeps the value the source supplied last. Without a
+# parameter, a source that cannot be read fails the load. Quote the value in a
+# shell, because ";" starts a new command.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
+
+# HTTP client timeout when fetching runtime config from URLs.
+# CLI flag: -runtime-config.http-client-timeout
+[http_client_timeout: <duration> | default = 30s]
+
+http_client_cluster_validation:
+  # Primary cluster validation label.
+  # CLI flag: -runtime-config.http-client-cluster-validation.label
+  [label: <string> | default = ""]
+
+# Disable HTTP keep-alives for the runtime config HTTP client. When enabled,
+# each reload opens a new connection, which prevents long-lived connections from
+# being pinned to a single backend when the runtime config URL is served by
+# multiple replicas behind a connection-level (L4) load balancer, such as a
+# Kubernetes Service.
+# CLI flag: -runtime-config.http-client-disable-keep-alives
+[http_client_disable_keep_alives: <boolean> | default = true]
 ```
 
 ### s3_storage_config
@@ -6237,6 +6325,13 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.tls-min-version
 [tls_min_version: <string> | default = ""]
 
+# Comma-separated list of TLS curve/group preferences for key exchange. Allowed
+# values: CurveP256, CurveP384, CurveP521, X25519, X25519MLKEM768,
+# SecP256r1MLKEM768, SecP384r1MLKEM1024. If blank, the default Go curve
+# preferences are used.
+# CLI flag: -server.tls-curve-preferences
+[tls_curve_preferences: <string> | default = ""]
+
 http_tls_config:
   # Server TLS certificate. This configuration parameter is YAML only.
   [cert: <string> | default = ""]
@@ -6392,6 +6487,16 @@ grpc_tls_config:
 # CLI flag: -server.grpc.recv-buffer-pools-enabled
 [grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
 
+# Size of the read buffer for each gRPC connection (bytes). A smaller buffer may
+# reduce memory usage but may lead to more system calls.
+# CLI flag: -server.grpc.read-buffer-size-bytes
+[grpc_server_read_buffer_size: <int> | default = 32768]
+
+# Size of the write buffer for each gRPC connection (bytes). A smaller buffer
+# may reduce memory usage but may lead to more system calls.
+# CLI flag: -server.grpc.write-buffer-size-bytes
+[grpc_server_write_buffer_size: <int> | default = 32768]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -6499,6 +6604,13 @@ cluster_validation:
 # using Open-Telemetry tracing.
 # CLI flag: -server.create-new-traces
 [create_new_traces: <boolean> | default = false]
+
+# Specifies if this handler should emit start timestamps for counters,
+# histograms and summaries over OpenMetrics 1.0, which are defined as extra
+# series with the same name and "_created" suffix. Only applies if
+# -server.register-instrumentation is set to true.
+# CLI flag: -server.enable-open-metrics-text-created-samples
+[enable_open_metrics_text_created_samples: <boolean> | default = false]
 ```
 
 ### storage_config

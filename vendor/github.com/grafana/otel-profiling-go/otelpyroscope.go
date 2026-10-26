@@ -12,6 +12,7 @@ import (
 const (
 	spanIDLabelName   = "span_id"
 	spanNameLabelName = "span_name"
+	traceIDLabelName  = "trace_id"
 )
 
 var profileIDSpanAttributeKey = attribute.Key("pyroscope.profile.id")
@@ -24,21 +25,20 @@ type tracerProvider struct {
 }
 
 type config struct {
-	spanNameScope scope
-	spanIDScope   scope
+	spanNameScope Scope
+	spanIDScope   Scope
 }
 
 type Option func(*tracerProvider)
 
-// NewTracerProvider creates a new tracer provider that annotates pprof
-// samples with span_id label. This allows to establish a relationship
-// between pprof profiles and reported tracing spans.
+// NewTracerProvider returns a TracerProvider that annotates pprof samples
+// with span_id and trace_id labels for trace↔profile correlation.
 func NewTracerProvider(tp trace.TracerProvider, options ...Option) trace.TracerProvider {
 	p := tracerProvider{
 		tp: tp,
 		config: config{
-			spanNameScope: scopeRootSpan,
-			spanIDScope:   scopeRootSpan,
+			spanNameScope: ScopeRootSpan,
+			spanIDScope:   ScopeRootSpan,
 		},
 	}
 	for _, o := range options {
@@ -60,9 +60,10 @@ type profileTracer struct {
 func (w *profileTracer) Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	ctx, span := w.tr.Start(ctx, spanName, opts...)
 	spanCtx := span.SpanContext()
-	addSpanIDLabel := w.p.config.spanIDScope != scopeNone && spanCtx.IsSampled()
-	addSpanNameLabel := w.p.config.spanNameScope != scopeNone && spanName != ""
-	if !(addSpanIDLabel || addSpanNameLabel) {
+	addSpanIDLabel := w.p.config.spanIDScope != ScopeNone && spanCtx.IsSampled()
+	addSpanNameLabel := w.p.config.spanNameScope != ScopeNone && spanName != ""
+	addTraceIDLabel := spanCtx.IsSampled()
+	if !(addSpanIDLabel || addSpanNameLabel || addTraceIDLabel) {
 		return ctx, span
 	}
 
@@ -74,7 +75,8 @@ func (w *profileTracer) Start(ctx context.Context, spanName string, opts ...trac
 	}
 
 	rs, ok := rootSpanFromContext(ctx)
-	if !ok {
+	isLocalTraceEntry := !ok
+	if isLocalTraceEntry {
 		// This is the first local span.
 		rs.id = spanID
 		rs.name = spanName
@@ -85,22 +87,26 @@ func (w *profileTracer) Start(ctx context.Context, spanName string, opts ...trac
 	// only if they _can_ have profiles. Presence of the attribute
 	// does not indicate the fact that we actually have collected
 	// any samples for the span.
-	if (w.p.config.spanIDScope == scopeRootSpan && spanID == rs.id) ||
-		w.p.config.spanIDScope == scopeAllSpans {
+	if (w.p.config.spanIDScope == ScopeRootSpan && spanID == rs.id) ||
+		w.p.config.spanIDScope == ScopeAllSpans {
 		span.SetAttributes(profileIDSpanAttributeKey.String(spanID))
 	}
-	labels := make([]string, 0, 4)
+	labels := make([]string, 0, 6)
 	if addSpanNameLabel {
-		if w.p.config.spanNameScope == scopeRootSpan {
+		if w.p.config.spanNameScope == ScopeRootSpan {
 			spanName = rs.name
 		}
 		labels = append(labels, spanNameLabelName, spanName)
 	}
 	if addSpanIDLabel {
-		if w.p.config.spanIDScope == scopeRootSpan {
+		if w.p.config.spanIDScope == ScopeRootSpan {
 			spanID = rs.id
 		}
 		labels = append(labels, spanIDLabelName, spanID)
+	}
+	// Set on the local root only; descendants inherit via pprof label merge.
+	if addTraceIDLabel && isLocalTraceEntry {
+		labels = append(labels, traceIDLabelName, spanCtx.TraceID().String())
 	}
 
 	ctx = pprof.WithLabels(ctx, pprof.Labels(labels...))
@@ -135,36 +141,34 @@ func rootSpanFromContext(ctx context.Context) (rootSpan, bool) {
 	return s, ok
 }
 
-// TODO(kolesnikovae): Make options public.
-
-// withSpanNameLabelScope specifies whether the current span name should be
+// WithSpanNameLabelScope specifies whether the current span name should be
 // added to the profile labels. If the name is dynamic, i.e. includes
 // span-specific identifiers, such as URL or SQL query, this may significantly
 // deteriorate performance.
 //
 // By default, only the local root span name is recorded. Samples collected
 // during the child span execution will be included into the root span profile.
-func withSpanNameLabelScope(scope scope) Option {
+func WithSpanNameLabelScope(s Scope) Option {
 	return func(tp *tracerProvider) {
-		tp.config.spanNameScope = scope
+		tp.config.spanNameScope = s
 	}
 }
 
-// withSpanIDScope specifies whether the current span ID should be added to
+// WithSpanIDLabelScope specifies whether the current span ID should be added to
 // the profile labels.
 //
 // By default, only the local root span ID is recorded. Samples collected
 // during the child span execution will be included into the root span profile.
-func withSpanIDScope(scope scope) Option {
+func WithSpanIDLabelScope(s Scope) Option {
 	return func(tp *tracerProvider) {
-		tp.config.spanNameScope = scope
+		tp.config.spanIDScope = s
 	}
 }
 
-type scope uint
+type Scope uint
 
 const (
-	scopeNone = iota
-	scopeRootSpan
-	scopeAllSpans
+	ScopeNone Scope = iota
+	ScopeRootSpan
+	ScopeAllSpans
 )

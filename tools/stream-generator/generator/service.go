@@ -80,7 +80,7 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*Generator, 
 		ring.GetPartitionRingCodec(),
 	}
 
-	provider := dns.NewProvider(logger, reg, dns.GolangResolverType)
+	provider := dns.NewProvider(dns.GolangResolverType, 0, logger, reg)
 	cfg.MemberlistKV.AdvertiseAddr, err = netutil.GetFirstAddressOf(cfg.LifecyclerConfig.InfNames, logger, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instance address: %w", err)
