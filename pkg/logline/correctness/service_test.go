@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logline/verification"
 )
 
 func TestRunVerificationCycle_Correct(t *testing.T) {
@@ -215,6 +216,62 @@ func TestBuildMetricQuery(t *testing.T) {
 			require.Empty(t, literals)
 		})
 	}
+}
+
+func TestQueryResponseSamples(t *testing.T) {
+	first := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	second := first.Add(time.Minute)
+	firstMs := model.TimeFromUnixNano(first.UnixNano())
+	secondMs := model.TimeFromUnixNano(second.UnixNano())
+
+	matrix := &loghttp.QueryResponse{
+		Status: string(loghttp.QueryStatusSuccess),
+		Data: loghttp.QueryResponseData{
+			ResultType: loghttp.ResultTypeMatrix,
+			Result: loghttp.Matrix{
+				{Values: []model.SamplePair{{Timestamp: firstMs, Value: 1}}},
+				{Values: []model.SamplePair{{Timestamp: secondMs, Value: 2}}},
+			},
+		},
+	}
+	got, err := queryResponseSamples(matrix)
+	require.NoError(t, err)
+	require.Equal(t, []verification.MetricSample{
+		{Time: first, Value: 1},
+		{Time: second, Value: 2},
+	}, got)
+
+	vector := &loghttp.QueryResponse{
+		Status: string(loghttp.QueryStatusSuccess),
+		Data: loghttp.QueryResponseData{
+			ResultType: loghttp.ResultTypeVector,
+			Result: loghttp.Vector{
+				{Timestamp: firstMs, Value: 3},
+			},
+		},
+	}
+	got, err = queryResponseSamples(vector)
+	require.NoError(t, err)
+	require.Equal(t, []verification.MetricSample{{Time: first, Value: 3}}, got)
+
+	empty, err := queryResponseSamples(&loghttp.QueryResponse{Status: string(loghttp.QueryStatusSuccess)})
+	require.NoError(t, err)
+	require.Empty(t, empty)
+
+	_, err = queryResponseSamples(nil)
+	require.Error(t, err)
+
+	_, err = queryResponseSamples(&loghttp.QueryResponse{Status: "error"})
+	require.Error(t, err)
+
+	_, err = queryResponseSamples(&loghttp.QueryResponse{
+		Status: string(loghttp.QueryStatusSuccess),
+		Data: loghttp.QueryResponseData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     loghttp.Streams{},
+		},
+	})
+	require.Error(t, err)
 }
 
 func TestPickJSONField(t *testing.T) {

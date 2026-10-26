@@ -30,6 +30,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logline/verification"
 )
 
 const (
@@ -706,6 +707,47 @@ func queryResponseEntries(resp *loghttp.QueryResponse) ([]queryEntry, error) {
 		}
 	}
 	return entries, nil
+}
+
+// queryResponseSamples reads a metric query response. A range query is a matrix
+// and an instant query is a vector. Each value becomes one sample.
+func queryResponseSamples(resp *loghttp.QueryResponse) ([]verification.MetricSample, error) {
+	if resp == nil {
+		return nil, fmt.Errorf("nil query response")
+	}
+	if resp.Status != string(loghttp.QueryStatusSuccess) {
+		return nil, fmt.Errorf("loki query status %q", resp.Status)
+	}
+	if resp.Data.Result == nil {
+		return []verification.MetricSample{}, nil
+	}
+
+	switch result := resp.Data.Result.(type) {
+	// Range query
+	case loghttp.Matrix:
+		samples := make([]verification.MetricSample, 0)
+		for _, stream := range result {
+			for _, pair := range stream.Values {
+				samples = append(samples, verification.MetricSample{
+					Time:  pair.Timestamp.Time().UTC(),
+					Value: float64(pair.Value),
+				})
+			}
+		}
+		return samples, nil
+	// Instant query
+	case loghttp.Vector:
+		samples := make([]verification.MetricSample, 0, len(result))
+		for _, sample := range result {
+			samples = append(samples, verification.MetricSample{
+				Time:  sample.Timestamp.Time().UTC(),
+				Value: float64(sample.Value),
+			})
+		}
+		return samples, nil
+	default:
+		return nil, fmt.Errorf("unexpected Loki query result type: %T", resp.Data.Result)
+	}
 }
 
 func newLokiEndpointClients(cfg Config) []lokiEndpointClient {
