@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -65,6 +66,13 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
+	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
+	// across all parsers for this HTTP request.
+	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
+
+	presumedAgentIP := extractPresumedAgentIP(r)
+	maxPushSize := d.validator.MaxPushSize(tenantID)
+
 	// This check happens after the circuit breaker so the circuit breaker can count occurences of
 	// the error.
 	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
@@ -74,14 +82,29 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
-	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
-	// across all parsers for this HTTP request.
-	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
+	acquireCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
-	presumedAgentIP := extractPresumedAgentIP(r)
-	maxPushSize := d.validator.MaxPushSize(tenantID)
+	if err = d.decodeSema.Acquire(acquireCtx, 1); err != nil {
+		errorWriter(w, errServiceUnavailableMaxLoad.Error(), http.StatusServiceUnavailable, logger)
+		return
+	}
+	releaseOnce := sync.OnceFunc(func() {
+		d.decodeSema.Release(1)
+	})
+	defer releaseOnce() // incase of panic
+
+	// Do a second check once we have the decode sema.
+	if maxInflightBytes > 0 && d.inflightBytes.Load() >= maxInflightBytes {
+		releaseOnce()
+		circuitBreakerErr = errServiceUnavailableMaxLoad
+		errorWriter(w, circuitBreakerErr.Error(), http.StatusServiceUnavailable, logger)
+		return
+	}
+
 	req, pushStats, err := loghttppush.ParseRequest(logger, tenantID, maxPushSize, int64(maxPushSize), r, d.validator.Limits, d.tenantConfigs,
 		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
+	releaseOnce() // release early
 	if err != nil {
 		switch {
 		case errors.Is(err, loghttppush.ErrRequestBodyTooLarge):

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	goruntime "runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -33,6 +34,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
+	"golang.org/x/sync/semaphore"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -244,6 +246,7 @@ type Distributor struct {
 
 	inflightBytes  atomic.Int64
 	circuitBreaker circuitBreaker
+	decodeSema     *semaphore.Weighted
 }
 
 // New a distributor creates.
@@ -352,6 +355,7 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
+		decodeSema:            semaphore.NewWeighted(int64(goruntime.GOMAXPROCS(0))),
 	}
 
 	if cfg.CircuitBreaker.Enabled {
