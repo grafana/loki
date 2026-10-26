@@ -253,6 +253,10 @@ type Ingester struct {
 	instances    map[string]*instance
 	readonly     bool
 
+	// indexFlushMtx allows one flush_index request (/flush or /flush/tenant) at a
+	// time; concurrent ones are rejected rather than queued (see tryLockIndexFlush).
+	indexFlushMtx sync.Mutex
+
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 

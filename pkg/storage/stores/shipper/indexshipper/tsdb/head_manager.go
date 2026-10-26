@@ -252,13 +252,27 @@ var errHeadManagerStopped = errors.New("head manager is stopping")
 // The freshly built TSDBs are handed to the index shipper but are not yet
 // uploaded to object storage; callers wanting them durable in object storage
 // must also force an upload (see (*store).FlushIndexes).
-func (m *HeadManager) Flush() error {
-	resp := make(chan error, 1)
+//
+// If ctx is done before the loop picks up the request, nothing is flushed. If it
+// is done while the flush is running, Flush returns ctx.Err() but the flush still
+// completes on the loop goroutine.
+func (m *HeadManager) Flush(ctx context.Context) error {
+	resp := make(chan error, 1) // buffered so the loop never blocks on an abandoned request
+	// initiate the flush
 	select {
 	case m.flush <- resp:
-		return <-resp
 	case <-m.cancel:
 		return errHeadManagerStopped
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// wait for completion
+	select {
+	case err := <-resp:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -432,6 +446,15 @@ func managerPerTenantDir(parent string) string {
 }
 
 func (m *HeadManager) Rotate(t time.Time) (err error) {
+	// A head's WAL dir and its TSDB's name are both its start at one-second
+	// resolution. Forced rotations (/flush/tenant) can land in the same second as
+	// the previous rotation, which would reuse both. This simple check
+	// prevents that by bumping the new head's start to one second after the previous
+	// head's start if they would otherwise collide.
+	if m.activeHeads != nil && t.Unix() <= m.activeHeads.start.Unix() {
+		t = time.Unix(m.activeHeads.start.Unix()+1, 0)
+	}
+
 	// create new wal
 	nextWALPath := walPath(m.name, m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
