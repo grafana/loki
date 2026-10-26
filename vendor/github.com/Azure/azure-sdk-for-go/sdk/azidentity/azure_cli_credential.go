@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -57,7 +54,7 @@ func NewAzureCLICredential(options *AzureCLICredentialOptions) (*AzureCLICredent
 		cp = *options
 	}
 	for _, r := range cp.Subscription {
-		if !(alphanumeric(r) || r == '-' || r == '_' || r == ' ' || r == '.') {
+		if !alphanumeric(r) && r != '-' && r != '_' && r != ' ' && r != '.' {
 			return nil, fmt.Errorf(
 				"%s: Subscription %q contains invalid characters. If this is the name of a subscription, use its ID instead",
 				credNameAzureCLI,

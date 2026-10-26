@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-package runtime
+package transport
 
 import (
 	"crypto/tls"
@@ -12,7 +12,8 @@ import (
 	"golang.org/x/net/http2"
 )
 
-var defaultHTTPClient *http.Client
+// DefaultHTTPClient is the default configured http.Client used by all clients.
+var DefaultHTTPClient *http.Client
 
 func init() {
 	defaultTransport := &http.Transport{
@@ -39,7 +40,7 @@ func init() {
 		// if there's no response to the ping within the timeout, the connection will be closed
 		http2Transport.PingTimeout = 5 * time.Second
 	}
-	defaultHTTPClient = &http.Client{
+	DefaultHTTPClient = &http.Client{
 		Transport: defaultTransport,
 	}
 }

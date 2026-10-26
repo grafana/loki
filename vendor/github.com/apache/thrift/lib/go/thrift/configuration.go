@@ -110,6 +110,15 @@ type TConfiguration struct {
 	// MaxMessageSize will be used instead.
 	MaxFrameSize int32
 
+	// The maximum number of elements in a single list, set or map read by a
+	// TProtocol. THeaderTransport holds the transform count of a frame header
+	// to it as well.
+	//
+	// If <= 0, the element count is not limited on its own. It is still
+	// bounded by MaxMessageSize and, where the transport knows it, by the
+	// number of bytes left to read.
+	MaxContainerSize int32
+
 	// Connect and socket timeouts to be used by TSocket and TSSLSocket.
 	//
 	// 0 means no timeout.
@@ -172,6 +181,18 @@ func (tc *TConfiguration) GetMaxFrameSize() int32 {
 		return maxMessageSize
 	}
 	return maxFrameSize
+}
+
+// GetMaxContainerSize returns the max number of elements in a single list, set
+// or map an implementation should follow.
+//
+// It's nil-safe. math.MaxInt32, which leaves the element count without a limit
+// of its own, will be returned if tc is nil or tc.MaxContainerSize is <= 0.
+func (tc *TConfiguration) GetMaxContainerSize() int32 {
+	if tc == nil || tc.MaxContainerSize <= 0 {
+		return math.MaxInt32
+	}
+	return tc.MaxContainerSize
 }
 
 // GetConnectTimeout returns the connect timeout should be used by TSocket and
@@ -337,8 +358,15 @@ func checkSizeForProtocol(size int32, cfg *TConfiguration) error {
 // container with the given wire-supplied element count, where each element
 // occupies at least minElemSize bytes. The count is range-checked and the
 // product is computed in 64-bit arithmetic, so the value handed to
-// checkSizeForProtocol always stays within int32 range.
-func checkContainerSizeForProtocol(size int64, minElemSize int32, cfg *TConfiguration) error {
+// checkSizeForProtocol always stays within int32 range. A count above
+// cfg.GetMaxContainerSize() is rejected as well.
+//
+// remaining is the transport's ReadSizeProvider.RemainingBytes value. When the
+// transport knows how much is left, a count whose elements cannot fit in that
+// many bytes is rejected here, before the caller uses it to size an allocation.
+// This mirrors the checkReadBytesAvailable step the Java and C++ protocols
+// perform on the same three headers.
+func checkContainerSizeForProtocol(size int64, minElemSize int32, remaining uint64, cfg *TConfiguration) error {
 	if size < 0 {
 		return NewTProtocolExceptionWithType(
 			NEGATIVE_SIZE,
@@ -351,11 +379,26 @@ func checkContainerSizeForProtocol(size int64, minElemSize int32, cfg *TConfigur
 			fmt.Errorf("size exceeded max allowed: %d", size),
 		)
 	}
+	if limit := cfg.GetMaxContainerSize(); size > int64(limit) {
+		return NewTProtocolExceptionWithType(
+			SIZE_LIMIT,
+			fmt.Errorf("container of %d elements exceeds the limit of %d", size, limit),
+		)
+	}
 	totalMinSize := size * int64(minElemSize)
 	if totalMinSize > math.MaxInt32 {
 		return NewTProtocolExceptionWithType(
 			SIZE_LIMIT,
 			fmt.Errorf("size exceeded max allowed: %d", totalMinSize),
+		)
+	}
+	if remaining != UnknownRemainingBytes && uint64(totalMinSize) > remaining {
+		return NewTProtocolExceptionWithType(
+			SIZE_LIMIT,
+			fmt.Errorf(
+				"container of %d elements needs at least %d bytes, only %d remaining",
+				size, totalMinSize, remaining,
+			),
 		)
 	}
 	return checkSizeForProtocol(int32(totalMinSize), cfg)
