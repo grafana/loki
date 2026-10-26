@@ -134,7 +134,9 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 		return 0, storage.ErrNotFound
 	}
 	if lbls != nil {
-		lbls.CopyFrom(s.ls)
+		// Share the series' labels, which are never modified, rather than CopyFrom: under
+		// slicelabels that reuses the caller's slice, which breaks the SeriesScan ownership rule.
+		*lbls = s.ls
 	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
@@ -160,7 +162,7 @@ func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64,
 		return 0, index.ChunkStats{}, storage.ErrNotFound
 	}
 	if len(by) == 0 {
-		lbls.CopyFrom(s.ls)
+		*lbls = s.ls // see Series
 	} else {
 		builder := labelpool.Get()
 
