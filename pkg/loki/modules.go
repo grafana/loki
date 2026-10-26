@@ -172,6 +172,18 @@ const (
 	bloomGatewayRingKey = "bloom-gateway"
 )
 
+// Builds a slice of services to wait for, except the other server,
+// as they would deadlock and wait on each other.
+func (t *Loki) serverServicesToWaitFor() []services.Service {
+	svs := []services.Service(nil)
+	for m, s := range t.serviceMap {
+		if m != Server && m != InternalServer {
+			svs = append(svs, s)
+		}
+	}
+	return svs
+}
+
 func (t *Loki) initServer() (services.Service, error) {
 	prometheus.MustRegister(version.NewCollector(constants.Loki))
 	// unregister default go collector
@@ -192,18 +204,7 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server = serv
 
-	servicesToWaitFor := func() []services.Service {
-		svs := []services.Service(nil)
-		for m, s := range t.serviceMap {
-			// Server should not wait for itself.
-			if m != Server {
-				svs = append(svs, s)
-			}
-		}
-		return svs
-	}
-
-	s := NewServerService(t.Server, servicesToWaitFor)
+	s := NewServerService(t.Server, t.serverServicesToWaitFor)
 
 	// Best effort to propagate the org ID from the start.
 	h := func(next http.Handler) http.Handler {
@@ -252,18 +253,7 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 
 	t.InternalServer = serv
 
-	servicesToWaitFor := func() []services.Service {
-		svs := []services.Service(nil)
-		for m, s := range t.serviceMap {
-			// Server should not wait for itself.
-			if m != InternalServer {
-				svs = append(svs, s)
-			}
-		}
-		return svs
-	}
-
-	s := NewServerService(t.InternalServer, servicesToWaitFor)
+	s := NewServerService(t.InternalServer, t.serverServicesToWaitFor)
 
 	return s, nil
 }
