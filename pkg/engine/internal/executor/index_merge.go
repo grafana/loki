@@ -175,7 +175,8 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
 				group.stats = append(group.stats, sec)
-				// default: skip silently (streams/pointers/indexPointers etc.)
+			default:
+				return nil, fmt.Errorf("merging source index %q: unknown section %q", path, sec)
 			}
 		}
 		// Only stats sections record a layout, so an object without them does
