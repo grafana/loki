@@ -1,6 +1,7 @@
 package querytee
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestLoadLokiLimits(t *testing.T) {
@@ -65,6 +68,75 @@ configs:
 		require.Equal(t, startTime(2026, time.March), lokiLimits.Overrides.DataObjQueryStartTime("tenant-b"))
 	})
 
+	t.Run("resolves the stream-first limit from the flag, the config file and the overrides", func(t *testing.T) {
+		const unrelatedLimit = "dataobj_query_start_time: \"2026-01-01\""
+
+		testCases := []struct {
+			name         string
+			flagEnabled  bool
+			configYAML   string
+			runtimeYAML  string
+			wantByTenant map[string]bool
+		}{
+			{
+				name:         "disables the limit for every tenant when neither the flag nor a file sets it",
+				flagEnabled:  false,
+				configYAML:   "limits_config:\n  " + unrelatedLimit + "\n",
+				runtimeYAML:  "overrides:\n  tenant-a:\n    " + unrelatedLimit + "\n",
+				wantByTenant: map[string]bool{"other": false, "tenant-a": false},
+			},
+			{
+				name:         "enables the limit for every tenant when only the flag sets it",
+				flagEnabled:  true,
+				configYAML:   "limits_config:\n  " + unrelatedLimit + "\n",
+				runtimeYAML:  "overrides:\n  tenant-a:\n    " + unrelatedLimit + "\n",
+				wantByTenant: map[string]bool{"other": true, "tenant-a": true},
+			},
+			{
+				name:         "prefers the limits_config value over the flag",
+				flagEnabled:  true,
+				configYAML:   "limits_config:\n  stream_first_execution_enabled: false\n",
+				runtimeYAML:  "overrides:\n  tenant-a:\n    " + unrelatedLimit + "\n",
+				wantByTenant: map[string]bool{"other": false, "tenant-a": false},
+			},
+			{
+				name:         "prefers the tenant override over a flag that enables the limit",
+				flagEnabled:  true,
+				configYAML:   "limits_config:\n  " + unrelatedLimit + "\n",
+				runtimeYAML:  "overrides:\n  tenant-a:\n    stream_first_execution_enabled: false\n",
+				wantByTenant: map[string]bool{"other": true, "tenant-a": false},
+			},
+			{
+				name:         "prefers the tenant override over a flag that disables the limit",
+				flagEnabled:  false,
+				configYAML:   "limits_config:\n  " + unrelatedLimit + "\n",
+				runtimeYAML:  "overrides:\n  tenant-a:\n    stream_first_execution_enabled: true\n",
+				wantByTenant: map[string]bool{"other": false, "tenant-a": true},
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				dir := t.TempDir()
+				writeFile(t, filepath.Join(dir, "config.yaml"), tc.configYAML)
+				writeFile(t, filepath.Join(dir, "runtime.yaml"), tc.runtimeYAML)
+
+				cfg := LimitsConfig{
+					ConfigFile:                  filepath.Join(dir, "config.yaml"),
+					RuntimeConfig:               runtimeconfig.Config{LoadPath: flagext.StringSliceCSV{filepath.Join(dir, "runtime.yaml")}, ReloadPeriod: time.Minute},
+					StreamFirstExecutionEnabled: tc.flagEnabled,
+				}
+				lokiLimits, err := LoadLokiLimits(t.Context(), cfg, log.NewNopLogger(), prometheus.NewRegistry())
+				require.NoError(t, err)
+
+				for tenant, want := range tc.wantByTenant {
+					require.Equal(t, want, lokiLimits.Overrides.StreamFirstExecutionEnabled(tenant), tenant)
+				}
+				require.NoError(t, lokiLimits.Stop(t.Context()))
+			})
+		}
+	})
+
 	t.Run("applies a changed override after the runtime config reloads", func(t *testing.T) {
 		dir := t.TempDir()
 		runtimePath := filepath.Join(dir, "runtime.yaml")
@@ -107,6 +179,46 @@ configs:
 		_, err := LoadLokiLimits(t.Context(), LimitsConfig{ConfigFile: path}, log.NewNopLogger(), prometheus.NewRegistry())
 
 		require.EqualError(t, err, fmt.Sprintf("reading the Loki config file %[1]s: open %[1]s: no such file or directory", path))
+	})
+}
+
+func TestLimitsConfig_RegisterFlags(t *testing.T) {
+	const streamFirstFlag = "querier.stream-first-execution-enabled"
+
+	t.Run("registers the stream-first flag with the default and description of Loki", func(t *testing.T) {
+		var lokiLimits validation.Limits
+		lokiFlags := flag.NewFlagSet("loki", flag.ContinueOnError)
+		lokiLimits.RegisterFlags(lokiFlags)
+
+		var cfg LimitsConfig
+		flags := flag.NewFlagSet("querytee", flag.ContinueOnError)
+		cfg.RegisterFlags(flags)
+
+		got := flags.Lookup(streamFirstFlag)
+		require.NotNil(t, got)
+		want := lokiFlags.Lookup(streamFirstFlag)
+		require.Equal(t, want.DefValue, got.DefValue)
+		require.Equal(t, want.Usage, got.Usage)
+	})
+
+	t.Run("keeps stream-first disabled when the flag is not set", func(t *testing.T) {
+		var cfg LimitsConfig
+		flags := flag.NewFlagSet("querytee", flag.ContinueOnError)
+		cfg.RegisterFlags(flags)
+
+		require.NoError(t, flags.Parse(nil))
+
+		require.False(t, cfg.StreamFirstExecutionEnabled)
+	})
+
+	t.Run("enables stream-first when the flag is set", func(t *testing.T) {
+		var cfg LimitsConfig
+		flags := flag.NewFlagSet("querytee", flag.ContinueOnError)
+		cfg.RegisterFlags(flags)
+
+		require.NoError(t, flags.Parse([]string{"-" + streamFirstFlag + "=true"}))
+
+		require.True(t, cfg.StreamFirstExecutionEnabled)
 	})
 }
 

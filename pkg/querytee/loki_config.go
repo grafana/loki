@@ -23,10 +23,14 @@ import (
 // LimitsConfig configures how querytee loads the limits of a Loki cluster. The flag names match the
 // ones in Loki. The config file is read for the limits_config block only. The runtime config is read
 // for the overrides only. When neither file is set, querytee loads no limits.
+//
+// StreamFirstExecutionEnabled is the default of the stream_first_execution_enabled limit. A value in
+// the limits_config block or in a tenant override takes precedence over it.
 type LimitsConfig struct {
-	ConfigFile    string
-	ExpandEnv     bool
-	RuntimeConfig runtimeconfig.Config
+	ConfigFile                  string
+	ExpandEnv                   bool
+	RuntimeConfig               runtimeconfig.Config
+	StreamFirstExecutionEnabled bool
 }
 
 // RegisterFlags registers the flags of the limits config.
@@ -34,6 +38,7 @@ func (cfg *LimitsConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ConfigFile, "config.file", "", "Path of a Loki config file. querytee reads only the limits_config block.")
 	f.BoolVar(&cfg.ExpandEnv, "config.expand-env", false, "Expand ${var} or $var in the Loki config file with the value of the environment variable.")
 	cfg.RuntimeConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.StreamFirstExecutionEnabled, "querier.stream-first-execution-enabled", false, "When enabled, Loki evaluates eligible metric queries in stream-first order, which reads samples one stream at a time instead of in timestamp order. The query-frontend and the querier read this setting.")
 }
 
 // lokiConfig is the part of a Loki config file that querytee reads.
@@ -67,6 +72,11 @@ func LoadLokiLimits(ctx context.Context, cfg LimitsConfig, logger log.Logger, re
 
 	var fileCfg lokiConfig
 	flagext.DefaultValues(&fileCfg.LimitsConfig)
+	fileCfg.LimitsConfig.StreamFirstExecutionEnabled = cfg.StreamFirstExecutionEnabled
+
+	// The limits_config block decodes on top of the global defaults when they exist. Set them to the
+	// flag values first, so that a global left by an earlier load cannot replace the flag values.
+	validation.SetDefaultLimitsForYAMLUnmarshalling(fileCfg.LimitsConfig)
 	if cfg.ConfigFile != "" {
 		if err := readLokiConfig(cfg.ConfigFile, cfg.ExpandEnv, &fileCfg); err != nil {
 			return nil, fmt.Errorf("reading the Loki config file %s: %w", cfg.ConfigFile, err)
