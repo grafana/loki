@@ -1087,10 +1087,9 @@ func TestDoLogObjectMerge_HonorsPerTaskSectionSelection(t *testing.T) {
 // default shard layout and sortSchema.
 func appSortPrefix(t *testing.T, app string, sortSchema []string) streams.SortPrefix {
 	t.Helper()
-	ls := labels.FromStrings("app", app)
-	schemaKey, err := logsobj.ComputeSchemaKey(ls, sortSchema)
+	prefix, err := logsobj.StreamSortPrefix(labels.FromStrings("app", app), streams.NewLayout(streams.DefaultShardLayout(), sortSchema))
 	require.NoError(t, err)
-	return streams.DefaultShardLayout().NewSortKey(ls, schemaKey).Prefix()
+	return prefix
 }
 
 func appSortPrefixProto(t *testing.T, app string, sortSchema []string) *compactionv2pb.SortPrefix {
@@ -1183,47 +1182,7 @@ func TestDoLogObjectMerge(t *testing.T) {
 		require.Equal(t, readLogObjectRecords(ctx, t, dataBucket, "obj", tenant), union)
 	})
 
-	t.Run("reports the kept records and the record count of each input section once", func(t *testing.T) {
-		dataBucket := objstore.NewInMemBucket()
-		day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
-			tenant: {{labels: `{app="a"}`, entries: wideLinesAt(day, 4)}, {labels: `{app="b"}`, entries: wideLinesAt(day, 3)}},
-		})
-		runs := sourceLogRuns(t, dataBucket, tenant, "objA")
-		runs = append(runs, runs[0])
-
-		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", sortSchema)}
-		if appSortPrefix(t, "a", sortSchema).Compare(appSortPrefix(t, "b", sortSchema)) > 0 {
-			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", sortSchema), End: sortPrefixLimitProto}
-		}
-		c := newTestExecutorContext(t, objstore.NewInMemBucket())
-		c.dataBucket = dataBucket
-		arts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: runs, KeyRange: keyRange})
-		require.NoError(t, err)
-
-		require.NotNil(t, arts.LogCounts)
-		require.EqualValues(t, 4, arts.LogCounts.KeptRecords, "the range keeps only the 4 records of app a")
-		var total int64
-		for _, section := range arts.LogCounts.Sections {
-			require.Equal(t, "objA", section.ObjectPath)
-			total += section.Records
-		}
-		require.EqualValues(t, 7, total, "a section that two runs reference must be counted once")
-	})
-
-	t.Run("reports no counts for a task without a key range", func(t *testing.T) {
-		dataBucket := objstore.NewInMemBucket()
-		buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
-			tenant: {{labels: `{app="a"}`, entries: wideLinesAt(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), 4)}},
-		})
-		c := newTestExecutorContext(t, objstore.NewInMemBucket())
-		c.dataBucket = dataBucket
-		arts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")})
-		require.NoError(t, err)
-		require.Nil(t, arts.LogCounts)
-	})
-
-	t.Run("skips the sections of an object with no stream in range but counts their records", func(t *testing.T) {
+	t.Run("skips the sections of an object with no stream in range", func(t *testing.T) {
 		dataBucket := objstore.NewInMemBucket()
 		day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
@@ -1247,11 +1206,6 @@ func TestDoLogObjectMerge(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, inputs.runs, 1, "the run of objB must be skipped")
-		counted := make(map[string]int64)
-		for _, section := range inputs.sectionRecords {
-			counted[section.ObjectPath] += section.Records
-		}
-		require.Equal(t, map[string]int64{"objA": 4, "objB": 3}, counted)
 	})
 
 	t.Run("keeps no record of an object with no stream in range", func(t *testing.T) {

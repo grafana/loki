@@ -73,11 +73,6 @@ type Config struct {
 	// LogMaxTaskSize is the maximum uncompressed input size of one LogMerge
 	// task. The planner splits a larger merge into tasks by stream sort
 	// prefix. 0 disables the split.
-	//
-	// Enable the split only when every worker supports key ranges. A worker
-	// without that support ignores the key range and merges whole sections,
-	// so tasks that share a section duplicate its records. The coordinator
-	// then refuses to publish the merge.
 	LogMaxTaskSize flagext.Bytes `yaml:"logs_max_task_size"`
 
 	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
@@ -218,7 +213,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.LogMinCompactionSize, prefix+"logs.min-compaction-size",
 		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Windows below this floor are skipped.")
 	f.Var(&cfg.LogMaxTaskSize, prefix+"logs.max-task-size",
-		"Experimental: Maximum uncompressed input size of one LogMerge task, for example 100GB. The planner splits a larger merge into tasks by stream sort prefix and never splits one sort prefix. A task exceeds the maximum in two cases: a sort prefix above it gets a task of its own, and the last task of a merge can take in a leftover of up to 10% of it. 0 disables the split. Enable it only after every compaction worker supports key ranges. The compactor refuses to publish a split merge from older workers.")
+		"Experimental: Maximum uncompressed input size of one LogMerge task, for example 100GB. The planner splits a larger merge into tasks by stream sort prefix and never splits one sort prefix. A task exceeds the maximum in two cases: a sort prefix above it gets a task of its own, and the last task of a merge can take in a leftover of up to 10% of it. 0 disables the split.")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,

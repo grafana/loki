@@ -820,3 +820,18 @@ func ComputeSchemaKey(ls labels.Labels, schemaLabels []string) (string, error) {
 	}
 	return streams.EncodeSchemaKey(values), nil
 }
+
+// StreamSortPrefix returns the sort prefix of the stream with labels ls in
+// objects of layout.
+//
+// It must return the prefix that the index calculator records for the stream
+// in its stats rows. The compaction planner cuts tasks by the recorded
+// prefixes, and workers filter streams by this one. If they differ, a task can
+// miss the records of a stream.
+func StreamSortPrefix(ls labels.Labels, layout streams.Layout) (streams.SortPrefix, error) {
+	schemaKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
+	if err != nil {
+		return streams.SortPrefix{}, err
+	}
+	return layout.ShardLayout().NewSortKey(ls, schemaKey).Prefix(), nil
+}

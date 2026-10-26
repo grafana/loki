@@ -785,8 +785,9 @@ func TestE2ECompactionLegacyObjects(t *testing.T) {
 // TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes pins the planner side of
 // the key range contract to the worker side. The planner cuts by the sort
 // prefixes of the stats rows that the index calculator writes. The worker
-// derives each stream's prefix from its labels. If they disagree, a split
-// task can miss records.
+// derives each stream's prefix with logsobj.StreamSortPrefix. If they
+// disagree, a split task can miss records, and nothing at run time detects
+// it.
 func TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes(t *testing.T) {
 	const tenant = "acme"
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
@@ -850,10 +851,9 @@ func TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes(t *testing.T) {
 				for res := range logs.IterSection(ctx, logsSection) {
 					record, err := res.Value()
 					require.NoError(t, err)
-					ls := labelsByID[record.StreamID]
-					schemaKey, err := logsobj.ComputeSchemaKey(ls, tc.schema)
+					prefix, err := logsobj.StreamSortPrefix(labelsByID[record.StreamID], layout)
 					require.NoError(t, err)
-					workerPrefixes[layout.ShardLayout().NewSortKey(ls, schemaKey).Prefix()] = true
+					workerPrefixes[prefix] = true
 				}
 
 				plannerPrefixes := make(map[streams.SortPrefix]bool)

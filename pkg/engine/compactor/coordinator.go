@@ -289,17 +289,22 @@ func (c *coordinator) planLogMerge(
 	if c.cfg.LogMaxTaskSize > 0 {
 		split = newLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), sections).split
 	}
-	plan := logCompactionPlan{window: window, sourceIndex: sourceIndex}
 	var specs []*compactionv2pb.TaskSpec
 	for _, merge := range merges {
-		tasks := split(merge)
-		plan.addMerge(merge, tasks)
-		specs = append(specs, tasks...)
+		specs = append(specs, split(merge)...)
 	}
 
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmerged))
 	logMergeTaskDetails(entryLogger, specs)
 
+	plan := logCompactionPlan{
+		window:      window,
+		sourceIndex: sourceIndex,
+		tasks:       make([]logCompactionTask, 0, len(specs)+1),
+	}
+	for _, spec := range specs {
+		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
+	}
 	if len(unmerged) > 0 {
 		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmerged))
 	}
@@ -335,9 +340,6 @@ func (c *coordinator) executeLogCompaction(
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.physicalPlans(tenant))
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
-	}
-	if err := plan.checkRecordCounts(artifacts); err != nil {
-		return compactionStats{}, fmt.Errorf("check log compaction record counts for source index %s: %w", plan.sourceIndex.Path, err)
 	}
 	entries := plan.tocEntries()
 	if err := assignArtifactPaths(entries, artifacts); err != nil {
@@ -744,22 +746,12 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 			if ctx.Err() != nil {
 				return phaseOutcomeError
 			}
+			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
+				"tenant", tenant, "window", plan.window, "index", plan.sourceIndex.Path, "err", err)
 			reason := failReasonExecute
-			switch {
-			case errors.Is(err, errStalePlan):
+			if errors.Is(err, errStalePlan) {
 				reason = failReasonStalePlan
-			case errors.Is(err, errRecordCountMismatch):
-				reason = failReasonRecordCount
 			}
-			logLevel := level.Warn
-			if reason == failReasonRecordCount {
-				// The tasks would have lost or duplicated records. Every
-				// cycle re-plans the same merge, so this repeats until the
-				// cause is fixed.
-				logLevel = level.Error
-			}
-			logLevel(c.logger).Log("msg", "log-merge phase: index failed",
-				"tenant", tenant, "window", plan.window, "index", plan.sourceIndex.Path, "reason", reason, "err", err)
 			c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, reason).Inc()
 			anyError = true
 			continue

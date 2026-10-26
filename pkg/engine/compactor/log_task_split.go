@@ -12,6 +12,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
+// sectionKey identifies one logs section by object path and section index.
+type sectionKey struct {
+	path  string
+	index int64
+}
+
+func sectionKeyOf(ref *compactionv2pb.SectionRef) sectionKey {
+	return sectionKey{path: ref.ObjectPath, index: ref.SectionIndex}
+}
+
 // logTaskSplitter splits LogMerge tasks into tasks of about maxSize bytes of
 // uncompressed input each. It cuts by sort prefix, so the key ranges of the
 // tasks are disjoint.
@@ -46,9 +56,8 @@ func newLogTaskSplitter(logger log.Logger, maxSize uint64, sections []v2.Section
 // sections with a sort prefix in its range. A section without per-key sizes
 // goes to every task.
 //
-// The ranges hold every sort prefix that the index lists for spec. A stream
-// that the index misses can fall outside every range. The coordinator then
-// finds fewer kept records than the sections hold and does not publish.
+// The ranges and section choice rely on the index listing the sort prefix of
+// every stream in spec, as logsobj.StreamSortPrefix computes it.
 func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.TaskSpec {
 	var keys []v2.KeySize[logSortPrefix]
 	for _, run := range spec.Runs {

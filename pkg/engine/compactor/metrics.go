@@ -31,10 +31,6 @@ const (
 	failReasonPlan      = "plan"
 	failReasonStalePlan = "stale_plan"
 	failReasonExecute   = "execute"
-
-	// failReasonRecordCount means the tasks of a merge did not write each
-	// input record exactly once, so the coordinator did not publish them.
-	failReasonRecordCount = "record_count"
 )
 
 // coordinatorMetrics holds every metric emitted from the coordinator's

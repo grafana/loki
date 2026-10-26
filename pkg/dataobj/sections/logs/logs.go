@@ -103,18 +103,6 @@ func (s *Section) init() error {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
-// RowCount returns the number of records in the section. It reads the count
-// from the metadata of the stream ID column, which holds one row per record.
-// It returns an error if the section has no stream ID column.
-func (s *Section) RowCount() (int64, error) {
-	for _, col := range s.columns {
-		if col.Type == ColumnTypeStreamID {
-			return int64(col.inner.Metadata().RowsCount), nil
-		}
-	}
-	return 0, fmt.Errorf("logs section has no stream ID column")
-}
-
 // PrimarySortOrder returns the primary sort order information of the section
 // as a tuple of [ColumnType] and [SortDirection].
 func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {

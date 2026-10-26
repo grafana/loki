@@ -87,9 +87,9 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		inputBytesTotal int64
 		dups            duplicateCounter
 		inputBytesBatch int64
-		keptRecords     int64
+		count           int
 	)
-	const batchRecords = 1000
+	batchRecords := 1000
 	observeBatch := func() {
 		c.logMergeObserver.ObserveLogMergeInputBytes(inputBytesBatch)
 		inputBytesTotal += inputBytesBatch
@@ -104,10 +104,11 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		}
 		size := rec.UncompressedSize()
 		inputBytesBatch += size
-		keptRecords++
-		if keptRecords%batchRecords == 0 {
+		count++
+		if count%batchRecords == 0 {
 			observeBatch()
 			inputBytesBatch = 0
+			count = 0
 		}
 		dups.observe(rec)
 		if err := w.add(ctx, rec); err != nil {
@@ -158,14 +159,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	)
 
 	c.logMergeObserver.ObserveLogMerge(node.Tenant, stats.logMergeObservedStats, duration)
-
-	artifact := &v2.ResultArtifact{Path: idxPath}
-	// Coordinators that predate key ranges send no range and cannot decode
-	// log counts, so only a task with a range reports them.
-	if node.KeyRange != nil {
-		artifact.LogCounts = &v2.LogMergeCounts{KeptRecords: keptRecords, Sections: inputs.sectionRecords}
-	}
-	return artifact, nil
+	return &v2.ResultArtifact{Path: idxPath}, nil
 }
 
 const (
@@ -317,18 +311,14 @@ func sortPrefixRange(r *compactionv2pb.KeyRange) (v2.KeyRange[streams.SortPrefix
 
 // dropStreamsOutsideRange deletes the streams outside keyRange from byID and
 // returns their IDs.
-//
-// It derives each sort prefix from the stream labels and layout, as the stats
-// section that the planner cuts by does.
 func dropStreamsOutsideRange(byID map[int64]streams.Stream, layout streams.Layout, keyRange v2.KeyRange[streams.SortPrefix]) ([]int64, error) {
-	schemaLabels, shardLayout := layout.SchemaLabels(), layout.ShardLayout()
 	var dropped []int64
 	for id, stream := range byID {
-		schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, schemaLabels)
+		prefix, err := logsobj.StreamSortPrefix(stream.Labels, layout)
 		if err != nil {
 			return nil, err
 		}
-		if !keyRange.Contains(shardLayout.NewSortKey(stream.Labels, schemaKey).Prefix(), streams.SortPrefix.Compare) {
+		if !keyRange.Contains(prefix, streams.SortPrefix.Compare) {
 			dropped = append(dropped, id)
 			delete(byID, id)
 		}
@@ -405,10 +395,6 @@ type logMergeInputs struct {
 	layout  streams.Layout
 	runs    []sortmerge.Run
 	table   *logsobj.MultiSourceRankedStreams
-
-	// sectionRecords holds the record count of every input section, once per
-	// section.
-	sectionRecords []v2.SectionRecords
 }
 
 func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogMerge) (*logMergeInputs, error) {
@@ -455,15 +441,9 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 			}
 			sec := source.logSectionsByIndex[id.index]
 			seen[id] = struct{}{}
-			records, err := sectionRecordCount(ctx, sec)
-			if err != nil {
-				return nil, fmt.Errorf("logs section %q#%d: %w", id.path, id.index, err)
-			}
-			inputs.sectionRecords = append(inputs.sectionRecords, v2.SectionRecords{ObjectPath: id.path, SectionIndex: id.index, Records: records})
 
 			// Skip the sections of an object whose streams the key range all
-			// dropped, so the task downloads none of their pages. The task
-			// still counts their records.
+			// dropped, so the task downloads none of their pages.
 			//
 			// A record of a stream that the streams section does not hold still
 			// fails a merge. The task whose range holds the object's streams
@@ -479,14 +459,6 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 		}
 	}
 	return inputs, nil
-}
-
-func sectionRecordCount(ctx context.Context, section *dataobj.Section) (int64, error) {
-	sec, err := logs.Open(ctx, section)
-	if err != nil {
-		return 0, fmt.Errorf("opening logs section: %w", err)
-	}
-	return sec.RowCount()
 }
 
 // logObjectWriter consumes the globally-sorted merged record stream and builds

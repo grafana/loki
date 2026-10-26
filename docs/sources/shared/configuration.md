@@ -1166,8 +1166,6 @@ dataobj:
     # prefix and never splits one sort prefix. A task exceeds the maximum in two
     # cases: a sort prefix above it gets a task of its own, and the last task of
     # a merge can take in a leftover of up to 10% of it. 0 disables the split.
-    # Enable it only after every compaction worker supports key ranges. The
-    # compactor refuses to publish a split merge from older workers.
     # CLI flag: -dataobj.compaction.logs.max-task-size
     [logs_max_task_size: <int> | default = 0B]
 
