@@ -758,8 +758,8 @@ github.com/dgryski/go-rendezvous
 ## explicit; go 1.23.0
 github.com/digitalocean/godo
 github.com/digitalocean/godo/metrics
-# github.com/dimchansky/utfbom v1.1.1
-## explicit
+# github.com/dimchansky/utfbom v1.2.0
+## explicit; go 1.19
 github.com/dimchansky/utfbom
 # github.com/distribution/reference v0.6.0
 ## explicit; go 1.20
