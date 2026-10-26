@@ -341,119 +341,173 @@ func (s *GatewayClient) Stop() {
 }
 
 func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
-	return callIndexGateway(ctx, s, "GetChunkRef", in, in.From, in.Through, in.Matchers, true,
-		func(r *logproto.GetChunkRefRequest, from, through model.Time, matchers string) {
-			r.From, r.Through, r.Matchers = from, through, matchers
-		},
-		logproto.IndexGatewayClient.GetChunkRef, mergeChunkRefResponses)
-}
-
-func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
-	return callIndexGateway(ctx, s, "GetSeries", in, in.From, in.Through, in.Matchers, true,
-		func(r *logproto.GetSeriesRequest, from, through model.Time, matchers string) {
-			r.From, r.Through, r.Matchers = from, through, matchers
-		},
-		logproto.IndexGatewayClient.GetSeries, mergeSeriesResponses)
-}
-
-func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	// The index does not take a shard label for label names, so the parts
-	// are not narrowed to their shard: every owner answers from all it holds
-	// and the union is the same.
-	return callIndexGateway(ctx, s, "LabelNamesForMetricName", in, in.From, in.Through, in.Matchers, false,
-		func(r *logproto.LabelNamesForMetricNameRequest, from, through model.Time, matchers string) {
-			r.From, r.Through, r.Matchers = from, through, matchers
-		},
-		logproto.IndexGatewayClient.LabelNamesForMetricName, mergeLabelResponses)
-}
-
-func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	// The index ignores a shard label for label values; see LabelNamesForMetricName.
-	return callIndexGateway(ctx, s, "LabelValuesForMetricName", in, in.From, in.Through, in.Matchers, false,
-		func(r *logproto.LabelValuesForMetricNameRequest, from, through model.Time, matchers string) {
-			r.From, r.Through, r.Matchers = from, through, matchers
-		},
-		logproto.IndexGatewayClient.LabelValuesForMetricName, mergeLabelResponses)
-}
-
-func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	return callIndexGateway(ctx, s, "GetStats", in, in.From, in.Through, in.Matchers, true,
-		func(r *logproto.IndexStatsRequest, from, through model.Time, matchers string) {
-			r.From, r.Through, r.Matchers = from, through, matchers
-		},
-		logproto.IndexGatewayClient.GetStats, mergeStatsResponses)
-}
-
-func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	return callIndexGateway(ctx, s, "GetVolume", in, in.From, in.Through, in.Matchers, true,
-		func(r *logproto.VolumeRequest, from, through model.Time, matchers string) {
-			r.From, r.Through, r.Matchers = from, through, matchers
-		},
-		logproto.IndexGatewayClient.GetVolume,
-		func(resps []*logproto.VolumeResponse) *logproto.VolumeResponse {
-			return mergeVolumeResponses(resps, in.Limit)
-		})
-}
-
-// callIndexGateway sends a unary request in covering [from, through]. With
-// per_index sharding it is split by table and by the shards of the tenant's
-// index that the shard label of matchers reads (every shard without one),
-// each part getting a copy of in with its range and, with narrow, its
-// shard-narrowed matchers set by setPart (see narrowMatchers), and the
-// answers are combined with merge. A request that is a single part is sent as
-// it is. Otherwise, or when the range reads no table of this client's period,
-// in is sent to one gateway as it is.
-func callIndexGateway[Req, Resp any](
-	ctx context.Context,
-	s *GatewayClient,
-	op string,
-	in *Req,
-	from, through model.Time,
-	matchers string,
-	narrow bool,
-	setPart func(r *Req, from, through model.Time, matchers string),
-	call func(c logproto.IndexGatewayClient, ctx context.Context, in *Req, opts ...grpc.CallOption) (Resp, error),
-	merge func([]Resp) Resp,
-) (Resp, error) {
-	var zero Resp
 	if s.perIndex() {
-		filter := requestShard(matchers)
-		resps, ok, err := fanOut(ctx, s, op, from, through, filter, func(ctx context.Context, client logproto.IndexGatewayClient, p requestPart) (Resp, error) {
-			req := in
-			narrowed := matchers
-			if narrow {
-				narrowed = narrowMatchers(matchers, filter, p.Shard)
-			}
-			if p.From != from || p.Through != through || narrowed != matchers {
-				part := *in
-				setPart(&part, p.From, p.Through, narrowed)
-				req = &part
-			}
-			return call(client, ctx, req)
+		filter := requestShard(in.Matchers)
+		req := fanOutRequest{op: "GetChunkRef", from: in.From, through: in.Through, filter: filter}
+		resps, ok, err := fanOut(ctx, s, req, func(ctx context.Context, client logproto.IndexGatewayClient, p requestPart) (*logproto.GetChunkRefResponse, error) {
+			part := *in
+			part.From, part.Through = p.From, p.Through
+			part.Matchers = narrowMatchers(in.Matchers, filter, p.Shard)
+			return client.GetChunkRef(ctx, &part)
 		})
 		if ok {
 			if err != nil {
-				return zero, err
+				return nil, err
 			}
-			return merge(resps), nil
+			return mergeChunkRefResponses(resps), nil
 		}
 	}
 
-	resp := zero
-	err := s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		r, err := call(client, ctx, in)
-		if err != nil {
-			return err
+	var (
+		resp *logproto.GetChunkRefResponse
+		err  error
+	)
+	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		resp, err = client.GetChunkRef(ctx, in)
+		return err
+	}, s.addrsForQueryEnd(in.Through))
+	return resp, err
+}
+
+func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
+	if s.perIndex() {
+		filter := requestShard(in.Matchers)
+		req := fanOutRequest{op: "GetSeries", from: in.From, through: in.Through, filter: filter}
+		resps, ok, err := fanOut(ctx, s, req, func(ctx context.Context, client logproto.IndexGatewayClient, p requestPart) (*logproto.GetSeriesResponse, error) {
+			part := *in
+			part.From, part.Through = p.From, p.Through
+			part.Matchers = narrowMatchers(in.Matchers, filter, p.Shard)
+			return client.GetSeries(ctx, &part)
+		})
+		if ok {
+			if err != nil {
+				return nil, err
+			}
+			return mergeSeriesResponses(resps), nil
 		}
-		resp = r
-		return nil
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, through.Time(), s.buckets, time.Now().UTC())
-	})
-	if err != nil {
-		return zero, err
 	}
-	return resp, nil
+
+	var (
+		resp *logproto.GetSeriesResponse
+		err  error
+	)
+	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		resp, err = client.GetSeries(ctx, in)
+		return err
+	}, s.addrsForQueryEnd(in.Through))
+	return resp, err
+}
+
+func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
+	if s.perIndex() {
+		req := fanOutRequest{op: "LabelNamesForMetricName", from: in.From, through: in.Through, filter: requestShard(in.Matchers)}
+		resps, ok, err := fanOut(ctx, s, req, func(ctx context.Context, client logproto.IndexGatewayClient, p requestPart) (*logproto.LabelResponse, error) {
+			part := *in
+			part.From, part.Through = p.From, p.Through
+			return client.LabelNamesForMetricName(ctx, &part)
+		})
+		if ok {
+			if err != nil {
+				return nil, err
+			}
+			return mergeLabelResponses(resps), nil
+		}
+	}
+
+	var (
+		resp *logproto.LabelResponse
+		err  error
+	)
+	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		resp, err = client.LabelNamesForMetricName(ctx, in)
+		return err
+	}, s.addrsForQueryEnd(in.Through))
+	return resp, err
+}
+
+func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
+	if s.perIndex() {
+		req := fanOutRequest{op: "LabelValuesForMetricName", from: in.From, through: in.Through, filter: requestShard(in.Matchers)}
+		resps, ok, err := fanOut(ctx, s, req, func(ctx context.Context, client logproto.IndexGatewayClient, p requestPart) (*logproto.LabelResponse, error) {
+			part := *in
+			part.From, part.Through = p.From, p.Through
+			return client.LabelValuesForMetricName(ctx, &part)
+		})
+		if ok {
+			if err != nil {
+				return nil, err
+			}
+			return mergeLabelResponses(resps), nil
+		}
+	}
+
+	var (
+		resp *logproto.LabelResponse
+		err  error
+	)
+	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		resp, err = client.LabelValuesForMetricName(ctx, in)
+		return err
+	}, s.addrsForQueryEnd(in.Through))
+	return resp, err
+}
+
+func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	if s.perIndex() {
+		filter := requestShard(in.Matchers)
+		req := fanOutRequest{op: "GetStats", from: in.From, through: in.Through, filter: filter}
+		resps, ok, err := fanOut(ctx, s, req, func(ctx context.Context, client logproto.IndexGatewayClient, p requestPart) (*logproto.IndexStatsResponse, error) {
+			part := *in
+			part.From, part.Through = p.From, p.Through
+			part.Matchers = narrowMatchers(in.Matchers, filter, p.Shard)
+			return client.GetStats(ctx, &part)
+		})
+		if ok {
+			if err != nil {
+				return nil, err
+			}
+			return mergeStatsResponses(resps), nil
+		}
+	}
+
+	var (
+		resp *logproto.IndexStatsResponse
+		err  error
+	)
+	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		resp, err = client.GetStats(ctx, in)
+		return err
+	}, s.addrsForQueryEnd(in.Through))
+	return resp, err
+}
+
+func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	if s.perIndex() {
+		filter := requestShard(in.Matchers)
+		req := fanOutRequest{op: "GetVolume", from: in.From, through: in.Through, filter: filter}
+		resps, ok, err := fanOut(ctx, s, req, func(ctx context.Context, client logproto.IndexGatewayClient, p requestPart) (*logproto.VolumeResponse, error) {
+			part := *in
+			part.From, part.Through = p.From, p.Through
+			part.Matchers = narrowMatchers(in.Matchers, filter, p.Shard)
+			return client.GetVolume(ctx, &part)
+		})
+		if ok {
+			if err != nil {
+				return nil, err
+			}
+			return mergeVolumeResponses(resps, in.Limit), nil
+		}
+	}
+
+	var (
+		resp *logproto.VolumeResponse
+		err  error
+	)
+	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		resp, err = client.GetVolume(ctx, in)
+		return err
+	}, s.addrsForQueryEnd(in.Through))
+	return resp, err
 }
 
 func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsRequest) (res *logproto.ShardsResponse, err error) {
@@ -523,9 +577,7 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 		ctx,
 		maxRetries,
 		callback,
-		func(addrs []string) []string {
-			return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-		},
+		s.addrsForQueryEnd(in.Through),
 	); err != nil {
 		return nil, err
 	}
@@ -713,6 +765,13 @@ func instrumentation(cfg ClientConfig, clientRequestDuration *prometheus.Histogr
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(clientRequestDuration))
 
 	return unaryInterceptors, streamInterceptors
+}
+
+// addrsForQueryEnd filters a tenant's gateways with addressesForQueryEndTime.
+func (s *GatewayClient) addrsForQueryEnd(through model.Time) func([]string) []string {
+	return func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, through.Time(), s.buckets, time.Now().UTC())
+	}
 }
 
 func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Duration, now time.Time) []string {

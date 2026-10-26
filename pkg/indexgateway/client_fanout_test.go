@@ -125,8 +125,7 @@ func TestSplitByTable(t *testing.T) {
 type fanoutCall struct {
 	addr, op      string
 	from, through model.Time
-	// matchers is the request's matchers, or its query for GetShards.
-	matchers string
+	matchers      string
 }
 
 // recordingGateways fakes index gateways: it records every call and answers
