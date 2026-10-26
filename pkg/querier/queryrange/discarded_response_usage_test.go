@@ -114,6 +114,31 @@ func TestDiscardedResponseUsageTrackerFinalizesAllErrorUsage(t *testing.T) {
 			require.Equal(t, int64(100), response.Statistics.Summary.TotalBytesProcessed)
 		})
 	}
+
+	t.Run("metadata with an empty contribution", func(t *testing.T) {
+		first := logResponseWithScanUsage(100).Statistics
+		second := logResponseWithScanUsage(200).Statistics
+		response, err := DefaultCodec.MergeResponse(
+			&DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{}, Statistics: first},
+			&DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{}},
+		)
+		require.NoError(t, err)
+
+		// A later failure must retain both the merged response's known usage
+		// and usage from a completed response that was not consumed.
+		tracker := &discardedResponseUsageTracker{}
+		collected := &lokiResult{}
+		tracker.recordResponse(collected, response)
+		tracker.markResponseCollected(collected)
+		tracker.recordResponse(&lokiResult{}, &DetectedFieldsResponse{
+			Response: &logproto.DetectedFieldsResponse{}, Statistics: second,
+		})
+		discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
+		tracker.finalizeFailedResponseUsage(ctx, []queryrangebase.Response{response})
+
+		require.Equal(t, int64(300), discardedWork.Result().Summary.TotalBytesProcessed)
+		require.Equal(t, int64(100), response.(*DetectedFieldsResponse).Statistics.Summary.TotalBytesProcessed)
+	})
 }
 
 func TestDiscardedResponseUsageTrackerFinalizesSuccessfulUsage(t *testing.T) {

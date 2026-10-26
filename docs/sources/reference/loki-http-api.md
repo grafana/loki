@@ -1067,9 +1067,14 @@ Response format:
       "sketch": <object, optional>
     }
   ],
-  "limit": <integer>
+  "limit": <integer>,
+  "stats": <statistics object>
 }
 ```
+
+The `stats` object uses the same [statistics structure](#statistics) as regular queries and
+reports the underlying log scan. It is included even when no fields or values are returned.
+The `limit` parameter limits returned metadata, not the reported scan statistics.
 
 ### Examples
 
@@ -1082,7 +1087,7 @@ curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/de
   --data-urlencode 'end=1609462800000000000' | jq
 ```
 
-gave this response:
+gave this response (other statistics fields omitted for brevity):
 
 ```json
 {
@@ -1106,7 +1111,12 @@ gave this response:
       "parsers": ["logfmt"]
     }
   ],
-  "limit": 1000
+  "limit": 1000,
+  "stats": {
+    "summary": {
+      "totalBytesProcessed": 1024
+    }
+  }
 }
 ```
 
@@ -1140,9 +1150,14 @@ Response format:
     <string>,
     ...
   ],
-  "limit": <integer>
+  "limit": <integer>,
+  "stats": <statistics object>
 }
 ```
+
+The `stats` object uses the same [statistics structure](#statistics) as regular queries and
+reports the underlying log scan. It is included even when no fields or values are returned.
+The `limit` parameter limits returned metadata, not the reported scan statistics.
 
 ### Examples
 
@@ -1155,7 +1170,7 @@ curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/de
   --data-urlencode 'end=1609462800000000000' | jq
 ```
 
-gave this response:
+gave this response (other statistics fields omitted for brevity):
 
 ```json
 {
@@ -1165,7 +1180,12 @@ gave this response:
     "warn",
     "error"
   ],
-  "limit": 1000
+  "limit": 1000,
+  "stats": {
+    "summary": {
+      "totalBytesProcessed": 1024
+    }
+  }
 }
 ```
 
