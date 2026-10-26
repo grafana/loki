@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
@@ -45,5 +46,17 @@ func verifyHints(
 		FalseNegativeTimestamps: r.FalseNegativeTimestamps,
 		FalsePositives:          verification.CountFalsePositives(hintRanges, timestamps),
 		Correct:                 r.FalseNegatives == 0 && r.TotalEntries > 0,
+	}
+}
+
+func verifyMetricSamples(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange, samples []verification.MetricSample) *verificationReport {
+	r := verification.ScoreMetricSamples(expr, hintRanges, samples, time.Time{})
+	return &verificationReport{
+		HintRanges:          r.HintRanges,
+		TotalResults:        r.TotalEntries,
+		CoveredResults:      r.CoveredEntries,
+		FalseNegatives:      r.FalseNegatives,
+		FalseNegativeRanges: r.FalseNegativeRanges,
+		Correct:             r.Correct,
 	}
 }

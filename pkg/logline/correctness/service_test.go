@@ -44,6 +44,7 @@ func TestRunVerificationCycle_Correct(t *testing.T) {
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base.Add(50*time.Second), base.Add(70*time.Second))
 
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
@@ -69,6 +70,7 @@ func TestRunVerificationCycle_FalseNegative(t *testing.T) {
 
 	var buf bytes.Buffer
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	svc.logger = log.NewLogfmtLogger(&buf)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
@@ -110,6 +112,7 @@ func TestRunVerificationCycle_ExcludedIndexCoveringFN(t *testing.T) {
 	)
 
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
@@ -135,6 +138,7 @@ func TestRunVerificationCycle_UnsupportedQuery(t *testing.T) {
 
 	indexStore := newTestStore(t)
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	svc.hintProvider = unsupportedHintProvider{}
 
 	report, err := svc.runVerificationCycle(context.Background())
@@ -412,13 +416,19 @@ func TestPickHintQuery_ShortValueUsesLineFilter(t *testing.T) {
 	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
 
 	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
 		require.True(t, ok)
-		require.Equal(t, hintQueryTypeLineFilter, h.queryType)
-		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
-		require.Equal(t, `{job="api"} |= "9fA81cD2Ef0077aa"`, h.query)
 		require.NotNil(t, h.expr)
+		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+		switch h.queryType {
+		case hintQueryTypeLineFilter:
+			require.Equal(t, `{job="api"} |= "9fA81cD2Ef0077aa"`, h.query)
+		case hintQueryTypeMetricRange, hintQueryTypeMetricInstant:
+			require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m]))`, h.query)
+		default:
+			t.Fatalf("unexpected query type %q", h.queryType)
+		}
 	}
 }
 
@@ -449,6 +459,8 @@ func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
 			sawLine = true
 			require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
 			require.Equal(t, `{job="checkout-service"} |= "9fA81cD2Ef0077aa"`, h.query)
+		case hintQueryTypeMetricRange, hintQueryTypeMetricInstant:
+			require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -478,7 +490,8 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 	require.True(t, ok)
 
 	sawSM, sawLabel, sawJSON, sawLine := false, false, false, false
-	for seed := int64(0); seed < 100 && (!sawSM || !sawLabel || !sawJSON || !sawLine); seed++ {
+	sawMetricRange, sawMetricInstant := false, false
+	for seed := int64(0); seed < 200 && (!sawSM || !sawLabel || !sawJSON || !sawLine || !sawMetricRange || !sawMetricInstant); seed++ {
 		svc.randMu.Lock()
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
@@ -500,6 +513,12 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 		case hintQueryTypeLineFilter:
 			sawLine = true
 			require.Equal(t, lineNeedle, h.needle)
+		case hintQueryTypeMetricRange:
+			sawMetricRange = true
+			require.Equal(t, lineNeedle, h.needle)
+		case hintQueryTypeMetricInstant:
+			sawMetricInstant = true
+			require.Equal(t, lineNeedle, h.needle)
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -507,6 +526,8 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 	require.True(t, sawSM, "expected some seeds to pick sm_label_filter")
 	require.True(t, sawLabel, "expected some seeds to pick label_filter")
 	require.True(t, sawJSON, "expected some seeds to pick json_label_filter")
+	require.True(t, sawMetricRange, "expected some seeds to pick metric_range")
+	require.True(t, sawMetricInstant, "expected some seeds to pick metric_instant")
 	require.True(t, sawLine, "expected some seeds to pick line_filter")
 }
 
@@ -537,6 +558,7 @@ func TestPickHintQuery_CanUseJSONLabelFilter(t *testing.T) {
 			require.Equal(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, h.query)
 		case hintQueryTypeLineFilter:
 			sawLine = true
+		case hintQueryTypeMetricRange, hintQueryTypeMetricInstant:
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -579,6 +601,7 @@ func TestPickHintQuery_CanUseStructuredMetadata(t *testing.T) {
 			require.Equal(t, `{job="api"} | trace_id="traceidvalue99"`, h.query)
 		case hintQueryTypeLineFilter:
 			sawLine = true
+		case hintQueryTypeMetricRange, hintQueryTypeMetricInstant:
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -608,7 +631,7 @@ func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
 
 	sawSMFirst := false
 	for seed := int64(0); seed < 100; seed++ {
-		if rand.New(rand.NewSource(seed)).Intn(4) != 0 {
+		if rand.New(rand.NewSource(seed)).Intn(6) != 0 {
 			continue
 		}
 		sawSMFirst = true
@@ -636,6 +659,14 @@ func (unsupportedHintProvider) ProvideHints(
 	model.Time,
 ) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
 	return nil, nil, hintprovider.ErrUnsupported
+}
+
+// useLogHintSeed fixes the cycle RNG so the hint pick stays on a log check.
+// The cycle draws Intn(1) for the single label value, then Intn(6) for the
+// hint shape. Seed 2 yields 0, the SM slot, which these fixtures fall back
+// from to a line filter.
+func useLogHintSeed(svc *Service) {
+	svc.rand = rand.New(rand.NewSource(2)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
 }
 
 func newTestService(t *testing.T, indexStore *store.Store, endpoint string, start time.Time) *Service {
@@ -770,6 +801,7 @@ func TestRunning_CompletesTests(t *testing.T) {
 	svc.nowFn = func() time.Time {
 		return base.Add(3 * time.Minute)
 	}
+	useLogHintSeed(svc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

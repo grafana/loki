@@ -82,9 +82,9 @@ type CycleReport struct {
 	Selector   string    `json:"selector"`
 	Needle     string    `json:"needle"`
 	HintQuery  string    `json:"hint_query"`
-	// HintQueryType is "line_filter", "label_filter" (stream label),
-	// "sm_label_filter" (structured metadata), or "json_label_filter"
-	// (`| json | field="value"`).
+	// HintQueryType is the check that ran: a log needle shape
+	// ("line_filter", "label_filter", "sm_label_filter", "json_label_filter")
+	// or a metric check ("metric_range", "metric_instant").
 	HintQueryType           string                       `json:"hint_query_type"`
 	CandidateTimeRanges     int                          `json:"candidate_time_ranges"`
 	TotalResults            int                          `json:"total_results"`
@@ -277,7 +277,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"selector", selector,
 	)
 
-	logs, _, err := s.queryRange(ctx, selector, rangeStart, rangeEnd, s.cfg.LogQueryLimit)
+	logs, _, err := s.queryLogs(ctx, selector, rangeStart, rangeEnd, s.cfg.LogQueryLimit)
 	if err != nil {
 		return report, err
 	}
@@ -324,32 +324,42 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"hint_query", hq.query,
 	)
 
-	overlapping := s.indexStore.IndexesForRange(rangeStart, rangeEnd)
+	from, through, step := getRangeBounds(hq, rangeStart, rangeEnd)
+	overlapping := s.indexStore.IndexesForRange(from, through)
 	ids := make([]string, len(overlapping))
 	for i, m := range overlapping {
 		ids[i] = m.ID()
 	}
 	report.OverlappingIndexIDs = ids
 
-	resultEntries, _, err := s.queryRange(ctx, hq.query, rangeStart, rangeEnd, s.cfg.LogQueryLimit)
-	if err != nil {
-		return report, err
-	}
-	report.NeedleQueryTruncated = len(resultEntries) >= s.cfg.LogQueryLimit
-	level.Info(s.logger).Log(
-		"msg", "correctness cycle step",
-		"step", "fetched_needle_results",
-		"result_count", len(resultEntries),
-		"truncated", report.NeedleQueryTruncated,
+	var (
+		samples       []verification.MetricSample
+		resultEntries []queryEntry
 	)
+	if isMetricQuery(hq) {
+		samples, _, err = s.queryMetrics(ctx, hq.query, rangeStart, rangeEnd, step)
+		if err != nil {
+			return report, err
+		}
+
+		s.logFetchedNeedle(len(samples), report)
+	} else {
+		resultEntries, _, err = s.queryLogs(ctx, hq.query, rangeStart, rangeEnd, s.cfg.LogQueryLimit)
+		if err != nil {
+			return report, err
+		}
+		report.NeedleQueryTruncated = len(resultEntries) >= s.cfg.LogQueryLimit
+
+		s.logFetchedNeedle(len(resultEntries), report)
+	}
 
 	hintStart := time.Now()
 	hints, _, err := s.hintProvider.ProvideHints(
 		ctx,
 		s.cfg.TenantID,
 		hq.expr,
-		model.TimeFromUnixNano(rangeStart.UnixNano()),
-		model.TimeFromUnixNano(rangeEnd.UnixNano()),
+		model.TimeFromUnixNano(from.UnixNano()),
+		model.TimeFromUnixNano(through.UnixNano()),
 	)
 	hintDuration := time.Since(hintStart)
 	if err != nil {
@@ -391,7 +401,12 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"hint_duration", hintDuration,
 	)
 
-	vr := verifyHints(hintRanges, protoEntries(resultEntries))
+	var vr *verificationReport
+	if isMetricQuery(hq) {
+		vr = verifyMetricSamples(hq.expr, hintRanges, samples)
+	} else {
+		vr = verifyHints(hintRanges, protoEntries(resultEntries))
+	}
 
 	report.AvgHintRangeSeconds = avgHintRangeSeconds
 	report.CandidateTimeRanges = vr.HintRanges
@@ -419,7 +434,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	s.metrics.totalIncorrectTests.Inc()
 	s.metrics.lastIncorrectTestTs.Set(float64(now.Unix()))
 
-	excludedCoveringFN := s.excludedIndexesCoveringFNs(report.FalseNegativeTimestamps, rangeStart, rangeEnd)
+	excludedCoveringFN := s.excludedIndexesCoveringFNs(report.FalseNegativeTimestamps, from, through)
 
 	// A log miss records timestamps. A metric miss records each sample's lookback.
 	// excludedIndexesCoveringFNs returns nothing when there are no timestamps.
@@ -484,6 +499,35 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	s.metrics.falsePositivesTotal.Add(float64(vr.FalsePositives))
 
 	return report, nil
+}
+
+func (s *Service) logFetchedNeedle(resLen int, report CycleReport) {
+	level.Info(s.logger).Log(
+		"msg", "correctness cycle step",
+		"step", "fetched_needle_results",
+		"result_count", resLen,
+		"truncated", report.NeedleQueryTruncated,
+	)
+}
+
+func getRangeBounds(hq hintQuery, rangeStart, rangeEnd time.Time) (adjStart, adjEnd time.Time, queryStep time.Duration) {
+	step := time.Duration(0)
+	if hq.queryType == hintQueryTypeMetricRange {
+		step = time.Minute
+	}
+	if hq.queryType == hintQueryTypeMetricInstant {
+		rangeStart = rangeEnd
+	}
+	groups, err := syntax.MatcherGroups(hq.expr)
+	if err != nil || len(groups) != 1 {
+		return rangeStart, rangeEnd, step
+	}
+	from, through := verification.MetricLookupBounds(groups[0], rangeStart, rangeEnd, step.Milliseconds())
+	return from, through, step
+}
+
+func isMetricQuery(hq hintQuery) bool {
+	return hq.queryType == hintQueryTypeMetricRange || hq.queryType == hintQueryTypeMetricInstant
 }
 
 // excludedIndexesCoveringFNs returns ingester-window-excluded indexes whose log
@@ -637,7 +681,50 @@ func protoEntries(logs []queryEntry) []logproto.Entry {
 	return out
 }
 
-func (s *Service) queryRange(
+func (s *Service) queryMetrics(
+	ctx context.Context,
+	query string,
+	start, end time.Time,
+	step time.Duration,
+) ([]verification.MetricSample, string, error) {
+	if end.Before(start) {
+		end = start
+	}
+	var lastErr error
+	for _, idx := range s.shuffledClientIndexes() {
+		if err := ctx.Err(); err != nil {
+			return nil, "", err
+		}
+
+		c := s.lokiClients[idx]
+		var (
+			resp *loghttp.QueryResponse
+			err  error
+		)
+		if step > 0 {
+			resp, err = c.client.QueryRange(query, 0, start, end, logproto.BACKWARD, step, 0, true)
+		} else {
+			resp, err = c.client.Query(query, 0, end, logproto.BACKWARD, true)
+		}
+		if err != nil {
+			lastErr = fmt.Errorf("endpoint %s query metrics: %w", c.endpoint, err)
+			continue
+		}
+		samples, err := queryResponseSamples(resp)
+		if err != nil {
+			lastErr = fmt.Errorf("endpoint %s decode query metrics response: %w", c.endpoint, err)
+			continue
+		}
+		return samples, c.endpoint, nil
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no Loki clients configured")
+	}
+	return nil, "", lastErr
+}
+
+func (s *Service) queryLogs(
 	ctx context.Context,
 	query string,
 	start, end time.Time,
@@ -905,6 +992,8 @@ const (
 	hintQueryTypeLabelFilter     hintQueryType = "label_filter"
 	hintQueryTypeSMLabelFilter   hintQueryType = "sm_label_filter"
 	hintQueryTypeJSONLabelFilter hintQueryType = "json_label_filter"
+	hintQueryTypeMetricRange     hintQueryType = "metric_range"
+	hintQueryTypeMetricInstant   hintQueryType = "metric_instant"
 )
 
 // hintQuery is a validated query used to fetch Loki results and Logline hints.
@@ -937,7 +1026,6 @@ func buildJSONLabelFilterHintQuery(selector, label, value string) string {
 }
 
 // buildMetricQuery wraps a log hint query as sum(count_over_time(<needle> [5m])).
-// The verification cycle does not call this yet.
 func buildMetricQuery(hq hintQuery) (hintQuery, error) {
 	lookback := "5m"
 	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, lookback)
@@ -967,16 +1055,15 @@ func (s *Service) provideMetricHints(ctx context.Context, hq hintQuery, from, th
 	return hints, err
 }
 
-// pickHintQuery chooses among SM, stream-label, post-parser JSON, and line
-// filters with equal weight. The chosen path is tried first; on failure
-// (ineligible value / parse error / no JSON field) we fall back to a
-// line-filter needle. Loki matches the label/SM/JSON key; Logline only looks
-// up value n-grams.
+// pickHintQuery chooses among log queries (SM, stream-label, post-parser JSON, line filter) and
+// metric queries (range, instant) with equal weight. The chosen path is tried first; on failure
+// (ineligible value / parse error / no JSON field) we fall back to a line-filter needle.
+// Loki matches the label/SM/JSON key; Logline only looks up value n-grams.
 func (s *Service) pickHintQuery(
 	selector, label, value string,
 	logs []queryEntry,
 ) (hintQuery, bool) {
-	switch s.randIntn(4) {
+	switch s.randIntn(6) {
 	case 0:
 		if hq, ok := s.trySMLabelFilterHintQuery(selector, logs); ok {
 			return hq, true
@@ -989,8 +1076,50 @@ func (s *Service) pickHintQuery(
 		if hq, ok := s.tryJSONLabelFilterHintQuery(selector, logs); ok {
 			return hq, true
 		}
+	case 3:
+		if hq, ok := s.tryMetricRangeHintQuery(selector, logs); ok {
+			return hq, true
+		}
+	case 4:
+		if hq, ok := s.tryMetricInstantHintQuery(selector, logs); ok {
+			return hq, true
+		}
 	}
 	return s.tryLineFilterHintQuery(selector, logs)
+}
+
+func (s *Service) tryMetricInstantHintQuery(selector string, logs []queryEntry) (hintQuery, bool) {
+	hq, ok := s.tryLineFilterHintQuery(selector, logs)
+	if !ok {
+		return hintQuery{}, false
+	}
+	metric, err := buildMetricQuery(hq)
+	if err != nil {
+		level.Warn(s.logger).Log(
+			"msg", "failed to build metric hint query; falling back to line filter",
+			"err", err,
+		)
+		return hintQuery{}, false
+	}
+	metric.queryType = hintQueryTypeMetricInstant
+	return metric, true
+}
+
+func (s *Service) tryMetricRangeHintQuery(selector string, logs []queryEntry) (hintQuery, bool) {
+	hq, ok := s.tryLineFilterHintQuery(selector, logs)
+	if !ok {
+		return hintQuery{}, false
+	}
+	metric, err := buildMetricQuery(hq)
+	if err != nil {
+		level.Warn(s.logger).Log(
+			"msg", "failed to build metric hint query; falling back to line filter",
+			"err", err,
+		)
+		return hintQuery{}, false
+	}
+	metric.queryType = hintQueryTypeMetricRange
+	return metric, true
 }
 
 // trySMLabelFilterHintQuery builds a label-filter hint from the first usable SM
