@@ -624,13 +624,14 @@ func decodeIngestedAtDayDelta(encoded uint64, maxTime int64) int64 {
 	return (unixEpochDay(maxTime) + deltaDays) * ingestedAtDayMilliseconds
 }
 
-// NormalizeIngestedAt returns ingestedAt as the index stores and reads it back
-// for a chunk ending at maxTime: rounded up to a UTC day boundary through the
-// same day-delta codec used when writing the index. Stamping the normalized
-// value on the chunk keeps the chunk's IngestedAt equal to the indexed one and,
-// because it only has day precision, identical across replicas that flush the
-// same chunk within the same day.
-func NormalizeIngestedAt(ingestedAt, maxTime int64) int64 {
+// RoundIngestedAtUpToDay rounds ingestedAt up to the next UTC day boundary (a
+// value already on a boundary is kept). It does so through the same day-delta
+// codec used when writing the index for a chunk ending at maxTime, so the result
+// is exactly what the index stores and reads back. Stamping it on the chunk
+// keeps the chunk's IngestedAt equal to the indexed one and, because it only has
+// day precision, identical across replicas that flush the same chunk within the
+// same day.
+func RoundIngestedAtUpToDay(ingestedAt, maxTime int64) int64 {
 	return decodeIngestedAtDayDelta(encodeIngestedAtDayDelta(ingestedAt, maxTime), maxTime)
 }
 
