@@ -106,10 +106,18 @@ type chunkDesc struct {
 
 type recordTimestampKey struct{}
 
+// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested record.
+// Records without a timestamp come with a zero time, or with a timestamp at or before the epoch
+// (e.g. Kafka's NoTimestamp, -1). Those would end up as an IngestedAt of zero, which means "not
+// set" and makes the chunk fall back to Through-based retention.
+func validRecordTimestamp(ts time.Time) bool {
+	return ts.UnixMilli() > 0
+}
+
 // withRecordTimestamp returns a context carrying the timestamp of the record being pushed, e.g. a
-// Kafka record. Zero timestamps are ignored.
+// Kafka record. Timestamps that are not valid, see validRecordTimestamp, are ignored.
 func withRecordTimestamp(ctx context.Context, ts time.Time) context.Context {
-	if ts.IsZero() {
+	if !validRecordTimestamp(ts) {
 		return ctx
 	}
 	return context.WithValue(ctx, recordTimestampKey{}, ts)

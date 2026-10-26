@@ -520,6 +520,19 @@ func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
 		require.Equal(t, early, s.chunks[1].ingestedAt)
 	})
 
+	t.Run("record timestamps that are not usable are ignored", func(t *testing.T) {
+		for _, ts := range []time.Time{{}, time.UnixMilli(0), time.UnixMilli(-1)} {
+			_, ok := recordTimestamp(withRecordTimestamp(context.Background(), ts))
+			require.False(t, ok, ts.String())
+		}
+
+		s := newTestStream()
+		push(s, withRecordTimestamp(context.Background(), time.UnixMilli(-1)), "a", 1)
+
+		require.Len(t, s.chunks, 1)
+		require.True(t, s.chunks[0].ingestedAt.IsZero())
+	})
+
 	t.Run("no record timestamp leaves it unset", func(t *testing.T) {
 		s := newTestStream()
 		push(s, context.Background(), "a", 1)

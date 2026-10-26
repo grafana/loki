@@ -581,8 +581,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			lastTime,
 		)
 
-		// For backfilled chunks, stamp the flush time as IngestedAt so retention
-		// can be measured from ingestion rather than from the log timestamps.
+		// For backfilled chunks, stamp IngestedAt (the time the records were ingested, or the
+		// flush time if there is none) so retention can be measured from ingestion rather than
+		// from the log timestamps.
 		i.maybeSetIngestedAt(&ch, firstTime, c.ingestedAt)
 
 		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
@@ -626,8 +627,9 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 // and chunks whose period does not support FormatV4, keep the zero value and fall back to
 // Through-based retention.
 //
-// recordTime is the highest timestamp of the ingested (e.g. Kafka) records that fed the chunk,
-// or zero if there is none.
+// recordTime is the highest timestamp of the ingested (e.g. Kafka) records that fed the chunk.
+// It is used as the ingestion time if it is valid, see validRecordTimestamp. Otherwise the
+// flush time is used.
 func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, recordTime time.Time) {
 	if ch.Metric.Get(constants.BackfillLabel) != "true" {
 		return
@@ -645,26 +647,26 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, rec
 		return
 	}
 
-	// IngestedAt is part of the encoded chunk, so replicas flushing the same chunk must stamp the
-	// same value or each of them gets a different checksum and chunk key and the chunk is not
-	// deduplicated.
-	if recordTime.IsZero() {
-		// No record timestamp (e.g. a push that didn't come from Kafka), so stamp the flush time.
-		// Backfilled chunks are flushed shortly after they are ingested, so at the day precision
-		// used by the index this matches ingestion. The value is rounded up to the day the way the
-		// index stores it, so it is identical across replicas flushing the same chunk within the
-		// same day.
-		//
-		// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
-		// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
-		// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
-		ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(ch.Through)))
-		return
+	// Replicas of a partition consume the same records, so the record timestamp is the same on
+	// all of them. Without one (e.g. a push that didn't come from Kafka), use the flush time.
+	// Backfilled chunks are flushed shortly after they are ingested, so at the day precision
+	// used by the index this matches ingestion.
+	ingestedAt := model.Now()
+	if validRecordTimestamp(recordTime) {
+		ingestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
 	}
 
-	// Replicas of a partition consume the same records, so the record timestamp is the same on
-	// all of them and is used as is.
-	ch.IngestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
+	// IngestedAt is part of the encoded chunk, so replicas flushing the same chunk must stamp the
+	// same value or each of them gets a different checksum and chunk key and the chunk is not
+	// deduplicated. Round it up to the day the way the index stores it, so it is also identical
+	// when the replicas' values differ within the same day (for example flush times a few
+	// seconds apart, or a replica that restarted and has a slightly lower highest record
+	// timestamp).
+	//
+	// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
+	// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
+	// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
+	ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(ingestedAt), int64(ch.Through)))
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
