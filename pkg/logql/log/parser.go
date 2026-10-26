@@ -638,6 +638,30 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 	}, nil
 }
 
+// wantsOtherName reports whether a name of an expression other than current may still be written: the
+// name, or its renamed form when a stream label or structured metadata holds it, passes the hints and
+// the first-writer rule. The parser stops reading a line when this is false.
+func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current string) bool {
+	// The common query has one expression, so there is no other name.
+	if len(l.expressions) == 1 {
+		return false
+	}
+	for id := range l.expressions {
+		if id == current {
+			continue
+		}
+		name := id
+		renamed := lbs.BaseHas(id) || lbs.HasInCategory(id, StructuredMetadataLabel)
+		if renamed {
+			name = id + DuplicateSuffix
+		}
+		if lbs.ParserLabelHints().ShouldExtract(name) && l.renames.shouldSet(lbs, name, renamed) {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	// If there are no expressions, extract common labels
 	// and add the suffix "_extracted"
@@ -707,11 +731,17 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 
 		if _, ok := l.expressions[key]; ok {
+			id := key
 			renamed := false
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = key + DuplicateSuffix
 				renamed = true
 				if !lbs.ParserLabelHints().ShouldExtract(key) {
+					// The query does not need the renamed name. The next key of the line may still
+					// be needed, so stop only when no other name is left to read.
+					if !l.wantsOtherName(lbs, id) {
+						break
+					}
 					continue
 				}
 			}
@@ -719,6 +749,9 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			// earlier stage, or an earlier key of this line already holds is skipped. The next key
 			// of the line may still be needed.
 			if !l.renames.shouldSet(lbs, key, renamed) {
+				if renamed && !l.wantsOtherName(lbs, id) {
+					break
+				}
 				continue
 			}
 
