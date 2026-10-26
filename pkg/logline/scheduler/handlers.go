@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -23,6 +24,7 @@ func RegisterHandlers(srv *server.Server, svc *Service, logger log.Logger) error
 	level.Info(logger).Log("msg", "registering scheduler handlers")
 	srv.HTTP.HandleFunc(schedulerapi.JobPath, svc.whenRunning(svc.handleJobRequest))
 	srv.HTTP.HandleFunc(schedulerapi.AbandonPath, svc.whenRunning(svc.handleAbandonJob))
+	srv.HTTP.HandleFunc(schedulerapi.CompletePath, svc.whenRunning(svc.handleCompleteJob))
 	srv.HTTP.HandleFunc(schedulerapi.StatusPath, svc.whenRunning(svc.handleStatus))
 	srv.HTTP.HandleFunc(schedulerapi.StoreDumpPath, svc.whenRunning(svc.handleStoreDump))
 
@@ -158,6 +160,34 @@ func (s *Service) handleAbandonJob(w http.ResponseWriter, r *http.Request) {
 	// for the next periodic store poll tick.
 	s.rebuildPlannerLocked(s.store.Snapshot())
 	s.notifyWorkersLocked()
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleCompleteJob records a job its worker reports as finished, without
+// assigning new work. Workers call it on shutdown when no job request has
+// delivered the report, so a worker that restarts under the same ID is not
+// handed the finished job again.
+func (s *Service) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
+	workerID := schedulerapi.WorkerID(r)
+	jobID := schedulerapi.JobID(r)
+	if workerID == "" || jobID == "" {
+		http.Error(w, "worker_id and job_id are required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.completeReportedJobLocked(workerID, jobID); err != nil {
+		if errors.Is(err, errJobOwnedByOtherWorker) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		level.Error(s.logger).Log("msg", "failed to remove worker-reported completed job", "job_id", jobID, "worker_id", workerID, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusOK)
 }
