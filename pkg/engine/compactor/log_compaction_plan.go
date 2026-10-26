@@ -130,22 +130,3 @@ func (t indexFilterTask) tocEntry() metastore.TableOfContentsEntry { return t.en
 // logTaskStats returns zero bytes, because the filter reads only the source
 // index.
 func (t indexFilterTask) logStats() logTaskStats { return logTaskStats{} }
-
-// sortObjectTask rewrites one log object with sortSchema. bytes is the
-// uncompressed size of the sections of the object.
-type sortObjectTask struct {
-	objectPath string
-	sortSchema []string
-	entry      metastore.TableOfContentsEntry
-	bytes      uint64
-}
-
-func (t sortObjectTask) physicalPlan(string, time.Time) *physical.Plan {
-	return buildSortObjectPlan(t.objectPath, t.sortSchema)
-}
-
-func (t sortObjectTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
-
-func (t sortObjectTask) logStats() logTaskStats {
-	return logTaskStats{inputBytes: t.bytes, oldestTimestamp: t.entry.StartTime}
-}

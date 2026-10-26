@@ -28,12 +28,15 @@ type objectStream struct {
 	streamHash uint64
 }
 
-// objectStreams is the decoded identity of the streams one object holds for a query.
+// objectStreams is the decoded identity of the streams that one planObject call reads from a
+// data object.
 //
-// One instance is shared by every task planned for that object. newObjectStreams fills it and
-// nothing writes to it afterwards, so the concurrent scans need no lock and the planner does
-// not copy a label map per section. It does pin one label set per admitted stream until the
-// query releases its objects.
+// The tasks of that call share one instance. newObjectStreams fills it and nothing writes to it
+// afterwards, so the concurrent scans need no lock and the planner does not copy a label map per
+// section. It does pin one label set per admitted stream while a task of that call is alive.
+//
+// Two index objects can list sections of one data object. planObject then runs once for each of
+// them, and a stream that both list has two copies of its labels.
 //
 // A dropped stream keeps its ID and loses its labels, which is what bounds that cost for a
 // query whose access-control policy denies most of its streams. Its ID is still needed, because
@@ -96,7 +99,7 @@ type ReadTask struct {
 	// streamIDs are the streams to read, after filtering.
 	streamIDs []int64
 
-	// streams is the identity of every stream of this object, shared with its other tasks.
+	// streams is shared with the other tasks of the same planObject call.
 	streams *objectStreams
 
 	columns       []logs.ColumnType
@@ -161,10 +164,10 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 	return out, nil
 }
 
-// TaskIterator streams read tasks from the planner to the reader. The planner fills it
-// from a background goroutine as it resolves objects, and the reader consumes tasks as they
-// arrive. Err returns any resolution error once Next has returned false, so a planning failure
-// reaches the reader the same way a scan failure does.
+// TaskIterator streams read tasks from the planner to the reader. The planner fills it from a
+// background goroutine as the metastore yields sections, and the reader consumes tasks as they
+// arrive. Err returns any metastore or planning error once Next has returned false. The reader
+// sees it the same way as a scan failure.
 //
 // Next, At and Waited are for the single consumer goroutine only. Err, setErr and Abort are
 // safe for concurrent use: the reader may Abort while the planner still runs.
@@ -200,7 +203,7 @@ func newTaskIterator(tasks <-chan ReadTask, cancel context.CancelFunc) *TaskIter
 }
 
 func (it *TaskIterator) Next() bool {
-	// A resolution error is terminal.
+	// An error from the metastore or from planning is terminal.
 	if it.Err() != nil {
 		return false
 	}

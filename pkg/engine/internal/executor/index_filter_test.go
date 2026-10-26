@@ -66,7 +66,7 @@ func appendFilterPostings(t *testing.T, objBuilder *dataobj.Builder, tenant stri
 // appendFilterStats appends one stats section with rows.
 func appendFilterStats(t *testing.T, objBuilder *dataobj.Builder, tenant string, rows []stats.Stat) {
 	t.Helper()
-	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layoutOfStats(rows))
 	statsBuilder.SetTenant(tenant)
 	for _, row := range rows {
 		statsBuilder.Append(row)

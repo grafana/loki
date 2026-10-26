@@ -122,10 +122,6 @@ func (l execLimits) StreamFirstExecutionEnabled(string) bool {
 	return l.streamFirstExecutionEnabled
 }
 
-func (execLimits) DebugEngineTasks(string) bool { return false }
-
-func (execLimits) DebugEngineStreams(string) bool { return false }
-
 // checkDataObjReads returns an error when res holds a sample that only data objects can provide,
 // but the query read no data-object row. It catches a routing bug that reads every sample from
 // chunks, which the results alone cannot show, because chunks hold every stream too.
@@ -149,12 +145,12 @@ func checkDataObjReads(query string, res logqlmodel.Result, dataObjQueryStart ti
 	switch data := res.Data.(type) {
 	case promql.Vector:
 		for _, s := range data {
-			needsDataObj = needsDataObj || (s.F > 0 && !windowStart(s.T).Before(dataObjQueryStart))
+			needsDataObj = needsDataObj || !windowStart(s.T).Before(dataObjQueryStart)
 		}
 	case promql.Matrix:
 		for _, series := range data {
 			for _, p := range series.Floats {
-				needsDataObj = needsDataObj || (p.F > 0 && !windowStart(p.T).Before(dataObjQueryStart))
+				needsDataObj = needsDataObj || !windowStart(p.T).Before(dataObjQueryStart)
 			}
 		}
 	}

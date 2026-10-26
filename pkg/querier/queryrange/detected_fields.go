@@ -81,6 +81,8 @@ func NewDetectedFieldsHandler(
 					Values: values,
 				},
 				Headers: re.Headers,
+				// Keep the log scan usage when replacing log entries with metadata.
+				Statistics: re.Statistics,
 			}
 
 			// Otherwise all they get is the field limit, which is a bit confusing

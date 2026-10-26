@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,77 +21,76 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 )
 
 var errMinBackends = errors.New("at least 1 backend is required")
 
-type RoutingMode string
-
-const (
-	RoutingModeRace        RoutingMode = "race"
-	RoutingModeV1Preferred RoutingMode = "v1-preferred"
-	RoutingModeV2Preferred RoutingMode = "v2-preferred"
-)
-
-type RoutingConfig struct {
-	Mode          RoutingMode
-	V1Preferred   string
-	V2Preferred   string
-	RaceTolerance time.Duration
-
-	// SplitStart is the start date of data available in v2 (dataobjs) storage.
-	// Queries for data before this date will only go to the v1 backend.
-	// If not set, assume v2 data is always available.
-	//
-	// When splitting queries will be split into up to three parts:
-	// 1. Data before SplitStart -> split goes to the v1 backend only
-	// 2. Data between SplitStart and (now - SplitLag) -> split goes to both v1 and v2 backends
-	// 3. Data after (now - SplitLag) -> split goes to the v1 backend only
-	SplitStart flagext.Time
-
-	// SplitLag is the minimum age of data to route to v2.
-	// Data newer than (now - SplitLag) will only go to the v1 backend.
-	// When set to 0, query splitting is disabled.
-	SplitLag time.Duration
-
-	// SplitRetentionDays is the lifecycle of data objects in days.
-	// If set, data in v2 storage is considered available only for retention days.
-	// Queries for data before the retention period will go to the v1 backend.
-	// When both SplitStart and SplitRetentionDays are set, the more restrictive of the two will
-	// determine v2 data availability.
-	SplitRetentionDays int64
-
-	// AddRoutingDecisionsToWarnings controls whether routing decisions are added
-	// as warnings to query responses. When enabled, responses will include
-	// warnings indicating which backend handled the query and how it was routed.
-	AddRoutingDecisionsToWarnings bool
+// PrimaryBackendConfig configures the backend whose response the proxy returns to the client.
+type PrimaryBackendConfig struct {
+	Hostname string
 }
 
-func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar((*string)(&cfg.Mode), "routing.mode", string(RoutingModeV1Preferred), "Routing mode: race, v1-preferred, or v2-preferred")
-	f.StringVar(&cfg.V1Preferred, "routing.v1-preferred", "", "The hostname of the preferred v1 (chunks) backend")
-	f.StringVar(&cfg.V2Preferred, "routing.v2-preferred", "", "The hostname of the preferred v2 (dataobjs) backend")
-	f.DurationVar(&cfg.RaceTolerance, "routing.race-tolerance", 100*time.Millisecond, "Race handicap for v2 in race mode")
-	f.Var(&cfg.SplitStart, "routing.split-start", "Start date when v2 data became available. Format YYYY-MM-DD. Queries before this date go only to v1.")
-	f.DurationVar(&cfg.SplitLag, "routing.split-lag", 0, "Minimum age of data to route to v2. Data newer than this goes only to v1. When 0 (default), splitting is disabled.")
-	f.Int64Var(&cfg.SplitRetentionDays, "routing.split-retention-days", 0, "Lifecycle of data objects in days. If set, data outside of retention period will not be available in v2 storage. When both split-start and split-retention-days are set, the more restrictive of the two will apply.")
-	f.BoolVar(&cfg.AddRoutingDecisionsToWarnings, "routing.add-routing-decisions-to-warnings", false, "Add routing decisions as warnings to query responses.")
+// RegisterFlags registers the flags of the primary backend.
+func (cfg *PrimaryBackendConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&cfg.Hostname, "primary-backend.hostname", "", "The hostname of the primary backend. Required. The proxy always returns its response to the client.")
 }
 
-func (cfg *RoutingConfig) Validate() error {
-	switch cfg.Mode {
-	case RoutingModeRace, RoutingModeV1Preferred, RoutingModeV2Preferred:
+// SecondaryBackendConfig configures the backend whose responses the proxy compares with the
+// primary backend's responses when -proxy.compare-responses is set. The proxy never returns its
+// responses to the client.
+type SecondaryBackendConfig struct {
+	Hostname          string
+	SelectionStrategy string
+}
+
+// RegisterFlags registers the flags of the secondary backend.
+func (cfg *SecondaryBackendConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&cfg.Hostname, "secondary-backend.hostname", "", "The hostname of the secondary backend. When -proxy.compare-responses is set, the proxy compares its responses with the primary's. The proxy never returns its responses to the client. Empty means no secondary backend.")
+	f.StringVar(&cfg.SelectionStrategy, "secondary-backend.selection-strategy", selectionStrategyAll, "How the proxy picks the read requests that the secondary backend receives. Supported: "+selectionStrategyAll+" (every request) and "+selectionStrategyDataObj+" (the range and instant queries that the secondary backend reads from data objects).")
+}
+
+// Validate checks that the selection strategy is a known one, and that a strategy other than the
+// default has a secondary backend.
+func (cfg *SecondaryBackendConfig) Validate() error {
+	switch cfg.SelectionStrategy {
+	case selectionStrategyAll:
+	case selectionStrategyDataObj:
+		if cfg.Hostname == "" {
+			return errors.New("-secondary-backend.selection-strategy needs -secondary-backend.hostname")
+		}
 	default:
-		return fmt.Errorf("invalid routing mode: %s", cfg.Mode)
+		return fmt.Errorf("unknown selection strategy %q", cfg.SelectionStrategy)
 	}
-
-	if cfg.SplitLag < 0 {
-		return fmt.Errorf("split lag must be >= 0")
-	}
-
 	return nil
+}
+
+// newSelectionStrategy builds the selection strategy that the config names.
+func newSelectionStrategy(cfg SecondaryBackendConfig, dataObjCfg DataObjConfig, lokiLimits *LokiLimits) (SelectionStrategy, error) {
+	switch cfg.SelectionStrategy {
+	case selectionStrategyAll:
+		return allStrategy{}, nil
+	case selectionStrategyDataObj:
+		return newDataObjStrategy(dataObjCfg, lokiLimits)
+	default:
+		return nil, fmt.Errorf("unknown selection strategy %q", cfg.SelectionStrategy)
+	}
+}
+
+// DataObjConfig holds the data object settings of the secondary backend's Loki cluster. The flags
+// have the names, defaults and descriptions of the Loki flags. querytee does not read these
+// settings from the Loki config file.
+type DataObjConfig struct {
+	Enabled    bool
+	StorageLag time.Duration
+}
+
+// RegisterFlags registers the flags of the data object config.
+func (cfg *DataObjConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "dataobj.enabled", false, "Enable data objects.")
+	f.DurationVar(&cfg.StorageLag, "dataobj.storage-lag", dataobjconfig.DefaultStorageLag, "Delay after which data objects hold all the data.")
 }
 
 type ProxyConfig struct {
@@ -101,38 +98,64 @@ type ProxyConfig struct {
 	BackendEndpoints               string
 	BackendReadTimeout             time.Duration
 	CompareResponses               bool
-	DisableBackendReadProxy        string
 	ValueComparisonTolerance       float64
 	UseRelativeError               bool
 	PassThroughNonRegisteredRoutes bool
 	SkipRecentSamples              time.Duration
 	SkipSamplesBefore              flagext.Time
-	RequestURLFilter               *regexp.Regexp
-	InstrumentCompares             bool
+	ReportMissingSeries            bool
 
-	Routing RoutingConfig
+	PrimaryBackend   PrimaryBackendConfig
+	SecondaryBackend SecondaryBackendConfig
+	DataObj          DataObjConfig
+}
+
+// backendRole returns the role of the backend at the given index of the backend list. It returns
+// an error when the backend matches both hostnames.
+func (cfg *ProxyConfig) backendRole(name string, idx int) (BackendRole, error) {
+	matches := func(hostname string) bool {
+		if hostname == "" {
+			return false
+		}
+
+		// A numeric hostname is a 0-based index into the backend list, not a name. Only tests use
+		// it, because all test backends share one hostname.
+		if i, err := strconv.Atoi(hostname); err == nil {
+			return i == idx
+		}
+
+		return name == hostname
+	}
+
+	primary, secondary := matches(cfg.PrimaryBackend.Hostname), matches(cfg.SecondaryBackend.Hostname)
+	switch {
+	case primary && secondary:
+		return RoleOther, fmt.Errorf("the backend %s cannot be both the primary and the secondary backend", name)
+	case primary:
+		return RolePrimary, nil
+	case secondary:
+		return RoleSecondary, nil
+	default:
+		return RoleOther, nil
+	}
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ServerServicePort, "server.service-port", 80, "The port where the query-tee service listens to.")
-	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints to query.")
+	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints. The proxy sends every write to every backend. It sends every read to every backend, except that the secondary backend receives only the reads that its selection strategy picks.")
 
-	cfg.Routing.RegisterFlags(f)
+	cfg.PrimaryBackend.RegisterFlags(f)
+	cfg.SecondaryBackend.RegisterFlags(f)
+	cfg.DataObj.RegisterFlags(f)
 
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
-	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
-	f.StringVar(&cfg.DisableBackendReadProxy, "proxy.disable-backend-read", "", "Comma separated list of non-primary backend hostnames to disable their read proxy. Typically used for temporarily not passing any read requests to specified backends.")
+	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare the responses of the secondary backend with the responses of the primary backend on supported routes. Requires a secondary backend.")
+	f.BoolVar(&cfg.ReportMissingSeries, "proxy.compare-report-missing-series", false, "Report, in the loki_querytee_missing_metrics_series metric, how many series of the primary backend's vector response the secondary backend's response lacks. Requires -proxy.compare-responses.")
 	f.Float64Var(&cfg.ValueComparisonTolerance, "proxy.value-comparison-tolerance", 0.000001, "The tolerance to apply when comparing floating point values in the responses. 0 to disable tolerance and require exact match (not recommended).")
 	f.BoolVar(&cfg.UseRelativeError, "proxy.compare-use-relative-error", false, "Use relative error tolerance when comparing floating point values.")
 	f.DurationVar(&cfg.SkipRecentSamples, "proxy.compare-skip-recent-samples", 60*time.Second, "The window from now to skip comparing samples. 0 to disable.")
 	f.Var(&cfg.SkipSamplesBefore, "proxy.compare-skip-samples-before", "Skip the samples before the given time for comparison. The time can be in RFC3339 format (or) RFC3339 without the timezone and seconds (or) date only.")
-	f.BoolVar(&cfg.PassThroughNonRegisteredRoutes, "proxy.passthrough-non-registered-routes", false, "Passthrough requests for non-registered routes to preferred backend.")
-	f.Func("backend.filter", "A request filter as a regular expression. Only matches are proxied to non-preferred backends.", func(raw string) error {
-		var err error
-		cfg.RequestURLFilter, err = regexp.Compile(raw)
-		return err
-	})
-	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
+	f.BoolVar(&cfg.PassThroughNonRegisteredRoutes, "proxy.passthrough-non-registered-routes", false, "Passthrough requests for non-registered routes to the primary backend.")
 }
 
 type Route struct {
@@ -143,12 +166,13 @@ type Route struct {
 }
 
 type Proxy struct {
-	cfg         ProxyConfig
-	backends    []*ProxyBackend
-	logger      log.Logger
-	metrics     *ProxyMetrics
-	readRoutes  []Route
-	writeRoutes []Route
+	cfg                      ProxyConfig
+	backends                 ProxyBackends
+	logger                   log.Logger
+	metrics                  *ProxyMetrics
+	readRoutes               []Route
+	writeRoutes              []Route
+	secondaryBackendStrategy SelectionStrategy
 
 	// The HTTP server used to run the proxy service.
 	srv         *http.Server
@@ -158,26 +182,24 @@ type Proxy struct {
 	done sync.WaitGroup
 }
 
+// NewProxy returns a Proxy for the backends in cfg.BackendEndpoints.
+//
+// Exactly one backend must match the primary hostname. When the secondary hostname is set, exactly
+// one other backend must match it. A backend that matches neither is an "other" backend. The proxy
+// sends it every request and never compares its responses.
 func NewProxy(
 	cfg ProxyConfig,
 	logger log.Logger,
 	readRoutes, writeRoutes []Route,
 	registerer prometheus.Registerer,
+	lokiLimits *LokiLimits,
 ) (*Proxy, error) {
-	if err := cfg.Routing.Validate(); err != nil {
+	if err := cfg.SecondaryBackend.Validate(); err != nil {
 		return nil, err
 	}
 
-	if cfg.CompareResponses && cfg.Routing.V1Preferred == "" {
-		return nil, fmt.Errorf("when enabling comparison of results -routing.v1-backend flag must be set")
-	}
-
-	if cfg.PassThroughNonRegisteredRoutes && cfg.Routing.V1Preferred == "" {
-		return nil, fmt.Errorf("when enabling passthrough for non-registered routes -routing.v1-backend flag must be set")
-	}
-
-	if cfg.InstrumentCompares && !cfg.CompareResponses {
-		return nil, fmt.Errorf("when enabling instrumentation of comparisons of results -proxy.compare-responses flag must be set")
+	if cfg.ReportMissingSeries && !cfg.CompareResponses {
+		return nil, fmt.Errorf("-proxy.compare-report-missing-series requires -proxy.compare-responses to be set")
 	}
 
 	p := &Proxy{
@@ -204,21 +226,13 @@ func NewProxy(
 		}
 
 		name := u.Hostname()
-		v1Preferred := name == cfg.Routing.V1Preferred
-		v2Preferred := name == cfg.Routing.V2Preferred
-
-		// In tests we have the same hostname for all backends, so we also
-		// support a numeric preferred backend which is the index in the list
-		// of backends.
-		if preferredIdx, err := strconv.Atoi(cfg.Routing.V1Preferred); err == nil {
-			v1Preferred = preferredIdx == idx
-		}
-		if preferredIdx, err := strconv.Atoi(cfg.Routing.V2Preferred); err == nil {
-			v2Preferred = preferredIdx == idx
+		role, err := cfg.backendRole(name, idx)
+		if err != nil {
+			return nil, err
 		}
 
-		level.Debug(logger).Log("msg", "backend added", "name", name, "v1Preferred", v1Preferred, "v2Preferred", v2Preferred)
-		backend, err := NewProxyBackend(name, u, cfg.BackendReadTimeout, v1Preferred, v2Preferred)
+		level.Debug(logger).Log("msg", "backend added", "name", name, "role", role.String())
+		backend, err := NewProxyBackend(name, u, cfg.BackendReadTimeout, role)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create backend %s", name)
 		}
@@ -230,59 +244,41 @@ func NewProxy(
 		return nil, errMinBackends
 	}
 
-	// If the preferred backend is configured, then it must exists among the actual backends.
-	if cfg.Routing.V1Preferred != "" {
-		exists := false
-		for _, b := range p.backends {
-			if b.v1Preferred {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			return nil, fmt.Errorf("the v1 backend (hostname) has not been found among the list of configured backends")
-		}
+	// The primary backend is required. Exactly one configured backend must match its hostname.
+	if cfg.PrimaryBackend.Hostname == "" {
+		return nil, fmt.Errorf("-primary-backend.hostname flag must be set")
+	}
+	switch p.backends.CountFunc((*ProxyBackend).isPrimary) {
+	case 0:
+		return nil, fmt.Errorf("the primary backend (hostname) has not been found among the list of configured backends")
+	case 1:
+	default:
+		return nil, fmt.Errorf("more than one configured backend has the hostname of the primary backend")
 	}
 
-	if cfg.Routing.V2Preferred != "" {
-		exists := false
-		for _, b := range p.backends {
-			if b.v2Preferred {
-				exists = true
-				break
-			}
+	if cfg.SecondaryBackend.Hostname != "" {
+		switch p.backends.CountFunc((*ProxyBackend).isSecondary) {
+		case 0:
+			return nil, fmt.Errorf("the secondary backend (hostname) has not been found among the list of configured backends")
+		case 1:
+		default:
+			return nil, fmt.Errorf("more than one configured backend has the hostname of the secondary backend")
 		}
-		if !exists {
-			return nil, fmt.Errorf("the v2 backend (hostname) has not been found among the list of configured backends")
+
+		strategy, err := newSelectionStrategy(cfg.SecondaryBackend, cfg.DataObj, lokiLimits)
+		if err != nil {
+			return nil, err
 		}
+		p.secondaryBackendStrategy = strategy
 	}
 
-	if cfg.CompareResponses && len(p.backends) < 2 {
-		return nil, fmt.Errorf("when enabling comparison of results number of backends should be at least 2")
+	if cfg.CompareResponses && cfg.SecondaryBackend.Hostname == "" {
+		return nil, fmt.Errorf("when enabling comparison of results -secondary-backend.hostname flag must be set")
 	}
 
 	// At least 2 backends are suggested
 	if len(p.backends) < 2 {
 		level.Warn(p.logger).Log("msg", "The proxy is running with only 1 backend. At least 2 backends are required to fulfill the purpose of the proxy and compare results.")
-	}
-
-	if cfg.DisableBackendReadProxy != "" {
-		readDisabledBackendHosts := strings.Split(p.cfg.DisableBackendReadProxy, ",")
-		if slices.Contains(readDisabledBackendHosts, cfg.Routing.V1Preferred) {
-			return nil, fmt.Errorf("the v1 backend cannot be disabled for reading")
-		}
-	}
-
-	// Pre-initialize raceWins metric for all backend/route/issuer combinations
-	if cfg.Routing.Mode == RoutingModeRace {
-		p.metrics.raceModeEnabled.Set(1)
-		for _, backend := range p.backends {
-			for _, route := range p.readRoutes {
-				for _, issuer := range []string{unknownIssuer, canaryIssuer} {
-					p.metrics.raceWins.WithLabelValues(backend.name, backend.Alias(), route.RouteName, issuer)
-				}
-			}
-		}
 	}
 
 	return p, nil
@@ -308,35 +304,17 @@ func (p *Proxy) Start() error {
 		if p.cfg.CompareResponses {
 			comp = route.ResponseComparator
 		}
-		filteredBackends := filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy)
-		endpoint := NewProxyEndpoint(
-			filteredBackends,
-			route.RouteName,
-			p.metrics,
-			p.logger,
-			comp,
-			p.cfg.InstrumentCompares,
-		)
+		endpoint := NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger)
 
-		// Create a route-specific handler factory with the filtered backends
 		routeHandlerFactory := NewHandlerFactory(HandlerFactoryConfig{
-			Backends:                      filteredBackends,
-			Codec:                         queryrange.DefaultCodec,
-			Logger:                        p.logger,
-			Metrics:                       p.metrics,
-			InstrumentCompares:            p.cfg.InstrumentCompares,
-			RoutingMode:                   p.cfg.Routing.Mode,
-			RaceTolerance:                 p.cfg.Routing.RaceTolerance,
-			SplitStart:                    p.cfg.Routing.SplitStart,
-			SplitLag:                      p.cfg.Routing.SplitLag,
-			SplitRetentionDays:            p.cfg.Routing.SplitRetentionDays,
-			AddRoutingDecisionsToWarnings: p.cfg.Routing.AddRoutingDecisionsToWarnings,
+			Backends:                 p.backends,
+			Codec:                    queryrange.DefaultCodec,
+			Logger:                   p.logger,
+			Metrics:                  p.metrics,
+			ReportMissingSeries:      p.cfg.ReportMissingSeries,
+			SecondaryBackendStrategy: p.secondaryBackendStrategy,
 		})
-		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
-		if err != nil {
-			return err
-		}
-		endpoint.WithQueryHandler(queryHandler)
+		endpoint.WithQueryHandler(routeHandlerFactory.CreateHandler(route.RouteName, comp))
 		level.Info(p.logger).Log(
 			"msg", "Query middleware handler attached to route",
 			"path", route.Path,
@@ -348,25 +326,14 @@ func (p *Proxy) Start() error {
 
 	// create a separate endpoint without a query handler for write requests
 	for _, route := range p.writeRoutes {
-		var comp comparator.ResponsesComparator
-		if p.cfg.CompareResponses {
-			comp = route.ResponseComparator
-		}
-		endpoint := NewProxyEndpoint(
-			p.backends,
-			route.RouteName,
-			p.metrics,
-			p.logger,
-			comp,
-			p.cfg.InstrumentCompares,
-		)
+		endpoint := NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger)
 
 		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
 	}
 
 	if p.cfg.PassThroughNonRegisteredRoutes {
 		for _, backend := range p.backends {
-			if backend.v1Preferred {
+			if backend.isPrimary() {
 				router.PathPrefix("/").Handler(httputil.NewSingleHostReverseProxy(backend.endpoint))
 				break
 			}
@@ -421,26 +388,4 @@ func (p *Proxy) Endpoint() string {
 	}
 
 	return p.srvListener.Addr().String()
-}
-
-func filterReadDisabledBackends(backends []*ProxyBackend, disableReadProxyCfg string) []*ProxyBackend {
-	readEnabledBackends := make([]*ProxyBackend, 0, len(backends))
-	readDisabledBackendNames := strings.Split(disableReadProxyCfg, ",")
-	for _, b := range backends {
-		if !b.v1Preferred {
-			readDisabled := false
-			for _, h := range readDisabledBackendNames {
-				if strings.TrimSpace(h) == b.name {
-					readDisabled = true
-					break
-				}
-			}
-			if readDisabled {
-				continue
-			}
-		}
-		readEnabledBackends = append(readEnabledBackends, b)
-	}
-
-	return readEnabledBackends
 }

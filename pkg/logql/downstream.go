@@ -476,9 +476,11 @@ type DownstreamEvaluator struct {
 func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
 	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
 	if err != nil {
-		// Keep the usage of the shards that completed before the failure.
+		// Accumulators retain statistics even for results they reject. Move
+		// those local statistics to the discarded-work context on failure;
+		// they must not also reach the normal stats context below.
 		for _, res := range results {
-			stats.JoinPartial(ctx, res.Statistics)
+			stats.JoinDiscardedWork(ctx, res.Statistics)
 		}
 		return nil, err
 	}

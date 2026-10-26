@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -15,54 +16,62 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
+// maxLoggedQueryLength is the number of bytes of the query that the "secondary pair" log line keeps.
+const maxLoggedQueryLength = 1000
+
+var errNoPrimaryBackend = errors.New("no primary backend")
+
 // FanOutHandler implements queryrangebase.Handler and fans out requests to multiple backends.
-// It returns the preferred backend's response as soon as ready, while capturing remaining
-// responses for comparison in the background.
+// It sends each request to every backend, except that the secondary backend strategy decides
+// whether the secondary backend gets it. It returns the primary backend's response as soon as it is
+// ready. When it has a comparator, it compares the secondary backend's response with the primary's
+// in the background. It never returns the secondary backend's response.
 type FanOutHandler struct {
-	backends                      []*ProxyBackend
-	codec                         queryrangebase.Codec
-	logger                        log.Logger
-	metrics                       *ProxyMetrics
-	routeName                     string
-	comparator                    comparator.ResponsesComparator
-	instrumentCompares            bool
-	routingMode                   RoutingMode
-	raceTolerance                 time.Duration
-	addRoutingDecisionsToWarnings bool
+	backends                 []*ProxyBackend
+	backendsWithoutSecondary []*ProxyBackend
+	secondaryBackendRouter   *secondaryBackendRouter
+	codec                    queryrangebase.Codec
+	logger                   log.Logger
+	metrics                  *ProxyMetrics
+	routeName                string
+	comparator               comparator.ResponsesComparator
+	reportMissingSeries      bool
 }
 
 // FanOutHandlerConfig holds configuration for creating a FanOutHandler.
 type FanOutHandlerConfig struct {
-	Backends                      []*ProxyBackend
-	Codec                         queryrangebase.Codec
-	Logger                        log.Logger
-	Metrics                       *ProxyMetrics
-	RouteName                     string
-	Comparator                    comparator.ResponsesComparator
-	InstrumentCompares            bool
-	RoutingMode                   RoutingMode
-	RaceTolerance                 time.Duration
-	AddRoutingDecisionsToWarnings bool
+	Backends            []*ProxyBackend
+	Codec               queryrangebase.Codec
+	Logger              log.Logger
+	Metrics             *ProxyMetrics
+	RouteName           string
+	Comparator          comparator.ResponsesComparator
+	ReportMissingSeries bool
+
+	// SecondaryBackendStrategy picks the requests that the secondary backend receives. Without a
+	// strategy, the secondary backend receives every request.
+	SecondaryBackendStrategy SelectionStrategy
 }
 
 // NewFanOutHandler creates a new FanOutHandler.
 func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 	return &FanOutHandler{
-		backends:                      cfg.Backends,
-		codec:                         cfg.Codec,
-		logger:                        cfg.Logger,
-		metrics:                       cfg.Metrics,
-		routeName:                     cfg.RouteName,
-		comparator:                    cfg.Comparator,
-		instrumentCompares:            cfg.InstrumentCompares,
-		routingMode:                   cfg.RoutingMode,
-		raceTolerance:                 cfg.RaceTolerance,
-		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
+		backends:                 cfg.Backends,
+		backendsWithoutSecondary: slices.DeleteFunc(slices.Clone(cfg.Backends), (*ProxyBackend).isSecondary),
+		secondaryBackendRouter:   newSecondaryBackendRouter(cfg.SecondaryBackendStrategy, cfg.Metrics, cfg.RouteName, cfg.Logger),
+		codec:                    cfg.Codec,
+		logger:                   cfg.Logger,
+		metrics:                  cfg.Metrics,
+		routeName:                cfg.RouteName,
+		comparator:               cfg.Comparator,
+		reportMissingSeries:      cfg.ReportMissingSeries,
 	}
 }
 
@@ -74,25 +83,10 @@ type backendResult struct {
 	err         error
 }
 
-// shouldCompare returns true if the given backend result should be compared against the preferred result.
-func (h *FanOutHandler) shouldCompare(r *backendResult, preferV1 bool) bool {
-	if h.comparator == nil {
-		return false
-	}
-
-	if r.backend.v1Preferred && preferV1 {
-		return true
-	}
-
-	if r.backend.v2Preferred && !preferV1 {
-		return true
-	}
-
-	return false
-}
-
-// Do implements queryrangebase.Handler. It fans out the request to all backends, returns the preferred backend's
-// response, and captures remaining responses for comparison in the background.
+// Do implements queryrangebase.Handler. It sends the request to every backend, except that the
+// secondary backend strategy decides whether the secondary backend gets it. It returns the primary
+// backend's response. In the background, when it has a comparator, it compares the secondary
+// backend's response with the primary's.
 func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	httpReq, err := h.codec.EncodeRequest(ctx, req)
 	if err != nil {
@@ -129,70 +123,36 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		httpReq.Body.Close()
 	}
 
-	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
-	collected := make([]*backendResult, 0, len(h.backends))
+	backends := h.backendsForRequest(ctx, req)
+	results := h.makeBackendRequests(ctx, backends, httpReq, body, req, issuer)
+	collected := make([]*backendResult, 0, len(backends))
 
-	switch h.routingMode {
-	case RoutingModeRace:
-		return h.doWithRacing(results, collected, httpReq)
-	case RoutingModeV2Preferred:
-		return h.doWithPreferred(results, collected, httpReq, false)
-	default:
-		return h.doWithPreferred(results, collected, httpReq, true)
-	}
+	return h.doWithPrimary(ctx, req, len(backends), results, collected, httpReq)
 }
 
-func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
-	for i := 0; i < len(h.backends); i++ {
+// backendsForRequest returns the backends that get the request. The secondary backend gets it only
+// when the secondary backend strategy selects it. The strategy decision is counted in the metrics.
+func (h *FanOutHandler) backendsForRequest(ctx context.Context, req queryrangebase.Request) []*ProxyBackend {
+	if h.secondaryBackendRouter.shouldRoute(ctx, req) {
+		return h.backends
+	}
+	return h.backendsWithoutSecondary
+}
+
+func (h *FanOutHandler) doWithPrimary(ctx context.Context, req queryrangebase.Request, numBackends int, results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
+	for i := 0; i < numBackends; i++ {
 		result := <-results
 		collected = append(collected, result)
 
-		if result.err == nil && result.backendResp.succeeded() {
-			winner := result
-			remaining := len(h.backends) - i - 1
-
-			if result.backend.v1Preferred && h.raceTolerance > 0 {
-				select {
-				case r2 := <-results:
-					collected = append(collected, r2)
-					if r2.err == nil && r2.backendResp.succeeded() {
-						winner = r2
-						remaining = len(h.backends) - i - 2
-					}
-				case <-time.After(h.raceTolerance):
-				}
-			}
-
-			return h.finishRace(winner, remaining, httpReq, results, collected)
-		}
-	}
-
-	return h.returnFallback(collected)
-}
-
-func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, preferV1 bool) (queryrangebase.Response, error) {
-	for i := 0; i < len(h.backends); i++ {
-		result := <-results
-		collected = append(collected, result)
-
-		isPreferred := (preferV1 && result.backend.v1Preferred) || (!preferV1 && result.backend.v2Preferred)
-		if isPreferred {
-			if !result.backendResp.succeeded() {
-				continue
-			}
-
-			// 404s are treated as successful, but v2 does not implement all metadata endpoints, so in that case fall back to v1
-			if !preferV1 && result.backendResp.status == 404 {
-				continue
-			}
-
-			remaining := len(h.backends) - i - 1
+		if result.backend.isPrimary() {
+			remaining := numBackends - i - 1
+			tenantID := tenantLabel(ctx)
 			go func() {
-				h.collectRemainingAndCompare(remaining, httpReq, results, collected, preferV1)
+				h.collectRemainingAndCompare(req, remaining, httpReq, results, collected, tenantID)
 			}()
 
-			// when the preferred backends succeeds, but with error, that indicates an invalid request
-			// return the error to the client
+			// The primary backend failed or returned an error status. The client gets that
+			// response. The proxy does not fall back to another backend.
 			if result.err != nil {
 				return &NonDecodableResponse{
 					StatusCode: result.backendResp.status,
@@ -200,140 +160,174 @@ func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected
 				}, result.err
 			}
 
-			if result.response != nil && h.addRoutingDecisionsToWarnings {
-				addWarningToResponse(result.response, fmt.Sprintf("used response from preferred backend %s", result.backend.name))
-			}
-
 			return result.response, nil
 		}
 	}
 
-	// if we get here, no preferred backend was found or the preferred backend
-	// failed. in this case, return any successful response or an error if all failed
-	return h.returnFallback(collected)
+	return nil, errNoPrimaryBackend
 }
 
-func (h *FanOutHandler) returnFallback(collected []*backendResult) (queryrangebase.Response, error) {
-	for _, result := range collected {
-		if result.err == nil && result.backendResp.succeeded() {
-			return result.response, nil
-		}
+// tenantLabel returns the tenant label of the metrics for the request. A multi-tenant request has
+// its tenant IDs joined by "|". It returns "unknown" when the context has no valid tenant.
+func tenantLabel(ctx context.Context) string {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil || len(tenantIDs) == 0 {
+		return unknownTenant
 	}
-
-	if len(collected) > 0 && collected[0].err != nil {
-		result := collected[0]
-		return &NonDecodableResponse{
-			StatusCode: result.backendResp.status,
-			Body:       result.backendResp.body,
-		}, result.err
-	}
-	return nil, fmt.Errorf("all backends failed")
+	return tenant.JoinTenantIDs(tenantIDs)
 }
 
-// finishRace records the race winner and spawns a goroutine to collect remaining results.
-func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult) (queryrangebase.Response, error) {
-	h.metrics.raceWins.WithLabelValues(
-		winner.backend.name,
-		winner.backend.Alias(),
-		h.routeName,
-		detectIssuer(httpReq),
-	).Inc()
-
-	go func() {
-		h.collectRemainingAndCompare(remaining, httpReq, results, collected, true)
-	}()
-
-	if winner.response != nil && h.addRoutingDecisionsToWarnings {
-		addWarningToResponse(winner.response, fmt.Sprintf("%s backend won the race", winner.backend.name))
-	}
-
-	return winner.response, nil
-}
-
-// collectRemainingAndCompare collects remaining backend results and performs comparisons.
-// Should be called asynchronously to not block preferred response from returning.
-func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, preferV1 bool) {
-	issuer := detectIssuer(httpReq)
-	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
-	if err != nil {
-		level.Warn(h.logger).Log(
-			"msg", "failed to extract tenant id from http request",
-			"route-name", h.routeName,
-			"err", err,
-		)
-		tenantID = "unknown"
-	}
+// collectRemainingAndCompare collects the remaining backend results. When the handler has a
+// comparator, it also compares the secondary result with the primary one, and records the outcome.
+// Call it asynchronously, so it does not block the primary response.
+func (h *FanOutHandler) collectRemainingAndCompare(req queryrangebase.Request, remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, tenantID string) {
 	for range remaining {
-		r := <-results
-		collected = append(collected, r)
+		collected = append(collected, <-results)
 	}
 
-	var preferredResult *backendResult
+	var primary, secondary *backendResult
 	for _, r := range collected {
-		if r.backend.v1Preferred && preferV1 {
-			preferredResult = r
-			break
-		}
-
-		if r.backend.v2Preferred && !preferV1 {
-			preferredResult = r
-			break
+		switch {
+		case r.backend.isPrimary():
+			primary = r
+		case r.backend.isSecondary():
+			secondary = r
 		}
 	}
-
-	for _, r := range collected {
-		if h.shouldCompare(r, preferV1) {
-			result := comparisonMatch
-			summary, err := h.compareResponses(preferredResult.backendResp, r.backendResp, time.Now().UTC())
-			if err != nil {
-				level.Error(h.logger).Log("msg", "response comparison failed",
-					"backend-name", r.backend.name,
-					"route-name", h.routeName,
-					"query", httpReq.URL.RawQuery,
-					"err", err)
-				result = comparisonFailed
-				if errors.Is(err, comparator.ErrComparisonMismatch) {
-					result = comparisonMismatch
-				}
-			} else if summary != nil && summary.Skipped {
-				result = comparisonSkipped
-			}
-
-			if h.instrumentCompares && summary != nil {
-				h.metrics.missingMetrics.WithLabelValues(
-					r.backend.name, r.backend.Alias(), h.routeName, result, issuer,
-				).Observe(float64(summary.MissingMetrics))
-			}
-			h.metrics.responsesComparedTotal.WithLabelValues(
-				r.backend.name, r.backend.Alias(), h.routeName, result, issuer, tenantID,
-			).Inc()
-		}
+	if h.comparator == nil || primary == nil || secondary == nil {
+		return
 	}
+
+	issuer := detectIssuer(httpReq)
+
+	result := comparisonMatch
+	summary, cause, err := h.compareResponses(primary.backendResp, secondary.backendResp, time.Now().UTC())
+	if errors.Is(err, comparator.ErrComparisonMismatch) {
+		result = comparisonMismatch
+		level.Warn(h.logger).Log("msg", "compared responses were not equal",
+			"backend", secondary.backend.name,
+			"route", h.routeName,
+			"query", httpReq.URL.RawQuery,
+			"err", err)
+	} else if err != nil {
+		result = comparisonFailed
+		level.Error(h.logger).Log("msg", "response comparison failed",
+			"backend", secondary.backend.name,
+			"route", h.routeName,
+			"query", httpReq.URL.RawQuery,
+			"err", err)
+	} else if summary != nil && summary.Skipped {
+		result = comparisonSkipped
+	}
+
+	if h.reportMissingSeries && summary != nil {
+		h.metrics.missingMetrics.WithLabelValues(
+			secondary.backend.name, secondary.backend.Alias(), h.routeName, result, issuer,
+		).Observe(float64(summary.MissingMetrics))
+	}
+
+	h.compareStats(req, primary, secondary, tenantID, result, cause)
+
+	h.metrics.responsesComparedTotal.WithLabelValues(
+		secondary.backend.name, secondary.backend.Alias(), h.routeName, result, cause, issuer, tenantID,
+	).Inc()
 }
 
-func (h *FanOutHandler) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, error) {
-	if expectedResponse.err != nil {
-		return &comparator.ComparisonSummary{Skipped: true}, nil
+// compareStats observes the ratios of the stats of the secondary over the stats of the primary, and
+// logs the pair of responses with the stats of each backend.
+func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, secondary *backendResult, tenantID, result, cause string) {
+	statsLogFields := func(prefix string, s stats.Result) []any {
+		dataobj := s.Querier.Store.Dataobj
+		cacheEntriesFound, cacheEntriesRequested := resultCacheEntries(s.Caches)
+		return []any{
+			prefix + "_bytes_processed", s.Summary.TotalBytesProcessed,
+			prefix + "_lines_processed", s.Summary.TotalLinesProcessed,
+			prefix + "_exec_time_seconds", s.Summary.ExecTime,
+			prefix + "_queue_time_seconds", s.Summary.QueueTime,
+			prefix + "_splits", s.Summary.Splits,
+			prefix + "_shards", s.Summary.Shards,
+			prefix + "_chunk_decompressed_bytes", s.Querier.Store.Chunk.DecompressedBytes,
+			prefix + "_dataobj_rows_read", dataobj.PrePredicateDecompressedRows,
+			prefix + "_dataobj_decompressed_bytes", dataobj.PrePredicateDecompressedBytes,
+			prefix + "_dataobj_post_filter_rows", dataobj.PostFilterRows,
+			prefix + "_result_cache_entries_found", cacheEntriesFound,
+			prefix + "_result_cache_entries_requested", cacheEntriesRequested,
+		}
 	}
 
-	if actualResponse.err != nil {
-		return nil, fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", actualResponse.err)
+	primaryStats, hasPrimaryStats := responseStats(primary.response)
+	secondaryStats, hasSecondaryStats := responseStats(secondary.response)
+
+	if hasPrimaryStats && hasSecondaryStats {
+		h.metrics.observeSecondaryBackendStats(h.routeName, primaryStats, secondaryStats)
+	}
+
+	query := req.GetQuery()
+	if len(query) > maxLoggedQueryLength {
+		query = query[:maxLoggedQueryLength]
+	}
+	keyvals := []any{
+		"msg", "secondary pair",
+		"route", h.routeName,
+		"tenant", tenantID,
+		"result", result,
+		"cause", cause,
+		"query", query,
+		"primary_status", primary.backendResp.status,
+		"secondary_status", secondary.backendResp.status,
+		"primary_trace_id", primary.backendResp.traceID,
+		"secondary_trace_id", secondary.backendResp.traceID,
+		"primary_duration", primary.backendResp.duration,
+		"secondary_duration", secondary.backendResp.duration,
+	}
+	if hasPrimaryStats {
+		keyvals = append(keyvals, statsLogFields("primary", primaryStats)...)
+	}
+	if hasSecondaryStats {
+		keyvals = append(keyvals, statsLogFields("secondary", secondaryStats)...)
+	}
+	if primary.err != nil {
+		keyvals = append(keyvals, "primary_err", primary.err)
+	}
+	if secondary.err != nil {
+		keyvals = append(keyvals, "secondary_err", secondary.err)
+	}
+	level.Info(h.logger).Log(keyvals...)
+}
+
+func (h *FanOutHandler) compareResponses(primaryResponse, secondaryResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, string, error) {
+	if primaryResponse.err != nil {
+		return &comparator.ComparisonSummary{Skipped: true}, errorCause(primaryResponse), nil
+	}
+
+	if secondaryResponse.err != nil {
+		return nil, errorCause(secondaryResponse), fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", secondaryResponse.err)
 	}
 
 	// compare response body only if we get a 200
-	if expectedResponse.status != 200 {
-		return &comparator.ComparisonSummary{Skipped: true}, nil
+	if primaryResponse.status != 200 {
+		return &comparator.ComparisonSummary{Skipped: true}, errorCause(primaryResponse), nil
 	}
 
-	if actualResponse.status != 200 {
-		return nil, fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
+	if secondaryResponse.status != 200 {
+		return nil, errorCause(secondaryResponse), fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", secondaryResponse.status)
 	}
 
-	if expectedResponse.status != actualResponse.status {
-		return nil, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
+	if primaryResponse.status != secondaryResponse.status {
+		return nil, causeCompareError, fmt.Errorf("expected status code %d but got %d", primaryResponse.status, secondaryResponse.status)
 	}
 
-	return h.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
+	summary, err := h.comparator.Compare(primaryResponse.body, secondaryResponse.body, queryEvalTime)
+	var cause string
+	switch {
+	case errors.Is(err, comparator.ErrComparisonMismatch):
+		if summary != nil {
+			cause = summary.MismatchCause
+		}
+	case err != nil:
+		cause = causeCompareError
+	}
+	return summary, cause, err
 }
 
 // executeBackendRequest executes a request to a single backend.
@@ -344,28 +338,10 @@ func (h *FanOutHandler) executeBackendRequest(
 	backend *ProxyBackend,
 	req queryrangebase.Request,
 ) *backendResult {
-	start := time.Now()
-
 	// Clone the request for this backend
 	clonedReq := httpReq.Clone(ctx)
 	if len(body) > 0 {
 		clonedReq.Body = io.NopCloser(bytes.NewReader(body))
-	}
-
-	// Check filter
-	if backend.filter != nil && !backend.filter.Match([]byte(httpReq.URL.String())) {
-		level.Debug(h.logger).Log(
-			"msg", "Skipping backend due to filter",
-			"backend", backend.name,
-			"path", httpReq.URL.Path,
-		)
-		return &backendResult{
-			backend: backend,
-			backendResp: &BackendResponse{
-				duration: time.Since(start),
-			},
-			err: fmt.Errorf("filtered out"),
-		}
 	}
 
 	// Forward request to backend
@@ -422,12 +398,6 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 	).Observe(result.backendResp.duration.Seconds())
 }
 
-// WithMetrics sets metrics for the handler.
-func (h *FanOutHandler) WithMetrics(metrics *ProxyMetrics) *FanOutHandler {
-	h.metrics = metrics
-	return h
-}
-
 // WithComparator sets the response comparator.
 func (h *FanOutHandler) WithComparator(comparator comparator.ResponsesComparator) *FanOutHandler {
 	h.comparator = comparator
@@ -437,14 +407,15 @@ func (h *FanOutHandler) WithComparator(comparator comparator.ResponsesComparator
 // makeBackendRequests initiates backend requests and returns a channel for receiving results.
 func (h *FanOutHandler) makeBackendRequests(
 	ctx context.Context,
+	backends []*ProxyBackend,
 	httpReq *http.Request,
 	body []byte,
 	req queryrangebase.Request,
 	issuer string,
 ) chan *backendResult {
-	results := make(chan *backendResult, len(h.backends))
+	results := make(chan *backendResult, len(backends))
 
-	for i, backend := range h.backends {
+	for i, backend := range backends {
 		go func(_ int, b *ProxyBackend) {
 			result := h.executeBackendRequest(ctx, httpReq, body, b, req)
 
@@ -474,4 +445,37 @@ func statusCodeFromError(err error) int {
 	}
 
 	return http.StatusInternalServerError
+}
+
+// responseStats returns the query stats of a response. It reports false when the response type has
+// no stats. A response of a type with stats returns them, and they are zero when the body had none.
+func responseStats(resp queryrangebase.Response) (stats.Result, bool) {
+	switch r := resp.(type) {
+	case *queryrange.LokiPromResponse:
+		return r.Statistics, true
+	case *queryrange.LokiResponse:
+		return r.Statistics, true
+	default:
+		return stats.Result{}, false
+	}
+}
+
+// errorCause returns why a backend response failed: timeout, transport, http_4xx, http_5xx or
+// http_other.
+func errorCause(r *BackendResponse) string {
+	switch {
+	// A request error with status 504 is a timeout. makeBackendRequests sets that status when the
+	// error wraps context.DeadlineExceeded. A 504 answer from the backend has no request error, and
+	// counts as http_5xx.
+	case r.err != nil && r.status == http.StatusGatewayTimeout:
+		return "timeout"
+	case r.err != nil:
+		return "transport"
+	case r.status >= 400 && r.status < 500:
+		return "http_4xx"
+	case r.status >= 500:
+		return "http_5xx"
+	default:
+		return "http_other"
+	}
 }

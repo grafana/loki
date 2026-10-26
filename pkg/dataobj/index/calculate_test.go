@@ -1,8 +1,11 @@
 package index
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -131,7 +134,7 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 		}, ts))
 	}
 
-	logObj, logCloser, err := logBuilder.Flush()
+	logObj, logCloser, err := logBuilder.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logCloser.Close() })
 
@@ -405,27 +408,16 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 		path   = "objects/section-index-test"
 		tenant = "A"
 	)
-	sourceBuilder := dataobj.NewBuilder(nil)
-	ts := time.Unix(10, 0).UTC()
-	streamBuilder := streams.NewBuilder(nil, 2048, 10000, streams.DefaultShardLayout())
-	streamBuilder.SetTenant(tenant)
-	id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
-	appendLogsSection := func() {
-		logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
-			PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
-		})
-		logBuilder.SetTenant(tenant)
-		logBuilder.Append(logs.Record{StreamID: id, Timestamp: ts, Line: []byte("line"), Metadata: labels.FromStrings("trace_id", "trace")})
-		require.NoError(t, sourceBuilder.Append(logBuilder))
-	}
+	fixture := fixtures.NewLogsFixtureBuilder(t)
+	fixture.ForStream(`{service_name="A"}`).Entry(10, `{trace_id="trace"}`, "line")
+	streamsSection := fixtures.StreamsSection(t, tenant, fixture.Streams(), fixtures.WithStreamsLayout(streams.NewLayout(streams.DefaultShardLayout(), nil)))
 	// Physical sections: logs, streams, logs. References must be 0 and 1,
 	// rather than physical indexes 0 and 2.
-	appendLogsSection()
-	require.NoError(t, sourceBuilder.Append(streamBuilder))
-	appendLogsSection()
-
-	source, sourceCloser, err := sourceBuilder.Flush()
-	require.NoError(t, err)
+	source, sourceCloser := fixtures.DataObject(t,
+		fixtures.LogsSection(t, tenant, fixture.Logs()),
+		streamsSection,
+		fixtures.LogsSection(t, tenant, fixture.Logs()),
+	)
 	t.Cleanup(func() { require.NoError(t, sourceCloser.Close()) })
 	require.Len(t, source.Sections(), 3)
 	require.True(t, logs.CheckSection(source.Sections()[0]))
@@ -473,4 +465,113 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 		require.NoError(t, reader.Close())
 	}
 	require.Equal(t, want, statsIndexes)
+}
+
+func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
+	const tenant = "A"
+
+	// buildSource builds an object with 16 streams in layout, each with one
+	// record that has structured metadata. The streams section records
+	// layout if record is true.
+	buildSource := func(t *testing.T, layout streams.Layout, record bool) *dataobj.Object {
+		t.Helper()
+		fixture := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+		for i := range 16 {
+			fixture.ForStream(fmt.Sprintf(`{app="%d",service_name="svc"}`, i)).Entry(10, fmt.Sprintf(`{trace_id="%d"}`, i), "line")
+		}
+		opts := []fixtures.StreamsSectionOpt{fixtures.WithStreamsLayout(layout)}
+		if !record {
+			opts = []fixtures.StreamsSectionOpt{fixtures.WithoutStreamsLayout()}
+		}
+		source, closer := fixtures.DataObject(t,
+			fixtures.StreamsSection(t, tenant, fixture.Streams(), opts...),
+			fixtures.LogsSection(t, tenant, fixture.Logs()),
+		)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return source
+	}
+	calculate := func(t *testing.T, source *dataobj.Object) (*dataobj.Object, error) {
+		t.Helper()
+		builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
+		if err := calculator.Calculate(t.Context(), log.NewNopLogger(), source, "objects/source"); err != nil {
+			return nil, err
+		}
+		obj, closer, _, err := calculator.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj, nil
+	}
+
+	t.Run("indexes labels and structured metadata with the schema labels and shard layout of the recorded layout", func(t *testing.T) {
+		four, err := streams.ShardLayoutFromBuckets(4)
+		require.NoError(t, err)
+		layout := streams.NewLayout(four, []string{"label:app"})
+		indexObj, err := calculate(t, buildSource(t, layout, true))
+		require.NoError(t, err)
+
+		statsRows := readAllStatsRows(t, indexObj)
+		require.NotEmpty(t, statsRows)
+		for _, row := range statsRows {
+			require.Equal(t, "label:app", row["sort_schema.utf8"])
+			require.Less(t, row["__shard_bucket__.int64"].(int64), int64(4))
+		}
+
+		var labelRows, bloomRows int
+		for _, section := range indexObj.Sections().Filter(postings.CheckSection) {
+			sec, err := postings.Open(t.Context(), section)
+			require.NoError(t, err)
+			inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+			require.NoError(t, inner.Open(t.Context()))
+			reader := postings.NewRowReader(t.Context(), inner)
+			for reader.Next() {
+				row := reader.At()
+				require.Equal(t, int64(4), row.ShardBuckets)
+				switch row.Kind {
+				case postings.KindLabel:
+					labelRows++
+				case postings.KindBloom:
+					require.Equal(t, "trace_id", row.ColumnName)
+					require.Less(t, row.MaxShardBucket, uint32(4))
+					bloomRows++
+				}
+			}
+			require.NoError(t, reader.Err())
+			require.NoError(t, reader.Close())
+		}
+		require.Positive(t, labelRows)
+		require.Positive(t, bloomRows)
+	})
+
+	t.Run("returns an unprocessable object error for a legacy object", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join("..", "testdata", "legacy", "legacy-cluster-a.dataobj"))
+		require.NoError(t, err)
+		source, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+		require.NoError(t, err)
+
+		builder, err := indexobj.NewBuilder("T", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		err = NewCalculator(builder, NewCalculatorMetrics(nil)).Calculate(t.Context(), log.NewNopLogger(), source, "objects/legacy")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+	})
+
+	t.Run("returns an error for an object with another layout than the objects already in the index", func(t *testing.T) {
+		builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
+		appSource := buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}), true)
+		require.NoError(t, calculator.Calculate(t.Context(), log.NewNopLogger(), appSource, "objects/app"))
+
+		serviceSource := buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}), true)
+		err = calculator.Calculate(t.Context(), log.NewNopLogger(), serviceSource, "objects/service")
+		require.ErrorContains(t, err, "already has stream layout")
+		require.NotErrorIs(t, err, ErrUnprocessableObject)
+	})
+
+	t.Run("returns an unprocessable object error when the streams section records no layout", func(t *testing.T) {
+		_, err := calculate(t, buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), nil), false))
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "records no layout")
+	})
 }

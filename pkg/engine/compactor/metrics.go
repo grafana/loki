@@ -17,6 +17,13 @@ const (
 	labelThread  = "thread"
 	labelAge     = "age"
 	labelReason  = "reason"
+	labelPhase   = "phase"
+)
+
+// Values of the phase label of corruptIndexesTotal.
+const (
+	phaseLabelIndexMerge = "index_merge"
+	phaseLabelLogMerge   = "log_merge"
 )
 
 // Values of the reason label of logMergeFailedIndexesTotal.
@@ -52,8 +59,7 @@ type coordinatorMetrics struct {
 	indexesAddedTotal *prometheus.CounterVec // tenant
 
 	// tasksTotal counts compaction tasks of every kind that successful tenant
-	// cycles dispatched. The kinds are IndexMerge, LogMerge, SortObject, and
-	// IndexFilter.
+	// cycles dispatched. The kinds are IndexMerge, LogMerge, and IndexFilter.
 	tasksTotal *prometheus.CounterVec // tenant
 
 	// cycleDurationSeconds measures wall-clock duration of one worker-loop phase
@@ -79,6 +85,9 @@ type coordinatorMetrics struct {
 	// logMergeFailedIndexesTotal counts indexes that failed to plan or
 	// execute in a LogMerge phase.
 	logMergeFailedIndexesTotal *prometheus.CounterVec // tenant, reason
+
+	// corruptIndexesTotal counts each time a phase skips a corrupt index.
+	corruptIndexesTotal *prometheus.CounterVec // tenant, phase
 
 	// lastPlanTimestampSeconds is when a LogMerge phase of a tenant last
 	// planned every index in every window without an error.
@@ -124,7 +133,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		tasksTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tasks_total",
-			Help: "Cumulative count of compaction tasks (IndexMerge, LogMerge, SortObject, IndexFilter) dispatched per tenant by successful tenant cycles.",
+			Help: "Cumulative count of compaction tasks (IndexMerge, LogMerge, IndexFilter) dispatched per tenant by successful tenant cycles.",
 		}, []string{labelTenant}),
 		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
@@ -154,6 +163,10 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_log_merge_failed_indexes_total",
 			Help: "Indexes that failed to plan or execute in a LogMerge phase. reason = plan (planning failed), stale_plan (the ToC no longer lists the source index), or execute (any other execution failure).",
 		}, []string{labelTenant, labelReason}),
+		corruptIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_corrupt_indexes_total",
+			Help: "Times a compaction phase skipped an index because its sections do not share one stream layout, or its layout cannot be read. Each phase that reads the index increments it again, so a nonzero rate means a corrupt index is still in the ToC.",
+		}, []string{labelTenant, labelPhase}),
 		lastPlanTimestampSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_last_plan_timestamp_seconds",
 			Help: "Unix time when a LogMerge phase of the tenant last planned every index in every compacted window without an error. When it is old, loki_dataobj_compaction_pending_log_bytes is stale or incomplete.",
@@ -256,6 +269,7 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.pendingLogBytes.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
 	m.logMergeFailedIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.corruptIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.indexesRemovedTotal.DeleteLabelValues(tenant)
 	m.indexesAddedTotal.DeleteLabelValues(tenant)
 	m.tasksTotal.DeleteLabelValues(tenant)

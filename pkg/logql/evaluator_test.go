@@ -802,9 +802,30 @@ func TestSampleOrderFor(t *testing.T) {
 
 	count := fullExpr(`sum by (app) (count_over_time({app="foo"}[1m]))`)
 
-	t.Run("returns stream-first for a root sum of count_over_time when the tenant enables it", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a"), count, limits, true)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got)
+	t.Run("returns stream-first for every supported query when the tenant enables it", func(t *testing.T) {
+		streamFirstQueries := []string{
+			`sum by (app) (count_over_time({app="foo"}[1m]))`,
+			`sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
+		}
+
+		for _, query := range streamFirstQueries {
+			got := sampleOrderFor(tenantContext("a"), fullExpr(query), limits, true)
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got, query)
+		}
+	})
+
+	t.Run("returns timestamp-first for every unsupported query when the tenant enables it", func(t *testing.T) {
+		timestampFirstQueries := []string{
+			`sum(rate({app="foo"}[1m]))`,
+			`count_over_time({app="foo"}[1m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap n [1m])`,
+			`max(sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
+		}
+
+		for _, query := range timestampFirstQueries {
+			got := sampleOrderFor(tenantContext("a"), fullExpr(query), limits, true)
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got, query)
+		}
 	})
 
 	t.Run("returns timestamp-first when the tenant does not enable it", func(t *testing.T) {
@@ -824,16 +845,6 @@ func TestSampleOrderFor(t *testing.T) {
 
 	t.Run("returns timestamp-first for an expression that is not the root", func(t *testing.T) {
 		got := sampleOrderFor(tenantContext("a"), count, limits, false)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
-	})
-
-	t.Run("returns timestamp-first for a range aggregation other than count_over_time", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a"), fullExpr(`sum(rate({app="foo"}[1m]))`), limits, true)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
-	})
-
-	t.Run("returns timestamp-first for a bare range aggregation without a sum", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a"), fullExpr(`count_over_time({app="foo"}[1m])`), limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
@@ -923,6 +934,27 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
+	t.Run("sum_over_time() sums every sample value of streams returned one after the other", func(t *testing.T) {
+		sampleAt := func(offset time.Duration, value float64) logproto.Sample {
+			return logproto.Sample{Timestamp: start.Add(offset).UnixNano(), Value: value}
+		}
+		querier := &seriesQuerier{series: []logproto.Series{
+			{Labels: `{app="foo"}`, Samples: []logproto.Sample{sampleAt(10*time.Second, 1), sampleAt(70*time.Second, 2), sampleAt(110*time.Second, 4)}},
+			{Labels: `{app="foo"}`, Samples: []logproto.Sample{sampleAt(10*time.Second, 10), sampleAt(70*time.Second, 20), sampleAt(110*time.Second, 40)}},
+		}}
+		got, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`, time.Minute)
+		require.NoError(t, err)
+
+		want := promql.Matrix{{
+			Metric: labels.FromStrings("app", "foo"),
+			Floats: []promql.FPoint{
+				{T: start.Add(time.Minute).UnixMilli(), F: 11},
+				{T: start.Add(2 * time.Minute).UnixMilli(), F: 66},
+			},
+		}}
+		require.Equal(t, want, got)
+	})
+
 	t.Run("succeeds for a multi-tenant query whose output fits the series limit while its per-tenant series do not", func(t *testing.T) {
 		var series []logproto.Series
 		for _, tenantID := range []string{"a", "b"} {
@@ -955,5 +987,153 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 			totalSamples += len(s.Samples)
 		}
 		require.Less(t, querier.samplesRead, totalSamples)
+	})
+
+	t.Run("fails with the pipeline error at the first series that carries an error label without reading the remaining samples", func(t *testing.T) {
+		series := streamFirstSeries("foo")
+		errored := logproto.Series{Labels: `{__error__="SampleExtractionErr", app="foo"}`, Samples: series[0].Samples}
+		querier := &seriesQuerier{series: append(series, errored, errored)}
+		_, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app) (count_over_time({app="foo"}[1m]))`, time.Minute)
+
+		require.EqualError(t, err, logqlmodel.NewPipelineErr(labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo")).Error())
+
+		totalSamples := 0
+		for _, s := range querier.series {
+			totalSamples += len(s.Samples)
+		}
+		require.Less(t, querier.samplesRead, totalSamples)
+	})
+
+	t.Run("returns the series that carry an error label when the query keeps errored lines", func(t *testing.T) {
+		series := streamFirstSeries("foo")
+		errored := logproto.Series{Labels: `{__error__="SampleExtractionErr", app="foo"}`, Samples: series[0].Samples}
+		querier := &seriesQuerier{series: append(series, errored)}
+		got, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app, __error__) (count_over_time({app="foo"} | __error__!="" [1m]))`, time.Minute)
+		require.NoError(t, err)
+
+		require.Equal(t, promql.Matrix{
+			{
+				Metric: labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo"),
+				Floats: []promql.FPoint{
+					{T: start.Add(time.Minute).UnixMilli(), F: 1},
+					{T: start.Add(2 * time.Minute).UnixMilli(), F: 2},
+				},
+			},
+			{
+				Metric: labels.FromStrings("app", "foo"),
+				Floats: []promql.FPoint{
+					{T: start.Add(time.Minute).UnixMilli(), F: 2},
+					{T: start.Add(2 * time.Minute).UnixMilli(), F: 4},
+				},
+			},
+		}, got)
+	})
+}
+
+// TestVectorAggEvaluator_Precision checks that the sum() and avg()
+// aggregations of VectorAggEvaluator use Kahan summation, and that avg()
+// switches to an incremental mean when the sum overflows float64.
+func TestVectorAggEvaluator_Precision(t *testing.T) {
+	// newAggEvaluator builds the evaluator with newVectorAggEvaluator and
+	// returns next as the wrapped evaluator. A VectorAggEvaluator built by
+	// hand would skip the constructor setup, such as exprSortedGroups.
+	newAggEvaluator := func(t *testing.T, op string, grouping *syntax.Grouping, next StepEvaluator) StepEvaluator {
+		expr := &syntax.VectorAggregationExpr{
+			Left:      &syntax.VectorExpr{Val: 1},
+			Operation: op,
+			Grouping:  grouping,
+		}
+		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+			return next, nil
+		})
+		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0)
+		require.NoError(t, err)
+		return ev
+	}
+	newSingleGroupEvaluator := func(t *testing.T, op string, values []float64) StepEvaluator {
+		return newAggEvaluator(t, op, &syntax.Grouping{}, newReturnVectorEvaluator(values))
+	}
+	next := func(t *testing.T, ev StepEvaluator) float64 {
+		ok, _, r := ev.Next()
+		require.True(t, ok)
+		vec := r.SampleVector()
+		require.Len(t, vec, 1)
+		return vec[0].F
+	}
+
+	t.Run("sum()", func(t *testing.T) {
+		t.Run("keeps the small values added after a large value", func(t *testing.T) {
+			const large = 1e16
+			values := make([]float64, 0, 10_001)
+			values = append(values, large)
+			for i := 0; i < 10_000; i++ {
+				values = append(values, 1.0)
+			}
+			require.Equal(t, large+10_000, next(t, newSingleGroupEvaluator(t, syntax.OpTypeSum, values)))
+		})
+	})
+
+	t.Run("avg()", func(t *testing.T) {
+		t.Run("returns the expected average for extreme finite values", func(t *testing.T) {
+			for _, tc := range avgPrecisionCases {
+				t.Run(tc.name, func(t *testing.T) {
+					require.Equal(t, tc.want, next(t, newSingleGroupEvaluator(t, syntax.OpTypeAvg, tc.values)))
+				})
+			}
+		})
+
+		t.Run("returns the expected average around infinities without a spurious NaN", func(t *testing.T) {
+			for _, tc := range avgInfHandlingCases {
+				t.Run(tc.name, func(t *testing.T) {
+					got := next(t, newSingleGroupEvaluator(t, syntax.OpTypeAvg, tc.values))
+					if math.IsNaN(tc.want) {
+						require.True(t, math.IsNaN(got))
+					} else {
+						require.Equal(t, tc.want, got)
+					}
+				})
+			}
+		})
+
+		t.Run("returns a finite average when the sum overflows float64 and the average does not", func(t *testing.T) {
+			big := 0.6 * math.MaxFloat64 // big+big overflows float64, but their average doesn't.
+			values := []float64{big, big, 3, 4}
+
+			var naiveSum float64
+			for _, v := range values {
+				naiveSum += v
+			}
+			require.True(t, math.IsInf(naiveSum, 1), "naive summation should overflow to +Inf")
+
+			got := next(t, newSingleGroupEvaluator(t, syntax.OpTypeAvg, values))
+			require.False(t, math.IsInf(got, 0), "avg() should not overflow to Inf")
+			require.InEpsilon(t, 0.3*math.MaxFloat64, got, 1e-9) // (big + big + 3 + 4) / 4
+		})
+
+		t.Run("overflow in one group does not affect a sibling group", func(t *testing.T) {
+			big := 0.6 * math.MaxFloat64
+			overflowing := labels.FromStrings("app", "overflowing")
+			steady := labels.FromStrings("app", "steady")
+			ev := newAggEvaluator(t, syntax.OpTypeAvg, &syntax.Grouping{Groups: []string{"app"}}, &returnVectorEvaluator{
+				vec: promql.Vector{
+					{Metric: overflowing, F: big},
+					{Metric: steady, F: 1},
+					{Metric: overflowing, F: big},
+					{Metric: steady, F: 2},
+					{Metric: overflowing, F: 3},
+					{Metric: steady, F: 3},
+				},
+			})
+			ok, _, r := ev.Next()
+			require.True(t, ok)
+			got := map[string]float64{}
+			for _, s := range r.SampleVector() {
+				got[s.Metric.Get("app")] = s.F
+			}
+			require.False(t, math.IsInf(got["overflowing"], 0))
+			wantApprox := 2*(big/3) + 1 // (big + big + 3) / 3, computed so it doesn't itself overflow.
+			require.InEpsilon(t, wantApprox, got["overflowing"], 1e-9)
+			require.Equal(t, 2.0, got["steady"])
+		})
 	})
 }

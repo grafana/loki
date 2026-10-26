@@ -108,10 +108,6 @@ Query blocking does **not** apply to:
 - Log tailing (the `/loki/api/v1/tail` endpoint). Tailing reads from the ingesters and the store without using the query engine, so no block policy is applied.
 - Metadata endpoints, such as `labels`, `series`, `index/stats`, `index/volume`, and `detected_fields`. These endpoints don't run a LogQL expression through the query engine, so there is nothing for the query blocker to match against.
 
-{{< admonition type="warning" >}}
-Loki has an experimental next-generation query engine for querying data objects (dataobj/columnar storage), enabled with `query_engine.enable: true`. Queries that are routed to that engine are **not** checked against `blocked_queries` policies at all. This is a known limitation of the experimental engine, not a deferred check; block policies are silently ignored for any query it serves.
-{{< /admonition >}}
-
 ## Tag-based blocking
 
 You can scope a blocked query rule to requests that include specific key=value pairs in the `X-Query-Tags` header.

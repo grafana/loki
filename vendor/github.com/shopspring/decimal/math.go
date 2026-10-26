@@ -350,14 +350,14 @@ func powRatio(d Decimal) (*big.Int, *big.Int) {
 	return p.Quo(p, g), q.Quo(q, g)
 }
 
-// iroot returns the integer k-th root of x >= 1 and whether it is exact.
+// iroot returns the integer k-th root of x >= 1, rounded down, and whether it is exact.
 func iroot(x *big.Int, k int64) (*big.Int, bool) {
 	if k == 1 || x.Cmp(oneInt) == 0 {
 		return x, true
 	}
 	if int64(x.BitLen()) <= k {
-		// 1 < x < 2^k has no integer k-th root
-		return nil, false
+		// 1 < x < 2^k
+		return big.NewInt(1), false
 	}
 	// Newton's method from above converges to the floor of the root
 	kb, km1 := big.NewInt(k), big.NewInt(k-1)
@@ -597,6 +597,97 @@ func abs64(n int64) int64 {
 	return n
 }
 
+// Sqrt returns the square root of d with DivisionPrecision digits after the decimal point, like Div.
+// Use SqrtRound to choose the precision per call. It returns an error for negative d.
+//
+// Example:
+//
+//	d, err := NewFromInt(2).Sqrt()
+//	d.String() // output: "1.414213562373095"
+func (d Decimal) Sqrt() (Decimal, error) {
+	return d.SqrtRound(int32(DivisionPrecision))
+}
+
+// SqrtRound returns the square root of d rounded half away from zero to places digits after the
+// decimal point, like DivRound. The result is exact up to that rounding. It returns an error for
+// negative d.
+//
+// Example:
+//
+//	d, err := NewFromFloat(0.002342).SqrtRound(4)
+//	d.String() // output: "0.0484"
+func (d Decimal) SqrtRound(places int32) (Decimal, error) {
+	if d.Sign() < 0 {
+		return Decimal{}, fmt.Errorf("cannot represent imaginary value of sqrt(x), where x < 0")
+	}
+
+	// floor(sqrt(d) * 10^(places+1)) is the integer square root of d * 10^(2*places+2), and its
+	// last digit decides the rounding. Below 1 that product truncates to an integer first, which
+	// doesn't change the floor, and when it's below 1 the result is 0.
+	k := int64(d.exp) + 2*int64(places) + 2
+	n := new(big.Int)
+	if k >= 0 {
+		n.Mul(d.getValue(), pow10(k))
+	} else if -k <= int64(d.NumDigits()) {
+		n.Quo(d.getValue(), pow10(-k))
+	}
+	n.Sqrt(n)
+	n.Add(n, fiveInt).Quo(n, tenInt)
+	return Decimal{value: n, exp: -places}, nil
+}
+
+// Root returns the n-th root of d with DivisionPrecision digits after the decimal point, like Div.
+// Use RootRound to choose the precision per call. Odd roots of negative numbers are negative.
+// It returns an error when n < 1, and for negative d when n is even.
+//
+// Example:
+//
+//	d, err := NewFromInt(2).Root(3)
+//	d.String() // output: "1.2599210498948732"
+func (d Decimal) Root(n int64) (Decimal, error) {
+	return d.RootRound(n, int32(DivisionPrecision))
+}
+
+// RootRound returns the n-th root of d rounded half away from zero to places digits after the
+// decimal point, like DivRound. The result is exact up to that rounding. Odd roots of negative
+// numbers are negative. It returns an error when n < 1, and for negative d when n is even.
+// The work grows with n times places, so very large roots such as the millionth are slow.
+//
+// Example:
+//
+//	d, err := NewFromFloat(-0.125).RootRound(3, 2)
+//	d.String() // output: "-0.5"
+func (d Decimal) RootRound(n int64, places int32) (Decimal, error) {
+	if n < 1 {
+		return Decimal{}, fmt.Errorf("cannot calculate the %d-th root, n must be at least 1", n)
+	}
+	if d.Sign() < 0 && n%2 == 0 {
+		return Decimal{}, fmt.Errorf("cannot represent imaginary value of an even root of x, where x < 0")
+	}
+
+	// floor(root(|d|) * 10^(places+1)) is the integer n-th root of |d| * 10^(n*(places+1)), and its
+	// last digit decides the rounding, as in SqrtRound.
+	k := int64(d.exp) + n*(int64(places)+1)
+	x := new(big.Int).Abs(d.getValue())
+	if k >= 0 {
+		x.Mul(x, pow10(k))
+	} else if -k <= int64(d.NumDigits()) {
+		x.Quo(x, pow10(-k))
+	} else {
+		x.SetInt64(0)
+	}
+	r := new(big.Int)
+	if x.Sign() > 0 {
+		root, _ := iroot(x, n)
+		r.Set(root)
+	}
+	r.Add(r, fiveInt).Quo(r, tenInt)
+	if d.Sign() < 0 {
+		r.Neg(r)
+	}
+	return Decimal{value: r, exp: -places}, nil
+}
+
 // ExpHullAbrham calculates the natural exponent of decimal (e to the power of d) using Hull-Abraham algorithm.
 // OverallPrecision argument specifies the overall precision of the result (integer part + decimal part).
 //
@@ -604,8 +695,11 @@ func abs64(n int64) int64 {
 //
 // Example:
 //
-//	NewFromFloat(26.1).ExpHullAbrham(2).String()    // output: "220000000000"
-//	NewFromFloat(26.1).ExpHullAbrham(20).String()   // output: "216314672147.05767284"
+//	d1, err := NewFromFloat(26.1).ExpHullAbrham(2)
+//	d1.String() // output: "220000000000"
+//
+//	d2, err := NewFromFloat(26.1).ExpHullAbrham(20)
+//	d2.String() // output: "216314672147.05767284"
 func (d Decimal) ExpHullAbrham(overallPrecision uint32) (Decimal, error) {
 	// Algorithm based on Variable precision exponential function.
 	// ACM Transactions on Mathematical Software by T. E. Hull & A. Abrham.
@@ -675,14 +769,13 @@ func (d Decimal) ExpHullAbrham(overallPrecision uint32) (Decimal, error) {
 	}
 	res := Decimal{new(big.Int).Exp(sum.getValue(), big.NewInt(ki), nil), int32(expInt64)}
 
-	resNumDigits := int32(res.NumDigits())
-
-	var roundDigits int32
-	if resNumDigits > abs(res.exp) {
-		roundDigits = int32(currentPrecision) - resNumDigits - res.exp
-	} else {
-		roundDigits = int32(currentPrecision)
+	// Round to overallPrecision significant figures, at least 1. A raised currentPrecision only keeps
+	// the calculation precise, it doesn't add digits to the result.
+	sig := int32(overallPrecision)
+	if sig == 0 {
+		sig = 1
 	}
+	roundDigits := sig - int32(res.NumDigits()) - res.exp
 
 	res = res.Round(roundDigits)
 
@@ -697,14 +790,14 @@ func (d Decimal) ExpHullAbrham(overallPrecision uint32) (Decimal, error) {
 //
 // Example:
 //
-//	d, err := NewFromFloat(26.1).ExpTaylor(2).String()
-//	d.String()  // output: "216314672147.06"
+//	d1, err := NewFromFloat(26.1).ExpTaylor(2)
+//	d1.String() // output: "216314672147.06"
 //
-//	NewFromFloat(26.1).ExpTaylor(20).String()
-//	d.String()  // output: "216314672147.05767284062928674083"
+//	d2, err := NewFromFloat(26.1).ExpTaylor(20)
+//	d2.String() // output: "216314672147.05767284062928674083"
 //
-//	NewFromFloat(26.1).ExpTaylor(-10).String()
-//	d.String()  // output: "220000000000"
+//	d3, err := NewFromFloat(26.1).ExpTaylor(-10)
+//	d3.String() // output: "220000000000"
 func (d Decimal) ExpTaylor(precision int32) (Decimal, error) {
 	// Note(mwoss): Implementation can be optimized by exclusively using big.Int API only
 	if d.IsZero() {
@@ -769,7 +862,7 @@ func (d Decimal) ExpTaylor(precision int32) (Decimal, error) {
 
 // Ln calculates natural logarithm of d.
 // Precision argument specifies how precise the result must be (number of digits after decimal point).
-// Negative precision is allowed.
+// Negative precision is allowed. The result is correctly rounded half away from zero.
 //
 // Example:
 //
@@ -779,120 +872,49 @@ func (d Decimal) ExpTaylor(precision int32) (Decimal, error) {
 //	d2, err := NewFromFloat(579.161).Ln(10)
 //	d2.String()  // output: "6.3615805046"
 func (d Decimal) Ln(precision int32) (Decimal, error) {
-	// Algorithm based on The Use of Iteration Methods for Approximating the Natural Logarithm,
-	// James F. Epperson, The American Mathematical Monthly, Vol. 96, No. 9, November 1989, pp. 831-835.
 	if d.IsNegative() {
 		return Decimal{}, fmt.Errorf("cannot calculate natural logarithm for negative decimals")
 	}
-
 	if d.IsZero() {
 		return Decimal{}, fmt.Errorf("cannot represent natural logarithm of 0, result: -infinity")
 	}
 
-	calcPrecision := precision + 2
-	z := d.Copy()
+	// d = m * 10^k with 1 <= m < 10, so ln(d) = ln(m) + k*ln(10). Both are computed with error bounds,
+	// and the working precision grows until the whole interval rounds to the same value. That ends,
+	// because ln(d) is irrational for every d other than 1.
+	k := int64(d.NumDigits()) - 1 + int64(d.exp)
+	f := int64(precision) + 10
+	if f < 10 {
+		f = 10
+	}
+	for ; ; f += 20 {
+		b := uint(float64(f)*math.Log2(10)) + uint(bits.Len64(uint64(abs64(k)))) + 8
+		m := new(big.Int).Lsh(d.getValue(), b)
+		m.Quo(m, pow10(int64(d.NumDigits())-1))
+		t, lnErr := lnFixed(m, b)
+		ln10, ln10Err := ln10Fixed(b)
+		t.Add(t, new(big.Int).Mul(big.NewInt(k), ln10))
+		tErr := big.NewInt(lnErr + 1 + abs64(k)*ln10Err)
 
-	var comp1, comp3, comp2, comp4, reduceAdjust Decimal
-	comp1 = z.Sub(Decimal{oneInt, 0})
-	comp3 = Decimal{oneInt, -1}
+		neg := t.Sign() < 0
+		t.Abs(t)
+		p := pow10(f)
+		hi := new(big.Int).Add(t, tErr)
+		hi.Mul(hi, p).Rsh(hi, b).Add(hi, oneInt)
+		lo := t.Sub(t, tErr)
+		if lo.Sign() < 0 {
+			lo.SetInt64(0)
+		}
+		lo.Mul(lo, p).Rsh(lo, b)
 
-	// for decimal in range [0.9, 1.1] where ln(d) is close to 0
-	usePowerSeries := false
-
-	if comp1.Abs().Cmp(comp3) <= 0 {
-		usePowerSeries = true
-	} else {
-		// reduce input decimal to range [0.1, 1)
-		expDelta := int32(z.NumDigits()) + z.exp
-		z.exp -= expDelta
-
-		// Input decimal was reduced by factor of 10^expDelta, thus we will need to add
-		// ln(10^expDelta) = expDelta * ln(10)
-		// to the result to compensate that
-		ln10 := ln10.withPrecision(calcPrecision)
-		reduceAdjust = NewFromInt32(expDelta)
-		reduceAdjust = reduceAdjust.Mul(ln10)
-
-		comp1 = z.Sub(Decimal{oneInt, 0})
-
-		if comp1.Abs().Cmp(comp3) <= 0 {
-			usePowerSeries = true
-		} else {
-			// initial estimate using floats
-			zFloat := z.InexactFloat64()
-			comp1 = NewFromFloat(math.Log(zFloat))
+		g := f - int64(precision)
+		if q := roundHalfUp(hi, g); q.Cmp(roundHalfUp(lo, g)) == 0 {
+			if neg {
+				q.Neg(q)
+			}
+			return Decimal{value: q, exp: -precision}, nil
 		}
 	}
-
-	epsilon := Decimal{oneInt, -calcPrecision}
-
-	if usePowerSeries {
-		// Power Series - https://en.wikipedia.org/wiki/Logarithm#Power_series
-		// Calculating n-th term of formula: ln(z+1) = 2 sum [ 1 / (2n+1) * (z / (z+2))^(2n+1) ]
-		// until the difference between current and next term is smaller than epsilon.
-		// Coverage quite fast for decimals close to 1.0
-
-		// z + 2
-		comp2 = comp1.Add(Decimal{twoInt, 0})
-		// z / (z + 2)
-		comp3 = comp1.DivRound(comp2, calcPrecision)
-		// 2 * (z / (z + 2))
-		comp1 = comp3.Add(comp3)
-		comp2 = comp1.Copy()
-
-		for n := 1; ; n++ {
-			// 2 * (z / (z+2))^(2n+1)
-			comp2 = comp2.Mul(comp3).Mul(comp3)
-
-			// 1 / (2n+1) * 2 * (z / (z+2))^(2n+1)
-			comp4 = NewFromInt(int64(2*n + 1))
-			comp4 = comp2.DivRound(comp4, calcPrecision)
-
-			// comp1 = 2 sum [ 1 / (2n+1) * (z / (z+2))^(2n+1) ]
-			comp1 = comp1.Add(comp4)
-
-			if comp4.Abs().Cmp(epsilon) <= 0 {
-				break
-			}
-		}
-	} else {
-		// Halley's Iteration.
-		// Calculating n-th term of formula: a_(n+1) = a_n - 2 * (exp(a_n) - z) / (exp(a_n) + z),
-		// until the difference between current and next term is smaller than epsilon
-		var prevStep Decimal
-		maxIters := calcPrecision*2 + 10
-
-		for i := int32(0); i < maxIters; i++ {
-			// exp(a_n)
-			comp3, _ = comp1.ExpTaylor(calcPrecision)
-			// exp(a_n) - z
-			comp2 = comp3.Sub(z)
-			// 2 * (exp(a_n) - z)
-			comp2 = comp2.Add(comp2)
-			// exp(a_n) + z
-			comp4 = comp3.Add(z)
-			// 2 * (exp(a_n) - z) / (exp(a_n) + z)
-			comp3 = comp2.DivRound(comp4, calcPrecision)
-			// comp1 = a_(n+1) = a_n - 2 * (exp(a_n) - z) / (exp(a_n) + z)
-			comp1 = comp1.Sub(comp3)
-
-			if prevStep.Add(comp3).IsZero() {
-				// If iteration steps oscillate we should return early and prevent an infinity loop
-				// NOTE(mwoss): This should be quite a rare case, returning error is not necessary
-				break
-			}
-
-			if comp3.Abs().Cmp(epsilon) <= 0 {
-				break
-			}
-
-			prevStep = comp3
-		}
-	}
-
-	comp1 = comp1.Add(reduceAdjust)
-
-	return comp1.Round(precision), nil
 }
 
 // Trig functions

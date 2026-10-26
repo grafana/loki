@@ -122,166 +122,6 @@ lbac:
 # querier.
 [querier: <querier>]
 
-query_engine:
-  # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -query-engine.enable
-  [enable: <boolean> | default = false]
-
-  # Experimental: Enable distributed query execution.
-  # CLI flag: -query-engine.distributed
-  [distributed: <boolean> | default = false]
-
-  # Experimental: Name of network interface to read an advertise address from
-  # for accepting incoming traffic from query-engine-worker instances when
-  # distributed execution is enabled.
-  # CLI flag: -query-engine.instance-interface-names
-  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -query-engine.batch-size
-  [batch_size: <int> | default = 100]
-
-  # Experimental: Number of bytes to prefetch when opening a data object for
-  # decoding metadata and overlapping section reads. Clamps to at least 16KiB.
-  # CLI flag: -query-engine.prefetch-bytes
-  [prefetch_bytes: <int> | default = 16KiB]
-
-  # Experimental: The number of inputs that are prefetched simultaneously by any
-  # Merge node. A value of 0 means that only the currently processed input is
-  # prefetched, 1 means that only the next input is prefetched, and so on. A
-  # negative value means that all inputs are be prefetched in parallel.
-  # CLI flag: -query-engine.merge-prefetch-count
-  [merge_prefetch_count: <int> | default = 0]
-
-  # Configures how to read byte ranges from object storage when using the V2
-  # engine.
-  range_reads:
-    # Experimental: maximum number of parallel reads
-    # CLI flag: -query-engine.range-reads.max-parallelism
-    [max_parallelism: <int> | default = 10]
-
-    # Experimental: maximum distance (in bytes) between ranges that causes them
-    # to be coalesced into a single range
-    # CLI flag: -query-engine.range-reads.coalesce-size
-    [coalesce_size: <int> | default = 1048576]
-
-    # Experimental: maximum size of a byte range
-    # CLI flag: -query-engine.range-reads.max-range-size
-    [max_range_size: <int> | default = 8388608]
-
-    # Experimental: minimum size of a byte range
-    # CLI flag: -query-engine.range-reads.min-range-size
-    [min_range_size: <int> | default = 1048576]
-
-  task_results_cache:
-    # The cache_config block configures the cache backend for a specific Loki
-    # component.
-    # The CLI flags prefix for this block configuration is:
-    # query-engine.task-results-cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -query-engine.task-results-cache.compression
-    [compression: <string> | default = ""]
-
-    # Experimental: Maximum size for a task result to be cacheable. 0 means only
-    # empty responses are cached.
-    # CLI flag: -query-engine.task-results-cache.task-result-max-cacheable-size
-    [task_result_max_cacheable_size: <int> | default = 0B]
-
-    # Experimental: Maximum size for a DataObjScan result to be cacheable. 0
-    # means only empty responses are cached.
-    # CLI flag: -query-engine.task-results-cache.dataobjscan-result-max-cacheable-size
-    [dataobjscan_result_max_cacheable_size: <int> | default = 0B]
-
-    # Experimental: When enabled, the scheduler checks cached results at plan
-    # time and prunes tasks whose cached result is known to be empty.
-    # CLI flag: -query-engine.task-results-cache.prune-empty-cached-tasks
-    [prune_empty_cached_tasks: <boolean> | default = false]
-
-    # Experimental: Maximum total size of non-empty cached task results embedded
-    # in task assignments. Results that would exceed the budget are skipped
-    # (smaller results that fit are still included). 0 disables non-empty task
-    # pruning.
-    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-max-size
-    [prune_cached_tasks_max_size: <int> | default = 0B]
-
-    # Experimental: Timeout for cache fetch operations during cached-task
-    # pruning at plan time. 0 disables the timeout.
-    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-fetch-timeout
-    [prune_cached_tasks_fetch_timeout: <duration> | default = 1s]
-
-  # Experimental: Number of worker threads to spawn. Each worker thread runs one
-  # task at a time. 0 means to use GOMAXPROCS value.
-  # CLI flag: -query-engine.worker-threads
-  [worker_threads: <int> | default = 0]
-
-  # Experimental: Address holding DNS SRV records of schedulers to connect to.
-  # CLI flag: -query-engine.scheduler-lookup-address
-  [scheduler_lookup_address: <string> | default = ""]
-
-  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
-  # CLI flag: -query-engine.scheduler-lookup-interval
-  [scheduler_lookup_interval: <duration> | default = 10s]
-
-  # Amount of time until data objects are available.
-  # CLI flag: -query-engine.storage-lag
-  [storage_lag: <duration> | default = 1h]
-
-  # Initial date when data objects became available. Format YYYY-MM-DD. If not
-  # set, assume data objects are always available no matter how far back.
-  # CLI flag: -query-engine.storage-start-date
-  [storage_start_date: <time> | default = 0]
-
-  # Lifecycle of data objects in days. If set, queries falling outside of the
-  # retention period will not be supported. When both storage-start-date and
-  # storage-retention-days are set, the more restrictive of the two will apply.
-  # CLI flag: -query-engine.storage-retention-days
-  [storage_retention_days: <int> | default = 0]
-
-  # Enable routing of query splits in the query frontend to the next generation
-  # engine when they fall within the configured time range.
-  # CLI flag: -query-engine.enable-engine-router
-  [enable_engine_router: <boolean> | default = false]
-
-  # Downstream address to send query splits to. This is the HTTP handler address
-  # of the query engine scheduler.
-  # CLI flag: -query-engine.downstream-address
-  [downstream_address: <string> | default = ""]
-
-  # When enabled, query results exclude log lines that match overlapping delete
-  # requests (not just pending requests). Disable to return all logs without
-  # considering delete requests.
-  # CLI flag: -query-engine.enable-delete-req-filtering
-  [enable_delete_req_filtering: <boolean> | default = true]
-
-  # Enforce tenant retention limits. Queries falling outside tenant's retention
-  # period are either adjusted or rejected.
-  # CLI flag: -query-engine.enforce-retention-period
-  [enforce_retention_period: <boolean> | default = false]
-
-  # Mutate incoming queries to align their start and end with their step.
-  # CLI flag: -query-engine.align-queries-with-step
-  [align_queries_with_step: <boolean> | default = false]
-
-  # Experimental: When enabled, the tenant's MaxQuerySeries limit is applied.
-  # Otherwise, no limit is enforced.
-  # CLI flag: -query-engine.enforce-max-query-series-limit
-  [enforce_max_query_series_limit: <boolean> | default = false]
-
-  results_cache:
-    # The cache_config block configures the cache backend for a specific Loki
-    # component.
-    # The CLI flags prefix for this block configuration is:
-    # query-engine.results-cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -query-engine.results-cache.compression
-    [compression: <string> | default = ""]
-
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -934,17 +774,37 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.volume-threshold
   [volume_threshold: <float> | default = 0.99]
 
+  # Configures consumption of log entries from Kafka.
+  kafka_ingestion:
+    # Whether the pattern ingester consumes log entries from Kafka. When
+    # enabled, the distributor does not tee log entries to the pattern ingester.
+    # When using CLI flags, this must be set on the distributors as well,
+    # otherwise it just needs to be set once in the config file.
+    # CLI flag: -pattern-ingester.kafka-ingestion-enabled
+    [enabled: <boolean> | default = false]
+
+    # The consumer group of the pattern ingesters.
+    # CLI flag: -pattern-ingester.kafka-consumer-group
+    [consumer_group: <string> | default = "pattern-ingester"]
+
+    # The session timeout of the consumer group. A pattern ingester that
+    # restarts and rejoins within this time gets its partitions back without a
+    # rebalance, but if it does not rejoin, its partitions are not consumed
+    # until the timeout expires.
+    # CLI flag: -pattern-ingester.kafka-session-timeout
+    [session_timeout: <duration> | default = 3m]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
 [index_gateway: <index_gateway>]
 
-# Experimental: The bloom_build block configures the Loki bloom planner and
+# Deprecated: The bloom_build block configures the Loki bloom planner and
 # builder servers, responsible for building bloom filters.
 [bloom_build: <bloom_build>]
 
-# Experimental: The bloom_gateway block configures the Loki bloom gateway
-# server, responsible for serving queries for filtering chunks based on filter
+# Deprecated: The bloom_gateway block configures the Loki bloom gateway server,
+# responsible for serving queries for filtering chunks based on filter
 # expressions.
 [bloom_gateway: <bloom_gateway>]
 
@@ -2100,7 +1960,7 @@ http_config:
 
 ### bloom_build
 
-Experimental: The `bloom_build` block configures the Loki bloom planner and builder servers, responsible for building bloom filters.
+Deprecated: The `bloom_build` block configures the Loki bloom planner and builder servers, responsible for building bloom filters.
 
 ```yaml
 # Flag to enable or disable the usage of the bloom-planner and bloom-builder
@@ -2177,7 +2037,7 @@ builder:
 
 ### bloom_gateway
 
-Experimental: The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
+Deprecated: The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
 
 ```yaml
 # Flag to enable or disable the bloom gateway component globally.
@@ -2260,8 +2120,6 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
-- `query-engine.results-cache`
-- `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `tsdb.shipper.postings-cache`
@@ -2456,12 +2314,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # cache. A value of 0 will write all chunks to the cache
 # CLI flag: -store.skip-query-writeback-older-than
 [skip_query_writeback_cache_older_than: <duration> | default = 0s]
-
-# Experimental. Return an object-storage chunk fetch error instead of incomplete
-# results. Applies to queries, bloom builds, and migration, including checksum
-# failures.
-# CLI flag: -chunk-store.propagate-chunk-fetch-errors
-[propagate_chunk_fetch_errors: <boolean> | default = false]
 
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
@@ -4466,11 +4318,6 @@ discover_generic_fields:
 # CLI flag: -querier.split-instant-metric-queries-by-interval
 [split_instant_metric_queries_by_interval: <duration> | default = 1h]
 
-# Time bucket interval used for cache key generation in the Thor (V2) query
-# engine. Queries starting within the same bucket share the same cache key.
-# CLI flag: -querier.engine-results-cache-time-bucket-interval
-[engine_results_cache_time_bucket_interval: <duration> | default = 1d]
-
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
 # setting to 0.
@@ -4638,29 +4485,29 @@ shard_streams:
 # CLI flag: -index-gateway.max-capacity
 [index_gateway_max_capacity: <float> | default = 1]
 
-# Experimental. Whether to use the bloom gateway component in the read path to
+# Deprecated: Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
 
-# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# Deprecated: Maximum number of builders to use when building blooms. 0 allows
 # unlimited builders.
 # CLI flag: -bloom-build.max-builders
 [bloom_build_max_builders: <int> | default = 0]
 
-# Experimental. Maximum number of retries for a failed task. If a task fails
-# more than this number of times, it is considered failed and will not be
-# retried. A value of 0 disables this limit.
+# Deprecated: Maximum number of retries for a failed task. If a task fails more
+# than this number of times, it is considered failed and will not be retried. A
+# value of 0 disables this limit.
 # CLI flag: -bloom-build.task-max-retries
 [bloom_build_task_max_retries: <int> | default = 3]
 
-# Experimental. Timeout for a builder to finish a task. If a builder does not
+# Deprecated: Timeout for a builder to finish a task. If a builder does not
 # respond within this time, it is considered failed and the task will be
 # requeued. 0 disables the timeout.
 # CLI flag: -bloom-build.builder-response-timeout
 [bloom_build_builder_response_timeout: <duration> | default = 0s]
 
-# Experimental. Whether to create blooms for the tenant.
+# Deprecated: Whether to create blooms for the tenant.
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
@@ -4674,36 +4521,36 @@ shard_streams:
 # CLI flag: -dataobj-compaction.log.enable
 [dataobj_log_compaction_enabled: <boolean> | default = false]
 
-# Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
+# Deprecated: Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
 # CLI flag: -bloom-build.planning-strategy
 [bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
 
-# Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of
+# Deprecated: Only if `bloom-build.planning-strategy` is 'split'. Number of
 # splits to create for the series keyspace when building blooms. The series
 # keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
 
-# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
+# Deprecated: Target chunk size in bytes for bloom tasks. Default is 20GB.
 # CLI flag: -bloom-build.split-target-series-chunk-size
 [bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
-# Experimental. Compression algorithm for bloom block pages.
+# Deprecated: Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
 
-# Experimental. Prefetch blocks on bloom gateways as soon as they are built.
+# Deprecated: Prefetch blocks on bloom gateways as soon as they are built.
 # CLI flag: -bloom-build.prefetch-blocks
 [bloom_prefetch_blocks: <boolean> | default = false]
 
-# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
-# size. Default is 200MB. The actual block size might exceed this limit since
-# blooms will be added to blocks until the block exceeds the maximum block size.
+# Deprecated: The maximum bloom block size. A value of 0 sets an unlimited size.
+# Default is 200MB. The actual block size might exceed this limit since blooms
+# will be added to blocks until the block exceeds the maximum block size.
 # CLI flag: -bloom-build.max-block-size
 [bloom_max_block_size: <int> | default = 200MB]
 
-# Experimental. The maximum bloom size per log stream. A log stream whose
+# Deprecated: The maximum bloom size per log stream. A log stream whose
 # generated bloom filter exceeds this size will be discarded. A value of 0 sets
 # an unlimited size. Default is 128MB.
 # CLI flag: -bloom-build.max-bloom-size
@@ -4853,15 +4700,6 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# Experimental: Toggles verbose debug logging of tasks in the new query engine.
-# CLI flag: -limits.debug-engine-tasks
-[debug_engine_tasks: <boolean> | default = false]
-
-# Experimental: Toggles verbose debug logging of data streams in the new query
-# engine.
-# CLI flag: -limits.debug-engine-streams
-[debug_engine_streams: <boolean> | default = false]
 ```
 
 ### local_storage_config
@@ -5061,6 +4899,13 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # if cas-retry-min-backoff is also set.
 # CLI flag: -memberlist.cas-retry-max-backoff
 [cas_retry_max_backoff: <duration> | default = 10s]
+
+# Cache the serialized form of each key, so that push/pull sync doesn't
+# re-encode entries that haven't changed since the last sync. Reduces CPU and
+# lock contention in large clusters, at the cost of memory proportional to the
+# size of the KV store.
+# CLI flag: -memberlist.local-state-cache-enabled
+[local_state_cache_enabled: <boolean> | default = false]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
@@ -6142,6 +5987,13 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.tls-min-version
 [tls_min_version: <string> | default = ""]
 
+# Comma-separated list of TLS curve/group preferences for key exchange. Allowed
+# values: CurveP256, CurveP384, CurveP521, X25519, X25519MLKEM768,
+# SecP256r1MLKEM768, SecP384r1MLKEM1024. If blank, the default Go curve
+# preferences are used.
+# CLI flag: -server.tls-curve-preferences
+[tls_curve_preferences: <string> | default = ""]
+
 http_tls_config:
   # Server TLS certificate. This configuration parameter is YAML only.
   [cert: <string> | default = ""]
@@ -6689,7 +6541,7 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-# Experimental: Configures the bloom shipper component, which contains the store
+# Deprecated: Configures the bloom shipper component, which contains the store
 # abstraction to fetch bloom filters from and put them to object storage.
 bloom_shipper:
   # Working directory to store downloaded bloom blocks. Supports multiple
@@ -7370,8 +7222,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
-- `query-engine.results-cache.memcached`
-- `query-engine.task-results-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`

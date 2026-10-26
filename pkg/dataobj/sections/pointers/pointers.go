@@ -84,8 +84,6 @@ func (s *Section) Columns() []*Column { return s.columns }
 
 // A Column represents one of the columns in the streams section. Valid columns
 // can only be retrieved by calling [Section.Columns].
-//
-// Data in columns can be read by using a [Reader].
 type Column struct {
 	Section *Section   // Section that contains the column.
 	Name    string     // Optional name of the column.

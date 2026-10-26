@@ -594,6 +594,10 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 				resultSize = inputVecLen
 			}
 			switch e.expr.Operation {
+			case syntax.OpTypeSum:
+				result[groupingKey].sum.addValue(s.F)
+			case syntax.OpTypeAvg:
+				result[groupingKey].avg.addValue(s.F)
 			case syntax.OpTypeStdvar, syntax.OpTypeStddev:
 				result[groupingKey].value = 0.0
 			case syntax.OpTypeTopK:
@@ -625,29 +629,10 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 		}
 		switch e.expr.Operation {
 		case syntax.OpTypeSum:
-			group.value += s.F
+			group.sum.addValue(s.F)
 
 		case syntax.OpTypeAvg:
-			group.groupCount++
-			// Floating-point math has any operation between positive
-			// and a negative Infinity to evaluate to a NaN.
-			//
-			// If our running mean is already +Inf, it will cause the mean
-			// to unintentionally become NaN:
-			//
-			//   Inf + (s.F - Inf) == Inf + (-Inf /* negative from subtraction */) == NaN
-			//
-			// We add checks to prevent unintentional conversions. Explicitly
-			// averaging an +Inf and -Inf will evaluate to NaN as expected.
-			if math.IsInf(group.mean, 0) {
-				if math.IsInf(s.F, 0) && (group.mean > 0) == (s.F > 0) {
-					break // Same-sign infinity leaves the mean unchanged.
-				}
-				if !math.IsInf(s.F, 0) && !math.IsNaN(s.F) {
-					break // A finite sample cannot change an infinite mean.
-				}
-			}
-			group.mean += (s.F - group.mean) / float64(group.groupCount)
+			group.avg.addValue(s.F)
 
 		case syntax.OpTypeMax:
 			if group.value < s.F || math.IsNaN(group.value) {
@@ -706,8 +691,11 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 	vec = vec[:0]
 	for _, aggr := range result {
 		switch e.expr.Operation {
+		case syntax.OpTypeSum:
+			aggr.value = aggr.sum.result()
+
 		case syntax.OpTypeAvg:
-			aggr.value = aggr.mean
+			aggr.value = aggr.avg.result()
 
 		case syntax.OpTypeCount:
 			aggr.value = float64(aggr.groupCount)

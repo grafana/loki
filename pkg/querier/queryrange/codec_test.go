@@ -2061,6 +2061,53 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 		}
 	}
 
+	t.Run("preserves scan statistics", func(t *testing.T) {
+		first := logResponseWithScanUsage(100).Statistics
+		first.Summary.Splits = 2
+		second := logResponseWithScanUsage(200).Statistics
+		second.Summary.Splits = 3
+		firstBefore, secondBefore := first, second
+
+		for _, tc := range []struct {
+			name       string
+			statistics []stats.Result
+			wantBytes  int64
+			wantSplits int64
+		}{
+			{name: "all reported", statistics: []stats.Result{first, second}, wantBytes: 300, wantSplits: 5},
+			{name: "zero last", statistics: []stats.Result{first, {}}, wantBytes: 100, wantSplits: 2},
+			{name: "zero first", statistics: []stats.Result{{}, second}, wantBytes: 200, wantSplits: 3},
+			{name: "zero between reported responses", statistics: []stats.Result{first, {}, second}, wantBytes: 300, wantSplits: 5},
+			{name: "all zero", statistics: []stats.Result{{}, {}}},
+			{name: "single reported", statistics: []stats.Result{first}, wantBytes: 100, wantSplits: 2},
+			{name: "single zero", statistics: []stats.Result{{}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				responses := make([]queryrangebase.Response, 0, len(tc.statistics))
+				for i, statistics := range tc.statistics {
+					responses = append(responses, &DetectedFieldsResponse{
+						Response:   &logproto.DetectedFieldsResponse{Limit: 1, Values: []string{fmt.Sprintf("value%d", i)}},
+						Statistics: statistics,
+					})
+				}
+
+				merged, err := DefaultCodec.MergeResponse(responses...)
+				require.NoError(t, err)
+				got := merged.(*DetectedFieldsResponse)
+				require.Len(t, got.Response.Values, 1, "limiting returned metadata must not limit usage")
+				require.Equal(t, tc.wantBytes, got.Statistics.Summary.TotalBytesProcessed)
+				require.Equal(t, tc.wantSplits, got.Statistics.Summary.Splits)
+
+				// A later merge with an zero-usage contribution must retain the same usage.
+				remerged, err := DefaultCodec.MergeResponse(merged, &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{}})
+				require.NoError(t, err)
+				require.Equal(t, got.Statistics, remerged.(*DetectedFieldsResponse).Statistics)
+				require.Equal(t, firstBefore, first, "merging must not mutate source statistics")
+				require.Equal(t, secondBefore, second, "merging must not mutate source statistics")
+			})
+		}
+	})
+
 	t.Run("merges the responses", func(t *testing.T) {
 		responses := []queryrangebase.Response{
 			&DetectedFieldsResponse{
@@ -2233,7 +2280,6 @@ var (
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
 				"queryReferencedStructuredMetadata": false,
-				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 2,
 				"chunkFetchFailures": 0
 			},
@@ -2279,7 +2325,6 @@ var (
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
 				"queryReferencedStructuredMetadata": true,
-				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 4,
 				"chunkFetchFailures": 0
 			}
@@ -3217,5 +3262,83 @@ func dataObjInstantRequest(eligible bool) *LokiInstantRequest {
 		Path:           "/loki/api/v1/query",
 		TimeTs:         start,
 		DataObjOptions: dataObjOptionsFor(eligible),
+	}
+}
+
+func Test_codec_DetectedFieldsStatisticsProtobufRoundTrip(t *testing.T) {
+	t.Run("older producer without statistics", func(t *testing.T) {
+		// Field 1 contains an empty metadata response; field 3 (statistics)
+		// is absent, as in responses produced before statistics were added.
+		var response DetectedFieldsResponse
+		require.NoError(t, response.Unmarshal([]byte{0x0a, 0x00}))
+		require.Equal(t, stats.Result{}, response.Statistics)
+	})
+
+	for _, tc := range []struct {
+		name       string
+		statistics stats.Result
+	}{
+		{name: "zero usage", statistics: stats.Result{}},
+		{name: "scanned logs", statistics: stats.Result{Summary: stats.Summary{TotalBytesProcessed: 1024, Splits: 2}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{Values: []string{"value"}}, Statistics: tc.statistics}
+			request := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_fields", nil)
+			request.Header.Set("Accept", ProtobufType)
+			encoded, err := DefaultCodec.EncodeResponse(context.Background(), request, want)
+			require.NoError(t, err)
+			defer encoded.Body.Close()
+			decoded, err := DefaultCodec.DecodeResponse(context.Background(), encoded, &DetectedFieldsRequest{})
+			require.NoError(t, err)
+			require.Equal(t, want.Statistics, decoded.(*DetectedFieldsResponse).Statistics)
+			require.Equal(t, want.Response, decoded.(*DetectedFieldsResponse).Response)
+		})
+	}
+}
+
+func Test_codec_DetectedFieldsJSONRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		metadata *logproto.DetectedFieldsResponse
+		bytes    int64
+	}{
+		{name: "fields", metadata: &logproto.DetectedFieldsResponse{Limit: 10, Fields: []*logproto.DetectedField{
+			{Label: "message", Type: logproto.DetectedFieldString, Cardinality: 2, Parsers: []string{"json"}, JsonPath: []string{"message"}},
+		}}, bytes: 1024},
+		{name: "values", metadata: &logproto.DetectedFieldsResponse{Limit: 10, Values: []string{"hello", "world"}}, bytes: 2048},
+		{name: "empty result with scanned bytes", metadata: &logproto.DetectedFieldsResponse{}, bytes: 4096},
+		{name: "zero usage", metadata: &logproto.DetectedFieldsResponse{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			usage := logResponseWithScanUsage(tc.bytes).Statistics
+			want := &DetectedFieldsResponse{Response: tc.metadata, Statistics: usage}
+			request := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_fields", nil)
+			encoded, err := DefaultCodec.EncodeResponse(context.Background(), request, want)
+			require.NoError(t, err)
+			defer encoded.Body.Close()
+			body, err := io.ReadAll(encoded.Body)
+			require.NoError(t, err)
+
+			// The new stats field must not change or nest existing metadata fields.
+			var fields map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(body, &fields))
+			require.Contains(t, fields, "stats")
+			delete(fields, "stats")
+			metadataJSON, err := json.Marshal(fields)
+			require.NoError(t, err)
+			originalJSON, err := json.Marshal(tc.metadata)
+			require.NoError(t, err)
+			require.JSONEq(t, string(originalJSON), string(metadataJSON))
+
+			// Both the internal codec and the public HTTP model retain statistics.
+			encoded.Body = io.NopCloser(bytes.NewReader(body))
+			decoded, err := DefaultCodec.DecodeResponse(context.Background(), encoded, &DetectedFieldsRequest{})
+			require.NoError(t, err)
+			require.Equal(t, tc.metadata, decoded.(*DetectedFieldsResponse).Response)
+			require.Equal(t, usage, decoded.(*DetectedFieldsResponse).Statistics)
+			var clientResponse loghttp.DetectedFieldsResponse
+			require.NoError(t, json.Unmarshal(body, &clientResponse))
+			require.Equal(t, usage, clientResponse.Statistics)
+		})
 	}
 }

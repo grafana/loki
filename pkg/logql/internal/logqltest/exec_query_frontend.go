@@ -411,7 +411,6 @@ func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overri
 	return queryrange.NewMiddleware(
 		cfg,
 		engineOpts,
-		queryrange.RouterConfig{},
 		nil,
 		logger,
 		overrides,

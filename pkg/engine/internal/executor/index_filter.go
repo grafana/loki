@@ -22,7 +22,7 @@ import (
 // source index into a new index object, and emits a record that reports the
 // content-hash path of the new index.
 func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
-	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifact, err := c.doIndexFilter(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
@@ -32,7 +32,7 @@ func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 			return errorPipeline(ctx, err)
 		}
 		return NewBufferedPipeline(rec)
-	}, nil)
+	})
 }
 
 func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter) (*v2.ResultArtifact, error) {
@@ -56,7 +56,13 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		return nil, fmt.Errorf("opening source index %q: %w", node.SourceIndexPath, err)
 	}
 
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore)
+	// A source without stats sections has no layout. The builder then gets
+	// the zero layout, and rejects any stat, so it never records that layout.
+	layout, _, err := indexobj.TenantLayout(ctx, source, node.Tenant)
+	if err != nil {
+		return nil, fmt.Errorf("reading stream layout of source index %q: %w", node.SourceIndexPath, err)
+	}
+	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}

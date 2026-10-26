@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
@@ -240,7 +241,7 @@ func mergeNodeRuns(t *testing.T, plan *physical.Plan) []*compactionv2pb.RunRef {
 }
 
 // planObjectPaths returns the sorted object paths that a LogMerge,
-// IndexMerge, IndexFilter, or SortObject plan reads.
+// IndexMerge, or IndexFilter plan reads.
 func planObjectPaths(t *testing.T, plan *physical.Plan) []string {
 	t.Helper()
 	root, err := plan.Root()
@@ -249,8 +250,6 @@ func planObjectPaths(t *testing.T, plan *physical.Plan) []string {
 	switch n := root.(type) {
 	case *physical.IndexFilter:
 		paths = slices.Clone(n.ObjectPaths)
-	case *physical.SortObject:
-		paths = []string{n.SourceObjectPath}
 	default:
 		for _, run := range mergeNodeRuns(t, plan) {
 			for _, section := range run.Sections {
@@ -358,7 +357,6 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	require.NoError(t, err)
 	node, ok := root.(*physical.LogMerge)
 	require.True(t, ok)
-	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
 	require.Len(t, node.Runs, 2)
 	require.Equal(t, []string{"logs/log-0#0", "logs/log-0#1"}, sectionRefNames(node.Runs[0].Sections))
 	require.Equal(t, []string{"logs/log-1#0", "logs/log-1#1"}, sectionRefNames(node.Runs[1].Sections))
@@ -366,55 +364,6 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	swaps := replacer.snapshot()
 	require.Len(t, swaps, 1, "log path now swaps the ToC after dispatch")
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
-}
-
-func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	convergedPath := "indexes/aa/converged"
-	logSortSchema := "label:cluster"
-	buildCurrentIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: logSortSchema,
-			Labels: map[string]string{"cluster": "dev"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 2, UncompressedSize: 100},
-		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: logSortSchema,
-			Labels: map[string]string{"cluster": "prod"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 3, UncompressedSize: 200},
-	})
-
-	// The tenant's requested sort-schema must not match the log schema to trigger a sort.
-	limits := newFakeLimits("acme")
-	require.Equal(t, limits.SortSchemaLabels("acme"), []string{"label:service_name"})
-	require.NotEqual(t, limits.SortSchemaLabels("acme"), logSortSchema)
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), limits)
-
-	result, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
-		Path: convergedPath,
-	})
-	require.NoError(t, err)
-	require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, result)
-
-	calls := runner.snapshot()
-	require.Len(t, calls, 2)
-	sources := make(map[string]bool)
-	for _, call := range calls {
-		// Check a sort-object was dispatched with the Tenant's requested sort-schema
-		require.Equal(t, []string{"compaction", "sort-object"}, call.opts.Actor)
-		root, err := call.plan.Root()
-		require.NoError(t, err)
-		node, ok := root.(*physical.SortObject)
-		require.True(t, ok)
-		require.Equal(t, []string{"label:service_name"}, node.SortSchema)
-		sources[node.SourceObjectPath] = true
-	}
-	require.Equal(t, map[string]bool{"logs/log-0": true, "logs/log-1": true}, sources)
-
-	swaps := replacer.snapshot()
-	require.Len(t, swaps, 1)
-	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
-	requireEntriesMatchCalls(t, calls, swaps[0].newEntries)
 }
 
 // totalLogInputBytes returns the sum of the log input bytes of plan.
@@ -486,7 +435,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Equal(t, uint64(200), totalLogInputBytes(plan))
 	})
 
-	t.Run("plans one SortObject task per object when the sort schema differs from the target", func(t *testing.T) {
+	t.Run("plans one LogMerge task for an index with a non-default sort schema", func(t *testing.T) {
 		cluster := map[string]string{"cluster": "dev"}
 		secondSection := stat("logs/log-0", "label:cluster", cluster, 30, 35)
 		secondSection.SectionIndex = 1
@@ -500,15 +449,8 @@ func TestPlanLogCompaction(t *testing.T) {
 		plan, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
 		require.NoError(t, err)
 
-		require.Len(t, plan.tasks, 2)
-		bytesByObject := map[string]uint64{}
-		for _, task := range plan.tasks {
-			sort, ok := task.(sortObjectTask)
-			require.True(t, ok)
-			require.Equal(t, []string{"label:service_name"}, sort.sortSchema)
-			bytesByObject[sort.objectPath] = sort.logStats().inputBytes
-		}
-		require.Equal(t, map[string]uint64{"logs/log-0": 150, "logs/log-1": 100}, bytesByObject)
+		require.Len(t, plan.tasks, 1)
+		require.IsType(t, logMergeTask{}, plan.tasks[0])
 		require.Equal(t, uint64(250), totalLogInputBytes(plan))
 	})
 
@@ -548,8 +490,12 @@ func TestExecuteLogCompaction(t *testing.T) {
 		window:      window,
 		sourceIndex: indexEntry{Path: "indexes/source"},
 		tasks: []logCompactionTask{
-			sortObjectTask{objectPath: "logs/a", sortSchema: []string{"label:app"}},
-			sortObjectTask{objectPath: "logs/b", sortSchema: []string{"label:app"}},
+			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/a"}}},
+			}}),
+			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b"}}},
+			}}),
 		},
 	}
 	newExecutor := func(t *testing.T) (*coordinator, *fakeRunner, *fakeReplacer) {
@@ -1192,31 +1138,18 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			if err != nil {
 				return false
 			}
-			switch n := root.(type) {
-			case *physical.SortObject:
-				return n.SourceObjectPath == path
-			case *physical.IndexMerge:
-				for _, run := range n.Runs {
-					for _, section := range run.Sections {
-						if section.ObjectPath == path {
-							return true
-						}
+			merge, ok := root.(*physical.IndexMerge)
+			if !ok {
+				return false
+			}
+			for _, run := range merge.Runs {
+				for _, section := range run.Sections {
+					if section.ObjectPath == path {
+						return true
 					}
 				}
 			}
 			return false
-		}
-	}
-	logIndex := func(t *testing.T, schema string, labels map[string]string) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		bucket := objstore.NewInMemBucket()
-		rows := make([]stats.Stat, 3)
-		for i := range rows {
-			rows[i] = stats.Stat{ObjectPath: fmt.Sprintf("logs/%d", i), SortSchema: schema, Labels: labels,
-				MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100}
-		}
-		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
-		return bucket, func(c *coordinator) (compactionStats, error) {
-			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source"})
 		}
 	}
 
@@ -1229,10 +1162,16 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		}
 	}
 	equalRuns := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		return logIndex(t, "label:service_name", map[string]string{"service_name": "auth"})
-	}
-	wrongSortSchema := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		return logIndex(t, "label:cluster", map[string]string{"cluster": "dev"})
+		bucket := objstore.NewInMemBucket()
+		rows := make([]stats.Stat, 3)
+		for i := range rows {
+			rows[i] = stats.Stat{ObjectPath: fmt.Sprintf("logs/%d", i), SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"},
+				MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100}
+		}
+		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
+		return bucket, func(c *coordinator) (compactionStats, error) {
+			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source"})
+		}
 	}
 
 	tests := []struct {
@@ -1247,8 +1186,6 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			wantActors: []string{"log-merge", "index-filter"}},
 		{name: "log compaction publishes nothing when a merge fails in the same batch as the index filter", seed: equalRuns, fail: failActor("log-merge"),
 			wantActors: []string{"log-merge", "index-filter"}},
-		{name: "sort object publishes nothing when one task fails", seed: wrongSortSchema, fail: failObject("logs/2"),
-			wantActors: []string{"sort-object", "sort-object", "sort-object"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1450,7 +1387,7 @@ func TestCompactTenant_FailsOnIncompleteDiscovery(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	_, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
 
-	require.ErrorContains(t, err, "discover index section bounds")
+	require.ErrorContains(t, err, "index=indexes/missing")
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
 }
@@ -2669,5 +2606,93 @@ func TestAssignArtifactPaths(t *testing.T) {
 		require.Error(t, assignArtifactPaths(entries, artifacts))
 		require.Empty(t, entries[0].Path)
 		require.Empty(t, entries[1].Path)
+	})
+}
+
+// buildMixedLayoutIndex writes an index at path whose two stats sections of
+// tenant record different layouts.
+func buildMixedLayoutIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string) {
+	t.Helper()
+	builder := dataobj.NewBuilder(nil)
+	for _, schema := range []string{"label:service_name", "label:namespace"} {
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000), streams.NewLayout(streams.DefaultShardLayout(), []string{schema}))
+		statsBuilder.SetTenant(tenant)
+		statsBuilder.Append(stats.Stat{ObjectPath: path + "/" + schema, SortSchema: schema, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100})
+		require.NoError(t, builder.Append(statsBuilder))
+	}
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	uploadObject(ctx, t, bucket, path, obj)
+}
+
+func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+
+	t.Run("IndexMerge skips a corrupt index without an error and counts it", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildMixedLayoutIndex(ctx, t, bucket, "acme", "indexes/corrupt")
+		runner := &fakeRunner{}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		_, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/corrupt"}})
+		require.NoError(t, err)
+		require.Empty(t, runner.snapshot())
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
+	})
+
+	t.Run("IndexMerge skips an index with an invalid layout and still groups the other indexes", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/healthy", []stats.Stat{{ObjectPath: "logs/a", SortSchema: "label:service_name"}})
+		// The zero layout records a shard count but no stream order, which
+		// readers reject.
+		builder := dataobj.NewBuilder(nil)
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000), streams.Layout{})
+		statsBuilder.SetTenant("acme")
+		statsBuilder.Append(stats.Stat{ObjectPath: "logs/b"})
+		require.NoError(t, builder.Append(statsBuilder))
+		invalid, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		uploadObject(ctx, t, bucket, "indexes/invalid", invalid)
+
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		_, err = c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/healthy"}, {Path: "indexes/invalid"}})
+		require.NoError(t, err)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
+	})
+
+	t.Run("LogMerge skips a corrupt index, counts it, and reports no planning error", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildMixedLayoutIndex(ctx, t, bucket, "acme", "indexes/corrupt")
+		writeToCReferencing(ctx, t, bucket, "acme", window, "indexes/corrupt")
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		plans, anyError := c.planLogCompactions(ctx, "acme")
+		require.False(t, anyError)
+		require.Empty(t, plans)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
+	})
+}
+
+func TestNewLayoutKey(t *testing.T) {
+	sixteen, err := streams.ShardLayoutFromBuckets(16)
+	require.NoError(t, err)
+
+	t.Run("gives equal keys to equal layouts", func(t *testing.T) {
+		require.Equal(t,
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})),
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})))
+	})
+
+	t.Run("gives different keys to layouts that differ only in shard buckets", func(t *testing.T) {
+		require.NotEqual(t,
+			newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})),
+			newLayoutKey(streams.NewLayout(sixteen, []string{"label:app"})))
+	})
+
+	t.Run("gives no real layout the zero key", func(t *testing.T) {
+		require.NotEqual(t, layoutKey{}, newLayoutKey(streams.NewLayout(streams.DefaultShardLayout(), nil)))
 	})
 }

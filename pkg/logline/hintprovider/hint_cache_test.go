@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -593,6 +595,144 @@ func TestCachingHintProvider_SingleflightJoinerRecordsNoIOWait(t *testing.T) {
 	require.InDelta(t, float64(readTime)/float64(leader.wall), leader.stats.Snapshot().EffectiveConcurrency, 0.01)
 }
 
+// cancelFirstCallHintProvider blocks its first call until that call's context
+// ends and answers later calls straight away.
+type cancelFirstCallHintProvider struct {
+	calls   atomic.Int64
+	started chan struct{}
+	hints   *Hints
+}
+
+func (p *cancelFirstCallHintProvider) ProvideHints(ctx context.Context, _ string, _ syntax.Expr, _, _ model.Time) (*Hints, *QueryStats, error) {
+	if p.calls.Inc() == 1 {
+		close(p.started)
+		<-ctx.Done()
+		return nil, NewQueryStats(), ctx.Err()
+	}
+	return cloneHints(p.hints), NewQueryStats(), nil
+}
+
+// releasedHintProvider blocks each call until release is closed or the call's
+// context ends.
+type releasedHintProvider struct {
+	calls   atomic.Int64
+	started chan struct{}
+	release chan struct{}
+	hints   *Hints
+}
+
+func (p *releasedHintProvider) ProvideHints(ctx context.Context, _ string, _ syntax.Expr, _, _ model.Time) (*Hints, *QueryStats, error) {
+	if p.calls.Inc() == 1 {
+		close(p.started)
+	}
+	select {
+	case <-p.release:
+		return cloneHints(p.hints), NewQueryStats(), nil
+	case <-ctx.Done():
+		return nil, NewQueryStats(), ctx.Err()
+	}
+}
+
+func TestCachingHintProvider_SingleflightJoinerStopsWaitingWhenCanceled(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	hintRange := HintTimeRange{
+		Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
+	}
+	delegate := &releasedHintProvider{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		hints:   &Hints{TimeRanges: []HintTimeRange{hintRange}},
+	}
+	provider := NewCachingHintProvider(delegate, nil, reg)
+
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	tenant := "tenant-a"
+	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 23, 0, 0, 0, time.UTC).UnixNano())
+
+	type result struct {
+		hints *Hints
+		err   error
+	}
+	leader := make(chan result, 1)
+	go func() {
+		hints, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+		leader <- result{hints: hints, err: err}
+	}()
+	<-delegate.started
+
+	joinerCtx, cancelJoiner := context.WithCancel(context.Background())
+	joinerErr := make(chan error, 1)
+	go func() {
+		_, _, err := provider.ProvideHints(joinerCtx, tenant, expr, from, through)
+		joinerErr <- err
+	}()
+	// Give the joiner time to join the leader's lookup before it is canceled.
+	time.Sleep(100 * time.Millisecond)
+	cancelJoiner()
+
+	select {
+	case err := <-joinerErr:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the canceled joiner kept waiting for the shared lookup")
+	}
+
+	close(delegate.release)
+	res := <-leader
+	require.NoError(t, res.err)
+	require.Equal(t, []HintTimeRange{hintRange}, res.hints.TimeRanges)
+	require.Equal(t, int64(1), delegate.calls.Load(), "the joiner must not start its own lookup")
+	require.Zero(t, testutil.ToFloat64(provider.singleflightRetriesTot))
+}
+
+func TestCachingHintProvider_SingleflightJoinerOutlivesCanceledLeader(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	hintRange := HintTimeRange{
+		Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
+	}
+	delegate := &cancelFirstCallHintProvider{
+		started: make(chan struct{}),
+		hints:   &Hints{TimeRanges: []HintTimeRange{hintRange}},
+	}
+	provider := NewCachingHintProvider(delegate, nil, reg)
+
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	tenant := "tenant-a"
+	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 23, 0, 0, 0, time.UTC).UnixNano())
+
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leaderErr := make(chan error, 1)
+	go func() {
+		_, _, err := provider.ProvideHints(leaderCtx, tenant, expr, from, through)
+		leaderErr <- err
+	}()
+	<-delegate.started
+
+	type result struct {
+		hints *Hints
+		err   error
+	}
+	joiner := make(chan result, 1)
+	go func() {
+		hints, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+		joiner <- result{hints: hints, err: err}
+	}()
+	// Give the joiner time to join the leader's lookup before it is canceled.
+	time.Sleep(100 * time.Millisecond)
+	cancelLeader()
+
+	require.ErrorIs(t, <-leaderErr, context.Canceled)
+	res := <-joiner
+	require.NoError(t, res.err, "the leader's cancellation must not fail a caller whose context is live")
+	require.Equal(t, []HintTimeRange{hintRange}, res.hints.TimeRanges)
+	require.Equal(t, int64(2), delegate.calls.Load())
+	require.Equal(t, 1.0, testutil.ToFloat64(provider.singleflightRetriesTot))
+}
+
 func TestCachedHints_JSONRoundTrip(t *testing.T) {
 	input := []HintTimeRange{
 		{
@@ -939,6 +1079,15 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 	withoutMinDate := buildDayWindows(tenant, expr.String(), "", from, through)
 	require.Contains(t, backend.data, withMinDate[0].hashedKey)
 	require.NotContains(t, backend.data, withoutMinDate[0].hashedKey)
+}
+
+func TestCachingHintProvider_MinDate(t *testing.T) {
+	minDate := time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC)
+	withMinDate := NewCachingHintProvider(&stubHintProvider{minDate: minDate}, nil, prometheus.NewRegistry())
+	require.Equal(t, minDate, withMinDate.MinDate())
+
+	withoutMinDate := NewCachingHintProvider(&inclusivePassthroughHintProvider{}, nil, prometheus.NewRegistry())
+	require.True(t, withoutMinDate.MinDate().IsZero())
 }
 
 type mutableWindowHintProvider struct {
