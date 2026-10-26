@@ -139,6 +139,17 @@ func TestNeedles(t *testing.T) {
 		{"two conjunctions collapse to shared text", `(a|b|c)xyz`, 2, `{"xyz"}`},
 		{"one conjunction without required text", `foo|bar`, 1, "TRUE"},
 
+		// Every set also carries the literals of one conjunction, so text a
+		// run joined into each set is still its own literal.
+		{
+			"one-conjunction literals in every set", `(GET|POST|PUT|DELETE) /api/v1/(users|orders)`, 4,
+			`{" /api/v1/", "orders"} or {" /api/v1/", "users"}`,
+		},
+		{
+			"one-conjunction suffix in every set", `prefix_(a|b)_middle_(c|d)_suffix`, 2,
+			`{"_suffix", "prefix_A_middle_"} or {"_suffix", "prefix_B_middle_"}`,
+		},
+
 		// Nothing required.
 		{"star", `(abcdef)*`, 64, "TRUE"},
 		{"class only", `[a-z]+`, 64, "TRUE"},

@@ -66,14 +66,19 @@ func Literals(pattern string) []string {
 // Case follows the same rules as Literals, with one addition: runes of a
 // small character class are used with ASCII letters uppercased. Callers must
 // uppercase ASCII before they look literals up, as every extractor does.
-//
 // The result is not pruned. Call Prune on the final requirement.
 func Needles(pattern string, maxConjunctions int) needle.Expr {
 	re, err := parse(pattern)
 	if err != nil {
 		return needle.True()
 	}
-	return newWalker(maxConjunctions).expr(re)
+
+	// Basic selection first.
+	single := newWalker(1).expr(re)
+	if maxConjunctions <= 1 {
+		return single
+	}
+	return needle.And(maxConjunctions, single, newWalker(maxConjunctions).expr(re))
 }
 
 // parse runs the same parse as Loki's parseRegexpFilter. It does not call
