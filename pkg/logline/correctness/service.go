@@ -85,21 +85,22 @@ type CycleReport struct {
 	// HintQueryType is "line_filter", "label_filter" (stream label),
 	// "sm_label_filter" (structured metadata), or "json_label_filter"
 	// (`| json | field="value"`).
-	HintQueryType           string        `json:"hint_query_type"`
-	CandidateTimeRanges     int           `json:"candidate_time_ranges"`
-	TotalResults            int           `json:"total_results"`
-	CoveredResults          int           `json:"covered_results"`
-	TruePositives           int           `json:"true_positives"`
-	FalsePositives          int           `json:"false_positives"`
-	FalseNegatives          int           `json:"false_negatives"`
-	HintDuration            time.Duration `json:"hint_duration"`
-	AvgHintRangeSeconds     float64       `json:"avg_hint_range_seconds"`
-	Correct                 bool          `json:"correct"`
-	NeedleQueryTruncated    bool          `json:"needle_query_truncated"`
-	OverlappingIndexIDs     []string      `json:"overlapping_index_ids,omitempty"`
-	FalseNegativeTimestamps []time.Time   `json:"false_negative_timestamps,omitempty"`
-	SkippedReason           string        `json:"skipped_reason,omitempty"`
-	Error                   string        `json:"error,omitempty"`
+	HintQueryType           string                       `json:"hint_query_type"`
+	CandidateTimeRanges     int                          `json:"candidate_time_ranges"`
+	TotalResults            int                          `json:"total_results"`
+	CoveredResults          int                          `json:"covered_results"`
+	TruePositives           int                          `json:"true_positives"`
+	FalsePositives          int                          `json:"false_positives"`
+	FalseNegatives          int                          `json:"false_negatives"`
+	HintDuration            time.Duration                `json:"hint_duration"`
+	AvgHintRangeSeconds     float64                      `json:"avg_hint_range_seconds"`
+	Correct                 bool                         `json:"correct"`
+	NeedleQueryTruncated    bool                         `json:"needle_query_truncated"`
+	OverlappingIndexIDs     []string                     `json:"overlapping_index_ids,omitempty"`
+	FalseNegativeTimestamps []time.Time                  `json:"false_negative_timestamps,omitempty"`
+	FalseNegativeRanges     []hintprovider.HintTimeRange `json:"false_negative_ranges,omitempty"`
+	SkippedReason           string                       `json:"skipped_reason,omitempty"`
+	Error                   string                       `json:"error,omitempty"`
 }
 
 // New creates a correctness verification service.
@@ -400,6 +401,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	report.FalsePositives = vr.FalsePositives
 	report.FalseNegatives = vr.FalseNegatives
 	report.FalseNegativeTimestamps = vr.FalseNegativeTimestamps
+	report.FalseNegativeRanges = vr.FalseNegativeRanges
 	report.HintDuration = hintDuration
 	report.Correct = vr.Correct
 
@@ -419,14 +421,25 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 
 	excludedCoveringFN := s.excludedIndexesCoveringFNs(report.FalseNegativeTimestamps, rangeStart, rangeEnd)
 
-	// Log failure detail: which indexes were consulted, which timestamps were missed.
-	level.Warn(s.logger).Log(
+	// A log miss records timestamps. A metric miss records each sample's lookback.
+	// excludedIndexesCoveringFNs returns nothing when there are no timestamps.
+	detail := []any{
 		"msg", "correctness failure detail",
 		"hint_query", report.HintQuery,
 		"overlapping_index_ids", strings.Join(report.OverlappingIndexIDs, ","),
-		"false_negative_timestamps", formatTimestamps(report.FalseNegativeTimestamps),
-		"excluded_covering_fn_count", len(excludedCoveringFN),
-	)
+	}
+	if len(report.FalseNegativeTimestamps) > 0 {
+		detail = append(detail,
+			"false_negative_timestamps", formatTimestamps(report.FalseNegativeTimestamps),
+			"excluded_covering_fn_count", len(excludedCoveringFN),
+		)
+	}
+	if len(report.FalseNegativeRanges) > 0 {
+		detail = append(detail,
+			"false_negative_ranges", hintprovider.FormatHintRanges(report.FalseNegativeRanges),
+		)
+	}
+	level.Warn(s.logger).Log(detail...)
 
 	// Log per-index hint breakdown: which indexes contributed hints and which didn't.
 	indexesWithHints, indexesWithoutHints := hintBreakdownByIndex(hintRanges, report.OverlappingIndexIDs)

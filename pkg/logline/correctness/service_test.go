@@ -67,13 +67,21 @@ func TestRunVerificationCycle_FalseNegative(t *testing.T) {
 	// non-deterministic index, does not affect correctness).
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, base.Add(110*time.Second), base.Add(115*time.Second))
 
+	var buf bytes.Buffer
 	svc := newTestService(t, indexStore, loki.URL, base)
+	svc.logger = log.NewLogfmtLogger(&buf)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
 	require.False(t, report.Correct, "false negative should make the test incorrect")
 	require.Greater(t, report.FalseNegatives, 0)
 	require.Equal(t, 1, report.FalsePositives)
+	require.NotEmpty(t, report.FalseNegativeTimestamps)
+	require.Empty(t, report.FalseNegativeRanges)
+	logLine := buf.String()
+	require.Contains(t, logLine, "false_negative_timestamps=")
+	require.Contains(t, logLine, "excluded_covering_fn_count=")
+	require.NotContains(t, logLine, "false_negative_ranges=")
 }
 
 func TestRunVerificationCycle_ExcludedIndexCoveringFN(t *testing.T) {
