@@ -120,10 +120,8 @@ func (p *CachingHintProvider) fetchDays(
 			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
 			sfKey := singleflightKey(tenant, queryString, day.day)
 			// ran is per caller. The Do closure runs only for the caller that
-			// performs the lookup, so a joiner can keep the shared counters
-			// without also keeping that caller's full read time.
+			// performs the lookup.
 			ran := false
-			waitStart := time.Now()
 			value, _, shared := p.flight.Do(sfKey, func() (any, error) {
 				ran = true
 				hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
@@ -138,7 +136,6 @@ func (p *CachingHintProvider) fetchDays(
 				}
 				return &provideHintsResult{hints: hints, stats: stats}, nil
 			})
-			blocked := time.Since(waitStart)
 			if shared {
 				p.singleflightDedupedTot.Inc()
 			}
@@ -149,11 +146,11 @@ func (p *CachingHintProvider) fetchDays(
 			}
 			copied := *res
 			if !ran {
+				// Keep the shared read counters. This caller did no ReadAt, so
+				// clear the leader's IO wait that Merge just copied.
 				stats := NewQueryStats()
-				if res.stats != nil {
-					stats.Merge(res.stats)
-				}
-				stats.totalIOWaitNanos.Store(blocked.Nanoseconds())
+				stats.Merge(res.stats)
+				stats.totalIOWaitNanos.Store(0)
 				copied.stats = stats
 			}
 			results[i] = copied

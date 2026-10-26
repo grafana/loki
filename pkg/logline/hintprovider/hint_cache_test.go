@@ -510,7 +510,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	require.Equal(t, 1, backend.StoreCalls(), "coalesced miss should store once")
 }
 
-func TestCachingHintProvider_SingleflightJoinerChargesBlockedTime(t *testing.T) {
+func TestCachingHintProvider_SingleflightJoinerRecordsNoIOWait(t *testing.T) {
 	const readTime = 5 * time.Second
 	const lookupTime = 200 * time.Millisecond
 
@@ -584,12 +584,10 @@ func TestCachingHintProvider_SingleflightJoinerChargesBlockedTime(t *testing.T) 
 	require.Equal(t, int64(4), leader.stats.headerReads.Load())
 	require.Equal(t, int64(4), joiner.stats.headerReads.Load())
 
-	joinerWait := time.Duration(joiner.stats.totalIOWaitNanos.Load())
-	require.Greater(t, joinerWait, lookupTime/2)
-	require.Less(t, joinerWait, readTime)
+	require.Equal(t, int64(0), joiner.stats.totalIOWaitNanos.Load())
 
 	joiner.stats.SetWallTime(joiner.wall)
-	require.InDelta(t, 1.0, joiner.stats.Snapshot().EffectiveConcurrency, 0.35)
+	require.Equal(t, 0.0, joiner.stats.Snapshot().EffectiveConcurrency)
 
 	leader.stats.SetWallTime(leader.wall)
 	require.InDelta(t, float64(readTime)/float64(leader.wall), leader.stats.Snapshot().EffectiveConcurrency, 0.01)
