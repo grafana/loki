@@ -2158,7 +2158,8 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 		builder.Add(ln, lv)
 	}
 
-	// Commit built labels.
+	// Commit built labels. Labels(), not Overwrite(): callers such as the compactor retain these
+	// labels past the next series and after the index is closed.
 	builder.Sort()
 	*lbls = builder.Labels()
 	return &d, fprint, nil

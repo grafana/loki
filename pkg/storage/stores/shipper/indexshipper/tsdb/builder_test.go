@@ -189,24 +189,50 @@ func TestBuilder_HashCollisions(t *testing.T) {
 	}
 }
 
+func TestBuilder_FinalizeChunksDropsSpareCapacity(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		batches  []index.ChunkMetas
+		expected index.ChunkMetas
+	}{
+		{
+			name:     "appended in many batches",
+			batches:  []index.ChunkMetas{buildChunkMetas(1, 9), buildChunkMetas(10, 19), buildChunkMetas(20, 29), buildChunkMetas(30, 39)},
+			expected: buildChunkMetas(1, 39),
+		},
+		{
+			// Finalize returns a pooled slice when it removes duplicates
+			name:     "duplicates",
+			batches:  []index.ChunkMetas{buildChunkMetas(1, 20), buildChunkMetas(1, 20), buildChunkMetas(21, 40)},
+			expected: buildChunkMetas(1, 40),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ls := mustParseLabels(`{foo="bar"}`)
+			b := NewBuilder(index.FormatV3)
+			for _, chks := range tc.batches {
+				b.AddSeries(ls, 1, chks)
+			}
+			b.FinalizeChunks()
+
+			chks := b.getStream(ls).chunks
+			require.Equal(t, tc.expected, chks)
+			require.LessOrEqual(t, cap(chks), len(chks)+len(chks)/4)
+		})
+	}
+}
+
 func BenchmarkBuilder(b *testing.B) {
 	const numSeries = 100_000
 	series := make([]labels.Labels, numSeries)
 	for i := range series {
-		series[i] = labels.FromStrings(
-			"cluster", fmt.Sprintf("cluster-%d", i%10),
-			"container", fmt.Sprintf("container-%d", i%300),
-			"namespace", fmt.Sprintf("namespace-%d", i%50),
-			"pod", fmt.Sprintf("pod-%d-7f9c8d6b5-%05d", i%300, i),
-			"service_name", fmt.Sprintf("service-%d", i%300),
-			"stream", []string{"stdout", "stderr"}[i%2],
-		)
+		series[i] = benchSeriesLabels(i)
 	}
 	chks := buildChunkMetas(1, 1)
 	addSeries := func() *Builder {
 		builder := NewBuilder(index.FormatV3)
 		for i, ls := range series {
-			// the compactor copies labels out of the source index before adding them
+			// Copy stands in for the source index decoding every series' labels into a new allocation
 			builder.AddSeries(ls.Copy(), model.Fingerprint(i), chks)
 		}
 		return builder
@@ -242,6 +268,18 @@ func BenchmarkBuilder(b *testing.B) {
 			require.NoError(b, err)
 		}
 	})
+}
+
+// benchSeriesLabels returns a realistic Kubernetes label set for the i-th series of a benchmark.
+func benchSeriesLabels(i int) labels.Labels {
+	return labels.FromStrings(
+		"cluster", fmt.Sprintf("cluster-%d", i%10),
+		"container", fmt.Sprintf("container-%d", i%300),
+		"namespace", fmt.Sprintf("namespace-%d", i%50),
+		"pod", fmt.Sprintf("pod-%d-7f9c8d6b5-%05d", i%300, i),
+		"service_name", fmt.Sprintf("service-%d", i%300),
+		"stream", []string{"stdout", "stderr"}[i%2],
+	)
 }
 
 func heapAlloc() uint64 {

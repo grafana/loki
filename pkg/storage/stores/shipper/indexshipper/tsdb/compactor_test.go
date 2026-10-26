@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -122,7 +123,7 @@ func (m *mockIndexSet) SetCompactedIndex(compactedIndex compactor.CompactedIndex
 	return nil
 }
 
-func setupMultiTenantIndex(t *testing.T, indexFormat int, userStreams map[string][]stream, destDir string, ts time.Time) string {
+func setupMultiTenantIndex(t testing.TB, indexFormat int, userStreams map[string][]stream, destDir string, ts time.Time) string {
 	require.NoError(t, util.EnsureDirectory(destDir))
 	b := NewBuilder(indexFormat)
 	for userID, streams := range userStreams {
@@ -160,7 +161,7 @@ func setupMultiTenantIndex(t *testing.T, indexFormat int, userStreams map[string
 	return dst.Path()
 }
 
-func setupPerTenantIndex(t *testing.T, indexFormat int, streams []stream, destDir string, ts time.Time) string {
+func setupPerTenantIndex(t testing.TB, indexFormat int, streams []stream, destDir string, ts time.Time) string {
 	require.NoError(t, util.EnsureDirectory(destDir))
 	b := NewBuilder(indexFormat)
 	for _, stream := range streams {
@@ -1552,4 +1553,113 @@ func verifyRoundTripIndex(t *testing.T, c *compactedIndex, series map[string]*ro
 	data, err := os.ReadFile(idx.Path())
 	require.NoError(t, err)
 	return data
+}
+
+// compactionScenario models one tenant's day table being compacted: an existing compacted index plus the
+// multi-tenant indexes uploaded since, where every ingester replica (RF=3) indexes the same chunks.
+type compactionScenario struct {
+	userID      string
+	indexFormat int
+	numStreams  int
+	idxSet      compactor.IndexSet
+	multiTenant []Index
+}
+
+func setupCompactionScenario(t testing.TB) *compactionScenario {
+	const (
+		userID          = "tenant-a"
+		numSeries       = 50_000
+		compactedChunks = 20  // chunks per series already in the compacted index
+		uploadRounds    = 2   // multi-tenant upload rounds since the last compaction
+		replicas        = 3   // each round is uploaded once per ingester replica
+		roundChunks     = 2   // chunks per active series in each round
+		activeEvery     = 3   // one in activeEvery series receives new chunks
+		newSeries       = 500 // series that only exist in the multi-tenant indexes
+	)
+
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
+		Schema: "v13",
+	}
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+
+	chunks := func(series, from, n int) index.ChunkMetas {
+		chks := make(index.ChunkMetas, 0, n)
+		for c := from; c < from+n; c++ {
+			chks = append(chks, index.ChunkMeta{
+				MinTime:  int64(c) * 1000,
+				MaxTime:  int64(c)*1000 + 999,
+				Checksum: uint32(series*1000 + c),
+				KB:       uint32(c),
+				Entries:  uint32(c),
+			})
+		}
+		return chks
+	}
+
+	tempDir := t.TempDir()
+	const tableName = "index_1"
+	objectStorage := filepath.Join(tempDir, objectsStorageDirName)
+
+	compacted := make([]stream, 0, numSeries)
+	for i := range numSeries {
+		compacted = append(compacted, buildStream(benchSeriesLabels(i), chunks(i, 0, compactedChunks), ""))
+	}
+	setupPerTenantIndex(t, indexFormat, compacted, filepath.Join(objectStorage, tableName, userID), time.Unix(0, 0))
+
+	var multiTenant []Index
+	for round := range uploadRounds {
+		var streams []stream
+		for i := range numSeries + newSeries {
+			if i < numSeries && i%activeEvery != round%activeEvery {
+				continue
+			}
+			streams = append(streams, buildStream(benchSeriesLabels(i), chunks(i, compactedChunks+round*roundChunks, roundChunks), ""))
+		}
+		for replica := range replicas {
+			indexPath := setupMultiTenantIndex(t, indexFormat, map[string][]stream{userID: streams}, filepath.Join(tempDir, "multi-tenant"), time.Unix(int64(round*replicas+replica), 0))
+			idx, err := OpenShippableTSDB(indexPath, index.MmapOptions{})
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, idx.Close()) })
+			multiTenant = append(multiTenant, idx.(Index))
+		}
+	}
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStorage})
+	require.NoError(t, err)
+	idxSet, err := newMockIndexSet(userID, tableName, filepath.Join(tempDir, workingDirName, tableName, userID), objectClient)
+	require.NoError(t, err)
+
+	return &compactionScenario{
+		userID:      userID,
+		indexFormat: indexFormat,
+		numStreams:  numSeries + newSeries,
+		idxSet:      idxSet,
+		multiTenant: multiTenant,
+	}
+}
+
+func BenchmarkSetupBuilder(b *testing.B) {
+	s := setupCompactionScenario(b)
+	ctx := context.Background()
+
+	b.ReportAllocs()
+	var retained int64
+	for b.Loop() {
+		b.StopTimer()
+		before := heapAlloc()
+		b.StartTimer()
+
+		builder, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant)
+		require.NoError(b, err)
+
+		b.StopTimer()
+		retained = int64(heapAlloc()) - int64(before)
+		require.Equal(b, s.numStreams, builder.numStreams())
+		runtime.KeepAlive(builder)
+		b.StartTimer()
+	}
+	b.ReportMetric(float64(retained)/float64(s.numStreams), "retained-B/series")
 }

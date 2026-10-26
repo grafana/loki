@@ -101,6 +101,26 @@ func TestResponseFormat(t *testing.T) {
 			}`,
 		},
 		{
+			url: "/loki/api/v1/detected_fields",
+			response: &DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{Limit: 10, Fields: []*logproto.DetectedField{
+					{Label: "message", Type: logproto.DetectedFieldString, Cardinality: 1, Parsers: []string{"json"}},
+				}},
+				Statistics: statsResult,
+			},
+			expectedCode:    http.StatusOK,
+			expectedRespone: `{` + statsResultString + `"fields":[{"label":"message","type":"string","cardinality":1,"parsers":["json"]}],"limit":10}`,
+		},
+		{
+			url: "/loki/api/v1/detected_field/message/values",
+			response: &DetectedFieldsResponse{
+				Response:   &logproto.DetectedFieldsResponse{Limit: 10, Values: []string{"hello"}},
+				Statistics: statsResult,
+			},
+			expectedCode:    http.StatusOK,
+			expectedRespone: `{` + statsResultString + `"values":["hello"],"limit":10}`,
+		},
+		{
 			url:             "/loki/wrong/path",
 			response:        nil,
 			expectedCode:    http.StatusNotFound,

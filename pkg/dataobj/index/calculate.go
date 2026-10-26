@@ -83,6 +83,12 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	if err != nil {
 		return fmt.Errorf("failed to process stream section path=%s: %w", objectPath, err)
 	}
+	// Callers index only objects of one layout into one index. A second
+	// layout is a caller bug, not a bad object, so the error does not wrap
+	// ErrUnprocessableObject.
+	if err := c.indexobjBuilder.SetLayout(layout); err != nil {
+		return fmt.Errorf("path=%s: %w", objectPath, err)
+	}
 
 	// processed keeps the step state of each logs section, mostly the stats
 	// aggregates, until every logs section finishes.
