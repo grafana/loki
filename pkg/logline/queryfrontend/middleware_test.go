@@ -2845,9 +2845,8 @@ func TestDryRun_MetricRange_StepExtendsLookup(t *testing.T) {
 	reqStart := now.Add(-1 * time.Hour)
 	step := time.Minute
 	interval := 5 * time.Minute
-	alignedStart, alignedEnd := alignMetricStep(reqStart, now, step.Milliseconds())
-	lookupFrom := alignedStart.Add(-interval)
-	lookupThrough := alignedEnd
+	alignedStart, alignedEnd := verification.MetricLookupBounds(syntax.MatcherRange{Interval: interval}, reqStart, now, step.Milliseconds())
+	lookupFrom, lookupThrough := alignedStart, alignedEnd
 
 	var statsFrom, statsThrough model.Time
 	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {

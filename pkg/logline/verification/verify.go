@@ -58,6 +58,28 @@ func RangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bo
 	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }
 
+// MetricLookupBounds rounds onto the step, then widens by the range and offset.
+// The query-frontend splitter floors the start and rounds the end up before
+// evaluating samples. A zero interval or a zero step is only widened.
+func MetricLookupBounds(group syntax.MatcherRange, from, through time.Time, stepMillis int64) (time.Time, time.Time) {
+	if group.Interval > 0 && stepMillis > 0 {
+		from, through = alignMetricStep(from, through, stepMillis)
+	}
+	return group.Widen(from, through)
+}
+
+// alignMetricStep matches metricQuerySplitter.alignStartEnd: floor the start and
+// round the end up to the next step.
+func alignMetricStep(start, end time.Time, stepMillis int64) (time.Time, time.Time) {
+	stepNs := stepMillis * int64(time.Millisecond)
+	startNs := start.UnixNano()
+	endNs := end.UnixNano()
+	if mod := endNs % stepNs; mod != 0 {
+		endNs += stepNs - mod
+	}
+	return time.Unix(0, startNs-startNs%stepNs).UTC(), time.Unix(0, endNs).UTC()
+}
+
 // MetricSample is one value from a metric query, at the time it was evaluated.
 type MetricSample struct {
 	Time  time.Time

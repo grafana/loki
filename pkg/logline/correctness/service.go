@@ -931,6 +931,29 @@ func buildMetricQuery(hq hintQuery) (hintQuery, error) {
 	return newHintQuery(hq.queryType, hq.needle, query)
 }
 
+// provideMetricHints looks up hints for a metric query. The window is aligned
+// to the query step, then widened by the lookback, so it covers the samples
+// the query-frontend evaluates. A zero step is only widened. The verification
+// cycle does not call this yet.
+func (s *Service) provideMetricHints(ctx context.Context, hq hintQuery, from, through time.Time, step time.Duration) (*hintprovider.Hints, error) {
+	groups, err := syntax.MatcherGroups(hq.expr)
+	if err != nil {
+		return nil, err
+	}
+	if len(groups) != 1 {
+		return nil, fmt.Errorf("metric query has %d matcher groups", len(groups))
+	}
+	readStart, readEnd := verification.MetricLookupBounds(groups[0], from, through, step.Milliseconds())
+	hints, _, err := s.hintProvider.ProvideHints(
+		ctx,
+		s.cfg.TenantID,
+		hq.expr,
+		model.TimeFromUnixNano(readStart.UnixNano()),
+		model.TimeFromUnixNano(readEnd.UnixNano()),
+	)
+	return hints, err
+}
+
 // pickHintQuery chooses among SM, stream-label, post-parser JSON, and line
 // filters with equal weight. The chosen path is tried first; on failure
 // (ineligible value / parse error / no JSON field) we fall back to a

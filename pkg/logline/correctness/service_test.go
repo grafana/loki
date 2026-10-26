@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand" //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
 	"net/http"
 	"net/http/httptest"
@@ -272,6 +273,62 @@ func TestQueryResponseSamples(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
+}
+
+func TestProvideMetricHintsWidensLookback(t *testing.T) {
+	from := time.Date(2026, 2, 26, 10, 0, 30, 0, time.UTC)
+	through := from.Add(30 * time.Minute)
+	step := time.Minute
+	hq, err := newHintQuery(hintQueryTypeLineFilter, "timeout", `{job="api"} |= "timeout"`)
+	require.NoError(t, err)
+	metric, err := buildMetricQuery(hq)
+	require.NoError(t, err)
+
+	provider := &recordingHintProvider{hints: &hintprovider.Hints{
+		TimeRanges: []hintprovider.HintTimeRange{{Start: from, End: through}},
+	}}
+	svc := &Service{
+		cfg:          Config{TenantID: "tenant-a"},
+		hintProvider: provider,
+	}
+
+	hints, err := svc.provideMetricHints(context.Background(), metric, from, through, step)
+	require.NoError(t, err)
+	require.Equal(t, provider.hints, hints)
+	require.Equal(t, metric.expr.String(), provider.expr.String())
+	wantFrom, wantThrough := verification.MetricLookupBounds(syntax.MatcherRange{Interval: 5 * time.Minute}, from, through, step.Milliseconds())
+	require.Equal(t, model.TimeFromUnixNano(wantFrom.UnixNano()), provider.from)
+	require.Equal(t, model.TimeFromUnixNano(wantThrough.UnixNano()), provider.through)
+	require.True(t, wantFrom.Before(from.Add(-5*time.Minute)), "aligned start widens earlier than the raw start")
+	require.True(t, wantThrough.After(through), "aligned end is later than the raw end")
+
+	eval := through
+	_, err = svc.provideMetricHints(context.Background(), metric, eval, eval, 0)
+	require.NoError(t, err)
+	require.Equal(t, model.TimeFromUnixNano(eval.Add(-5*time.Minute).UnixNano()), provider.from)
+	require.Equal(t, model.TimeFromUnixNano(eval.UnixNano()), provider.through)
+}
+
+type recordingHintProvider struct {
+	expr    syntax.Expr
+	from    model.Time
+	through model.Time
+	hints   *hintprovider.Hints
+}
+
+func (p *recordingHintProvider) ProvideHints(
+	_ context.Context,
+	tenant string,
+	expr syntax.Expr,
+	from, through model.Time,
+) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
+	if tenant != "tenant-a" {
+		return nil, nil, fmt.Errorf("unexpected tenant %q", tenant)
+	}
+	p.expr = expr
+	p.from = from
+	p.through = through
+	return p.hints, nil, nil
 }
 
 func TestPickJSONField(t *testing.T) {
