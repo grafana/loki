@@ -339,9 +339,9 @@ One or more Loki ingesters are failing to flush at least 20% of their chunks to 
 
 ### Impact
 
-The schema configuration used in the LokiStack references schema version v11 and/or v12. These schema versions do not support all the features of LokiStack and their use is deprecated. Updating the LokiStack to use the newer v13 schema (or newer schemas once available) provides support for all features and also improves performance.
+The schema configuration used in the LokiStack references schema version v11 and/or v12. These schema versions do not support all the features of LokiStack and their use is deprecated. It is recommended to update the LokiStack to use the newer v13 schema (or newer schemas once available) to have support for all features and also improve performance.
 
-The v11 and v12 schemas are not supported in this operator version. The LokiStack is in a degraded state and will not reconcile until the configuration is migrated to v13 and all references to the old schema versions are removed.
+The v11 and v12 schemas are not supported in this operator version (Loki Operator 0.13+, or 6.7+ for the Red Hat version). The LokiStack is in a degraded state and will not reconcile until the configuration is migrated to v13 and all references to the old schema versions are removed.
 
 ### Summary
 
@@ -365,8 +365,8 @@ There is a [more detailed migration guide](https://loki-operator.dev/docs/user-g
 Summary of migration steps:
 1. Add a new object storage schema v13 with a future EffectiveDate and make sure the LokiStack has a set retention
 2. Wait for the effective date to pass and v13 to become active
-3. Wait for the retention period to expire for old data stored with v11/v12 schemas
-4. Remove all v11 and v12 schema entries from the LokiStack spec
+3. Wait for the retention period to expire for old data
+4. Remove all v11/v12 schema entries from the LokiStack spec
 
 **Important**: You must remove ALL v11 and v12 schemas from the configuration, not just set v13 as the active schema. The operator will not reconcile LokiStacks that contain any v11 or v12 schema definitions.
 
