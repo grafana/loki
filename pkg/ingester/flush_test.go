@@ -382,7 +382,7 @@ func TestMaybeSetIngestedAt(t *testing.T) {
 				require.NotEqual(t, model.Time(0), ch.IngestedAt)
 				require.GreaterOrEqual(t, int64(ch.IngestedAt), int64(before))
 				// Day precision, like the index, so replicas agree on the value.
-				require.Equal(t, ch.IngestedAt, model.Time(tsdbindex.NormalizeIngestedAt(int64(ch.IngestedAt), int64(ch.Through))))
+				require.Equal(t, ch.IngestedAt, model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(ch.IngestedAt), int64(ch.Through))))
 				require.Zero(t, int64(ch.IngestedAt)%int64(24*time.Hour/time.Millisecond))
 			} else {
 				require.Equal(t, model.Time(0), ch.IngestedAt)
@@ -405,7 +405,7 @@ func TestBackfillChunkChecksumIgnoresIngestionTimeWithinDay(t *testing.T) {
 			chunkenc.NewFacade(desc.chunk, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 			from, through,
 		)
-		ch.IngestedAt = model.Time(tsdbindex.NormalizeIngestedAt(int64(flushedAt), int64(ch.Through)))
+		ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(flushedAt), int64(ch.Through)))
 		require.NoError(t, ch.Encode())
 		return ch.Checksum
 	}

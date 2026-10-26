@@ -568,7 +568,7 @@ func TestEncodeIngestedAtDayDelta(t *testing.T) {
 	}
 }
 
-func TestNormalizeIngestedAt(t *testing.T) {
+func TestRoundIngestedAtUpToDay(t *testing.T) {
 	baseDay := 20_000 * ingestedAtDayMilliseconds
 	maxTime := baseDay + 200
 
@@ -584,9 +584,9 @@ func TestNormalizeIngestedAt(t *testing.T) {
 		{desc: "day before maxtime", ingestedAt: baseDay - ingestedAtDayMilliseconds + 5200},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			normalized := NormalizeIngestedAt(tc.ingestedAt, maxTime)
+			rounded := RoundIngestedAtUpToDay(tc.ingestedAt, maxTime)
 
-			// The normalized value is what the index reads back for the same chunk.
+			// The rounded value is what the index reads back for the same chunk.
 			var w Creator
 			w.Version = FormatV4
 			primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
@@ -598,17 +598,17 @@ func TestNormalizeIngestedAt(t *testing.T) {
 			dst := []ChunkMeta{}
 			require.Nil(t, dec.readChunks(FormatV4, &decbuf, 0, 0, math.MaxInt64, &dst))
 			require.Len(t, dst, 1)
-			require.Equal(t, dst[0].IngestedAt, normalized)
+			require.Equal(t, dst[0].IngestedAt, rounded)
 
-			// Normalizing is stable, so indexing a normalized chunk changes nothing.
-			require.Equal(t, normalized, NormalizeIngestedAt(normalized, maxTime))
+			// Rounding is stable, so indexing an already rounded chunk changes nothing.
+			require.Equal(t, rounded, RoundIngestedAtUpToDay(rounded, maxTime))
 		})
 	}
 
-	t.Run("same day values are identical", func(t *testing.T) {
+	t.Run("same day values round to the same value", func(t *testing.T) {
 		require.Equal(t,
-			NormalizeIngestedAt(baseDay+ingestedAtDayMilliseconds+1000, maxTime),
-			NormalizeIngestedAt(baseDay+ingestedAtDayMilliseconds+9000, maxTime),
+			RoundIngestedAtUpToDay(baseDay+ingestedAtDayMilliseconds+1000, maxTime),
+			RoundIngestedAtUpToDay(baseDay+ingestedAtDayMilliseconds+9000, maxTime),
 		)
 	})
 }
