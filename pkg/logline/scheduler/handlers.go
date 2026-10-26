@@ -297,6 +297,8 @@ type storeDumpEntry struct {
 
 	// DocumentInterval is the time range each document ID covers.
 	DocumentInterval time.Duration `json:"document_interval,omitempty"`
+	// DocumentShardBits is the v5 document shard bits. Zero is one shard.
+	DocumentShardBits int `json:"document_shard_bits,omitempty"`
 
 	// Shard identity. ShardCount=0 means unsharded.
 	ShardCount     int    `json:"shard_count"`
@@ -407,22 +409,23 @@ func toStoreDumpEntry(m store.Meta, snap *store.Snapshot, includeHeader bool) st
 		state = "compacted"
 	}
 	e := storeDumpEntry{
-		ID:               m.ID(),
-		Date:             m.Date,
-		Hash:             m.Hash,
-		Version:          m.Version,
-		State:            state,
-		SizeBytes:        m.SizeBytes,
-		MinLogTs:         m.MinLogTs,
-		MaxLogTs:         m.MaxLogTs,
-		MinRecordTs:      m.MinRecordTs,
-		MaxRecordTs:      m.MaxRecordTs,
-		CreatedAt:        m.CreatedAt,
-		CompactedFrom:    m.CompactedFrom,
-		DocumentInterval: m.DocumentInterval,
-		ShardCount:       m.ShardCount,
-		ShardAlgorithm:   m.ShardAlgorithm,
-		ShardValue:       m.ShardValue,
+		ID:                m.ID(),
+		Date:              m.Date,
+		Hash:              m.Hash,
+		Version:           m.Version,
+		State:             state,
+		SizeBytes:         m.SizeBytes,
+		MinLogTs:          m.MinLogTs,
+		MaxLogTs:          m.MaxLogTs,
+		MinRecordTs:       m.MinRecordTs,
+		MaxRecordTs:       m.MaxRecordTs,
+		CreatedAt:         m.CreatedAt,
+		CompactedFrom:     m.CompactedFrom,
+		DocumentInterval:  m.DocumentInterval,
+		DocumentShardBits: m.DocumentShardBits,
+		ShardCount:        m.ShardCount,
+		ShardAlgorithm:    m.ShardAlgorithm,
+		ShardValue:        m.ShardValue,
 	}
 	if includeHeader {
 		e.IndexHeader = m.IndexHeader
