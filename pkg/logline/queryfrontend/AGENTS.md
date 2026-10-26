@@ -74,9 +74,9 @@ it into one `BACKWARD` `LokiRequest` limited to the line limit, and the filter t
 that request like any log query.
 
 Detected fields only look up hints in live mode. Dry-run verifies hints against the log
-lines or samples in the response, and a detected fields response has neither. The hints
-are the same ones log queries get, so dry-run on log and metric queries covers their
-correctness.
+lines or samples in the response, and a detected fields response has neither. Detected
+fields only accept a log query and get the same hints that query gets, so dry-run on log
+queries covers their correctness.
 
 ### Hint timeout
 
