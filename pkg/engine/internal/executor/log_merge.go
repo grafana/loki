@@ -194,10 +194,9 @@ type logSource struct {
 	layout             streams.Layout
 	remap              map[int64]int64
 
-	// streamIDs holds the IDs of streams if the key range of the merge
-	// dropped any stream of the object. It is nil if the merge keeps every
-	// stream, so reads of the object need no filter.
-	streamIDs []int64
+	// droppedStreamIDs holds the IDs of the streams outside the key range of
+	// the merge. Reads of the object skip their records.
+	droppedStreamIDs []int64
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
@@ -276,7 +275,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		if err != nil {
 			return nil, fmt.Errorf("resolving streams for object %q: %w", path, err)
 		}
-		streamIDs, err := keepStreamsInRange(srcStreams, layout, keyRange)
+		dropped, err := dropStreamsOutsideRange(srcStreams, layout, keyRange)
 		if err != nil {
 			return nil, fmt.Errorf("filtering streams for object %q: %w", path, err)
 		}
@@ -286,7 +285,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			streams:            srcStreams,
 			layout:             layout,
 			logSectionsByIndex: logSections,
-			streamIDs:          streamIDs,
+			droppedStreamIDs:   dropped,
 		})
 	}
 
@@ -319,30 +318,25 @@ func sortPrefixRange(r *compactionv2pb.KeyRange) (v2.KeyRange[streams.SortPrefix
 	return out, nil
 }
 
-// keepStreamsInRange deletes the streams outside keyRange from byID. It
-// returns the IDs that remain, or nil if it deleted no stream.
+// dropStreamsOutsideRange deletes the streams outside keyRange from byID and
+// returns their IDs.
 //
 // It derives each sort prefix from the stream labels and layout, as the stats
 // section that the planner cuts by does.
-func keepStreamsInRange(byID map[int64]streams.Stream, layout streams.Layout, keyRange v2.KeyRange[streams.SortPrefix]) ([]int64, error) {
-	total := len(byID)
-	kept := make([]int64, 0, total)
+func dropStreamsOutsideRange(byID map[int64]streams.Stream, layout streams.Layout, keyRange v2.KeyRange[streams.SortPrefix]) ([]int64, error) {
+	schemaLabels, shardLayout := layout.SchemaLabels(), layout.ShardLayout()
+	var dropped []int64
 	for id, stream := range byID {
-		schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, layout.SchemaLabels())
+		schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, schemaLabels)
 		if err != nil {
 			return nil, err
 		}
-		prefix := layout.ShardLayout().NewSortKey(stream.Labels, schemaKey).Prefix()
-		if keyRange.Contains(prefix, streams.SortPrefix.Compare) {
-			kept = append(kept, id)
-			continue
+		if !keyRange.Contains(shardLayout.NewSortKey(stream.Labels, schemaKey).Prefix(), streams.SortPrefix.Compare) {
+			dropped = append(dropped, id)
+			delete(byID, id)
 		}
-		delete(byID, id)
 	}
-	if len(kept) == total {
-		return nil, nil
-	}
-	return kept, nil
+	return dropped, nil
 }
 
 // sourcesLayout returns the layout that every source shares. It returns an
@@ -460,10 +454,7 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 			}
 			sec := source.logSectionsByIndex[id.index]
 			seen[id] = struct{}{}
-			if source.streamIDs != nil && len(source.streamIDs) == 0 {
-				continue
-			}
-			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, StreamIDs: source.streamIDs})
+			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, DropStreamIDs: source.droppedStreamIDs})
 		}
 		if len(run) > 0 {
 			inputs.runs = append(inputs.runs, run)

@@ -1200,7 +1200,7 @@ func TestDoLogObjectMerge_KeyRange(t *testing.T) {
 	})
 }
 
-func TestKeepStreamsInRange(t *testing.T) {
+func TestDropStreamsOutsideRange(t *testing.T) {
 	sortSchema := []string{"label:app"}
 	layout := streams.NewLayout(streams.DefaultShardLayout(), sortSchema)
 	newStreams := func() map[int64]streams.Stream {
@@ -1217,39 +1217,36 @@ func TestKeepStreamsInRange(t *testing.T) {
 		lowID, highID = 2, 1
 	}
 
-	full := v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: streams.SortPrefixLimit()}
-
-	t.Run("keeps every stream and returns nil for the full range", func(t *testing.T) {
+	t.Run("drops no stream for the full range", func(t *testing.T) {
 		byID := newStreams()
-		ids, err := keepStreamsInRange(byID, layout, full)
+		dropped, err := dropStreamsOutsideRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: streams.SortPrefixLimit()})
 		require.NoError(t, err)
-		require.Nil(t, ids)
+		require.Empty(t, dropped)
 		require.Len(t, byID, 2)
 	})
 
-	t.Run("keeps every stream and returns nil when every stream is in range", func(t *testing.T) {
+	t.Run("drops the streams above the range and returns their IDs", func(t *testing.T) {
 		byID := newStreams()
-		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: low, End: streams.SortPrefixLimit()})
+		dropped, err := dropStreamsOutsideRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: high})
 		require.NoError(t, err)
-		require.Nil(t, ids)
-		require.Len(t, byID, 2)
-	})
-
-	t.Run("deletes the streams outside the range and returns the IDs it keeps", func(t *testing.T) {
-		byID := newStreams()
-		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: high})
-		require.NoError(t, err)
-		require.Equal(t, []int64{lowID}, ids)
+		require.Equal(t, []int64{highID}, dropped)
 		require.Contains(t, byID, lowID)
 		require.NotContains(t, byID, highID)
 	})
 
-	t.Run("returns an empty non-nil list when no stream is in range", func(t *testing.T) {
+	t.Run("drops the streams below the range and returns their IDs", func(t *testing.T) {
 		byID := newStreams()
-		ids, err := keepStreamsInRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: low})
+		dropped, err := dropStreamsOutsideRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: high, End: streams.SortPrefixLimit()})
 		require.NoError(t, err)
-		require.NotNil(t, ids)
-		require.Empty(t, ids)
+		require.Equal(t, []int64{lowID}, dropped)
+		require.Contains(t, byID, highID)
+	})
+
+	t.Run("drops every stream when no stream is in range", func(t *testing.T) {
+		byID := newStreams()
+		dropped, err := dropStreamsOutsideRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: low})
+		require.NoError(t, err)
+		require.ElementsMatch(t, []int64{1, 2}, dropped)
 		require.Empty(t, byID)
 	})
 }

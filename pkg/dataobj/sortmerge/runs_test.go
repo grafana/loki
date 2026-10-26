@@ -92,38 +92,40 @@ func TestMixedRunIterator_SectionTransitions(t *testing.T) {
 	require.Equal(t, map[string]string{"a": "value", "b": "value", "c": "value", "d": "value", "e": "value"}, metadata)
 }
 
-func TestMixedRunIterator_StreamIDs(t *testing.T) {
+func TestMixedRunIterator_DropStreamIDs(t *testing.T) {
 	sec := buildRunSection(t,
 		logs.Record{StreamID: 1, Timestamp: time.Unix(1, 0)},
 		logs.Record{StreamID: 2, Timestamp: time.Unix(2, 0)},
 		logs.Record{StreamID: 3, Timestamp: time.Unix(3, 0)},
 	)
-	remap := map[int64]int64{1: 1, 2: 2, 3: 3}
 
-	streamIDsOf := func(t *testing.T, input RemappedSection) []int64 {
+	streamIDsOf := func(t *testing.T, input RemappedSection) ([]int64, error) {
 		var ids []int64
 		for res := range MixedRunIterator(context.Background(), []Run{{input}}) {
 			record, err := res.Value()
-			require.NoError(t, err)
+			if err != nil {
+				return ids, err
+			}
 			ids = append(ids, record.StreamID)
 		}
-		return ids
+		return ids, nil
 	}
 
-	t.Run("keeps every record when stream IDs are nil", func(t *testing.T) {
-		require.Equal(t, []int64{1, 2, 3}, streamIDsOf(t, RemappedSection{Section: sec, Remap: remap}))
+	t.Run("keeps every record when no stream is dropped", func(t *testing.T) {
+		ids, err := streamIDsOf(t, RemappedSection{Section: sec, Remap: map[int64]int64{1: 1, 2: 2, 3: 3}})
+		require.NoError(t, err)
+		require.Equal(t, []int64{1, 2, 3}, ids)
 	})
 
-	t.Run("keeps only the records of the given stream IDs", func(t *testing.T) {
-		require.Equal(t, []int64{1, 3}, streamIDsOf(t, RemappedSection{Section: sec, Remap: remap, StreamIDs: []int64{1, 3}}))
+	t.Run("skips the records of dropped streams without remap entries for them", func(t *testing.T) {
+		ids, err := streamIDsOf(t, RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, DropStreamIDs: []int64{1, 3}})
+		require.NoError(t, err)
+		require.Equal(t, []int64{2}, ids)
 	})
 
-	t.Run("keeps no record when stream IDs are empty but not nil", func(t *testing.T) {
-		require.Empty(t, streamIDsOf(t, RemappedSection{Section: sec, Remap: remap, StreamIDs: []int64{}}))
-	})
-
-	t.Run("does not need remap entries for filtered out streams", func(t *testing.T) {
-		require.Equal(t, []int64{2}, streamIDsOf(t, RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, StreamIDs: []int64{2}}))
+	t.Run("fails on a record of a stream that is neither dropped nor remapped", func(t *testing.T) {
+		_, err := streamIDsOf(t, RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, DropStreamIDs: []int64{1}})
+		require.ErrorContains(t, err, "absent from stream remap")
 	})
 }
 
