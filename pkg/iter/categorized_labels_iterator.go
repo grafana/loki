@@ -57,10 +57,7 @@ func (c *categorizeLabelsIterator) Next() bool {
 	return true
 }
 
-// Err returns a label-parse failure from this wrapper, or the wrapped iterator's
-// error when this wrapper has none. A chunk-fetch failure is stored on the
-// wrapped iterator. Returning only currErr would drop it and the query would
-// finish as an empty success.
+// Err returns this wrapper's label-parse error, or the wrapped iterator's error.
 func (c *categorizeLabelsIterator) Err() error {
 	if c.currErr != nil {
 		return c.currErr
