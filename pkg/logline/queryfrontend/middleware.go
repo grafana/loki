@@ -1181,11 +1181,11 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// without waiting for it.
 	if readEnd.After(result.ingesterCutoff) {
 		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 	if !readEnd.After(result.minDate) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 
 	timedOut, err := result.waitForLookup(ctx, h.hintTimeout)
@@ -1196,7 +1196,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	if timedOut {
 		h.metrics.hintPassthrough.WithLabelValues("timeout").Inc()
 		level.Warn(logger).Log("msg", "hint prefetch timeout, falling back to passthrough", "timeout", h.hintTimeout)
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 
 	if result.err != nil {
@@ -1206,7 +1206,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 			h.metrics.hintPassthrough.WithLabelValues("error").Inc()
 			level.Warn(logger).Log("msg", "hint provider error, passing through", "err", result.err)
 		}
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 
 	overlapping := rangesOverlapping(result.ranges, readStart, readEnd)
@@ -1225,7 +1225,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// the querier scans the interval normally.
 	if passthroughCoversInterval(overlapping, hints, readStart, readEnd) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 
 	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
@@ -1241,6 +1241,24 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		}
 	}
 	return resp, err
+}
+
+// passthrough sends the sub-request on without hint ranges and counts it when
+// the downstream call succeeds. The count covers the ingester window, time
+// before the index min date, and lookup fallbacks. It travels on the response
+// so split and shard merges add it up and discarded responses drop it.
+func (h *loglineFilterHandler) passthrough(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	resp, err := h.next.Do(ctx, req)
+	if err != nil {
+		return resp, err
+	}
+	switch r := resp.(type) {
+	case *queryrange.LokiResponse:
+		r.Statistics.LoglineStats().PassthroughRequests++
+	case *queryrange.LokiPromResponse:
+		r.Statistics.LoglineStats().PassthroughRequests++
+	}
+	return resp, nil
 }
 
 func skippedResponse(req *queryrange.LokiRequest, expr syntax.Expr) queryrangebase.Response {

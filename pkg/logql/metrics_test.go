@@ -231,20 +231,21 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 func TestAppendLoglineStats(t *testing.T) {
 	withChunks := func(outcome string, planned, scanned int64, ratio float64) stats.Result {
 		return stats.Result{Logline: &stats.Logline{
-			Outcome:            outcome,
-			HintStatus:         "ok",
-			HintLookupTime:     (150 * time.Millisecond).Nanoseconds(),
-			HintWaitTime:       (120 * time.Millisecond).Nanoseconds(),
-			HintRanges:         3,
-			HintRangesDuration: (90 * time.Minute).Nanoseconds(),
-			SkippedRequests:    6,
-			NarrowedRequests:   2,
-			PlannedChunks:      planned,
-			ScannedChunks:      scanned,
-			ChunkFilterRatio:   ratio,
-			ObjectRequests:     12,
-			IOBytes:            2048,
-			IOWait:             (40 * time.Millisecond).Nanoseconds(),
+			Outcome:             outcome,
+			HintStatus:          "ok",
+			HintLookupTime:      (150 * time.Millisecond).Nanoseconds(),
+			HintWaitTime:        (120 * time.Millisecond).Nanoseconds(),
+			HintRanges:          3,
+			HintRangesDuration:  (90 * time.Minute).Nanoseconds(),
+			SkippedRequests:     6,
+			NarrowedRequests:    2,
+			PassthroughRequests: 1,
+			PlannedChunks:       planned,
+			ScannedChunks:       scanned,
+			ChunkFilterRatio:    ratio,
+			ObjectRequests:      12,
+			IOBytes:             2048,
+			IOWait:              (40 * time.Millisecond).Nanoseconds(),
 		}}
 	}
 	loglineFields := func(outcome string, planned, scanned int64) []interface{} {
@@ -257,6 +258,7 @@ func TestAppendLoglineStats(t *testing.T) {
 			"logline_hint_ranges_duration", 90 * time.Minute,
 			"logline_skipped_requests", int64(6),
 			"logline_narrowed_requests", int64(2),
+			"logline_passthrough_requests", int64(1),
 			"logline_object_requests", int64(12),
 			"logline_io_bytes", "2.0kB",
 			"logline_io_wait", 40 * time.Millisecond,

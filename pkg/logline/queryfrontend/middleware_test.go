@@ -1563,6 +1563,7 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 	loglineStats := resp.(*queryrange.LokiResponse).Statistics.Logline
 	require.Zero(t, loglineStats.SkippedRequests)
 	require.Zero(t, loglineStats.NarrowedRequests)
+	require.Equal(t, int64(1), loglineStats.PassthroughRequests)
 	require.Equal(t, int64(1), loglineStats.HintRanges)
 	require.Zero(t, loglineStats.HintRangesDuration, "the pre-min-date range has no index coverage")
 }
@@ -1630,6 +1631,7 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	require.Equal(t, outcomeLookupTimeout, loglineStats.Outcome)
 	require.Zero(t, loglineStats.SkippedRequests)
 	require.Zero(t, loglineStats.NarrowedRequests)
+	require.Equal(t, int64(1), loglineStats.PassthroughRequests)
 }
 
 func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
@@ -1830,10 +1832,29 @@ func TestPrefetchFilter_IngesterWindowOnly(t *testing.T) {
 	ctx := testTenantContextWithLive()
 	// Query last 2h — entirely within 3h ingester window.
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-2*time.Hour), now)
-	_, err := handler.Do(ctx, req)
+	resp, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, nextCalled, "should pass through entire query")
 	require.Equal(t, 0, hp.Calls(), "should not call ProvideHints")
+	require.Equal(t, int64(1), resp.(*queryrange.LokiResponse).Statistics.Logline.PassthroughRequests)
+}
+
+func TestPrefetchFilter_PassthroughCountsMetricResponse(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return emptyMetricResponse(), nil
+	})
+	handler := NewLoglineFilterMiddleware(10*time.Second, newTestMetrics(), nil).Wrap(next)
+	// The live prefetch gate does not classify metric queries. Exercise the
+	// filter directly so a metric response still receives the count.
+	ctx := withHintPrefetch(testTenantContextWithLive(), &hintPrefetchResult{
+		ingesterCutoff: now.Add(-3 * time.Hour),
+	})
+	req := newTestLokiRequest(`sum(count_over_time({job="test"} |= "error" [1m]))`, now.Add(-2*time.Hour), now)
+
+	resp, err := handler.Do(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), resp.(*queryrange.LokiPromResponse).Statistics.Logline.PassthroughRequests)
 }
 
 func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
@@ -2160,10 +2181,15 @@ func TestPrefetchFilter_LookupErrorDoesNotRelabelPassthroughIntervals(t *testing
 	})
 	splitSim := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		filtered := filterMW.Wrap(querier)
-		if _, err := filtered.Do(ctx, req.WithStartEnd(now.Add(-6*time.Hour), now.Add(-4*time.Hour))); err != nil {
+		resp1, err := filtered.Do(ctx, req.WithStartEnd(now.Add(-6*time.Hour), now.Add(-4*time.Hour)))
+		if err != nil {
 			return nil, err
 		}
-		return filtered.Do(ctx, req.WithStartEnd(now.Add(-1*time.Hour), now))
+		resp2, err := filtered.Do(ctx, req.WithStartEnd(now.Add(-1*time.Hour), now))
+		if err != nil {
+			return nil, err
+		}
+		return queryrange.DefaultCodec.MergeResponse(resp1, resp2)
 	})
 	handler := prefetchMW.Wrap(splitSim)
 
@@ -2177,6 +2203,7 @@ func TestPrefetchFilter_LookupErrorDoesNotRelabelPassthroughIntervals(t *testing
 	loglineStats := resp.(*queryrange.LokiResponse).Statistics.Logline
 	require.Equal(t, hintStatusError, loglineStats.HintStatus)
 	require.Equal(t, outcomeLookupFailed, loglineStats.Outcome)
+	require.Equal(t, int64(2), loglineStats.PassthroughRequests, "the ingester window and the lookup error are both passthroughs")
 }
 
 func TestPrefetchFilter_PreMinDateOnly_SkipsLookup(t *testing.T) {
@@ -2208,6 +2235,7 @@ func TestPrefetchFilter_PreMinDateOnly_SkipsLookup(t *testing.T) {
 	require.Equal(t, int64(1), loglineStats.HintRanges, "the pre-min-date range the lookup would have returned")
 	require.Zero(t, loglineStats.HintRangesDuration)
 	require.Equal(t, outcomeTimeRangeNotIndexed, loglineStats.Outcome)
+	require.Equal(t, int64(1), loglineStats.PassthroughRequests)
 }
 
 func TestPrefetchFilter_LoglineStatsAcrossSkipNarrowPassthrough(t *testing.T) {
@@ -2261,7 +2289,8 @@ func TestPrefetchFilter_LoglineStatsAcrossSkipNarrowPassthrough(t *testing.T) {
 	require.Equal(t, int64(1), loglineStats.HintRanges)
 	require.Equal(t, time.Hour.Nanoseconds(), loglineStats.HintRangesDuration)
 	require.Equal(t, int64(1), loglineStats.SkippedRequests)
-	require.Equal(t, int64(1), loglineStats.NarrowedRequests, "the ingester-window passthrough is neither skipped nor narrowed")
+	require.Equal(t, int64(1), loglineStats.NarrowedRequests)
+	require.Equal(t, int64(1), loglineStats.PassthroughRequests, "the ingester-window sub-request is a passthrough")
 }
 
 func TestPrefetchFilter_AttachesLoglineStatsInsteadOfImpactLine(t *testing.T) {
