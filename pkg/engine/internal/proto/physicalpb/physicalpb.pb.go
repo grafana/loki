@@ -348,8 +348,7 @@ type LogMerge struct {
 	TocWindowStartUnixNanos int64            `protobuf:"varint,2,opt,name=toc_window_start_unix_nanos,json=tocWindowStartUnixNanos,proto3" json:"toc_window_start_unix_nanos,omitempty"`
 	Runs                    []*proto1.RunRef `protobuf:"bytes,3,rep,name=runs,proto3" json:"runs,omitempty"`
 	// key_range limits the merge to the streams in the range. A missing
-	// key_range holds every stream, for plans from coordinators that predate
-	// key ranges.
+	// key_range means the full key space.
 	KeyRange *proto1.KeyRange `protobuf:"bytes,5,opt,name=key_range,json=keyRange,proto3" json:"key_range,omitempty"`
 }
 

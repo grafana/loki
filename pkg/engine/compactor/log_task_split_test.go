@@ -9,7 +9,6 @@ import (
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // splitTestSection returns a section of object path that holds the given
@@ -40,9 +39,9 @@ func sortPrefixOf(service string) *compactionv2pb.SortPrefix {
 }
 
 var (
-	minSortPrefixProto   = &compactionv2pb.SortPrefix{}
-	sortPrefixLimitProto = &compactionv2pb.SortPrefix{ShardBucket: streams.SortPrefixLimit().ShardBucket}
-	fullKeyRange         = &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: sortPrefixLimitProto}
+	fullKeyRange         = v2.FullKeyRangeProto()
+	minSortPrefixProto   = fullKeyRange.Start
+	sortPrefixLimitProto = fullKeyRange.End
 )
 
 func TestLogTaskSplitter(t *testing.T) {
@@ -51,11 +50,8 @@ func TestLogTaskSplitter(t *testing.T) {
 	c := splitTestSection("c", map[string]uint64{"cart": 30, "dns": 70})
 	sections := []v2.Section[logSortPrefix]{a, b, c}
 
-	t.Run("returns the task with the full key range when the split is disabled", func(t *testing.T) {
-		spec := splitTestSpec([]v2.Section[logSortPrefix]{a, b, c})
-		got := newLogTaskSplitter(log.NewNopLogger(), 0, sections).split(spec)
-		require.Equal(t, []*compactionv2pb.TaskSpec{spec}, got)
-		require.Equal(t, fullKeyRange, got[0].KeyRange)
+	t.Run("panics when the maximum task size is 0", func(t *testing.T) {
+		require.Panics(t, func() { newLogTaskSplitter(log.NewNopLogger(), 0, sections) })
 	})
 
 	t.Run("returns the task with the full key range when it fits in one task", func(t *testing.T) {

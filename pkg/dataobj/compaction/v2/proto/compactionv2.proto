@@ -51,9 +51,8 @@ message TaskSpec {
   reserved 3;
   reserved "sort_schema";
 
-  // key_range limits the task to the streams in the range. Planners always
-  // set it. Workers treat a missing key_range as the full key space, for
-  // tasks from planners that predate key ranges.
+  // key_range limits the task to the streams in the range. A missing
+  // key_range means the full key space.
   KeyRange key_range = 4 [(gogoproto.jsontag) = "key_range"];
 }
 

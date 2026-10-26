@@ -180,9 +180,8 @@ func (m *RunRef) GetSections() []*SectionRef {
 type TaskSpec struct {
 	Tenant string    `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant"`
 	Runs   []*RunRef `protobuf:"bytes,2,rep,name=runs,proto3" json:"runs"`
-	// key_range limits the task to the streams in the range. Planners always
-	// set it. Workers treat a missing key_range as the full key space, for
-	// tasks from planners that predate key ranges.
+	// key_range limits the task to the streams in the range. A missing
+	// key_range means the full key space.
 	KeyRange *KeyRange `protobuf:"bytes,4,opt,name=key_range,json=keyRange,proto3" json:"key_range"`
 }
 

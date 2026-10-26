@@ -282,13 +282,19 @@ func (c *coordinator) planLogMerge(
 		return logCompactionPlan{}, fmt.Errorf("no log merge tasks to execute for source index %q: %d runs, %d unmerged", sourceIndex.Path, len(runs), len(unmerged))
 	}
 
-	splitter := newLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), sections)
+	split := func(merge *compactionv2pb.TaskSpec) []*compactionv2pb.TaskSpec {
+		merge.KeyRange = v2.FullKeyRangeProto()
+		return []*compactionv2pb.TaskSpec{merge}
+	}
+	if c.cfg.LogMaxTaskSize > 0 {
+		split = newLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), sections).split
+	}
 	var (
 		specs  []*compactionv2pb.TaskSpec
 		groups []logMergeGroup
 	)
 	for _, merge := range merges {
-		tasks := splitter.split(merge)
+		tasks := split(merge)
 		groups = append(groups, newLogMergeGroup(merge, len(specs), len(tasks)))
 		specs = append(specs, tasks...)
 	}

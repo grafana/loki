@@ -321,8 +321,7 @@ func TestE2ECompactionConvergence(t *testing.T) {
 	})
 
 	t.Run("a merge above the maximum task size splits into key range tasks that keep every record once", func(t *testing.T) {
-		// Without a maximum, these sources compact in four merges. A 100KB
-		// maximum splits the same merges into 13 tasks. The disjoint task
+		// A 100KB maximum splits the merges into many tasks. Their disjoint
 		// outputs still converge to one sorted run.
 		runConvergenceTest(t, convergenceCase{
 			layouts:     fiveSourceLayouts(),
@@ -348,8 +347,8 @@ type convergenceCase struct {
 	// wantTasks, when set, is the number of log tasks run for each actor.
 	wantTasks map[string]int
 
-	// maxTaskSize, when non-zero, is the maximum input size of one LogMerge
-	// task. Zero disables the split.
+	// maxTaskSize is the maximum input size of one LogMerge task. 0 disables
+	// the split.
 	maxTaskSize uint64
 }
 

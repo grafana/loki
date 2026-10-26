@@ -1161,13 +1161,13 @@ dataobj:
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
 
-    # Experimental: Target uncompressed input size of one LogMerge task, for
+    # Experimental: Maximum uncompressed input size of one LogMerge task, for
     # example 100GB. The planner splits a larger merge into tasks by stream sort
-    # prefix and never splits one sort prefix. A sort prefix above this size
-    # gets a task of its own, and the last task can exceed the size by up to
-    # 10%. 0 disables the split. Enable it only after every compaction worker
-    # runs a version that supports it, because older workers ignore the key
-    # range of a task and duplicate records.
+    # prefix and never splits one sort prefix. A task exceeds the maximum in two
+    # cases: a sort prefix above it gets a task of its own, and the last task of
+    # a merge can take in a leftover of up to 10% of it. 0 disables the split.
+    # Enable it only after every compaction worker supports key ranges. The
+    # compactor refuses to publish a split merge from older workers.
     # CLI flag: -dataobj.compaction.logs.max-task-size
     [logs_max_task_size: <int> | default = 0B]
 

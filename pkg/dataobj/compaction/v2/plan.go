@@ -14,8 +14,8 @@ type Section[K any] struct {
 	Ref      *compactionv2pb.SectionRef
 	Min, Max K
 
-	// Keys holds the size of each key in the section, in any order. It is nil
-	// if the caller has no per-key sizes.
+	// Keys holds the size of each key in the section, in any order. An empty
+	// Keys means the sizes are unknown, not that the section holds no key.
 	Keys []KeySize[K]
 }
 

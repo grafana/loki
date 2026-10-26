@@ -303,28 +303,19 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 
 // sortPrefixRange returns the stream sort prefixes in r. It returns an error
 // if r misses a bound, if its start is not below its end, or if its end is
-// above [streams.SortPrefixLimit].
-//
-// A nil r holds every prefix. Coordinators that predate key ranges send no
-// range, and their tasks merge every stream.
+// above [streams.SortPrefixLimit]. A nil r holds every prefix.
 func sortPrefixRange(r *compactionv2pb.KeyRange) (v2.KeyRange[streams.SortPrefix], error) {
 	if r == nil {
-		return v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: streams.SortPrefixLimit()}, nil
+		r = v2.FullKeyRangeProto()
 	}
 	if r.Start == nil || r.End == nil {
 		return v2.KeyRange[streams.SortPrefix]{}, errors.New("key range must have a start and an end")
 	}
-	out := v2.KeyRange[streams.SortPrefix]{
-		Start: streams.NewSortPrefix(r.Start.ShardBucket, r.Start.SchemaValues),
-		End:   streams.NewSortPrefix(r.End.ShardBucket, r.End.SchemaValues),
+	end := streams.NewSortPrefix(r.End.ShardBucket, r.End.SchemaValues)
+	if end.Compare(streams.SortPrefixLimit()) > 0 {
+		return v2.KeyRange[streams.SortPrefix]{}, fmt.Errorf("key range end %v is above the sort prefix limit", end)
 	}
-	if out.Start.Compare(out.End) >= 0 {
-		return v2.KeyRange[streams.SortPrefix]{}, fmt.Errorf("key range start %v is not below its end %v", out.Start, out.End)
-	}
-	if out.End.Compare(streams.SortPrefixLimit()) > 0 {
-		return v2.KeyRange[streams.SortPrefix]{}, fmt.Errorf("key range end %v is above the sort prefix limit", out.End)
-	}
-	return out, nil
+	return v2.NewKeyRange(streams.NewSortPrefix(r.Start.ShardBucket, r.Start.SchemaValues), end, streams.SortPrefix.Compare)
 }
 
 // dropStreamsOutsideRange deletes the streams outside keyRange from byID and

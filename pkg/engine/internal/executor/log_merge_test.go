@@ -1099,9 +1099,16 @@ func appSortPrefixProto(t *testing.T, app string, sortSchema []string) *compacti
 }
 
 var (
-	minSortPrefixProto   = &compactionv2pb.SortPrefix{}
-	sortPrefixLimitProto = &compactionv2pb.SortPrefix{ShardBucket: streams.SortPrefixLimit().ShardBucket}
+	minSortPrefixProto   = v2.FullKeyRangeProto().Start
+	sortPrefixLimitProto = v2.FullKeyRangeProto().End
 )
+
+func prefixRange(t *testing.T, start, end streams.SortPrefix) v2.KeyRange[streams.SortPrefix] {
+	t.Helper()
+	r, err := v2.NewKeyRange(start, end, streams.SortPrefix.Compare)
+	require.NoError(t, err)
+	return r
+}
 
 func TestDoLogObjectMerge_KeyRange(t *testing.T) {
 	ctx := context.Background()
@@ -1290,7 +1297,7 @@ func TestDropStreamsOutsideRange(t *testing.T) {
 
 	t.Run("drops no stream for the full range", func(t *testing.T) {
 		byID := newStreams()
-		dropped, err := dropStreamsOutsideRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: streams.SortPrefixLimit()})
+		dropped, err := dropStreamsOutsideRange(byID, layout, prefixRange(t, streams.MinSortPrefix(), streams.SortPrefixLimit()))
 		require.NoError(t, err)
 		require.Empty(t, dropped)
 		require.Len(t, byID, 2)
@@ -1298,7 +1305,7 @@ func TestDropStreamsOutsideRange(t *testing.T) {
 
 	t.Run("drops the streams above the range and returns their IDs", func(t *testing.T) {
 		byID := newStreams()
-		dropped, err := dropStreamsOutsideRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: high})
+		dropped, err := dropStreamsOutsideRange(byID, layout, prefixRange(t, streams.MinSortPrefix(), high))
 		require.NoError(t, err)
 		require.Equal(t, []int64{highID}, dropped)
 		require.Contains(t, byID, lowID)
@@ -1307,7 +1314,7 @@ func TestDropStreamsOutsideRange(t *testing.T) {
 
 	t.Run("drops the streams below the range and returns their IDs", func(t *testing.T) {
 		byID := newStreams()
-		dropped, err := dropStreamsOutsideRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: high, End: streams.SortPrefixLimit()})
+		dropped, err := dropStreamsOutsideRange(byID, layout, prefixRange(t, high, streams.SortPrefixLimit()))
 		require.NoError(t, err)
 		require.Equal(t, []int64{lowID}, dropped)
 		require.Contains(t, byID, highID)
@@ -1315,7 +1322,7 @@ func TestDropStreamsOutsideRange(t *testing.T) {
 
 	t.Run("drops every stream when no stream is in range", func(t *testing.T) {
 		byID := newStreams()
-		dropped, err := dropStreamsOutsideRange(byID, layout, v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: low})
+		dropped, err := dropStreamsOutsideRange(byID, layout, prefixRange(t, streams.MinSortPrefix(), low))
 		require.NoError(t, err)
 		require.ElementsMatch(t, []int64{1, 2}, dropped)
 		require.Empty(t, byID)
@@ -1323,7 +1330,7 @@ func TestDropStreamsOutsideRange(t *testing.T) {
 }
 
 func TestSortPrefixRange(t *testing.T) {
-	full := v2.KeyRange[streams.SortPrefix]{Start: streams.MinSortPrefix(), End: streams.SortPrefixLimit()}
+	full := prefixRange(t, streams.MinSortPrefix(), streams.SortPrefixLimit())
 	at := func(bucket uint32, values ...string) *compactionv2pb.SortPrefix {
 		return &compactionv2pb.SortPrefix{ShardBucket: bucket, SchemaValues: values}
 	}
@@ -1337,10 +1344,7 @@ func TestSortPrefixRange(t *testing.T) {
 	t.Run("returns the range with both bounds", func(t *testing.T) {
 		got, err := sortPrefixRange(&compactionv2pb.KeyRange{Start: at(1, "a"), End: at(2, "b")})
 		require.NoError(t, err)
-		require.Equal(t, v2.KeyRange[streams.SortPrefix]{
-			Start: streams.NewSortPrefix(1, []string{"a"}),
-			End:   streams.NewSortPrefix(2, []string{"b"}),
-		}, got)
+		require.Equal(t, prefixRange(t, streams.NewSortPrefix(1, []string{"a"}), streams.NewSortPrefix(2, []string{"b"})), got)
 	})
 
 	t.Run("accepts the full range from the coordinator", func(t *testing.T) {
