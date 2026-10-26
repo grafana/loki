@@ -142,10 +142,6 @@ func (f *IPLabelFilter) PatternError() error {
 }
 
 func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilder) bool {
-	if lbs.HasErr() {
-		// why `true`?. if there's an error only the string matchers can filter out.
-		return true
-	}
 	input, ok := lbs.Get(f.Label)
 	if !ok {
 		// we have not found the label.
