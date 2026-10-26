@@ -151,6 +151,17 @@ func TestNeedles(t *testing.T) {
 	}
 }
 
+// A long counted repeat adds at most maxRepeatBytes to a run, and the text
+// after it starts a new run, because the copies left out sit in between.
+func TestLiterals_LongRepeat(t *testing.T) {
+	a := strings.Repeat("a", maxRepeatBytes)
+	require.Equal(t, []string{"ab", "x" + a}, Literals(`xa{1000}b`))
+	for _, lit := range Literals(strings.Repeat("a{1000}", 100)) {
+		require.LessOrEqual(t, len(lit), 2*maxRepeatBytes)
+	}
+	require.Equal(t, []string{"abcabcabcx"}, Literals(`(abc){3}x`))
+}
+
 // For random patterns and random lines they match, some conjunction must have
 // every n-gram of every literal emitted by the index for that line, for every
 // index version and at every maxConjunctions. Otherwise a lookup would miss the line.

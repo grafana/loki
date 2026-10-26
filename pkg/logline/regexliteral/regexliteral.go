@@ -30,6 +30,10 @@ const (
 	// maxClass bounds the runes of a character class that is used as an
 	// exact set, after ASCII letters are uppercased and deduplicated.
 	maxClass = 4
+	// maxRepeatBytes bounds the text a counted repeat adds to a run. Past it
+	// the remaining copies are left out, which only drops precision. The
+	// parser allows x{1000}, and needles that long do not narrow more.
+	maxRepeatBytes = 256
 )
 
 // Literals returns the literals that every string matched by pattern
@@ -283,7 +287,7 @@ func (w *walker) exact(re *syntax.Regexp) ([]string, bool) {
 		}
 		set := []string{""}
 		for range re.Min {
-			if len(set)*len(s) > w.maxExact {
+			if len(set)*len(s) > w.maxExact || len(set[0]) > maxRepeatBytes {
 				return nil, false
 			}
 			set = cross(set, s)
@@ -352,8 +356,9 @@ func sortedSet(s []string) []string {
 
 // repeat walks x{min,max}. max is -1 when there is no upper bound. A repeat
 // that can match zero times requires nothing. Otherwise the first min copies
-// join the left like a concatenation. When the count can vary, the last copy
-// is also one member of the set and joins the right, the same as OpPlus.
+// join the left like a concatenation, up to maxRepeatBytes. When the count
+// can vary or copies were left out, the last copy is also one member of the
+// set and joins the right, the same as OpPlus.
 func (w *walker) repeat(re *syntax.Regexp) {
 	if re.Min < 1 {
 		w.flush()
@@ -366,10 +371,15 @@ func (w *walker) repeat(re *syntax.Regexp) {
 		w.flush()
 		return
 	}
-	for range re.Min {
+	copies, added := 0, 0
+	for copies < re.Min && added < maxRepeatBytes {
 		w.join(set)
+		copies++
+		added += len(set[0])
 	}
-	if re.Max != re.Min {
+	// When copies were left out or the count can vary, the run's end is not
+	// next to the text that follows, so the last copy starts a new run.
+	if copies < re.Min || re.Max != re.Min {
 		w.flush()
 		w.join(set)
 	}
