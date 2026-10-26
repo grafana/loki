@@ -476,7 +476,14 @@ func (i *Ingester) setupAutoForget() {
 		defer ticker.Stop()
 
 		var forgetList []string
-		for range ticker.C {
+		for {
+			select {
+			case <-ticker.C:
+			case <-i.loopQuit:
+				// the ring entry goes away with the ingester, nothing left to clean
+				return
+			}
+
 			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				forgetList = forgetList[:0]
 				if in == nil {
