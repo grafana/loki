@@ -138,9 +138,7 @@ func columnarEncode(rows []Stat, layout streams.Layout, enc *columnar.Encoder, p
 		ColumnIndex: maxTimestampIndex,
 		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 	})
-	sortInfo := &datasetmd.SortInfo{ColumnSorts: columnSorts}
-	layout.WriteSortInfo(sortInfo)
-	enc.SetSortInfo(sortInfo)
+	enc.SetSortInfo(streams.NewSortInfo(layout, columnSorts))
 
 	// Encode fixed columns.
 	errs := make([]error, 0, labelColumnOffset+len(labelKeys))

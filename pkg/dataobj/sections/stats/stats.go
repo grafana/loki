@@ -119,11 +119,24 @@ func schemaLabelNames(sortSchema string) []string {
 		if fqn == "" {
 			continue
 		}
-		typ, name, ok := strings.Cut(fqn, ":")
-		if !ok || typ != "label" || name == "" {
+		name, ok := parseSortSchemaFQN(fqn)
+		if !ok {
 			continue
 		}
 		names = append(names, name)
 	}
 	return names
+}
+
+// schemaLabelName parses a comma-separated fully-qualified sort schema
+// ("label:svc,label:cluster") into its bare label name ("svc").
+func parseSortSchemaFQN(fqn string) (string, bool) {
+	if fqn == "" {
+		return "", false
+	}
+	typ, name, ok := strings.Cut(fqn, ":")
+	if !ok || typ != "label" || name == "" {
+		return "", false
+	}
+	return name, true
 }

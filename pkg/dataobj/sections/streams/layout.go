@@ -74,24 +74,21 @@ func (l Layout) Equal(other Layout) bool {
 		slices.Equal(l.schemaLabels, other.schemaLabels)
 }
 
-func (l Layout) sortInfo() *datasetmd.SortInfo {
-	si := &datasetmd.SortInfo{}
-	l.WriteSortInfo(si)
-	return si
+// NewSortInfo returns the sort info of a section whose rows follow
+// columnSorts and that records layout. A nil columnSorts records only the
+// layout.
+func NewSortInfo(layout Layout, columnSorts []*datasetmd.SortInfo_ColumnSort) *datasetmd.SortInfo {
+	return &datasetmd.SortInfo{
+		ColumnSorts:  columnSorts,
+		SchemaLabels: slices.Clone(layout.schemaLabels),
+		StreamOrder:  streamOrderProto(layout.streamOrder),
+		ShardCount:   layout.shardLayout.Buckets(),
+	}
 }
 
-// WriteSortInfo sets the layout fields of si to l: the schema labels, the
-// stream order, and the shard count. It keeps the column sorts of si, so
-// sections that sort their own rows can record a layout too.
-func (l Layout) WriteSortInfo(si *datasetmd.SortInfo) {
-	si.SchemaLabels = slices.Clone(l.schemaLabels)
-	si.StreamOrder = streamOrderProto(l.streamOrder)
-	si.ShardCount = l.shardLayout.Buckets()
-}
-
-// LayoutFromSortInfo decodes the layout that [Layout.WriteSortInfo] wrote to
-// si, and ignores the column sorts of si. ok is false if si is nil or sets
-// none of the stream order, the shard count, and the schema labels.
+// LayoutFromSortInfo returns the layout that [NewSortInfo] recorded in si,
+// and ignores the column sorts of si. ok is false if si is nil or sets none of
+// the stream order, the shard count, and the schema labels.
 //
 // LayoutFromSortInfo returns an error for any other state that [NewLayout]
 // cannot produce: a shard count that is not a valid shard layout, or a stream

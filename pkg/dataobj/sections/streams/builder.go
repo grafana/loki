@@ -298,7 +298,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 	columnarEnc.SetTenant(b.tenant)
 	if b.layout != nil {
-		columnarEnc.SetSortInfo(b.layout.sortInfo())
+		columnarEnc.SetSortInfo(NewSortInfo(*b.layout, nil))
 	}
 
 	n, err = columnarEnc.Flush(w)
