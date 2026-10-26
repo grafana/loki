@@ -18,8 +18,8 @@ import (
 // Resource is a message representing the resource information.
 type Resource struct {
 	Attributes             []KeyValue
-	EntityRefs             []*EntityRef
 	DroppedAttributesCount uint32
+	EntityRefs             []*EntityRef
 }
 
 var (
@@ -181,7 +181,7 @@ func (orig *Resource) UnmarshalJSON(iter *json.Iterator) {
 			}
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

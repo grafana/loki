@@ -17,9 +17,9 @@ import (
 
 // ScopeMetrics is a collection of metrics from a LibraryInstrumentation.
 type ScopeMetrics struct {
-	SchemaUrl string
-	Metrics   []*Metric
 	Scope     InstrumentationScope
+	Metrics   []*Metric
+	SchemaUrl string
 }
 
 var (
@@ -169,7 +169,7 @@ func (orig *ScopeMetrics) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

@@ -51,9 +51,9 @@ func (m *Exemplar) GetAsInt() int64 {
 // Exemplars also hold information about the environment when the measurement was recorded,
 // for example the span and trace ID of the active span when the exemplar was recorded.
 type Exemplar struct {
-	Value              any
 	FilteredAttributes []KeyValue
 	TimeUnixNano       uint64
+	Value              any
 	TraceId            TraceID
 	SpanId             SpanID
 }
@@ -296,7 +296,7 @@ func (orig *Exemplar) UnmarshalJSON(iter *json.Iterator) {
 
 			orig.SpanId.UnmarshalJSON(iter)
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

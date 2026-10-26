@@ -162,7 +162,7 @@ func (orig *ExponentialHistogram) UnmarshalJSON(iter *json.Iterator) {
 		case "aggregationTemporality", "aggregation_temporality":
 			orig.AggregationTemporality = AggregationTemporality(iter.ReadEnumValue(AggregationTemporality_value))
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

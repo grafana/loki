@@ -27,12 +27,24 @@ func (*JSONMarshaler) MarshalMetrics(md Metrics) ([]byte, error) {
 }
 
 // JSONUnmarshaler unmarshals OTLP/JSON formatted-bytes to Metrics.
-type JSONUnmarshaler struct{}
+type JSONUnmarshaler struct {
+	// prevent unkeyed literal initialization
+	_ struct{}
+	// DisallowUnknownFields causes UnmarshalMetrics to return an error when the
+	// input contains JSON object fields that are not defined by the OTLP
+	// schema. When false (the default), unknown fields are silently ignored.
+	//
+	// Warning: enabling this option breaks forwards compatibility with future
+	// evolutions of the OTLP format, as fields added to the format in newer
+	// versions will be rejected as unknown.
+	DisallowUnknownFields bool
+}
 
 // UnmarshalMetrics from OTLP/JSON format into Metrics.
-func (*JSONUnmarshaler) UnmarshalMetrics(buf []byte) (Metrics, error) {
+func (u *JSONUnmarshaler) UnmarshalMetrics(buf []byte) (Metrics, error) {
 	iter := json.BorrowIterator(buf)
 	defer json.ReturnIterator(iter)
+	iter.SetDisallowUnknownFields(u.DisallowUnknownFields)
 	md := NewMetrics()
 	md.getOrig().UnmarshalJSON(iter)
 	if iter.Error() != nil {

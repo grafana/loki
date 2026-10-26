@@ -17,9 +17,9 @@ import (
 
 // ScopeSpans is a collection of spans from a LibraryInstrumentation.
 type ScopeSpans struct {
-	SchemaUrl string
-	Spans     []*Span
 	Scope     InstrumentationScope
+	Spans     []*Span
+	SchemaUrl string
 }
 
 var (
@@ -169,7 +169,7 @@ func (orig *ScopeSpans) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

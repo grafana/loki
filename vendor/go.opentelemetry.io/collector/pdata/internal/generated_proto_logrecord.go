@@ -19,17 +19,17 @@ import (
 // LogRecord are experimental implementation of OpenTelemetry Log Data Model.
 
 type LogRecord struct {
-	Body                   AnyValue
-	SeverityText           string
-	EventName              string
-	Attributes             []KeyValue
 	TimeUnixNano           uint64
 	ObservedTimeUnixNano   uint64
 	SeverityNumber         SeverityNumber
+	SeverityText           string
+	Body                   AnyValue
+	Attributes             []KeyValue
 	DroppedAttributesCount uint32
 	Flags                  uint32
 	TraceId                TraceID
 	SpanId                 SpanID
+	EventName              string
 }
 
 var (
@@ -244,7 +244,7 @@ func (orig *LogRecord) UnmarshalJSON(iter *json.Iterator) {
 		case "eventName", "event_name":
 			orig.EventName = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

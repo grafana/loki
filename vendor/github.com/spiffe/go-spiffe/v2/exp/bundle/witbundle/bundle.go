@@ -16,6 +16,8 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
 
+const witSVIDUse = "wit-svid"
+
 // Bundle is a collection of trusted WIT authorities for a trust domain.
 type Bundle struct {
 	trustDomain spiffeid.TrustDomain
@@ -160,11 +162,12 @@ func (b *Bundle) Marshal() ([]byte, error) {
 	b.mtx.RLock()
 	defer b.mtx.RUnlock()
 
-	jwks := jose.JSONWebKeySet{}
+	jwks := jose.JSONWebKeySet{Keys: make([]jose.JSONWebKey, 0, len(b.witAuthorities))}
 	for keyID, witAuthority := range b.witAuthorities {
 		jwks.Keys = append(jwks.Keys, jose.JSONWebKey{
 			Key:   witAuthority,
 			KeyID: keyID,
+			Use:   witSVIDUse,
 		})
 	}
 

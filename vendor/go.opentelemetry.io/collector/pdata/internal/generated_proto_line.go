@@ -154,7 +154,7 @@ func (orig *Line) UnmarshalJSON(iter *json.Iterator) {
 		case "column":
 			orig.Column = iter.ReadInt64()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

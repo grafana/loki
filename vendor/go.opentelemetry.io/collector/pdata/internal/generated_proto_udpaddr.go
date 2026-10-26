@@ -16,9 +16,9 @@ import (
 )
 
 type UDPAddr struct {
-	Zone string
 	IP   []byte
 	Port int64
+	Zone string
 }
 
 var (
@@ -154,7 +154,7 @@ func (orig *UDPAddr) UnmarshalJSON(iter *json.Iterator) {
 		case "zone":
 			orig.Zone = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

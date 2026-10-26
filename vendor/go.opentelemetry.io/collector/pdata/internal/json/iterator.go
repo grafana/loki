@@ -20,7 +20,28 @@ func ReturnIterator(s *Iterator) {
 }
 
 type Iterator struct {
-	delegate *jsoniter.Iterator
+	delegate              *jsoniter.Iterator
+	disallowUnknownFields bool
+}
+
+// SetDisallowUnknownFields configures whether unknown fields encountered during
+// JSON unmarshalling cause an error. When set to true, [Iterator.HandleUnknownField]
+// records an error instead of skipping the field.
+func (iter *Iterator) SetDisallowUnknownFields(b bool) *Iterator {
+	iter.disallowUnknownFields = b
+	return iter
+}
+
+// HandleUnknownField is called by generated UnmarshalJSON code when an
+// unrecognized JSON field is encountered. By default the field's value is
+// skipped, but if [Iterator.SetDisallowUnknownFields] was set to true, an
+// error is recorded on the iterator instead.
+func (iter *Iterator) HandleUnknownField(field string) {
+	if iter.disallowUnknownFields {
+		iter.ReportError("UnmarshalJSON", "unknown field \""+field+"\"")
+		return
+	}
+	iter.Skip()
 }
 
 // ReadInt32 unmarshalls JSON data into an int32. Accepts both numbers and strings decimal.

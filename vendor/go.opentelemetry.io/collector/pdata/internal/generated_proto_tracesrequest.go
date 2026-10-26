@@ -158,7 +158,7 @@ func (orig *TracesRequest) UnmarshalJSON(iter *json.Iterator) {
 		case "formatVersion", "format_version":
 			orig.FormatVersion = iter.ReadUint32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

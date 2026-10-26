@@ -17,8 +17,8 @@ import (
 
 // ExportPartialSuccess represents the details of a partially successful export request.
 type ExportProfilesPartialSuccess struct {
-	ErrorMessage     string
 	RejectedProfiles int64
+	ErrorMessage     string
 }
 
 var (
@@ -146,7 +146,7 @@ func (orig *ExportProfilesPartialSuccess) UnmarshalJSON(iter *json.Iterator) {
 		case "errorMessage", "error_message":
 			orig.ErrorMessage = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }
