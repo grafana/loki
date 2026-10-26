@@ -154,8 +154,9 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	sort.Strings(paths)
 
 	// For each unique source object, scan its sections and classify by type,
-	// preserving section order. Unknown section types (streams, pointers,
-	// indexPointers) are skipped silently.
+	// preserving section order. Other section types (streams, pointers,
+	// indexPointers) are skipped silently. doIndexFilter also skips streams
+	// sections, but it rejects pointers and indexPointers sections.
 	grouped := make([]objectSections, 0, len(paths))
 	var (
 		layout       streams.Layout

@@ -103,6 +103,7 @@ type IndexSectionsReaderResponse struct {
 }
 
 type CollectSectionsRequest struct {
+	// Reader must emit the batches of IndexSectionsReader.
 	Reader ArrowRecordBatchReader
 }
 
