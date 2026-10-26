@@ -531,6 +531,8 @@ type LogfmtExpressionParser struct {
 	keys        internedStringSet
 	strict      bool
 
+	// origKeys maps the identifier of each expression to the key that it reads from the line.
+	origKeys map[string]string
 	// written holds the label names that the current line wrote.
 	written map[string]struct{}
 }
@@ -552,8 +554,15 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 		}
 		paths[exp.Identifier] = path
 	}
+
+	// The keys depend only on the expressions, so build them once instead of for each line.
+	origKeys := make(map[string]string, len(paths))
+	for id, path := range paths {
+		origKeys[id] = fmt.Sprintf("%v", path...)
+	}
 	return &LogfmtExpressionParser{
 		expressions: paths,
+		origKeys:    origKeys,
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
 		strict:      strict,
@@ -603,12 +612,8 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		return line, true
 	}
 
-	// Create a map of every renamed label and its original name
-	// in order to retrieve it later in the extraction phase
-	keys := make(map[string]string, len(l.expressions))
-	for id, paths := range l.expressions {
-		keys[id] = fmt.Sprintf("%v", paths...)
-	}
+	// Every renamed label and its original name, to retrieve it later in the extraction phase
+	keys := l.origKeys
 	clear(l.written)
 
 	// alwaysExtract checks whether a key should be extracted regardless of other
