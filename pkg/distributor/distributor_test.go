@@ -2793,8 +2793,8 @@ func TestDistributor_PushTimeSharding(t *testing.T) {
 			name: "old entries are bucketed by their window", app: "regular",
 			entries: []logproto.Entry{entry(old.Add(time.Hour), "b"), entry(old, "a")},
 			want: []logproto.Stream{
-				stream("regular", []logproto.Entry{entry(old, "a")}, timeShardLabel, window(old)),
-				stream("regular", []logproto.Entry{entry(old.Add(time.Hour), "b")}, timeShardLabel, window(old.Add(time.Hour))),
+				stream("regular", []logproto.Entry{entry(old, "a")}, constants.TimeShardLabel, window(old)),
+				stream("regular", []logproto.Entry{entry(old.Add(time.Hour), "b")}, constants.TimeShardLabel, window(old.Add(time.Hour))),
 			},
 		},
 		{
@@ -2812,7 +2812,7 @@ func TestDistributor_PushTimeSharding(t *testing.T) {
 			name: "old and recent entries retain their metadata", app: "mixed",
 			entries: []logproto.Entry{entry(recent, "newest"), entry(old, "old"), entry(recent.Add(-time.Minute), "recent")},
 			want: []logproto.Stream{
-				stream("mixed", []logproto.Entry{entry(old, "old")}, timeShardLabel, window(old)),
+				stream("mixed", []logproto.Entry{entry(old, "old")}, constants.TimeShardLabel, window(old)),
 				stream("mixed", []logproto.Entry{entry(recent.Add(-time.Minute), "recent"), entry(recent, "newest")}),
 			},
 		},
@@ -2821,8 +2821,8 @@ func TestDistributor_PushTimeSharding(t *testing.T) {
 			entries: []logproto.Entry{entry(old.Add(time.Second), "second"), entry(old, "first")},
 			rate:    &fakeRateStore{rate: 1000, pushRate: 1},
 			want: []logproto.Stream{
-				stream("compose", []logproto.Entry{entry(old, "first")}, timeShardLabel, window(old), ingester.ShardLbName, "0"),
-				stream("compose", []logproto.Entry{entry(old.Add(time.Second), "second")}, timeShardLabel, window(old), ingester.ShardLbName, "1"),
+				stream("compose", []logproto.Entry{entry(old, "first")}, constants.TimeShardLabel, window(old), ingester.ShardLbName, "0"),
+				stream("compose", []logproto.Entry{entry(old.Add(time.Second), "second")}, constants.TimeShardLabel, window(old), ingester.ShardLbName, "1"),
 			},
 		},
 	} {
@@ -2911,7 +2911,7 @@ func TestDistributor_SharedMetadataLimits(t *testing.T) {
 					ls := labels.FromStrings("app", "shared", ingester.ShardLbName, strconv.Itoa(i))
 					if timeSharding {
 						start := at.Truncate(time.Hour)
-						ls = labels.NewBuilder(ls).Set(timeShardLabel, fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())).Labels()
+						ls = labels.NewBuilder(ls).Set(constants.TimeShardLabel, fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())).Labels()
 					}
 					out := logproto.Stream{Labels: ls.String(), Hash: labels.StableHash(ls)}
 					for _, line := range lines {
@@ -4581,7 +4581,7 @@ func TestDistributor_NestedLimitsServiceShard(t *testing.T) {
 				if timeSharding {
 					start := old.Truncate(time.Hour)
 					window := fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())
-					oldLabels := labels.NewBuilder(lbls).Set(timeShardLabel, window).Labels()
+					oldLabels := labels.NewBuilder(lbls).Set(constants.TimeShardLabel, window).Labels()
 					metadata = []*limitsproto.StreamMetadata{
 						{StreamHash: labels.StableHash(oldLabels), TotalSize: 22},
 						{StreamHash: labels.StableHash(lbls), TotalSize: 11},

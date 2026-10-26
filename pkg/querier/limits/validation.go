@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -51,18 +53,11 @@ func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) e
 		return err
 	}
 
-	// Check if the query targets aggregated metrics or patterns
-	isInternalStreamQuery := false
 	matchers := selector.Matchers()
-
-	for _, matcher := range matchers {
-		if matcher.Name == constants.AggregatedMetricLabel || matcher.Name == constants.PatternLabel {
-			isInternalStreamQuery = true
-			break
-		}
+	hasMatcher := func(name string) bool {
+		return slices.ContainsFunc(matchers, func(m *labels.Matcher) bool { return m.Name == name })
 	}
-
-	if !isInternalStreamQuery {
+	if !constants.IsInternalStream(hasMatcher) {
 		return nil
 	}
 

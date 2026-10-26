@@ -312,11 +312,9 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			return nil, nil, errReservedBackfillLabels()
 		}
 
-		// Check if this is an aggregated metric or pattern stream
-		isInternalStream := false
-		if lbs.Has(constants.AggregatedMetricLabel) || lbs.Has(constants.PatternLabel) {
+		isInternalStream := constants.IsInternalStream(lbs.Has)
+		if isInternalStream {
 			pushStats.HasInternalStreams = true
-			isInternalStream = true
 		}
 
 		var beforeServiceName string
