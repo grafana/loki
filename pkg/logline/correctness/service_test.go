@@ -153,6 +153,70 @@ func TestBuildJSONLabelFilterHintQuery(t *testing.T) {
 	require.Equal(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, query)
 }
 
+func TestBuildMetricQuery(t *testing.T) {
+	tests := []struct {
+		name      string
+		queryType hintQueryType
+		needle    string
+		logQuery  string
+		want      string
+		supported bool
+	}{
+		{
+			name:      "line filter",
+			queryType: hintQueryTypeLineFilter,
+			needle:    "9fA81cD2Ef0077aa",
+			logQuery:  `{job="api"} |= "9fA81cD2Ef0077aa"`,
+			want:      `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m]))`,
+			supported: true,
+		},
+		{
+			name:      "label filter",
+			queryType: hintQueryTypeLabelFilter,
+			needle:    "abc123def456",
+			logQuery:  `{job="api"} | trace_id="abc123def456"`,
+			want:      `sum(count_over_time({job="api"} | trace_id="abc123def456" [5m]))`,
+			supported: true,
+		},
+		{
+			name:      "json label filter",
+			queryType: hintQueryTypeJSONLabelFilter,
+			needle:    "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec",
+			logQuery:  `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`,
+			want:      `sum(count_over_time({job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec" [5m]))`,
+			supported: true,
+		},
+		{
+			name:      "needle shorter than an ngram",
+			queryType: hintQueryTypeLineFilter,
+			needle:    "abc",
+			logQuery:  `{job="api"} |= "abc"`,
+			want:      `sum(count_over_time({job="api"} |= "abc" [5m]))`,
+			supported: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hq, err := newHintQuery(tc.queryType, tc.needle, tc.logQuery)
+			require.NoError(t, err)
+
+			got, err := buildMetricQuery(hq)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got.query)
+			require.Equal(t, tc.needle, got.needle)
+			require.Equal(t, tc.queryType, got.queryType)
+
+			literals := hintprovider.SupportedMetricQuery(got.expr, 6)
+			if tc.supported {
+				require.NotEmpty(t, literals)
+				return
+			}
+			require.Empty(t, literals)
+		})
+	}
+}
+
 func TestPickJSONField(t *testing.T) {
 	t.Run("picks top-level string long enough for ngrams", func(t *testing.T) {
 		field, value, ok := pickJSONField([]queryEntry{{

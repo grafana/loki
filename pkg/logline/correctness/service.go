@@ -881,6 +881,14 @@ func buildJSONLabelFilterHintQuery(selector, label, value string) string {
 	return fmt.Sprintf("%s | json | %s=%s", selector, label, strconv.Quote(value))
 }
 
+// buildMetricQuery wraps a log hint query as sum(count_over_time(<needle> [5m])).
+// The verification cycle does not call this yet.
+func buildMetricQuery(hq hintQuery) (hintQuery, error) {
+	lookback := "5m"
+	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, lookback)
+	return newHintQuery(hq.queryType, hq.needle, query)
+}
+
 // pickHintQuery chooses among SM, stream-label, post-parser JSON, and line
 // filters with equal weight. The chosen path is tried first; on failure
 // (ineligible value / parse error / no JSON field) we fall back to a

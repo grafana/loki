@@ -17,7 +17,10 @@ type verificationReport struct {
 	FalseNegatives          int
 	FalsePositives          int
 	FalseNegativeTimestamps []time.Time
-	Correct                 bool
+	// FalseNegativeRanges are metric lookbacks with no overlapping hint.
+	// Each range is that step's whole lookback. Log checks leave this empty.
+	FalseNegativeRanges []hintprovider.HintTimeRange
+	Correct             bool
 }
 
 // verifyHints measures coverage and false-positive rate of pre-fetched hint

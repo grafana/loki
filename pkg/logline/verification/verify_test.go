@@ -43,7 +43,7 @@ func TestVerifyEntries_AllCovered(t *testing.T) {
 	require.Equal(t, 2, r.TotalEntries)
 	require.Equal(t, 2, r.CoveredEntries)
 	require.Equal(t, 0, r.FalseNegatives)
-	require.True(t, r.Correct())
+	require.True(t, r.Correct)
 	require.Empty(t, r.FalseNegativeTimestamps)
 }
 
@@ -58,7 +58,7 @@ func TestVerifyEntries_WithFalseNegatives(t *testing.T) {
 	require.Equal(t, 2, r.TotalEntries)
 	require.Equal(t, 1, r.CoveredEntries)
 	require.Equal(t, 1, r.FalseNegatives)
-	require.False(t, r.Correct())
+	require.False(t, r.Correct)
 	require.Equal(t, []time.Time{uncovered}, r.FalseNegativeTimestamps)
 }
 
@@ -70,7 +70,7 @@ func TestVerifyEntries_EmptyEntries(t *testing.T) {
 
 	require.Equal(t, 0, r.TotalEntries)
 	require.Equal(t, 0, r.FalseNegatives)
-	require.True(t, r.Correct())
+	require.True(t, r.Correct)
 }
 
 func TestCountFalsePositives(t *testing.T) {

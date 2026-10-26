@@ -1,7 +1,10 @@
 package verification
 
 import (
+	"sort"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 )
@@ -21,11 +24,93 @@ type Report struct {
 	// FalsePositives counts hint ranges that contain no result entries.
 	// Only populated when CountFalsePositives is called.
 	FalsePositives int
+	// Correct is true when no scored sample or log line was missed. An empty
+	// report is correct.
+	//
+	// TODO: Confirm with the team whether metric queries should also require a
+	// scored sample. The correctness log check still requires one.
+	Correct bool
 }
 
-// Correct returns true when there are no false negatives.
-func (r *Report) Correct() bool {
-	return r.FalseNegatives == 0
+// IsAbsentOverTime reports whether expr is an absent_over_time aggregation,
+// including one wrapped in vector aggregations.
+func IsAbsentOverTime(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return IsAbsentOverTime(e.Left)
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeAbsent
+	default:
+		return false
+	}
+}
+
+// RangesOverlap reports whether any half-open hint [Start, End) overlaps the
+// lookback (start, end]. A hint that only ends at start shares no time with
+// the lookback. ranges must be sorted by Start.
+func RangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+	if len(ranges) == 0 {
+		return false
+	}
+	idx := sort.Search(len(ranges), func(i int) bool {
+		return ranges[i].End.After(start)
+	})
+	return idx < len(ranges) && !ranges[idx].Start.After(end)
+}
+
+// MetricSample is one value from a metric query, at the time it was evaluated.
+type MetricSample struct {
+	Time  time.Time
+	Value float64
+}
+
+// ScoreMetricSamples scores the positive samples of one metric query.
+// A sample is covered when any hint overlaps its lookback, and a miss records
+// that whole lookback. A lookback that ends after eligibleEnd is left out.
+// A zero eligibleEnd scores every positive sample. hints must be sorted by Start.
+func ScoreMetricSamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples []MetricSample, eligibleEnd time.Time) Report {
+	report := Report{HintRanges: len(hints)}
+	if IsAbsentOverTime(expr) {
+		report.Correct = true
+		return report
+	}
+	group := metricMatcherGroup(expr)
+	for _, sample := range samples {
+		if sample.Value <= 0 {
+			continue
+		}
+		winStart, winEnd := group.Widen(sample.Time, sample.Time)
+		if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
+			continue
+		}
+		RecordMetricLookback(&report, hints, winStart, winEnd)
+	}
+	report.Correct = report.FalseNegatives == 0
+	return report
+}
+
+func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
+	groups, err := syntax.MatcherGroups(expr)
+	if err != nil || len(groups) != 1 {
+		return syntax.MatcherRange{}
+	}
+	return groups[0]
+}
+
+// RecordMetricLookback counts one positive sample. The sample is covered when
+// any hint overlaps its lookback. Otherwise that whole lookback is appended
+// as a miss. ranges must be sorted by Start.
+func RecordMetricLookback(report *Report, ranges []hintprovider.HintTimeRange, start, end time.Time) {
+	report.TotalEntries++
+	if RangesOverlap(ranges, start, end) {
+		report.CoveredEntries++
+	} else {
+		report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
+			Start: start,
+			End:   end,
+		})
+	}
+	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
 }
 
 // VerifyEntries checks hint coverage against a list of log entry timestamps.
@@ -44,6 +129,7 @@ func VerifyEntries(ranges []hintprovider.HintTimeRange, timestamps []time.Time) 
 		}
 	}
 	r.FalseNegatives = r.TotalEntries - r.CoveredEntries
+	r.Correct = r.FalseNegatives == 0
 	return r
 }
 
