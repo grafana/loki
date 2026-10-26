@@ -66,7 +66,7 @@ cloud.google.com/go/bigtable/internal/transport
 # cloud.google.com/go/compute/metadata v0.10.0
 ## explicit; go 1.26.0
 cloud.google.com/go/compute/metadata
-# cloud.google.com/go/iam v1.14.0
+# cloud.google.com/go/iam v1.15.0
 ## explicit; go 1.26.0
 cloud.google.com/go/iam
 cloud.google.com/go/iam/apiv1/iampb
