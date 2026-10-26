@@ -659,8 +659,8 @@ github.com/grafana/go-gelf/v2 v2.0.1 h1:BOChP0h/jLeD+7F9mL7tq10xVkDG15he3T1zHuQa
 github.com/grafana/go-gelf/v2 v2.0.1/go.mod h1:lexHie0xzYGwCgiRGcvZ723bSNyNI8ZRD4s0CLobh90=
 github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654 h1:d04mpP3+tVfBec0NkKKASCnzps5xfd8UY5gBoVFOba0=
 github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654/go.mod h1:j/s0jkda4UXTemDs7Pgw/vMT06alWc42CHisvYac0qw=
-github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675 h1:U94jQ2TQr1m3HNyE8efSdyaBbDrdPaWImXyenuKZ/nw=
-github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675/go.mod h1:796sq+UcONnSlzA3RtlBZ+b/hrerkZXiEmO8oMjyRwY=
+github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34 h1:sQ4hElLT1o+YcyfAF10AGW7nNwFuQvc2NU7qLZ6UhFc=
+github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34/go.mod h1:796sq+UcONnSlzA3RtlBZ+b/hrerkZXiEmO8oMjyRwY=
 github.com/grafana/memberlist v0.3.1-0.20251126142931-6f9f62ab6f86 h1:aTwfQuroOmOr//QEn9J1MtC4R4CPR9/IbUd8hZrbWKo=
 github.com/grafana/memberlist v0.3.1-0.20251126142931-6f9f62ab6f86/go.mod h1:h60o12SZn/ua/j0B6iKAZezA4eDaGsIuPO70eOaJ6WE=
 github.com/grafana/objstore v0.0.0-20250728171719-b5d3b766d1b0 h1:IXRV9gFgzmWIfsFf7ZDQmo94BvDBFGJZ/+yLQNpObIo=

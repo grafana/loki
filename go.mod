@@ -131,7 +131,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gogo/googleapis v1.4.1
-	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
+	github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34
 	github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952
 	github.com/heroku/x v0.5.3
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
