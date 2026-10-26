@@ -611,9 +611,6 @@ type LogfmtExpressionParser struct {
 	keys        internedStringSet
 	strict      bool
 	renames     stageRenames
-
-	// written holds the label names that the current line wrote.
-	written map[string]struct{}
 }
 
 func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (*LogfmtExpressionParser, error) {
@@ -638,7 +635,6 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
 		strict:      strict,
-		written:     make(map[string]struct{}, len(paths)),
 	}, nil
 }
 
@@ -660,7 +656,6 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		keys[id] = fmt.Sprintf("%v", paths...)
 	}
 	l.renames.reset()
-	clear(l.written)
 
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
@@ -729,7 +724,6 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 			lbs.Set(ParsedLabel, key, string(val))
 			l.renames.record(key, renamed)
-			l.written[key] = struct{}{}
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
@@ -743,7 +737,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// that a stream label or structured metadata holds, or that a parser stage already extracted,
 	// gets no label.
 	for id := range l.expressions {
-		if _, ok := l.written[id]; ok || lbs.ParserLabelHints().Extracted(id) {
+		if lbs.ParserLabelHints().Extracted(id) {
 			continue
 		}
 		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
