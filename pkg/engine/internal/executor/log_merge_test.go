@@ -1216,6 +1216,37 @@ func TestDoLogObjectMerge_KeyRange(t *testing.T) {
 		require.Nil(t, arts.LogCounts)
 	})
 
+	t.Run("skips the sections of an object with no stream in range but counts their records", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
+			tenant: {{labels: `{app="a"}`, entries: wideLinesAt(day, 4)}},
+		})
+		buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{
+			tenant: {{labels: `{app="b"}`, entries: wideLinesAt(day, 3)}},
+		})
+		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", sortSchema)}
+		if appSortPrefix(t, "a", sortSchema).Compare(appSortPrefix(t, "b", sortSchema)) > 0 {
+			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", sortSchema), End: sortPrefixLimitProto}
+		}
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+
+		inputs, err := c.prepareLogMergeInputs(ctx, &physical.LogMerge{
+			Tenant:   tenant,
+			Runs:     sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
+			KeyRange: keyRange,
+		})
+		require.NoError(t, err)
+
+		require.Len(t, inputs.runs, 1, "the run of objB must be skipped")
+		counted := make(map[string]int64)
+		for _, section := range inputs.sectionRecords {
+			counted[section.ObjectPath] += section.Records
+		}
+		require.Equal(t, map[string]int64{"objA": 4, "objB": 3}, counted)
+	})
+
 	t.Run("keeps no record of an object with no stream in range", func(t *testing.T) {
 		dataBucket := objstore.NewInMemBucket()
 		day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
