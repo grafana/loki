@@ -150,7 +150,7 @@ func (orig *Link) UnmarshalJSON(iter *json.Iterator) {
 
 			orig.SpanId.UnmarshalJSON(iter)
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

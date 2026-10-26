@@ -17,9 +17,9 @@ import (
 
 // ResourceProfiles is a collection of profiles from a Resource.
 type ResourceProfiles struct {
-	SchemaUrl     string
 	Resource      Resource
 	ScopeProfiles []*ScopeProfiles
+	SchemaUrl     string
 }
 
 var (
@@ -169,7 +169,7 @@ func (orig *ResourceProfiles) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

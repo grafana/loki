@@ -17,9 +17,9 @@ import (
 
 // ScopeLogs is a collection of logs from a LibraryInstrumentation.
 type ScopeLogs struct {
-	SchemaUrl  string
-	LogRecords []*LogRecord
 	Scope      InstrumentationScope
+	LogRecords []*LogRecord
+	SchemaUrl  string
 }
 
 var (
@@ -169,7 +169,7 @@ func (orig *ScopeLogs) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

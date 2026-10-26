@@ -16,9 +16,9 @@ import (
 )
 
 type TCPAddr struct {
-	Zone string
 	IP   []byte
 	Port int64
+	Zone string
 }
 
 var (
@@ -154,7 +154,7 @@ func (orig *TCPAddr) UnmarshalJSON(iter *json.Iterator) {
 		case "zone":
 			orig.Zone = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

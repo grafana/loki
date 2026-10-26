@@ -17,10 +17,10 @@ import (
 )
 
 type SpanContext struct {
-	TraceState string
-	TraceFlags uint32
 	TraceID    TraceID
 	SpanID     SpanID
+	TraceFlags uint32
+	TraceState string
 	Remote     bool
 }
 
@@ -176,7 +176,7 @@ func (orig *SpanContext) UnmarshalJSON(iter *json.Iterator) {
 		case "remote":
 			orig.Remote = iter.ReadBool()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

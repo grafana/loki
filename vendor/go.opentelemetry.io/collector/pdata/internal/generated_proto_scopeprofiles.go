@@ -17,9 +17,9 @@ import (
 
 // ScopeProfiles is a collection of profiles from a LibraryInstrumentation.
 type ScopeProfiles struct {
-	SchemaUrl string
-	Profiles  []*Profile
 	Scope     InstrumentationScope
+	Profiles  []*Profile
+	SchemaUrl string
 }
 
 var (
@@ -169,7 +169,7 @@ func (orig *ScopeProfiles) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

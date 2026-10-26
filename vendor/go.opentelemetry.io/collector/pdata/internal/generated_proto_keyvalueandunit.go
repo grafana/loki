@@ -19,8 +19,8 @@ import (
 // style of encoding attributes which is more convenient
 // for profiles than opentelemetry.proto.common.v1.KeyValue.
 type KeyValueAndUnit struct {
-	Value        AnyValue
 	KeyStrindex  int32
+	Value        AnyValue
 	UnitStrindex int32
 }
 
@@ -158,7 +158,7 @@ func (orig *KeyValueAndUnit) UnmarshalJSON(iter *json.Iterator) {
 		case "unitStrindex", "unit_strindex":
 			orig.UnitStrindex = iter.ReadInt32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }
