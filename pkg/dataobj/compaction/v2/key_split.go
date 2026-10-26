@@ -22,6 +22,11 @@ type KeyRange[K any] struct {
 
 	// Size is the total size of the input keys in the range.
 	Size uint64
+
+	// Oversized reports whether the range holds one input key larger than
+	// the budget of the split. The last range can exceed the budget without
+	// being oversized.
+	Oversized bool
 }
 
 // Contains reports whether key is in r.
@@ -82,6 +87,7 @@ func SplitKeyRanges[K any](keys []KeySize[K], compare CompareFunc[K], budget uin
 		}
 		if !currentHasKey {
 			current.First = key
+			current.Oversized = size > budget
 			currentHasKey = true
 		}
 		current.Size += size
@@ -90,7 +96,7 @@ func SplitKeyRanges[K any](keys []KeySize[K], compare CompareFunc[K], budget uin
 
 	if n := len(ranges); n > 0 {
 		previous := ranges[n-1]
-		if previous.Size <= budget && current.Size <= budget && previous.Size+current.Size <= budget+budget/10 {
+		if !previous.Oversized && !current.Oversized && previous.Size+current.Size <= budget+budget/10 {
 			ranges[n-1].End = end
 			ranges[n-1].Size += current.Size
 			return ranges

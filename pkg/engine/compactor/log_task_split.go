@@ -20,15 +20,15 @@ import (
 type logTaskSplitter struct {
 	logger  log.Logger
 	maxSize uint64
-	keys    map[*compactionv2pb.SectionRef][]v2.KeySize[logSortPrefix]
+	keys    map[sectionKey][]v2.KeySize[logSortPrefix]
 }
 
 // newLogTaskSplitter returns a splitter for tasks built from sections. A
 // maxSize of 0 disables the split.
 func newLogTaskSplitter(logger log.Logger, maxSize uint64, sections []v2.Section[logSortPrefix]) logTaskSplitter {
-	keys := make(map[*compactionv2pb.SectionRef][]v2.KeySize[logSortPrefix], len(sections))
+	keys := make(map[sectionKey][]v2.KeySize[logSortPrefix], len(sections))
 	for _, section := range sections {
-		keys[section.Ref] = section.Keys
+		keys[sectionKeyOf(section.Ref)] = section.Keys
 	}
 	return logTaskSplitter{logger: logger, maxSize: maxSize, keys: keys}
 }
@@ -52,7 +52,7 @@ func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.
 	var keys []v2.KeySize[logSortPrefix]
 	for _, run := range spec.Runs {
 		for _, section := range run.Sections {
-			keys = append(keys, s.keys[section]...)
+			keys = append(keys, s.keys[sectionKeyOf(section)]...)
 		}
 	}
 	ranges := v2.SplitKeyRanges(keys, compareLogSortPrefix, s.maxSize, start, end)
@@ -63,7 +63,7 @@ func (s logTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv2pb.
 
 	tasks := make([]*compactionv2pb.TaskSpec, 0, len(ranges))
 	for _, keyRange := range ranges {
-		if keyRange.Size > s.maxSize {
+		if keyRange.Oversized {
 			level.Warn(s.logger).Log(
 				"msg", "log-compaction: sort prefix is larger than the maximum task size, giving it a task of its own",
 				"shard_bucket", keyRange.First.prefix.ShardBucket,
@@ -100,7 +100,7 @@ func (s logTaskSplitter) runsInRange(runs []*compactionv2pb.RunRef, keyRange v2.
 }
 
 func (s logTaskSplitter) sectionInRange(section *compactionv2pb.SectionRef, keyRange v2.KeyRange[logSortPrefix]) bool {
-	keys := s.keys[section]
+	keys := s.keys[sectionKeyOf(section)]
 	if len(keys) == 0 {
 		return true
 	}

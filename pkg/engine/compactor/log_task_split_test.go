@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -88,6 +89,40 @@ func TestLogTaskSplitter(t *testing.T) {
 				KeyRange: &compactionv2pb.KeyRange{Start: sortPrefixOf("dns"), End: sortPrefixLimitProto},
 			},
 		}, got)
+	})
+
+	t.Run("finds the sizes of sections that the task refers to by copies of their refs", func(t *testing.T) {
+		spec := splitTestSpec([]v2.Section[logSortPrefix]{a}, []v2.Section[logSortPrefix]{b, c})
+		for _, run := range spec.Runs {
+			for i, ref := range run.Sections {
+				clone := *ref
+				run.Sections[i] = &clone
+			}
+		}
+		got := newLogTaskSplitter(log.NewNopLogger(), 125, sections).split(spec)
+		require.Len(t, got, 3)
+	})
+
+	t.Run("warns about a sort prefix above the maximum task size", func(t *testing.T) {
+		huge := splitTestSection("huge", map[string]uint64{"auth": 500})
+		small := splitTestSection("small", map[string]uint64{"billing": 10})
+		var buf bytes.Buffer
+		newLogTaskSplitter(log.NewLogfmtLogger(&buf), 100, []v2.Section[logSortPrefix]{huge, small}).
+			split(splitTestSpec([]v2.Section[logSortPrefix]{huge}, []v2.Section[logSortPrefix]{small}))
+
+		require.Contains(t, buf.String(), "sort prefix is larger than the maximum task size")
+		require.Contains(t, buf.String(), "sort_prefix=auth")
+	})
+
+	t.Run("does not warn when the last range exceeds the maximum task size after a merge", func(t *testing.T) {
+		x := splitTestSection("x", map[string]uint64{"auth": 60, "billing": 40})
+		y := splitTestSection("y", map[string]uint64{"cart": 5})
+		var buf bytes.Buffer
+		got := newLogTaskSplitter(log.NewLogfmtLogger(&buf), 100, []v2.Section[logSortPrefix]{x, y}).
+			split(splitTestSpec([]v2.Section[logSortPrefix]{x}, []v2.Section[logSortPrefix]{y}))
+
+		require.Len(t, got, 1)
+		require.Empty(t, buf.String())
 	})
 
 	t.Run("gives a section without per-key sizes to every task", func(t *testing.T) {

@@ -65,7 +65,7 @@ func TestSplitKeyRanges(t *testing.T) {
 			name: "gives an oversized first key its own range",
 			keys: []KeySize[int]{{1, 250}, {2, 50}, {3, 70}},
 			want: []KeyRange[int]{
-				{Start: splitStart, End: 2, First: 1, Size: 250},
+				{Start: splitStart, End: 2, First: 1, Size: 250, Oversized: true},
 				{Start: 2, End: 3, First: 2, Size: 50},
 				{Start: 3, End: splitEnd, First: 3, Size: 70},
 			},
@@ -75,7 +75,7 @@ func TestSplitKeyRanges(t *testing.T) {
 			keys: []KeySize[int]{{1, 50}, {2, 250}, {3, 50}},
 			want: []KeyRange[int]{
 				{Start: splitStart, End: 2, First: 1, Size: 50},
-				{Start: 2, End: 3, First: 2, Size: 250},
+				{Start: 2, End: 3, First: 2, Size: 250, Oversized: true},
 				{Start: 3, End: splitEnd, First: 3, Size: 50},
 			},
 		},
@@ -83,7 +83,7 @@ func TestSplitKeyRanges(t *testing.T) {
 			name: "does not fold a small last range into an oversized key",
 			keys: []KeySize[int]{{1, 101}, {2, 1}},
 			want: []KeyRange[int]{
-				{Start: splitStart, End: 2, First: 1, Size: 101},
+				{Start: splitStart, End: 2, First: 1, Size: 101, Oversized: true},
 				{Start: 2, End: splitEnd, First: 2, Size: 1},
 			},
 		},
@@ -92,8 +92,13 @@ func TestSplitKeyRanges(t *testing.T) {
 			keys: []KeySize[int]{{1, 1}, {2, 101}},
 			want: []KeyRange[int]{
 				{Start: splitStart, End: 2, First: 1, Size: 1},
-				{Start: 2, End: splitEnd, First: 2, Size: 101},
+				{Start: 2, End: splitEnd, First: 2, Size: 101, Oversized: true},
 			},
+		},
+		{
+			name: "marks a merged last range above the budget as not oversized",
+			keys: []KeySize[int]{{1, 60}, {2, 40}, {3, 5}},
+			want: []KeyRange[int]{{Start: splitStart, End: splitEnd, First: 1, Size: 105}},
 		},
 		{
 			name: "puts a key that exactly fills the budget in the current range",
