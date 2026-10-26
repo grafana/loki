@@ -654,13 +654,13 @@ const file_google_longrunning_operations_proto_rawDesc = "" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\x124\n" +
-	"\x16return_partial_success\x18\x05 \x01(\bR\x14returnPartialSuccess\"\xa6\x01\n" +
+	"\x16return_partial_success\x18\x05 \x01(\bR\x14returnPartialSuccess\"\xa7\x01\n" +
 	"\x16ListOperationsResponse\x12=\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2\x1d.google.longrunning.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12%\n" +
-	"\vunreachable\x18\x03 \x03(\tB\x03\xe0A\x06R\vunreachable\",\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12&\n" +
+	"\vunreachable\x18\x03 \x03(\tB\x04\xe2A\x01\x06R\vunreachable\",\n" +
 	"\x16CancelOperationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\",\n" +
 	"\x16DeleteOperationRequest\x12\x12\n" +
