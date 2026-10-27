@@ -101,9 +101,6 @@ local weeklyImageJobs = {
     on: {
       pull_request: {},
     },
-    // A new push to a PR makes the running check obsolete. The group must not
-    // match the check-<sha> group of the called workflow, or GitHub reports a
-    // concurrency deadlock.
     concurrency: {
       group: 'check-pr-${{ github.event.pull_request.number }}',
       'cancel-in-progress': true,
