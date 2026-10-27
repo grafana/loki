@@ -457,7 +457,8 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			labelsEqual(entries[i].StructuredMetadata, lastLine.structuredMetadata) {
 			// The entry is already in the last chunk. The record still counts for its timestamp,
 			// since replicas may process the records that carry the same entry in a different order.
-			if hasRecordTs && len(s.chunks) > 0 {
+			// A closed chunk is already being flushed, so its value is final.
+			if hasRecordTs && len(s.chunks) > 0 && !s.chunks[len(s.chunks)-1].closed {
 				s.chunks[len(s.chunks)-1].observeRecordTimestamp(recordTs)
 			}
 			continue
