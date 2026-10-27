@@ -262,7 +262,7 @@ require (
 	github.com/hashicorp/serf v0.11.0 // indirect
 	github.com/huandu/xstrings v1.6.3 // indirect
 	github.com/jaegertracing/jaeger-idl v0.14.0 // indirect
-	github.com/jpillora/backoff v1.0.0 // indirect
+	github.com/jpillora/backoff v1.1.0 // indirect
 	github.com/kamstrup/intmap v0.5.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.1 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
