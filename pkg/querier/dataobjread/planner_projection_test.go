@@ -316,6 +316,23 @@ func TestNewProjectionPlan(t *testing.T) {
 			wantRowPredicates:     []logs.RowPredicate{logs.MetadataFilterRowPredicate{Key: "level"}},
 			wantSectionPredicates: []string{`level!="error"`},
 		},
+		"an inequality before a parser is pushed as a filter predicate": {
+			wantNeedReturningLine: true,
+			query:                 `sum by (app) (count_over_time({app="x"} | level!="error" | json [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata, logs.ColumnTypeMessage},
+			wantRowPredicates:     []logs.RowPredicate{logs.MetadataFilterRowPredicate{Key: "level"}},
+			wantSectionPredicates: []string{`level!="error"`},
+		},
+		"an and inside one label filter pushes both sides": {
+			query:        `sum by (app) (count_over_time({app="x"} | level="error" and pod="a" [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "level", "pod"},
+			wantRowPredicates: []logs.RowPredicate{
+				logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"},
+				logs.MetadataMatcherRowPredicate{Key: "pod", Value: "a"},
+			},
+			wantSectionPredicates: []string{`level="error"`, `pod="a"`},
+		},
 		"both sides of an and are pushed": {
 			query:        `sum by (app) (count_over_time({app="x"} | level="error" | pod="a" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
@@ -330,6 +347,32 @@ func TestNewProjectionPlan(t *testing.T) {
 			query:        `sum by (app) (count_over_time({app="x"} | level="error" or pod="a" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata: []string{"__error__", "__error_details__", "app", "level", "pod"},
+		},
+		"an or of equalities on one name is pushed as one regular expression filter and handed to the metastore": {
+			query:                 `sum by (app) (count_over_time({app="x"} | level="error" or level="warn" or level="info" [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata:          []string{"__error__", "__error_details__", "app", "level"},
+			wantRowPredicates:     []logs.RowPredicate{logs.MetadataFilterRowPredicate{Key: "level"}},
+			wantSectionPredicates: []string{`level=~"error|warn|info"`},
+		},
+		"an or of equalities quotes the characters of a regular expression": {
+			query:                 `sum by (app) (count_over_time({app="x"} | level="a+b" or level="c" [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata:          []string{"__error__", "__error_details__", "app", "level"},
+			wantRowPredicates:     []logs.RowPredicate{logs.MetadataFilterRowPredicate{Key: "level"}},
+			wantSectionPredicates: []string{`level=~"a\\+b|c"`},
+		},
+		"an or of equalities that holds an empty value keeps the rows with no value": {
+			query:                 `sum by (app) (count_over_time({app="x"} | level="" or level="error" [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata:          []string{"__error__", "__error_details__", "app", "level"},
+			wantRowPredicates:     []logs.RowPredicate{logs.MetadataFilterRowPredicate{Key: "level"}},
+			wantSectionPredicates: []string{`level=~"|error"`},
+		},
+		"an or with an inequality is not pushed": {
+			query:        `sum by (app) (count_over_time({app="x"} | level="error" or level!="warn" [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "level"},
 		},
 		"a matcher on a stream label is not pushed because the predicate cannot see that label": {
 			query:        `sum by (app) (count_over_time({app="x"} | app="x" [1m]))`,
@@ -355,6 +398,64 @@ func TestNewProjectionPlan(t *testing.T) {
 			wantNeedReturningLine: true,
 			query:                 `sum by (app) (count_over_time({app="x"} | json | level="error" [1m]))`,
 			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata, logs.ColumnTypeMessage},
+		},
+		"a metadata equality before a parser is pushed and the parser still reads the message and all metadata": {
+			wantNeedReturningLine: true,
+			query:                 `sum by (app) (count_over_time({app="x"} | level="error" | json [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata, logs.ColumnTypeMessage},
+			wantRowPredicates:     []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"}},
+			wantSectionPredicates: []string{`level="error"`},
+		},
+		"the same name before and after a parser pushes only the first filter": {
+			wantNeedReturningLine: true,
+			query:                 `sum by (app) (count_over_time({app="x"} | level="error" | json | level="warn" [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata, logs.ColumnTypeMessage},
+			wantRowPredicates:     []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"}},
+			wantSectionPredicates: []string{`level="error"`},
+		},
+		"a numeric filter before a metadata filter does not stop the pushdown": {
+			wantNeedReturningLine: true,
+			query:                 `sum by (app) (count_over_time({app="x"} | status > 400 | level="error" | json [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata, logs.ColumnTypeMessage},
+			wantRowPredicates:     []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"}},
+			wantSectionPredicates: []string{`level="error"`},
+		},
+		"an and with a filter on the error label still pushes the other side": {
+			wantNeedReturningLine: true,
+			query:                 `sum by (app) (count_over_time({app="x"} | level="error" and __error__="" | json [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata, logs.ColumnTypeMessage},
+			wantRowPredicates:     []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"}},
+			wantSectionPredicates: []string{`level="error"`},
+		},
+		"a filter on the error label after a numeric filter is not pushed": {
+			query:        `sum by (app) (count_over_time({app="x"} | duration > 1s | __error__="LabelFilterErr" [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "duration"},
+		},
+		"an ip filter after a numeric filter is not pushed": {
+			query:        `sum by (app) (count_over_time({app="x"} | status > 400 | addr=ip("10.0.0.0/8") [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"__error__", "__error_details__", "addr", "app", "status"},
+		},
+		"a stream label name before a parser is not pushed to the reader but still goes to the metastore": {
+			wantNeedReturningLine: true,
+			query:                 `sum by (app) (count_over_time({app="x"} | app="x" | json [1m]))`,
+			streamLabels:          []string{"app"},
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata, logs.ColumnTypeMessage},
+			wantSectionPredicates: []string{`app="x"`},
+		},
+		"a line filter and a metadata filter before a parser push the message predicate last": {
+			wantNeedReturningLine: true,
+			wantUnpushedExpr:      `sum by (app) (count_over_time({app="x"} | level="error" | json [1m]))`,
+			query:                 `sum by (app) (count_over_time({app="x"} |= "boom" | level="error" | json [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata, logs.ColumnTypeMessage},
+			wantRowPredicates: []logs.RowPredicate{
+				logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"},
+				logs.LogMessageFilterRowPredicate{},
+			},
+			wantSectionPredicates: []string{`level="error"`},
+			wantKeepLines:         []string{"boom"},
+			wantRejectLines:       []string{"ok"},
 		},
 		"a line_format reads the message and all metadata and pushes nothing": {
 			wantNeedReturningLine: true,
@@ -403,18 +504,50 @@ func TestNewProjectionPlan(t *testing.T) {
 
 	lines := []string{"", "boom", "ok", "a", "b", "ab", "c", "xbx", "a boom b", "boom secret", "x", `{"level":"error"}`, "level=error boom", "\x1b[31mboom\x1b[0m"}
 
-	// requirePushedFilterMatchesQuery checks that the pushed filter followed by the unpushed query
-	// gives the same samples and labels as the whole query. The unpushed extractor gets no line when
-	// the plan says nothing reads it, so a stage that still reads the line fails the check.
-	requirePushedFilterMatchesQuery := func(t *testing.T, expr syntax.SampleExpr, plan ProjectionPlan) {
+	// requirePushedFilterMatchesQuery checks the pushed read against the whole query. The pushed
+	// predicates and line filter, then the unpushed query, must give the same samples and labels.
+	// The unpushed extractor gets no line when the plan says nothing reads it. A stage that still
+	// reads the line fails the check.
+	//
+	// The predicates read the stored metadata only, and an absent key reads as the empty value. A
+	// predicate that drops a row the whole query keeps fails the check.
+	requirePushedFilterMatchesQuery := func(t *testing.T, expr syntax.SampleExpr, plan ProjectionPlan, streamLabelNames []string) {
 		t.Helper()
 
 		metadata := []labels.Labels{
 			labels.EmptyLabels(),
 			labels.FromStrings("level", "error", "duration", "3s", "latency", "2s", "status", "500"),
 			labels.FromStrings("level", "info", "pod", "a", "duration", "x", "latency", "500ms", "status", "200"),
+			labels.FromStrings("level", "warn"),
+			labels.FromStrings("level", "a+b"),
 		}
-		streamLabels := labels.FromStrings("app", "x")
+
+		streamLabelSet := map[string]struct{}{"app": {}}
+		streamLabelPairs := []string{"app", "x"}
+		for _, name := range streamLabelNames {
+			if _, ok := streamLabelSet[name]; !ok {
+				streamLabelSet[name] = struct{}{}
+				streamLabelPairs = append(streamLabelPairs, name, "s")
+			}
+		}
+		streamLabels := labels.FromStrings(streamLabelPairs...)
+		_, _, predicates := plan.forStreams(streamLabelSet)
+
+		keepsRow := func(md labels.Labels) bool {
+			for _, predicate := range predicates {
+				switch typed := predicate.(type) {
+				case logs.MetadataMatcherRowPredicate:
+					if md.Get(typed.Key) != typed.Value {
+						return false
+					}
+				case logs.MetadataFilterRowPredicate:
+					if !typed.Keep(typed.Key, md.Get(typed.Key)) {
+						return false
+					}
+				}
+			}
+			return true
+		}
 
 		whole, err := expr.Extractor()
 		require.NoError(t, err)
@@ -431,7 +564,7 @@ func TestNewProjectionPlan(t *testing.T) {
 
 				var (
 					got   logqllog.ExtractedSample
-					gotOK = plan.lineFilter == nil || plan.lineFilter.Filter([]byte(line))
+					gotOK = keepsRow(md) && (plan.lineFilter == nil || plan.lineFilter.Filter([]byte(line)))
 				)
 				if gotOK {
 					input := []byte(line)
@@ -486,7 +619,7 @@ func TestNewProjectionPlan(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, want.String(), got.String())
 			}
-			requirePushedFilterMatchesQuery(t, expr, plan)
+			requirePushedFilterMatchesQuery(t, expr, plan, test.streamLabels)
 
 			columns, metadata, predicates := plan.forStreams(streamLabels)
 			require.Equal(t, test.wantColumns, columns)
@@ -547,6 +680,11 @@ func TestMetadataPredicate(t *testing.T) {
 			matcher:    labels.MustNewMatcher(labels.MatchRegexp, "level", "err.*"),
 			wantKeep:   []string{"error", "errno"},
 			wantReject: []string{"warn"},
+		},
+		"a negated regular expression becomes a filter predicate keeping the values that do not match": {
+			matcher:    labels.MustNewMatcher(labels.MatchNotRegexp, "level", "err.*"),
+			wantKeep:   []string{"warn", ""},
+			wantReject: []string{"error", "errno"},
 		},
 	}
 

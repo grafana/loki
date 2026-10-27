@@ -317,7 +317,7 @@ func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 //
 // It returns nil when no such filter exists or when the filters keep every line.
 func (m MultiStageExpr) PushableLineFilters() (log.Filterer, error) {
-	pushable, _, err := m.splitPushableStages()
+	pushable, _, err := m.splitPushableLineFilterStages()
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +341,7 @@ func (m MultiStageExpr) PushableLineFilters() (log.Filterer, error) {
 // can modify the line. It also removes a filter that keeps every line, which PushableLineFilters
 // leaves out of its result.
 func (m MultiStageExpr) WithoutPushableLineFilters() (MultiStageExpr, error) {
-	_, rest, err := m.splitPushableStages()
+	_, rest, err := m.splitPushableLineFilterStages()
 	return rest, err
 }
 
@@ -387,9 +387,9 @@ func WithoutPushableLineFilters(expr SampleExpr) (SampleExpr, error) {
 	return clone, nil
 }
 
-// splitPushableStages splits m at the first stage that can modify the line. It returns the line
-// filter stages before that stage, and the remaining stages of m without them.
-func (m MultiStageExpr) splitPushableStages() (pushable []*LineFilterExpr, rest MultiStageExpr, err error) {
+// splitPushableLineFilterStages splits m at the first stage that can modify the line. It returns
+// the line filter stages before that stage, and the remaining stages of m without them.
+func (m MultiStageExpr) splitPushableLineFilterStages() (pushable []*LineFilterExpr, rest MultiStageExpr, err error) {
 	var (
 		allLineFilters     []*LineFilterExpr
 		chainedLineFilters = map[*LineFilterExpr]struct{}{}
@@ -425,6 +425,70 @@ func (m MultiStageExpr) splitPushableStages() (pushable []*LineFilterExpr, rest 
 		}
 	}
 	return pushable, rest, nil
+}
+
+// PushableLabelFilters returns the label filters that are safe to push down to the storage layer,
+// because they run before any stage that can change a label, such as a parser, and neither read
+// nor set an error.
+//
+// It returns nil when no such filter exists.
+func (m MultiStageExpr) PushableLabelFilters() ([]log.LabelFilterer, error) {
+	// pushableFilter returns the part of f that neither sets nor reads the error label, or nil when
+	// nothing is left. A label filter can modify labels only by setting the error label.
+	//
+	// A row that fails one side of an and also fails the and, so the other side alone is safe.
+	// An or passes a row that either side passes, so an or with one unsafe side is dropped whole.
+	var pushableFilter func(f log.LabelFilterer) log.LabelFilterer
+	pushableFilter = func(f log.LabelFilterer) log.LabelFilterer {
+		hints := f.Hints()
+		if !hints.CanModifyLabels && !hints.ReadsErrorLabel {
+			return f
+		}
+
+		binary, ok := f.(*log.BinaryLabelFilter)
+		if !ok || !binary.And {
+			return nil
+		}
+
+		left := pushableFilter(binary.Left)
+		right := pushableFilter(binary.Right)
+		switch {
+		case left == nil:
+			return right
+		case right == nil:
+			return left
+		default:
+			return log.NewAndLabelFilter(left, right)
+		}
+	}
+
+	var filters []log.LabelFilterer
+
+	for _, e := range m {
+		if _, ok := e.(*LineFilterExpr); ok {
+			continue
+		}
+
+		s, err := e.Stage()
+		if err != nil {
+			return nil, logqlmodel.NewStageError(e.String(), err)
+		}
+
+		if f, ok := e.(*LabelFilterExpr); ok {
+			// A label filter writes at most the error label, so it does not end the list. The
+			// filters after it still read the stored labels.
+			if kept := pushableFilter(f.LabelFilterer); kept != nil {
+				filters = append(filters, kept)
+			}
+			continue
+		}
+
+		// A stage that can change a label ends the list. Later filters read the changed labels.
+		if s.Hints().CanModifyLabels {
+			break
+		}
+	}
+	return filters, nil
 }
 
 func (m MultiStageExpr) String() string {
@@ -684,9 +748,10 @@ func (e *LineFilterExpr) hasFilter() bool {
 	if e == nil {
 		return false
 	}
-	// Empty matchers match everything. An empty or branch does not make its
-	// group match everything, because building the or filter drops it.
-	if (e.Ty != log.LineMatchEqual && e.Ty != log.LineMatchRegexp) || e.Match != "" {
+	// Filters that build to log.TrueFilter, such as |= "" and |~ ".*",
+	// match everything. Such an or branch does not make its group match
+	// everything, because building the or filter drops it.
+	if f, err := newLineFilterer(e.LineFilter); err != nil || f != log.TrueFilter {
 		return true
 	}
 	return e.Left.hasFilter() || e.Or.hasFilter()
@@ -1356,16 +1421,16 @@ func (r *LogRangeExpr) Accept(v RootVisitor) {
 	v.VisitLogRange(r)
 }
 
-// HasUnwrapPostFilterOnErrorLabel reports whether the unwrap carries a post filter that reads
-// __error__ or __error_details__.
+// HasUnwrapPostFilterOnErrorLabel reports whether a post filter of the unwrap depends on the error
+// of the line.
 func (r *LogRangeExpr) HasUnwrapPostFilterOnErrorLabel() bool {
 	if r.Unwrap == nil {
 		return false
 	}
 
 	for _, f := range r.Unwrap.PostFilters {
-		// ReadsErrorLabel is true for any filter that touches __error__ or __error_details__,
-		// whether it asks to keep or to drop the errored lines.
+		// ReadsErrorLabel is true for any filter that depends on the error of the line, whether it
+		// asks to keep or to drop the errored lines.
 		if f.Hints().ReadsErrorLabel {
 			return true
 		}

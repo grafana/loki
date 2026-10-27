@@ -24,7 +24,6 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -512,14 +511,13 @@ func TestDoIndexMerge_CompactedIndexCloseErrorPropagates(t *testing.T) {
 	require.ErrorContains(t, err, "scratch remove failed")
 }
 
-// [REDACTED] tests that the executor correctly
-// skips legacy section types (streams, pointers) while processing a source object
-// that contains all four section types: streams, pointers, stats, and postings.
+// TestExecuteIndexMerge_SkipsLegacySections tests that the executor skips a
+// legacy streams section while it processes a source object that holds
+// streams, stats, and postings sections.
 func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 
-	// Build a source object with all four section types: streams, pointers, stats, postings.
 	srcPath := "source/index-legacy.dat"
 	buildSourceWithLegacySections(t, bucket, "tenant-1", srcPath)
 
@@ -538,7 +536,7 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 	// Run the executor.
 	execCtx := newTestExecutorContext(t, bucket)
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
-	require.NoError(t, err, "merge should succeed despite legacy sections")
+	require.NoError(t, err, "merge should succeed despite a legacy streams section")
 
 	// Verify the output exists.
 	require.NoError(t, artifacts.Validate())
@@ -559,9 +557,8 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 		if stats.CheckSection(sec) {
 			sawStats = true
 		}
+		require.False(t, streams.CheckSection(sec), "output must not hold a streams section")
 	}
-
-	// Legacy sections (streams, pointers) are not passed through the merger.
 
 	require.True(t, sawPostings, "output must contain a postings section")
 	require.True(t, sawStats, "output must contain a stats section")
@@ -574,10 +571,9 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 	require.NotEmpty(t, statsRows, "output stats section should have rows")
 }
 
-// buildSourceWithLegacySections builds a dataobj containing streams, pointers,
-// stats, and postings sections (all four section types), then uploads it.
-// This simulates an index object from before the index builder stopped
-// writing pointers sections.
+// buildSourceWithLegacySections builds a dataobj containing streams, stats,
+// and postings sections, then uploads it. This simulates an index object that
+// still holds a legacy streams section.
 func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
 	ctx := context.Background()
@@ -585,11 +581,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 
 	streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 2048, 10000, streams.DefaultShardLayout())
 	streamsBuilder.SetTenant(tenant)
-	streamID := streamsBuilder.Record(labels.New(labels.Label{Name: "service", Value: "api"}), ts, 1000)
-
-	pointersBuilder := pointers.NewBuilder(nil, 2048, 10000)
-	pointersBuilder.SetTenant(tenant)
-	pointersBuilder.ObserveStream("log-A", 0, 1, streamID, ts, 100)
+	streamsBuilder.Record(labels.New(labels.Label{Name: "service", Value: "api"}), ts, 1000)
 
 	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000), streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}))
 	statsBuilder.SetTenant(tenant)
@@ -620,7 +612,6 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 
 	objBuilder := dataobj.NewBuilder(nil)
 	require.NoError(t, objBuilder.Append(streamsBuilder))
-	require.NoError(t, objBuilder.Append(pointersBuilder))
 	require.NoError(t, objBuilder.Append(statsBuilder))
 	require.NoError(t, objBuilder.Append(postingsBuilder))
 
@@ -709,7 +700,7 @@ func uploadObjectToBucket(ctx context.Context, bucket objstore.Bucket, path stri
 // newTestExecutorContext constructs a minimal *Context wired with the bucket,
 // an in-memory scratch store, a default indexobj BuilderBaseConfig, and a
 // no-op logger.
-func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
+func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 	t.Helper()
 
 	testBuilderCfg := logsobj.BuilderBaseConfig{

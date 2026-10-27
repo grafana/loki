@@ -269,25 +269,33 @@ func TestStreamSelector_SectionAmbiguousNames(t *testing.T) {
 			want:  []string{"provider"},
 		},
 		{
-			name:  "reports a stream label named by a regex predicate",
+			name:  "ignores a regex predicate on a stream label",
 			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*")},
-			want:  []string{"provider"},
+			want:  nil,
 		},
 		{
-			name:  "reports a stream label named by a not-equal predicate",
+			name:  "ignores a not-equal predicate on a stream label",
 			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchNotEqual, "provider", "other")},
-			want:  []string{"provider"},
+			want:  nil,
 		},
 		{
-			name: "reports a name once when several predicates share it",
+			name: "ignores several non-equality predicates that share a name",
 			preds: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*"),
 				labels.MustNewMatcher(labels.MatchNotRegexp, "provider", "oth.*"),
 			},
+			want: nil,
+		},
+		{
+			name: "reports only the equality name when a regex predicate names another stream label",
+			preds: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "provider", "idology"),
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "w.*"),
+			},
 			want: []string{"provider"},
 		},
 		{
-			name: "reports a name once when equality and regex predicates share it",
+			name: "ignores a regex predicate that shares a name with an equality predicate",
 			preds: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "provider", "idology"),
 				labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*"),
@@ -296,11 +304,11 @@ func TestStreamSelector_SectionAmbiguousNames(t *testing.T) {
 		},
 		{
 			name:  "ignores nil predicates",
-			preds: []*labels.Matcher{nil, labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*")},
+			preds: []*labels.Matcher{nil, labels.MustNewMatcher(labels.MatchEqual, "provider", "idology")},
 			want:  []string{"provider"},
 		},
 		{
-			name:  "reports nothing for a name that is not a stream label",
+			name:  "ignores a regex predicate on a name that is not a stream label",
 			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "trace_id", "a.*")},
 			want:  nil,
 		},
