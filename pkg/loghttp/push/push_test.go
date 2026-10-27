@@ -955,3 +955,21 @@ func TestRequestParser_StreamLabelsExceed16MB(t *testing.T) {
 		})
 	})
 }
+
+func TestParseLokiRequestWithBooleanStreamLabel(t *testing.T) {
+	body := `{"streams": [{"stream": {"namespace": "hey", "has_errors": true}, "values": [["1570818238000000000", "fizzbuzz"]]}]}`
+	request := httptest.NewRequest("POST", "/loki/api/v1/push", strings.NewReader(body))
+	request.Header.Add("Content-Type", "application/json")
+	limits := &fakeLimits{}
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", limits)
+	data, _, err := ParseLokiRequest("fake", request, limits, nil, 100<<20, 100<<20, tracker, streamResolver, util_log.Logger)
+	require.NoError(t, err)
+	require.Len(t, data.Streams, 1)
+	require.Equal(
+		labels.FromStrings("namespace", "hey", "has_errors", "true").String(),
+		data.Streams[0].Labels,
+	)
+	require.Len(t, data.Streams[0].Entries, 1)
+	require.Equal(t, "fizzbuzz", data.Streams[0].Entries[0].Line)
+}
