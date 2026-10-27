@@ -45,7 +45,7 @@ var (
 	logfmtLine = []byte(`ts=2021-02-02T14:35:05.983992774Z caller=spanlogger.go:79 org_id=3677 traceID=2e5c7234b8640997 Ingester.TotalReached=15 Ingester.TotalChunksMatched=0 Ingester.TotalBatches=0`)
 )
 
-func Test_ParserHints(t *testing.T) {
+func TestStreamSampleExtractor_Process(t *testing.T) {
 	lbs := labels.FromStrings("app", "nginx", "cluster", "us-central-west")
 
 	t.Parallel()
@@ -155,6 +155,41 @@ func Test_ParserHints(t *testing.T) {
 			"{Ingester_TotalBatches=\"0\", Ingester_TotalChunksMatched=\"0\", caller=\"spanlogger.go:79\", traceID=\"2e5c7234b8640997\", ts=\"2021-02-02T14:35:05.983992774Z\"}",
 		},
 		{
+			`sum(rate({app="nginx"} | regexp "org_id=(?P<org>\\d+)" [1m]))`,
+			logfmtLine,
+			true,
+			1.0,
+			"{}",
+		},
+		{
+			`sum by (org)(rate({app="nginx"} | regexp "org_id=(?P<org>\\d+)" [1m]))`,
+			logfmtLine,
+			true,
+			1.0,
+			`{org="3677"}`,
+		},
+		{
+			`sum(rate({app="nginx"} | regexp "org_id=(?P<org>\\d+)" | org="3677" [1m]))`,
+			logfmtLine,
+			true,
+			1.0,
+			"{}",
+		},
+		{
+			`sum(rate({app="nginx"} | regexp "org_id=(?P<org>\\d+)" | org="nope" [1m]))`,
+			logfmtLine,
+			false,
+			0,
+			"",
+		},
+		{
+			`sum(rate({app="nginx"} | regexp "nomatch=(?P<org>\\d+)" [1m]))`,
+			logfmtLine,
+			true,
+			1.0,
+			"{}",
+		},
+		{
 			`sum(rate({app="nginx"} | json | remote_user="foo" [1m]))`,
 			jsonLine,
 			true,
@@ -247,7 +282,11 @@ func Test_ParserHints(t *testing.T) {
 }
 
 func TestRecordingExtractedLabels(t *testing.T) {
-	p := log.NewParserHint([]string{"1", "2", "3"}, nil, false, true, "")
+	stages := log.Stages{log.NewLogfmtParser(false, false)}
+	for _, name := range []string{"1", "2", "3"} {
+		stages = append(stages, log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, name, "")))
+	}
+	p := log.NewParserHint(stages, nil, false, true, "")
 	p.RecordExtracted("1")
 	p.RecordExtracted("2")
 

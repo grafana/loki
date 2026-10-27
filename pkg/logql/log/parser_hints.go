@@ -126,8 +126,10 @@ func (p *ParserHints) Reset() {
 	clear(p.extracted)
 }
 
-// NewParserHint creates a new set of extraction hints using the list of labels that are seen and required in a query.
-func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *ParserHints {
+// NewParserHint creates the hints that tell the parsers of a query which labels to extract. They
+// name the labels that later stages read, the grouping labels and the metric label.
+func NewParserHint(stages Stages, groups []string, without, noLabels bool, metricLabelName string) *ParserHints {
+	requiredLabelNames := stages.RequiredLabelNamesForParsers()
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)
