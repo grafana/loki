@@ -26,7 +26,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -151,37 +150,39 @@ func dedupeStringSlice(s []string) []string {
 	return result
 }
 
-// NewSectionDescriptor creates a new section descriptor with the given pointer and labels.
-func NewSectionDescriptor(pointer pointers.SectionPointer, ambiguousLabelNames []string) *DataobjSectionDescriptor {
-	deduped := dedupeStringSlice(ambiguousLabelNames)
+// newSectionDescriptor creates a section descriptor from the given row. It
+// removes duplicate ambiguous names.
+func newSectionDescriptor(row resolvedRow) *DataobjSectionDescriptor {
+	deduped := dedupeStringSlice(row.ambiguousNames)
 	obj := &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
-			ObjectPath: pointer.Path,
-			SectionIdx: pointer.Section,
+			ObjectPath: row.objectPath,
+			SectionIdx: row.sectionIndex,
 		},
-		StreamIDs:           []int64{pointer.StreamIDRef},
-		RowCount:            int(pointer.LineCount),
-		Size:                pointer.UncompressedSize,
-		Start:               pointer.StartTs,
-		End:                 pointer.EndTs,
+		StreamIDs:           []int64{row.streamID},
+		RowCount:            int(row.rowCount),
+		Size:                row.uncompressedSize,
+		Start:               time.Unix(0, row.minTimestamp),
+		End:                 time.Unix(0, row.maxTimestamp),
 		AmbiguousPredicates: deduped,
 	}
 	return obj
 }
 
-// Merge merges the given pointer and labels into an existing section's descriptor.
-func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls []string) {
-	d.StreamIDs = append(d.StreamIDs, pointer.StreamIDRef)
-	d.RowCount += int(pointer.LineCount)
-	d.Size += pointer.UncompressedSize
-	if pointer.StartTs.Before(d.Start) {
-		d.Start = pointer.StartTs
+// merge adds row to d. It appends the stream ID, sums the row count and size,
+// widens the time range, and adds the ambiguous names that d lacks.
+func (d *DataobjSectionDescriptor) merge(row resolvedRow) {
+	d.StreamIDs = append(d.StreamIDs, row.streamID)
+	d.RowCount += int(row.rowCount)
+	d.Size += row.uncompressedSize
+	if start := time.Unix(0, row.minTimestamp); start.Before(d.Start) {
+		d.Start = start
 	}
-	if pointer.EndTs.After(d.End) {
-		d.End = pointer.EndTs
+	if end := time.Unix(0, row.maxTimestamp); end.After(d.End) {
+		d.End = end
 	}
 
-	for _, lbl := range lbls {
+	for _, lbl := range row.ambiguousNames {
 		if !slices.Contains(d.AmbiguousPredicates, lbl) {
 			d.AmbiguousPredicates = append(d.AmbiguousPredicates, lbl)
 		}
@@ -722,6 +723,9 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	return resp, nil
 }
 
+// CollectSections reads every batch from req.Reader and merges the rows into
+// one descriptor per section. It returns an error when a non-empty batch is not
+// in postingsResultSchema.
 func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectionsRequest) (CollectSectionsResponse, error) {
 	objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
 
@@ -765,33 +769,19 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 }
 
 func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor) error {
-	numRows := int(rec.NumRows())
-	buf := make([]pointers.SectionPointer, numRows)
-	num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSection)
+	rows, err := resolvedRowsFromRecordBatch(rec)
 	if err != nil {
-		return fmt.Errorf("convert arrow record to section pointers: %w", err)
+		return fmt.Errorf("decode resolved rows: %w", err)
 	}
 
-	labelsColumn := pointers.InternalLabelsColumn(rec)
-	if labelsColumn == nil {
-		return fmt.Errorf("internal labels column not found")
-	}
-
-	for i := range num {
-		ptr := buf[i]
-		key := SectionKey{ObjectPath: ptr.Path, SectionIdx: ptr.Section}
-
-		var ambiguousLabels []string
-		if !labelsColumn.IsNull(i) {
-			ambiguousLabels = strings.Split(labelsColumn.Value(i), ",")
-		}
-
+	for _, row := range rows {
+		key := SectionKey{ObjectPath: row.objectPath, SectionIdx: row.sectionIndex}
 		existing, ok := result[key]
 		if !ok {
-			result[key] = NewSectionDescriptor(ptr, ambiguousLabels)
+			result[key] = newSectionDescriptor(row)
 			continue
 		}
-		existing.Merge(ptr, ambiguousLabels)
+		existing.merge(row)
 	}
 	return nil
 }

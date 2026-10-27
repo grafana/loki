@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -1410,32 +1409,59 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	}
 }
 
-// TestDataobjSectionDescriptorMerge_NilLabels verifies that merging labels into
-// a descriptor created with no ambiguous labels unions them in cleanly.
-func TestDataobjSectionDescriptorMerge_NilLabels(t *testing.T) {
-	ptr1 := pointers.SectionPointer{
-		Path:        "test-path",
-		Section:     0,
-		StreamIDRef: 1,
-		StartTs:     now.Add(-2 * time.Hour),
-		EndTs:       now.Add(-1 * time.Hour),
-		LineCount:   10,
-	}
-	ptr2 := pointers.SectionPointer{
-		Path:        "test-path",
-		Section:     0,
-		StreamIDRef: 2,
-		StartTs:     now.Add(-3 * time.Hour),
-		EndTs:       now,
-		LineCount:   5,
-	}
+func TestNewSectionDescriptor(t *testing.T) {
+	t.Run("copies every field of the row and removes duplicate ambiguous names", func(t *testing.T) {
+		start, end := now.Add(-2*time.Hour), now.Add(-1*time.Hour)
 
-	// Create descriptor with no ambiguous labels.
-	desc := NewSectionDescriptor(ptr1, nil)
+		desc := newSectionDescriptor(resolvedRow{
+			objectPath:       "test-path",
+			sectionIndex:     3,
+			streamID:         7,
+			minTimestamp:     start.UnixNano(),
+			maxTimestamp:     end.UnixNano(),
+			rowCount:         10,
+			uncompressedSize: 250,
+			ambiguousNames:   []string{"a", "a", "b"},
+		})
 
-	desc.Merge(ptr2, []string{"env"})
+		require.Equal(t, SectionKey{ObjectPath: "test-path", SectionIdx: 3}, desc.SectionKey)
+		require.Equal(t, []int64{7}, desc.StreamIDs)
+		require.Equal(t, 10, desc.RowCount)
+		require.Equal(t, int64(250), desc.Size)
+		require.Equal(t, start.UnixNano(), desc.Start.UnixNano())
+		require.Equal(t, end.UnixNano(), desc.End.UnixNano())
+		require.Equal(t, []string{"a", "b"}, desc.AmbiguousPredicates)
+	})
+}
 
-	require.ElementsMatch(t, []string{"env"}, desc.AmbiguousPredicates)
+func TestDataobjSectionDescriptor_Merge(t *testing.T) {
+	t.Run("keeps the time range when the merged row lies inside it", func(t *testing.T) {
+		desc := newSectionDescriptor(resolvedRow{streamID: 1, minTimestamp: 100, maxTimestamp: 400, rowCount: 10, uncompressedSize: 100})
+
+		desc.merge(resolvedRow{streamID: 2, minTimestamp: 200, maxTimestamp: 300, rowCount: 5, uncompressedSize: 50})
+
+		require.Equal(t, int64(100), desc.Start.UnixNano())
+		require.Equal(t, int64(400), desc.End.UnixNano())
+		require.Equal(t, []int64{1, 2}, desc.StreamIDs)
+		require.Equal(t, 15, desc.RowCount)
+		require.Equal(t, int64(150), desc.Size)
+	})
+
+	t.Run("adds the ambiguous names of the row when the descriptor has none", func(t *testing.T) {
+		desc := newSectionDescriptor(resolvedRow{streamID: 1})
+
+		desc.merge(resolvedRow{streamID: 2, ambiguousNames: []string{"env"}})
+
+		require.Equal(t, []string{"env"}, desc.AmbiguousPredicates)
+	})
+
+	t.Run("adds only the ambiguous names that the descriptor lacks", func(t *testing.T) {
+		desc := newSectionDescriptor(resolvedRow{ambiguousNames: []string{"a", "b"}})
+
+		desc.merge(resolvedRow{ambiguousNames: []string{"b", "c"}})
+
+		require.Equal(t, []string{"a", "b", "c"}, desc.AmbiguousPredicates)
+	})
 }
 
 func newTestDataBuilder(t testing.TB) *testDataBuilder {
