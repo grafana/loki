@@ -717,9 +717,10 @@ func (s *Service) queryMetrics(
 
 		switch hq.queryType {
 		case hintQueryTypeMetricRange:
-			resp, err = c.client.QueryRange(hq.query, 0, start, end, logproto.BACKWARD, hq.step(), 0, true)
+			// The query API rejects limit 0. Metric execution does not apply this line cap.
+			resp, err = c.client.QueryRange(hq.query, s.cfg.LogQueryLimit, start, end, logproto.BACKWARD, hq.step(), 0, true)
 		case hintQueryTypeMetricInstant:
-			resp, err = c.client.Query(hq.query, 0, end, logproto.BACKWARD, true)
+			resp, err = c.client.Query(hq.query, s.cfg.LogQueryLimit, end, logproto.BACKWARD, true)
 		default:
 			return nil, "", false, fmt.Errorf("not a metric query type: %q", hq.queryType)
 		}
@@ -742,7 +743,7 @@ func (s *Service) queryMetrics(
 }
 
 // seriesLimitTruncated reports whether Loki stopped a metric query at max_query_series.
-// The metric fetch uses limit 0, so the log line cap does not apply.
+// The request limit only satisfies the query API. The metric engine does not use it as a line cap.
 func seriesLimitTruncated(warnings []string) bool {
 	for _, w := range warnings {
 		if strings.Contains(w, "maximum number of series") && strings.Contains(w, "returning partial results") {
