@@ -1375,8 +1375,8 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 	return response, nil
 }
 
-// setQueryBytesProcessedHeader uses the final response statistics. A header from
-// a child response can be stale after splitting, sharding or cache aggregation.
+// setQueryBytesProcessedHeader sets the httpreq.LokiQueryBytesProcessedHeader header from the response's processed-byte
+// statistic, replacing any stale value from a child response.
 func setQueryBytesProcessedHeader(headers http.Header, response queryrangebase.Response) {
 	headers.Del(httpreq.LokiQueryBytesProcessedHeader)
 	var usage *stats.Result

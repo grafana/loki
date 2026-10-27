@@ -3361,14 +3361,23 @@ func usageHeaderResponse(kind string, n int64) queryrangebase.Response {
 }
 
 func TestQueryUsageHeaderEncodings(t *testing.T) {
-	for _, kind := range []string{"logs", "vector", "matrix"} {
+	for _, tc := range []struct {
+		kind      string
+		path      string
+		encodings []string
+	}{
+		{"logs", "/loki/api/v1/query_range", []string{JSONType, ProtobufType, ParquetType}},
+		{"vector", "/loki/api/v1/query", []string{JSONType, ProtobufType, ParquetType}},
+		{"matrix", "/loki/api/v1/query_range", []string{JSONType, ProtobufType, ParquetType}},
+		{"fields", "/loki/api/v1/detected_fields", []string{JSONType, ProtobufType}},
+	} {
 		// Zero covers a response with no newly scanned bytes, including cache hits.
 		// Values above 2^53 must retain integer precision in the header.
 		for _, n := range []int64{0, 9007199254740993} {
-			for _, accept := range []string{JSONType, ProtobufType, ParquetType} {
-				t.Run(fmt.Sprintf("%s/%d/%s", kind, n, accept), func(t *testing.T) {
-					response := usageHeaderResponse(kind, n)
-					req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range", nil)
+			for _, accept := range tc.encodings {
+				t.Run(fmt.Sprintf("%s/%d/%s", tc.kind, n, accept), func(t *testing.T) {
+					response := usageHeaderResponse(tc.kind, n)
+					req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 					req.Header.Set("Accept", accept)
 					ctx := user.InjectOrgID(context.Background(), "test")
 
@@ -3379,28 +3388,6 @@ func TestQueryUsageHeaderEncodings(t *testing.T) {
 					require.Equal(t, strings.ToLower(accept), strings.ToLower(actual.Header.Get("Content-Type")))
 				})
 			}
-		}
-	}
-}
-
-func TestDetectedFieldsUsageHeader(t *testing.T) {
-	for _, n := range []int64{0, 9007199254740993} {
-		for _, accept := range []string{JSONType, ProtobufType} {
-			t.Run(fmt.Sprintf("%d/%s", n, accept), func(t *testing.T) {
-				response := usageHeaderResponse("fields", n)
-				request := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_fields", nil)
-				request.Header.Set("Accept", accept)
-
-				encoded, err := DefaultCodec.EncodeResponse(context.Background(), request, response)
-				require.NoError(t, err)
-				defer encoded.Body.Close()
-				require.Equal(t, strconv.FormatInt(n, 10), encoded.Header.Get(httpreq.LokiQueryBytesProcessedHeader))
-
-				// The response body and usage header must report the same processed byte count.
-				decoded, err := DefaultCodec.DecodeResponse(context.Background(), encoded, &DetectedFieldsRequest{})
-				require.NoError(t, err)
-				require.Equal(t, n, decoded.(*DetectedFieldsResponse).Statistics.Summary.TotalBytesProcessed, "body and header must report the same usage")
-			})
 		}
 	}
 }
