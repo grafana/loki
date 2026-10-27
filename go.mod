@@ -461,7 +461,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
-	github.com/shopspring/decimal v1.4.0 // indirect
+	github.com/shopspring/decimal v1.6.0 // indirect
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect

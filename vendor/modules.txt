@@ -1975,7 +1975,7 @@ github.com/shirou/gopsutil/v4/internal/common
 github.com/shirou/gopsutil/v4/mem
 github.com/shirou/gopsutil/v4/net
 github.com/shirou/gopsutil/v4/process
-# github.com/shopspring/decimal v1.4.0
+# github.com/shopspring/decimal v1.6.0
 ## explicit; go 1.10
 github.com/shopspring/decimal
 # github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
