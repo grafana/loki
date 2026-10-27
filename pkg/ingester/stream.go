@@ -65,6 +65,11 @@ type stream struct {
 	// of accepted writes and for chunk synchronization.
 	highestTs time.Time
 
+	// lastPushAt is the wall clock time of the last push that stored entries,
+	// excluding WAL replays. It is zero for a stream that has only been
+	// replayed. Guarded by chunkMtx.
+	lastPushAt time.Time
+
 	metrics *ingesterMetrics
 
 	tailers   map[uint32]*tailer
@@ -219,6 +224,9 @@ func (s *stream) Push(
 
 	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format)
 	s.recordAndSendToTailers(record, storedEntries)
+	if !isReplay && len(storedEntries) > 0 {
+		s.lastPushAt = time.Now()
+	}
 
 	if len(s.chunks) != prevNumChunks {
 		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))

@@ -3,10 +3,12 @@ package limits
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -54,7 +56,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		s.clock = clock
-		c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1", DefaultRemovalRecordSlack,
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
@@ -106,7 +108,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		s.clock = clock
-		c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1", DefaultRemovalRecordSlack,
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
@@ -159,7 +161,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		streamShards, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, "zone1", true, &mockLimits{}, reg)
 		require.NoError(t, err)
 		streamShards.clock = clock
-		c := newConsumer(&kafka, m, usage, streamShards, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafka, m, usage, streamShards, newOffsetReadinessCheck(m), "zone1", DefaultRemovalRecordSlack,
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(context.Background()))
 		require.Equal(t, 1, countTrackedStreams(streamShards))
@@ -234,7 +236,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 	require.NoError(t, err)
 	s.clock = clock
-	c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1",
+	c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1", DefaultRemovalRecordSlack,
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
 	ctx := context.Background()
@@ -263,4 +265,102 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 		n++
 	}
 	require.Equal(t, 2, n)
+}
+
+func TestConsumer_RemovalRecords(t *testing.T) {
+	tests := []struct {
+		name string
+		// The zone of the removal record.
+		zone string
+		// The state of the partition when the removal record is consumed.
+		state partitionState
+		// How long after the removal the stream was last seen.
+		lastSeenAfterRemoval time.Duration
+		expectedStreams      int
+		expectedRemoved      float64
+	}{{
+		name:            "stream is deleted in a ready partition",
+		zone:            removalRecordZone,
+		state:           partitionReady,
+		expectedStreams: 0,
+		expectedRemoved: 1,
+	}, {
+		name:            "stream is deleted in a replaying partition",
+		zone:            removalRecordZone,
+		state:           partitionReplaying,
+		expectedStreams: 0,
+		expectedRemoved: 1,
+	}, {
+		// Removal records are applied whatever their zone, so an ingester
+		// that shares a zone name with this instance is not discarded as
+		// one of our own records.
+		name:            "stream is deleted when the record has our zone",
+		zone:            "zone1",
+		state:           partitionReady,
+		expectedStreams: 0,
+		expectedRemoved: 1,
+	}, {
+		name:                 "stream seen after the removal is kept",
+		zone:                 removalRecordZone,
+		state:                partitionReady,
+		lastSeenAfterRemoval: DefaultRemovalRecordSlack + time.Second,
+		expectedStreams:      1,
+		expectedRemoved:      0,
+	}}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			clock := quartz.NewMock(t)
+			removedLastSeenAt := clock.Now()
+			rec := proto.StreamMetadataRecord{
+				Zone:              test.zone,
+				Tenant:            "tenant",
+				Metadata:          &proto.StreamMetadata{StreamHash: 0x1},
+				RemovedLastSeenAt: removedLastSeenAt.UnixNano(),
+			}
+			b, err := rec.Marshal()
+			require.NoError(t, err)
+			kafka := mockKafka{
+				fetches: []kgo.Fetches{{{
+					Topics: []kgo.FetchTopic{{
+						Topic: "test",
+						Partitions: []kgo.FetchPartition{{
+							Partition: 1,
+							Records: []*kgo.Record{{
+								Key:       []byte("tenant"),
+								Value:     b,
+								Timestamp: clock.Now(),
+							}},
+						}},
+					}},
+				}}},
+			}
+			reg := prometheus.NewRegistry()
+			m, err := newPartitionManager(reg)
+			require.NoError(t, err)
+			m.Assign([]int32{1})
+			if test.state == partitionReady {
+				m.SetReady(1)
+			} else {
+				m.SetReplaying(1, 1000)
+			}
+			s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
+			require.NoError(t, err)
+			s.clock = clock
+			s.setForTests("tenant", streamUsage{
+				hash:       0x1,
+				lastSeenAt: removedLastSeenAt.Add(test.lastSeenAfterRemoval).UnixNano(),
+			})
+			c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1", DefaultRemovalRecordSlack,
+				log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, c.pollFetches(context.Background()))
+			var n int
+			for range s.ActiveStreams() {
+				n++
+			}
+			require.Equal(t, test.expectedStreams, n)
+			require.Equal(t, test.expectedRemoved, testutil.ToFloat64(c.streamsRemoved))
+			// A removal record is valid even though it has no other fields.
+			require.Equal(t, float64(0), testutil.ToFloat64(c.recordsInvalid))
+		})
+	}
 }
