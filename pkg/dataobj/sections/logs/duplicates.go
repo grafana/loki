@@ -32,17 +32,17 @@ type trackedRecord struct {
 	metadata labels.Labels
 }
 
-// Observe counts rec if it is a duplicate, and reports whether it is. A record
+// IsDuplicate counts rec if it is a duplicate, and reports whether it is. A record
 // is a duplicate if an earlier record has the same stream, timestamp, line,
 // and metadata.
 //
-// Observe keeps references to rec.Line and rec.Metadata until the group
+// IsDuplicate keeps references to rec.Line and rec.Metadata until the group
 // changes. The caller must not modify them afterwards.
 //
-// Observe compares each record against every distinct record in its group.
+// IsDuplicate compares each record against every distinct record in its group.
 // The cost is quadratic in the group size, but each comparison is one uint64
 // compare unless the line hashes match.
-func (c *DuplicateCounter) Observe(rec Record) bool {
+func (c *DuplicateCounter) IsDuplicate(rec Record) bool {
 	if !c.inCurrentGroup(rec) {
 		c.startGroup(rec)
 	}

@@ -109,7 +109,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 			inputBytesBatch = 0
 			count = 0
 		}
-		dups.Observe(rec)
+		_ = dups.IsDuplicate(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}

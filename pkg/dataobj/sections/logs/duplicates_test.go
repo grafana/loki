@@ -87,7 +87,7 @@ func TestDuplicateCounter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var counter DuplicateCounter
 			for _, rec := range tt.records {
-				counter.Observe(rec)
+				counter.IsDuplicate(rec)
 			}
 			require.Equal(t, tt.wantDuplicates, counter.Duplicates())
 		})

@@ -28,7 +28,7 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 	var duplicates DuplicateCounter
 	row := 0
 	for _, record := range records {
-		if dropDuplicates && duplicates.Observe(record) {
+		if dropDuplicates && duplicates.IsDuplicate(record) {
 			continue
 		}
 
