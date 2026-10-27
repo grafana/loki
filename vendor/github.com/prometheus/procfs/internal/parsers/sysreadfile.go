@@ -12,10 +12,8 @@
 // limitations under the License.
 
 //go:build (linux || darwin) && !appengine
-// +build linux darwin
-// +build !appengine
 
-package util
+package parsers
 
 import (
 	"bytes"
