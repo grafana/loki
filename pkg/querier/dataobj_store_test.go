@@ -161,6 +161,13 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 			entry(t, 3, "blank", "level", ""),
 		},
 	}
+	packedStream := logproto.Stream{
+		Labels: `{app="k"}`,
+		Entries: []push.Entry{
+			entry(t, 1, `{"verb":"warn","_entry":"one"}`),
+			entry(t, 2, `{"verb":"info","_entry":"two"}`),
+		},
+	}
 
 	t.Run("a timestamp-first request is served by the chunk store", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
@@ -348,6 +355,179 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		require.Equal(t, []sampleRow{
 			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
 			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a metadata equality before a parser keeps only the matching rows and reads the other columns for them only", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="c"} | level="error" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+		require.EqualValues(t, 1, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("a metadata inequality before a parser keeps the rows that do not match, including those with no value", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="c"} | level!="error" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+		require.EqualValues(t, 2, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("a negated metadata regular expression before a parser keeps the rows that do not match, including those with no value", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="c"} | level!~"err.*" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+		require.EqualValues(t, 2, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("an or of metadata equalities before a parser keeps the rows that match either", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="c"} | level="error" or level="warn" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+		require.EqualValues(t, 2, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("a metadata equality after a numeric filter drops a row whose value does not convert without failing the query", func(t *testing.T) {
+		numericStream := logproto.Stream{
+			Labels: `{app="n"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "one", "level", "error", "status", "500"),
+				entry(t, 2, "two", "level", "warn", "status", "abc"),
+				entry(t, 3, "three", "level", "error", "status", "100"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{numericStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="n"} | status > 400 | level="error" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(numericStream.Labels)},
+		}, got)
+		require.EqualValues(t, 2, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("a metadata equality before a line_format keeps only the matching rows", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | level="warn" | line_format "{{.level}}" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a metadata equality before a label_format keeps only the matching rows", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="c"} | level="warn" | label_format verb=level [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a metadata equality before a drop keeps only the matching rows", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | level="error" | drop pod [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter on a stream label before a parser keeps every row of the stream", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | app="c" | logfmt [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a parser reads the parsed label that the stored metadata lacks", func(t *testing.T) {
+		parsedStream := logproto.Stream{
+			Labels: `{app="p"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "level=error"),
+				entry(t, 2, "level=warn"),
+				entry(t, 3, "other=1"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{parsedStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="p"} | logfmt | level="error" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(parsedStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a regexp stage reads the label that the stage creates", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="c"} | regexp "(?P<verb>.+)" | verb="warn" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a pattern stage reads the label that the stage creates", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="c"} | pattern "<verb>" | verb="warn" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after an unpack stage reads the label that the stage creates", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{packedStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="k"} | unpack | verb="warn" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(packedStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a label_format reads the label that the stage creates", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="c"} | label_format verb=level | verb="warn" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a drop reads the dropped label as absent", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="c"} | drop level | level="" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="c"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a keep reads the label that the stage removes as absent", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="c"} | keep app | level="" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="c"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
 		}, got)
 	})
 

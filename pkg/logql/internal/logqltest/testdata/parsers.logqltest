@@ -46,6 +46,19 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
 # logfmt() label-expression form resolves the same clashes the same way.
 eval instant at 60s count_over_time({app="a"} | logfmt sl, md, sm, tri [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+# A filter before the parser sees only the stream labels and the stored metadata.
+eval instant at 60s sum(count_over_time({app="a"} | md="m" | logfmt [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | md="m" | logfmt [1m])) # overlapping
+  {} 2 3
+eval instant at 60s sum(count_over_time({app="a"} | sl="s" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | sm_extracted="m" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | md_extracted="p" | logfmt [1m]))
+  expect empty
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | md_extracted="p" [1m]))
+  {} 3
 
 # logfmt() after `drop`: a dropped stream label does not clash with parsed keys.
 clear

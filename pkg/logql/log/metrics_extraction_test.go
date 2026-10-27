@@ -1118,6 +1118,16 @@ func TestBinaryLabelFilter_Hints(t *testing.T) {
 		require.True(t, NewAndLabelFilter(keeping, safe).Hints().KeepsErroredLines)
 		require.False(t, NewAndLabelFilter(dropping, safe).Hints().KeepsErroredLines)
 	})
+
+	t.Run("an ip filter reads the error label without keeping the errored lines, and a binary filter carries it", func(t *testing.T) {
+		ipFilter := NewIPLabelFilter("10.0.0.0/8", "addr", LabelFilterEqual)
+
+		require.True(t, ipFilter.Hints().ReadsErrorLabel)
+		require.False(t, ipFilter.Hints().KeepsErroredLines)
+		require.True(t, NewAndLabelFilter(safe, ipFilter).Hints().ReadsErrorLabel)
+		require.True(t, NewOrLabelFilter(ipFilter, safe).Hints().ReadsErrorLabel)
+		require.False(t, NewAndLabelFilter(safe, safe).Hints().ReadsErrorLabel)
+	})
 }
 
 func TestStages_KeepsErroredLines(t *testing.T) {

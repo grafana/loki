@@ -49,7 +49,11 @@ type SectionsRequest struct {
 	End   time.Time
 
 	// Matchers select the streams. A request needs at least one, or the resolution fails.
-	Matchers   []*labels.Matcher
+	Matchers []*labels.Matcher
+
+	// Predicates are matchers on a stream label name or a structured metadata key. The metastore
+	// may prune a section that holds no row with the value of an equality predicate. A predicate
+	// of any other type prunes no section.
 	Predicates []*labels.Matcher
 
 	// ShardBucketRange, when set, asks the metastore to leave the streams outside the range out

@@ -85,9 +85,9 @@ type DataobjSectionDescriptor struct {
 	Start     time.Time
 	End       time.Time
 
-	// AmbiguousPredicates are predicate names present both as a stream label in
-	// the section and in the LogQL query, and are therefore ambiguous. It is the
-	// deduped union across the section's streams.
+	// AmbiguousPredicates are the names of equality predicates present as a stream label in the
+	// section and as a label filter in the LogQL query, and are therefore ambiguous. Other
+	// predicate types report no name. It is the deduped union across the section's streams.
 	AmbiguousPredicates []string
 }
 

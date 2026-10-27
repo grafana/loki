@@ -122,6 +122,8 @@ func (f *IPLabelFilter) Hints() StageHints {
 	return StageHints{
 		// It only reads a label value to match against the IP pattern, never writing a label.
 		CanModifyLabels: false,
+		// It passes every line that already carries an error, whatever the value of its label.
+		ReadsErrorLabel: true,
 		CanModifyLine:   false,
 	}
 }
