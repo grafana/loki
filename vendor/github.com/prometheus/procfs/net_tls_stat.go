@@ -32,9 +32,9 @@ type TLSStat struct {
 	TLSCurrTxDevice int
 	// number of RX sessions currently installed where NIC handles cryptography
 	TLSCurrRxDevice int
-	//number of TX sessions opened with host cryptography
+	// number of TX sessions opened with host cryptography
 	TLSTxSw int
-	//number of RX sessions opened with host cryptography
+	// number of RX sessions opened with host cryptography
 	TLSRxSw int
 	// number of TX sessions opened with NIC cryptography
 	TLSTxDevice int
