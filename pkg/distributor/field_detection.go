@@ -41,9 +41,37 @@ var (
 
 	errKeyFound = errors.New("key found")
 
-	// Lookup tables for isLeftWordDelim and isRightWordDelim. Must be ASCII.
-	leftWordDelims  = delimTable(" \t\n[({\"'=|")
-	rightWordDelims = delimTable(" \t\n[](){}:,!\"'=|")
+	// Lookup tables for isLeftWordDelim and isRightWordDelim.
+	leftWordDelims = [256]bool{
+		' ':  true,
+		'\t': true,
+		'\n': true,
+		'[':  true,
+		'(':  true,
+		'{':  true,
+		'"':  true,
+		'\'': true,
+		'=':  true,
+		'|':  true,
+	}
+	rightWordDelims = [256]bool{
+		' ':  true,
+		'\t': true,
+		'\n': true,
+		'[':  true,
+		']':  true,
+		'(':  true,
+		')':  true,
+		'{':  true,
+		'}':  true,
+		':':  true,
+		',':  true,
+		'!':  true,
+		'"':  true,
+		'\'': true,
+		'=':  true,
+		'|':  true,
+	}
 )
 
 func allowedLabelsForLevel(allowedFields []string) []string {
@@ -370,28 +398,19 @@ func isJSON(line string) bool {
 	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
 }
 
-// delimTable creates a table for different delims.
-func delimTable(delims string) [256]bool {
-	var tmp [256]bool
-	for i := 0; i < len(delims); i++ {
-		tmp[delims[i]] = true
-	}
-	return tmp
-}
-
 // isLeftWordDelim checks the character to the left of a potential match.
 // Colons are excluded as these indicate a tuple such as misc:error where
 // the level is not a separate word.
-func isLeftWordDelim(c rune) bool {
-	return c >= 0 && c < rune(len(leftWordDelims)) && leftWordDelims[c]
+func isLeftWordDelim(c byte) bool {
+	return leftWordDelims[c]
 }
 
 // isRightWordDelim checks the character to the right of a potential match.
 // Colons are allowed here to support "level:" prefix patterns such as
 // "debug: message". Equals and quotes are allowed to match key=value and
 // key="value".
-func isRightWordDelim(c rune) bool {
-	return c >= 0 && c < rune(len(rightWordDelims)) && rightWordDelims[c]
+func isRightWordDelim(c byte) bool {
+	return rightWordDelims[c]
 }
 
 // hasPrefixWithDelim checks if s starts with prefix, ASCII case-insensitve,
@@ -407,7 +426,7 @@ func hasPrefixWithDelim(s, prefix string) bool {
 			return false
 		}
 	}
-	return len(s) == len(prefix) || isRightWordDelim(rune(s[len(prefix)]))
+	return len(s) == len(prefix) || isRightWordDelim(s[len(prefix)])
 }
 
 // detectLevelFromLogLine returns the first level in the log line.
@@ -415,7 +434,7 @@ func hasPrefixWithDelim(s, prefix string) bool {
 func detectLevelFromLogLine(s string) string {
 	for i := 0; i < len(s); i++ {
 		// A level must start the line or follow a left-word delimiter.
-		if i > 0 && !isLeftWordDelim(rune(s[i-1])) {
+		if i > 0 && !isLeftWordDelim(s[i-1]) {
 			continue
 		}
 		// In ASCII, an upper-case letter and its lower-case form differ in the
