@@ -21,7 +21,7 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
    - Coverage boundaries in `RangeCoversTimestamp` are inclusive on both start and end.
    - `verificationReport.Correct` requires zero false negatives and at least one result (`FalseNegatives == 0 && TotalResults > 0`) for both log and metric checks.
    - A metric check passes samples to `verifyMetricHints`. Only a sample with value greater than zero is scored. It is covered when any hint overlaps its lookback, and a miss records that whole lookback.
-   - `getReadRange` builds the hint-lookup window. A metric range query aligns onto a one-minute step, then widens by the `[5m]` lookback. An instant query collapses to the cycle end and only widens. A log selector does not widen. Index overlap, `ProvideHints`, and the ingester-window check use that window. The Loki query stays on the cycle start and end; a metric range query sends the one-minute step, and an instant query is evaluated at the end.
+   - `getReadRange` builds the hint-lookup window. A metric range query aligns onto a one-minute step, then widens by the `[5m]` lookback. An instant query collapses to the cycle end and widens by the cycle window. A log selector does not widen. Index overlap, `ProvideHints`, and the ingester-window check use that window. The Loki query stays on the cycle start and end; a metric range query sends the one-minute step, and an instant query is evaluated at the end.
    - Cycles pick among six hint-query shapes with equal weight: structured
      metadata label filter (`sm_label_filter`), stream label filter
      (`label_filter`), post-parser JSON (`json_label_filter`:
@@ -29,7 +29,7 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
      sampled line), line filter (`|= "needle"`), metric range (`metric_range`),
      and metric instant (`metric_instant`). The chosen path is
      tried first; on failure the cycle falls back to a line-filter needle.
-     A metric check wraps that line-filter needle as `sum(count_over_time(<needle> [5m]))`.
+     A metric range check wraps that line-filter needle as `sum(count_over_time(<needle> [5m]))`. An instant check uses the same shape with the cycle window as the lookback.
      JSON fields must be LogQL identifiers, long enough for n-grams,
      `IsVerbatimLineLiteral`, and a substring of the raw line. Keys that
      already exist as stream or SM labels are skipped (`| json` extracts
