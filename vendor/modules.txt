@@ -3225,8 +3225,8 @@ modernc.org/mathutil
 # modernc.org/memory v1.12.1
 ## explicit; go 1.23.0
 modernc.org/memory
-# modernc.org/sqlite v1.46.1
-## explicit; go 1.24.0
+# modernc.org/sqlite v1.61.0
+## explicit; go 1.26.0
 modernc.org/sqlite/lib
 # rsc.io/binaryregexp v0.2.0
 ## explicit; go 1.12
