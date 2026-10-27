@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -272,16 +271,11 @@ func TestDoIndexFilter(t *testing.T) {
 		require.ElementsMatch(t, wantStats, readAllStatsRowsFromBucket(t, bucket, artifact.Path))
 	})
 
-	t.Run("skips pointers and streams sections of the source index", func(t *testing.T) {
+	t.Run("skips streams sections of the source index", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
 		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
-
-		pointersBuilder := pointers.NewBuilder(nil, 0, 0)
-		pointersBuilder.SetTenant("acme")
-		pointersBuilder.ObserveStream("logs/a", 0, 1, 1, time.Unix(0, 1_000), 100)
-		require.NoError(t, objBuilder.Append(pointersBuilder))
 
 		streamsBuilder := streams.NewBuilder(nil, 8192, 0, streams.DefaultShardLayout())
 		streamsBuilder.SetTenant("acme")
@@ -297,7 +291,6 @@ func TestDoIndexFilter(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, sec := range openObjectFromBucket(ctx, t, bucket, artifact.Path).Sections() {
-			require.False(t, pointers.CheckSection(sec), "output must not hold a pointers section")
 			require.False(t, streams.CheckSection(sec), "output must not hold a streams section")
 		}
 		postingsPaths, statsPaths := indexObjectPaths(t, bucket, artifact.Path)
@@ -322,7 +315,7 @@ func TestDoIndexFilter(t *testing.T) {
 			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
 			ObjectPaths: []string{"logs/a"},
 		})
-		require.ErrorContains(t, err, "unknown section")
+		require.EqualError(t, err, `filtering source index "indexes/source": unknown section "github.com/grafana/loki/indexpointers@v2"`)
 	})
 
 	t.Run("does not copy rows of other tenants", func(t *testing.T) {

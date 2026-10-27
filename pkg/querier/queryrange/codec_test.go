@@ -3342,3 +3342,52 @@ func Test_codec_DetectedFieldsJSONRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func usageHeaderResponse(kind string, n int64) queryrangebase.Response {
+	statistics := stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: n}}}}
+	statistics.ComputeSummary(time.Second, 0, 0)
+	if kind == "fields" {
+		return &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{}, Statistics: statistics}
+	}
+	if kind == "logs" {
+		return &LokiResponse{Status: "success", Direction: logproto.FORWARD, Limit: 100,
+			Statistics: statistics, Data: LokiData{ResultType: loghttp.ResultTypeStream, Result: []logproto.Stream{
+				{Labels: `{app="test"}`, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: strings.Repeat("log line ", 256)}}},
+			}}}
+	}
+	return &LokiPromResponse{Statistics: statistics, Response: &queryrangebase.PrometheusResponse{
+		Status: "success", Data: queryrangebase.PrometheusData{ResultType: kind},
+	}}
+}
+
+func TestQueryUsageHeaderEncodings(t *testing.T) {
+	for _, tc := range []struct {
+		kind      string
+		path      string
+		encodings []string
+	}{
+		{"logs", "/loki/api/v1/query_range", []string{JSONType, ProtobufType, ParquetType}},
+		{"vector", "/loki/api/v1/query", []string{JSONType, ProtobufType, ParquetType}},
+		{"matrix", "/loki/api/v1/query_range", []string{JSONType, ProtobufType, ParquetType}},
+		{"fields", "/loki/api/v1/detected_fields", []string{JSONType, ProtobufType}},
+	} {
+		// Zero covers a response with no newly scanned bytes, including cache hits.
+		// Values above 2^53 must retain integer precision in the header.
+		for _, n := range []int64{0, 9007199254740993} {
+			for _, accept := range tc.encodings {
+				t.Run(fmt.Sprintf("%s/%d/%s", tc.kind, n, accept), func(t *testing.T) {
+					response := usageHeaderResponse(tc.kind, n)
+					req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+					req.Header.Set("Accept", accept)
+					ctx := user.InjectOrgID(context.Background(), "test")
+
+					actual, err := DefaultCodec.EncodeResponse(ctx, req, response)
+					require.NoError(t, err)
+					defer actual.Body.Close()
+					require.Equal(t, strconv.FormatInt(n, 10), actual.Header.Get(httpreq.LokiQueryBytesProcessedHeader))
+					require.Equal(t, strings.ToLower(accept), strings.ToLower(actual.Header.Get("Content-Type")))
+				})
+			}
+		}
+	}
+}

@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -190,7 +189,6 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
 		require.Equal(t, []string{tenant}, obj.Tenants())
 
-		require.Zero(t, obj.Sections().Count(pointers.CheckSection))
 		require.GreaterOrEqual(t, obj.Sections().Count(postings.CheckSection), 1)
 		require.GreaterOrEqual(t, obj.Sections().Count(stats.CheckSection), 1)
 	})
@@ -227,7 +225,6 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.Equal(t, time.Unix(10, 0).UTC(), timeRange.MinTime)
 		require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
 
-		require.Zero(t, obj.Sections().Count(pointers.CheckSection))
 		require.GreaterOrEqual(t, obj.Sections().Count(postings.CheckSection), 1)
 		require.GreaterOrEqual(t, obj.Sections().Count(stats.CheckSection), 1)
 	})
