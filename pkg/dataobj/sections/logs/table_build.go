@@ -2,9 +2,11 @@ package logs
 
 import (
 	"cmp"
+	"runtime"
 	"slices"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -23,31 +25,30 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
-	// Every sort order keeps the records of one stream and timestamp together,
-	// as DuplicateCounter requires.
-	var duplicates DuplicateCounter
-	row := 0
-	for _, record := range records {
-		if dropDuplicates && duplicates.IsDuplicate(record) {
-			continue
-		}
-
-		// Append only fails if given out-of-order data, where the provided row
-		// number is less than the previous row number. That can't happen here, so
-		// to keep the code readable we ignore the error values.
-
-		_ = streamIDBuilder.Append(row, dataset.Int64Value(record.StreamID))
-		_ = timestampBuilder.Append(row, dataset.Int64Value(record.Timestamp.UnixNano()))
-		_ = messageBuilder.Append(row, dataset.BinaryValue(record.Line))
-
-		record.Metadata.Range(func(md labels.Label) {
-			// Passing around md.Value as an unsafe slice is safe here: appending
-			// values is always read-only and the byte slice will never be mutated.
-			metadataBuilder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
-			_ = metadataBuilder.Append(row, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
-		})
-		row++
+	if dropDuplicates {
+		records = withoutDuplicates(records)
 	}
+
+	appender := newColumnAppender()
+	appender.Append(streamIDBuilder, len(records), func(i int) (int, dataset.Value) {
+		return i, dataset.Int64Value(records[i].StreamID)
+	})
+	appender.Append(timestampBuilder, len(records), func(i int) (int, dataset.Value) {
+		return i, dataset.Int64Value(records[i].Timestamp.UnixNano())
+	})
+	appender.Append(messageBuilder, len(records), func(i int) (int, dataset.Value) {
+		return i, dataset.BinaryValue(records[i].Line)
+	})
+
+	// The split runs while the columns above build.
+	for builder, cells := range splitMetadata(buf, records, pageSize, pageRowCount, compressionOpts) {
+		appender.Append(builder, len(cells), func(i int) (int, dataset.Value) {
+			// Passing around the value as an unsafe slice is safe here: appending
+			// values is always read-only and the byte slice will never be mutated.
+			return cells[i].row, dataset.BinaryValue(unsafeSlice(cells[i].value, 0))
+		})
+	}
+	appender.Wait()
 
 	table, err := buf.Flush()
 	if err != nil {
@@ -55,6 +56,76 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		panic(err)
 	}
 	return table
+}
+
+// withoutDuplicates removes duplicate records in place and returns the
+// shortened slice. Every sort order keeps the records of one stream and
+// timestamp together, as DuplicateCounter requires.
+//
+// It reuses the backing array of records instead of copying it. The records
+// after the returned length are stale. buildTable already sorts records in
+// place, and its caller clears them after the build.
+func withoutDuplicates(records []Record) []Record {
+	var duplicates DuplicateCounter
+	kept := records[:0]
+	for _, record := range records {
+		if !duplicates.IsDuplicate(record) {
+			kept = append(kept, record)
+		}
+	}
+	return kept
+}
+
+// columnAppender appends values to column builders, one goroutine per column.
+// Page compression dominates the cost of each column, so columns build in
+// parallel up to GOMAXPROCS at a time.
+type columnAppender struct {
+	g errgroup.Group
+}
+
+func newColumnAppender() *columnAppender {
+	a := &columnAppender{}
+	a.g.SetLimit(runtime.GOMAXPROCS(0))
+	return a
+}
+
+// Append starts a goroutine that appends n cells to builder. cell returns the
+// row number and value of cell i. Rows must increase with i. The caller must
+// not use builder until Wait returns.
+func (a *columnAppender) Append(builder *dataset.ColumnBuilder, n int, cell func(i int) (row int, value dataset.Value)) {
+	a.g.Go(func() error {
+		for i := range n {
+			// Append only fails for out-of-order rows, which the contract on
+			// cell rules out.
+			_ = builder.Append(cell(i))
+		}
+		return nil
+	})
+}
+
+// Wait blocks until every column started with Append is complete.
+func (a *columnAppender) Wait() {
+	_ = a.g.Wait()
+}
+
+// metadataCell is one metadata value and the row it belongs to.
+type metadataCell struct {
+	row   int
+	value string
+}
+
+// splitMetadata groups the metadata values of records by column, in row
+// order. It creates every metadata column in buf, so it must run on one
+// goroutine: tableBuffer is not safe for concurrent use.
+func splitMetadata(buf *tableBuffer, records []Record, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions) map[*dataset.ColumnBuilder][]metadataCell {
+	columns := make(map[*dataset.ColumnBuilder][]metadataCell)
+	for row, record := range records {
+		record.Metadata.Range(func(md labels.Label) {
+			builder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
+			columns[builder] = append(columns[builder], metadataCell{row: row, value: md.Value})
+		})
+	}
+	return columns
 }
 
 // sortRecords sorts the set of records according to the specified sort order.
