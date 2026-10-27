@@ -690,6 +690,47 @@ func TestOrLineFilterTypes(t *testing.T) {
 	}
 }
 
+// An empty operand in a positive or chain is dropped, so `|= "" or "foo"`
+// keeps the same lines as `|= "foo"`. Under boolean OR it would keep every
+// line, because every line contains "". Queries depend on the current
+// behavior: query builders that leave an extra or value blank, and dashboards
+// that put optional text variables into a chain such as
+// `|= "$search" or "$search2"`. If the behavior changed, those queries would
+// start returning every line.
+func TestOrLineFilterEmptyOperandIsIgnored(t *testing.T) {
+	t.Parallel()
+	lines := []string{"foo", "bar", "baz", "foo bar"}
+	for _, tt := range []struct {
+		q    string
+		kept []string
+	}{
+		{`{app="foo"} |= "" or "foo"`, []string{"foo", "foo bar"}},
+		{`{app="foo"} |= "foo" or ""`, []string{"foo", "foo bar"}},
+		{`{app="foo"} |= "foo" or "" or "baz"`, []string{"foo", "baz", "foo bar"}},
+		{"{app=\"foo\"} |= `foo` or `` or ``", []string{"foo", "foo bar"}},
+		{`{app="foo"} |~ "" or "foo"`, []string{"foo", "foo bar"}},
+		{`{app="foo"} |= "foo" or "" |= "bar"`, []string{"foo bar"}},
+		{`{app="foo"} |= "" or ""`, lines},
+	} {
+		t.Run(tt.q, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseLogSelector(tt.q, true)
+			require.NoError(t, err)
+			p, err := expr.Pipeline()
+			require.NoError(t, err)
+
+			sp := p.ForStream(labelBar)
+			var kept []string
+			for _, l := range lines {
+				if _, _, ok := sp.Process(0, []byte(l), labels.EmptyLabels()); ok {
+					kept = append(kept, l)
+				}
+			}
+			require.Equal(t, tt.kept, kept)
+		})
+	}
+}
+
 func TestStringer(t *testing.T) {
 	for _, tc := range []struct {
 		in  string
