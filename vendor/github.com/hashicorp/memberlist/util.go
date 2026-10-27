@@ -5,15 +5,14 @@ package memberlist
 
 import (
 	"bytes"
-	"compress/lzw"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-msgpack/v2/codec"
@@ -27,11 +26,6 @@ import (
 // while the 65th will triple it.
 const pushPullScaleThreshold = 32
 
-const (
-	// Constant litWidth 2-8
-	lzwLitWidth = 8
-)
-
 func init() {
 	_, _ = seed.Init()
 }
@@ -44,16 +38,80 @@ func decode(buf []byte, out interface{}) error {
 	return dec.Decode(out)
 }
 
-// Encode writes an encoded object to a new bytes buffer
-func encode(msgType messageType, in interface{}, msgpackUseNewTimeFormat bool) (*bytes.Buffer, error) {
+// pushPullBufPool recycles *bytes.Buffer values used by decryptRemoteState
+// to stage cipher text as it streams in from the peer. Push-pull state
+// can approach maxPushStateBytes (20 MiB), so pooling here lets the
+// io.CopyN growth steps amortize across receives instead of starting
+// from zero capacity every time.
+//
+// Pool callers MUST releasePushPullBuffer once they are done with the
+// returned buffer's bytes.
+var pushPullBufPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
+
+// maxPooledPushPullBufCap bounds the capacity of buffers retained by
+// pushPullBufPool. Sized to cover maxPushStateBytes (20 MiB) plus headroom
+// for the AEAD overhead added by encryptLocalState. Buffers that grow
+// above this — degenerate or attack payloads — are dropped on release.
+//
+// This cap is for pool sizing only; it is NOT a security boundary. Size
+// enforcement against malicious peers lives at decryptRemoteState's
+// explicit `moreBytes > maxPushStateBytes` check — do not rely
+// on this constant to reject oversized incoming state.
+const maxPooledPushPullBufCap = 32 * 1024 * 1024
+
+// pushPullBufInitialCap is the initial backing-slice capacity for fresh
+// buffers from pushPullBufPool. Push-pull state on a small cluster fits
+// well under 64 KiB, so 64 KiB lets typical encodes proceed without the
+// first few growth steps. Buffers grow naturally beyond this when a peer
+// has more state to ship.
+const pushPullBufInitialCap = 64 * 1024
+
+func getPushPullBuffer() *bytes.Buffer {
+	b := pushPullBufPool.Get().(*bytes.Buffer)
+	b.Reset()
+	if b.Cap() < pushPullBufInitialCap {
+		b.Grow(pushPullBufInitialCap)
+	}
+	return b
+}
+
+func releasePushPullBuffer(b *bytes.Buffer) {
+	if b.Cap() > maxPooledPushPullBufCap {
+		return
+	}
+	b.Reset()
+	pushPullBufPool.Put(b)
+}
+
+// encode writes an encoded object and returns a freshly-allocated byte
+// slice owned by the caller.
+//
+// The input `in` is not retained by the returned slice.
+func encode(msgType messageType, in any, msgpackUseNewTimeFormat bool) ([]byte, error) {
+	return encodeWithSizeHint(msgType, in, msgpackUseNewTimeFormat, 0)
+}
+
+// encodeWithSizeHint is like encode but pre-grows the internal working
+// buffer to sizeHint bytes when sizeHint > 0. Use it from call sites
+// that know the upcoming msgpack output size up front.
+// sizeHint == 0 makes it equivalent to encode().
+func encodeWithSizeHint(msgType messageType, in any, msgpackUseNewTimeFormat bool, sizeHint int) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
+	if sizeHint > 0 {
+		buf.Grow(sizeHint)
+	}
 	buf.WriteByte(uint8(msgType))
 	hd := codec.MsgpackHandle{}
 	hd.TimeNotBuiltin = !msgpackUseNewTimeFormat
 
-	enc := codec.NewEncoder(buf, &hd)
-	err := enc.Encode(in)
-	return buf, err
+	if err := codec.NewEncoder(buf, &hd).Encode(in); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // Returns a random offset between 0 and n
@@ -174,19 +232,25 @@ OUTER:
 	return kNodes
 }
 
-// makeCompoundMessages takes a list of messages and packs
-// them into one or multiple messages based on the limitations
-// of compound messages (255 messages each, 64KB max message size).
+// makeCompoundMessages takes a list of messages and packs them into
+// one or multiple messages based on the limitations of compound
+// messages (255 messages each, 64KB max message size).
 //
-// The input msgs can be modified in-place.
-func makeCompoundMessages(msgs [][]byte) []*bytes.Buffer {
+// The input msgs's underlying array is rearranged in place: small
+// messages are kept and oversized ones are passed through to the
+// output. Returned slices have mixed ownership: compounds produced
+// by makeCompoundMessage are freshly-allocated; oversized messages
+// alias the input. Callers must therefore treat returned slices,
+// and the underlying bytes of every msgs entry, as read-only until
+// the returned slices are consumed.
+func makeCompoundMessages(msgs [][]byte) [][]byte {
 	const (
 		maxMsgs      = math.MaxUint8
 		maxMsgLength = math.MaxUint16
 	)
 
 	// Optimistically assume there will be no big message.
-	bufs := make([]*bytes.Buffer, 0, (len(msgs)+(maxMsgs-1))/maxMsgs)
+	bufs := make([][]byte, 0, (len(msgs)+(maxMsgs-1))/maxMsgs)
 
 	// Do not add to a compound message any message bigger than the max message length
 	// we can store.
@@ -200,8 +264,9 @@ func makeCompoundMessages(msgs [][]byte) []*bytes.Buffer {
 			continue
 		}
 
-		// This message is a large one, so we send it alone.
-		bufs = append(bufs, bytes.NewBuffer(msgs[r]))
+		// Oversized message — send it alone. Passes the input slice
+		// through directly; callers do not mutate the result.
+		bufs = append(bufs, msgs[r])
 		r++
 	}
 	msgs = msgs[:w]
@@ -218,10 +283,17 @@ func makeCompoundMessages(msgs [][]byte) []*bytes.Buffer {
 }
 
 // makeCompoundMessage takes a list of messages and generates
-// a single compound message containing all of them
-func makeCompoundMessage(msgs [][]byte) *bytes.Buffer {
-	// Create a local buffer
+// a single compound message containing all of them.
+// Returns a freshly-allocated byte slice owned by the caller.
+func makeCompoundMessage(msgs [][]byte) []byte {
+	// Pre-size the buffer to the exact compound length (1 type byte +
+	// 1 count byte + 2 bytes per length prefix + the message bodies).
+	total := 2 + 2*len(msgs)
+	for _, m := range msgs {
+		total += len(m)
+	}
 	buf := bytes.NewBuffer(nil)
+	buf.Grow(total)
 
 	// Write out the type
 	buf.WriteByte(uint8(compoundMsg))
@@ -239,7 +311,7 @@ func makeCompoundMessage(msgs [][]byte) *bytes.Buffer {
 		buf.Write(m)
 	}
 
-	return buf
+	return buf.Bytes()
 }
 
 // decodeCompoundMessage splits a compound message and returns
@@ -279,66 +351,6 @@ func decodeCompoundMessage(buf []byte) (trunc int, parts [][]byte, err error) {
 		parts = append(parts, slice)
 	}
 	return
-}
-
-// compressPayload takes an opaque input buffer, compresses it
-// and wraps it in a compress{} message that is encoded.
-func compressPayload(inp []byte, msgpackUseNewTimeFormat bool) (*bytes.Buffer, error) {
-	var buf bytes.Buffer
-	compressor := lzw.NewWriter(&buf, lzw.LSB, lzwLitWidth)
-
-	_, err := compressor.Write(inp)
-	if err != nil {
-		return nil, err
-	}
-
-	// Ensure we flush everything out
-	if err := compressor.Close(); err != nil {
-		return nil, err
-	}
-
-	// Create a compressed message
-	c := compress{
-		Algo: lzwAlgo,
-		Buf:  buf.Bytes(),
-	}
-	return encode(compressMsg, &c, msgpackUseNewTimeFormat)
-}
-
-// decompressPayload is used to unpack an encoded compress{}
-// message and return its payload uncompressed
-func decompressPayload(msg []byte) ([]byte, error) {
-	// Decode the message
-	var c compress
-	if err := decode(msg, &c); err != nil {
-		return nil, err
-	}
-	return decompressBuffer(&c)
-}
-
-// decompressBuffer is used to decompress the buffer of
-// a single compress message, handling multiple algorithms
-func decompressBuffer(c *compress) ([]byte, error) {
-	// Verify the algorithm
-	if c.Algo != lzwAlgo {
-		return nil, fmt.Errorf("cannot decompress unknown algorithm %d", c.Algo)
-	}
-
-	// Create a uncompressor
-	uncomp := lzw.NewReader(bytes.NewReader(c.Buf), lzw.LSB, lzwLitWidth)
-	defer func() {
-		_ = uncomp.Close()
-	}()
-
-	// Read all the data
-	var b bytes.Buffer
-	_, err := io.Copy(&b, uncomp)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return the uncompressed bytes
-	return b.Bytes(), nil
 }
 
 // joinHostPort returns the host:port form of an address, for use with a

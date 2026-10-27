@@ -182,8 +182,7 @@ func (p *Pusher) Error() error {
 // For convenience, this method returns a pointer to the Pusher itself.
 func (p *Pusher) Grouping(name, value string) *Pusher {
 	if p.error == nil {
-		//nolint:staticcheck // TODO: Don't use deprecated model.NameValidationScheme.
-		if !model.NameValidationScheme.IsValidLabelName(name) {
+		if !model.UTF8Validation.IsValidLabelName(name) {
 			p.error = fmt.Errorf("grouping label has invalid name: %s", name)
 			return p
 		}
@@ -291,7 +290,8 @@ func (p *Pusher) push(ctx context.Context, method string) error {
 		if err := enc.Encode(mf); err != nil {
 			return fmt.Errorf(
 				"failed to encode metric family %s, error is %w",
-				mf.GetName(), err)
+				mf.GetName(), err,
+			)
 		}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, p.fullURL(), buf)

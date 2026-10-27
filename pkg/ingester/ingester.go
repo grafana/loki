@@ -380,13 +380,16 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 			}
 		}
-		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+		i.partitionRingLifecycler, err = ring.NewPartitionInstanceLifecycler(
 			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
 			PartitionRingName,
 			PartitionRingKey,
 			partitionRingKV,
 			logger,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+		if err != nil {
+			return nil, fmt.Errorf("creating ingester partition ring lifecycler: %w", err)
+		}
 
 		i.partitionReader, err = partition.NewReaderService(
 			cfg.KafkaIngestion.KafkaConfig,
