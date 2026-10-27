@@ -337,7 +337,12 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		return report, err
 	}
 	report.NeedleQueryTruncated = res.truncated
-	s.logFetchedNeedle(res.count, report)
+	level.Info(s.logger).Log(
+		"msg", "correctness cycle step",
+		"step", "fetched_needle_results",
+		"result_count", res.count,
+		"truncated", report.NeedleQueryTruncated,
+	)
 
 	hintStart := time.Now()
 	hints, _, err := s.hintProvider.ProvideHints(
@@ -480,15 +485,6 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	s.metrics.falsePositivesTotal.Add(float64(vr.FalsePositives))
 
 	return report, nil
-}
-
-func (s *Service) logFetchedNeedle(resLen int, report CycleReport) {
-	level.Info(s.logger).Log(
-		"msg", "correctness cycle step",
-		"step", "fetched_needle_results",
-		"result_count", resLen,
-		"truncated", report.NeedleQueryTruncated,
-	)
 }
 
 type needleResults struct {
@@ -1050,33 +1046,10 @@ func buildJSONLabelFilterHintQuery(selector, label, value string) string {
 }
 
 // buildMetricQuery wraps a log hint query as sum(count_over_time(<needle> [5m])).
-func buildMetricQuery(hq hintQuery) (hintQuery, error) {
+func buildMetricQuery(qt hintQueryType, hq hintQuery) (hintQuery, error) {
 	lookback := "5m"
 	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, lookback)
-	return newHintQuery(hq.queryType, hq.needle, query)
-}
-
-// provideMetricHints looks up hints for a metric query. The window is aligned
-// to the query step, then widened by the lookback, so it covers the samples
-// the query-frontend evaluates. A zero step is only widened. The verification
-// cycle does not call this yet.
-func (s *Service) provideMetricHints(ctx context.Context, hq hintQuery, from, through time.Time, step time.Duration) (*hintprovider.Hints, error) {
-	groups, err := syntax.MatcherGroups(hq.expr)
-	if err != nil {
-		return nil, err
-	}
-	if len(groups) != 1 {
-		return nil, fmt.Errorf("metric query has %d matcher groups", len(groups))
-	}
-	readStart, readEnd := verification.MetricLookupBounds(groups[0], from, through, step.Milliseconds())
-	hints, _, err := s.hintProvider.ProvideHints(
-		ctx,
-		s.cfg.TenantID,
-		hq.expr,
-		model.TimeFromUnixNano(readStart.UnixNano()),
-		model.TimeFromUnixNano(readEnd.UnixNano()),
-	)
-	return hints, err
+	return newHintQuery(qt, hq.needle, query)
 }
 
 // pickHintQuery chooses among log queries (SM, stream-label, post-parser JSON, line filter) and
@@ -1101,48 +1074,31 @@ func (s *Service) pickHintQuery(
 			return hq, true
 		}
 	case 3:
-		if hq, ok := s.tryMetricRangeHintQuery(selector, logs); ok {
+		if hq, ok := s.tryMetricHintQuery(hintQueryTypeMetricRange, selector, logs); ok {
 			return hq, true
 		}
 	case 4:
-		if hq, ok := s.tryMetricInstantHintQuery(selector, logs); ok {
+		if hq, ok := s.tryMetricHintQuery(hintQueryTypeMetricInstant, selector, logs); ok {
 			return hq, true
 		}
 	}
 	return s.tryLineFilterHintQuery(selector, logs)
 }
 
-func (s *Service) tryMetricInstantHintQuery(selector string, logs []queryEntry) (hintQuery, bool) {
+func (s *Service) tryMetricHintQuery(qt hintQueryType, selector string, logs []queryEntry) (hintQuery, bool) {
 	hq, ok := s.tryLineFilterHintQuery(selector, logs)
 	if !ok {
 		return hintQuery{}, false
 	}
-	metric, err := buildMetricQuery(hq)
+	metric, err := buildMetricQuery(qt, hq)
 	if err != nil {
 		level.Warn(s.logger).Log(
 			"msg", "failed to build metric hint query; falling back to line filter",
+			"hint_query_type", qt,
 			"err", err,
 		)
 		return hintQuery{}, false
 	}
-	metric.queryType = hintQueryTypeMetricInstant
-	return metric, true
-}
-
-func (s *Service) tryMetricRangeHintQuery(selector string, logs []queryEntry) (hintQuery, bool) {
-	hq, ok := s.tryLineFilterHintQuery(selector, logs)
-	if !ok {
-		return hintQuery{}, false
-	}
-	metric, err := buildMetricQuery(hq)
-	if err != nil {
-		level.Warn(s.logger).Log(
-			"msg", "failed to build metric hint query; falling back to line filter",
-			"err", err,
-		)
-		return hintQuery{}, false
-	}
-	metric.queryType = hintQueryTypeMetricRange
 	return metric, true
 }
 

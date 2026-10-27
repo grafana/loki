@@ -215,7 +215,7 @@ func TestBuildMetricQuery(t *testing.T) {
 			hq, err := newHintQuery(tc.queryType, tc.needle, tc.logQuery)
 			require.NoError(t, err)
 
-			got, err := buildMetricQuery(hq)
+			got, err := buildMetricQuery(tc.queryType, hq)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got.query)
 			require.Equal(t, tc.needle, got.needle)
@@ -285,40 +285,6 @@ func TestQueryResponseSamples(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-}
-
-func TestProvideMetricHintsWidensLookback(t *testing.T) {
-	from := time.Date(2026, 2, 26, 10, 0, 30, 0, time.UTC)
-	through := from.Add(30 * time.Minute)
-	step := time.Minute
-	hq, err := newHintQuery(hintQueryTypeLineFilter, "timeout", `{job="api"} |= "timeout"`)
-	require.NoError(t, err)
-	metric, err := buildMetricQuery(hq)
-	require.NoError(t, err)
-
-	provider := &recordingHintProvider{hints: &hintprovider.Hints{
-		TimeRanges: []hintprovider.HintTimeRange{{Start: from, End: through}},
-	}}
-	svc := &Service{
-		cfg:          Config{TenantID: "tenant-a"},
-		hintProvider: provider,
-	}
-
-	hints, err := svc.provideMetricHints(context.Background(), metric, from, through, step)
-	require.NoError(t, err)
-	require.Equal(t, provider.hints, hints)
-	require.Equal(t, metric.expr.String(), provider.expr.String())
-	wantFrom, wantThrough := verification.MetricLookupBounds(syntax.MatcherRange{Interval: 5 * time.Minute}, from, through, step.Milliseconds())
-	require.Equal(t, model.TimeFromUnixNano(wantFrom.UnixNano()), provider.from)
-	require.Equal(t, model.TimeFromUnixNano(wantThrough.UnixNano()), provider.through)
-	require.True(t, wantFrom.Before(from.Add(-5*time.Minute)), "aligned start widens earlier than the raw start")
-	require.True(t, wantThrough.After(through), "aligned end is later than the raw end")
-
-	eval := through
-	_, err = svc.provideMetricHints(context.Background(), metric, eval, eval, 0)
-	require.NoError(t, err)
-	require.Equal(t, model.TimeFromUnixNano(eval.Add(-5*time.Minute).UnixNano()), provider.from)
-	require.Equal(t, model.TimeFromUnixNano(eval.UnixNano()), provider.through)
 }
 
 type recordingHintProvider struct {

@@ -234,12 +234,7 @@ func buildDebugHintQuery(req debugRequest) (hintQuery, error) {
 		if err != nil {
 			return hintQuery{}, err
 		}
-		metric, err := buildMetricQuery(line)
-		if err != nil {
-			return hintQuery{}, err
-		}
-		metric.queryType = req.queryType
-		return metric, nil
+		return buildMetricQuery(req.queryType, line)
 	default:
 		return newHintQuery(hintQueryTypeLineFilter, req.needle, buildLineFilterHintQuery(req.selector, req.needle))
 	}
