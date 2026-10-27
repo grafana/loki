@@ -34,8 +34,8 @@ import (
 	josecipher "github.com/go-jose/go-jose/v4/cipher"
 )
 
-// RandReader is a cryptographically secure random number generator (stubbed out in tests).
-var RandReader = rand.Reader
+// randReader is a cryptographically secure random number generator (stubbed out in tests).
+var randReader = rand.Reader
 
 const (
 	// RFC7518 recommends a minimum of 1,000 iterations:
@@ -153,7 +153,7 @@ func getPbkdf2Params(alg KeyAlgorithm) (int, func() hash.Hash) {
 // getRandomSalt generates a new salt of the given size.
 func getRandomSalt(size int) ([]byte, error) {
 	salt := make([]byte, size)
-	_, err := io.ReadFull(RandReader, salt)
+	_, err := io.ReadFull(randReader, salt)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func newSymmetricSigner(sigAlg SignatureAlgorithm, key []byte) (recipientSigInfo
 // Generate a random key for the given content cipher
 func (ctx randomKeyGenerator) genKey() ([]byte, rawHeader, error) {
 	key := make([]byte, ctx.size)
-	_, err := io.ReadFull(RandReader, key)
+	_, err := io.ReadFull(randReader, key)
 	if err != nil {
 		return nil, rawHeader{}, err
 	}
@@ -238,7 +238,7 @@ func (ctx aeadContentCipher) encrypt(key, aad, pt []byte) (*aeadParts, error) {
 
 	// Initialize a new nonce
 	iv := make([]byte, aead.NonceSize())
-	_, err = io.ReadFull(RandReader, iv)
+	_, err = io.ReadFull(randReader, iv)
 	if err != nil {
 		return nil, err
 	}
