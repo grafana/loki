@@ -22,16 +22,17 @@ type compactionKey struct {
 }
 
 // compactionKeyFor returns the grouping key and true, or a zero key and false
-// when the meta cannot be merged: its version is unrecognised, or it has
-// document shards. Callers should skip metas that return false so that they
-// do not block all compaction.
+// when the meta cannot be merged: its version is unrecognised, or this binary
+// cannot read its footer (v5 indexes written before day-relative cells).
+// Callers should skip metas that return false so that they do not block all
+// compaction.
 func compactionKeyFor(m store.Meta) (compactionKey, bool) {
 	if err := logline.ValidateVersion(m.Version); err != nil {
 		return compactionKey{}, false
 	}
-	// The v5 merge rejects indexes with document shards, so their jobs would
-	// fail and be planned again on every pass.
-	if m.DocumentShardBits > 0 {
+	// The merge cannot open such an index, so its jobs would fail and be
+	// planned again on every pass.
+	if m.IndexHeader != nil && logline.ValidateIndexHeader(m.Version, *m.IndexHeader) != nil {
 		return compactionKey{}, false
 	}
 	return compactionKey{
