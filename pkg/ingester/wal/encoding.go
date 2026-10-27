@@ -28,6 +28,10 @@ const (
 	WALRecordEntriesV2
 	// WALRecordEntriesV3 is the type for the WAL record for samples with structured metadata.
 	WALRecordEntriesV3
+	// WALRecordEntriesV4 is the type for the WAL record for samples with structured metadata and
+	// the timestamp of the record (e.g. Kafka) they were ingested from. It is only written for
+	// records that have one, so ingesters that don't ingest from Kafka keep writing V3.
+	WALRecordEntriesV4
 )
 
 // The current type of Entries that this distribution writes.
@@ -35,10 +39,23 @@ const (
 // TODO: Change to WALRecordEntriesV3?
 const CurrentEntriesRec = WALRecordEntriesV3
 
+// EntriesRecordType returns the type to encode the entries of the record with: V4 if it carries
+// the timestamp of the record it was ingested from, otherwise CurrentEntriesRec.
+func (r *Record) EntriesRecordType() RecordType {
+	if !r.IngestedAt.IsZero() {
+		return WALRecordEntriesV4
+	}
+	return CurrentEntriesRec
+}
+
 // Record is a struct combining the series and samples record.
 type Record struct {
 	UserID string
 	Series []record.RefSeries
+
+	// IngestedAt is the timestamp of the record (e.g. Kafka) the entries were ingested from, or
+	// zero if there is none. Only persisted by WALRecordEntriesV4 and later.
+	IngestedAt time.Time
 
 	// entryIndexMap coordinates the RefEntries index associated with a particular fingerprint.
 	// This is helpful for constant time lookups during ingestion and is ignored when restoring
@@ -53,6 +70,7 @@ func (r *Record) IsEmpty() bool {
 
 func (r *Record) Reset() {
 	r.UserID = ""
+	r.IngestedAt = time.Time{}
 	if len(r.Series) > 0 {
 		r.Series = r.Series[:0]
 	}
@@ -80,6 +98,8 @@ type RefEntries struct {
 	Counter int64
 	Ref     chunks.HeadSeriesRef
 	Entries []logproto.Entry
+	// IngestedAt is the Record.IngestedAt of the record the entries were decoded from.
+	IngestedAt time.Time
 }
 
 func (r *Record) EncodeSeries(b []byte) []byte {
@@ -113,6 +133,15 @@ outer:
 			buf.PutBE64int64(first)
 			break outer
 		}
+	}
+
+	if version >= WALRecordEntriesV4 {
+		// Kafka timestamps have ms precision. Zero means there is none.
+		var ingestedAt int64
+		if !r.IngestedAt.IsZero() {
+			ingestedAt = r.IngestedAt.UnixMilli()
+		}
+		buf.PutBE64int64(ingestedAt)
 	}
 
 	for _, ref := range r.RefEntries {
@@ -156,9 +185,18 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 	dec := encoding.DecWith(b)
 	baseTime := dec.Be64int64()
 
+	var ingestedAt time.Time
+	if version >= WALRecordEntriesV4 {
+		if ms := dec.Be64int64(); ms > 0 {
+			ingestedAt = time.UnixMilli(ms)
+		}
+		rec.IngestedAt = ingestedAt
+	}
+
 	for len(dec.B) > 0 && dec.Err() == nil {
 		refEntries := RefEntries{
-			Ref: chunks.HeadSeriesRef(dec.Be64()),
+			Ref:        chunks.HeadSeriesRef(dec.Be64()),
+			IngestedAt: ingestedAt,
 		}
 
 		if version >= WALRecordEntriesV2 {
@@ -229,7 +267,7 @@ func DecodeRecord(b []byte, walRec *Record) (err error) {
 	case WALRecordSeries:
 		userID = decbuf.UvarintStr()
 		rSeries, err = dec.Series(decbuf.B, walRec.Series)
-	case WALRecordEntriesV1, WALRecordEntriesV2, WALRecordEntriesV3:
+	case WALRecordEntriesV1, WALRecordEntriesV2, WALRecordEntriesV3, WALRecordEntriesV4:
 		userID = decbuf.UvarintStr()
 		err = DecodeEntries(decbuf.B, t, walRec)
 	default:

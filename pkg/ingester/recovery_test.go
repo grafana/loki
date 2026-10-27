@@ -346,3 +346,57 @@ func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+// The timestamp of the record the entries were ingested from is restored on WAL replay, so a chunk
+// that was open during a restart ends up with the same highest record timestamp as before.
+func TestRecoveryRestoresRecordTimestampFromWAL(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	i, err := New(defaultIngesterTestConfig(t), client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockReadRingWithOneActiveIngester(), nil)
+	require.NoError(t, err)
+
+	var (
+		first  = time.UnixMilli(1_700_000_000_000)
+		second = first.Add(time.Hour)
+		lbls   = labels.FromStrings("app", "foo")
+	)
+
+	series := &wal.Record{
+		UserID: "test",
+		Series: []record.RefSeries{{Ref: 1, Labels: lbls}},
+	}
+	entries := func(counter int64, ts time.Time, line string) []byte {
+		rec := &wal.Record{UserID: "test", IngestedAt: ts}
+		rec.Reset()
+		rec.UserID = "test"
+		rec.IngestedAt = ts
+		rec.AddEntries(1, counter, logproto.Entry{Timestamp: time.Unix(counter, 0), Line: line})
+		return rec.EncodeEntries(rec.EntriesRecordType(), nil)
+	}
+
+	// The records arrive out of order of their timestamps, the highest one wins.
+	reader := &MemoryWALReader{xs: [][]byte{
+		series.EncodeSeries(nil),
+		entries(1, second, "a"),
+		entries(2, first, "b"),
+		// A record without a timestamp (e.g. written by an older version) doesn't change it.
+		entries(3, time.Time{}, "c"),
+	}}
+
+	recoverer := newIngesterRecoverer(i)
+	require.NoError(t, RecoverWAL(context.Background(), reader, recoverer))
+	recoverer.Close()
+
+	var got []time.Time
+	for _, inst := range i.getInstances() {
+		require.NoError(t, inst.forAllStreams(context.Background(), func(s *stream) error {
+			for _, c := range s.chunks {
+				got = append(got, c.ingestedAt)
+			}
+			return nil
+		}))
+	}
+	require.Len(t, got, 1)
+	require.True(t, second.Equal(got[0]), "got %s, want %s", got[0], second)
+}
