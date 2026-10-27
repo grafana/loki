@@ -353,18 +353,6 @@ func buildChunkDesc(t testing.TB) *chunkDesc {
 	return desc
 }
 
-// wantIngestedAt says which value a chunk is expected to be stamped with.
-type wantIngestedAt int
-
-const (
-	// wantUnset: the chunk keeps a zero IngestedAt.
-	wantUnset wantIngestedAt = iota
-	// wantFlushTime: the flush time rounded up to the UTC day.
-	wantFlushTime
-	// wantRecordTime: the record timestamp rounded up to the UTC day.
-	wantRecordTime
-)
-
 func TestMaybeSetIngestedAt(t *testing.T) {
 	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
 	v13 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v13"}}
@@ -373,8 +361,7 @@ func TestMaybeSetIngestedAt(t *testing.T) {
 	live := labels.FromStrings("app", "foo")
 
 	recordTime := time.Date(2026, 10, 23, 23, 59, 59, 123_000_000, time.UTC)
-	// The record time rounded up to the next UTC midnight.
-	wantRecordIngestedAt := model.Time(time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC).UnixMilli())
+	wantRecordIngestedAt := model.Time(recordTime.UnixMilli())
 	const dayMs = int64(24 * time.Hour / time.Millisecond)
 
 	for _, tc := range []struct {
@@ -382,16 +369,16 @@ func TestMaybeSetIngestedAt(t *testing.T) {
 		periods    []config.PeriodConfig
 		metric     labels.Labels
 		recordTime time.Time
-		want       wantIngestedAt
+		want       string // "unset", "flush time" (rounded up to the UTC day) or "record time" (as is)
 	}{
-		{"backfill stream under v14 without a record timestamp uses the flush time", v14, backfill, time.Time{}, wantFlushTime},
-		{"live stream under v14 stays unset", v14, live, time.Time{}, wantUnset},
-		{"backfill stream under v13 stays unset", v13, backfill, time.Time{}, wantUnset},
-		{"live stream with a record timestamp stays unset", v14, live, recordTime, wantUnset},
-		{"backfill stream under v13 with a record timestamp stays unset", v13, backfill, recordTime, wantUnset},
-		{"backfill stream under v14 uses the record timestamp", v14, backfill, recordTime, wantRecordTime},
-		{"epoch record timestamp is not used", v14, backfill, time.UnixMilli(0), wantFlushTime},
-		{"Kafka NoTimestamp is not used", v14, backfill, time.UnixMilli(-1), wantFlushTime},
+		{"backfill stream under v14 without a record timestamp uses the flush time", v14, backfill, time.Time{}, "flush time"},
+		{"live stream under v14 stays unset", v14, live, time.Time{}, "unset"},
+		{"backfill stream under v13 stays unset", v13, backfill, time.Time{}, "unset"},
+		{"live stream with a record timestamp stays unset", v14, live, recordTime, "unset"},
+		{"backfill stream under v13 with a record timestamp stays unset", v13, backfill, recordTime, "unset"},
+		{"backfill stream under v14 uses the record timestamp", v14, backfill, recordTime, "record time"},
+		{"epoch record timestamp is not used", v14, backfill, time.UnixMilli(0), "flush time"},
+		{"Kafka NoTimestamp is not used", v14, backfill, time.UnixMilli(-1), "flush time"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			i := &Ingester{periodicConfigs: tc.periods}
@@ -401,14 +388,16 @@ func TestMaybeSetIngestedAt(t *testing.T) {
 			i.maybeSetIngestedAt(&ch, model.Now(), tc.recordTime)
 
 			switch tc.want {
-			case wantUnset:
+			case "unset":
 				require.Equal(t, model.Time(0), ch.IngestedAt)
-			case wantFlushTime:
+			case "flush time":
 				require.GreaterOrEqual(t, int64(ch.IngestedAt), int64(before))
 				// Day precision, like the index, so replicas agree on the value.
 				require.Zero(t, int64(ch.IngestedAt)%dayMs)
-			case wantRecordTime:
+			case "record time":
 				require.Equal(t, wantRecordIngestedAt, ch.IngestedAt)
+			default:
+				t.Fatalf("unknown expectation %q", tc.want)
 			}
 		})
 	}
@@ -436,11 +425,9 @@ func TestBackfillChunkChecksumIsSameOnReplicas(t *testing.T) {
 
 	// Same records.
 	require.Equal(t, checksum(recordTime), checksum(recordTime))
-	// Highest record timestamps that differ within the day, e.g. on a replica that restarted and
-	// restored an older value from its checkpoint.
-	require.Equal(t, checksum(recordTime), checksum(recordTime.Add(3*time.Hour+7*time.Second)))
-	// Records from different days are different chunks as far as ingestion time is concerned.
-	require.NotEqual(t, checksum(recordTime), checksum(recordTime.Add(24*time.Hour)))
+	// Different highest record timestamps are different chunks as far as ingestion time is
+	// concerned.
+	require.NotEqual(t, checksum(recordTime), checksum(recordTime.Add(7*time.Second)))
 }
 
 func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
@@ -449,18 +436,18 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 
 	// Far from the current time, so the flush time can't be mistaken for it.
 	recordTime := time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)
-	wantRecordIngestedAt := model.Time(time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC).UnixMilli())
+	wantRecordIngestedAt := model.Time(recordTime.UnixMilli())
 
 	for _, tc := range []struct {
 		name       string
 		labels     labels.Labels
 		recordTime time.Time
-		want       wantIngestedAt
+		want       string // "unset", "flush time" (rounded up to the UTC day) or "record time" (as is)
 	}{
-		{"backfill stream", backfill, time.Time{}, wantFlushTime},
-		{"live stream", live, time.Time{}, wantUnset},
-		{"backfill stream with the highest record timestamp of the chunk", backfill, recordTime, wantRecordTime},
-		{"live stream with the highest record timestamp of the chunk", live, recordTime, wantUnset},
+		{"backfill stream", backfill, time.Time{}, "flush time"},
+		{"live stream", live, time.Time{}, "unset"},
+		{"backfill stream with the highest record timestamp of the chunk", backfill, recordTime, "record time"},
+		{"live stream with the highest record timestamp of the chunk", live, recordTime, "unset"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
@@ -485,12 +472,14 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 			require.NotEmpty(t, captured)
 			for _, c := range captured {
 				switch tc.want {
-				case wantUnset:
+				case "unset":
 					require.Equal(t, model.Time(0), c.IngestedAt)
-				case wantFlushTime:
+				case "flush time":
 					require.GreaterOrEqual(t, int64(c.IngestedAt), int64(before))
-				case wantRecordTime:
+				case "record time":
 					require.Equal(t, wantRecordIngestedAt, c.IngestedAt)
+				default:
+					t.Fatalf("unknown expectation %q", tc.want)
 				}
 			}
 		})

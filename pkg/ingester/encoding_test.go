@@ -74,16 +74,22 @@ func Test_EncodingChunks(t *testing.T) {
 						chunk:       c,
 						closed:      true,
 						synced:      true,
-						flushed:     time.Unix(1, 0),
-						lastUpdated: time.Unix(0, 1),
-						ingestedAt:  time.Unix(2, 0),
+						flushed:     time.Unix(1, 0).UTC(),
+						lastUpdated: time.Unix(0, 1).UTC(),
+						ingestedAt:  time.Unix(2, 0).UTC(),
 					},
 				}
 				there, err := toWireChunks(from, nil)
 				require.Nil(t, err)
 				chunks := make([]Chunk, 0, len(there))
 				for _, c := range there {
-					chunks = append(chunks, c.Chunk)
+					// Go through the wire format, like the checkpointer does, so the generated code of
+					// every field is covered and not only the in-memory conversion.
+					b, err := c.Chunk.Marshal()
+					require.NoError(t, err)
+					var wire Chunk
+					require.NoError(t, wire.Unmarshal(b))
+					chunks = append(chunks, wire)
 
 					// Ensure closed head chunks only contain the head metadata but no entries
 					if close {
@@ -119,30 +125,6 @@ func Test_EncodingChunks(t *testing.T) {
 			})
 		}
 	}
-}
-
-// Test_CheckpointChunkIngestedAtProto marshals the checkpoint chunk like the checkpointer does,
-// to cover the generated code of the ingestedAt field and not only the in-memory conversion.
-func Test_CheckpointChunkIngestedAtProto(t *testing.T) {
-	want := time.Date(2026, 10, 23, 10, 0, 0, 123_000_000, time.UTC)
-
-	in := Chunk{
-		From:        time.Unix(1, 0).UTC(),
-		To:          time.Unix(2, 0).UTC(),
-		FlushedAt:   time.Unix(3, 0).UTC(),
-		LastUpdated: time.Unix(4, 0).UTC(),
-		Data:        []byte("data"),
-		Head:        []byte("head"),
-		IngestedAt:  want,
-	}
-	b, err := in.Marshal()
-	require.NoError(t, err)
-
-	var out Chunk
-	require.NoError(t, out.Unmarshal(b))
-	require.True(t, want.Equal(out.IngestedAt), "got %s, want %s", out.IngestedAt, want)
-	require.Equal(t, in.Data, out.Data)
-	require.Equal(t, in.Head, out.Head)
 }
 
 func Test_EncodingCheckpoint(t *testing.T) {

@@ -243,63 +243,50 @@ func Test_Encoding_Entries(t *testing.T) {
 
 func TestEntriesRecordIngestedAt(t *testing.T) {
 	ingestedAt := time.UnixMilli(1_700_000_000_123)
-	newRec := func(ts time.Time) *Record {
-		return &Record{
-			UserID:     "123",
-			IngestedAt: ts,
-			RefEntries: []RefEntries{
-				{Ref: 1, Counter: 1, Entries: []logproto.Entry{{Timestamp: time.Unix(1000, 0), Line: "first"}}},
-				{Ref: 2, Counter: 2, Entries: []logproto.Entry{{Timestamp: time.Unix(2000, 0), Line: "second"}}},
-			},
-		}
-	}
 
-	t.Run("a record with a timestamp is restored on all entries", func(t *testing.T) {
-		rec := newRec(ingestedAt)
-		decoded := recordPool.GetRecord()
-		require.NoError(t, DecodeRecord(rec.EncodeEntries(CurrentEntriesRec, nil), decoded))
+	for _, tc := range []struct {
+		desc       string
+		version    RecordType
+		ingestedAt time.Time
+		// want is the timestamp expected on the decoded record and on each of its RefEntries.
+		want time.Time
+	}{
+		{desc: "V4 with a timestamp restores it on all entries", version: WALRecordEntriesV4, ingestedAt: ingestedAt, want: ingestedAt},
+		{desc: "V4 without a timestamp decodes to a zero time", version: WALRecordEntriesV4, ingestedAt: time.Time{}, want: time.Time{}},
+		{desc: "the current version stores the timestamp", version: CurrentEntriesRec, ingestedAt: ingestedAt, want: ingestedAt},
+		{desc: "V3 doesn't store the timestamp", version: WALRecordEntriesV3, ingestedAt: ingestedAt, want: time.Time{}},
+		{desc: "V2 doesn't store the timestamp", version: WALRecordEntriesV2, ingestedAt: ingestedAt, want: time.Time{}},
+		{desc: "V1 doesn't store the timestamp", version: WALRecordEntriesV1, ingestedAt: ingestedAt, want: time.Time{}},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			rec := &Record{
+				UserID:     "123",
+				IngestedAt: tc.ingestedAt,
+				RefEntries: []RefEntries{
+					{Ref: 1, Counter: 1, Entries: []logproto.Entry{{Timestamp: time.Unix(1000, 0), Line: "first"}}},
+					{Ref: 2, Counter: 2, Entries: []logproto.Entry{{Timestamp: time.Unix(2000, 0), Line: "second"}}},
+				},
+			}
 
-		require.True(t, ingestedAt.Equal(decoded.IngestedAt))
-		require.Len(t, decoded.RefEntries, 2)
-		for _, re := range decoded.RefEntries {
-			require.True(t, ingestedAt.Equal(re.IngestedAt))
-		}
-		require.Equal(t, "second", decoded.RefEntries[1].Entries[0].Line)
-	})
-
-	t.Run("a record without a timestamp decodes to a zero time", func(t *testing.T) {
-		rec := newRec(time.Time{})
-
-		decoded := recordPool.GetRecord()
-		require.NoError(t, DecodeRecord(rec.EncodeEntries(CurrentEntriesRec, nil), decoded))
-		require.True(t, decoded.IngestedAt.IsZero())
-		for _, re := range decoded.RefEntries {
-			require.True(t, re.IngestedAt.IsZero())
-		}
-	})
-
-	t.Run("V4 without a timestamp decodes to a zero time", func(t *testing.T) {
-		rec := newRec(time.Time{})
-		decoded := recordPool.GetRecord()
-		require.NoError(t, DecodeRecord(rec.EncodeEntries(WALRecordEntriesV4, nil), decoded))
-		require.True(t, decoded.IngestedAt.IsZero())
-	})
-
-	t.Run("older versions decode without a timestamp", func(t *testing.T) {
-		rec := newRec(ingestedAt)
-		for _, v := range []RecordType{WALRecordEntriesV1, WALRecordEntriesV2, WALRecordEntriesV3} {
 			decoded := recordPool.GetRecord()
-			require.NoError(t, DecodeRecord(rec.EncodeEntries(v, nil), decoded))
-			require.True(t, decoded.IngestedAt.IsZero())
-			require.Len(t, decoded.RefEntries, 2)
-		}
-	})
+			require.NoError(t, DecodeRecord(rec.EncodeEntries(tc.version, nil), decoded))
 
-	t.Run("reset clears it", func(t *testing.T) {
-		rec := newRec(ingestedAt)
-		rec.Reset()
-		require.True(t, rec.IngestedAt.IsZero())
-	})
+			require.True(t, tc.want.Equal(decoded.IngestedAt), "record: got %s, want %s", decoded.IngestedAt, tc.want)
+			require.Len(t, decoded.RefEntries, 2)
+			for _, re := range decoded.RefEntries {
+				require.True(t, tc.want.Equal(re.IngestedAt), "entries: got %s, want %s", re.IngestedAt, tc.want)
+			}
+			// The rest of the record is unaffected.
+			require.Equal(t, "first", decoded.RefEntries[0].Entries[0].Line)
+			require.Equal(t, "second", decoded.RefEntries[1].Entries[0].Line)
+		})
+	}
+}
+
+func TestRecordResetClearsIngestedAt(t *testing.T) {
+	rec := &Record{IngestedAt: time.UnixMilli(1_700_000_000_123)}
+	rec.Reset()
+	require.True(t, rec.IngestedAt.IsZero())
 }
 
 func Benchmark_EncodeEntries(b *testing.B) {

@@ -628,8 +628,8 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 // Through-based retention.
 //
 // recordTime is the highest timestamp of the ingested (e.g. Kafka) records that fed the chunk.
-// It is used as the ingestion time if it is valid, see validRecordTimestamp. Otherwise the
-// flush time is used.
+// It is used as the ingestion time as is if it is valid, see validRecordTimestamp. Otherwise
+// the flush time, rounded up to the next UTC day, is used.
 func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, recordTime time.Time) {
 	if ch.Metric.Get(constants.BackfillLabel) != "true" {
 		return
@@ -648,25 +648,20 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, rec
 	}
 
 	// Replicas of a partition consume the same records, so the record timestamp is the same on
-	// all of them. Without one (e.g. a push that didn't come from Kafka), use the flush time.
-	// Backfilled chunks are flushed shortly after they are ingested, so at the day precision
-	// used by the index this matches ingestion.
-	ingestedAt := model.Now()
+	// all of them and is used as is.
 	if validRecordTimestamp(recordTime) {
-		ingestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
+		ch.IngestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
+		return
 	}
 
-	// IngestedAt is part of the encoded chunk, so replicas flushing the same chunk must stamp the
-	// same value or each of them gets a different checksum and chunk key and the chunk is not
-	// deduplicated. Round it up to the day the way the index stores it, so it is also identical
-	// when the replicas' values differ within the same day (for example flush times a few
-	// seconds apart, or a replica that restarted and has a slightly lower highest record
-	// timestamp).
+	// We are not using Kafka records, so fall back to the current time, adjusted to the beginning
+	// of the next UTC day as the index does. Otherwise each zone would stamp its own flush time,
+	// which gives the same chunk different checksums and prevents deduplication.
 	//
 	// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
 	// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
 	// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
-	ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(ingestedAt), int64(ch.Through)))
+	ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(ch.Through)))
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
