@@ -422,6 +422,10 @@ func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) b
 	return p.keepGoing
 }
 
+func (p *fakeParseHints) ShouldParseLine(_ []byte, _ *LabelsBuilder) bool {
+	return true
+}
+
 func TestJSONExpressionParser(t *testing.T) {
 	testLine := []byte(`{"app":"foo","field with space":"value","field with ÜFT8👌":"value","null_field":null,"bool_field":false,"namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar", "params": [1,2,3,"string_value"]}}}`)
 
