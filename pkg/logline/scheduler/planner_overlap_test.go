@@ -523,6 +523,27 @@ func shardValueForID(id string, metas ...store.Meta) int {
 	return -1
 }
 
+// TestOverlapPlanner_SkipsDocumentShardedIndexes checks that v5 indexes with
+// document shard bits are never planned, since the v5 merge rejects them,
+// while v5 indexes without them still compact.
+func TestOverlapPlanner_SkipsDocumentShardedIndexes(t *testing.T) {
+	epoch := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	v5Meta := func(hash string, shardBits int) store.Meta {
+		m := makeMeta("2026-01-01", hash, epoch, epoch.Add(10*time.Minute), 100*mib)
+		m.Version = "v5"
+		m.DocumentInterval = 16 * time.Second
+		m.DocumentShardBits = shardBits
+		return m
+	}
+	timeOnly1, timeOnly2 := v5Meta("plain1", 0), v5Meta("plain2", 0)
+	sharded1, sharded2 := v5Meta("shard1", 5), v5Meta("shard2", 5)
+
+	p := newOverlapPlanner([]store.Meta{timeOnly1, sharded1, timeOnly2, sharded2}, 512*mib)
+
+	require.ElementsMatch(t, []string{timeOnly1.ID(), timeOnly2.ID()}, p.Plan())
+	require.Nil(t, p.Plan())
+}
+
 func TestOverlapPlanner_MixedShardConfigsDontMix(t *testing.T) {
 	epoch := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	// Old unsharded index (ShardCount=0) and new sharded (ShardCount=4) for same date.

@@ -285,7 +285,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 //
 // Tag is empty: postings columns are all fixed (one column per Logical type),
 // so Logical alone uniquely identifies the column. Setting Tag would duplicate
-// it. Matches the convention used by streams.Reader for fixed columns.
+// the Logical type.
 func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int, storeRangeStats bool) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,

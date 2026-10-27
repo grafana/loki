@@ -8,7 +8,7 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-  RELEASE_LIB_REF: "31474d7518151f5a5fe74450c3349c5220e040fd"
+  RELEASE_LIB_REF: "ba2e119ef225396a0eb8425811f44914dc446963"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@31474d7518151f5a5fe74450c3349c5220e040fd"
+    uses: "grafana/loki-release/.github/workflows/check.yml@ba2e119ef225396a0eb8425811f44914dc446963"
     with:
       build_image: "golang:1.27.3"
       golang_ci_lint_version: "v2.14.0"
-      release_lib_ref: "31474d7518151f5a5fe74450c3349c5220e040fd"
+      release_lib_ref: "ba2e119ef225396a0eb8425811f44914dc446963"
       skip_validation: false
   create-release-pr:
     needs:
@@ -59,7 +59,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -202,7 +202,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -279,7 +279,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -356,7 +356,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -439,7 +439,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -516,7 +516,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -599,7 +599,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -682,7 +682,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -763,7 +763,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -862,7 +862,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -945,7 +945,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -1028,7 +1028,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"

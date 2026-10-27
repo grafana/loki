@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -72,12 +71,11 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
 
 		// Read the uploaded bytes back: they must decode as an index object
-		// holding postings, and no streams or pointers section.
+		// holding postings, and no streams section.
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, idxObj.Sections().Count(postings.CheckSection), 1)
 		require.Zero(t, idxObj.Sections().Count(streams.CheckSection))
-		require.Zero(t, idxObj.Sections().Count(pointers.CheckSection))
 
 		// The index points back at the data object it was built from.
 		require.Equal(t, []string{objPath}, indexedObjectPaths(t, idxObj))

@@ -557,6 +557,70 @@ func TestService_HandleAbandonJob_AlreadyGone(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestService_HandleCompleteJob(t *testing.T) {
+	svc, indexStore, bucket := newTestService(t)
+
+	populateBucket(t, bucket, "2024-01-01", "hash1", "hash2")
+	pollStore(t, indexStore)
+	svc.rebuildPlanner(indexStore.Snapshot())
+
+	job := svc.assignJob("w1")
+	require.NotNil(t, job)
+
+	req := httptest.NewRequest(http.MethodPost,
+		schedulerapi.CompletePath+"?"+schedulerapi.ParamWorkerID+"=w1&"+schedulerapi.ParamJobID+"="+job.ID, nil)
+	rec := httptest.NewRecorder()
+	svc.handleCompleteJob(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Nil(t, svc.jobs.get(job.ID), "job should be removed after completion")
+	require.Nil(t, svc.jobs.getByWorker("w1"), "a restarted w1 must not be handed the finished job")
+
+	// Unlike abandon, the sources stay out of planning until a store poll
+	// sees the merged index.
+	svc.rebuildPlanner(indexStore.Snapshot())
+	require.Nil(t, svc.assignJob("w2"), "completed sources must not be re-planned")
+}
+
+func TestService_HandleCompleteJob_WrongWorker(t *testing.T) {
+	svc, indexStore, bucket := newTestService(t)
+
+	populateBucket(t, bucket, "2024-01-01", "hash1", "hash2")
+	pollStore(t, indexStore)
+	svc.rebuildPlanner(indexStore.Snapshot())
+
+	job := svc.assignJob("w1")
+	require.NotNil(t, job)
+
+	req := httptest.NewRequest(http.MethodPost,
+		schedulerapi.CompletePath+"?"+schedulerapi.ParamWorkerID+"=w2&"+schedulerapi.ParamJobID+"="+job.ID, nil)
+	rec := httptest.NewRecorder()
+	svc.handleCompleteJob(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	require.NotNil(t, svc.jobs.get(job.ID))
+}
+
+func TestService_HandleCompleteJob_AlreadyGone(t *testing.T) {
+	svc, _, _ := newTestService(t)
+
+	// A resent report for a job the scheduler already removed is a no-op success.
+	req := httptest.NewRequest(http.MethodPost,
+		schedulerapi.CompletePath+"?"+schedulerapi.ParamWorkerID+"=w1&"+schedulerapi.ParamJobID+"=nonexistent", nil)
+	rec := httptest.NewRecorder()
+	svc.handleCompleteJob(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestService_HandleCompleteJob_MissingParams(t *testing.T) {
+	svc, _, _ := newTestService(t)
+
+	req := httptest.NewRequest(http.MethodPost, schedulerapi.CompletePath+"?"+schedulerapi.ParamWorkerID+"=w1", nil)
+	rec := httptest.NewRecorder()
+	svc.handleCompleteJob(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 func TestService_HandleJobRequest_WorkerReportsCompletion_AlreadyRemoved(t *testing.T) {
 	svc, _, _ := newTestService(t)
 

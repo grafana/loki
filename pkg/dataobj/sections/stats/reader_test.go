@@ -26,7 +26,7 @@ func TestReader_ReadBeforeOpen(t *testing.T) {
 }
 
 func TestReader_RoundTrip(t *testing.T) {
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name"))
 	b.SetTenant("test-tenant")
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj",

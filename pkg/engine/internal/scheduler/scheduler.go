@@ -328,19 +328,10 @@ func (s *Scheduler) handleTaskResult(ctx context.Context, worker *workerConn, ms
 		owner.Unassign(task)
 	}
 
-	switch msg.Result.Outcome {
-	case workflow.TaskOutcomeCompleted:
-		task.wfRegion.Record(StatExecutedTasks.Observe(1))
-
+	if msg.Result.Outcome == workflow.TaskOutcomeCompleted {
 		// The execution time of the task is the duration from when it was first
 		// assigned to when we received the completion result.
 		s.metrics.taskExecSeconds.Observe(time.Since(task.AssignTime()).Seconds())
-	case workflow.TaskOutcomeCancelled:
-		// The worker has confirmed cancellation of a previously assigned task
-		// from [Scheduler.Cancel].
-		task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
-	case workflow.TaskOutcomeFailed:
-		task.wfRegion.Record(StatFailedTasks.Observe(1))
 	}
 
 	// Results may include a capture from the worker. Merge it into the
@@ -438,22 +429,6 @@ func (s *Scheduler) recordDisconnectedTaskResult(ctx context.Context, n *notifie
 		return
 	}
 	s.closeTaskSinks(ctx, n, task)
-
-	switch result.Outcome {
-	case workflow.TaskOutcomeCancelled:
-		if pendingCancel {
-			// The worker disconnected before confirming a cancellation we
-			// had requested. Record it against the assigned-cancellation
-			// stat to match the disposition that [Scheduler.Cancel] would
-			// have produced had the worker survived long enough to confirm.
-			task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
-		}
-		// Otherwise the worker disconnected cleanly with no pending
-		// cancellation request; we have no specific stat for that category
-		// today.
-	case workflow.TaskOutcomeFailed:
-		task.wfRegion.Record(StatFailedTasks.Observe(1))
-	}
 
 	task.RecordTerminalObservations(time.Now())
 
@@ -616,7 +591,7 @@ func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
 		// For now, we will treat every task as having an equal cost of 1.
 		//
 		// This provides some level of fairness, but not all tasks need the
-		// same amount of time to complete, so tenants running heavy queries
+		// same amount of time to complete, so tenants running heavy tasks
 		// do not get properly penalized.
 		//
 		// TODO(rfratto): Introduce a better cost estimate for tasks, which
@@ -720,10 +695,6 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 			return
 		}
 		s.metrics.tasksAssignedTotal.Inc()
-
-		if t.wfRegion != nil {
-			t.wfRegion.Record(StatAssignedTasks.Observe(1))
-		}
 
 		// Reconcile sources that closed after the assignment snapshot. Closure
 		// that was in the snapshot was acknowledged with TaskAssign.
@@ -949,7 +920,6 @@ NextTask:
 	s.metrics.tasksRegisteredTotal.Add(float64(len(manifestTasks)))
 	s.metrics.streamsRegisteredTotal.Add(float64(len(manifestStreams)))
 
-	xcap.RegionFromContext(ctx).Record(StatPlannedTasks.Observe(int64(len(manifestTasks))))
 	return nil
 }
 
@@ -1132,7 +1102,7 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 		return err
 	}
 
-	// Extract trace context from the query context and add it to each task's metadata.
+	// Extract trace context from ctx and add it to each task's metadata.
 	metadata := make(http.Header)
 
 	// Copy all headers from context to task metadata.
@@ -1144,9 +1114,6 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	var tc propagation.TraceContext
 	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
 
-	wfRegion := xcap.RegionFromContext(ctx)
-	wfRegion.Record(StatQueuedTasks.Observe(int64(len(tasks))))
-
 	for _, t := range trackedTasks {
 		if t.metadata == nil {
 			t.metadata = make(http.Header)
@@ -1154,8 +1121,6 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 
 		maps.Copy(t.metadata, metadata)
 
-		// Assign the workflow region to the task for metrics recording.
-		t.wfRegion = wfRegion
 		t.runtimeTraceCtx = ctx
 	}
 
@@ -1222,11 +1187,6 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 
 	var errs []error
 
-	var (
-		obsCanceledPending = StatCanceledPendingTasks.Observe(1)
-		obsCanceledQueued  = StatCanceledQueuedTasks.Observe(1)
-	)
-
 	for _, taskToCancel := range tasks {
 		registered, exist := s.tasks[taskToCancel.ULID]
 		if !exist {
@@ -1254,12 +1214,6 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 		changed, _ := registered.SetResult(s.metrics, result)
 		if !changed {
 			continue
-		}
-
-		if registered.Queued() {
-			registered.wfRegion.Record(obsCanceledQueued)
-		} else {
-			registered.wfRegion.Record(obsCanceledPending)
 		}
 
 		registered.RecordTerminalObservations(time.Now())

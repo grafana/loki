@@ -78,6 +78,14 @@ eval instant at 60s count_over_time({app="a"} | label_format route="{{.method}}-
 eval instant at 60s count_over_time({app="a"} | label_format method="{{.method}}!" [1m])
   {app="a", method="get!"} 3
   {app="a", method="post!"} 2
+# A label filter before label_format() sees the stored value.
+eval instant at 60s sum by (verb) (count_over_time({app="a"} | method="post" | label_format verb=method [1m]))
+  {verb="post"} 2
+eval instant at 60s sum by (method) (count_over_time({app="a"} | method="get" | label_format method="{{.method}}!" [1m]))
+  {method="get!"} 3
+# A label filter after label_format() reads the label that the stage creates.
+eval instant at 60s sum by (verb) (count_over_time({app="a"} | label_format verb=method | verb="post" [1m]))
+  {verb="post"} 2
 # An invalid template fails at parse time.
 eval instant at 60s count_over_time({app="a"} | label_format x="{{" [1m])
   expect fail msg: unclosed action
@@ -170,6 +178,11 @@ eval instant at 60s count_over_time({app="a"} | drop code="500" [1m])
   {app="a", zone="eu"} 3
   {app="a", code="200", zone="eu"} 2
   {app="a", code="300", zone="eu"} 2
+# A label filter before drop() sees the stored value.
+eval instant at 60s sum by (code) (count_over_time({app="a"} | code="300" | drop zone [1m]))
+  {code="300"} 2
+eval instant at 60s sum by (zone) (count_over_time({app="a"} | code="500" | drop code [1m]))
+  {zone="eu"} 3
 # drop needs at least one label name; a bare drop is a parse error.
 eval instant at 60s count_over_time({app="a"} | drop [1m])
   expect fail msg: expecting IDENTIFIER

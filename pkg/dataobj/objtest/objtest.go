@@ -199,7 +199,7 @@ func (b *Builder) flush(ctx context.Context) error {
 
 	timeRanges := b.logsBuilder.TimeRanges()
 
-	obj, closer, err := b.logsBuilder.Flush()
+	obj, closer, err := b.logsBuilder.FlushAndSort(context.Background())
 	if err != nil {
 		return fmt.Errorf("flushing builder: %w", err)
 	}

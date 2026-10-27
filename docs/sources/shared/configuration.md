@@ -4318,11 +4318,6 @@ discover_generic_fields:
 # CLI flag: -querier.split-instant-metric-queries-by-interval
 [split_instant_metric_queries_by_interval: <duration> | default = 1h]
 
-# Time bucket interval used for cache key generation in the Thor (V2) query
-# engine. Queries starting within the same bucket share the same cache key.
-# CLI flag: -querier.engine-results-cache-time-bucket-interval
-[engine_results_cache_time_bucket_interval: <duration> | default = 1d]
-
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
 # setting to 0.
@@ -4705,15 +4700,6 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# Experimental: Toggles verbose debug logging of tasks in the new query engine.
-# CLI flag: -limits.debug-engine-tasks
-[debug_engine_tasks: <boolean> | default = false]
-
-# Experimental: Toggles verbose debug logging of data streams in the new query
-# engine.
-# CLI flag: -limits.debug-engine-streams
-[debug_engine_streams: <boolean> | default = false]
 ```
 
 ### local_storage_config
@@ -4913,6 +4899,13 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # if cas-retry-min-backoff is also set.
 # CLI flag: -memberlist.cas-retry-max-backoff
 [cas_retry_max_backoff: <duration> | default = 10s]
+
+# Cache the serialized form of each key, so that push/pull sync doesn't
+# re-encode entries that haven't changed since the last sync. Reduces CPU and
+# lock contention in large clusters, at the cost of memory proportional to the
+# size of the KV store.
+# CLI flag: -memberlist.local-state-cache-enabled
+[local_state_cache_enabled: <boolean> | default = false]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
@@ -5993,6 +5986,13 @@ Configures the `server` of the launched module(s).
 # VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
 # CLI flag: -server.tls-min-version
 [tls_min_version: <string> | default = ""]
+
+# Comma-separated list of TLS curve/group preferences for key exchange. Allowed
+# values: CurveP256, CurveP384, CurveP521, X25519, X25519MLKEM768,
+# SecP256r1MLKEM768, SecP384r1MLKEM1024. If blank, the default Go curve
+# preferences are used.
+# CLI flag: -server.tls-curve-preferences
+[tls_curve_preferences: <string> | default = ""]
 
 http_tls_config:
   # Server TLS certificate. This configuration parameter is YAML only.
