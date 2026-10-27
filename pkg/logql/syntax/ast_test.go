@@ -1494,6 +1494,7 @@ func TestLogSelectorExprHasFilter(t *testing.T) {
 		`{foo="bar"} |~ ".*" |= "notempty"`:    true,
 		`{foo="bar"} |~ ".*" or "notempty"`:    true,
 		`{foo="bar"} |~ "(?i)notempty"`:        true,
+		`{foo="bar"} |~ ".+"`:                  true,
 		`{foo="bar"} !~ ".*"`:                  true,
 		`{foo="bar"} |= ".*"`:                  true,
 		`{foo="bar"} |= ip("127.0.0.1") or ""`: true,
