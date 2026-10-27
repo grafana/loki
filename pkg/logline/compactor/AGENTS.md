@@ -44,7 +44,7 @@ The compactor is single-threaded: request a job, execute it, request the next. T
 
 The compactor never holds a local copy of the merged output. StorageID must be generated once per job before the upload retry path, so a compactor that restarts mid-upload still addresses the same object path on the next attempt.
 
-**Version support**: compaction uses the streaming-friendly v3 format (footer-at-EOF) via the shim's `Merger.Merge`. The scheduler groups sources by resolved version in the compaction key. It skips v5 indexes with document shard bits, because the v5 merge rejects them; see `internal/v5/AGENTS.md`.
+**Version support**: compaction uses the streaming-friendly v3 format (footer-at-EOF) via the shim's `Merger.Merge`. The scheduler groups sources by resolved version in the compaction key. It skips v5 indexes with footer version 4, because the v5 merge refuses them; see `internal/v5/AGENTS.md`. `verifyCompactionJob` also requires one date, and the merge's `WriterConfig.DayStart` is that date: a v5 merge refuses inputs whose footer covers another day.
 
 **Date extraction**: the scheduler guarantees all SourceIDs share the same partition date. The date is extracted from `strings.SplitN(sourceIDs[0], "/", 2)[0]`.
 
