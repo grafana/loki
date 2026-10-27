@@ -287,6 +287,14 @@ func TestQueryResponseSamples(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSeriesLimitTruncated(t *testing.T) {
+	require.True(t, seriesLimitTruncated([]string{
+		"maximum number of series (100) reached for a single query; returning partial results",
+	}))
+	require.False(t, seriesLimitTruncated(nil))
+	require.False(t, seriesLimitTruncated([]string{"query time range exceeds the limit"}))
+}
+
 type recordingHintProvider struct {
 	expr    syntax.Expr
 	from    model.Time

@@ -515,13 +515,14 @@ type needleResults struct {
 
 func (s *Service) fetchNeedleResults(ctx context.Context, hq hintQuery, start, end time.Time) (needleResults, error) {
 	if isMetricQuery(hq) {
-		samples, _, err := s.queryMetrics(ctx, hq, start, end)
+		samples, _, truncated, err := s.queryMetrics(ctx, hq, start, end)
 		if err != nil {
 			return needleResults{}, err
 		}
 		return needleResults{
-			count:   len(samples),
-			samples: samples,
+			count:     len(samples),
+			truncated: truncated,
+			samples:   samples,
 			verify: func(r []hintprovider.HintTimeRange) *verificationReport {
 				return verifyMetricHints(hq.expr, r, samples)
 			},
@@ -698,14 +699,14 @@ func (s *Service) queryMetrics(
 	ctx context.Context,
 	hq hintQuery,
 	start, end time.Time,
-) ([]verification.MetricSample, string, error) {
+) ([]verification.MetricSample, string, bool, error) {
 	if end.Before(start) {
 		end = start
 	}
 	var lastErr error
 	for _, idx := range s.shuffledClientIndexes() {
 		if err := ctx.Err(); err != nil {
-			return nil, "", err
+			return nil, "", false, err
 		}
 
 		c := s.lokiClients[idx]
@@ -720,7 +721,7 @@ func (s *Service) queryMetrics(
 		case hintQueryTypeMetricInstant:
 			resp, err = c.client.Query(hq.query, 0, end, logproto.BACKWARD, true)
 		default:
-			return nil, "", fmt.Errorf("not a metric query type: %q", hq.queryType)
+			return nil, "", false, fmt.Errorf("not a metric query type: %q", hq.queryType)
 		}
 		if err != nil {
 			lastErr = fmt.Errorf("endpoint %s query metrics: %w", c.endpoint, err)
@@ -731,13 +732,24 @@ func (s *Service) queryMetrics(
 			lastErr = fmt.Errorf("endpoint %s decode query metrics response: %w", c.endpoint, err)
 			continue
 		}
-		return samples, c.endpoint, nil
+		return samples, c.endpoint, seriesLimitTruncated(resp.Warnings), nil
 	}
 
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no Loki clients configured")
 	}
-	return nil, "", lastErr
+	return nil, "", false, lastErr
+}
+
+// seriesLimitTruncated reports whether Loki stopped a metric query at max_query_series.
+// The metric fetch uses limit 0, so the log line cap does not apply.
+func seriesLimitTruncated(warnings []string) bool {
+	for _, w := range warnings {
+		if strings.Contains(w, "maximum number of series") && strings.Contains(w, "returning partial results") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) queryLogs(
