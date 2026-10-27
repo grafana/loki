@@ -488,59 +488,83 @@ func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
 	early := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
 	late := early.Add(time.Minute)
 
-	push := func(s *stream, ctx context.Context, line string, ts int64) {
-		t.Helper()
-		_, err := s.Push(ctx, []logproto.Entry{{Timestamp: time.Unix(ts, 0), Line: line}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
-		require.NoError(t, err)
+	// A zero timestamp pushes without a record timestamp.
+	type step struct {
+		recordTime time.Time
+		// cutBefore cuts the chunk before the push, so the push goes to a new chunk.
+		cutBefore bool
 	}
 
-	t.Run("highest record timestamp is kept whatever the push order", func(t *testing.T) {
-		inOrder := newTestStream()
-		push(inOrder, withRecordTimestamp(context.Background(), early), "a", 1)
-		push(inOrder, withRecordTimestamp(context.Background(), late), "b", 2)
+	for _, tc := range []struct {
+		name  string
+		steps []step
+		// want is the ingestedAt of each chunk of the stream.
+		want []time.Time
+	}{
+		{
+			name:  "highest record timestamp is kept",
+			steps: []step{{recordTime: early}, {recordTime: late}},
+			want:  []time.Time{late},
+		},
+		{
+			name:  "highest record timestamp is kept whatever the push order",
+			steps: []step{{recordTime: late}, {recordTime: early}},
+			want:  []time.Time{late},
+		},
+		{
+			name:  "each chunk only gets the timestamps of the records that fed it",
+			steps: []step{{recordTime: late}, {recordTime: early, cutBefore: true}},
+			want:  []time.Time{late, early},
+		},
+		{
+			name:  "no record timestamp leaves it unset",
+			steps: []step{{}, {}},
+			want:  []time.Time{{}},
+		},
+		{
+			name:  "pushes without a record timestamp don't change it",
+			steps: []step{{recordTime: early}, {}},
+			want:  []time.Time{early},
+		},
+		{
+			name:  "epoch record timestamp is ignored",
+			steps: []step{{recordTime: time.UnixMilli(0)}},
+			want:  []time.Time{{}},
+		},
+		{
+			name:  "Kafka NoTimestamp is ignored",
+			steps: []step{{recordTime: time.UnixMilli(-1)}},
+			want:  []time.Time{{}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestStream()
+			for i, st := range tc.steps {
+				if st.cutBefore {
+					_ = s.cutChunk(context.Background())
+				}
+				_, err := s.Push(withRecordTimestamp(context.Background(), st.recordTime), []logproto.Entry{{Timestamp: time.Unix(int64(i+1), 0), Line: fmt.Sprintf("line %d", i)}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+				require.NoError(t, err)
+			}
 
-		reversed := newTestStream()
-		push(reversed, withRecordTimestamp(context.Background(), late), "b", 2)
-		push(reversed, withRecordTimestamp(context.Background(), early), "a", 1)
+			require.Len(t, s.chunks, len(tc.want))
+			for i, want := range tc.want {
+				require.True(t, want.Equal(s.chunks[i].ingestedAt), "chunk %d: got %s, want %s", i, s.chunks[i].ingestedAt, want)
+			}
+		})
+	}
+}
 
-		require.Len(t, inOrder.chunks, 1)
-		require.Len(t, reversed.chunks, 1)
-		require.Equal(t, late, inOrder.chunks[0].ingestedAt)
-		require.Equal(t, late, reversed.chunks[0].ingestedAt)
-	})
+func TestRecordTimestampIgnoresUnusable(t *testing.T) {
+	for _, ts := range []time.Time{{}, time.UnixMilli(0), time.UnixMilli(-1)} {
+		_, ok := recordTimestamp(withRecordTimestamp(context.Background(), ts))
+		require.False(t, ok, ts.String())
+	}
 
-	t.Run("each chunk only gets the timestamps of the records that fed it", func(t *testing.T) {
-		s := newTestStream()
-		push(s, withRecordTimestamp(context.Background(), late), "a", 1)
-		_ = s.cutChunk(context.Background())
-		push(s, withRecordTimestamp(context.Background(), early), "b", 2)
-
-		require.Len(t, s.chunks, 2)
-		require.Equal(t, late, s.chunks[0].ingestedAt)
-		require.Equal(t, early, s.chunks[1].ingestedAt)
-	})
-
-	t.Run("record timestamps that are not usable are ignored", func(t *testing.T) {
-		for _, ts := range []time.Time{{}, time.UnixMilli(0), time.UnixMilli(-1)} {
-			_, ok := recordTimestamp(withRecordTimestamp(context.Background(), ts))
-			require.False(t, ok, ts.String())
-		}
-
-		s := newTestStream()
-		push(s, withRecordTimestamp(context.Background(), time.UnixMilli(-1)), "a", 1)
-
-		require.Len(t, s.chunks, 1)
-		require.True(t, s.chunks[0].ingestedAt.IsZero())
-	})
-
-	t.Run("no record timestamp leaves it unset", func(t *testing.T) {
-		s := newTestStream()
-		push(s, context.Background(), "a", 1)
-		push(s, withRecordTimestamp(context.Background(), time.Time{}), "b", 2)
-
-		require.Len(t, s.chunks, 1)
-		require.True(t, s.chunks[0].ingestedAt.IsZero())
-	})
+	ts := time.UnixMilli(1_700_000_000_000)
+	got, ok := recordTimestamp(withRecordTimestamp(context.Background(), ts))
+	require.True(t, ok)
+	require.True(t, ts.Equal(got))
 }
 
 func TestPushRateLimit(t *testing.T) {

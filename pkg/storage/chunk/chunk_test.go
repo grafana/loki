@@ -134,7 +134,7 @@ func TestChunkCodecIngestedAt(t *testing.T) {
 		name       string
 		ingestedAt model.Time
 	}{
-		{"zero (live chunk)", 0},
+		{"zero (non-backfill chunk)", 0},
 		{"millisecond precision (written before day rounding)", 1792752435882},
 		{"day aligned", 1792800000000},
 	} {

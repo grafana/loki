@@ -623,9 +623,9 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 
 // maybeSetIngestedAt stamps the chunk's IngestedAt for chunks belonging to backfilled
 // streams (those carrying the __backfill__ label), so that under TSDB FormatV4 (schema v14)
-// retention can be measured from ingestion rather than from the log timestamps. Live chunks,
-// and chunks whose period does not support FormatV4, keep the zero value and fall back to
-// Through-based retention.
+// retention can be measured from ingestion rather than from the log timestamps. Chunks of
+// streams without the __backfill__ label keep the zero value. So do chunks whose period does
+// not support FormatV4, which fall back to Through-based retention.
 //
 // recordTime is the highest timestamp of the ingested (e.g. Kafka) records that fed the chunk.
 // It is used as the ingestion time as is if it is valid, see validRecordTimestamp. Otherwise

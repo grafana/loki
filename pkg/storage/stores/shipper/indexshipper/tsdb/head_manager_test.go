@@ -297,7 +297,7 @@ func Test_HeadManager_RecoverHead_IngestedAt(t *testing.T) {
 	chks := index.ChunkMetas{
 		// A backfilled chunk, stamped at flush time.
 		{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6, IngestedAt: now.UnixMilli()},
-		// A live chunk in the same record keeps the zero value.
+		// A non-backfill chunk in the same record keeps the zero value.
 		{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
 	}
 
