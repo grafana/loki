@@ -2088,9 +2088,9 @@ func BenchmarkLogfmtExpressionParserNames(b *testing.B) {
 		// The line has none of the names, so the parser writes an empty label for each.
 		{"names that the line lacks", labels.FromStrings("cluster", "qa"), []string{"missing_a", "missing_b", "missing_c", "missing_d"}, nil},
 		// A grouping on every name lets the parser stop as soon as it has read them all.
-		{"grouping on every name", labels.FromStrings("cluster", "qa"), names, NewParserHint(names, names, false, false, "")},
+		{"grouping on every name", labels.FromStrings("cluster", "qa"), names, NewParserHint(nil, names, false, false, "")},
 		// The grouping does not need the renamed name, so the parser stops at the first key.
-		{"grouping that does not need the renamed name", labels.FromStrings("cluster", "qa", "level", "stream"), []string{"level"}, NewParserHint([]string{"level"}, []string{"level"}, false, false, "")},
+		{"grouping that does not need the renamed name", labels.FromStrings("cluster", "qa", "level", "stream"), []string{"level"}, NewParserHint(nil, []string{"level"}, false, false, "")},
 	}
 	for _, bb := range benchmarks {
 		b.Run(bb.name, func(b *testing.B) {
@@ -2168,7 +2168,7 @@ func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 
 	base := labels.FromStrings("app", "x")
 	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
-	b.parserKeyHints = NewParserHint([]string{"a", "b"}, []string{"a", "b"}, false, false, "")
+	b.parserKeyHints = NewParserHint(nil, []string{"a", "b"}, false, false, "")
 	b.Reset()
 	_, _ = parser.Process(0, []byte(`a=1 b=2`), b)
 	require.Equal(t, labels.FromStrings("app", "x", "a", "1", "b", "2"), b.LabelsResult().Labels())
@@ -2250,7 +2250,7 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			parser, err := NewLogfmtExpressionParser(exprs, false)
 			require.NoError(t, err)
 
-			hints := &askedHints{ParserHint: NewParserHint(tt.required, tt.required, false, false, "")}
+			hints := &askedHints{ParserHint: NewParserHint(nil, tt.required, false, false, "")}
 			base := labels.FromStrings("app", "x")
 			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 			b.parserKeyHints = hints
