@@ -1,3 +1,6 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
 // Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,11 +15,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package gcp
+package internal
 
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"strings"
 
@@ -25,14 +29,10 @@ import (
 
 var errEnvVarNotFound = errors.New("environment variable not found")
 
-// NewDetector returns a *Detector which can get detect the platform,
-// and fetch attributes of the platform on which it is running.
-func NewDetector() *Detector {
-	return &Detector{metadata: metadata.NewClient(nil), os: realOSProvider{}}
-}
-
+// Platform represents the GCP platform type.
 type Platform int64
 
+// Supported GCP platforms.
 const (
 	UnknownPlatform Platform = iota
 	GKE
@@ -45,6 +45,32 @@ const (
 	AppEngineFlex
 	BareMetalSolution
 )
+
+// Detector collects resource information for all GCP platforms.
+type Detector struct {
+	metadata       *metadata.Client
+	os             osProvider
+	httpClient     *http.Client
+	computeBaseURL string
+}
+
+// osProvider contains the subset of the os package functions used by Detector.
+type osProvider interface {
+	LookupEnv(string) (string, bool)
+}
+
+// realOSProvider uses the os package to lookup env vars.
+type realOSProvider struct{}
+
+func (realOSProvider) LookupEnv(env string) (string, bool) {
+	return os.LookupEnv(env)
+}
+
+// NewDetector returns a *Detector which can detect the platform,
+// and fetch attributes of the platform on which it is running.
+func NewDetector() *Detector {
+	return &Detector{metadata: metadata.NewClient(nil), os: realOSProvider{}}
+}
 
 // CloudPlatform returns the platform on which this program is running.
 func (d *Detector) CloudPlatform() Platform {
@@ -78,27 +104,9 @@ func (d *Detector) ProjectID() (string, error) {
 	return strings.TrimSpace(s), err
 }
 
-// instanceID returns the ID of the project in which this program is running.
+// instanceID returns the ID of the instance on which this program is running.
 func (d *Detector) instanceID() (string, error) {
 	// N.B. d.metadata.InstanceIDWithContext(context.TODO()) is cached globally, so if we use it here it's untestable.
 	s, err := d.metadata.GetWithContext(context.TODO(), "instance/id")
 	return strings.TrimSpace(s), err
-}
-
-// Detector collects resource information for all GCP platforms.
-type Detector struct {
-	metadata *metadata.Client
-	os       osProvider
-}
-
-// osProvider contains the subset of the os package functions used by.
-type osProvider interface {
-	LookupEnv(string) (string, bool)
-}
-
-// realOSProvider uses the os package to lookup env vars.
-type realOSProvider struct{}
-
-func (realOSProvider) LookupEnv(env string) (string, bool) {
-	return os.LookupEnv(env)
 }

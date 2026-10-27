@@ -1,3 +1,6 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
 // Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package gcp
+package internal
 
 const (
 	bmsProjectIDEnv  = "BMS_PROJECT_ID"

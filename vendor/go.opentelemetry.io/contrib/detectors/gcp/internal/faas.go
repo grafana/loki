@@ -1,3 +1,6 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
 // Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package gcp
+package internal
 
 import (
 	"context"
@@ -31,16 +34,16 @@ const (
 	//
 	// Cloud Run worker pool env vars:
 	// https://cloud.google.com/run/docs/container-contract#worker-pools-env-vars
-	cloudFunctionsTargetEnv    = "FUNCTION_TARGET"
-	cloudRunConfigurationEnv   = "K_CONFIGURATION"
-	cloudRunJobsEnv            = "CLOUD_RUN_JOB"
-	faasServiceEnv             = "K_SERVICE"
-	faasRevisionEnv            = "K_REVISION"
-	cloudRunJobExecutionEnv = "CLOUD_RUN_EXECUTION"
-	cloudRunJobTaskIndexEnv = "CLOUD_RUN_TASK_INDEX"
-	cloudRunWorkerPoolEnv   = "CLOUD_RUN_WORKER_POOL"
-	cloudRunRevisionEnv     = "CLOUD_RUN_REVISION"
-	regionMetadataAttr      = "instance/region"
+	cloudFunctionsTargetEnv  = "FUNCTION_TARGET"
+	cloudRunConfigurationEnv = "K_CONFIGURATION"
+	cloudRunJobsEnv          = "CLOUD_RUN_JOB"
+	faasServiceEnv           = "K_SERVICE"
+	faasRevisionEnv          = "K_REVISION"
+	cloudRunJobExecutionEnv  = "CLOUD_RUN_EXECUTION"
+	cloudRunJobTaskIndexEnv  = "CLOUD_RUN_TASK_INDEX"
+	cloudRunWorkerPoolEnv    = "CLOUD_RUN_WORKER_POOL"
+	cloudRunRevisionEnv      = "CLOUD_RUN_REVISION"
+	regionMetadataAttr       = "instance/region"
 )
 
 func (d *Detector) onCloudFunctions() bool {

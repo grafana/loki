@@ -1,3 +1,6 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
 // Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,10 +15,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package gcp
+package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -72,7 +76,7 @@ func (d *Detector) GCEAvailabilityZoneAndRegion() (string, string, error) {
 		return "", "", err
 	}
 	if zone == "" {
-		return "", "", fmt.Errorf("no zone detected from GCE metadata server")
+		return "", "", errors.New("no zone detected from GCE metadata server")
 	}
 	splitZone := strings.SplitN(zone, "-", 3)
 	if len(splitZone) != 3 {
@@ -91,7 +95,7 @@ var createdByMIGRE = regexp.MustCompile(`^projects/[^/]+/(zones|regions)/([^/]+)
 
 func (d *Detector) GCEManagedInstanceGroup() (ManagedInstanceGroup, error) {
 	createdBy, err := d.metadata.InstanceAttributeValueWithContext(context.TODO(), createdByInstanceAttr)
-	if _, ok := err.(metadata.NotDefinedError); ok {
+	if _, ok := errors.AsType[metadata.NotDefinedError](err); ok {
 		return ManagedInstanceGroup{}, nil
 	} else if err != nil {
 		return ManagedInstanceGroup{}, err
