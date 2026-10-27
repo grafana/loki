@@ -536,6 +536,11 @@ func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
 			steps: []step{{recordTime: time.UnixMilli(-1)}},
 			want:  []time.Time{{}},
 		},
+		{
+			name:  "far future record timestamp is ignored",
+			steps: []step{{recordTime: early}, {recordTime: time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)}},
+			want:  []time.Time{early},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newTestStream()
@@ -556,7 +561,7 @@ func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
 }
 
 func TestRecordTimestampIgnoresUnusable(t *testing.T) {
-	for _, ts := range []time.Time{{}, time.UnixMilli(0), time.UnixMilli(-1)} {
+	for _, ts := range []time.Time{{}, time.UnixMilli(0), time.UnixMilli(-1), time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)} {
 		_, ok := recordTimestamp(withRecordTimestamp(context.Background(), ts))
 		require.False(t, ok, ts.String())
 	}

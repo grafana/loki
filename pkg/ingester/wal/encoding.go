@@ -114,17 +114,20 @@ func (r *Record) EncodeEntries(version RecordType, b []byte) []byte {
 	// All others in this record will store their timestamps as diffs relative to this
 	// as a space optimization.
 	var first int64
+	var hasEntries bool
 
 outer:
 	for _, ref := range r.RefEntries {
 		for _, entry := range ref.Entries {
 			first = entry.Timestamp.UnixNano()
 			buf.PutBE64int64(first)
+			hasEntries = true
 			break outer
 		}
 	}
 
-	if version >= WALRecordEntriesV4 {
+	// Written along with the first timestamp, so a record without entries stays empty.
+	if hasEntries && version >= WALRecordEntriesV4 {
 		// Kafka timestamps have ms precision. Zero means there is none.
 		var ingestedAt int64
 		if !r.IngestedAt.IsZero() {

@@ -366,22 +366,24 @@ func TestRecoveryRestoresRecordTimestampFromWAL(t *testing.T) {
 		UserID: "test",
 		Series: []record.RefSeries{{Ref: 1, Labels: lbls}},
 	}
-	entries := func(counter int64, ts time.Time, line string) []byte {
-		rec := &wal.Record{UserID: "test", IngestedAt: ts}
+	entries := func(version wal.RecordType, counter int64, ts time.Time, line string) []byte {
+		rec := &wal.Record{}
 		rec.Reset()
 		rec.UserID = "test"
 		rec.IngestedAt = ts
 		rec.AddEntries(1, counter, logproto.Entry{Timestamp: time.Unix(counter, 0), Line: line})
-		return rec.EncodeEntries(wal.CurrentEntriesRec, nil)
+		return rec.EncodeEntries(version, nil)
 	}
 
 	// The records arrive out of order of their timestamps, the highest one wins.
 	reader := &MemoryWALReader{xs: [][]byte{
 		series.EncodeSeries(nil),
-		entries(1, second, "a"),
-		entries(2, first, "b"),
-		// A record without a timestamp (e.g. written by an older version) doesn't change it.
-		entries(3, time.Time{}, "c"),
+		entries(wal.WALRecordEntriesV4, 1, second, "a"),
+		entries(wal.WALRecordEntriesV4, 2, first, "b"),
+		// A record without a timestamp doesn't change it.
+		entries(wal.WALRecordEntriesV4, 3, time.Time{}, "c"),
+		// Neither does a record written by an older version, which can't store the timestamp.
+		entries(wal.WALRecordEntriesV3, 4, second.Add(time.Hour), "d"),
 	}}
 
 	recoverer := newIngesterRecoverer(i)

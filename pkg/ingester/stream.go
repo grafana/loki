@@ -106,12 +106,20 @@ type chunkDesc struct {
 
 type recordTimestampKey struct{}
 
+// maxRecordTimestamp is the latest record timestamp that is used. Anything later is a bogus
+// timestamp, e.g. from a producer with a skewed clock, and would win the per-chunk maximum and
+// keep the chunk from ever being expired. It is a fixed time, rather than relative to now, so
+// every replica agrees on which timestamps to ignore. It is also well below the year 2262, after
+// which UnixNano overflows.
+var maxRecordTimestamp = time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // validRecordTimestamp reports whether ts can be used as the timestamp of an ingested record.
 // Records without a timestamp come with a zero time, or with a timestamp at or before the epoch
 // (e.g. Kafka's NoTimestamp, -1). Those would end up as an IngestedAt of zero, which means "not
-// set" and makes the chunk fall back to Through-based retention.
+// set" and makes the chunk fall back to Through-based retention. Timestamps after
+// maxRecordTimestamp are ignored too.
 func validRecordTimestamp(ts time.Time) bool {
-	return ts.UnixMilli() > 0
+	return ts.UnixMilli() > 0 && ts.Before(maxRecordTimestamp)
 }
 
 // withRecordTimestamp returns a context carrying the timestamp of the record being pushed, e.g. a

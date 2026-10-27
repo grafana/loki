@@ -283,6 +283,15 @@ func TestEntriesRecordIngestedAt(t *testing.T) {
 	}
 }
 
+// A record without entries has no base timestamp, so it has no record timestamp either.
+func TestEncodeEntriesWithoutEntries(t *testing.T) {
+	rec := &Record{UserID: "123", IngestedAt: time.UnixMilli(1_700_000_000_123), RefEntries: []RefEntries{{Ref: 1}}}
+
+	decoded := recordPool.GetRecord()
+	require.NoError(t, DecodeRecord(rec.EncodeEntries(WALRecordEntriesV4, nil), decoded))
+	require.Empty(t, decoded.RefEntries)
+}
+
 func TestRecordResetClearsIngestedAt(t *testing.T) {
 	rec := &Record{IngestedAt: time.UnixMilli(1_700_000_000_123)}
 	rec.Reset()
