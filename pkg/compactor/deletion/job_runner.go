@@ -74,10 +74,10 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		// This checks for a pipeline instead of HasFilter because the manifest can come from a
-		// compactor version whose HasFilter disagrees, for example on |~ ".*". A rejected job
-		// fails its manifest on every retry, which blocks the deletions queued after it.
-		// FilterFunction deletes a request whose filters keep every line by its time range.
+		// The manifest builder already checks HasFilter, so this only rejects a request without
+		// a pipeline. A manifest built by an older compactor can contain a request such as
+		// {app="x"} |~ ".*" that this version's HasFilter counts as no filter. Rejecting it
+		// would fail the job on every retry and block that manifest.
 		if _, ok := req.logSelectorExpr.(*syntax.PipelineExpr); !ok {
 			return nil, errors.New("deletion query does not contain filter")
 		}
