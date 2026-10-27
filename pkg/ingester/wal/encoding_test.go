@@ -254,12 +254,10 @@ func TestEntriesRecordIngestedAt(t *testing.T) {
 		}
 	}
 
-	t.Run("a record with a timestamp is written as V4 and restored on all entries", func(t *testing.T) {
+	t.Run("a record with a timestamp is restored on all entries", func(t *testing.T) {
 		rec := newRec(ingestedAt)
-		require.Equal(t, WALRecordEntriesV4, rec.EntriesRecordType())
-
 		decoded := recordPool.GetRecord()
-		require.NoError(t, DecodeRecord(rec.EncodeEntries(rec.EntriesRecordType(), nil), decoded))
+		require.NoError(t, DecodeRecord(rec.EncodeEntries(CurrentEntriesRec, nil), decoded))
 
 		require.True(t, ingestedAt.Equal(decoded.IngestedAt))
 		require.Len(t, decoded.RefEntries, 2)
@@ -269,12 +267,11 @@ func TestEntriesRecordIngestedAt(t *testing.T) {
 		require.Equal(t, "second", decoded.RefEntries[1].Entries[0].Line)
 	})
 
-	t.Run("a record without a timestamp keeps being written as the current version", func(t *testing.T) {
+	t.Run("a record without a timestamp decodes to a zero time", func(t *testing.T) {
 		rec := newRec(time.Time{})
-		require.Equal(t, CurrentEntriesRec, rec.EntriesRecordType())
 
 		decoded := recordPool.GetRecord()
-		require.NoError(t, DecodeRecord(rec.EncodeEntries(rec.EntriesRecordType(), nil), decoded))
+		require.NoError(t, DecodeRecord(rec.EncodeEntries(CurrentEntriesRec, nil), decoded))
 		require.True(t, decoded.IngestedAt.IsZero())
 		for _, re := range decoded.RefEntries {
 			require.True(t, re.IngestedAt.IsZero())

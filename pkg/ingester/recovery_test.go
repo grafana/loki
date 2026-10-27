@@ -372,7 +372,7 @@ func TestRecoveryRestoresRecordTimestampFromWAL(t *testing.T) {
 		rec.UserID = "test"
 		rec.IngestedAt = ts
 		rec.AddEntries(1, counter, logproto.Entry{Timestamp: time.Unix(counter, 0), Line: line})
-		return rec.EncodeEntries(rec.EntriesRecordType(), nil)
+		return rec.EncodeEntries(wal.CurrentEntriesRec, nil)
 	}
 
 	// The records arrive out of order of their timestamps, the highest one wins.

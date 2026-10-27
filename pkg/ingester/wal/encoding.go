@@ -29,24 +29,13 @@ const (
 	// WALRecordEntriesV3 is the type for the WAL record for samples with structured metadata.
 	WALRecordEntriesV3
 	// WALRecordEntriesV4 is the type for the WAL record for samples with structured metadata and
-	// the timestamp of the record (e.g. Kafka) they were ingested from. It is only written for
-	// records that have one, so ingesters that don't ingest from Kafka keep writing V3.
+	// the timestamp of the record (e.g. Kafka) they were ingested from, or zero if there is none.
 	WALRecordEntriesV4
 )
 
 // The current type of Entries that this distribution writes.
 // Loki can read in a backwards compatible manner, but will write the newest variant.
-// TODO: Change to WALRecordEntriesV3?
-const CurrentEntriesRec = WALRecordEntriesV3
-
-// EntriesRecordType returns the type to encode the entries of the record with: V4 if it carries
-// the timestamp of the record it was ingested from, otherwise CurrentEntriesRec.
-func (r *Record) EntriesRecordType() RecordType {
-	if !r.IngestedAt.IsZero() {
-		return WALRecordEntriesV4
-	}
-	return CurrentEntriesRec
-}
+const CurrentEntriesRec = WALRecordEntriesV4
 
 // Record is a struct combining the series and samples record.
 type Record struct {
