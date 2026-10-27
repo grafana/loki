@@ -48,7 +48,7 @@ func TestFooterLayout(t *testing.T) {
 	h, err := parseIndexHeader(footerBuf)
 	require.NoError(t, err)
 	require.Equal(t, IndexMagic, h.Magic, "footer must have valid magic")
-	require.Equal(t, uint32(6), binary.LittleEndian.Uint32(footerBuf[4:8]), "v5 footer version is 6")
+	require.Equal(t, uint32(5), binary.LittleEndian.Uint32(footerBuf[4:8]), "v5 footer version is 5")
 	require.Equal(t, uint64(1), h.TermCount)
 	require.Equal(t, uint32(2), h.DocumentCount, "DocumentCount counts the cells postings reference")
 	require.Zero(t, h.DocMetadataSize, "v5 indexes have no document table")

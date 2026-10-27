@@ -18,7 +18,7 @@ review.
 | --- | --- | --- | --- |
 | v3 | Current (`CurrentVersion`) | footer 4 | v3 |
 | v4 | Supported | v3 bytes | packed numeric terms |
-| v5 | In development. Do not set `-logline-index.version=v5` | footer 6; postings hold cells of the index's day and there is no document table | v4's extractor, forked into `internal/v5` |
+| v5 | In development. Do not set `-logline-index.version=v5` | footer 5; postings hold cells of the index's day and there is no document table | v4's extractor, forked into `internal/v5` |
 
 v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v3"` so a binary upgrade does not write it.
 

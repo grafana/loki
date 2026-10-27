@@ -22,8 +22,8 @@ const (
 	// IndexMagic identifies a unified index file.
 	IndexMagic uint32 = 0x4C4F474C // "LOGL"
 	// IndexVersion is the v5 footer version. v3 and v4 files are version 4,
-	// and so are v5 files written before day-relative cells. 5 is unused.
-	IndexVersion uint32 = 6
+	// and so are v5 files written before day-relative cells.
+	IndexVersion uint32 = 5
 	// IndexFooterSize is the size of the 256-byte footer appended at end of file.
 	// v2 files have no header prefix; data starts at offset 0 and the footer is at EOF.
 	IndexFooterSize = 256

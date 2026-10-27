@@ -8,12 +8,13 @@ unchanged from v4. The format rules in `internal/v3/AGENTS.md`, such as the
 postings encodings and their frozen layouts, apply here too.
 
 `CurrentVersion` stays `"v3"`. Footer auto-detection (`logline.OpenReaderAt`,
-`logline.OpenFile`) reports footer 6 as `"v5"`. The query path takes the
+`logline.OpenFile`) reports footer 5 as `"v5"`. The query path takes the
 version from `meta.json`.
 
 ## Day-relative cells
 
-The footer version is 6 (`IndexVersion`). v3 and v4 files are footer 4.
+The footer version is 5 (`IndexVersion`), matching the version name. v3 and
+v4 files are footer 4.
 
 - One v5 index covers one UTC day. Its document IDs are cells of that day:
   `cell = bucket << shardBits | documentShard`, where `bucket` is the

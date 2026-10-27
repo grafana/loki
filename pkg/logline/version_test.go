@@ -150,9 +150,9 @@ func TestValidateIndexHeader(t *testing.T) {
 	}{
 		{version: "v3", footerVersion: 4},
 		{version: "v4", footerVersion: 4},
-		{version: "v5", footerVersion: 6},
-		{version: "v5", footerVersion: 4, wantErr: "v5 index has footer version 4, want 6"},
-		{version: "v3", footerVersion: 6, wantErr: "v3 index has footer version 6, want 4"},
+		{version: "v5", footerVersion: 5},
+		{version: "v5", footerVersion: 4, wantErr: "v5 index has footer version 4, want 5"},
+		{version: "v3", footerVersion: 5, wantErr: "v3 index has footer version 5, want 4"},
 		{version: "v99", footerVersion: 4, wantErr: `unsupported index version: "v99"`},
 	} {
 		t.Run(fmt.Sprintf("%s/footer%d", tt.version, tt.footerVersion), func(t *testing.T) {

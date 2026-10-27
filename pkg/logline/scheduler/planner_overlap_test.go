@@ -539,8 +539,8 @@ func TestOverlapPlanner_DocumentShardedIndexes(t *testing.T) {
 		m.IndexHeader = &format.HeaderInfo{Version: footerVersion}
 		return m
 	}
-	timeOnly1, timeOnly2 := v5Meta("plain1", 0, 6), v5Meta("plain2", 0, 6)
-	sharded1, sharded2 := v5Meta("shard1", 5, 6), v5Meta("shard2", 5, 6)
+	timeOnly1, timeOnly2 := v5Meta("plain1", 0, 5), v5Meta("plain2", 0, 5)
+	sharded1, sharded2 := v5Meta("shard1", 5, 5), v5Meta("shard2", 5, 5)
 	old1, old2 := v5Meta("old1", 5, 4), v5Meta("old2", 5, 4)
 
 	p := newOverlapPlanner([]store.Meta{timeOnly1, sharded1, old1, timeOnly2, sharded2, old2}, 512*mib)

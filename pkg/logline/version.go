@@ -27,7 +27,7 @@ const CurrentVersion = "v3"
 // implementation; only ExtractorForVersion returns a different function.
 //
 // v5 is in development. Its postings hold day-relative cells, and it has no
-// document table; its footer is version 6. Its extractor matches v4.
+// document table; its footer is version 5. Its extractor matches v4.
 func AllVersions() []string { return []string{"v3", "v4", "v5"} }
 
 // ValidateVersion returns an error if the version string is not a supported
@@ -180,7 +180,7 @@ func (f mergerFunc) Merge(ctx context.Context, readers []io.ReaderAt, sizes []in
 }
 
 // OpenReaderAt opens an index reader from an io.ReaderAt, auto-detecting the
-// format version from the footer: version 4 is "v3" and version 6 is "v5".
+// format version from the footer: version 4 is "v3" and version 5 is "v5".
 // The returned string is the detected version and the any value is opaque
 // cached state for OpenReaderCached.
 //
