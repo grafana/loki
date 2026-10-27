@@ -69,6 +69,12 @@ loki_boltdb_shipper_retention_*
 
 To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
 
+### WAL recovery after stream recreation
+
+Ingesters now preserve WAL sequence counters when a stream is removed after flushing and later recreated. This prevents newly acknowledged entries from being mistaken for duplicates during recovery. No configuration changes are required.
+
+This change protects entries written by upgraded ingesters. It does not repair reused counters in WAL records written before the upgrade. Before downgrading to an earlier version, flush ingester data to storage instead of relying on the earlier version to replay WAL records written by the upgraded ingester.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.
