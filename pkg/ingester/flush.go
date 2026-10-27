@@ -661,6 +661,11 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, rec
 	// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
 	// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
 	// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
+	//
+	// Replicas that flush on different UTC days still stamp different values, so those chunks are
+	// not deduplicated. We accept that: Kafka ingestion normally never gets here (every record has a
+	// timestamp), and for the rest only the chunks whose flushes fall on either side of UTC
+	// midnight are affected, a small fraction.
 	ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(ch.Through)))
 }
 
