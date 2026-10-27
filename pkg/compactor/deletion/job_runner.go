@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -73,7 +74,11 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !req.logSelectorExpr.HasFilter() {
+		// This checks for a pipeline instead of HasFilter because the manifest can come from a
+		// compactor version whose HasFilter disagrees, for example on |~ ".*". A rejected job
+		// fails its manifest on every retry, which blocks the deletions queued after it.
+		// FilterFunction deletes a request whose filters keep every line by its time range.
+		if _, ok := req.logSelectorExpr.(*syntax.PipelineExpr); !ok {
 			return nil, errors.New("deletion query does not contain filter")
 		}
 		deleteRequests = append(deleteRequests, req)
