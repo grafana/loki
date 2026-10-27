@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
@@ -27,8 +28,15 @@ type debugResponse struct {
 	OverlappingIndexes int              `json:"overlapping_indexes"`
 	HintDuration       string           `json:"hint_duration"`
 	Entries            []debugEntry     `json:"entries"`
+	Samples            []debugSample    `json:"samples,omitempty"`
 	HintRanges         []debugHintRange `json:"hint_ranges"`
 	Summary            debugSummary     `json:"summary"`
+}
+
+type debugSample struct {
+	Time    time.Time `json:"time"`
+	Value   float64   `json:"value"`
+	Covered bool      `json:"covered"`
 }
 
 type debugEntry struct {
@@ -76,23 +84,23 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	overlapping := s.indexStore.IndexesForRange(req.start, req.end)
+	readStart, readEnd := getReadRange(hq, req.start, req.end)
+	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
 
-	entries, _, err := s.queryLogs(r.Context(), hq.query, req.start, req.end, s.cfg.LogQueryLimit)
+	res, err := s.fetchNeedleResults(r.Context(), hq, req.start, req.end)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "correctness debug query failed", "query", hq.query, "err", err)
 		http.Error(w, "failed to query Loki", http.StatusInternalServerError)
 		return
 	}
-	resultEntries := protoEntries(entries)
 
 	hintStart := time.Now()
 	hints, _, err := s.hintProvider.ProvideHints(
 		r.Context(),
 		s.cfg.TenantID,
 		hq.expr,
-		model.TimeFromUnixNano(req.start.UnixNano()),
-		model.TimeFromUnixNano(req.end.UnixNano()),
+		model.TimeFromUnixNano(readStart.UnixNano()),
+		model.TimeFromUnixNano(readEnd.UnixNano()),
 	)
 	hintDuration := time.Since(hintStart)
 	if err != nil {
@@ -121,11 +129,15 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		Needle:             req.needle,
 		OverlappingIndexes: len(overlapping),
 		HintDuration:       hintDuration.String(),
-		Entries:            buildDebugEntries(resultEntries, hintRanges),
-		HintRanges:         buildDebugHintRanges(resultEntries, hintRanges),
 	}
-
-	vr := verifyHints(hintRanges, resultEntries)
+	vr := res.verify(hintRanges)
+	if isMetricQuery(hq) {
+		resp.Samples = buildDebugSamples(hq.expr, res.samples, hintRanges)
+		resp.HintRanges = buildDebugMetricHintRanges(hq.expr, res.samples, hintRanges)
+	} else {
+		resp.Entries = buildDebugEntries(res.entries, hintRanges)
+		resp.HintRanges = buildDebugHintRanges(res.entries, hintRanges)
+	}
 	resp.Summary = debugSummary{
 		TotalResults:   vr.TotalResults,
 		CoveredResults: vr.CoveredResults,
@@ -168,16 +180,18 @@ func parseDebugRequest(r *http.Request) (debugRequest, error) {
 		queryType = hintQueryTypeLineFilter
 	}
 	switch queryType {
-	case hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter:
+	case hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter,
+		hintQueryTypeMetricRange, hintQueryTypeMetricInstant:
 	default:
 		return debugRequest{}, fmt.Errorf(
-			"query_type must be %q, %q, %q, or %q",
+			"query_type must be %q, %q, %q, %q, %q, or %q",
 			hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter,
+			hintQueryTypeMetricRange, hintQueryTypeMetricInstant,
 		)
 	}
 
 	label := query.Get("label")
-	if queryType != hintQueryTypeLineFilter && label == "" {
+	if queryType != hintQueryTypeLineFilter && !isMetricQuery(hintQuery{queryType: queryType}) && label == "" {
 		return debugRequest{}, fmt.Errorf("label is required for query_type=%q", queryType)
 	}
 
@@ -207,13 +221,20 @@ func parseDebugRequest(r *http.Request) (debugRequest, error) {
 	}, nil
 }
 
-// buildDebugHintQuery uses the same builders + newHintQuery as runVerificationCycle.
+// buildDebugHintQuery uses the same builders as runVerificationCycle.
+// A metric check wraps the line-filter needle with buildMetricQuery.
 func buildDebugHintQuery(req debugRequest) (hintQuery, error) {
 	switch req.queryType {
 	case hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter:
 		return newHintQuery(req.queryType, req.needle, buildLabelFilterHintQuery(req.selector, req.label, req.needle))
 	case hintQueryTypeJSONLabelFilter:
 		return newHintQuery(req.queryType, req.needle, buildJSONLabelFilterHintQuery(req.selector, req.label, req.needle))
+	case hintQueryTypeMetricRange, hintQueryTypeMetricInstant:
+		line, err := newHintQuery(hintQueryTypeLineFilter, req.needle, buildLineFilterHintQuery(req.selector, req.needle))
+		if err != nil {
+			return hintQuery{}, err
+		}
+		return buildMetricQuery(req.queryType, line, metricLookback)
 	default:
 		return newHintQuery(hintQueryTypeLineFilter, req.needle, buildLineFilterHintQuery(req.selector, req.needle))
 	}
@@ -262,4 +283,43 @@ func firstCoveringRangeIndex(ranges []hintprovider.HintTimeRange, ts time.Time) 
 		}
 	}
 	return nil
+}
+
+func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugSample {
+	group := verification.MetricMatcherGroup(expr)
+	out := make([]debugSample, 0, len(samples))
+	for _, sample := range samples {
+		winStart, winEnd := group.Widen(sample.Time, sample.Time)
+		out = append(out, debugSample{
+			Time:    sample.Time,
+			Value:   sample.Value,
+			Covered: sample.Value > 0 && verification.RangesOverlap(hintRanges, winStart, winEnd),
+		})
+	}
+	return out
+}
+
+func buildDebugMetricHintRanges(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugHintRange {
+	group := verification.MetricMatcherGroup(expr)
+	respRanges := make([]debugHintRange, 0, len(hintRanges))
+	for i, hintRange := range hintRanges {
+		entryCount := 0
+		for _, sample := range samples {
+			if sample.Value <= 0 {
+				continue
+			}
+			winStart, winEnd := group.Widen(sample.Time, sample.Time)
+			if verification.RangesOverlap([]hintprovider.HintTimeRange{hintRange}, winStart, winEnd) {
+				entryCount++
+			}
+		}
+		respRanges = append(respRanges, debugHintRange{
+			Index:      i,
+			Start:      hintRange.Start,
+			End:        hintRange.End,
+			Source:     hintRange.Source,
+			EntryCount: entryCount,
+		})
+	}
+	return respRanges
 }

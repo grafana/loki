@@ -52,5 +52,6 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
    - Needles must produce at least one n-gram using the same normalization path as indexing (`logline.ExtractFeatures`).
 
 6. **Debug handler consistency**
-   - The `/correctness/debug` handler must use the same core logic as `runVerificationCycle`: `buildLineFilterHintQuery` / `buildLabelFilterHintQuery` / `buildJSONLabelFilterHintQuery` + `newHintQuery` for query construction (via `query_type`), `queryLogs` for the Loki query, and `verifyHints` for coverage. Log coverage uses `RangeCoversTimestamp`.
+   - The `/correctness/debug` handler must use the same core logic as `runVerificationCycle`: `buildLineFilterHintQuery` / `buildLabelFilterHintQuery` / `buildJSONLabelFilterHintQuery` / `buildMetricQuery` + `newHintQuery` for query construction (via `query_type`), `getReadRange` for the hint lookup, `queryLogs` or `queryMetrics` for the Loki query, and `verifyHints` or `verifyMetricHints` for coverage. Log coverage uses `RangeCoversTimestamp`. Metric coverage uses `RangesOverlap` on each positive sample's lookback.
+   - The Loki query uses the requested start and end. The hint lookup uses the window from `getReadRange`.
    - Never duplicate or inline these primitives — drift between the debug endpoint and the cycle makes the debug endpoint unreliable for diagnosing correctness failures.
