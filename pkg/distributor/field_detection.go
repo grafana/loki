@@ -429,6 +429,16 @@ func hasPrefixWithDelim(s, prefix string) bool {
 	return len(s) == len(prefix) || isRightWordDelim(s[len(prefix)])
 }
 
+var levelTable = [256]string{
+	'c': constants.LogLevelCritical,
+	'd': constants.LogLevelDebug,
+	'e': constants.LogLevelError,
+	'f': constants.LogLevelFatal,
+	'i': constants.LogLevelInfo,
+	't': constants.LogLevelTrace,
+	'w': constants.LogLevelWarn,
+}
+
 // detectLevelFromLogLine returns the first level in the log line.
 // It is zero-allocation.
 func detectLevelFromLogLine(s string) string {
@@ -442,37 +452,13 @@ func detectLevelFromLogLine(s string) string {
 		// ASCII uppercase letter with 0x20 it transforms it to lowercase.
 		// This means s[i]|0x20 == 'e' matches both E and e without allocating or
 		// calling strings.ToLower.
-		//
-		// Benchmarks show it is 20% faster to do a switch with an if inside each
-		// case, rather than a sequence of if else if branches for both s[i] and
-		// hasPrefixWithDelim.
-		switch s[i] | 0x20 {
-		case 'c':
-			if hasPrefixWithDelim(s[i:], "critical") {
-				return constants.LogLevelCritical
-			}
-		case 'd':
-			if hasPrefixWithDelim(s[i:], "debug") {
-				return constants.LogLevelDebug
-			}
-		case 'e':
-			if hasPrefixWithDelim(s[i:], "error") || hasPrefixWithDelim(s[i:], "err") {
+		c := s[i] | 0x20
+		if level := levelTable[c]; level != "" {
+			if hasPrefixWithDelim(s[i:], level) {
+				return level
+			} else if c == 'e' && hasPrefixWithDelim(s[i:], "err") {
 				return constants.LogLevelError
-			}
-		case 'f':
-			if hasPrefixWithDelim(s[i:], "fatal") {
-				return constants.LogLevelFatal
-			}
-		case 'i':
-			if hasPrefixWithDelim(s[i:], "info") {
-				return constants.LogLevelInfo
-			}
-		case 't':
-			if hasPrefixWithDelim(s[i:], "trace") {
-				return constants.LogLevelTrace
-			}
-		case 'w':
-			if hasPrefixWithDelim(s[i:], "warning") || hasPrefixWithDelim(s[i:], "warn") {
+			} else if c == 'w' && hasPrefixWithDelim(s[i:], "warning") {
 				return constants.LogLevelWarn
 			}
 		}
