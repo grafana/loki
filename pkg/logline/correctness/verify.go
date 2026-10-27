@@ -18,8 +18,6 @@ type verificationReport struct {
 	FalseNegatives          int
 	FalsePositives          int
 	FalseNegativeTimestamps []time.Time
-	// FalseNegativeRanges are metric lookbacks with no overlapping hint.
-	// Each range is that step's whole lookback. Log checks leave this empty.
 	FalseNegativeRanges []hintprovider.HintTimeRange
 	Correct             bool
 }
@@ -49,14 +47,16 @@ func verifyHints(
 	}
 }
 
-func verifyMetricSamples(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange, samples []verification.MetricSample) *verificationReport {
-	r := verification.ScoreMetricSamples(expr, hintRanges, samples, time.Time{})
+// verifyMetricHints 
+func verifyMetricHints(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange, samples []verification.MetricSample) *verificationReport {
+	r := verification.VerifySamples(expr, hintRanges, samples, time.Time{})
 	return &verificationReport{
 		HintRanges:          r.HintRanges,
 		TotalResults:        r.TotalEntries,
 		CoveredResults:      r.CoveredEntries,
 		FalseNegatives:      r.FalseNegatives,
 		FalseNegativeRanges: r.FalseNegativeRanges,
+		// TODO do we want to match Correct spec above?
 		Correct:             r.Correct,
 	}
 }

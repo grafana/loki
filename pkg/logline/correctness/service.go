@@ -324,7 +324,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"hint_query", hq.query,
 	)
 
-	from, through, step := getRangeBounds(hq, rangeStart, rangeEnd)
+	from, through := getRangeBounds(hq, rangeStart, rangeEnd)
 	overlapping := s.indexStore.IndexesForRange(from, through)
 	ids := make([]string, len(overlapping))
 	for i, m := range overlapping {
@@ -332,26 +332,12 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	}
 	report.OverlappingIndexIDs = ids
 
-	var (
-		samples       []verification.MetricSample
-		resultEntries []queryEntry
-	)
-	if isMetricQuery(hq) {
-		samples, _, err = s.queryMetrics(ctx, hq.query, rangeStart, rangeEnd, step)
-		if err != nil {
-			return report, err
-		}
-
-		s.logFetchedNeedle(len(samples), report)
-	} else {
-		resultEntries, _, err = s.queryLogs(ctx, hq.query, rangeStart, rangeEnd, s.cfg.LogQueryLimit)
-		if err != nil {
-			return report, err
-		}
-		report.NeedleQueryTruncated = len(resultEntries) >= s.cfg.LogQueryLimit
-
-		s.logFetchedNeedle(len(resultEntries), report)
+	res, err := s.fetchNeedleResults(ctx, hq, rangeStart, rangeEnd)
+	if err != nil {
+		return report, err
 	}
+	report.NeedleQueryTruncated = res.truncated
+	s.logFetchedNeedle(res.count, report)
 
 	hintStart := time.Now()
 	hints, _, err := s.hintProvider.ProvideHints(
@@ -401,12 +387,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"hint_duration", hintDuration,
 	)
 
-	var vr *verificationReport
-	if isMetricQuery(hq) {
-		vr = verifyMetricSamples(hq.expr, hintRanges, samples)
-	} else {
-		vr = verifyHints(hintRanges, protoEntries(resultEntries))
-	}
+	vr := res.verify(hintRanges)
 
 	report.AvgHintRangeSeconds = avgHintRangeSeconds
 	report.CandidateTimeRanges = vr.HintRanges
@@ -510,20 +491,60 @@ func (s *Service) logFetchedNeedle(resLen int, report CycleReport) {
 	)
 }
 
-func getRangeBounds(hq hintQuery, rangeStart, rangeEnd time.Time) (adjStart, adjEnd time.Time, queryStep time.Duration) {
-	step := time.Duration(0)
-	if hq.queryType == hintQueryTypeMetricRange {
-		step = time.Minute
+type needleResults struct {
+	count     int
+	truncated bool
+	entries   []logproto.Entry
+	samples   []verification.MetricSample
+	verify    func([]hintprovider.HintTimeRange) *verificationReport
+}
+
+func (s *Service) fetchNeedleResults(ctx context.Context, hq hintQuery, start, end time.Time) (needleResults, error) {
+	if isMetricQuery(hq) {
+		samples, _, err := s.queryMetrics(ctx, hq, start, end)
+		if err != nil {
+			return needleResults{}, err
+		}
+		return needleResults{
+			count:   len(samples),
+			samples: samples,
+			verify: func(r []hintprovider.HintTimeRange) *verificationReport {
+				return verifyMetricHints(hq.expr, r, samples)
+			},
+		}, nil
 	}
+
+	logs, _, err := s.queryLogs(ctx, hq.query, start, end, s.cfg.LogQueryLimit)
+	if err != nil {
+		return needleResults{}, err
+	}
+	entries := protoEntries(logs)
+	return needleResults{
+		count:     len(entries),
+		truncated: len(entries) >= s.cfg.LogQueryLimit,
+		entries:   entries,
+		verify: func(r []hintprovider.HintTimeRange) *verificationReport {
+			return verifyHints(r, entries)
+		},
+	}, nil
+}
+
+func (q hintQuery) step() time.Duration {
+	if q.queryType == hintQueryTypeMetricRange {
+		return time.Minute
+	}
+	return 0
+}
+
+func getRangeBounds(hq hintQuery, rangeStart, rangeEnd time.Time) (adjStart, adjEnd time.Time) {
 	if hq.queryType == hintQueryTypeMetricInstant {
 		rangeStart = rangeEnd
 	}
 	groups, err := syntax.MatcherGroups(hq.expr)
 	if err != nil || len(groups) != 1 {
-		return rangeStart, rangeEnd, step
+		return rangeStart, rangeEnd
 	}
-	from, through := verification.MetricLookupBounds(groups[0], rangeStart, rangeEnd, step.Milliseconds())
-	return from, through, step
+	return verification.MetricLookupBounds(groups[0], rangeStart, rangeEnd, hq.step().Milliseconds())
 }
 
 func isMetricQuery(hq hintQuery) bool {
@@ -683,9 +704,8 @@ func protoEntries(logs []queryEntry) []logproto.Entry {
 
 func (s *Service) queryMetrics(
 	ctx context.Context,
-	query string,
+	hq hintQuery,
 	start, end time.Time,
-	step time.Duration,
 ) ([]verification.MetricSample, string, error) {
 	if end.Before(start) {
 		end = start
@@ -701,10 +721,14 @@ func (s *Service) queryMetrics(
 			resp *loghttp.QueryResponse
 			err  error
 		)
-		if step > 0 {
-			resp, err = c.client.QueryRange(query, 0, start, end, logproto.BACKWARD, step, 0, true)
-		} else {
-			resp, err = c.client.Query(query, 0, end, logproto.BACKWARD, true)
+
+		switch hq.queryType {
+		case hintQueryTypeMetricRange:
+			resp, err = c.client.QueryRange(hq.query, 0, start, end, logproto.BACKWARD, hq.step(), 0, true)
+		case hintQueryTypeMetricInstant:
+			resp, err = c.client.Query(hq.query, 0, end, logproto.BACKWARD, true)
+		default:
+			return nil, "", fmt.Errorf("not a metric query type: %q", hq.queryType)
 		}
 		if err != nil {
 			lastErr = fmt.Errorf("endpoint %s query metrics: %w", c.endpoint, err)

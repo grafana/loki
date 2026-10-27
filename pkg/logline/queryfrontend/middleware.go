@@ -502,7 +502,7 @@ func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse,
 			})
 		}
 	}
-	return verification.ScoreMetricSamples(expr, hints, samples, eligibleEnd)
+	return verification.VerifySamples(expr, hints, samples, eligibleEnd)
 }
 
 func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {

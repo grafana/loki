@@ -251,7 +251,7 @@ func TestHandleDebug_MetricRange(t *testing.T) {
 	metric, err := buildMetricQuery(line)
 	require.NoError(t, err)
 	metric.queryType = hintQueryTypeMetricRange
-	from, through, _ := getRangeBounds(metric, start, end)
+	from, through := getRangeBounds(metric, start, end)
 	require.Equal(t, model.TimeFromUnixNano(from.UnixNano()), provider.from)
 	require.Equal(t, model.TimeFromUnixNano(through.UnixNano()), provider.through)
 	require.True(t, from.Before(start))
@@ -293,8 +293,8 @@ func TestHandleDebug_MetricInstant(t *testing.T) {
 	metric, err := buildMetricQuery(line)
 	require.NoError(t, err)
 	metric.queryType = hintQueryTypeMetricInstant
-	from, through, step := getRangeBounds(metric, start, end)
-	require.Equal(t, time.Duration(0), step)
+	from, through := getRangeBounds(metric, start, end)
+	require.Equal(t, time.Duration(0), metric.step())
 	require.Equal(t, model.TimeFromUnixNano(from.UnixNano()), provider.from)
 	require.Equal(t, model.TimeFromUnixNano(through.UnixNano()), provider.through)
 	require.True(t, from.Equal(end.Add(-5*time.Minute)))

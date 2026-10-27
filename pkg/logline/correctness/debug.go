@@ -84,20 +84,10 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	from, through, step := getRangeBounds(hq, req.start, req.end)
+	from, through := getRangeBounds(hq, req.start, req.end)
 	overlapping := s.indexStore.IndexesForRange(from, through)
 
-	var (
-		resultEntries []logproto.Entry
-		samples       []verification.MetricSample
-	)
-	if isMetricQuery(hq) {
-		samples, _, err = s.queryMetrics(r.Context(), hq.query, req.start, req.end, step)
-	} else {
-		var entries []queryEntry
-		entries, _, err = s.queryLogs(r.Context(), hq.query, req.start, req.end, s.cfg.LogQueryLimit)
-		resultEntries = protoEntries(entries)
-	}
+	res, err := s.fetchNeedleResults(r.Context(), hq, req.start, req.end)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "correctness debug query failed", "query", hq.query, "err", err)
 		http.Error(w, "failed to query Loki", http.StatusInternalServerError)
@@ -140,15 +130,13 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		OverlappingIndexes: len(overlapping),
 		HintDuration:       hintDuration.String(),
 	}
-	var vr *verificationReport
+	vr := res.verify(hintRanges)
 	if isMetricQuery(hq) {
-		vr = verifyMetricSamples(hq.expr, hintRanges, samples)
-		resp.Samples = buildDebugSamples(hq.expr, samples, hintRanges)
-		resp.HintRanges = buildDebugMetricHintRanges(hq.expr, samples, hintRanges)
+		resp.Samples = buildDebugSamples(hq.expr, res.samples, hintRanges)
+		resp.HintRanges = buildDebugMetricHintRanges(hq.expr, res.samples, hintRanges)
 	} else {
-		vr = verifyHints(hintRanges, resultEntries)
-		resp.Entries = buildDebugEntries(resultEntries, hintRanges)
-		resp.HintRanges = buildDebugHintRanges(resultEntries, hintRanges)
+		resp.Entries = buildDebugEntries(res.entries, hintRanges)
+		resp.HintRanges = buildDebugHintRanges(res.entries, hintRanges)
 	}
 	resp.Summary = debugSummary{
 		TotalResults:   vr.TotalResults,

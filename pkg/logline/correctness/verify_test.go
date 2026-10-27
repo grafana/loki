@@ -99,7 +99,7 @@ func TestVerifyMetricSamples_OverlapCoversSample(t *testing.T) {
 		{Start: step.Add(-2 * time.Minute), End: step.Add(-1 * time.Minute)},
 	}
 
-	report := verification.ScoreMetricSamples(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
+	report := verification.VerifySamples(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
 	require.Equal(t, 1, report.TotalEntries)
 	require.Equal(t, 1, report.CoveredEntries)
 	require.Equal(t, 0, report.FalseNegatives)
@@ -113,7 +113,7 @@ func TestVerifyMetricSamples_MissRecordsWholeLookback(t *testing.T) {
 		{Start: step.Add(-30 * time.Minute), End: step.Add(-20 * time.Minute)},
 	}
 
-	report := verification.ScoreMetricSamples(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
+	report := verification.VerifySamples(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
 	require.Equal(t, 1, report.TotalEntries)
 	require.Equal(t, 0, report.CoveredEntries)
 	require.Equal(t, 1, report.FalseNegatives)
@@ -131,7 +131,7 @@ func TestVerifyMetricSamples_HintEndingAtLookbackStartIsAMiss(t *testing.T) {
 		{Start: lookbackStart.Add(-time.Minute), End: lookbackStart},
 	}
 
-	report := verification.ScoreMetricSamples(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
+	report := verification.VerifySamples(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
 	require.Equal(t, 1, report.FalseNegatives)
 	require.Equal(t, []hintprovider.HintTimeRange{{
 		Start: lookbackStart,
@@ -145,7 +145,7 @@ func TestVerifyMetricSamples_HintStartingAtLookbackEndCoversSample(t *testing.T)
 		{Start: step, End: step.Add(time.Minute)},
 	}
 
-	report := verification.ScoreMetricSamples(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
+	report := verification.VerifySamples(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
 	require.Equal(t, 1, report.CoveredEntries)
 	require.Equal(t, 0, report.FalseNegatives)
 	require.True(t, report.Correct)
@@ -157,7 +157,7 @@ func TestVerifyMetricSamples_NonPositiveSamplesAreLeftOut(t *testing.T) {
 		{Start: step.Add(-5 * time.Minute), End: step},
 	}
 
-	report := verification.ScoreMetricSamples(metricTestExpr(t), hints, []verification.MetricSample{
+	report := verification.VerifySamples(metricTestExpr(t), hints, []verification.MetricSample{
 		{Time: step, Value: 0},
 		{Time: step.Add(time.Minute), Value: -1},
 		{Time: step.Add(2 * time.Minute), Value: 2},
@@ -174,7 +174,7 @@ func TestVerifyMetricSamples_EmptyReportIsCorrect(t *testing.T) {
 	}
 
 	for _, samples := range [][]verification.MetricSample{nil, {}} {
-		report := verification.ScoreMetricSamples(metricTestExpr(t), hints, samples, time.Time{})
+		report := verification.VerifySamples(metricTestExpr(t), hints, samples, time.Time{})
 		require.Equal(t, 0, report.TotalEntries)
 		require.Equal(t, 0, report.FalseNegatives)
 		require.Empty(t, report.FalseNegativeRanges)
@@ -187,7 +187,7 @@ func TestVerifyMetricSamples_AbsentOverTimeScoresNothing(t *testing.T) {
 	require.NoError(t, err)
 	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
 
-	report := verification.ScoreMetricSamples(expr, nil, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
+	report := verification.VerifySamples(expr, nil, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
 	require.Equal(t, 0, report.TotalEntries)
 	require.Empty(t, report.FalseNegativeRanges)
 	require.True(t, report.Correct)

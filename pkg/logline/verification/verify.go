@@ -47,7 +47,7 @@ func IsAbsentOverTime(expr syntax.Expr) bool {
 
 // RangesOverlap reports whether any half-open hint [Start, End) overlaps the
 // lookback (start, end]. A hint that only ends at start shares no time with
-// the lookback. ranges must be sorted by Start.
+// the lookback. Ranges must be sorted by Start.
 func RangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
 	if len(ranges) == 0 {
 		return false
@@ -86,11 +86,10 @@ type MetricSample struct {
 	Value float64
 }
 
-// ScoreMetricSamples scores the positive samples of one metric query.
-// A sample is covered when any hint overlaps its lookback, and a miss records
-// that whole lookback. A lookback that ends after eligibleEnd is left out.
-// A zero eligibleEnd scores every positive sample. hints must be sorted by Start.
-func ScoreMetricSamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples []MetricSample, eligibleEnd time.Time) Report {
+// VerifySamples checks hint overage against a list of metric samples.
+// A sample is considered "covered" when its Value > 0 and any hint overlaps its lookback.
+// Records the full lookback period as a false-negative range if no hints cover it.
+func VerifySamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples []MetricSample, eligibleEnd time.Time) Report {
 	report := Report{HintRanges: len(hints)}
 	if IsAbsentOverTime(expr) {
 		report.Correct = true
@@ -105,8 +104,17 @@ func ScoreMetricSamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, sa
 		if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
 			continue
 		}
-		RecordMetricLookback(&report, hints, winStart, winEnd)
+		report.TotalEntries++
+		if !RangesOverlap(hints, winStart, winEnd) {
+			report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
+				Start: winStart,
+				End:   winEnd,
+			})
+			continue
+		}
+		report.CoveredEntries++
 	}
+	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
 	report.Correct = report.FalseNegatives == 0
 	return report
 }
@@ -117,22 +125,6 @@ func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 		return syntax.MatcherRange{}
 	}
 	return groups[0]
-}
-
-// RecordMetricLookback counts one positive sample. The sample is covered when
-// any hint overlaps its lookback. Otherwise that whole lookback is appended
-// as a miss. ranges must be sorted by Start.
-func RecordMetricLookback(report *Report, ranges []hintprovider.HintTimeRange, start, end time.Time) {
-	report.TotalEntries++
-	if RangesOverlap(ranges, start, end) {
-		report.CoveredEntries++
-	} else {
-		report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
-			Start: start,
-			End:   end,
-		})
-	}
-	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
 }
 
 // VerifyEntries checks hint coverage against a list of log entry timestamps.
