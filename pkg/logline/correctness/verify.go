@@ -47,8 +47,9 @@ func verifyHints(
 	}
 }
 
-// verifyMetricHints scores positive samples against pre-fetched hint ranges.
-// Correct matches verifyHints: every scored sample is covered, and at least one was scored.
+// verifyMetricHints measures coverage of pre-fetched hint ranges against the
+// supplied metric samples. A miss is recorded as that sample's lookback. It
+// performs pure computation with no I/O.
 func verifyMetricHints(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange, samples []verification.MetricSample) *verificationReport {
 	r := verification.VerifySamples(expr, hintRanges, samples, time.Time{})
 	return &verificationReport{

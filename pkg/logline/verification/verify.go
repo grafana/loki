@@ -29,35 +29,9 @@ type Report struct {
 	Correct bool
 }
 
-// IsAbsentOverTime reports whether expr is an absent_over_time aggregation,
-// including one wrapped in vector aggregations.
-func IsAbsentOverTime(expr syntax.Expr) bool {
-	switch e := expr.(type) {
-	case *syntax.VectorAggregationExpr:
-		return IsAbsentOverTime(e.Left)
-	case *syntax.RangeAggregationExpr:
-		return e.Operation == syntax.OpRangeTypeAbsent
-	default:
-		return false
-	}
-}
-
-// RangesOverlap reports whether any half-open hint [Start, End) overlaps the
-// lookback (start, end]. A hint that only ends at start shares no time with
-// the lookback. Ranges must be sorted by Start.
-func RangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
-	if len(ranges) == 0 {
-		return false
-	}
-	idx := sort.Search(len(ranges), func(i int) bool {
-		return ranges[i].End.After(start)
-	})
-	return idx < len(ranges) && !ranges[idx].Start.After(end)
-}
-
-// MetricLookupBounds rounds onto the step, then widens by the range and offset.
-// The query-frontend splitter floors the start and rounds the end up before
-// evaluating samples. A zero interval or a zero step is only widened.
+// MetricLookupBounds matches the query-frontend splitter logic, which floors the start
+// and rounds the end up before evaluating samples, then widens by the range and
+// offset. A zero interval or a zero step skips that rounding.
 func MetricLookupBounds(group syntax.MatcherRange, from, through time.Time, stepMillis int64) (time.Time, time.Time) {
 	if group.Interval > 0 && stepMillis > 0 {
 		from, through = alignMetricStep(from, through, stepMillis)
@@ -116,6 +90,19 @@ func VerifySamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples
 	return report
 }
 
+// IsAbsentOverTime reports whether expr is an absent_over_time aggregation,
+// including one wrapped in vector aggregations.
+func IsAbsentOverTime(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return IsAbsentOverTime(e.Left)
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeAbsent
+	default:
+		return false
+	}
+}
+
 // MetricMatcherGroup returns the single matcher group for a supported metric query.
 func MetricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 	groups, err := syntax.MatcherGroups(expr)
@@ -123,6 +110,19 @@ func MetricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 		return syntax.MatcherRange{}
 	}
 	return groups[0]
+}
+
+// RangesOverlap reports whether any half-open hint [Start, End) overlaps the
+// lookback (start, end]. A hint that only ends at start shares no time with
+// the lookback. Ranges must be sorted by Start.
+func RangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+	if len(ranges) == 0 {
+		return false
+	}
+	idx := sort.Search(len(ranges), func(i int) bool {
+		return ranges[i].End.After(start)
+	})
+	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }
 
 // VerifyEntries checks hint coverage against a list of log entry timestamps.

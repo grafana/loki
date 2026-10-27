@@ -255,6 +255,36 @@ func buildDebugEntries(entries []logproto.Entry, hintRanges []hintprovider.HintT
 	return respEntries
 }
 
+func buildDebugHintRanges(entries []logproto.Entry, hintRanges []hintprovider.HintTimeRange) []debugHintRange {
+	respRanges := make([]debugHintRange, 0, len(hintRanges))
+	for i, hintRange := range hintRanges {
+		entryCount := 0
+		for _, entry := range entries {
+			if verification.RangeCoversTimestamp(hintRange, entry.Timestamp) {
+				entryCount++
+			}
+		}
+		respRanges = append(respRanges, debugHintRange{
+			Index:      i,
+			Start:      hintRange.Start,
+			End:        hintRange.End,
+			Source:     hintRange.Source,
+			EntryCount: entryCount,
+		})
+	}
+	return respRanges
+}
+
+func firstCoveringRangeIndex(ranges []hintprovider.HintTimeRange, ts time.Time) *int {
+	for i, candidate := range ranges {
+		if verification.RangeCoversTimestamp(candidate, ts) {
+			index := i
+			return &index
+		}
+	}
+	return nil
+}
+
 func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugSample {
 	group := verification.MetricMatcherGroup(expr)
 	out := make([]debugSample, 0, len(samples))
@@ -292,34 +322,4 @@ func buildDebugMetricHintRanges(expr syntax.Expr, samples []verification.MetricS
 		})
 	}
 	return respRanges
-}
-
-func buildDebugHintRanges(entries []logproto.Entry, hintRanges []hintprovider.HintTimeRange) []debugHintRange {
-	respRanges := make([]debugHintRange, 0, len(hintRanges))
-	for i, hintRange := range hintRanges {
-		entryCount := 0
-		for _, entry := range entries {
-			if verification.RangeCoversTimestamp(hintRange, entry.Timestamp) {
-				entryCount++
-			}
-		}
-		respRanges = append(respRanges, debugHintRange{
-			Index:      i,
-			Start:      hintRange.Start,
-			End:        hintRange.End,
-			Source:     hintRange.Source,
-			EntryCount: entryCount,
-		})
-	}
-	return respRanges
-}
-
-func firstCoveringRangeIndex(ranges []hintprovider.HintTimeRange, ts time.Time) *int {
-	for i, candidate := range ranges {
-		if verification.RangeCoversTimestamp(candidate, ts) {
-			index := i
-			return &index
-		}
-	}
-	return nil
 }
