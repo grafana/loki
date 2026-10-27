@@ -3,6 +3,7 @@ package correctness
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,6 +15,29 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
+
+// recordingHintProvider records the hint lookup from a debug metric check.
+type recordingHintProvider struct {
+	expr    syntax.Expr
+	from    model.Time
+	through model.Time
+	hints   *hintprovider.Hints
+}
+
+func (p *recordingHintProvider) ProvideHints(
+	_ context.Context,
+	tenant string,
+	expr syntax.Expr,
+	from, through model.Time,
+) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
+	if tenant != "tenant-a" {
+		return nil, nil, fmt.Errorf("unexpected tenant %q", tenant)
+	}
+	p.expr = expr
+	p.from = from
+	p.through = through
+	return p.hints, nil, nil
+}
 
 func TestHandleDebug_Success(t *testing.T) {
 	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
