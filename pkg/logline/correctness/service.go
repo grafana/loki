@@ -487,6 +487,24 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	return report, nil
 }
 
+func getReadRange(hq hintQuery, rangeStart, rangeEnd time.Time) (readStart, readEnd time.Time) {
+	if hq.queryType == hintQueryTypeMetricInstant {
+		rangeStart = rangeEnd
+	}
+	return verification.MetricLookupBounds(verification.MetricMatcherGroup(hq.expr), rangeStart, rangeEnd, hq.step().Milliseconds())
+}
+
+func (q hintQuery) step() time.Duration {
+	if q.queryType == hintQueryTypeMetricRange {
+		return time.Minute
+	}
+	return 0
+}
+
+func isMetricQuery(hq hintQuery) bool {
+	return hq.queryType == hintQueryTypeMetricRange || hq.queryType == hintQueryTypeMetricInstant
+}
+
 type needleResults struct {
 	count     int
 	truncated bool
@@ -523,28 +541,6 @@ func (s *Service) fetchNeedleResults(ctx context.Context, hq hintQuery, start, e
 			return verifyHints(r, entries)
 		},
 	}, nil
-}
-
-func (q hintQuery) step() time.Duration {
-	if q.queryType == hintQueryTypeMetricRange {
-		return time.Minute
-	}
-	return 0
-}
-
-func getReadRange(hq hintQuery, rangeStart, rangeEnd time.Time) (readStart, readEnd time.Time) {
-	if hq.queryType == hintQueryTypeMetricInstant {
-		rangeStart = rangeEnd
-	}
-	groups, err := syntax.MatcherGroups(hq.expr)
-	if err != nil || len(groups) != 1 {
-		return rangeStart, rangeEnd
-	}
-	return verification.MetricLookupBounds(groups[0], rangeStart, rangeEnd, hq.step().Milliseconds())
-}
-
-func isMetricQuery(hq hintQuery) bool {
-	return hq.queryType == hintQueryTypeMetricRange || hq.queryType == hintQueryTypeMetricInstant
 }
 
 // excludedIndexesCoveringFNs returns ingester-window-excluded indexes whose log

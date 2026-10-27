@@ -256,7 +256,7 @@ func buildDebugEntries(entries []logproto.Entry, hintRanges []hintprovider.HintT
 }
 
 func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugSample {
-	group := debugMatcherGroup(expr)
+	group := verification.MetricMatcherGroup(expr)
 	out := make([]debugSample, 0, len(samples))
 	for _, sample := range samples {
 		winStart, winEnd := group.Widen(sample.Time, sample.Time)
@@ -270,7 +270,7 @@ func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hi
 }
 
 func buildDebugMetricHintRanges(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugHintRange {
-	group := debugMatcherGroup(expr)
+	group := verification.MetricMatcherGroup(expr)
 	respRanges := make([]debugHintRange, 0, len(hintRanges))
 	for i, hintRange := range hintRanges {
 		entryCount := 0
@@ -292,14 +292,6 @@ func buildDebugMetricHintRanges(expr syntax.Expr, samples []verification.MetricS
 		})
 	}
 	return respRanges
-}
-
-func debugMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
-	groups, err := syntax.MatcherGroups(expr)
-	if err != nil || len(groups) != 1 {
-		return syntax.MatcherRange{}
-	}
-	return groups[0]
 }
 
 func buildDebugHintRanges(entries []logproto.Entry, hintRanges []hintprovider.HintTimeRange) []debugHintRange {

@@ -636,10 +636,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 	logger := util_log.WithContext(ctx, h.logger)
 	// A supported metric query has one log selector, so it has one matcher group.
 	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
-	readStart, readEnd := from, through
-	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		readStart, readEnd = verification.MetricLookupBounds(groups[0], from, through, req.GetStep())
-	}
+	readStart, readEnd := verification.MetricLookupBounds(verification.MetricMatcherGroup(expr), from, through, req.GetStep())
 	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
 		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
@@ -1114,10 +1111,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// A metric split reads before its start. Overlap and clipping use that window
 	// so a lookback match is not treated as a miss. Log queries widen by zero.
 	expr, _ := syntax.ParseExpr(lokiReq.Query)
-	readStart, readEnd := intervalStart, intervalEnd
-	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
-	}
+	readStart, readEnd := verification.MetricMatcherGroup(expr).Widen(intervalStart, intervalEnd)
 
 	// These intervals pass through whatever the lookup returns, so they run
 	// without waiting for it.

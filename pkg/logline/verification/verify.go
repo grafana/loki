@@ -92,7 +92,7 @@ func VerifySamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples
 		report.Correct = true
 		return report
 	}
-	group := metricMatcherGroup(expr)
+	group := MetricMatcherGroup(expr)
 	for _, sample := range samples {
 		if sample.Value <= 0 {
 			continue
@@ -116,7 +116,8 @@ func VerifySamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples
 	return report
 }
 
-func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
+// MetricMatcherGroup returns the single matcher group for a supported metric query.
+func MetricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 	groups, err := syntax.MatcherGroups(expr)
 	if err != nil || len(groups) != 1 {
 		return syntax.MatcherRange{}
