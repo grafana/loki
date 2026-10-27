@@ -230,6 +230,11 @@ message DetectedFieldsResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+  // Statistics of the log query used to detect fields or values.
+  stats.Result statistics = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "-"
+  ];
 }
 
 message QueryPatternsResponse {

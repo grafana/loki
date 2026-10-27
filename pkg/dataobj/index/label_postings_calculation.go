@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // created for and scoped to each logs section
@@ -41,7 +40,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 		streamLbls.Range(func(lbl labels.Label) {
 			calcCtx.builder.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
-				ShardBuckets:     int64(streams.DefaultShardLayout().Buckets()),
+				ShardBuckets:     int64(calcCtx.shardLayout.Buckets()),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       lbl.Name,
 				LabelValue:       lbl.Value,

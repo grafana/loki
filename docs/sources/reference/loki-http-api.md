@@ -1067,9 +1067,14 @@ Response format:
       "sketch": <object, optional>
     }
   ],
-  "limit": <integer>
+  "limit": <integer>,
+  "stats": <statistics object>
 }
 ```
+
+The `stats` object uses the same [statistics structure](#statistics) as regular queries and
+reports the underlying log scan. It is included even when no fields or values are returned.
+The `limit` parameter limits returned metadata, not the reported scan statistics.
 
 ### Examples
 
@@ -1082,7 +1087,7 @@ curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/de
   --data-urlencode 'end=1609462800000000000' | jq
 ```
 
-gave this response:
+gave this response (other statistics fields omitted for brevity):
 
 ```json
 {
@@ -1106,7 +1111,12 @@ gave this response:
       "parsers": ["logfmt"]
     }
   ],
-  "limit": 1000
+  "limit": 1000,
+  "stats": {
+    "summary": {
+      "totalBytesProcessed": 1024
+    }
+  }
 }
 ```
 
@@ -1140,9 +1150,14 @@ Response format:
     <string>,
     ...
   ],
-  "limit": <integer>
+  "limit": <integer>,
+  "stats": <statistics object>
 }
 ```
+
+The `stats` object uses the same [statistics structure](#statistics) as regular queries and
+reports the underlying log scan. It is included even when no fields or values are returned.
+The `limit` parameter limits returned metadata, not the reported scan statistics.
 
 ### Examples
 
@@ -1155,7 +1170,7 @@ curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/de
   --data-urlencode 'end=1609462800000000000' | jq
 ```
 
-gave this response:
+gave this response (other statistics fields omitted for brevity):
 
 ```json
 {
@@ -1165,7 +1180,12 @@ gave this response:
     "warn",
     "error"
   ],
-  "limit": 1000
+  "limit": 1000,
+  "stats": {
+    "summary": {
+      "totalBytesProcessed": 1024
+    }
+  }
 }
 ```
 
@@ -1310,8 +1330,11 @@ waiting for it to complete.
   If set to `true`, the request waits for the chunks to be flushed, and then also forces the ingester's in-memory index to be built and shipped to the backing store.
   The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
   Waiting for the flush can take a long time, so set a generous client timeout.
+  An ingester runs only one `flush_index` request at a time, across `/flush` and `/flush/tenant`.
+  If another one is in progress, the request returns `429 Too Many Requests` without flushing anything, and you can retry it later.
   A bare `flush_index` is treated as `true`.
   If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
+  Requests without `flush_index` are never rejected because of an index flush in progress.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
@@ -1339,8 +1362,11 @@ request returns without waiting for it to complete.
   The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
   The index is shared by all tenants on the ingester, so the index flush is not tenant-scoped.
   Waiting for the flush can take a long time, so set a generous client timeout.
+  An ingester runs only one `flush_index` request at a time, across all tenants and across `/flush` and `/flush/tenant`.
+  If another one is in progress, the request returns `429 Too Many Requests` without flushing anything, and you can retry it later.
   A bare `flush_index` is treated as `true`.
   If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
+  Requests without `flush_index` are never rejected because of an index flush in progress.
 
 For example, `POST /flush/tenant?tenant=foo&matchers={app="bar"}&flush_index`.
 

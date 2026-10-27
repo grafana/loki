@@ -559,6 +559,87 @@ func TestUnsafeGetBytes(t *testing.T) {
 	}
 }
 
+func TestStages_RequiredLabelNames(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stages Stages
+		want   []string
+	}{
+		{
+			name:   "returns the names every stage reads, in stage order, including those before a parser",
+			stages: Stages{labelEqualFilter("a"), NewLogfmtParser(false, false), labelEqualFilter("b")},
+			want:   []string{"a", "b"},
+		},
+		{
+			name:   "returns a name once, at its first position, when several stages read it",
+			stages: Stages{labelEqualFilter("a"), labelEqualFilter("b"), labelEqualFilter("a")},
+			want:   []string{"a", "b"},
+		},
+		{
+			name:   "returns the names a line_format template reads",
+			stages: Stages{mustStage(NewFormatter("{{.msg}}")), labelEqualFilter("a")},
+			want:   []string{"msg", "a"},
+		},
+		{
+			name:   "returns nothing when no stage reads a label",
+			stages: Stages{mustFilter(NewFilter("x", LineMatchEqual)).ToStage(), NewLogfmtParser(false, false)},
+			want:   []string{},
+		},
+		{
+			name:   "returns nothing for no stages",
+			stages: nil,
+			want:   []string{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.stages.RequiredLabelNames())
+		})
+	}
+}
+
+func TestStages_RequiredLabelNamesForParsers(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stages Stages
+		want   []string
+	}{
+		{
+			name:   "leaves out the names a label filter reads before the first parser",
+			stages: Stages{labelEqualFilter("a"), NewLogfmtParser(false, false), labelEqualFilter("b")},
+			want:   []string{"b"},
+		},
+		{
+			name:   "starts the list at a numeric label filter, because it can set __error__",
+			stages: Stages{labelEqualFilter("a"), NewNumericLabelFilter(LabelFilterGreaterThan, "n", 1), labelEqualFilter("b")},
+			want:   []string{"n", "b"},
+		},
+		{
+			name:   "starts the list at a filter on __error__",
+			stages: Stages{labelEqualFilter("a"), labelEqualFilter(logqlmodel.ErrorLabel), labelEqualFilter("b")},
+			want:   []string{logqlmodel.ErrorLabel, "b"},
+		},
+		{
+			name:   "keeps the names a line_format reads after the first parser",
+			stages: Stages{labelEqualFilter("a"), NewLogfmtParser(false, false), mustStage(NewFormatter("{{.msg}}")), labelEqualFilter("b")},
+			want:   []string{"msg", "b"},
+		},
+		{
+			name:   "returns each name once, at its first position, after the first parser",
+			stages: Stages{labelEqualFilter("a"), NewLogfmtParser(false, false), labelEqualFilter("b"), labelEqualFilter("a"), labelEqualFilter("b")},
+			want:   []string{"b", "a"},
+		},
+		{
+			name:   "returns nothing when no stage can modify labels or reads the error label",
+			stages: Stages{labelEqualFilter("a"), labelEqualFilter("b")},
+			want:   []string{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.stages.RequiredLabelNamesForParsers())
+		})
+	}
+}
+
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 
@@ -675,6 +756,10 @@ func Benchmark_Pipeline(b *testing.B) {
 			}
 		}
 	})
+}
+
+func labelEqualFilter(name string) LabelFilterer {
+	return NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, name, "x"))
 }
 
 func mustFilter(f Filterer, err error) Filterer {
