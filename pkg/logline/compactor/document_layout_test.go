@@ -77,6 +77,9 @@ func TestCompact_V5DocumentShards(t *testing.T) {
 	require.Len(t, active, 1)
 	merged := active[0]
 	require.Equal(t, "v5", merged.Version)
+	// The merged meta's date and the footer's day both come from the sources'
+	// Date, so checkDocumentLayout accepts the result at query time.
+	require.Equal(t, "2026-03-20", merged.Date)
 	require.Equal(t, v5TestInterval, merged.DocumentInterval)
 	require.Equal(t, v5TestShardBits, merged.DocumentShardBits)
 	require.NotNil(t, merged.IndexHeader)
