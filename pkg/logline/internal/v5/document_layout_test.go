@@ -3,6 +3,7 @@ package v5
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -147,7 +148,12 @@ func TestDensityFilter_DocumentShardBits(t *testing.T) {
 	}
 }
 
-func TestMerge_DocumentLayoutGuard(t *testing.T) {
+// TestMerge_DocumentLayoutMustMatch covers both halves of the merge's layout
+// rule: inputs that share a layout merge by unioning their cells with no
+// remapping (document shards included — equal cells are the same document),
+// and any disagreement over interval, shard bits, or day is an error, whether
+// it comes from another input or from the writer config.
+func TestMerge_DocumentLayoutMustMatch(t *testing.T) {
 	ctx := context.Background()
 	sharded := writeLayoutIndex(t, "a.lidx", 16*time.Second, 5, testDayStart)
 
@@ -205,6 +211,17 @@ func TestMerge_DocumentLayoutGuard(t *testing.T) {
 		require.ErrorContains(t, err, "day start "+nextDay.Format(time.RFC3339))
 	})
 
+	t.Run("a configured interval that disagrees with the inputs is rejected", func(t *testing.T) {
+		// The compactor passes sourceMetas[0].DocumentInterval into the merge
+		// config, so this is the guard that stops a meta whose interval has
+		// drifted from its footer from producing an index every query rejects.
+		cfg := DefaultFastIndexWriteConfig()
+		cfg.DocumentInterval = 8 * time.Second
+		var out bytes.Buffer
+		_, err := mergeFilesTo(ctx, t, []string{sharded, writeLayoutIndex(t, "b.lidx", 16*time.Second, 5, testDayStart)}, &out, cfg)
+		require.ErrorContains(t, err, "configured document interval 8s differs from the inputs' 16s")
+	})
+
 	t.Run("configured shard bits that disagree with the inputs are rejected", func(t *testing.T) {
 		cfg := DefaultFastIndexWriteConfig()
 		cfg.DocumentShardBits = 1
@@ -238,4 +255,140 @@ func TestFooterVersion4IsRefused(t *testing.T) {
 	var out bytes.Buffer
 	_, err = mergeFilesTo(context.Background(), t, []string{path, writeLayoutIndex(t, "b.lidx", 16*time.Second, 5, testDayStart)}, &out, DefaultFastIndexWriteConfig())
 	require.ErrorContains(t, err, "unsupported index version: 4")
+}
+
+// A footer's recorded layout is what maps every cell to a time range, so a
+// corrupt one must fail the open rather than place cells on the wrong day or
+// with a nonsensical span. checkFooter runs on every entry point, so each
+// case is checked through the file reader and the index_header reader.
+func TestCorruptDocumentLayoutIsRefused(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		layout  documentLayout
+		wantErr string
+	}{
+		{
+			name:    "interval does not divide a day",
+			layout:  documentLayout{interval: 7 * time.Second, shardBits: 5, dayStartUnixNano: testDayStart.UnixNano()},
+			wantErr: "must be positive and divide 24h",
+		},
+		{
+			name:    "zero interval",
+			layout:  documentLayout{interval: 0, shardBits: 5, dayStartUnixNano: testDayStart.UnixNano()},
+			wantErr: "must be positive and divide 24h",
+		},
+		{
+			name:    "shard bits beyond a uint32 cell",
+			layout:  documentLayout{interval: 16 * time.Second, shardBits: 40, dayStartUnixNano: testDayStart.UnixNano()},
+			wantErr: "exceed 32",
+		},
+		{
+			name:    "too many cells for a uint32 document ID",
+			layout:  documentLayout{interval: time.Millisecond, shardBits: 20, dayStartUnixNano: testDayStart.UnixNano()},
+			wantErr: "more than uint32 document IDs hold",
+		},
+		{
+			name:    "day start is not a UTC midnight",
+			layout:  documentLayout{interval: 16 * time.Second, shardBits: 5, dayStartUnixNano: testDayStart.Add(time.Hour).UnixNano()},
+			wantErr: "is not a UTC midnight",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			src := writeLayoutIndex(t, "src.lidx", 16*time.Second, 5, testDayStart)
+			path, info := rewriteFooter(t, src, func(h *IndexFooter) { h.setDocumentLayout(tt.layout) })
+
+			_, err := OpenIndexFile(path)
+			require.ErrorContains(t, err, tt.wantErr)
+
+			f, size := openTestReaderAt(t, path)
+			_, err = OpenIndexAtWithHeader(f, 0, size, info)
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+// A footer-5 index has no document table, so a non-zero DocMetadataSize means
+// the metadata region is not what the reader is about to slice it as. It is
+// refused before decodeMetadataRegion can mis-slice the term directory —
+// whichever guard fires first, the open fails loudly.
+func TestDocumentTableInFooterIsRefused(t *testing.T) {
+	src := writeLayoutIndex(t, "src.lidx", 16*time.Second, 5, testDayStart)
+
+	// A size that no longer accounts for the claimed table is caught by the
+	// sizing check; checkFooter's own guard is what catches a file whose
+	// sections do add up. Both must refuse to decode the region.
+	path, info := rewriteFooter(t, src, func(h *IndexFooter) { h.DocMetadataSize = 64 })
+	_, err := OpenIndexFile(path)
+	require.Error(t, err)
+	f, size := openTestReaderAt(t, path)
+	_, err = OpenIndexAtWithHeader(f, 0, size, info)
+	require.Error(t, err)
+
+	// Shrink the term data by the same amount so minSize still equals the
+	// file size, leaving checkFooter's document-table guard as the only thing
+	// standing between the reader and a mis-sliced metadata region.
+	path, info = rewriteFooter(t, src, func(h *IndexFooter) {
+		require.GreaterOrEqual(t, h.TermDataSize, uint64(8))
+		h.DocMetadataSize = 8
+		h.TermDataSize -= 8
+	})
+	_, err = OpenIndexFile(path)
+	require.ErrorContains(t, err, "document table")
+	f, size = openTestReaderAt(t, path)
+	_, err = OpenIndexAtWithHeader(f, 0, size, info)
+	require.ErrorContains(t, err, "document table")
+}
+
+// OpenIndexAtWithHeader reads the metadata region and the footer in one
+// request, which assumes the index ends exactly at its footer. computeIndexLayout
+// also locates the footer at baseOffset+totalSize, so a totalSize larger than
+// the index would read the footer from the wrong place: it must be an error,
+// not a tolerated slack. The exact size must still open, at a base offset too.
+func TestTrailingBytesAfterSectionsAreRefused(t *testing.T) {
+	path := writeLayoutIndex(t, "src.lidx", 16*time.Second, 5, testDayStart)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	t.Run("exact size opens", func(t *testing.T) {
+		r := bytes.NewReader(data)
+		reader, err := OpenIndexAt(r, 0, int64(len(data)))
+		require.NoError(t, err)
+		require.NoError(t, reader.Close())
+	})
+
+	t.Run("exact size opens at a base offset", func(t *testing.T) {
+		padded := append([]byte{0xAA, 0xBB, 0xCC}, data...)
+		reader, err := OpenIndexAt(bytes.NewReader(padded), 3, int64(len(data)))
+		require.NoError(t, err)
+		require.NoError(t, reader.Close())
+	})
+
+	// OpenIndexAt locates the footer at baseOffset+totalSize, so a size that
+	// is not the index's own size reads the footer from the wrong place and
+	// fails on the magic. That is the loud failure the exact-size rule exists
+	// to guarantee; it is why tolerating slack here was never actually safe.
+	t.Run("a size that is not the index's own is refused", func(t *testing.T) {
+		withSlack := append(append([]byte{}, data...), 0, 0, 0, 0)
+		_, err := OpenIndexAt(bytes.NewReader(withSlack), 0, int64(len(withSlack)))
+		require.ErrorContains(t, err, "invalid index magic")
+
+		_, err = OpenIndexAt(bytes.NewReader(data), 0, int64(len(data)-1))
+		require.ErrorContains(t, err, "invalid index magic")
+	})
+
+	// OpenIndexAtWithHeader takes the footer from meta.json, so it reaches
+	// computeIndexLayout with a real header and a size the caller supplied.
+	// A size past the index's end is where the explicit check earns its keep.
+	t.Run("a header-supplied size past the sections is refused", func(t *testing.T) {
+		footer, err := ReadIndexHeader(path)
+		require.NoError(t, err)
+		info := footer.Info()
+		withSlack := append(append([]byte{}, data...), 0, 0, 0, 0)
+
+		_, err = OpenIndexAtWithHeader(bytes.NewReader(withSlack), 0, int64(len(withSlack)), info)
+		require.ErrorContains(t, err, "bytes after its sections")
+
+		_, err = OpenIndexAtWithHeader(bytes.NewReader(data), 0, int64(len(data)-1), info)
+		require.ErrorContains(t, err, "truncated")
+	})
 }

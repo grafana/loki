@@ -177,3 +177,52 @@ func TestCheckDocumentLayout(t *testing.T) {
 		})
 	}
 }
+
+// TestLoglineHintProvider_ProvideHints_MixedV3AndV5 covers the realistic
+// rollout state: one day holding both v3 and v5 indexes. executeQuery picks
+// rangesForDocIDs or rangesForCells per reader, so a layout flag wired to the
+// wrong reader in the concurrent openReadersForMetas loop would hand v3
+// document IDs to TimeRange and produce ranges on a nonsense bucket. Both
+// indexes must contribute their own correct range.
+func TestLoglineHintProvider_ProvideHints_MixedV3AndV5(t *testing.T) {
+	const needle = "9fA81cD2Ef0077aa"
+	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
+	indexStore := newTestStore(t)
+
+	// v5 index: bucket 2250 is 10:00:00, two document shards of one bucket.
+	writeV5TestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, day, day, []uint32{v5Cell(2250, 3), v5Cell(2250, 17)})
+	// v3 index on the same day, a different hour, mapping through its table.
+	v3Min := day.Add(14 * time.Hour)
+	v3Max := v3Min.Add(30 * time.Second)
+	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, v3Min, v3Max)
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	hints, _, err := provider.ProvideHints(
+		context.Background(),
+		"test-tenant",
+		mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`),
+		model.TimeFromUnixNano(day.UnixNano()),
+		model.TimeFromUnixNano(day.Add(24*time.Hour).UnixNano()),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, hints)
+
+	starts := make([]time.Time, 0, len(hints.TimeRanges))
+	for _, r := range hints.TimeRanges {
+		starts = append(starts, r.Start.UTC())
+	}
+	v5Start := day.Add(10 * time.Hour)
+	require.Contains(t, starts, v5Start, "the v5 index must contribute its bucket's range")
+	require.Contains(t, starts, v3Min.UTC(), "the v3 index must contribute its document's range")
+
+	for _, r := range hints.TimeRanges {
+		switch r.Start.UTC() {
+		case v5Start:
+			require.Equal(t, v5Start.Add(v5TestInterval), r.End.UTC(), "v5 ranges span one bucket")
+		case v3Min.UTC():
+			require.Equal(t, v3Max.UTC(), r.End.UTC(), "v3 ranges span the document's bounds")
+		}
+	}
+}
