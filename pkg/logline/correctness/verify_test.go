@@ -204,7 +204,7 @@ func metricTestExpr(t *testing.T) syntax.Expr {
 	t.Helper()
 	hq, err := newHintQuery(hintQueryTypeLineFilter, "timeout", `{job="api"} |= "timeout"`)
 	require.NoError(t, err)
-	metric, err := buildMetricQuery(hintQueryTypeMetricRange, hq)
+	metric, err := buildMetricQuery(hintQueryTypeMetricRange, hq, metricLookback)
 	require.NoError(t, err)
 	return metric.expr
 }

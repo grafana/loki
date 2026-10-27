@@ -215,7 +215,7 @@ func TestBuildMetricQuery(t *testing.T) {
 			hq, err := newHintQuery(tc.queryType, tc.needle, tc.logQuery)
 			require.NoError(t, err)
 
-			got, err := buildMetricQuery(tc.queryType, hq)
+			got, err := buildMetricQuery(tc.queryType, hq, metricLookback)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got.query)
 			require.Equal(t, tc.needle, got.needle)
@@ -383,7 +383,7 @@ func TestPickHintQuery_ShortValueUsesLineFilter(t *testing.T) {
 
 	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
 	for i := 0; i < 20; i++ {
-		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, metricLookback)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
@@ -413,7 +413,7 @@ func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", value, logs)
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", value, logs, metricLookback)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		switch h.queryType {
@@ -462,7 +462,7 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs)
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs, metricLookback)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		switch h.queryType {
@@ -514,7 +514,7 @@ func TestPickHintQuery_CanUseJSONLabelFilter(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, metricLookback)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		switch h.queryType {
@@ -557,7 +557,7 @@ func TestPickHintQuery_CanUseStructuredMetadata(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, metricLookback)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		switch h.queryType {
@@ -606,7 +606,7 @@ func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs)
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs, metricLookback)
 		require.True(t, ok)
 		require.Equal(t, hintQueryTypeLineFilter, h.queryType,
 			"SM-first with ineligible SM must fall back to line_filter, not label_filter")

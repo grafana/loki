@@ -300,7 +300,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		return report, nil
 	}
 
-	hq, ok := s.pickHintQuery(selector, label, value, logs)
+	hq, ok := s.pickHintQuery(selector, label, value, logs, rangeEnd.Sub(rangeStart))
 	if !ok {
 		report.SkippedReason = skipNoNeedle
 		s.recordSkipped(skipNoNeedle)
@@ -1041,10 +1041,13 @@ func buildJSONLabelFilterHintQuery(selector, label, value string) string {
 	return fmt.Sprintf("%s | json | %s=%s", selector, label, strconv.Quote(value))
 }
 
-// buildMetricQuery wraps a log hint query as sum(count_over_time(<needle> [5m])).
-func buildMetricQuery(qt hintQueryType, hq hintQuery) (hintQuery, error) {
-	lookback := "5m"
-	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, lookback)
+// metricLookback is the count_over_time range for a metric range check.
+// An instant check uses the cycle window instead.
+const metricLookback = 5 * time.Minute
+
+// buildMetricQuery wraps a log hint query as sum(count_over_time(<needle> [<lookback>])).
+func buildMetricQuery(qt hintQueryType, hq hintQuery, lookback time.Duration) (hintQuery, error) {
+	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, model.Duration(lookback).String())
 	return newHintQuery(qt, hq.needle, query)
 }
 
@@ -1055,6 +1058,7 @@ func buildMetricQuery(qt hintQueryType, hq hintQuery) (hintQuery, error) {
 func (s *Service) pickHintQuery(
 	selector, label, value string,
 	logs []queryEntry,
+	rangeInterval time.Duration,
 ) (hintQuery, bool) {
 	switch s.randIntn(6) {
 	case 0:
@@ -1070,23 +1074,24 @@ func (s *Service) pickHintQuery(
 			return hq, true
 		}
 	case 3:
-		if hq, ok := s.tryMetricHintQuery(hintQueryTypeMetricRange, selector, logs); ok {
+		if hq, ok := s.tryMetricHintQuery(hintQueryTypeMetricRange, selector, logs, metricLookback); ok {
 			return hq, true
 		}
 	case 4:
-		if hq, ok := s.tryMetricHintQuery(hintQueryTypeMetricInstant, selector, logs); ok {
+		// The instant query is evaluated once at rangeEnd, so its lookback is the entire cycle window.
+		if hq, ok := s.tryMetricHintQuery(hintQueryTypeMetricInstant, selector, logs, rangeInterval); ok {
 			return hq, true
 		}
 	}
 	return s.tryLineFilterHintQuery(selector, logs)
 }
 
-func (s *Service) tryMetricHintQuery(qt hintQueryType, selector string, logs []queryEntry) (hintQuery, bool) {
+func (s *Service) tryMetricHintQuery(qt hintQueryType, selector string, logs []queryEntry, lookback time.Duration) (hintQuery, bool) {
 	hq, ok := s.tryLineFilterHintQuery(selector, logs)
 	if !ok {
 		return hintQuery{}, false
 	}
-	metric, err := buildMetricQuery(qt, hq)
+	metric, err := buildMetricQuery(qt, hq, lookback)
 	if err != nil {
 		level.Warn(s.logger).Log(
 			"msg", "failed to build metric hint query; falling back to line filter",

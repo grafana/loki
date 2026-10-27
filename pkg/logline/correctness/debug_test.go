@@ -248,7 +248,7 @@ func TestHandleDebug_MetricRange(t *testing.T) {
 
 	line, err := newHintQuery(hintQueryTypeLineFilter, needle, buildLineFilterHintQuery(`{job="api"}`, needle))
 	require.NoError(t, err)
-	metric, err := buildMetricQuery(hintQueryTypeMetricRange, line)
+	metric, err := buildMetricQuery(hintQueryTypeMetricRange, line, metricLookback)
 	require.NoError(t, err)
 	readStart, readEnd := getReadRange(metric, start, end)
 	require.Equal(t, model.TimeFromUnixNano(readStart.UnixNano()), provider.from)
@@ -289,7 +289,7 @@ func TestHandleDebug_MetricInstant(t *testing.T) {
 
 	line, err := newHintQuery(hintQueryTypeLineFilter, needle, buildLineFilterHintQuery(`{job="api"}`, needle))
 	require.NoError(t, err)
-	metric, err := buildMetricQuery(hintQueryTypeMetricInstant, line)
+	metric, err := buildMetricQuery(hintQueryTypeMetricInstant, line, metricLookback)
 	require.NoError(t, err)
 	readStart, readEnd := getReadRange(metric, start, end)
 	require.Equal(t, time.Duration(0), metric.step())
