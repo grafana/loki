@@ -2,6 +2,7 @@ package format_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/stretchr/testify/require"
@@ -62,4 +63,25 @@ func TestBitmap_IsEmpty(t *testing.T) {
 	require.True(t, format.Bitmap{Roaring: roaring.New()}.IsEmpty())
 	require.False(t, format.Bitmap{Roaring: roaring.BitmapOf(1)}.IsEmpty())
 	require.False(t, format.Bitmap{MatchesAll: true}.IsEmpty())
+}
+
+func TestDocumentLayout(t *testing.T) {
+	day := time.Date(2026, 3, 22, 0, 0, 0, 0, time.UTC)
+	layout := format.DocumentLayout{Interval: 16 * time.Second, ShardBits: 5, DayStart: day}
+	require.Equal(t, uint64(172800), layout.CellsPerDay())
+	require.Zero(t, format.DocumentLayout{}.CellsPerDay())
+
+	for _, tt := range []struct {
+		cell  uint32
+		start time.Time
+	}{
+		{cell: 0, start: day},
+		{cell: 31, start: day},
+		{cell: 32, start: day.Add(16 * time.Second)},
+		{cell: 172799, start: day.Add(24*time.Hour - 16*time.Second)},
+	} {
+		start, end := layout.TimeRange(tt.cell)
+		require.Equal(t, tt.start, start, "cell %d", tt.cell)
+		require.Equal(t, tt.start.Add(16*time.Second), end, "cell %d", tt.cell)
+	}
 }

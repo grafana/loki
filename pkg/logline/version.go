@@ -62,6 +62,16 @@ type Writer interface {
 	Close() error
 }
 
+// DocumentLayout returns how r's document IDs map to time ranges and document
+// shards. ok is false for v3 and v4 readers, which map them through Documents.
+func DocumentLayout(r Reader) (layout format.DocumentLayout, ok bool) {
+	lr, ok := r.(interface{ DocumentLayout() format.DocumentLayout })
+	if !ok {
+		return format.DocumentLayout{}, false
+	}
+	return lr.DocumentLayout(), true
+}
+
 // Merger is the interface for merging multiple indexes into one.
 // The caller owns out and is responsible for closing and flushing it.
 // Returns the HeaderInfo describing the written index so the caller can
