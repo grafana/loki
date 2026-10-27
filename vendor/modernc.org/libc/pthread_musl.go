@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 type pthreadAttr struct {
@@ -172,9 +174,9 @@ func Xpthread_exit(tls *TLS, result uintptr) {
 			break
 		}
 	}
-	if state == _DT_JOINABLE {
-		(*sync.Mutex)(unsafe.Pointer(tls.pthread + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex))).Unlock()
-	}
+	mu := (*sync.Mutex)(unsafe.Pointer(tls.pthread + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex)))
+	mu.TryLock()
+	mu.Unlock()
 	atomic.StoreInt32((*int32)(unsafe.Pointer(tls.pthread+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_EXITED)
 	tls.Close()
 	runtime.Goexit()
@@ -187,7 +189,7 @@ func Xpthread_join(tls *TLS, t Tpthread_t, res uintptr) (r int32) {
 
 	(*sync.Mutex)(unsafe.Pointer(t + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex))).Lock()
 	if res != 0 {
-		*(*uintptr)(unsafe.Pointer(res)) = (*t__pthread)(unsafe.Pointer(tls.pthread)).Fresult
+		*(*uintptr)(unsafe.Pointer(res)) = (*t__pthread)(unsafe.Pointer(t)).Fresult
 	}
 	return 0
 }
@@ -283,20 +285,39 @@ func Xpthread_mutex_lock(tls *TLS, m uintptr) int32 {
 		return 0
 	case PTHREAD_MUTEX_RECURSIVE:
 		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
-			(*pthreadMutex)(unsafe.Pointer(m)).count = 1
+			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
 			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			return 0
 		}
 
 		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
-			(*pthreadMutex)(unsafe.Pointer(m)).count++
+			atomic.AddInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
 			return 0
 		}
 
 		for {
 			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
-				(*pthreadMutex)(unsafe.Pointer(m)).count = 1
+				atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
+				return 0
+			}
+
+			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+		}
+	case PTHREAD_MUTEX_ERRORCHECK:
+		// Like RECURSIVE, without the count, and relocking is an error.
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
+			return EDEADLK
+		}
+
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			return 0
+		}
+
+		for {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
 				return 0
 			}
 
@@ -311,6 +332,30 @@ func Xpthread_mutex_trylock(tls *TLS, m uintptr) int32 {
 	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
 	case PTHREAD_MUTEX_NORMAL:
 		if (*pthreadMutex)(unsafe.Pointer(m)).TryLock() {
+			return 0
+		}
+
+		return EBUSY
+	case PTHREAD_MUTEX_RECURSIVE:
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
+			atomic.AddInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
+			return 0
+		}
+
+		// The owner field is the lock. As in Xpthread_mutex_lock, the embedded
+		// sync.Mutex is held only while owned, and briefly by unlock and by the
+		// loop in lock, so after the CAS Lock does not wait for another owner.
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			return 0
+		}
+
+		return EBUSY
+	case PTHREAD_MUTEX_ERRORCHECK:
+		// EBUSY whoever holds it, the caller included.
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			return 0
 		}
 
@@ -335,6 +380,14 @@ func Xpthread_mutex_unlock(tls *TLS, m uintptr) int32 {
 			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		}
 		return 0
+	case PTHREAD_MUTEX_ERRORCHECK:
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) != tls.ID {
+			return EPERM
+		}
+
+		atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0)
+		(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+		return 0
 	default:
 		panic(todo("", typ))
 	}
@@ -343,7 +396,8 @@ func Xpthread_mutex_unlock(tls *TLS, m uintptr) int32 {
 func Xpthread_cond_init(tls *TLS, c, a uintptr) int32 {
 	*(*Tpthread_cond_t)(unsafe.Pointer(c)) = Tpthread_cond_t{}
 	if a != 0 {
-		panic(todo(""))
+		// The clock goes where musl keeps it, _c_clock.
+		(*Tpthread_cond_t)(unsafe.Pointer(c)).F__u.F__i[4] = int32((*Tpthread_condattr_t)(unsafe.Pointer(a)).F__attr & 0x7fffffff)
 	}
 
 	conds.Lock()
@@ -355,10 +409,19 @@ func Xpthread_cond_init(tls *TLS, c, a uintptr) int32 {
 func Xpthread_cond_timedwait(tls *TLS, c, m, ts uintptr) (r int32) {
 	var to <-chan time.Time
 	if ts != 0 {
-		deadlineSecs := (*Ttimespec)(unsafe.Pointer(ts)).Ftv_sec
-		deadlineNsecs := (*Ttimespec)(unsafe.Pointer(ts)).Ftv_nsec
-		deadline := time.Unix(deadlineSecs, int64(deadlineNsecs))
-		d := deadline.Sub(time.Now())
+		// The deadline is absolute on the clock set by pthread_condattr_setclock,
+		// CLOCK_REALTIME unless changed.
+		nsec := int64((*Ttimespec)(unsafe.Pointer(ts)).Ftv_nsec)
+		if nsec < 0 || nsec >= 1e9 {
+			return EINVAL
+		}
+
+		var now unix.Timespec
+		if err := unix.ClockGettime((*Tpthread_cond_t)(unsafe.Pointer(c)).F__u.F__i[4], &now); err != nil {
+			return EINVAL
+		}
+
+		d := time.Duration(int64((*Ttimespec)(unsafe.Pointer(ts)).Ftv_sec)-int64(now.Sec))*time.Second + time.Duration(nsec-int64(now.Nsec))
 		if d <= 0 {
 			return ETIMEDOUT
 		}
@@ -388,15 +451,22 @@ func Xpthread_cond_timedwait(tls *TLS, c, m, ts uintptr) (r int32) {
 	}()
 
 	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
-	case PTHREAD_MUTEX_NORMAL:
-		(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+	case PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK:
+		// A recursive mutex releases one level, like musl's own
+		// pthread_cond_timedwait, so one locked more than once stays held
+		// while waiting (#62). Unlocking a RECURSIVE or ERRORCHECK mutex the
+		// caller does not hold reports EPERM, which the wait then returns.
+		if r = Xpthread_mutex_unlock(tls, m); r != 0 {
+			return r
+		}
+
 		select {
 		case <-ch:
 			// ok
 		case <-to:
 			r = ETIMEDOUT
 		}
-		(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+		Xpthread_mutex_lock(tls, m)
 		return r
 	default:
 		panic(todo("", typ))
@@ -463,9 +533,9 @@ func Xpthread_mutexattr_settype(tls *TLS, a uintptr, typ int32) int32 {
 }
 
 func Xpthread_detach(tls *TLS, t uintptr) int32 {
-	state := atomic.SwapInt32((*int32)(unsafe.Pointer(tls.pthread+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_DETACHED)
+	state := atomic.SwapInt32((*int32)(unsafe.Pointer(t+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_DETACHED)
 	switch state {
-	case _DT_EXITED, _DT_DETACHED:
+	case _DT_JOINABLE, _DT_EXITED, _DT_DETACHED:
 		return 0
 	default:
 		panic(todo("", tls.ID, state))
@@ -483,6 +553,116 @@ func _pthread_sigmask(tls *TLS, now int32, set, old uintptr) int32 {
 	return 0
 }
 
+type barrierState struct {
+	mu         sync.Mutex
+	cond       *sync.Cond
+	count      uint32
+	tripCount  uint32
+	generation uint32
+}
+
+var (
+	barriers   = map[uintptr]*barrierState{}
+	barriersMu sync.Mutex
+)
+
+// int pthread_barrier_init(pthread_barrier_t *restrict barrier, const pthread_barrierattr_t *restrict attr, unsigned count);
+func Xpthread_barrier_init(tls *TLS, barrier, attr uintptr, count uint32) int32 {
+	if count == 0 {
+		return EINVAL
+	}
+	barriersMu.Lock()
+	defer barriersMu.Unlock()
+	state := &barrierState{tripCount: count}
+	state.cond = sync.NewCond(&state.mu)
+	barriers[barrier] = state
+	return 0
+}
+
+// int pthread_barrier_destroy(pthread_barrier_t *barrier);
+func Xpthread_barrier_destroy(tls *TLS, barrier uintptr) int32 {
+	barriersMu.Lock()
+	defer barriersMu.Unlock()
+	delete(barriers, barrier)
+	return 0
+}
+
+// int pthread_barrier_wait(pthread_barrier_t *barrier);
+func Xpthread_barrier_wait(tls *TLS, barrier uintptr) int32 {
+	barriersMu.Lock()
+	state := barriers[barrier]
+	barriersMu.Unlock()
+	if state == nil {
+		return EINVAL
+	}
+	state.mu.Lock()
+	gen := state.generation
+	state.count++
+	if state.count >= state.tripCount {
+		state.count = 0
+		state.generation++
+		state.cond.Broadcast()
+		state.mu.Unlock()
+		return -1 // PTHREAD_BARRIER_SERIAL_THREAD
+	}
+	for gen == state.generation {
+		state.cond.Wait()
+	}
+	state.mu.Unlock()
+	return 0
+}
+
 // 202402251838      all_test.go:589: files=36 buildFails=30 execFails=2 pass=4
 // 202402262246      all_test.go:589: files=36 buildFails=26 execFails=2 pass=8
 // 202403041858 all_musl_test.go:640: files=36 buildFails=22 execFails=4 pass=10
+
+// The condattr functions, see https://gitlab.com/cznic/libc/-/issues/55. The
+// attribute layout is musl's: the clock in the low bits, pshared in bit 31.
+
+// int pthread_condattr_init(pthread_condattr_t *a)
+func Xpthread_condattr_init(tls *TLS, a uintptr) int32 {
+	*(*Tpthread_condattr_t)(unsafe.Pointer(a)) = Tpthread_condattr_t{}
+	return 0
+}
+
+// int pthread_condattr_destroy(pthread_condattr_t *a)
+func Xpthread_condattr_destroy(tls *TLS, a uintptr) int32 {
+	return 0
+}
+
+// int pthread_condattr_setclock(pthread_condattr_t *a, clockid_t clk)
+func Xpthread_condattr_setclock(tls *TLS, a uintptr, clk Tclockid_t) int32 {
+	// CPU time clocks are not allowed.
+	if clk < 0 || uint32(clk)-2 < 2 {
+		return EINVAL
+	}
+
+	p := (*Tpthread_condattr_t)(unsafe.Pointer(a))
+	p.F__attr &= 0x80000000
+	p.F__attr |= uint32(clk)
+	return 0
+}
+
+// int pthread_condattr_getclock(const pthread_condattr_t *restrict a, clockid_t *restrict clk)
+func Xpthread_condattr_getclock(tls *TLS, a uintptr, clk uintptr) int32 {
+	*(*Tclockid_t)(unsafe.Pointer(clk)) = Tclockid_t((*Tpthread_condattr_t)(unsafe.Pointer(a)).F__attr & 0x7fffffff)
+	return 0
+}
+
+// int pthread_condattr_setpshared(pthread_condattr_t *a, int pshared)
+func Xpthread_condattr_setpshared(tls *TLS, a uintptr, pshared int32) int32 {
+	if uint32(pshared) > 1 {
+		return EINVAL
+	}
+
+	p := (*Tpthread_condattr_t)(unsafe.Pointer(a))
+	p.F__attr &= 0x7fffffff
+	p.F__attr |= uint32(pshared) << 31
+	return 0
+}
+
+// int pthread_condattr_getpshared(const pthread_condattr_t *restrict a, int *restrict pshared)
+func Xpthread_condattr_getpshared(tls *TLS, a uintptr, pshared uintptr) int32 {
+	*(*int32)(unsafe.Pointer(pshared)) = int32((*Tpthread_condattr_t)(unsafe.Pointer(a)).F__attr >> 31)
+	return 0
+}

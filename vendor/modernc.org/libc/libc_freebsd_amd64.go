@@ -954,3 +954,26 @@ func Xlocaleconv(tls *TLS) uintptr { /* localeconv.c:31:14: */
 func X__tolower(tls *TLS, c int32) int32 { /* table.c:1878:20: */
 	return Xtolower(tls, c)
 }
+
+// setTmGmtoff stores off into tm.Ftm_gmtoff at the platform-native width.
+func setTmGmtoff(tm *time.Tm, off int) { tm.Ftm_gmtoff = int64(off) }
+
+// Xmmap — see libc_freebsd.go. 64-bit: off_t fits in one argument word.
+func Xmmap(t *TLS, addr uintptr, length types.Size_t, prot, flags, fd int32, offset types.Off_t) uintptr {
+	if __ccgo_strace {
+		trc("t=%v addr=%v length=%v fd=%v offset=%v, (%v:)", t, addr, length, fd, offset, origin(2))
+	}
+	data, _, err := unix.Syscall6(unix.SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), uintptr(offset))
+	if err != 0 {
+		if dmesgs {
+			dmesg("%v: %v FAIL", origin(1), err)
+		}
+		t.setErrno(err)
+		return ^uintptr(0) // (void*)-1
+	}
+
+	if dmesgs {
+		dmesg("%v: %#x", origin(1), data)
+	}
+	return data
+}

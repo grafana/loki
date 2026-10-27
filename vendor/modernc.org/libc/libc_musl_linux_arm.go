@@ -22,7 +22,12 @@ var (
 type RawMem [1<<31 - 1]byte
 
 // void *memcpy(void *dest, const void *src, size_t n);
-func Xmemcpy(t *TLS, dest, src uintptr, n Tsize_t) (r uintptr) {
+//
+// musl implements memcpy in assembly on arm, so ccgo never transpiled one
+// and this hand-written version used to be Xmemcpy. Xmemcpy now lives in
+// native_musl.go; this stays under the ___musl_ name generator.go gives
+// the transpiled originals, for native_musl_test.go.
+func ___musl_memcpy(t *TLS, dest, src uintptr, n Tsize_t) (r uintptr) {
 	if __ccgo_strace {
 		trc("t=%v src=%v n=%v, (%v:)", t, src, n, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -55,7 +60,18 @@ func _a_barrier(tls *TLS) {
 	atomicBarrier.Add(1)
 }
 
+// static inline int a_cas(volatile int *p, int t, int s)
+//
+// The atomic_arch.h overlay declares a_cas and atomic.h derives the other
+// primitives from it in C, see https://gitlab.com/cznic/libc/-/issues/53.
+func _a_cas(tls *TLS, p uintptr, t, s int32) int32 {
+	return casInt32(p, t, s)
+}
+
 // static inline int a_sc(volatile int *p, int v)
+//
+// No longer reached once ccgo_linux_arm.go is regenerated with the a_cas based
+// overlay; kept so the current generated file still builds.
 func _a_sc(*TLS, uintptr, int32) int32 {
 	panic(todo(""))
 }
