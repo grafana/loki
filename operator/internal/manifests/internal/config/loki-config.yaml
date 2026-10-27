@@ -129,6 +129,7 @@ frontend:
 frontend_worker:
   frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
   grpc_client_config:
+    grpc_compression: gzip
     max_send_msg_size: 104857600
 {{- if .Gates.GRPCEncryption }}
     tls_enabled: true
@@ -165,6 +166,7 @@ ingester:
     replay_memory_ceiling: {{ .WriteAheadLog.ReplayMemoryCeiling }}
 ingester_client:
   grpc_client_config:
+    grpc_compression: gzip
     max_recv_msg_size: 67108864
 {{- if .Gates.GRPCEncryption }}
     tls_enabled: true
@@ -308,8 +310,9 @@ querier:
   query_ingesters_within: 3h
   tail_max_duration: 1h
   max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
-{{- if .Gates.GRPCEncryption }}
 compactor_grpc_client:
+  grpc_compression: gzip
+{{- if .Gates.GRPCEncryption }}
   tls_enabled: true
   tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
   tls_key_path: {{ .TLS.Paths.GRPC.Key }}
@@ -546,8 +549,9 @@ ruler:
   ring:
     kvstore:
       store: memberlist
-{{- if .Gates.GRPCEncryption }}
   ruler_client:
+    grpc_compression: gzip
+{{- if .Gates.GRPCEncryption }}
     tls_enabled: true
     tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
     tls_key_path: {{ .TLS.Paths.GRPC.Key }}
@@ -574,6 +578,7 @@ server:
   grpc_server_max_concurrent_streams: 1000
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
+  grpc_compression: gzip
   http_listen_port: 3100
   http_server_idle_timeout: {{ .HTTPTimeouts.IdleTimeout }}
   http_server_read_timeout: {{ .HTTPTimeouts.ReadTimeout }}
@@ -614,8 +619,9 @@ storage_config:
     resync_interval: 5m
     index_gateway_client:
       server_address: dns:///{{ $.IndexGateway.FQDN }}:{{ $.IndexGateway.Port }}
-{{- if $.Gates.GRPCEncryption }}
       grpc_client_config:
+        grpc_compression: gzip
+{{- if $.Gates.GRPCEncryption }}
         tls_enabled: true
         tls_cert_path: {{ $.TLS.Paths.GRPC.Certificate }}
         tls_key_path: {{ $.TLS.Paths.GRPC.Key }}

@@ -2264,7 +2264,9 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     cache_ttl: 24h
     resync_interval: 5m
     index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+      grpc_client_config:
+        grpc_compression: gzip`,
 			expStructuredMetadata: `
   allow_structured_metadata: false`,
 		},
@@ -2294,7 +2296,9 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     cache_ttl: 24h
     resync_interval: 5m
     index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+      grpc_client_config:
+        grpc_compression: gzip`,
 			expStructuredMetadata: `
   allow_structured_metadata: false`,
 		},
@@ -2324,7 +2328,9 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     cache_ttl: 24h
     resync_interval: 5m
     index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+      grpc_client_config:
+        grpc_compression: gzip`,
 			expStructuredMetadata: `
   allow_structured_metadata: true`,
 		},
@@ -2379,13 +2385,17 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     resync_interval: 5m
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+      grpc_client_config:
+        grpc_compression: gzip
   tsdb_shipper:
     active_index_directory: /tmp/loki/tsdb-index
     cache_location: /tmp/loki/tsdb-cache
     cache_ttl: 24h
     resync_interval: 5m
     index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+      grpc_client_config:
+        grpc_compression: gzip`,
 			expStructuredMetadata: `
   allow_structured_metadata: true`,
 		},

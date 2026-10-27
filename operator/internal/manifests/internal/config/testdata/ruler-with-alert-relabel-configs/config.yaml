@@ -34,6 +34,7 @@ frontend:
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
   grpc_client_config:
+    grpc_compression: gzip
     max_send_msg_size: 104857600
 ingester:
   chunk_block_size: 262144
@@ -58,6 +59,7 @@ ingester:
     replay_memory_ceiling: 2147483648
 ingester_client:
   grpc_client_config:
+    grpc_compression: gzip
     max_recv_msg_size: 67108864
   remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
@@ -123,6 +125,8 @@ querier:
   max_concurrent: 2
   query_ingesters_within: 3h
   tail_max_duration: 1h
+compactor_grpc_client:
+  grpc_compression: gzip
 query_range:
   align_queries_with_step: true
   cache_results: true
@@ -219,6 +223,8 @@ ruler:
   ring:
     kvstore:
       store: memberlist
+  ruler_client:
+    grpc_compression: gzip
 server:
   graceful_shutdown_timeout: 5s
   grpc_server_min_time_between_pings: '10s'
@@ -226,6 +232,7 @@ server:
   grpc_server_max_concurrent_streams: 1000
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
+  grpc_compression: gzip
   http_listen_port: 3100
   http_server_idle_timeout: 30s
   http_server_read_timeout: 30s
@@ -244,6 +251,8 @@ storage_config:
     resync_interval: 5m
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+      grpc_client_config:
+        grpc_compression: gzip
 tracing:
   enabled: false
 analytics:
