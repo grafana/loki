@@ -69,18 +69,31 @@ type FirewallRulesRequest struct {
 	OutboundRules []OutboundRule `json:"outbound_rules"`
 }
 
+// FirewallRuleAction represents the action to be taken by a firewall rule.
+// When not specified, the API defaults to "allow" for backward compatibility.
+type FirewallRuleAction string
+
+const (
+	// FirewallRuleActionAllow indicates that matching traffic should be allowed.
+	FirewallRuleActionAllow FirewallRuleAction = "allow"
+	// FirewallRuleActionDeny indicates that matching traffic should be denied.
+	FirewallRuleActionDeny FirewallRuleAction = "deny"
+)
+
 // InboundRule represents a DigitalOcean Firewall inbound rule.
 type InboundRule struct {
-	Protocol  string   `json:"protocol,omitempty"`
-	PortRange string   `json:"ports,omitempty"`
-	Sources   *Sources `json:"sources"`
+	Protocol  string             `json:"protocol,omitempty"`
+	PortRange string             `json:"ports,omitempty"`
+	Sources   *Sources           `json:"sources"`
+	Action    FirewallRuleAction `json:"action,omitempty"`
 }
 
 // OutboundRule represents a DigitalOcean Firewall outbound rule.
 type OutboundRule struct {
-	Protocol     string        `json:"protocol,omitempty"`
-	PortRange    string        `json:"ports,omitempty"`
-	Destinations *Destinations `json:"destinations"`
+	Protocol     string             `json:"protocol,omitempty"`
+	PortRange    string             `json:"ports,omitempty"`
+	Destinations *Destinations      `json:"destinations"`
+	Action       FirewallRuleAction `json:"action,omitempty"`
 }
 
 // Sources represents a DigitalOcean Firewall InboundRule sources.
