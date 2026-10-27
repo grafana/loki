@@ -97,7 +97,7 @@ func ParseShardString(s string) (ShardAnnotation, error) {
 	}
 	of, err := strconv.ParseUint(parts[1], 10, 32)
 	if err != nil {
-		return ShardAnnotation{}, fmt.Errorf("invalid shard %q: %w", s, err)
+		return ShardAnnotation{}, fmt.Errorf("invalid factor %q: %w", s, err)
 	}
 	if bits.OnesCount64(of) != 1 {
 		return ShardAnnotation{}, fmt.Errorf("invalid shard %q: factor must be a power of two", s)
