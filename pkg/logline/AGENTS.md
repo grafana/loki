@@ -88,6 +88,12 @@ The scheduler groups sources by resolved `Version` (and shard settings, document
 interval, and document shard bits), and the compactor verifies it again before merging.
 Mixed-version merges would require re-indexing under one canonical version. The scheduler
 skips indexes whose `meta.json` index_header fails `ValidateIndexHeader` (v5 indexes with
-footer 4), because their jobs would fail on every pass. The compactor passes the sources'
-date as `WriterConfig.DayStart`, and the v5 merge refuses inputs whose footer covers
-another day.
+footer 4), because their jobs would fail on every pass. A v5 meta is also skipped when it
+has no index_header at all (its footer version cannot be checked, and for a version whose
+document IDs are cells of a day that is not safe to assume) or no document_interval (the
+key would group it with any other such meta whatever its footer says, and the merge would
+then reject the layout on every pass). v3 and v4 metas predate index_header and are
+grouped without it. Such indexes never become compactable, so the scheduler counts them in
+`logline_index_scheduler_indexes_unreadable` and logs the first reason, separately from
+the oversized-skip counter. The compactor passes the sources' date as
+`WriterConfig.DayStart`, and the v5 merge refuses inputs whose footer covers another day.

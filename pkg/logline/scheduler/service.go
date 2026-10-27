@@ -303,15 +303,28 @@ func (s *Service) rebuildPlannerLocked(snap *store.Snapshot) {
 
 	planner := newOverlapPlanner(available, int64(s.cfg.Compaction.MaxJobSize))
 
-	if op, ok := planner.(*overlapPlanner); ok && op.skipped > 0 {
-		level.Warn(s.logger).Log(
-			"msg", "skipped unmergeable indexes",
-			"skipped", op.skipped,
-			"max_job_size", s.cfg.Compaction.MaxJobSize.String(),
-		)
+	if op, ok := planner.(*overlapPlanner); ok {
+		if op.skipped > 0 {
+			level.Warn(s.logger).Log(
+				"msg", "skipped unmergeable indexes",
+				"skipped", op.skipped,
+				"max_job_size", s.cfg.Compaction.MaxJobSize.String(),
+			)
+		}
 		s.metrics.jobsSkippedOversized.Set(float64(op.skipped))
+		// These are excluded from compaction permanently, not just this pass,
+		// so report them every tick rather than only when the count changes.
+		if op.unreadable > 0 {
+			level.Warn(s.logger).Log(
+				"msg", "indexes excluded from compaction: this binary cannot read their format",
+				"unreadable", op.unreadable,
+				"reason", op.unreadableReason,
+			)
+		}
+		s.metrics.indexesUnreadable.Set(float64(op.unreadable))
 	} else {
 		s.metrics.jobsSkippedOversized.Set(0)
+		s.metrics.indexesUnreadable.Set(0)
 	}
 
 	s.planner = planner
