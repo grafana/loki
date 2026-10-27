@@ -305,6 +305,9 @@ func (c *Config) Validate() error {
 	if err := c.QueryScheduler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_scheduler config"))
 	}
+	if err := c.Frontend.Handler.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid frontend config"))
+	}
 	if err := c.Ruler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler config"))
 	}

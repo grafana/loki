@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/textproto"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -34,7 +37,32 @@ const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
+
+	// maxLoggedHeaderValueLength caps each logged request header value, because a client controls the value.
+	maxLoggedHeaderValueLength = 1024
 )
+
+// sensitiveHeaderNames is the deny list of HTTP header names whose values
+// carry credentials or session material and must never appear in logs.
+var sensitiveHeaderNames = []string{
+	"authorization",
+	"proxy-authorization",
+	"cookie",
+	"set-cookie",
+	"x-api-key",
+	"x-auth-token",
+	"x-amz-security-token",
+	"authentication-info",
+	"www-authenticate",
+	"proxy-authenticate",
+	"x-csrf-token",
+	"x-xsrf-token",
+	"x-access-token",
+	"x-session-token",
+	"x-forwarded-authorization",
+	"x-auth-request-access-token",
+	"x-id-token",
+}
 
 // Config for a Handler.
 type HandlerConfig struct {
@@ -46,17 +74,32 @@ type HandlerConfig struct {
 
 func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
-	f.Var(&cfg.LogQueryRequestHeaders, "frontend.log-query-request-headers", "Comma-separated list of request header names to include in query logs. Applies to both query stats and slow queries logs.")
+	f.Var(&cfg.LogQueryRequestHeaders, "frontend.log-query-request-headers", "Comma-separated list of request header names to include in query logs. Applies to both query stats and slow queries logs. Header values longer than 1 KiB are truncated. Headers that carry credentials or session material, such as Authorization and Cookie, are rejected.")
 	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", 10*1024*1024, "Max body size for downstream prometheus.")
 	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
+}
+
+// Validate rejects a log_query_request_headers list that contains headers which carry credentials or session material.
+func (cfg *HandlerConfig) Validate() error {
+	var rejected []string
+	for _, h := range cfg.LogQueryRequestHeaders {
+		if isSensitiveHeaderName(h) {
+			rejected = append(rejected, h)
+		}
+	}
+	if len(rejected) > 0 {
+		return fmt.Errorf("log_query_request_headers: rejected headers: %s", strings.Join(rejected, ", "))
+	}
+	return nil
 }
 
 // Handler accepts queries and forwards them to RoundTripper. It can log slow queries,
 // but all other logic is inside the RoundTripper.
 type Handler struct {
-	cfg          HandlerConfig
-	log          log.Logger
-	roundTripper http.RoundTripper
+	cfg              HandlerConfig
+	log              log.Logger
+	roundTripper     http.RoundTripper
+	safeHeadersToLog []safeHeader
 
 	// Metrics.
 	querySeconds *prometheus.CounterVec
@@ -68,9 +111,10 @@ type Handler struct {
 // NewHandler creates a new frontend handler.
 func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer, metricsNamespace string) http.Handler {
 	h := &Handler{
-		cfg:          cfg,
-		log:          log,
-		roundTripper: roundTripper,
+		cfg:              cfg,
+		log:              log,
+		roundTripper:     roundTripper,
+		safeHeadersToLog: safeHeadersToLog(cfg.LogQueryRequestHeaders),
 	}
 
 	if cfg.QueryStatsEnabled {
@@ -206,18 +250,70 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"fetched_chunks_bytes", numBytes,
 	}, formatQueryString(queryString)...)
 
-	if len(f.cfg.LogQueryRequestHeaders) != 0 {
-		logMessage = append(logMessage, formatRequestHeaders(&r.Header, f.cfg.LogQueryRequestHeaders)...)
+	if len(f.safeHeadersToLog) != 0 {
+		logMessage = append(logMessage, formatRequestHeaders(&r.Header, f.safeHeadersToLog)...)
 	}
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func formatRequestHeaders(h *http.Header, headersToLog []string) (fields []interface{}) {
-	for _, s := range headersToLog {
-		if v := h.Get(s); v != "" {
-			fields = append(fields, fmt.Sprintf("header_%s", strings.ReplaceAll(strings.ToLower(s), "-", "_")), v)
+// safeHeader is a request header that is not in the sensitive-header deny list.
+// Build it with newSafeHeader so the deny-list check cannot be bypassed.
+type safeHeader struct {
+	name   string // canonical header name, for example User-Agent
+	logKey string // log field name, for example header_user_agent
+}
+
+func newSafeHeader(name string) (safeHeader, bool) {
+	if isSensitiveHeaderName(name) {
+		return safeHeader{}, false
+	}
+	name = strings.TrimSpace(name)
+	return safeHeader{
+		name:   textproto.CanonicalMIMEHeaderKey(name),
+		logKey: "header_" + strings.ReplaceAll(strings.ToLower(name), "-", "_"),
+	}, true
+}
+
+func isSensitiveHeaderName(name string) bool {
+	return slices.Contains(sensitiveHeaderNames, strings.ToLower(strings.TrimSpace(name)))
+}
+
+// safeHeadersToLog drops sensitive headers from headersToLog. Config validation
+// rejects them already; this keeps them out of the logs if validation is skipped.
+func safeHeadersToLog(headersToLog []string) (safeHeaders []safeHeader) {
+	for _, h := range headersToLog {
+		if s, ok := newSafeHeader(h); ok {
+			safeHeaders = append(safeHeaders, s)
 		}
+	}
+	return safeHeaders
+}
+
+// formatRequestHeaders returns the log fields for every header in headersToLog
+// that is present in the request. Values longer than maxLoggedHeaderValueLength
+// are truncated, and control and formatting characters are dropped so a client
+// cannot inject log lines.
+func formatRequestHeaders(h *http.Header, headersToLog []safeHeader) (fields []interface{}) {
+	for _, s := range headersToLog {
+		vv := (*h)[s.name]
+		if len(vv) == 0 {
+			continue
+		}
+		v := strings.TrimSpace(vv[0])
+		if v == "" {
+			continue
+		}
+		truncated := len(v) > maxLoggedHeaderValueLength
+		if truncated {
+			// Truncate before sanitizing: the sanitizer drops a rune cut in half.
+			v = v[:maxLoggedHeaderValueLength]
+		}
+		v = dslog.DropUnsafeChars(v).String()
+		if truncated {
+			v += "..."
+		}
+		fields = append(fields, s.logKey, v)
 	}
 	return fields
 }
