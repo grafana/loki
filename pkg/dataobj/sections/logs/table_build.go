@@ -1,7 +1,6 @@
 package logs
 
 import (
-	"bytes"
 	"cmp"
 	"slices"
 
@@ -24,15 +23,13 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
-	var prev Record
+	// Every sort order keeps the records of one stream and timestamp together,
+	// as DuplicateCounter requires.
+	var duplicates DuplicateCounter
 	row := 0
 	for _, record := range records {
-		if dropDuplicates {
-			if equalRecords(prev, record) {
-				// Skip equal records
-				continue
-			}
-			prev = record
+		if dropDuplicates && duplicates.Observe(record) {
+			continue
 		}
 
 		// Append only fails if given out-of-order data, where the provided row
@@ -99,17 +96,4 @@ func reverseOrderIfEqual(res int) int {
 		return res
 	}
 	return -1
-}
-
-func equalRecords(a, b Record) bool {
-	if a.StreamID != b.StreamID {
-		return false
-	}
-	if a.Timestamp != b.Timestamp {
-		return false
-	}
-	if !labels.Equal(a.Metadata, b.Metadata) {
-		return false
-	}
-	return bytes.Equal(a.Line, b.Line)
 }

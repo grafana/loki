@@ -84,7 +84,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	var (
 		inputBytesTotal int64
-		dups            duplicateCounter
+		dups            logs.DuplicateCounter
 		inputBytesBatch int64
 		count           int
 	)
@@ -109,7 +109,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 			inputBytesBatch = 0
 			count = 0
 		}
-		dups.observe(rec)
+		dups.Observe(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
@@ -136,7 +136,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		stats.InputSections += len(run)
 	}
 	stats.InputBytes = inputBytesTotal
-	stats.DuplicateRecords = dups.duplicates
+	stats.DuplicateRecords = dups.Duplicates()
 
 	duration := time.Since(start)
 	var inputBytesPerSecond int64

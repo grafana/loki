@@ -1,4 +1,4 @@
-package executor
+package logs
 
 import (
 	"bytes"
@@ -7,21 +7,18 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
-// duplicateCounter counts duplicate records in the merged record stream of a
-// LogMerge task.
+// DuplicateCounter counts duplicate records in a stream of records.
 //
-// Records must arrive grouped by stream ID and timestamp, as the merge
-// iterator yields them. The order of records within a group does not matter.
+// Records must arrive grouped by stream ID and timestamp. The order of records
+// within a group does not matter.
 //
-// Stream IDs must be global IDs from one stream table, so that equal IDs mean
-// equal labels. Local IDs from different source objects are not comparable.
-// sortmerge.MixedRunIterator yields global IDs because it remaps every section
-// through its source's local-to-global map.
-type duplicateCounter struct {
+// Equal stream IDs must mean equal labels. Local IDs from different objects
+// are not comparable.
+//
+// The zero value is ready to use.
+type DuplicateCounter struct {
 	duplicates int
 
 	groupStreamID  int64
@@ -35,16 +32,17 @@ type trackedRecord struct {
 	metadata labels.Labels
 }
 
-// observe counts rec if it is a duplicate. A record is a duplicate if an
-// earlier record has the same stream, timestamp, line, and metadata.
+// Observe counts rec if it is a duplicate, and reports whether it is. A record
+// is a duplicate if an earlier record has the same stream, timestamp, line,
+// and metadata.
 //
-// observe keeps references to rec.Line and rec.Metadata until the group
+// Observe keeps references to rec.Line and rec.Metadata until the group
 // changes. The caller must not modify them afterwards.
 //
-// observe compares each record against every distinct record in its group.
+// Observe compares each record against every distinct record in its group.
 // The cost is quadratic in the group size, but each comparison is one uint64
 // compare unless the line hashes match.
-func (c *duplicateCounter) observe(rec logs.Record) {
+func (c *DuplicateCounter) Observe(rec Record) bool {
 	if !c.inCurrentGroup(rec) {
 		c.startGroup(rec)
 	}
@@ -52,20 +50,26 @@ func (c *duplicateCounter) observe(rec logs.Record) {
 	tracked := newTrackedRecord(rec)
 	if c.seenInGroup(tracked) {
 		c.duplicates++
-		return
+		return true
 	}
 	c.groupRecords = append(c.groupRecords, tracked)
+	return false
+}
+
+// Duplicates returns the number of duplicate records observed.
+func (c *DuplicateCounter) Duplicates() int {
+	return c.duplicates
 }
 
 // inCurrentGroup reports whether rec has the stream and timestamp of the
 // current group.
-func (c *duplicateCounter) inCurrentGroup(rec logs.Record) bool {
+func (c *DuplicateCounter) inCurrentGroup(rec Record) bool {
 	return rec.StreamID == c.groupStreamID && rec.Timestamp.Equal(c.groupTimestamp)
 }
 
 // startGroup forgets the records of the current group and starts a new group
 // for the stream and timestamp of rec.
-func (c *duplicateCounter) startGroup(rec logs.Record) {
+func (c *DuplicateCounter) startGroup(rec Record) {
 	c.groupRecords = c.groupRecords[:0]
 	c.groupStreamID = rec.StreamID
 	c.groupTimestamp = rec.Timestamp
@@ -73,11 +77,11 @@ func (c *duplicateCounter) startGroup(rec logs.Record) {
 
 // seenInGroup reports whether the current group already has a record equal
 // to r.
-func (c *duplicateCounter) seenInGroup(r trackedRecord) bool {
+func (c *DuplicateCounter) seenInGroup(r trackedRecord) bool {
 	return slices.ContainsFunc(c.groupRecords, r.equal)
 }
 
-func newTrackedRecord(rec logs.Record) trackedRecord {
+func newTrackedRecord(rec Record) trackedRecord {
 	return trackedRecord{lineHash: xxhash.Sum64(rec.Line), line: rec.Line, metadata: rec.Metadata}
 }
 
