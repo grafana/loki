@@ -181,7 +181,12 @@ func (s *store) init(params storeInitParams) error {
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(s.indexShipper, params.tableRange))
+	// Only read-only shippers, i.e. index gateways (or queriers reading the index
+	// without them), download compacted files, so only they can see a compacted
+	// file next to the files it replaces. Ingesters only read their own
+	// multi-tenant files.
+	skipSuperseded := params.indexShipperCfg.Mode == indexshipper.ModeReadOnly
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, params.tableRange, skipSuperseded))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
 	s.Reader = NewIndexClient(multiIndex, opts, params.limits)
