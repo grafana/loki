@@ -270,7 +270,7 @@ github.com/aliyun/credentials-go/credentials/providers
 github.com/aliyun/credentials-go/credentials/request
 github.com/aliyun/credentials-go/credentials/response
 github.com/aliyun/credentials-go/credentials/utils
-# github.com/andybalholm/brotli v1.2.6
+# github.com/andybalholm/brotli v1.2.7
 ## explicit; go 1.22
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
@@ -1029,8 +1029,8 @@ github.com/jmespath/go-jmespath
 # github.com/joncrlsn/dque v0.0.0-20241024143830-7723fd131a64
 ## explicit; go 1.13
 github.com/joncrlsn/dque
-# github.com/jpillora/backoff v1.0.0
-## explicit; go 1.13
+# github.com/jpillora/backoff v1.1.0
+## explicit; go 1.19
 github.com/jpillora/backoff
 # github.com/json-iterator/go v1.1.12
 ## explicit; go 1.12
@@ -1644,8 +1644,8 @@ go.etcd.io/etcd/api/v3/mvccpb
 go.etcd.io/etcd/api/v3/v3rpc/rpctypes
 go.etcd.io/etcd/api/v3/version
 go.etcd.io/etcd/api/v3/versionpb
-# go.etcd.io/etcd/client/pkg/v3 v3.7.2
-## explicit; go 1.26
+# go.etcd.io/etcd/client/pkg/v3 v3.7.3
+## explicit; go 1.26.0
 go.etcd.io/etcd/client/pkg/v3/fileutil
 go.etcd.io/etcd/client/pkg/v3/logutil
 go.etcd.io/etcd/client/pkg/v3/systemd

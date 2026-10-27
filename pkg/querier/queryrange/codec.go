@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1357,16 +1358,39 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 }
 
 func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryrangebase.Response) (*http.Response, error) {
-	if req.Header.Get("Accept") == ProtobufType {
-		return encodeResponseProtobuf(ctx, res)
-	} else if req.Header.Get("Accept") == ParquetType {
-		return encodeResponseParquet(ctx, res)
+	var response *http.Response
+	var err error
+	switch req.Header.Get("Accept") {
+	case ProtobufType:
+		response, err = encodeResponseProtobuf(ctx, res)
+	case ParquetType:
+		response, err = encodeResponseParquet(ctx, res)
+	default:
+		response, err = encodeResponseJSON(ctx, loghttp.GetVersion(req.RequestURI), res, httpreq.ExtractEncodingFlags(req))
 	}
+	if err != nil {
+		return nil, err
+	}
+	setQueryBytesProcessedHeader(response.Header, res)
+	return response, nil
+}
 
-	// Default to JSON.
-	version := loghttp.GetVersion(req.RequestURI)
-	encodingFlags := httpreq.ExtractEncodingFlags(req)
-	return encodeResponseJSON(ctx, version, res, encodingFlags)
+// setQueryBytesProcessedHeader sets the httpreq.LokiQueryBytesProcessedHeader header from the response's processed-byte
+// statistic, replacing any stale value from a child response.
+func setQueryBytesProcessedHeader(headers http.Header, response queryrangebase.Response) {
+	headers.Del(httpreq.LokiQueryBytesProcessedHeader)
+	var usage *stats.Result
+	switch r := response.(type) {
+	case *LokiResponse:
+		usage = &r.Statistics
+	case *LokiPromResponse:
+		usage = &r.Statistics
+	case *DetectedFieldsResponse:
+		usage = &r.Statistics
+	}
+	if usage != nil && usage.Summary.TotalBytesProcessed >= 0 {
+		headers.Set(httpreq.LokiQueryBytesProcessedHeader, strconv.FormatInt(usage.Summary.TotalBytesProcessed, 10))
+	}
 }
 
 func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags httpreq.EncodingFlags) (*http.Response, error) {

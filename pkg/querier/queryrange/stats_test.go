@@ -807,6 +807,7 @@ func TestQueryUsageHTTPFlow(t *testing.T) {
 					}
 					require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 					require.Equal(t, tc.wantBytes, body.Data.Stats.Summary.TotalBytesProcessed)
+					require.Equal(t, strconv.FormatInt(tc.wantBytes, 10), response.Header().Get(httpreq.LokiQueryBytesProcessedHeader))
 
 					require.Equal(t, tc.wantSplits, body.Data.Stats.Summary.Splits,
 						"each completed interval counts once, including discarded responses")
@@ -819,6 +820,7 @@ func TestQueryUsageHTTPFlow(t *testing.T) {
 					require.Equal(t, tc.wantEntries, entries)
 				} else {
 					require.Empty(t, successfulUsage, "failures must not emit a successful usage record")
+					require.Empty(t, response.Header().Get(httpreq.LokiQueryBytesProcessedHeader))
 
 					line := failedUsage.only(t)
 					requireFailedQueryUsageShape(t, line)

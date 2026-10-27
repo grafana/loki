@@ -748,9 +748,10 @@ func (e *LineFilterExpr) hasFilter() bool {
 	if e == nil {
 		return false
 	}
-	// Empty matchers match everything. An empty or branch does not make its
-	// group match everything, because building the or filter drops it.
-	if (e.Ty != log.LineMatchEqual && e.Ty != log.LineMatchRegexp) || e.Match != "" {
+	// Filters that build to log.TrueFilter, such as |= "" and |~ ".*",
+	// match everything. Such an or branch does not make its group match
+	// everything, because building the or filter drops it.
+	if f, err := newLineFilterer(e.LineFilter); err != nil || f != log.TrueFilter {
 		return true
 	}
 	return e.Left.hasFilter() || e.Or.hasFilter()

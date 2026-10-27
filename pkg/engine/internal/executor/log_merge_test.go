@@ -114,7 +114,7 @@ func buildMultiSectionSourceLogObject(t *testing.T, bucket objstore.Bucket, path
 	buildSourceLogObjectWithConfig(t, bucket, path, cfg, sortSchema, byTenant)
 }
 
-func buildSourceLogObjectWithConfig(t *testing.T, bucket objstore.Bucket, path string, cfg logsobj.BuilderBaseConfig, sortSchema []string, byTenant map[string][]testStream) {
+func buildSourceLogObjectWithConfig(t testing.TB, bucket objstore.Bucket, path string, cfg logsobj.BuilderBaseConfig, sortSchema []string, byTenant map[string][]testStream) {
 	t.Helper()
 
 	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
@@ -139,7 +139,7 @@ func buildSourceLogObjectWithConfig(t *testing.T, bucket objstore.Bucket, path s
 
 // sourceLogRuns gives each object its own run; overlapping objects cannot be
 // concatenated. References count logs sections across all tenants.
-func sourceLogRuns(t *testing.T, bucket objstore.Bucket, tenant string, paths ...string) []*compactionv2pb.RunRef {
+func sourceLogRuns(t testing.TB, bucket objstore.Bucket, tenant string, paths ...string) []*compactionv2pb.RunRef {
 	t.Helper()
 	var runs []*compactionv2pb.RunRef
 	for _, path := range paths {
