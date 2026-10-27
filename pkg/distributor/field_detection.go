@@ -413,10 +413,11 @@ func isRightWordDelim(c byte) bool {
 	return rightWordDelims[c]
 }
 
-// hasPrefixWithDelim checks if s starts with prefix, ASCII case-insensitve,
-// and that the match consumes all of s or is followed with a delimiter.
-// prefix must be lowercase ASCII letters.
-func hasPrefixWithDelim(s, prefix string) bool {
+// hasFullWordPrefix checks if s starts with prefix and prefix consumes all of
+// s, or the next char after a prefix is a delimiter or whitespace. This
+// function is ASCII case-insensitive, and expects prefix to contain all
+// lowercase ASCII letters.
+func hasFullWordPrefix(s, prefix string) bool {
 	if len(s) < len(prefix) {
 		return false
 	}
@@ -450,15 +451,14 @@ func detectLevelFromLogLine(s string) string {
 		// In ASCII, an upper-case letter and its lower-case form differ in the
 		// 5th bit (0x20). For example, 'E' is 0x45 and 'e' is 0x65. If we OR an
 		// ASCII uppercase letter with 0x20 it transforms it to lowercase.
-		// This means s[i]|0x20 == 'e' matches both E and e without allocating or
-		// calling strings.ToLower.
+		// This means s[i]|0x20 == 'e' matches both E and e.
 		c := s[i] | 0x20
 		if level := levelTable[c]; level != "" {
-			if hasPrefixWithDelim(s[i:], level) {
+			if hasFullWordPrefix(s[i:], level) {
 				return level
-			} else if c == 'e' && hasPrefixWithDelim(s[i:], "err") {
+			} else if c == 'e' && hasFullWordPrefix(s[i:], "err") {
 				return constants.LogLevelError
-			} else if c == 'w' && hasPrefixWithDelim(s[i:], "warning") {
+			} else if c == 'w' && hasFullWordPrefix(s[i:], "warning") {
 				return constants.LogLevelWarn
 			}
 		}
