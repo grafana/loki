@@ -709,7 +709,7 @@ func uploadObjectToBucket(ctx context.Context, bucket objstore.Bucket, path stri
 // newTestExecutorContext constructs a minimal *Context wired with the bucket,
 // an in-memory scratch store, a default indexobj BuilderBaseConfig, and a
 // no-op logger.
-func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
+func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 	t.Helper()
 
 	testBuilderCfg := logsobj.BuilderBaseConfig{
