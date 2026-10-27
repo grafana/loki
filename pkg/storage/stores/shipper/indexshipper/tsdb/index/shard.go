@@ -61,6 +61,10 @@ func (shard ShardAnnotation) String() string {
 	return fmt.Sprintf(ShardLabelFmt, shard.Shard, shard.Of)
 }
 
+func (shard ShardAnnotation) IsSharded() bool {
+	return shard.Of > 1
+}
+
 func (shard ShardAnnotation) RequiredBits() uint64 {
 	// The minimum number of bits required to represent shard.Of
 	return uint64(math.Log2(float64(shard.Of)))
@@ -84,8 +88,7 @@ func (shard ShardAnnotation) Validate() error {
 }
 
 // ParseShardString parses a shard in the ShardLabelFmt form `<x>_of_<K>`. K
-// must be a power of two and x below K. `0_of_1` is the whole fingerprint
-// space.
+// must be a power of two and x < K.
 func ParseShardString(s string) (ShardAnnotation, error) {
 	parts := strings.Split(s, "_of_")
 	if len(parts) != 2 {
