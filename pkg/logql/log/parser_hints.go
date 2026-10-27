@@ -58,8 +58,10 @@ type LabelFilterHints interface {
 	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
 
 	// ShouldParseLine returns false when the line cannot pass the label filters after the parser,
-	// because it does not contain the strings the parser would read their labels from. The parser
-	// then drops the line without parsing it.
+	// because it does not contain the strings the parser would read their labels from: the key and
+	// the value for json and logfmt, the value for regexp and pattern. It returns true when there are
+	// no requirements, and when the label is already set by the stream, structured metadata or an
+	// earlier stage. The parser drops a line that it returns false for without parsing it.
 	ShouldParseLine(line []byte, lbs *LabelsBuilder) bool
 }
 
@@ -186,6 +188,9 @@ type labelFilterHints struct {
 	labelFilters []LabelFilterer
 	labelNames   []string
 
+	// lineRequirements are what ShouldParseLine checks. They are independent of labelFilters, and a
+	// filter on more than one label can still contribute one. They stop at the first stage that can
+	// modify labels, like labelFilters.
 	lineRequirements []lineRequirement
 }
 

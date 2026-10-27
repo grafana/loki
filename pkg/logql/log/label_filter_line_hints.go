@@ -107,9 +107,9 @@ func (a anyLineNeeds) mayHold(line []byte) bool {
 	return false
 }
 
-// appendLineRequirements appends what the line must contain for f to pass on the labels that the
-// parser sets. Only `=` and `=~` filters on a label that the parser can set, and both sides of an
-// `and`, require anything.
+// appendLineRequirements appends a requirement for each `=` or `=~` filter in f, descending into both
+// sides of an `and`. Other filters, including `or`, add nothing, and neither do reserved `__` labels
+// or filters that accept the empty value. It returns dst unchanged for parsers whose values are unknown.
 func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parserValues) []lineRequirement {
 	if values == valuesUnknown {
 		return dst
@@ -135,7 +135,7 @@ func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parse
 			return dst
 		}
 
-		// The value comes first because fewer lines contain it than the key, so a line without it
+		// The value comes first because usually fewer lines contain it than the key, so a line without it
 		// fails after one search.
 		var need allLineNeeds
 		if v := valueNeed(f.Filter, values); v != nil {
@@ -158,7 +158,8 @@ func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parse
 // They make the name from one or more keys: they trim the spaces around each key, replace each
 // character other than [A-Za-z0-9_] with an underscore, join the keys of nested objects with an
 // underscore, and add the DuplicateSuffix when the name is taken. So each run of [A-Za-z0-9] in the
-// name without the suffix is in a key.
+// name without the suffix is in a key. A key that itself ends in the suffix only makes the
+// requirement looser, which is safe.
 func keyNeeds(name string) []lineNeed {
 	name = strings.TrimSuffix(name, DuplicateSuffix)
 
