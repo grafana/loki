@@ -124,12 +124,12 @@ func (i *MultiIndex) Close() error {
 	)
 }
 
-// shardedIndex is implemented by indexes that hold a single fingerprint-range
-// shard of their table, such as a compacted file named `<x>_of_<K>`.
+// shardedIndex is implemented by indexes that know the fingerprint range they
+// hold. Indexes that don't implement it are assumed to hold every fingerprint.
 type shardedIndex interface {
-	// ShardBounds returns the [from, through) fingerprint range the index
-	// holds and true, or false when the index holds every fingerprint.
-	ShardBounds() (from, through model.Fingerprint, sharded bool)
+	// FingerprintBounds returns the [from, through) fingerprint range the
+	// index holds; an unsharded index holds every fingerprint.
+	FingerprintBounds() (from, through model.Fingerprint)
 }
 
 func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model.Time, fpFilter index.FingerprintFilter, f func(context.Context, Index) error) error {
@@ -162,10 +162,7 @@ func shardOverlaps(idx Index, fpFilter index.FingerprintFilter) bool {
 	if !ok {
 		return true
 	}
-	fileFrom, fileThrough, isSharded := sharded.ShardBounds()
-	if !isSharded {
-		return true
-	}
+	fileFrom, fileThrough := sharded.FingerprintBounds()
 	queryFrom, queryThrough := fpFilter.GetFromThrough()
 	return fileFrom < queryThrough && queryFrom < fileThrough
 }

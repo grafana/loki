@@ -15,11 +15,10 @@ import (
 
 func TestParseSingleTenantTSDBPath(t *testing.T) {
 	for _, tc := range []struct {
-		desc         string
-		input        string
-		id           SingleTenantTSDBIdentifier
-		ok           bool
-		expectedName string
+		desc  string
+		input string
+		id    SingleTenantTSDBIdentifier
+		ok    bool
 	}{
 		{
 			desc:  "simple_works",
@@ -84,17 +83,9 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			ok: true,
 		},
 		{
-			desc:  "shard 0_of_1 is the unsharded identifier",
+			desc:  "unsharded files have no shard suffix",
 			input: "1-compactor-1-10-ff-0_of_1.tsdb",
-			id: SingleTenantTSDBIdentifier{
-				ExportTSInSecs: true,
-				TS:             time.Unix(1, 0),
-				From:           1,
-				Through:        10,
-				Checksum:       255,
-			},
-			ok:           true,
-			expectedName: "1-compactor-1-10-ff.tsdb",
+			ok:    false,
 		},
 		{
 			desc:  "shard factor must be a power of two",
@@ -142,11 +133,7 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			require.Equal(t, tc.ok, ok)
 			require.Equal(t, tc.id, id)
 			if ok {
-				expectedName := tc.input
-				if tc.expectedName != "" {
-					expectedName = tc.expectedName
-				}
-				require.Equal(t, expectedName, id.Name())
+				require.Equal(t, tc.input, id.Name())
 			}
 		})
 	}

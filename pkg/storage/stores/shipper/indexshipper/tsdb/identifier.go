@@ -10,10 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const compactedFileUploader = "compactor"
@@ -81,7 +83,7 @@ type SingleTenantTSDBIdentifier struct {
 // IsSharded reports whether the file holds only one of several fingerprint
 // ranges of its table.
 func (i SingleTenantTSDBIdentifier) IsSharded() bool {
-	return i.Shard.Of > 1
+	return i.Shard.IsSharded()
 }
 
 // FingerprintBounds returns the [from, through) fingerprint range the file
@@ -117,24 +119,18 @@ func (i SingleTenantTSDBIdentifier) str() string {
 	} else {
 		ts = i.TS.UnixNano()
 	}
+	shardSuffix := ""
 	if i.IsSharded() {
-		return fmt.Sprintf(
-			"%d-%s-%d-%d-%x-%s.tsdb",
-			ts,
-			compactedFileUploader,
-			i.From,
-			i.Through,
-			i.Checksum,
-			i.Shard.String(),
-		)
+		shardSuffix = "-" + i.Shard.String()
 	}
 	return fmt.Sprintf(
-		"%d-%s-%d-%d-%x.tsdb",
+		"%d-%s-%d-%d-%x%s.tsdb",
 		ts,
 		compactedFileUploader,
 		i.From,
 		i.Through,
 		i.Checksum,
+		shardSuffix,
 	)
 }
 
@@ -186,9 +182,10 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 
 	var shard index.ShardAnnotation
 	if len(elems) == 6 {
-		shard, ok = parseShardSuffix(elems[5])
-		if !ok {
-			return id, false
+		shard, err = parseShardSuffix(elems[5])
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to parse shard of tsdb file", "path", p, "err", err)
+			return
 		}
 	}
 
@@ -210,18 +207,17 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 }
 
 // parseShardSuffix parses the `<x>_of_<K>` suffix of a sharded file name. K
-// must be a power of two greater than 1 and x must be below K; `0_of_1` is
-// accepted and normalised to the unsharded zero value.
-func parseShardSuffix(s string) (index.ShardAnnotation, bool) {
+// must be a power of two greater than 1 and x must be below K. Unsharded files
+// carry no suffix.
+func parseShardSuffix(s string) (index.ShardAnnotation, error) {
 	shard, err := index.ParseShardString(s)
 	if err != nil {
-		return index.ShardAnnotation{}, false
+		return index.ShardAnnotation{}, err
 	}
 	if shard.Of == 1 {
-		// 0_of_1 is the whole table: the unsharded zero value
-		return index.ShardAnnotation{}, true
+		return index.ShardAnnotation{}, fmt.Errorf("invalid shard %q: unsharded files have no shard suffix", s)
 	}
-	return shard, true
+	return shard, nil
 }
 
 type MultitenantTSDBIdentifier struct {
