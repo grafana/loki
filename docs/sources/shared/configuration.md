@@ -3146,9 +3146,9 @@ The `frontend` block configures the Loki query-frontend.
 [log_queries_longer_than: <duration> | default = 0s]
 
 # Comma-separated list of request header names to include in query logs. Applies
-# to both query stats and slow queries logs. Header values longer than 1 KiB are
-# truncated. Headers that carry credentials or session material, such as
-# Authorization and Cookie, are rejected.
+# to the query stats log, which requires -frontend.query-stats-enabled. Header
+# values longer than 1 KiB are truncated. Headers that carry credentials or
+# session material, such as Authorization and Cookie, are rejected.
 # CLI flag: -frontend.log-query-request-headers
 [log_query_request_headers: <string> | default = ""]
 
