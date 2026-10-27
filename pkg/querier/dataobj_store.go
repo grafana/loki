@@ -201,7 +201,6 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 
 	// The dataset layer records its statistics into the region the context carries, and nothing
 	// under logs.RowReader starts one, so without this the query's byte and row counts are lost.
-	// The region name matches what the v2 engine reads, so both report the same statistics.
 	readCtx, _ := xcap.StartRegion(ctx, logs.RegionRead)
 	reader := dataobjread.NewLogReader(readCtx, objects, tasks, s.maxConcurrency, dataobjread.DefaultReadBatchSize, s.metrics)
 

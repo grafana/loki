@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 
 	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
@@ -18,6 +20,10 @@ func TestRegisterHandlers_ServesCurrentAndLegacyRoutes(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	srv := &server.Server{HTTP: mux.NewRouter()}
 	require.NoError(t, RegisterHandlers(srv, svc, log.NewNopLogger()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), svc))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), svc))
+	})
 
 	for _, path := range []string{
 		schedulerapi.JobPath,
@@ -32,6 +38,7 @@ func TestRegisterHandlers_ServesCurrentAndLegacyRoutes(t *testing.T) {
 	for _, path := range []string{
 		schedulerapi.AbandonPath,
 		schedulerapi.LegacyAbandonPath,
+		schedulerapi.CompletePath,
 	} {
 		rec := httptest.NewRecorder()
 		srv.HTTP.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
@@ -46,6 +53,31 @@ func TestRegisterHandlers_ServesCurrentAndLegacyRoutes(t *testing.T) {
 		rec := httptest.NewRecorder()
 		srv.HTTP.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		require.Equal(t, http.StatusOK, rec.Code, path)
+	}
+}
+
+func TestRegisterHandlers_UnavailableUntilRunning(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	// Before starting() runs, the job store does not exist yet.
+	svc.jobs = nil
+	srv := &server.Server{HTTP: mux.NewRouter()}
+	require.NoError(t, RegisterHandlers(srv, svc, log.NewNopLogger()))
+
+	for _, req := range []struct{ method, path string }{
+		{http.MethodGet, schedulerapi.JobPath + "?worker_id=w1"},
+		{http.MethodGet, schedulerapi.LegacyJobPath + "?worker_id=w1"},
+		{http.MethodPost, schedulerapi.AbandonPath + "?worker_id=w1&job_id=j1"},
+		{http.MethodPost, schedulerapi.LegacyAbandonPath + "?worker_id=w1&job_id=j1"},
+		{http.MethodPost, schedulerapi.CompletePath + "?worker_id=w1&job_id=j1"},
+		{http.MethodGet, schedulerapi.StatusPath},
+		{http.MethodGet, schedulerapi.LegacyStatusPath},
+		{http.MethodGet, schedulerapi.StoreDumpPath},
+		{http.MethodGet, schedulerapi.LegacyStoreDumpPath},
+	} {
+		rec := httptest.NewRecorder()
+		srv.HTTP.ServeHTTP(rec, httptest.NewRequest(req.method, req.path, nil))
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code, req.path)
+		require.Equal(t, "scheduler is not running: New\n", rec.Body.String(), req.path)
 	}
 }
 

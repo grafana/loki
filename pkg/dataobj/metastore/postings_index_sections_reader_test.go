@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
@@ -34,7 +33,7 @@ func buildPostingsIndexObject(t testing.TB, tenant string, lps []postings.LabelO
 	return obj, func() { _ = closer.Close() }
 }
 
-func TestPostingsIndexSectionsReader_ResolvesAndEmitsPointersBatch(t *testing.T) {
+func TestPostingsIndexSectionsReader_ResolvesAndEmitsResultBatch(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
 	ts := now.Add(-2 * time.Hour)
@@ -54,17 +53,16 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsPointersBatch(t *testing.T)
 	require.NotNil(t, rec)
 	require.Equal(t, int64(1), rec.NumRows())
 
-	// The emitted batch must decode through the same path consumer A uses,
-	// preserving section identity, stream ref, and the timestamp envelope.
-	buf := make([]pointers.SectionPointer, rec.NumRows())
-	n, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSection)
+	// The emitted batch must decode through the same path CollectSections
+	// uses, preserving section identity, stream ID, and the timestamp envelope.
+	rows, err := resolvedRowsFromRecordBatch(rec)
 	require.NoError(t, err)
-	require.Equal(t, 1, n)
-	require.Equal(t, "src-obj", buf[0].Path)
-	require.Equal(t, int64(3), buf[0].Section)
-	require.Equal(t, int64(7), buf[0].StreamIDRef)
-	require.Equal(t, ts.UnixNano(), buf[0].StartTs.UnixNano())
-	require.Equal(t, ts.UnixNano(), buf[0].EndTs.UnixNano())
+	require.Len(t, rows, 1)
+	require.Equal(t, "src-obj", rows[0].objectPath)
+	require.Equal(t, int64(3), rows[0].sectionIndex)
+	require.Equal(t, int64(7), rows[0].streamID)
+	require.Equal(t, ts.UnixNano(), rows[0].minTimestamp)
+	require.Equal(t, ts.UnixNano(), rows[0].maxTimestamp)
 
 	// Drained.
 	_, err = r.Read(ctx)

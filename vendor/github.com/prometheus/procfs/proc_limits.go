@@ -74,9 +74,7 @@ const (
 	limitsUnlimited = "unlimited"
 )
 
-var (
-	limitsMatch = regexp.MustCompile(`(Max \w+\s??\w*\s?\w*)\s{2,}(\w+)\s+(\w+)`)
-)
+var limitsMatch = regexp.MustCompile(`(Max \w+\s??\w*\s?\w*)\s{2,}(\w+)\s+(\w+)`)
 
 // NewLimits returns the current soft limits of the process.
 //
@@ -101,7 +99,6 @@ func (p Proc) Limits() (ProcLimits, error) {
 	s.Scan() // Skip limits header
 
 	for s.Scan() {
-		//fields := limitsMatch.Split(s.Text(), limitsFields)
 		fields := limitsMatch.FindStringSubmatch(s.Text())
 		if len(fields) != limitsFields {
 			return ProcLimits{}, fmt.Errorf("%w: couldn't parse %q line %q", ErrFileParse, f.Name(), s.Text())

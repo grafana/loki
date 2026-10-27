@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -22,7 +21,7 @@ import (
 // source index into a new index object, and emits a record that reports the
 // content-hash path of the new index.
 func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
-	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifact, err := c.doIndexFilter(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
@@ -32,7 +31,7 @@ func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 			return errorPipeline(ctx, err)
 		}
 		return NewBufferedPipeline(rec)
-	}, nil)
+	})
 }
 
 func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter) (*v2.ResultArtifact, error) {
@@ -56,7 +55,13 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		return nil, fmt.Errorf("opening source index %q: %w", node.SourceIndexPath, err)
 	}
 
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore)
+	// A source without stats sections has no layout. The builder then gets
+	// the zero layout, and rejects any stat, so it never records that layout.
+	layout, _, err := indexobj.TenantLayout(ctx, source, node.Tenant)
+	if err != nil {
+		return nil, fmt.Errorf("reading stream layout of source index %q: %w", node.SourceIndexPath, err)
+	}
+	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
@@ -75,14 +80,10 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		case stats.CheckSection(sec):
 			err = copyRows(ctx, sec, openStatsReader, keep, foundStats, func(row stats.Stat) string { return row.ObjectPath },
 				func(row stats.Stat) error { return builder.AppendStat(node.Tenant, row) })
-		case pointers.CheckSection(sec):
-			// Index objects built before the index builder stopped writing
-			// pointers sections still hold them. The compactor does not support them.
-			continue
 		case streams.CheckSection(sec):
 			continue
 		default:
-			return nil, fmt.Errorf("filtering source index %q: unknown section %q", node.SourceIndexPath, sec)
+			return nil, fmt.Errorf("filtering source index %q: unknown section %q", node.SourceIndexPath, sec.Type)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("filtering source index %q: %w", node.SourceIndexPath, err)

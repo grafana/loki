@@ -46,6 +46,13 @@ Loki renames a parsed key to `<name>_extracted` when a stream label or a structu
 
 For the rules, refer to [Label name collisions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#label-name-collisions).
 
+### Statistics in detected-field query responses
+
+The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON
+responses now include a top-level `stats` object containing the underlying log query's
+statistics. Existing `fields`, `values`, and `limit` fields retain their format.
+Clients that validate response fields strictly must allow the new `stats` field.
+
 ### Bloom filters are deprecated
 
 Query acceleration using bloom filters is deprecated and will be removed in a future release.
@@ -110,6 +117,16 @@ Schedulers and queriers already accept both encodings, so mixed frontends during
 ### LogQL rejects numeric, duration, bytes, and `ip()` comparisons against `__error__` and `__error_details__`
 
 A query such as `| __error__ > 0`, `| __error__ != 1s`, `| __error_details__ == 1MB`, or `| __error__ = ip("1.2.3.4")` now fails to parse. These two labels always hold a string (or are unset), so a numeric, duration, bytes, or IP comparison against them could never find a match; such a query used to parse successfully and then silently return no results. This also applies after `| unwrap`. Use a string comparison instead, for example `| __error__ != ""` or `| __error__=""`.
+
+### Breaking change: Errored samples in metric queries now follow the query's grouping and `__error__` filter
+
+Metric queries report errored log lines in a more consistent way now.
+
+Previously, an errored line's sample kept every stream label and every structured metadata key, ignoring the query's `by (...)` or `without (...)` grouping. Lines from the same stream that differed only in a label the grouping didn't name could form separate series. Now an errored sample reports the same labels a successful line would report for that grouping, plus `__error__` and `__error_details__`. `sum()` and `count()` totals are unchanged, but `first_over_time()`, `last_over_time()`, `quantile_over_time()`, and other range aggregations that accept a grouping can report fewer series, or different values, once errored lines collapse into the group they belong to. A failing query's `pipeline error` message now names the grouped labels instead of the whole label set; remove the grouping to identify the affected stream.
+
+Separately, whether a metric query fails on an errored sample, or returns it, now depends only on whether a `__error__` label filter in the pipeline asks to keep it (for example `| __error__ != ""`). It no longer depends on how the query is grouped: previously, `sum by (pod) (count_over_time({app="a"} | json | __error__!="" [1m]))` could return errored samples while the same pipeline written with `max`, `without (...)`, or no grouping instead failed the query.
+
+For the full set of rules, see [Pipeline Errors in Metric Queries](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_reference/#pipeline-errors-in-metric-queries).
 
 ### `frontend.compress_responses` default changed to `true`
 

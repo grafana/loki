@@ -403,6 +403,10 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	parserHints := lbs.ParserLabelHints()
 	labelFilterHints := lbs.LabelFilterHints()
+	if parserHints.NoLabels() {
+		return line, true
+	}
+
 	r.renames.reset()
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
