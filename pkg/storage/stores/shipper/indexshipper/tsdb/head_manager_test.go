@@ -1040,7 +1040,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
+				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
 				require.Nil(t, err)
 				refs, err := store.GetChunkRefs(
 					context.Background(),
@@ -1230,7 +1230,7 @@ func TestStore_BackToBackFlushesShipDistinctIndexes(t *testing.T) {
 		cfg.CacheLocation = filepath.Join(dir, name, "cache")
 		cfg.IngesterName = name
 		cfg.IngesterDBRetainPeriod = 15 * time.Minute
-		rw, stop, err := NewStore("tsdb", "index/", cfg, schemaCfg, nil, objClient, &zeroValueLimits{}, tableRange, nil, nil, log.NewNopLogger())
+		rw, stop, err := NewStore("tsdb", "index/", cfg, schemaCfg, objClient, &zeroValueLimits{}, tableRange, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		t.Cleanup(stop)
 		return rw.(*store)

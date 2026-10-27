@@ -2,7 +2,6 @@ package tsdb
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"sync"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	chunkcache "github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
@@ -27,14 +25,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-type IndexWriter interface {
+// indexWriter appends chunk index entries: the head manager in modes that write
+// index, failingIndexWriter in read-only mode.
+type indexWriter interface {
 	Append(userID string, ls labels.Labels, fprint uint64, chks tsdbindex.ChunkMetas) error
 }
 
 type store struct {
 	index.Reader
 	indexShipper  indexshipper.IndexShipper
-	indexWriter   IndexWriter
+	indexWriter   indexWriter
 	logger        log.Logger
 	stopOnce      sync.Once
 	postingsCache *postingsCache
@@ -57,7 +57,6 @@ func NewStore(
 	name, prefix string,
 	indexShipperCfg indexshipper.Config,
 	schemaCfg config.SchemaConfig,
-	_ *fetcher.Fetcher,
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRange config.TableRange,
@@ -128,13 +127,6 @@ func (s *store) init(params storeInitParams) error {
 
 	var indices []Index
 	opts := DefaultIndexClientOptions()
-
-	// early return in case index shipper is disabled.
-	if params.indexShipperCfg.Mode == indexshipper.ModeDisabled {
-		s.indexWriter = noopIndexWriter{}
-		s.Reader = NewIndexClient(NoopIndex{}, opts, params.limits)
-		return nil
-	}
 
 	if params.indexShipperCfg.Mode == indexshipper.ModeWriteOnly {
 		// We disable bloom filters on write nodes
@@ -253,11 +245,5 @@ func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk ch
 type failingIndexWriter struct{}
 
 func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
-	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
-}
-
-type noopIndexWriter struct{}
-
-func (f noopIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
-	return nil
+	return errors.New("index writer is not initialized due to tsdb store being initialized in read-only mode")
 }
