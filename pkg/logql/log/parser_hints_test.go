@@ -43,8 +43,12 @@ var (
 	}`)
 
 	logfmtLine = []byte(`ts=2021-02-02T14:35:05.983992774Z caller=spanlogger.go:79 org_id=3677 traceID=2e5c7234b8640997 Ingester.TotalReached=15 Ingester.TotalChunksMatched=0 Ingester.TotalBatches=0`)
+
+	collidingLogfmtLine = []byte(`app=foo org_id=3677 level=info`)
 )
 
+// TestStreamSampleExtractor_Process processes each line twice. The first pass fills the parser
+// caches. The second pass reads them.
 func TestStreamSampleExtractor_Process(t *testing.T) {
 	lbs := labels.FromStrings("app", "nginx", "cluster", "us-central-west")
 
@@ -190,6 +194,41 @@ func TestStreamSampleExtractor_Process(t *testing.T) {
 			"{}",
 		},
 		{
+			`sum by (app)(count_over_time({app="nginx"} | logfmt [1m]))`,
+			collidingLogfmtLine,
+			true,
+			1.0,
+			`{app="nginx"}`,
+		},
+		{
+			`sum by (app_extracted)(count_over_time({app="nginx"} | logfmt [1m]))`,
+			collidingLogfmtLine,
+			true,
+			1.0,
+			`{app_extracted="foo"}`,
+		},
+		{
+			`sum by (app_extracted)(count_over_time({app="nginx"} | regexp "app=(?P<app>\\w+)" [1m]))`,
+			[]byte(`app=foo`),
+			true,
+			1.0,
+			`{app_extracted="foo"}`,
+		},
+		{
+			`sum by (second)(count_over_time({app="nginx"} | regexp "(?P<first>\\w+) (?P<second>\\w+)" [1m]))`,
+			[]byte(`x y`),
+			true,
+			1.0,
+			`{second="y"}`,
+		},
+		{
+			`sum by (response_time)(count_over_time({app="nginx"} | json [1m]))`,
+			[]byte(`{"response-time":"3"}`),
+			true,
+			1.0,
+			`{response_time="3"}`,
+		},
+		{
 			`sum(rate({app="nginx"} | json | remote_user="foo" [1m]))`,
 			jsonLine,
 			true,
@@ -268,15 +307,85 @@ func TestStreamSampleExtractor_Process(t *testing.T) {
 			ex, err := expr.Extractor()
 			require.NoError(t, err)
 
-			sample, ok := ex.ForStream(lbs).Process(0, append([]byte{}, tt.line...), labels.EmptyLabels())
-			require.Equal(t, tt.expectOk, ok)
+			sse := ex.ForStream(lbs)
+			for range 2 {
+				sample, ok := sse.Process(0, append([]byte{}, tt.line...), labels.EmptyLabels())
+				require.Equal(t, tt.expectOk, ok)
 
-			var lbsResString string
-			if sample.Labels != nil {
-				lbsResString = sample.Labels.String()
+				var lbsResString string
+				if sample.Labels != nil {
+					lbsResString = sample.Labels.String()
+				}
+				require.Equal(t, tt.expectVal, sample.Value)
+				require.Equal(t, tt.expectLbs, lbsResString)
 			}
-			require.Equal(t, tt.expectVal, sample.Value)
-			require.Equal(t, tt.expectLbs, lbsResString)
+		})
+	}
+
+	for _, tt := range []struct {
+		name               string
+		expr               string
+		stream             labels.Labels
+		structuredMetadata labels.Labels
+		line               []byte
+		expectLbs          string
+	}{
+		{
+			"a nested json key that collides with a stream label is extracted with the duplicate suffix",
+			`sum by (request_method_extracted)(count_over_time({app="nginx"} | json [1m]))`,
+			labels.FromStrings("app", "nginx", "request_method", "x"),
+			labels.EmptyLabels(),
+			[]byte(`{"request":{"method":"POST"}}`),
+			`{request_method_extracted="POST"}`,
+		},
+		{
+			"a nested json key with trailing whitespace is extracted under the renamed path when the path collides",
+			`sum by (x_a__extracted)(count_over_time({app="nginx"} | json [1m]))`,
+			labels.FromStrings("app", "nginx", "x_a", "s"),
+			labels.EmptyLabels(),
+			[]byte(`{"x":{"a ":"v"}}`),
+			`{x_a__extracted="v"}`,
+		},
+		{
+			"an empty nested json key is extracted under the renamed path when the path collides",
+			`sum by (x__extracted)(count_over_time({app="nginx"} | json [1m]))`,
+			labels.FromStrings("app", "nginx", "x", "s"),
+			labels.EmptyLabels(),
+			[]byte(`{"x":{"":"v"}}`),
+			`{x__extracted="v"}`,
+		},
+		{
+			"a hint with a doubled duplicate suffix extracts the third key after two keys collide",
+			`sum by (foo_extracted_extracted)(count_over_time({a="b"} | logfmt [1m]))`,
+			labels.FromStrings("a", "b", "foo", "s"),
+			labels.FromStrings("foo", "sm"),
+			[]byte(`foo=1 foo_extracted=2 foo_extracted_extracted=3 x=4`),
+			`{foo_extracted_extracted="3"}`,
+		},
+		{
+			"a filter with a doubled duplicate suffix keeps the line when the third key matches",
+			`sum by (x)(count_over_time({a="b"} | logfmt | foo_extracted_extracted="3" [1m]))`,
+			labels.FromStrings("a", "b", "foo", "s"),
+			labels.FromStrings("foo", "sm"),
+			[]byte(`foo=1 foo_extracted=2 foo_extracted_extracted=3 x=4`),
+			`{x="4"}`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			expr, err := syntax.ParseSampleExpr(tt.expr)
+			require.NoError(t, err)
+
+			ex, err := expr.Extractor()
+			require.NoError(t, err)
+
+			sse := ex.ForStream(tt.stream)
+			for range 2 {
+				sample, ok := sse.Process(0, append([]byte{}, tt.line...), tt.structuredMetadata)
+				require.True(t, ok)
+				require.Equal(t, 1.0, sample.Value)
+				require.Equal(t, tt.expectLbs, sample.Labels.String())
+			}
 		})
 	}
 }
