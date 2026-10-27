@@ -6,7 +6,7 @@ authors:
 reviewers:
   - "@joaobravecoding @xperimental @cahartma"
 creation-date: 2026-09-29
-last-updated: 2026-10-20
+last-updated: 2026-10-27
 tracking-link: https://redhat.atlassian.net/browse/LOG-9664
 see-also: []
 replaces: []
@@ -165,24 +165,14 @@ Note: 32000 is Loki's upstream default.
 The query-scheduler is stateless and can be deployed as a `Deployment`.
 
 #### Replicas
+
 Loki's current implementation sets the RF of the query-scheduler component to 2. The same applies to the operator except for `1x.demo` where RF is 1.
 
-Queries are not replicated. Each query goes to exactly one scheduler. Each querier goroutine maintains a persistent connection to exactly one scheduler with no dynamic load balancing.
+#### Query Flow
 
-Example: a `1x.small` LokiStack will have 2 of each component (4 CPUs per pod):
-`max_concurrent = 4` (we set this to be equal to # of CPU cores)
+When a query arrives at a query-frontend, the frontend splits it into sub-queries and sends them to one of the schedulers via a persistent gRPC stream. The scheduler holds the sub-queries in its per-tenant in-memory queue. Querier workers, which are goroutines running inside each querier pod, maintain persistent connections to the schedulers and continuously pull sub-queries from the queue. Once a querier executes a sub-query, it delivers the result directly back to the originating query-frontend (not through the scheduler), which then aggregates all results and responds to the client.
 
-With 2 schedulers, each querier pod splits its 4 goroutines evenly:
-
-`concurrency per scheduler per pod = 4 / 2 = 2 goroutines`
-
-So across both querier pods:
-- Scheduler 1 ← 2 goroutines (pod A) + 2 goroutines (pod B) = 4 querier goroutines draining it
-- Scheduler 2 ← 2 goroutines (pod A) + 2 goroutines (pod B) = 4 querier goroutines draining it
-
-And on the frontend side, each frontend pod opens 5 goroutines per scheduler (Loki's default `scheduler_worker_concurrency = 5`), so with 2 frontend pods:
-- Scheduler 1 ← 5 goroutines (frontend A) + 5 goroutines (frontend B) = 10 frontend goroutines feeding it
-- Scheduler 2 ← 5 goroutines (frontend A) + 5 goroutines (frontend B) = 10 frontend goroutines feeding it
+If a scheduler dies, all sub-queries sitting in its in-memory queue are lost, they are not persisted or replicated to the other scheduler. Frontends and queriers detect the broken connection and reconnect to the surviving scheduler, but any in-flight queries that had sub-queries in the dead scheduler's queue will timeout and the client must retry. Sub-queries that had already been picked up by a querier and were actively executing can still complete, since their results are returned directly to the frontend and do not pass through the scheduler on the way back. With two scheduler replicas, roughly half of in-flight sub-queries are affected when one dies.
 
 #### Observability
 
@@ -196,12 +186,6 @@ The query-scheduler exposes the following Prometheus metrics:
 - `loki_query_scheduler_queue_length`
 - `loki_query_scheduler_discarded_requests_total`
 - `loki_query_scheduler_enqueue_count`
-
-### Risks and Mitigations
-
-| Risk | Mitigation |
-|---|---|
-| Migration disruption for existing V1 LokiStacks | Addressed in a follow-up; this enhancement targets new installations |
 
 ## Design Details
 
