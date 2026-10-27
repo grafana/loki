@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/internal/global"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/embedded"
@@ -20,19 +21,21 @@ import (
 )
 
 const (
-	defaultAttrCntLim    = 128
-	defaultAttrValLenLim = -1
+	defaultAttrCntLim      = 128
+	defaultAttrValLenLim   = -1
+	defaultAttrValDepthLim = 64
 
 	envarAttrCntLim    = "OTEL_LOGRECORD_ATTRIBUTE_COUNT_LIMIT"
 	envarAttrValLenLim = "OTEL_LOGRECORD_ATTRIBUTE_VALUE_LENGTH_LIMIT"
 )
 
 type providerConfig struct {
-	resource      *resource.Resource
-	processors    []Processor
-	attrCntLim    setting[int]
-	attrValLenLim setting[int]
-	allowDupKeys  setting[bool]
+	resource        *resource.Resource
+	processors      []Processor
+	attrCntLim      setting[int]
+	attrValLenLim   setting[int]
+	attrValDepthLim setting[int]
+	allowDupKeys    setting[bool]
 }
 
 type experimentalOption interface {
@@ -62,6 +65,10 @@ func newProviderConfig(opts []LoggerProviderOption) providerConfig {
 		fallback[int](defaultAttrValLenLim),
 	)
 
+	c.attrValDepthLim = c.attrValDepthLim.Resolve(
+		fallback[int](defaultAttrValDepthLim),
+	)
+
 	return c
 }
 
@@ -78,6 +85,7 @@ type LoggerProvider struct {
 	processors                []Processor
 	attributeCountLimit       int
 	attributeValueLengthLimit int
+	attributeValueDepthLimit  int
 	allowDupKeys              bool
 
 	loggersMu sync.Mutex
@@ -91,14 +99,15 @@ type LoggerProvider struct {
 	noCmp [0]func() //nolint: unused  // This is indeed used.
 }
 
-// Compile-time check LoggerProvider implements log.LoggerProvider.
+// This is a compile-time check that LoggerProvider implements
+// log.LoggerProvider.
 var _ log.LoggerProvider = (*LoggerProvider)(nil)
 
-// NewLoggerProvider returns a new and configured LoggerProvider.
+// NewLoggerProvider returns a new, configured LoggerProvider.
 //
 // By default, the returned LoggerProvider is configured with the default
-// Resource and no Processors. Processors cannot be added after a LoggerProvider is
-// created. This means the returned LoggerProvider, one created with no
+// Resource and no Processors. Processors cannot be added after a LoggerProvider
+// is created. This means the returned LoggerProvider, one created with no
 // Processors, will perform no operations.
 func NewLoggerProvider(opts ...LoggerProviderOption) *LoggerProvider {
 	cfg := newProviderConfig(opts)
@@ -107,6 +116,7 @@ func NewLoggerProvider(opts ...LoggerProviderOption) *LoggerProvider {
 		processors:                cfg.processors,
 		attributeCountLimit:       cfg.attrCntLim.Value,
 		attributeValueLengthLimit: cfg.attrValLenLim.Value,
+		attributeValueDepthLimit:  cfg.attrValDepthLim.Value,
 		allowDupKeys:              cfg.allowDupKeys.Value,
 	}
 }
@@ -114,6 +124,8 @@ func NewLoggerProvider(opts ...LoggerProviderOption) *LoggerProvider {
 // Logger returns a new [log.Logger] with the provided name and configuration.
 //
 // Calls made after [LoggerProvider.Shutdown] starts return a [noop.Logger].
+//
+// Instrumentation scope attributes with invalid keys are ignored.
 //
 // This method can be called concurrently.
 func (p *LoggerProvider) Logger(name string, opts ...log.LoggerOption) log.Logger {
@@ -127,8 +139,14 @@ func (p *LoggerProvider) Logger(name string, opts ...log.LoggerOption) log.Logge
 
 	cfg := log.NewLoggerConfig(opts...)
 	attrs := cfg.InstrumentationAttributes()
+	attrs, invalid := attrs.Filter(attribute.KeyValue.Valid)
+	if len(invalid) > 0 {
+		logInvalidAttribute()
+	}
 	if !p.allowDupKeys {
-		attrs, _ = attrnorm.Set(attrs)
+		attrs, _, _ = attrnorm.SetDedupLimitDepth(attrs, p.attrValueDepthLimit())
+	} else {
+		attrs, _ = attrnorm.SetLimitDepth(attrs, p.attrValueDepthLimit())
 	}
 	scope := instrumentation.Scope{
 		Name:       name,
@@ -155,17 +173,24 @@ func (p *LoggerProvider) Logger(name string, opts ...log.LoggerOption) log.Logge
 	return l
 }
 
+func (p *LoggerProvider) attrValueDepthLimit() int {
+	if p.attributeValueDepthLimit == 0 {
+		return defaultAttrValDepthLim
+	}
+	return p.attributeValueDepthLimit
+}
+
 // Shutdown shuts down the provider and all processors in the order they were
 // registered.
 //
-// The first call stops admitting new operations that invoke processor Enabled,
-// OnEmit, or ForceFlush methods. It waits for operations already admitted to
-// complete before synchronously invoking each processor's Shutdown method. If
-// ctx is canceled before the admitted operations complete, Shutdown returns
-// ctx.Err() without invoking processor Shutdown.
+// The first call stops admitting new operations that invoke a processor's
+// Enabled, OnEmit, or ForceFlush method. It waits for operations already
+// admitted to complete before synchronously invoking each processor's Shutdown
+// method. If ctx is canceled before the admitted operations complete, Shutdown
+// returns ctx.Err() without invoking any processor's Shutdown method.
 //
-// Concurrent or subsequent Shutdown calls return nil without invoking
-// processor Shutdown.
+// Concurrent or subsequent Shutdown calls return nil without invoking any
+// processor's Shutdown method.
 //
 // Shutdown must not be called directly or indirectly from a Processor method.
 //
@@ -284,7 +309,7 @@ func WithResource(res *resource.Resource) LoggerProviderOption {
 	})
 }
 
-// WithProcessor associates Processor with a LoggerProvider.
+// WithProcessor associates a Processor with a LoggerProvider.
 //
 // By default, if this option is not used, the LoggerProvider will perform no
 // operations; no data will be exported without a processor.
@@ -292,8 +317,9 @@ func WithResource(res *resource.Resource) LoggerProviderOption {
 // The SDK invokes the processors sequentially in the same order as they were
 // registered.
 //
-// For production, use [NewBatchProcessor] to batch log records before they are exported.
-// For testing and debugging, use [NewSimpleProcessor] to synchronously export log records.
+// For production, use [NewBatchProcessor] to batch log records before they are
+// exported. For testing and debugging, use [NewSimpleProcessor] to
+// synchronously export log records.
 func WithProcessor(processor Processor) LoggerProviderOption {
 	return loggerProviderOptionFunc(func(cfg providerConfig) providerConfig {
 		cfg.processors = append(cfg.processors, processor)
@@ -308,10 +334,10 @@ func WithProcessor(processor Processor) LoggerProviderOption {
 //
 // Setting this to a negative value means no limit is applied.
 //
-// If the OTEL_LOGRECORD_ATTRIBUTE_COUNT_LIMIT environment variable is set,
-// and this option is not passed, that variable value will be used.
+// If the OTEL_LOGRECORD_ATTRIBUTE_COUNT_LIMIT environment variable is set and
+// this option is not passed, the value of that variable will be used.
 //
-// By default, if an environment variable is not set, and this option is not
+// By default, if the environment variable is not set and this option is not
 // passed, 128 will be used.
 func WithAttributeCountLimit(limit int) LoggerProviderOption {
 	return loggerProviderOptionFunc(func(cfg providerConfig) providerConfig {
@@ -327,10 +353,10 @@ func WithAttributeCountLimit(limit int) LoggerProviderOption {
 //
 // Setting this to a negative value means no limit is applied.
 //
-// If the OTEL_LOGRECORD_ATTRIBUTE_VALUE_LENGTH_LIMIT environment variable is set,
-// and this option is not passed, that variable value will be used.
+// If the OTEL_LOGRECORD_ATTRIBUTE_VALUE_LENGTH_LIMIT environment variable is
+// set and this option is not passed, the value of that variable will be used.
 //
-// By default, if an environment variable is not set, and this option is not
+// By default, if the environment variable is not set and this option is not
 // passed, no limit (-1) will be used.
 func WithAttributeValueLengthLimit(limit int) LoggerProviderOption {
 	return loggerProviderOptionFunc(func(cfg providerConfig) providerConfig {
@@ -339,18 +365,42 @@ func WithAttributeValueLengthLimit(limit int) LoggerProviderOption {
 	})
 }
 
+// WithAttributeValueDepthLimit sets the maximum allowed depth for attribute
+// values. Depth starts at one for the top-level value and increments when
+// descending into an array element or map value. An array or map beyond this
+// depth is replaced by an empty value.
+//
+// This limit applies to log record and instrumentation scope attributes
+// processed by this LoggerProvider. It does not apply to Resource attributes
+// or log record bodies.
+//
+// Setting this to zero means the default limit of 64 is used. Setting this to
+// a negative value means no limit is applied.
+//
+// There is no environment variable for this limit.
+func WithAttributeValueDepthLimit(limit int) LoggerProviderOption {
+	if limit == 0 {
+		limit = defaultAttrValDepthLim
+	}
+	return loggerProviderOptionFunc(func(cfg providerConfig) providerConfig {
+		cfg.attrValDepthLim = newSetting(limit)
+		return cfg
+	})
+}
+
 // WithAllowKeyDuplication sets whether deduplication is skipped for log record
 // and instrumentation scope key-value collections.
 //
-// By default, the key-value collections within a log record and
+// By default, the key-value collections within a log record and an
 // instrumentation scope are deduplicated to comply with the OpenTelemetry
 // Specification.
 // Deduplication means that if multiple key-value pairs with the same key are
-// present, only a single pair is retained and others are discarded. Resource
-// attributes are always deduplicated by go.opentelemetry.io/otel/sdk/resource.
+// present, only a single pair is retained and the others are discarded.
+// Resource attributes are always deduplicated by
+// go.opentelemetry.io/otel/sdk/resource.
 //
-// Disabling deduplication with this option can improve performance e.g. of
-// adding attributes to the log record.
+// Disabling deduplication with this option can improve performance when adding
+// attributes to the log record.
 //
 // Receivers may handle duplicate keys unpredictably. If you disable
 // deduplication, you are responsible for ensuring that duplicate keys within a
