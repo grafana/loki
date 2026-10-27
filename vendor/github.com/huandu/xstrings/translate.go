@@ -540,14 +540,14 @@ func Count(str, pattern string) int {
 //	Squeeze("hello", "m-z")          => "hello"
 //	Squeeze("hello   world", " ")    => "hello world"
 func Squeeze(str, pattern string) string {
-	var last, r rune
+	var r rune
+	var lastBytes string
 	var size int
 	var skipSqueeze, matched bool
 	var tr *Translator
 	var output *stringBuilder
 
 	orig := str
-	last = -1
 
 	if len(pattern) > 0 {
 		tr = NewTranslator(pattern, "")
@@ -556,8 +556,10 @@ func Squeeze(str, pattern string) string {
 	for len(str) > 0 {
 		r, size = utf8.DecodeRuneInString(str)
 
-		// Need to squeeze the str.
-		if last == r && !skipSqueeze {
+		// Compare the original bytes instead of decoded runes: distinct
+		// invalid bytes all decode to utf8.RuneError, but they are not
+		// repeated runes and must not be squeezed.
+		if lastBytes != "" && str[:size] == lastBytes && !skipSqueeze {
 			if tr != nil {
 				if _, matched = tr.TranslateRune(r); !matched {
 					skipSqueeze = true
@@ -569,14 +571,14 @@ func Squeeze(str, pattern string) string {
 			}
 
 			if skipSqueeze {
-				output.WriteRune(r)
+				output.WriteString(str[:size])
 			}
 		} else {
 			if output != nil {
-				output.WriteRune(r)
+				output.WriteString(str[:size])
 			}
 
-			last = r
+			lastBytes = str[:size]
 			skipSqueeze = false
 		}
 

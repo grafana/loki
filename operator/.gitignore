@@ -27,8 +27,3 @@ testbin/*
 # JSONNet vendored files
 
 jsonnet/vendor/*
-
-# website
-
-website/public/*
-website/resources/*

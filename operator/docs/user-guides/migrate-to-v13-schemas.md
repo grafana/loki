@@ -1,4 +1,7 @@
-# Migrating out of the Deprecated BoltDB-Based Storage Schema
+---
+title: "Migrating out of the Deprecated BoltDB-Based Storage Schema"
+weight: 100
+---
 
 Loki Operator 0.13 will ship a version of Loki that no longer supports BoltDB-based schemas, Loki 4.0. As a result any LokiStack instance that still uses a BoltDB-based schema (v11 or v12) must complete the migration described below before upgrading to Loki Operator 0.13. If a LokiStack still references a BoltDB-based schema after upgrading, Loki Operator 0.13 will produce an error during reconciliation.
 

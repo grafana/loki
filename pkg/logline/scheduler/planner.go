@@ -9,31 +9,39 @@ import (
 )
 
 // compactionKey identifies a set of indexes that may be compacted together.
-// All six fields must match for indexes to be grouped into a single job.
+// All seven fields must match for indexes to be grouped into a single job.
 // Unsharded indexes use ShardCount=0, ShardAlgorithm="", ShardValue=0.
 type compactionKey struct {
-	date             string
-	shardCount       int
-	shardAlgorithm   string
-	shardValue       int
-	version          string        // resolved format version (e.g. "v1")
-	documentInterval time.Duration // time range per document ID; zero for legacy indexes
+	date              string
+	shardCount        int
+	shardAlgorithm    string
+	shardValue        int
+	version           string        // resolved format version (e.g. "v1")
+	documentInterval  time.Duration // time range per document ID; zero for legacy indexes
+	documentShardBits int           // v5 document shard bits; zero is one shard
 }
 
 // compactionKeyFor returns the grouping key and true, or a zero key and false
-// when the meta has an unrecognised version. Callers should skip metas that
-// return false so that one bad version string does not block all compaction.
+// when the meta cannot be merged: its version is unrecognised, or it has
+// document shards. Callers should skip metas that return false so that they
+// do not block all compaction.
 func compactionKeyFor(m store.Meta) (compactionKey, bool) {
 	if err := logline.ValidateVersion(m.Version); err != nil {
 		return compactionKey{}, false
 	}
+	// The v5 merge rejects indexes with document shards, so their jobs would
+	// fail and be planned again on every pass.
+	if m.DocumentShardBits > 0 {
+		return compactionKey{}, false
+	}
 	return compactionKey{
-		date:             m.Date,
-		shardCount:       m.ShardCount,
-		shardAlgorithm:   m.ShardAlgorithm,
-		shardValue:       m.ShardValue,
-		version:          m.Version,
-		documentInterval: m.DocumentInterval,
+		date:              m.Date,
+		shardCount:        m.ShardCount,
+		shardAlgorithm:    m.ShardAlgorithm,
+		shardValue:        m.ShardValue,
+		version:           m.Version,
+		documentInterval:  m.DocumentInterval,
+		documentShardBits: m.DocumentShardBits,
 	}, true
 }
 
@@ -66,7 +74,7 @@ func newDateGroupPlanner(metas []store.Meta, maxJobSizeBytes int64) CompactionPl
 	for _, m := range metas {
 		k, ok := compactionKeyFor(m)
 		if !ok {
-			continue // skip metas with unrecognised versions
+			continue // skip metas that cannot be merged
 		}
 		byKey[k] = append(byKey[k], m)
 	}
