@@ -228,6 +228,17 @@ The example below show all possible statistics returned with their respective de
 }
 ```
 
+### Processed-byte response header
+
+Successful `/loki/api/v1/query`, `/loki/api/v1/query_range`, `/loki/api/v1/detected_fields`,
+and `/loki/api/v1/detected_field/<name>/values` responses include
+`X-Loki-Query-Bytes-Processed`: a non-negative decimal integer matching the final response's
+`totalBytesProcessed` statistic, regardless of encoding or compression.
+
+The total includes available statistics; missing contributions count as zero. A value of `0`
+can mean no bytes were processed or no statistics were available. Failed queries and older
+servers may omit the header; an absent header does not mean zero usage.
+
 ## Ingest logs
 
 ```bash

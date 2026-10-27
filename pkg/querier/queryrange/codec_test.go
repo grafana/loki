@@ -3342,3 +3342,65 @@ func Test_codec_DetectedFieldsJSONRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func usageHeaderResponse(kind string, n int64) queryrangebase.Response {
+	statistics := stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: n}}}}
+	statistics.ComputeSummary(time.Second, 0, 0)
+	if kind == "fields" {
+		return &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{}, Statistics: statistics}
+	}
+	if kind == "logs" {
+		return &LokiResponse{Status: "success", Direction: logproto.FORWARD, Limit: 100,
+			Statistics: statistics, Data: LokiData{ResultType: loghttp.ResultTypeStream, Result: []logproto.Stream{
+				{Labels: `{app="test"}`, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: strings.Repeat("log line ", 256)}}},
+			}}}
+	}
+	return &LokiPromResponse{Statistics: statistics, Response: &queryrangebase.PrometheusResponse{
+		Status: "success", Data: queryrangebase.PrometheusData{ResultType: kind},
+	}}
+}
+
+func TestQueryUsageHeaderEncodings(t *testing.T) {
+	for _, kind := range []string{"logs", "vector", "matrix"} {
+		// Zero covers a response with no newly scanned bytes, including cache hits.
+		// Values above 2^53 must retain integer precision in the header.
+		for _, n := range []int64{0, 9007199254740993} {
+			for _, accept := range []string{JSONType, ProtobufType, ParquetType} {
+				t.Run(fmt.Sprintf("%s/%d/%s", kind, n, accept), func(t *testing.T) {
+					response := usageHeaderResponse(kind, n)
+					req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range", nil)
+					req.Header.Set("Accept", accept)
+					ctx := user.InjectOrgID(context.Background(), "test")
+
+					actual, err := DefaultCodec.EncodeResponse(ctx, req, response)
+					require.NoError(t, err)
+					defer actual.Body.Close()
+					require.Equal(t, strconv.FormatInt(n, 10), actual.Header.Get(httpreq.LokiQueryBytesProcessedHeader))
+					require.Equal(t, strings.ToLower(accept), strings.ToLower(actual.Header.Get("Content-Type")))
+				})
+			}
+		}
+	}
+}
+
+func TestDetectedFieldsUsageHeader(t *testing.T) {
+	for _, n := range []int64{0, 9007199254740993} {
+		for _, accept := range []string{JSONType, ProtobufType} {
+			t.Run(fmt.Sprintf("%d/%s", n, accept), func(t *testing.T) {
+				response := usageHeaderResponse("fields", n)
+				request := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_fields", nil)
+				request.Header.Set("Accept", accept)
+
+				encoded, err := DefaultCodec.EncodeResponse(context.Background(), request, response)
+				require.NoError(t, err)
+				defer encoded.Body.Close()
+				require.Equal(t, strconv.FormatInt(n, 10), encoded.Header.Get(httpreq.LokiQueryBytesProcessedHeader))
+
+				// The response body and usage header must report the same processed byte count.
+				decoded, err := DefaultCodec.DecodeResponse(context.Background(), encoded, &DetectedFieldsRequest{})
+				require.NoError(t, err)
+				require.Equal(t, n, decoded.(*DetectedFieldsResponse).Statistics.Summary.TotalBytesProcessed, "body and header must report the same usage")
+			})
+		}
+	}
+}
