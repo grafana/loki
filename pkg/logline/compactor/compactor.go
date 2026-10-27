@@ -66,11 +66,17 @@ func (s *Service) compact(ctx context.Context, job *schedulerapi.JobResponse) er
 
 	// Phase 3: streaming merge + upload. The merge writes directly into the
 	// object-storage upload pipe; hash and size are computed from the stream.
+	// A v5 merge checks DayStart against its inputs' footers.
+	dayStart, err := time.Parse(time.DateOnly, sourceMetas[0].Date)
+	if err != nil {
+		return fmt.Errorf("parse source date %q: %w", sourceMetas[0].Date, err)
+	}
 	writerCfg := &format.WriterConfig{
 		Encoding:          s.postingsEncoding,
 		DensityThreshold:  float32(s.cfg.DensityThreshold),
 		DocumentInterval:  sourceMetas[0].DocumentInterval,
 		DocumentShardBits: sourceMetas[0].DocumentShardBits,
+		DayStart:          dayStart,
 	}
 	merger, err := logline.NewMerger(sourceMetas[0].Version, writerCfg)
 	if err != nil {
@@ -116,8 +122,8 @@ func (s *Service) compact(ctx context.Context, job *schedulerapi.JobResponse) er
 	return nil
 }
 
-// verifyCompactionJob checks that all source metas share the same shard
-// configuration and resolved format version. The scheduler guarantees this
+// verifyCompactionJob checks that all source metas share the same date, shard
+// configuration, and resolved format version. The scheduler guarantees this
 // via the compaction key, but we verify defensively — merging indexes with
 // different parameters would produce a corrupt index.
 func verifyCompactionJob(metas []store.Meta) error {
@@ -134,6 +140,9 @@ func verifyCompactionJob(metas []store.Meta) error {
 		}
 		if m.Version != first.Version {
 			return fmt.Errorf("source %d version=%q differs from source 0 version=%q", i+1, m.Version, first.Version)
+		}
+		if m.Date != first.Date {
+			return fmt.Errorf("source %d date=%q differs from source 0 date=%q", i+1, m.Date, first.Date)
 		}
 		if m.ShardCount != first.ShardCount {
 			return fmt.Errorf("source %d shard_count=%d differs from source 0 shard_count=%d", i+1, m.ShardCount, first.ShardCount)

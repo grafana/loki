@@ -967,6 +967,15 @@ func TestVerifyCompactionJob_MismatchDocumentShardBits(t *testing.T) {
 	require.ErrorContains(t, err, "document_shard_bits")
 }
 
+func TestVerifyCompactionJob_MismatchDate(t *testing.T) {
+	metas := []store.Meta{
+		{Version: "v5", Date: "2026-03-20", DocumentInterval: 16 * time.Second},
+		{Version: "v5", Date: "2026-03-21", DocumentInterval: 16 * time.Second},
+	}
+	err := verifyCompactionJob(metas)
+	require.ErrorContains(t, err, `source 1 date="2026-03-21" differs from source 0 date="2026-03-20"`)
+}
+
 func TestBuildMergedMetaSkeleton_CopiesDocumentLayout(t *testing.T) {
 	metas := []store.Meta{
 		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
