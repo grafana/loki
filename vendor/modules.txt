@@ -1029,8 +1029,8 @@ github.com/jmespath/go-jmespath
 # github.com/joncrlsn/dque v0.0.0-20241024143830-7723fd131a64
 ## explicit; go 1.13
 github.com/joncrlsn/dque
-# github.com/jpillora/backoff v1.0.0
-## explicit; go 1.13
+# github.com/jpillora/backoff v1.1.0
+## explicit; go 1.19
 github.com/jpillora/backoff
 # github.com/json-iterator/go v1.1.12
 ## explicit; go 1.12
