@@ -120,6 +120,24 @@ eval instant at 60s count_over_time({app="a"} | label_format env=env_extracted [
 eval instant at 60s count_over_time({app="a"} | label_format env_extracted=env [1m])
   {app="a", env_extracted="prod"} 3
 
+# line_format and label_format read a parsed field as $.field, the same as .field.
+# A metric query extracts only the fields that the pipeline uses, so the parser must extract $.field too.
+clear
+load
+  {app="a"} "user=alice" @ 20s [repeat every 20s for 3]
+  {app="a"} "user=bob"   @ 30s                          # noise the filter drops
+
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | line_format "{{ $.user }}" |= "alice" [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | logfmt | line_format "{{ $.user }}" |= "alice" [1m]))   # overlapping
+  {} 2 3
+eval instant at 60s sum by (who) (count_over_time({app="a"} | logfmt | label_format who="{{ $.user }}" [1m]))
+  {who="alice"} 3
+  {who="bob"} 1
+eval range from 40s to 60s step 20s sum by (who) (count_over_time({app="a"} | logfmt | label_format who="{{ $.user }}" [1m]))   # overlapping
+  {who="alice"} 2 3
+  {who="bob"} 1 1
+
 # decolorize removes ANSI color codes from the line.
 #
 # The DSL cannot embed an ESC byte, so line_format with printf generates the colored line first;
