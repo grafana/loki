@@ -122,8 +122,8 @@ func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *index
 
 // classifyRuns opens each unique source object once and groups its mergable
 // sections by type (postings, stats), preserving section order within each
-// object. Non-mergable section types (streams, pointers, indexPointers) are
-// silently ignored.
+// object. Non-mergable section types (streams, indexPointers) are silently
+// ignored.
 //
 // classifyRuns also returns the stream layout of the source indexes, and an
 // error if they do not share one, because the output records one layout.
@@ -154,9 +154,9 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	sort.Strings(paths)
 
 	// For each unique source object, scan its sections and classify by type,
-	// preserving section order. Other section types (streams, pointers,
-	// indexPointers) are skipped silently. doIndexFilter also skips streams
-	// sections, but it rejects pointers and indexPointers sections.
+	// preserving section order. Other section types (streams, indexPointers)
+	// are skipped silently. doIndexFilter also skips streams sections, but it
+	// rejects every other type.
 	grouped := make([]objectSections, 0, len(paths))
 	var (
 		layout       streams.Layout
@@ -176,7 +176,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
 				group.stats = append(group.stats, sec)
-				// default: skip silently (streams/pointers/indexPointers etc.)
+				// default: skip silently (streams/indexPointers etc.)
 			}
 		}
 		// Only stats sections record a layout, so an object without them does
