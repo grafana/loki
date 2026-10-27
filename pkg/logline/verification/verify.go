@@ -25,10 +25,7 @@ type Report struct {
 	// Only populated when CountFalsePositives is called.
 	FalsePositives int
 	// Correct is true when no scored sample or log line was missed. An empty
-	// report is correct.
-	//
-	// TODO: Confirm with the team whether metric queries should also require a
-	// scored sample. The correctness log check still requires one.
+	// report is correct. The correctness service also requires a scored result.
 	Correct bool
 }
 

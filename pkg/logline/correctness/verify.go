@@ -18,8 +18,8 @@ type verificationReport struct {
 	FalseNegatives          int
 	FalsePositives          int
 	FalseNegativeTimestamps []time.Time
-	FalseNegativeRanges []hintprovider.HintTimeRange
-	Correct             bool
+	FalseNegativeRanges     []hintprovider.HintTimeRange
+	Correct                 bool
 }
 
 // verifyHints measures coverage and false-positive rate of pre-fetched hint
@@ -47,7 +47,8 @@ func verifyHints(
 	}
 }
 
-// verifyMetricHints 
+// verifyMetricHints scores positive samples against pre-fetched hint ranges.
+// Correct matches verifyHints: every scored sample is covered, and at least one was scored.
 func verifyMetricHints(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange, samples []verification.MetricSample) *verificationReport {
 	r := verification.VerifySamples(expr, hintRanges, samples, time.Time{})
 	return &verificationReport{
@@ -56,7 +57,6 @@ func verifyMetricHints(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange
 		CoveredResults:      r.CoveredEntries,
 		FalseNegatives:      r.FalseNegatives,
 		FalseNegativeRanges: r.FalseNegativeRanges,
-		// TODO do we want to match Correct spec above?
-		Correct:             r.Correct,
+		Correct:             r.FalseNegatives == 0 && r.TotalEntries > 0,
 	}
 }

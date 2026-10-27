@@ -91,6 +91,13 @@ func TestVerifyHints_EmptyHints(t *testing.T) {
 	require.False(t, report.Correct)
 }
 
+func TestVerifyMetricHints_EmptyResults(t *testing.T) {
+	report := verifyMetricHints(metricTestExpr(t), nil, nil)
+	require.Equal(t, 0, report.TotalResults)
+	require.Equal(t, 0, report.FalseNegatives)
+	require.False(t, report.Correct)
+}
+
 func TestVerifyMetricSamples_OverlapCoversSample(t *testing.T) {
 	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
 	// The matching hint is not the first range. Any overlap covers the sample.
