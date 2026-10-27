@@ -173,6 +173,11 @@ type WriterConfig struct {
 	// DocumentShardBits is log2 of the number of stream shards per document
 	// interval; 0 is one shard. Only v5 reads it.
 	DocumentShardBits int
+
+	// DayStart is the UTC midnight of the day a v5 index covers. Its postings
+	// hold cells relative to this day. A v5 writer requires it, and a v5
+	// merge checks it against its inputs. v3 ignores it.
+	DayStart time.Time
 }
 
 // DocumentLayout describes how a v5 index numbers its documents. Document ID c

@@ -200,6 +200,8 @@ func histogramTotals(t *testing.T, reg *prometheus.Registry, name string) (uint6
 }
 
 // readTermRanges reads a .lidx into term(hex) → set of document time-ranges.
+// Document IDs map to time through the document table, or for v5 through the
+// document layout.
 func readTermRanges(t *testing.T, path string) map[string]map[docRange]bool {
 	t.Helper()
 	reader, _, err := logline.OpenFile(path)
@@ -209,6 +211,13 @@ func readTermRanges(t *testing.T, path string) map[string]map[docRange]bool {
 	idToRange := map[uint32]docRange{}
 	for _, d := range reader.Documents() {
 		idToRange[d.ID] = docRange{d.MinTimeUnix, d.MaxTimeUnix}
+	}
+	if layout, ok := logline.DocumentLayout(reader); ok {
+		require.Empty(t, idToRange, "a v5 index has no document table")
+		for cell := range uint32(layout.CellsPerDay()) {
+			start, end := layout.TimeRange(cell)
+			idToRange[cell] = docRange{start.UnixMilli(), end.UnixMilli()}
+		}
 	}
 
 	out := map[string]map[docRange]bool{}
