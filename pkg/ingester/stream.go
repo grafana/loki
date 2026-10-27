@@ -105,6 +105,15 @@ type chunkDesc struct {
 	ingestedAt time.Time
 }
 
+// observeRecordTimestamp keeps the highest record timestamp that fed the chunk. That doesn't
+// depend on the order records are pushed in, so replicas consuming the same records end up with
+// the same value for the same chunk.
+func (c *chunkDesc) observeRecordTimestamp(ts time.Time) {
+	if ts.After(c.ingestedAt) {
+		c.ingestedAt = ts
+	}
+}
+
 type recordTimestampKey struct{}
 
 // maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
@@ -381,13 +390,13 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 			}
 			continue
 		}
-		// The highest record timestamp doesn't depend on the order records are pushed in, so
-		// replicas consuming the same records end up with the same value for the same chunk.
-		if hasRecordTs && recordTs.After(chunk.ingestedAt) {
-			chunk.ingestedAt = recordTs
-		}
 		if dup {
 			s.handleLoggingOfDuplicateEntry(entries[i])
+		}
+		// Duplicates count too: the entry is stored once, by whichever record is processed first,
+		// and that order can differ between replicas.
+		if hasRecordTs {
+			chunk.observeRecordTimestamp(recordTs)
 		}
 
 		s.entryCt++
@@ -432,6 +441,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		highestTs                            = s.highestTs
 		toStore                              = make([]logproto.Entry, 0, len(entries))
 	)
+	recordTs, hasRecordTs := recordTimestamp(ctx)
 
 	for i := range entries {
 		// If this entry matches our last appended line's timestamp and contents,
@@ -445,6 +455,11 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		if entries[i].Timestamp.Equal(lastLine.ts) &&
 			entries[i].Line == lastLine.content &&
 			labelsEqual(entries[i].StructuredMetadata, lastLine.structuredMetadata) {
+			// The entry is already in the last chunk. The record still counts for its timestamp,
+			// since replicas may process the records that carry the same entry in a different order.
+			if hasRecordTs && len(s.chunks) > 0 {
+				s.chunks[len(s.chunks)-1].observeRecordTimestamp(recordTs)
+			}
 			continue
 		}
 

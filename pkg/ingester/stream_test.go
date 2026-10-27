@@ -491,6 +491,9 @@ func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
 	// A zero timestamp pushes without a record timestamp.
 	type step struct {
 		recordTime time.Time
+		// line is the line to push, at the same timestamp as the others with a line. Pushing the
+		// same line twice pushes a duplicate entry. If empty, a different entry is pushed.
+		line string
 		// cutBefore cuts the chunk before the push, so the push goes to a new chunk.
 		cutBefore bool
 	}
@@ -515,6 +518,25 @@ func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
 			name:  "each chunk only gets the timestamps of the records that fed it",
 			steps: []step{{recordTime: late}, {recordTime: early, cutBefore: true}},
 			want:  []time.Time{late, early},
+		},
+		{
+			name:  "a duplicate entry from a later record counts",
+			steps: []step{{recordTime: early, line: "dup"}, {recordTime: late, line: "dup"}},
+			want:  []time.Time{late},
+		},
+		{
+			name:  "a duplicate entry from a later record counts whatever the push order",
+			steps: []step{{recordTime: late, line: "dup"}, {recordTime: early, line: "dup"}},
+			want:  []time.Time{late},
+		},
+		{
+			name: "a duplicate entry that is not the last line from a later record counts",
+			steps: []step{
+				{recordTime: early, line: "dup"},
+				{recordTime: early.Add(30 * time.Second), line: "other"},
+				{recordTime: late, line: "dup"},
+			},
+			want: []time.Time{late},
 		},
 		{
 			name:  "no record timestamp leaves it unset",
@@ -548,7 +570,11 @@ func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
 				if st.cutBefore {
 					_ = s.cutChunk(context.Background())
 				}
-				_, err := s.Push(withRecordTimestamp(context.Background(), st.recordTime), []logproto.Entry{{Timestamp: time.Unix(int64(i+1), 0), Line: fmt.Sprintf("line %d", i)}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+				entry := logproto.Entry{Timestamp: time.Unix(int64(i+1), 0), Line: fmt.Sprintf("line %d", i)}
+				if st.line != "" {
+					entry = logproto.Entry{Timestamp: time.Unix(1, 0), Line: st.line}
+				}
+				_, err := s.Push(withRecordTimestamp(context.Background(), st.recordTime), []logproto.Entry{entry}, recordPool.GetRecord(), 0, true, false, nil, "loki")
 				require.NoError(t, err)
 			}
 
