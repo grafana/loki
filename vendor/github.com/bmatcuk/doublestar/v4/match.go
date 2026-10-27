@@ -95,7 +95,7 @@ func matchWithSeparator(pattern, name string, separator rune, validate bool, cas
 func doMatchWithSeparator(pattern, name string, separator rune, validate bool, caseInsensitive bool, doublestarPatternBacktrack, doublestarNameBacktrack, starPatternBacktrack, starNameBacktrack, patIdx, nameIdx int) (matched bool, err error) {
 	patLen := len(pattern)
 	nameLen := len(name)
-	startOfSegment := true
+	startOfSegment := patIdx == 0 || rune(pattern[patIdx-1]) == separator
 MATCH:
 	for nameIdx < nameLen {
 		if patIdx < patLen {
