@@ -324,8 +324,8 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"hint_query", hq.query,
 	)
 
-	from, through := getRangeBounds(hq, rangeStart, rangeEnd)
-	overlapping := s.indexStore.IndexesForRange(from, through)
+	readStart, readEnd := getReadRange(hq, rangeStart, rangeEnd)
+	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
 	ids := make([]string, len(overlapping))
 	for i, m := range overlapping {
 		ids[i] = m.ID()
@@ -349,8 +349,8 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		ctx,
 		s.cfg.TenantID,
 		hq.expr,
-		model.TimeFromUnixNano(from.UnixNano()),
-		model.TimeFromUnixNano(through.UnixNano()),
+		model.TimeFromUnixNano(readStart.UnixNano()),
+		model.TimeFromUnixNano(readEnd.UnixNano()),
 	)
 	hintDuration := time.Since(hintStart)
 	if err != nil {
@@ -420,7 +420,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	s.metrics.totalIncorrectTests.Inc()
 	s.metrics.lastIncorrectTestTs.Set(float64(now.Unix()))
 
-	excludedCoveringFN := s.excludedIndexesCoveringFNs(report.FalseNegativeTimestamps, from, through)
+	excludedCoveringFN := s.excludedIndexesCoveringFNs(report.FalseNegativeTimestamps, readStart, readEnd)
 
 	// A log miss records timestamps. A metric miss records each sample's lookback.
 	// excludedIndexesCoveringFNs returns nothing when there are no timestamps.
@@ -532,7 +532,7 @@ func (q hintQuery) step() time.Duration {
 	return 0
 }
 
-func getRangeBounds(hq hintQuery, rangeStart, rangeEnd time.Time) (adjStart, adjEnd time.Time) {
+func getReadRange(hq hintQuery, rangeStart, rangeEnd time.Time) (readStart, readEnd time.Time) {
 	if hq.queryType == hintQueryTypeMetricInstant {
 		rangeStart = rangeEnd
 	}

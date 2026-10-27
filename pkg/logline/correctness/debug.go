@@ -84,8 +84,8 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	from, through := getRangeBounds(hq, req.start, req.end)
-	overlapping := s.indexStore.IndexesForRange(from, through)
+	readStart, readEnd := getReadRange(hq, req.start, req.end)
+	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
 
 	res, err := s.fetchNeedleResults(r.Context(), hq, req.start, req.end)
 	if err != nil {
@@ -99,8 +99,8 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		s.cfg.TenantID,
 		hq.expr,
-		model.TimeFromUnixNano(from.UnixNano()),
-		model.TimeFromUnixNano(through.UnixNano()),
+		model.TimeFromUnixNano(readStart.UnixNano()),
+		model.TimeFromUnixNano(readEnd.UnixNano()),
 	)
 	hintDuration := time.Since(hintStart)
 	if err != nil {
