@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"math/rand" //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
 	"net/http"
 	"net/http/httptest"
@@ -293,28 +292,6 @@ func TestSeriesLimitTruncated(t *testing.T) {
 	}))
 	require.False(t, seriesLimitTruncated(nil))
 	require.False(t, seriesLimitTruncated([]string{"query time range exceeds the limit"}))
-}
-
-type recordingHintProvider struct {
-	expr    syntax.Expr
-	from    model.Time
-	through model.Time
-	hints   *hintprovider.Hints
-}
-
-func (p *recordingHintProvider) ProvideHints(
-	_ context.Context,
-	tenant string,
-	expr syntax.Expr,
-	from, through model.Time,
-) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
-	if tenant != "tenant-a" {
-		return nil, nil, fmt.Errorf("unexpected tenant %q", tenant)
-	}
-	p.expr = expr
-	p.from = from
-	p.through = through
-	return p.hints, nil, nil
 }
 
 func TestPickJSONField(t *testing.T) {
