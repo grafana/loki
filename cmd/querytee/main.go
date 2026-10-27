@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"time"
@@ -23,6 +24,7 @@ type Config struct {
 	ServerMetricsPort int
 	LogLevel          log.Level
 	ProxyConfig       querytee.ProxyConfig
+	Limits            querytee.LimitsConfig
 	Tracing           loki_tracing.Config
 }
 
@@ -32,6 +34,7 @@ func main() {
 	flag.IntVar(&cfg.ServerMetricsPort, "server.metrics-port", 9900, "The port where metrics are exposed.")
 	cfg.LogLevel.RegisterFlags(flag.CommandLine)
 	cfg.ProxyConfig.RegisterFlags(flag.CommandLine)
+	cfg.Limits.RegisterFlags(flag.CommandLine)
 	cfg.Tracing.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
@@ -66,8 +69,27 @@ func main() {
 		exit(1)
 	}
 
+	// Load the limits of the Loki cluster of the secondary backend.
+	lokiLimits, err := querytee.LoadLokiLimits(context.Background(), cfg.Limits, util_log.Logger, registry)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "Unable to load the Loki limits", "err", err.Error())
+		exit(1)
+	}
+	if lokiLimits != nil {
+		level.Info(util_log.Logger).Log(
+			"msg", "Loaded the Loki limits",
+			"config_file", cfg.Limits.ConfigFile,
+			"runtime_config_file", cfg.Limits.RuntimeConfig.LoadPath.String(),
+		)
+	}
+	defer func() {
+		if err := lokiLimits.Stop(context.Background()); err != nil {
+			level.Error(util_log.Logger).Log("msg", "Unable to stop the Loki config reload", "err", err)
+		}
+	}()
+
 	// Run the proxy.
-	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), lokiWriteRoutes(), registry)
+	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), lokiWriteRoutes(), registry, lokiLimits)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		exit(1)

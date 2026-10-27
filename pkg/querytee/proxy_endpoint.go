@@ -2,8 +2,6 @@ package querytee
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -14,28 +12,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
-// TODO(chaudum): This interface is likely unused
-// [ProxyEndpoint] uses [comparator.ResponsesComparator], not this interface.
-type ResponsesComparator interface {
-	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
-}
-
-// TODO(chaudum): This struct is likely unused
-type ComparisonSummary struct{}
-
 type ProxyEndpoint struct {
-	backends   []*ProxyBackend
-	metrics    *ProxyMetrics
-	logger     log.Logger
-	comparator comparator.ResponsesComparator
-
-	reportMissingSeries bool
+	backends []*ProxyBackend
+	metrics  *ProxyMetrics
+	logger   log.Logger
 
 	// The route name used to track metrics.
 	routeName string
@@ -50,16 +33,12 @@ func NewProxyEndpoint(
 	routeName string,
 	metrics *ProxyMetrics,
 	logger log.Logger,
-	comparator comparator.ResponsesComparator,
-	reportMissingSeries bool,
 ) *ProxyEndpoint {
 	return &ProxyEndpoint{
-		backends:            backends,
-		routeName:           routeName,
-		metrics:             metrics,
-		logger:              logger,
-		comparator:          comparator,
-		reportMissingSeries: reportMissingSeries,
+		backends:  backends,
+		routeName: routeName,
+		metrics:   metrics,
+		logger:    logger,
 	}
 }
 
@@ -114,21 +93,12 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 
 func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *BackendResponse) {
 	var (
-		wg                  = sync.WaitGroup{}
-		err                 error
-		body                []byte
-		expectedResponseIdx int
-		responses           = make([]*BackendResponse, len(p.backends))
-		query               = r.URL.RawQuery
-		issuer              = detectIssuer(r)
+		wg     = sync.WaitGroup{}
+		err    error
+		body   []byte
+		query  = r.URL.RawQuery
+		issuer = detectIssuer(r)
 	)
-
-	// Extract tenant ID for metrics labeling
-	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
-	if err != nil || tenantID == "" {
-		level.Warn(p.logger).Log("msg", "Failed to extract tenant ID from HTTP request for metrics", "err", err)
-		tenantID = "unknown"
-	}
 
 	if r.Body != nil {
 		body, err = io.ReadAll(r.Body)
@@ -149,10 +119,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 
 	level.Debug(p.logger).Log("msg", "Received request", "path", r.URL.Path, "query", query)
 
-	wg.Add(len(p.backends))
-	for i, b := range p.backends {
-		go func(idx int, backend *ProxyBackend) {
-			defer wg.Done()
+	for _, backend := range p.backends {
+		wg.Go(func() {
 			var (
 				bodyReader io.ReadCloser
 				lvl        = level.Debug
@@ -178,52 +146,13 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 				issuer,
 			).Observe(res.duration.Seconds())
 
-			// Keep track of the response if required.
-			if p.comparator != nil {
-				if backend.isPrimary() {
-					expectedResponseIdx = idx
-				}
-				responses[idx] = res
-			}
-
 			resCh <- res
-		}(i, b)
+		})
 	}
 
 	// Wait until all backend requests completed.
 	wg.Wait()
 	close(resCh)
-
-	// Compare responses.
-	if p.comparator != nil {
-		expectedResponse := responses[expectedResponseIdx]
-		for i := range responses {
-			if i == expectedResponseIdx || !p.backends[i].isSecondary() {
-				continue
-			}
-			actualResponse := responses[i]
-
-			result := comparisonMatch
-			summary, err := p.compareResponses(expectedResponse, actualResponse, time.Now().UTC())
-			if err != nil {
-				level.Error(p.logger).Log("msg", "response comparison failed",
-					"backend-name", p.backends[i].name,
-					"route-name", p.routeName,
-					"query", r.URL.RawQuery, "err", err)
-				result = comparisonFailed
-				if errors.Is(err, comparator.ErrComparisonMismatch) {
-					result = comparisonMismatch
-				}
-			} else if summary != nil && summary.Skipped {
-				result = comparisonSkipped
-			}
-
-			if p.reportMissingSeries && summary != nil {
-				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer).Observe(float64(summary.MissingMetrics))
-			}
-			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer, tenantID).Inc()
-		}
-	}
 }
 
 // waitBackendResponseForDownstream returns the primary backend's response, even when it is an
@@ -236,31 +165,6 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResp
 		}
 	}
 	return nil, errNoPrimaryBackend
-}
-
-func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, error) {
-	if expectedResponse.err != nil {
-		return &comparator.ComparisonSummary{Skipped: true}, nil
-	}
-
-	if actualResponse.err != nil {
-		return nil, fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", actualResponse.err)
-	}
-
-	// compare response body only if we get a 200
-	if expectedResponse.status != 200 {
-		return &comparator.ComparisonSummary{Skipped: true}, nil
-	}
-
-	if actualResponse.status != 200 {
-		return nil, fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
-	}
-
-	if expectedResponse.status != actualResponse.status {
-		return nil, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
-	}
-
-	return p.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
 }
 
 type BackendResponse struct {

@@ -253,6 +253,10 @@ type Ingester struct {
 	instances    map[string]*instance
 	readonly     bool
 
+	// indexFlushMtx allows one flush_index request (/flush or /flush/tenant) at a
+	// time; concurrent ones are rejected rather than queued (see tryLockIndexFlush).
+	indexFlushMtx sync.Mutex
+
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -383,13 +387,16 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 			}
 		}
-		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+		i.partitionRingLifecycler, err = ring.NewPartitionInstanceLifecycler(
 			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
 			PartitionRingName,
 			PartitionRingKey,
 			partitionRingKV,
 			logger,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+		if err != nil {
+			return nil, fmt.Errorf("creating ingester partition ring lifecycler: %w", err)
+		}
 
 		i.partitionReader, err = partition.NewReaderService(
 			cfg.KafkaIngestion.KafkaConfig,
@@ -479,7 +486,14 @@ func (i *Ingester) setupAutoForget() {
 		defer ticker.Stop()
 
 		var forgetList []string
-		for range ticker.C {
+		for {
+			select {
+			case <-ticker.C:
+			case <-i.loopQuit:
+				// the ring entry goes away with the ingester, nothing left to clean
+				return
+			}
+
 			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				forgetList = forgetList[:0]
 				if in == nil {

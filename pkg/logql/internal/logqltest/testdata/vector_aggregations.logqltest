@@ -226,6 +226,7 @@ eval instant at 60s sum(max_over_time({app="a", k=~"ninf|nan"} | logfmt | unwrap
 # - A window that sums to zero or to a negative value is a value, not an empty window.
 # - A huge value in one window does not change the sum of a later window.
 # - A NaN or an Inf stays in its own window.
+# - A large value that a later negative value cancels does not drop the small values between them.
 clear
 load
   {app="z", c="zero"} "v=5"                  @ 20s
@@ -242,6 +243,12 @@ load
   {app="n", c="inf"}   "v=+Inf"              @ 20s
   {app="n", c="inf"}   "v=-Inf"              @ 40s
   {app="n", c="inf"}   "v=5"                 @ 60s
+  {app="k", c="ten"}   "v=10000000000000000" @ 5s
+  {app="k", c="ten"}   "v=1"                 @ 6s [repeat every 1s for 10]
+  {app="k", c="ten"}   "v=-10000000000000000" @ 16s
+  {app="k", c="seven"} "v=10000000000000000" @ 5s
+  {app="k", c="seven"} "v=1"                 @ 6s [repeat every 1s for 7]
+  {app="k", c="seven"} "v=-10000000000000000" @ 13s
   {app="noise"}        "v=1"                 @ 30s
 
 eval instant at 60s sum by (c) (sum_over_time({app="z"} | logfmt | unwrap v [1m]))
@@ -258,6 +265,16 @@ eval range from 20s to 40s step 20s sum by (c) (sum_over_time({app="h"} | logfmt
 eval range from 20s to 80s step 20s sum by (c) (sum_over_time({app="n"} | logfmt | unwrap v [20s]))   # overlapping
   {c="nan"} 7 NaN 3 _
   {c="inf"} +Inf -Inf 5 _
+eval instant at 60s sum by (c) (sum_over_time({app="k"} | logfmt | unwrap v [1m]))
+  {c="ten"} 10     # 1e16 + 10x1 - 1e16
+  {c="seven"} 7    # 1e16 + 7x1  - 1e16
+eval instant at 60s sum(sum_over_time({app="k"} | logfmt | unwrap v [1m]))
+  {} 17
+eval range from 20s to 60s step 20s sum by (c) (sum_over_time({app="k"} | logfmt | unwrap v [1m]))    # overlapping
+  {c="ten"} 10 10 10
+  {c="seven"} 7 7 7
+eval range from 20s to 60s step 40s sum(sum_over_time({app="k"} | logfmt | unwrap v [20s]))           # non-overlapping
+  {} 17 _   # (40s,60s] has no sample
 
 # avg()
 clear

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,6 +43,15 @@ func TestNew_InvalidConfig(t *testing.T) {
 	cfg := Config{} // missing SchedulerAddress
 	_, err := New(nil, cfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.Error(t, err)
+}
+
+func TestNew_UnknownPostingsEncoding(t *testing.T) {
+	cfg := Config{Compaction: logline.CompactionConfig{
+		SchedulerAddress: "http://localhost:9999",
+		PostingsEncoding: "roaring",
+	}}
+	_, err := New(nil, cfg, log.NewNopLogger(), prometheus.NewRegistry())
+	require.ErrorContains(t, err, "postings_encoding")
 }
 
 func TestServiceLifecycle(t *testing.T) {
@@ -166,6 +176,139 @@ func TestAbandonCurrentJob_DoesNotRetryOn4xx(t *testing.T) {
 	require.Equal(t, 1, attempts, "should not retry on 4xx")
 }
 
+func TestStopping_ReportsJobStateToScheduler(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		setup    func(j *compactorJob)
+		wantPath string
+	}{
+		{
+			name:     "running job is abandoned",
+			setup:    func(j *compactorJob) { j.setRunning("job1") },
+			wantPath: schedulerapi.LegacyAbandonPath,
+		},
+		{
+			name:     "unacknowledged completed job is reported",
+			setup:    func(j *compactorJob) { j.markCompletedPendingAck("job1") },
+			wantPath: schedulerapi.CompletePath,
+		},
+		{
+			name:  "idle compactor sends nothing",
+			setup: func(*compactorJob) {},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestService(t)
+
+			var (
+				mu    sync.Mutex
+				calls []string
+			)
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				calls = append(calls, r.Method+" "+r.URL.Path+" "+schedulerapi.WorkerID(r)+" "+schedulerapi.JobID(r))
+				mu.Unlock()
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer ts.Close()
+
+			svc.cfg.Compaction.SchedulerAddress = ts.URL
+			tc.setup(&svc.job)
+
+			require.NoError(t, svc.stopping(nil))
+
+			var want []string
+			if tc.wantPath != "" {
+				want = []string{"POST " + tc.wantPath + " test-compactor job1"}
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, want, calls)
+		})
+	}
+}
+
+func TestReportCompletedJob_DoesNotRetryOn404(t *testing.T) {
+	svc := newTestService(t)
+
+	var attempts int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusNotFound) // scheduler that predates the complete route
+	}))
+	defer ts.Close()
+
+	svc.cfg.Compaction.SchedulerAddress = ts.URL
+	svc.job.markCompletedPendingAck("job1")
+
+	svc.reportCompletedJob()
+
+	require.Equal(t, 1, attempts, "should not retry on 404")
+}
+
+func TestRunLoop_ResendsCompletedJobIDUntilSchedulerAnswers(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fail func(w http.ResponseWriter)
+	}{
+		{
+			name: "scheduler starting",
+			fail: func(w http.ResponseWriter) {
+				http.Error(w, "scheduler is not running: Starting", http.StatusServiceUnavailable)
+			},
+		},
+		{
+			name: "connection dropped",
+			fail: func(w http.ResponseWriter) {
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					conn.Close()
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestService(t)
+			svc.retryBackoff = time.Millisecond
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			var (
+				mu   sync.Mutex
+				sent []string
+			)
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				sent = append(sent, schedulerapi.LastCompletedJobID(r))
+				n := len(sent)
+				mu.Unlock()
+
+				switch n {
+				case 1:
+					tc.fail(w)
+				case 2:
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					cancel()
+					w.WriteHeader(http.StatusNoContent)
+				}
+			}))
+			defer ts.Close()
+
+			svc.cfg.Compaction.SchedulerAddress = ts.URL
+			svc.job.markCompletedPendingAck("donejob")
+
+			require.NoError(t, svc.runLoop(ctx))
+
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, []string{"donejob", "donejob", ""}, sent,
+				"the retry after a failed request must still report the completed job, and the request after a 204 must not")
+		})
+	}
+}
+
 func TestExecuteJob_TracksCurrentJob(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	s := newTestCompactorStore(t, bucket)
@@ -240,7 +383,7 @@ func TestExecuteJob_SuccessThenShutdown_DoesNotAbandon(t *testing.T) {
 	svc.job.markCompletedPendingAck(job.ID)
 
 	// Compaction succeeded.
-	require.Equal(t, "successjob", svc.job.consumeCompletedID())
+	require.Equal(t, "successjob", svc.job.completedID())
 	// currentJobID must be cleared — no abandon should fire even if ctx
 	// were cancelled after this point.
 	require.Equal(t, "", svc.job.runningID(), "completed job must not be abandonable")
@@ -261,12 +404,12 @@ func TestExecuteJob_Success_SetsLastCompletedJobID(t *testing.T) {
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	}
 
-	require.Equal(t, "", svc.job.consumeCompletedID())
+	require.Equal(t, "", svc.job.completedID())
 	svc.job.setRunning(job.ID)
 	completed := svc.executeJob(context.Background(), job)
 	require.True(t, completed)
 	svc.job.markCompletedPendingAck(job.ID)
-	require.Equal(t, "successjob", svc.job.consumeCompletedID())
+	require.Equal(t, "successjob", svc.job.completedID())
 }
 
 func TestExecuteJob_Failure_DoesNotSetLastCompletedJobID(t *testing.T) {
@@ -284,6 +427,6 @@ func TestExecuteJob_Failure_DoesNotSetLastCompletedJobID(t *testing.T) {
 	svc.job.setRunning(job.ID)
 	completed := svc.executeJob(context.Background(), job)
 	require.False(t, completed)
-	require.Equal(t, "", svc.job.consumeCompletedID())
+	require.Equal(t, "", svc.job.completedID())
 	require.Equal(t, "failjob", svc.job.runningID())
 }

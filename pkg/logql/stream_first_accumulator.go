@@ -1,6 +1,8 @@
 package logql
 
 import (
+	"github.com/prometheus/prometheus/util/kahansum"
+
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -94,12 +96,23 @@ func (a *countAccumulator) value(k int) (float64, bool) {
 	return float64(a.counts[k]), a.counts[k] > 0
 }
 
-// sumAccumulator adds up the sample values of each step.
+// sumAccumulator adds up the sample values of each step with Kahan summation.
+//
+// Each step adds the samples of one series in arrival order, like SumOverTime does. When the
+// samples arrive in timestamp order, a step holds the same sum as the timestamp-first path.
+//
+// Integer values sum exactly in any order while every partial sum stays below 2^53 in magnitude.
+// Other values can differ in the last digits when the samples arrive in another order.
 type sumAccumulator struct {
-	// sums holds the sum of each step. It uses plain float64, like the timestamp-first engine.
-	// Integer values sum exactly in any order while every partial sum stays below 2^53 in magnitude.
-	// Other values can differ in the last digits when samples arrive in another order.
+	// sums holds the sum of each step, without its compensation.
 	sums []float64
+
+	// compensations holds the Kahan compensation of each step. It stays nil until a step gets a
+	// non-zero compensation, so a series with exact sums needs no memory for it.
+	//
+	// A sum is exact, and has no compensation, while every partial sum of integer values stays
+	// below 2^53 in magnitude. A step that holds one finite sample has none either.
+	compensations []float64
 
 	// presence counts the samples of each step. value uses it to tell a step that sums to zero
 	// from a step that holds no sample.
@@ -115,10 +128,22 @@ func newSumAccumulator(steps int) stepAccumulator {
 
 func (a *sumAccumulator) add(lo, hi int, v float64) {
 	// Add v to each step in turn. countAccumulator instead marks the first step and the step after
-	// the last, then takes a prefix sum. With floats, the prefix sum leaves a rounding residue
-	// after a large value. It also spreads a NaN or an Inf to every later step.
-	for k := lo; k <= hi; k++ {
-		a.sums[k] += v
+	// the last, then takes a prefix sum.
+	k := lo
+	for ; a.compensations == nil && k <= hi; k++ {
+		var c float64
+		a.sums[k], c = kahansum.Inc(v, a.sums[k], 0)
+
+		// The first loop runs while no step has a compensation. It allocates the compensations
+		// at the first non-zero one. The second loop runs once they exist, so it needs no check
+		// per step.
+		if c != 0 {
+			a.compensations = make([]float64, len(a.sums))
+			a.compensations[k] = c
+		}
+	}
+	for ; k <= hi; k++ {
+		a.sums[k], a.compensations[k] = kahansum.Inc(v, a.sums[k], a.compensations[k])
 	}
 	a.presence.add(lo, hi, v)
 }
@@ -129,6 +154,12 @@ func (a *sumAccumulator) finish() {
 
 // value panics when finish has not run, because the presence marks are not counts yet.
 func (a *sumAccumulator) value(k int) (float64, bool) {
-	_, ok := a.presence.value(k)
-	return a.sums[k], ok
+	if _, ok := a.presence.value(k); !ok {
+		return 0, false
+	}
+	var c float64
+	if a.compensations != nil {
+		c = a.compensations[k]
+	}
+	return kahanResult(a.sums[k], c), true
 }

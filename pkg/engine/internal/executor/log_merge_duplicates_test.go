@@ -217,9 +217,8 @@ func TestDoLogObjectMerge_KeepsAndCountsDuplicateRecords(t *testing.T) {
 		c.logMergeObserver = observer
 
 		_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{
-			Tenant:     tenant,
-			SortSchema: sortSchema,
-			Runs:       sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
+			Tenant: tenant,
+			Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
 		})
 		require.NoError(t, err)
 		require.Len(t, observer.stats, 1)

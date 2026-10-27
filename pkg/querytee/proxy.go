@@ -21,6 +21,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 )
@@ -41,12 +42,55 @@ func (cfg *PrimaryBackendConfig) RegisterFlags(f *flag.FlagSet) {
 // primary backend's responses when -proxy.compare-responses is set. The proxy never returns its
 // responses to the client.
 type SecondaryBackendConfig struct {
-	Hostname string
+	Hostname          string
+	SelectionStrategy string
 }
 
 // RegisterFlags registers the flags of the secondary backend.
 func (cfg *SecondaryBackendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Hostname, "secondary-backend.hostname", "", "The hostname of the secondary backend. When -proxy.compare-responses is set, the proxy compares its responses with the primary's. The proxy never returns its responses to the client. Empty means no secondary backend.")
+	f.StringVar(&cfg.SelectionStrategy, "secondary-backend.selection-strategy", selectionStrategyAll, "How the proxy picks the read requests that the secondary backend receives. Supported: "+selectionStrategyAll+" (every request) and "+selectionStrategyDataObj+" (the range and instant queries that the secondary backend reads from data objects).")
+}
+
+// Validate checks that the selection strategy is a known one, and that a strategy other than the
+// default has a secondary backend.
+func (cfg *SecondaryBackendConfig) Validate() error {
+	switch cfg.SelectionStrategy {
+	case selectionStrategyAll:
+	case selectionStrategyDataObj:
+		if cfg.Hostname == "" {
+			return errors.New("-secondary-backend.selection-strategy needs -secondary-backend.hostname")
+		}
+	default:
+		return fmt.Errorf("unknown selection strategy %q", cfg.SelectionStrategy)
+	}
+	return nil
+}
+
+// newSelectionStrategy builds the selection strategy that the config names.
+func newSelectionStrategy(cfg SecondaryBackendConfig, dataObjCfg DataObjConfig, lokiLimits *LokiLimits) (SelectionStrategy, error) {
+	switch cfg.SelectionStrategy {
+	case selectionStrategyAll:
+		return allStrategy{}, nil
+	case selectionStrategyDataObj:
+		return newDataObjStrategy(dataObjCfg, lokiLimits)
+	default:
+		return nil, fmt.Errorf("unknown selection strategy %q", cfg.SelectionStrategy)
+	}
+}
+
+// DataObjConfig holds the data object settings of the secondary backend's Loki cluster. The flags
+// have the names, defaults and descriptions of the Loki flags. querytee does not read these
+// settings from the Loki config file.
+type DataObjConfig struct {
+	Enabled    bool
+	StorageLag time.Duration
+}
+
+// RegisterFlags registers the flags of the data object config.
+func (cfg *DataObjConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "dataobj.enabled", false, "Enable data objects.")
+	f.DurationVar(&cfg.StorageLag, "dataobj.storage-lag", dataobjconfig.DefaultStorageLag, "Delay after which data objects hold all the data.")
 }
 
 type ProxyConfig struct {
@@ -63,6 +107,7 @@ type ProxyConfig struct {
 
 	PrimaryBackend   PrimaryBackendConfig
 	SecondaryBackend SecondaryBackendConfig
+	DataObj          DataObjConfig
 }
 
 // backendRole returns the role of the backend at the given index of the backend list. It returns
@@ -97,10 +142,11 @@ func (cfg *ProxyConfig) backendRole(name string, idx int) (BackendRole, error) {
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ServerServicePort, "server.service-port", 80, "The port where the query-tee service listens to.")
-	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints. The proxy sends every request on a registered route to every backend.")
+	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints. The proxy sends every write to every backend. It sends every read to every backend, except that the secondary backend receives only the reads that its selection strategy picks.")
 
 	cfg.PrimaryBackend.RegisterFlags(f)
 	cfg.SecondaryBackend.RegisterFlags(f)
+	cfg.DataObj.RegisterFlags(f)
 
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare the responses of the secondary backend with the responses of the primary backend on supported routes. Requires a secondary backend.")
@@ -120,12 +166,13 @@ type Route struct {
 }
 
 type Proxy struct {
-	cfg         ProxyConfig
-	backends    ProxyBackends
-	logger      log.Logger
-	metrics     *ProxyMetrics
-	readRoutes  []Route
-	writeRoutes []Route
+	cfg                      ProxyConfig
+	backends                 ProxyBackends
+	logger                   log.Logger
+	metrics                  *ProxyMetrics
+	readRoutes               []Route
+	writeRoutes              []Route
+	secondaryBackendStrategy SelectionStrategy
 
 	// The HTTP server used to run the proxy service.
 	srv         *http.Server
@@ -145,7 +192,12 @@ func NewProxy(
 	logger log.Logger,
 	readRoutes, writeRoutes []Route,
 	registerer prometheus.Registerer,
+	lokiLimits *LokiLimits,
 ) (*Proxy, error) {
+	if err := cfg.SecondaryBackend.Validate(); err != nil {
+		return nil, err
+	}
+
 	if cfg.ReportMissingSeries && !cfg.CompareResponses {
 		return nil, fmt.Errorf("-proxy.compare-report-missing-series requires -proxy.compare-responses to be set")
 	}
@@ -212,6 +264,12 @@ func NewProxy(
 		default:
 			return nil, fmt.Errorf("more than one configured backend has the hostname of the secondary backend")
 		}
+
+		strategy, err := newSelectionStrategy(cfg.SecondaryBackend, cfg.DataObj, lokiLimits)
+		if err != nil {
+			return nil, err
+		}
+		p.secondaryBackendStrategy = strategy
 	}
 
 	if cfg.CompareResponses && cfg.SecondaryBackend.Hostname == "" {
@@ -246,21 +304,15 @@ func (p *Proxy) Start() error {
 		if p.cfg.CompareResponses {
 			comp = route.ResponseComparator
 		}
-		endpoint := NewProxyEndpoint(
-			p.backends,
-			route.RouteName,
-			p.metrics,
-			p.logger,
-			comp,
-			p.cfg.ReportMissingSeries,
-		)
+		endpoint := NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger)
 
 		routeHandlerFactory := NewHandlerFactory(HandlerFactoryConfig{
-			Backends:            p.backends,
-			Codec:               queryrange.DefaultCodec,
-			Logger:              p.logger,
-			Metrics:             p.metrics,
-			ReportMissingSeries: p.cfg.ReportMissingSeries,
+			Backends:                 p.backends,
+			Codec:                    queryrange.DefaultCodec,
+			Logger:                   p.logger,
+			Metrics:                  p.metrics,
+			ReportMissingSeries:      p.cfg.ReportMissingSeries,
+			SecondaryBackendStrategy: p.secondaryBackendStrategy,
 		})
 		endpoint.WithQueryHandler(routeHandlerFactory.CreateHandler(route.RouteName, comp))
 		level.Info(p.logger).Log(
@@ -274,18 +326,7 @@ func (p *Proxy) Start() error {
 
 	// create a separate endpoint without a query handler for write requests
 	for _, route := range p.writeRoutes {
-		var comp comparator.ResponsesComparator
-		if p.cfg.CompareResponses {
-			comp = route.ResponseComparator
-		}
-		endpoint := NewProxyEndpoint(
-			p.backends,
-			route.RouteName,
-			p.metrics,
-			p.logger,
-			comp,
-			p.cfg.ReportMissingSeries,
-		)
+		endpoint := NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger)
 
 		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
 	}

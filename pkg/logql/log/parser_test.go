@@ -203,7 +203,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"__error_details__", "Value looks like object, but can't find closing '}' symbol",
 			),
 			map[string][]string{},
-			NewParserHint([]string{"__error__"}, nil, false, true, ""),
+			parserHintsRequiring("__error__"),
 			nil,
 		},
 		{
@@ -677,7 +677,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				logqlmodel.ErrorLabel, errJSON,
 			),
-			NewParserHint([]string{"__error__"}, nil, false, true, ""),
+			parserHintsRequiring("__error__"),
 			nil,
 		},
 		{
@@ -862,7 +862,7 @@ func Benchmark_Parser(b *testing.B) {
 			b.Run("labels hints", func(b *testing.B) {
 				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "")
+				builder.parserKeyHints = NewParserHint(nil, tt.LabelParseHints, false, false, "")
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
@@ -978,7 +978,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 			b.Run("labels hints", func(b *testing.B) {
 				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "")
+				builder.parserKeyHints = NewParserHint(nil, tt.LabelParseHints, false, false, "")
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
@@ -1051,7 +1051,7 @@ func BenchmarkKeyExtraction(b *testing.B) {
 	logFmt := []byte(`data="Click Here" size=36 style=bold name=text1 hOffset=250 vOffset=100 alignment=center onMouseUp="sun1.opacity = (sun1.opacity / 100) * 90;"`)
 
 	lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
-	lbs.parserKeyHints = NewParserHint([]string{"name"}, nil, false, true, "")
+	lbs.parserKeyHints = parserHintsRequiring("name")
 
 	benchmarks := []struct {
 		name string
@@ -1173,10 +1173,22 @@ func Test_regexpParser_Parse(t *testing.T) {
 			for key, value := range tt.structuredMetadata {
 				b.Set(StructuredMetadataLabel, key, value)
 			}
-			_, _ = tt.parser.Process(0, tt.line, b)
+			_, ok := tt.parser.Process(0, tt.line, b)
+			require.True(t, ok)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
+
+	t.Run("extracts nothing when no stage needs a label", func(t *testing.T) {
+		lbs := labels.FromStrings("app", "foo")
+		hints := NewParserHint(nil, nil, false, true, "")
+		b := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false).ForLabels(lbs, labels.StableHash(lbs))
+		b.Reset()
+
+		_, ok := mustStage(NewRegexpParser("status=(?P<status>\\w+)")).Process(0, []byte("status=200"), b)
+		require.True(t, ok)
+		require.Equal(t, lbs, b.LabelsResult().Labels())
+	})
 }
 
 func TestLogfmtParser_parse(t *testing.T) {
@@ -1210,7 +1222,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error__", "LogfmtParserErr",
 				"__error_details__", "logfmt syntax error at pos 8 : unexpected '='",
 			),
-			NewParserHint([]string{"__error__"}, nil, false, true, ""),
+			parserHintsRequiring("__error__"),
 			nil,
 		},
 		{
@@ -1829,7 +1841,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"__error_details__", "expecting json object(6), but it is not",
 			),
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
-			NewParserHint([]string{"__error__"}, nil, false, true, ""),
+			parserHintsRequiring("__error__"),
 			nil,
 		},
 		{
@@ -2076,9 +2088,9 @@ func BenchmarkLogfmtExpressionParserNames(b *testing.B) {
 		// The line has none of the names, so the parser writes an empty label for each.
 		{"names that the line lacks", labels.FromStrings("cluster", "qa"), []string{"missing_a", "missing_b", "missing_c", "missing_d"}, nil},
 		// A grouping on every name lets the parser stop as soon as it has read them all.
-		{"grouping on every name", labels.FromStrings("cluster", "qa"), names, NewParserHint(names, names, false, false, "")},
+		{"grouping on every name", labels.FromStrings("cluster", "qa"), names, NewParserHint(nil, names, false, false, "")},
 		// The grouping does not need the renamed name, so the parser stops at the first key.
-		{"grouping that does not need the renamed name", labels.FromStrings("cluster", "qa", "level", "stream"), []string{"level"}, NewParserHint([]string{"level"}, []string{"level"}, false, false, "")},
+		{"grouping that does not need the renamed name", labels.FromStrings("cluster", "qa", "level", "stream"), []string{"level"}, NewParserHint(nil, []string{"level"}, false, false, "")},
 	}
 	for _, bb := range benchmarks {
 		b.Run(bb.name, func(b *testing.B) {
@@ -2253,7 +2265,7 @@ func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 
 	base := labels.FromStrings("app", "x")
 	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
-	b.parserKeyHints = NewParserHint([]string{"a", "b"}, []string{"a", "b"}, false, false, "")
+	b.parserKeyHints = NewParserHint(nil, []string{"a", "b"}, false, false, "")
 	b.Reset()
 	_, _ = parser.Process(0, []byte(`a=1 b=2`), b)
 	require.Equal(t, labels.FromStrings("app", "x", "a", "1", "b", "2"), b.LabelsResult().Labels())
@@ -2335,7 +2347,7 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			parser, err := NewLogfmtExpressionParser(exprs, false)
 			require.NoError(t, err)
 
-			hints := &askedHints{ParserHint: NewParserHint(tt.required, tt.required, false, false, "")}
+			hints := &askedHints{ParserHint: NewParserHint(nil, tt.required, false, false, "")}
 			base := labels.FromStrings("app", "x")
 			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 			b.parserKeyHints = hints
@@ -2346,4 +2358,13 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			require.Equal(t, tt.wantFillers, hints.readFillers(), "asked: %v", hints.asked)
 		})
 	}
+}
+
+// parserHintsRequiring returns hints that ask the parsers to extract names.
+func parserHintsRequiring(names ...string) *ParserHints {
+	stages := Stages{NewLogfmtParser(false, false)}
+	for _, name := range names {
+		stages = append(stages, NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, name, "")))
+	}
+	return NewParserHint(stages, nil, false, true, "")
 }

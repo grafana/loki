@@ -67,8 +67,10 @@ func (s *Service) compact(ctx context.Context, job *schedulerapi.JobResponse) er
 	// Phase 3: streaming merge + upload. The merge writes directly into the
 	// object-storage upload pipe; hash and size are computed from the stream.
 	writerCfg := &format.WriterConfig{
-		DensityThreshold: float32(s.cfg.DensityThreshold),
-		DocumentInterval: sourceMetas[0].DocumentInterval,
+		Encoding:          s.postingsEncoding,
+		DensityThreshold:  float32(s.cfg.DensityThreshold),
+		DocumentInterval:  sourceMetas[0].DocumentInterval,
+		DocumentShardBits: sourceMetas[0].DocumentShardBits,
 	}
 	merger, err := logline.NewMerger(sourceMetas[0].Version, writerCfg)
 	if err != nil {
@@ -145,6 +147,9 @@ func verifyCompactionJob(metas []store.Meta) error {
 		if m.DocumentInterval != first.DocumentInterval {
 			return fmt.Errorf("source %d document_interval=%v differs from source 0 document_interval=%v", i+1, m.DocumentInterval, first.DocumentInterval)
 		}
+		if m.DocumentShardBits != first.DocumentShardBits {
+			return fmt.Errorf("source %d document_shard_bits=%d differs from source 0 document_shard_bits=%d", i+1, m.DocumentShardBits, first.DocumentShardBits)
+		}
 	}
 	return nil
 }
@@ -220,20 +225,21 @@ func (s *Service) buildMergedMetaSkeleton(storageID string, sourceIDs []string, 
 		}
 	}
 
-	// Shard and document interval fields are inherited from the first source —
+	// Shard and document layout fields are inherited from the first source —
 	// the planner guarantees all sources in a job share these values.
 	return store.Meta{
-		StorageID:        storageID,
-		Date:             date,
-		Version:          sourceMetas[0].Version,
-		MinLogTs:         minLogTs,
-		MaxLogTs:         maxLogTs,
-		MinRecordTs:      minRecordTs,
-		MaxRecordTs:      maxRecordTs,
-		CompactedFrom:    sourceIDs,
-		ShardCount:       sourceMetas[0].ShardCount,
-		ShardAlgorithm:   sourceMetas[0].ShardAlgorithm,
-		ShardValue:       sourceMetas[0].ShardValue,
-		DocumentInterval: sourceMetas[0].DocumentInterval,
+		StorageID:         storageID,
+		Date:              date,
+		Version:           sourceMetas[0].Version,
+		MinLogTs:          minLogTs,
+		MaxLogTs:          maxLogTs,
+		MinRecordTs:       minRecordTs,
+		MaxRecordTs:       maxRecordTs,
+		CompactedFrom:     sourceIDs,
+		ShardCount:        sourceMetas[0].ShardCount,
+		ShardAlgorithm:    sourceMetas[0].ShardAlgorithm,
+		ShardValue:        sourceMetas[0].ShardValue,
+		DocumentInterval:  sourceMetas[0].DocumentInterval,
+		DocumentShardBits: sourceMetas[0].DocumentShardBits,
 	}, nil
 }

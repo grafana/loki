@@ -27,7 +27,7 @@ func BenchmarkBuilderAppend(b *testing.B) {
 			b.ResetTimer()
 			var sink int
 			for range b.N {
-				bld := NewBuilder(nil, ColumnarSectionEncoder(2048, 0))
+				bld := NewBuilder(nil, ColumnarSectionEncoder(2048, 0), testLayout("label:service_name,label:namespace,label:pod"))
 				bld.SetTenant("tenant")
 				for _, r := range rows {
 					// Mirror indexobj.MergeBuilder.AppendStat's pre/post size checks.

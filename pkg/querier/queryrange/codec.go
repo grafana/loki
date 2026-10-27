@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1189,13 +1190,17 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
 	case *DetectedFieldsRequest:
-		var resp logproto.DetectedFieldsResponse
+		var resp struct {
+			logproto.DetectedFieldsResponse
+			Statistics stats.Result `json:"stats"`
+		}
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &DetectedFieldsResponse{
-			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Response:   &resp.DetectedFieldsResponse,
+			Statistics: resp.Statistics,
+			Headers:    httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
 	case *logproto.QueryPatternsRequest:
 		var resp logproto.QueryPatternsResponse
@@ -1330,6 +1335,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		return resp.GetHints().WithHeaders(headers), nil
 	case *logproto.ShardsRequest:
 		return resp.GetShardsResponse().WithHeaders(headers), nil
+	case *DetectedFieldsRequest:
+		return resp.GetDetectedFields().WithHeaders(headers), nil
 	case *DetectedLabelsRequest:
 		return resp.GetDetectedLabels().WithHeaders(headers), nil
 	default:
@@ -1351,16 +1358,39 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 }
 
 func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryrangebase.Response) (*http.Response, error) {
-	if req.Header.Get("Accept") == ProtobufType {
-		return encodeResponseProtobuf(ctx, res)
-	} else if req.Header.Get("Accept") == ParquetType {
-		return encodeResponseParquet(ctx, res)
+	var response *http.Response
+	var err error
+	switch req.Header.Get("Accept") {
+	case ProtobufType:
+		response, err = encodeResponseProtobuf(ctx, res)
+	case ParquetType:
+		response, err = encodeResponseParquet(ctx, res)
+	default:
+		response, err = encodeResponseJSON(ctx, loghttp.GetVersion(req.RequestURI), res, httpreq.ExtractEncodingFlags(req))
 	}
+	if err != nil {
+		return nil, err
+	}
+	setQueryBytesProcessedHeader(response.Header, res)
+	return response, nil
+}
 
-	// Default to JSON.
-	version := loghttp.GetVersion(req.RequestURI)
-	encodingFlags := httpreq.ExtractEncodingFlags(req)
-	return encodeResponseJSON(ctx, version, res, encodingFlags)
+// setQueryBytesProcessedHeader sets the httpreq.LokiQueryBytesProcessedHeader header from the response's processed-byte
+// statistic, replacing any stale value from a child response.
+func setQueryBytesProcessedHeader(headers http.Header, response queryrangebase.Response) {
+	headers.Del(httpreq.LokiQueryBytesProcessedHeader)
+	var usage *stats.Result
+	switch r := response.(type) {
+	case *LokiResponse:
+		usage = &r.Statistics
+	case *LokiPromResponse:
+		usage = &r.Statistics
+	case *DetectedFieldsResponse:
+		usage = &r.Statistics
+	}
+	if usage != nil && usage.Summary.TotalBytesProcessed >= 0 {
+		headers.Set(httpreq.LokiQueryBytesProcessedHeader, strconv.FormatInt(usage.Summary.TotalBytesProcessed, 10))
+	}
 }
 
 func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags httpreq.EncodingFlags) (*http.Response, error) {
@@ -1443,7 +1473,7 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 			return err
 		}
 	case *DetectedFieldsResponse:
-		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, w); err != nil {
+		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, response.Statistics, w); err != nil {
 			return err
 		}
 	case *QueryPatternsResponse:
@@ -1628,11 +1658,15 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		headers := resp0.Headers
 		limit := resp0.Response.GetLimit()
 
+		var mergedStats stats.Result
 		fields := []*logproto.DetectedField{}
 		values := []string{}
 		for _, r := range responses {
-			fields = append(fields, r.(*DetectedFieldsResponse).Response.Fields...)
-			values = append(values, r.(*DetectedFieldsResponse).Response.Values...)
+			response := r.(*DetectedFieldsResponse)
+			// These statistics already include the underlying log query splits.
+			mergedStats.Merge(response.Statistics)
+			fields = append(fields, response.Response.Fields...)
+			values = append(values, response.Response.Values...)
 		}
 
 		mergedFields, err := detected.MergeFields(fields, limit)
@@ -1651,7 +1685,8 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 				Values: mergedValues,
 				Limit:  limit,
 			},
-			Headers: headers,
+			Headers:    headers,
+			Statistics: mergedStats,
 		}, nil
 	case *DetectedLabelsResponse:
 		resp0 := responses[0].(*DetectedLabelsResponse)

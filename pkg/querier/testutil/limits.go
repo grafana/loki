@@ -101,11 +101,3 @@ func (m *MockLimits) DataObjQueryStartTime(_ string) time.Time {
 func (m *MockLimits) StreamFirstExecutionEnabled(_ string) bool {
 	return false
 }
-
-func (m *MockLimits) DebugEngineStreams(_ string) bool {
-	return false
-}
-
-func (m *MockLimits) DebugEngineTasks(_ string) bool {
-	return false
-}

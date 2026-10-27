@@ -2,6 +2,7 @@ package dataobjread
 
 import (
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -30,8 +31,7 @@ type ProjectionPlan struct {
 	// metadataNames name the metadata columns to return when needAllMetadata is false, sorted.
 	metadataNames []string
 
-	// pushdownCandidates are the query's label-filter matchers a read may push down. A name one
-	// of them carries can turn out to be a stream label rather than metadata.
+	// pushdownCandidates are the matchers of the label filters that can be safely pushed down.
 	pushdownCandidates []*labels.Matcher
 
 	// lineFilter is the push-down line filter, which runs on the stored line. It never comes from a
@@ -59,20 +59,14 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		needReturningLine bool
 		anyWithout        bool
 
-		// queryDerivesLabels and deleteDerivesLabels record a parser, formatter or other stage
-		// that builds labels out of the line. They are tracked apart because they have
-		// different consequences: either one forces every metadata column to be read, but only
-		// the query's own blocks pushdown. After a parser, a filter's name may refer to a
-		// parsed label rather than to metadata, and a predicate seeing only the metadata column
-		// would drop rows the extractor keeps. A delete's pipeline cannot make the query's own
-		// filters unsafe.
-		queryDerivesLabels  bool
-		deleteDerivesLabels bool
+		// derivesLabels records a stage that is not a filter, in the query or in a delete. Such a
+		// stage may read or change the line and any label. The read must then return the line and
+		// every metadata column.
+		derivesLabels bool
 
 		// metadataNames are the metadata columns the extractor reads, through a filter or an
 		// unwrap, or emits through a grouping.
-		metadataNames      = map[string]struct{}{}
-		pushdownCandidates []*labels.Matcher
+		metadataNames = map[string]struct{}{}
 	)
 
 	addMetadataName := func(name string) {
@@ -133,7 +127,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		return ProjectionPlan{}, err
 	}
 
-	walkStages := func(sel syntax.LogSelectorExpr, collectCandidates bool, derivesLabels *bool) {
+	walkStages := func(sel syntax.LogSelectorExpr) {
 		pipeline, ok := sel.(*syntax.PipelineExpr)
 		if !ok {
 			return
@@ -146,21 +140,37 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 				for _, name := range typed.RequiredLabelNames() {
 					addMetadataName(name)
 				}
-				if collectCandidates {
-					pushdownCandidates = append(pushdownCandidates, metadataMatcherCandidates(typed.LabelFilterer)...)
-				}
 			default:
-				*derivesLabels = true
+				derivesLabels = true
 			}
 		}
 	}
 
-	// Push down the line filters that are safe to run directly on the stored line.
-	var lineFilter logqllog.Filterer
+	// Push down the line filters that are safe to run on the stored line. Also collect the matchers
+	// of the label filters that run before any stage that can change a label.
+	var (
+		lineFilter         logqllog.Filterer
+		pushdownCandidates []*labels.Matcher
+	)
 	if pipeline, ok := selector.(*syntax.PipelineExpr); ok {
 		lineFilter, err = pipeline.MultiStages.PushableLineFilters()
 		if err != nil {
 			return ProjectionPlan{}, err
+		}
+
+		// Unlike a line filter, a label filter stays in the unpushed query. The read decides per
+		// section whether to push a matcher. It skips the matcher when the name is a stream label
+		// of at least one stream in the section. Other streams in that section can hold the same
+		// name as structured metadata. The predicate reads only the metadata column, so it cannot
+		// serve both kinds of stream. One extractor serves every section, so it must apply every
+		// label filter itself.
+		var labelFilters []logqllog.LabelFilterer
+		labelFilters, err = pipeline.MultiStages.PushableLabelFilters()
+		if err != nil {
+			return ProjectionPlan{}, err
+		}
+		for _, filter := range labelFilters {
+			pushdownCandidates = append(pushdownCandidates, metadataMatcherCandidates(filter)...)
 		}
 	}
 
@@ -178,16 +188,16 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		}
 	}
 
-	walkStages(pipelineSelector, true, &queryDerivesLabels)
+	walkStages(pipelineSelector)
 	for _, del := range deletes {
-		walkStages(del, false, &deleteDerivesLabels)
+		walkStages(del)
 	}
 
-	derivesLabels := queryDerivesLabels || deleteDerivesLabels
 	plan := ProjectionPlan{
-		lineFilter:        lineFilter,
-		needReturningLine: needReturningLine || derivesLabels,
-		unpushedExpr:      unpushed,
+		lineFilter:         lineFilter,
+		needReturningLine:  needReturningLine || derivesLabels,
+		unpushedExpr:       unpushed,
+		pushdownCandidates: pushdownCandidates,
 		// The output carries names that cannot be listed ahead of time unless the top-level
 		// aggregation reduces it to a known label set.
 		needAllMetadata: derivesLabels || anyWithout || !reducesOutputLabels(expr),
@@ -198,9 +208,6 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		metadataNames[logqlmodel.ErrorLabel] = struct{}{}
 		metadataNames[logqlmodel.ErrorDetailsLabel] = struct{}{}
 		plan.metadataNames = slices.Sorted(maps.Keys(metadataNames))
-	}
-	if !queryDerivesLabels {
-		plan.pushdownCandidates = pushdownCandidates
 	}
 	return plan, nil
 }
@@ -349,14 +356,8 @@ func reducesOutputLabels(expr syntax.SampleExpr) bool {
 	return aggr.Grouping != nil && !aggr.Grouping.Without
 }
 
-// metadataMatcherCandidates returns the string matchers in a label filter that a metadata
-// predicate can represent.
-//
-// It descends only into an and: either side of an or can be satisfied by the other, so pushing
-// one side alone would drop rows the filter keeps.
-//
-// Filters that convert their value, meaning duration, bytes and numeric, are left out because
-// the predicate compares the raw column string.
+// metadataMatcherCandidates returns the matchers that the read may push down for filter. A row
+// that fails one of them also fails filter.
 func metadataMatcherCandidates(filter logqllog.LabelFilterer) []*labels.Matcher {
 	switch typed := filter.(type) {
 	case *logqllog.LineFilterLabelFilter:
@@ -364,13 +365,64 @@ func metadataMatcherCandidates(filter logqllog.LabelFilterer) []*labels.Matcher 
 	case *logqllog.StringLabelFilter:
 		return pushdownCandidate(typed.Matcher)
 	case *logqllog.BinaryLabelFilter:
+		// Push both sides of an and. Do not push one side of an or. A row can pass through the
+		// other side. [metadataMatcherEqualityAlternation] handles an or of equalities on one
+		// name.
 		if typed.And {
 			return append(metadataMatcherCandidates(typed.Left), metadataMatcherCandidates(typed.Right)...)
 		}
-		return nil
+		return metadataMatcherEqualityAlternation(typed)
 	default:
+		// Any other filter, such as a duration, bytes, numeric or ip filter, needs more than a raw
+		// string comparison, which is all the predicate does.
 		return nil
 	}
+}
+
+// metadataMatcherEqualityAlternation returns one regular expression matcher for an or of
+// equalities on one name. It returns nil when any leaf is not an equality that
+// [pushdownCandidate] accepts.
+func metadataMatcherEqualityAlternation(filter *logqllog.BinaryLabelFilter) []*labels.Matcher {
+	var (
+		name    string
+		values  []string
+		collect func(logqllog.LabelFilterer) bool
+	)
+
+	collect = func(f logqllog.LabelFilterer) bool {
+		var matcher *labels.Matcher
+		switch typed := f.(type) {
+		case *logqllog.BinaryLabelFilter:
+			return !typed.And && collect(typed.Left) && collect(typed.Right)
+		case *logqllog.LineFilterLabelFilter:
+			matcher = typed.Matcher
+		case *logqllog.StringLabelFilter:
+			matcher = typed.Matcher
+		default:
+			return false
+		}
+
+		if pushdownCandidate(matcher) == nil || matcher.Type != labels.MatchEqual {
+			return false
+		}
+		if len(values) > 0 && matcher.Name != name {
+			return false
+		}
+		name = matcher.Name
+		values = append(values, regexp.QuoteMeta(matcher.Value))
+		return true
+	}
+	if !collect(filter) {
+		return nil
+	}
+
+	// A regular expression matcher matches the whole value, so it keeps the values that the
+	// equalities keep. An absent key reads as the empty value in both forms.
+	matcher, err := labels.NewMatcher(labels.MatchRegexp, name, strings.Join(values, "|"))
+	if err != nil {
+		return nil
+	}
+	return []*labels.Matcher{matcher}
 }
 
 // pushdownCandidate returns matcher as a pushdown candidate, or nil when it is not one.
@@ -382,5 +434,6 @@ func pushdownCandidate(matcher *labels.Matcher) []*labels.Matcher {
 	if matcher == nil || logqlmodel.IsPipelineErrorLabel(matcher.Name) {
 		return nil
 	}
+
 	return []*labels.Matcher{matcher}
 }
