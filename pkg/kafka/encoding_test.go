@@ -137,6 +137,33 @@ func TestDecoderDoesNotCarryFieldsBetweenRecords(t *testing.T) {
 	require.Equal(t, "second", decoded.Entries[0].Line)
 }
 
+func TestStreamLabels(t *testing.T) {
+	stream := logproto.Stream{
+		Labels:  `{app="test"}`,
+		Hash:    999,
+		Entries: []logproto.Entry{{Timestamp: time.Unix(0, 1), Line: "first"}},
+	}
+	flat, err := Encode(0, "test-tenant", stream, 10<<20)
+	require.NoError(t, err)
+	nested, err := EncodeInternal(0, "test-tenant", *logproto.FromStream(stream), 10<<20)
+	require.NoError(t, err)
+
+	for name, data := range map[string][]byte{"flat": flat[0].Value, "nested": nested[0].Value} {
+		t.Run(name, func(t *testing.T) {
+			ls, err := StreamLabels(data)
+			require.NoError(t, err)
+			require.Equal(t, stream.Labels, string(ls))
+
+			// Cut inside the labels, which come first.
+			_, err = StreamLabels(data[:4])
+			require.Error(t, err)
+		})
+	}
+
+	_, err = StreamLabels(nil)
+	require.Error(t, err)
+}
+
 func BenchmarkEncodeDecode(b *testing.B) {
 	decoder, _ := NewDecoder()
 	stream := generateStream(1000, 200)
