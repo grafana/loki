@@ -88,11 +88,6 @@ changes and shows how to update existing v1 code.
    code := record.Country.ISOCode
    ```
 
-7. **Build with Go 1.24 or newer**
-
-   The module now depends on Go 1.24 features such as `omitzero` struct tags.
-   Update your toolchain (`go env GOVERSION`) before upgrading.
-
 ## Additional Notes
 
 - `Open` and `OpenBytes` accept optional `Option` values, allowing future
