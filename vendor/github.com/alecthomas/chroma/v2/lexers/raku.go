@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/dlclark/regexp2"
+	"github.com/dlclark/regexp2/v2"
 
 	. "github.com/alecthomas/chroma/v2" // nolint
 )
@@ -458,8 +458,7 @@ func rakuRules() Rules {
 				var podRegex *regexp2.Regexp
 				if tokenClass == rakuPod {
 					podRegex = regexp2.MustCompile(
-						state.NamedGroups[`ws`]+`=end`+`\s+`+regexp2.Escape(state.NamedGroups[`name`]),
-						0,
+						state.NamedGroups[`ws`] + `=end` + `\s+` + regexp2.Escape(state.NamedGroups[`name`]),
 					)
 				} else {
 					closingChars = []rune(strings.Repeat(string(closingChar), nChars))
@@ -478,7 +477,7 @@ func rakuRules() Rules {
 						match, err := podRegex.FindRunesMatchStartingAt(text, searchPos+nChars)
 						if err == nil {
 							closingChars = match.Runes()
-							nextClosePos = match.Index
+							nextClosePos = match.RuneIndex
 						} else {
 							nextClosePos = -1
 						}
@@ -1599,8 +1598,7 @@ func quote(groups []string, state *LexerState) Iterator {
 	var tokenStates []string
 
 	// Set tokenStates based on adverbs
-	adverbs := strings.Split(adverbsStr, ":")
-	for _, adverb := range adverbs {
+	for adverb := range strings.SplitSeq(adverbsStr, ":") {
 		switch adverb {
 		case "c", "closure":
 			tokenStates = append(tokenStates, "Q-closure")
