@@ -25,7 +25,7 @@ import "github.com/alicebob/miniredis/v2"
 
 Implemented commands:
 
- - Connection (complete)
+ - Connection
    - AUTH -- see RequireAuth()
    - ECHO
    - HELLO -- see RequireUserAuth()
@@ -58,7 +58,7 @@ Implemented commands:
    - TYPE
    - UNLINK
    - WAIT -- no-op
- - Transactions (complete)
+ - Transactions
    - DISCARD
    - EXEC
    - MULTI
@@ -71,19 +71,20 @@ Implemented commands:
    - TIME -- returns time.Now() or value set by SetTime()
    - COMMAND -- partly
    - INFO -- partly, returns only "clients" section with one field "connected_clients"
- - String keys (complete)
+ - String keys
    - APPEND
    - BITCOUNT
    - BITOP
    - BITPOS
    - DECR
    - DECRBY
+   - DELEX -- partly
    - GET
    - GETBIT
-   - GETRANGE
-   - GETSET
    - GETDEL
    - GETEX
+   - GETRANGE
+   - GETSET
    - INCR
    - INCRBY
    - INCRBYFLOAT
@@ -97,9 +98,10 @@ Implemented commands:
    - SETNX
    - SETRANGE
    - STRLEN
- - Hash keys (complete)
+ - Hash keys
    - HDEL
    - HEXISTS
+   - HEXPIRE
    - HGET
    - HGETALL
    - HINCRBY
@@ -108,19 +110,24 @@ Implemented commands:
    - HLEN
    - HMGET
    - HMSET
+   - HPERSIST
+   - HPTTL
    - HRANDFIELD
    - HSET
+   - HSETEX
    - HSETNX
    - HSTRLEN
+   - HTTL
    - HVALS
    - HSCAN
- - List keys (complete)
+ - List keys
    - BLPOP
    - BRPOP
    - BRPOPLPUSH
    - LINDEX
    - LINSERT
    - LLEN
+   - LMPOP
    - LPOP
    - LPUSH
    - LPUSHX
@@ -134,14 +141,14 @@ Implemented commands:
    - RPUSHX
    - LMOVE
    - BLMOVE
- - Pub/Sub (complete)
+ - Pub/Sub
    - PSUBSCRIBE
    - PUBLISH
    - PUBSUB
    - PUNSUBSCRIBE
    - SUBSCRIBE
    - UNSUBSCRIBE
- - Set keys (complete)
+ - Set keys
    - SADD
    - SCARD
    - SDIFF
@@ -159,7 +166,10 @@ Implemented commands:
    - SSCAN
    - SUNION
    - SUNIONSTORE
- - Sorted Set keys (complete)
+ - Sorted Set keys
+   - BZMPOP
+   - BZPOPMAX
+   - BZPOPMIN
    - ZADD
    - ZCARD
    - ZCOUNT
@@ -167,6 +177,7 @@ Implemented commands:
    - ZINTER
    - ZINTERSTORE
    - ZLEXCOUNT
+   - ZMPOP
    - ZPOPMIN
    - ZPOPMAX
    - ZRANDMEMBER
@@ -221,12 +232,13 @@ Implemented commands:
    - GEORADIUS_RO
    - GEORADIUSBYMEMBER
    - GEORADIUSBYMEMBER_RO
+   - GEOSEARCH
  - Cluster
    - CLUSTER SLOTS
    - CLUSTER KEYSLOT
    - CLUSTER NODES
    - CLUSTER SHARDS
- - HyperLogLog (complete)
+ - HyperLogLog
    - PFADD
    - PFCOUNT
    - PFMERGE
@@ -248,6 +260,42 @@ which case time.Now() will be used.
 
 SetTime() also sets the value returned by TIME, which defaults to time.Now().
 It is not updated by FastForward, only by SetTime.
+
+`m.ClockTTL(true)` makes TTLs decrease as the clock (time.Now(), or the
+SetTime() value) advances, instead of only via FastForward. Expired keys are
+removed lazily, whenever a database is accessed via a command or a
+Miniredis-level accessor. Combined with SetTime() the expiry stays coherent
+with TIME and (P)EXPIREAT. Note that against the wall clock this makes expiry
+depend on test execution speed, which is why it's not the default.
+
+## testing/synctest
+
+miniredis works inside a `testing/synctest` bubble (Go 1.25+). Since real TCP
+connections can't be used there, connect with `m.Dial()`, which serves the
+connection on an in-memory pipe — most redis clients accept it as a custom
+dialer. `NewMiniRedis()` is the non-started constructor: with `Dial()` no
+listener is ever created. Inside a bubble `time.Now()` is the bubble's fake
+clock, so with `ClockTTL(true)` a plain `time.Sleep()` expires keys — no
+FastForward needed:
+
+``` Go
+synctest.Test(t, func(t *testing.T) {
+	m := miniredis.NewMiniRedis()
+	defer m.Close()
+	m.ClockTTL(true)
+
+	client := redis.NewClient(&redis.Options{
+		Dialer: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return m.Dial()
+		},
+	})
+
+	ctx := context.Background()
+	client.Set(ctx, "session", "v", time.Hour)
+	time.Sleep(time.Hour + time.Second) // instant, and deterministic
+	// key is expired now
+})
+```
 
 ## Randomness and Seed()
 
