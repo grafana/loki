@@ -99,8 +99,10 @@ func (a *columnAppender) Append(builder *dataset.ColumnBuilder, n int, cell func
 	a.g.Go(func() error {
 		for i := range n {
 			// Append only fails for out-of-order rows, which the contract on
-			// cell rules out.
-			_ = builder.Append(cell(i))
+			// cell rules out. A failure means a bug in the caller.
+			if err := builder.Append(cell(i)); err != nil {
+				panic(err)
+			}
 		}
 		return nil
 	})
