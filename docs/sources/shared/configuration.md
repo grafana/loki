@@ -1164,8 +1164,8 @@ dataobj:
     # Experimental: Maximum uncompressed input size of one LogMerge task. The
     # planner splits a larger merge into tasks by stream sort prefix and never
     # splits one sort prefix. A task exceeds the maximum in two cases: a sort
-    # prefix above the max task size gets a task of its own, and the last task
-    # of a merge can exceed the max task size by up to 10%. 0 disables splitting.
+    # prefix above it gets a task of its own, and the last task of a merge can
+    # take in a leftover of up to 10% of it. 0 disables the split.
     # CLI flag: -dataobj.compaction.logs.max-task-size
     [logs_max_task_size: <int> | default = 0B]
 
