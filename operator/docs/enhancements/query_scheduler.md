@@ -6,13 +6,13 @@ authors:
 reviewers:
   - "@joaobravecoding @xperimental @cahartma"
 creation-date: 2026-09-29
-last-updated: 2026-10-27
+last-updated: 2026-10-28
 tracking-link: https://redhat.atlassian.net/browse/LOG-9664
 see-also: []
 replaces: []
 superseded-by: []
 proof-of-concept: https://github.com/grafana/loki/compare/main...btaani:query-scheduler-poc-code?expand=1
-benchmark-results: https://github.com/observatorium/loki-benchmarks/commit/243a35c48e8945f0656f92b8dc87dd8ac03bd7bd#diff-75086a4821811b10c8fdf30ee0c5a5cec223e6cf0203684e1b0b2c574ef94655
+benchmark-results: 
 ---
 
 # Query Scheduler: V2 Frontend Architecture
@@ -127,10 +127,10 @@ Loki supports two ways for frontends and queriers to find schedulers:
 
 1. **Static address**: set `frontend.scheduler_address` and `frontend_worker.scheduler_address`
    to a fixed service FQDN.
-2. **Ring-based discovery** (default): set `query_scheduler.use_scheduler_ring: true`; schedulers
+2. **Ring-based discovery**: set `query_scheduler.use_scheduler_ring: true`; schedulers
    advertise themselves via the memberlist gossip ring and are discovered dynamically.
 
-The operator uses static address to stay consistent with existing patterns, every other inter-component address in the operator (compactor_grpc_address, tail_proxy_url, index_gateway_client.server_address) uses a static service FQDN that the operator constructs itself.
+The goal is for the operator to continue using static address to stay consistent with existing patterns.
 
 And the `frontend_worker` and `frontend` blocks should read:
 ```yaml
@@ -146,8 +146,10 @@ frontend_worker:
     ...
 
 frontend:
-  scheduler_address: <query-scheduler-grpc-svc>:9095
-  address: <query-frontend-grpc-svc-fqdn>
+  grpc_client_config:
+    tls_enabled: true
+    tls_server_name: <query-scheduler-grpc-svc-fqdn>
+    ...
 ```
 
 **New `query_scheduler` block**
@@ -156,7 +158,14 @@ frontend:
 query_scheduler:
   max_outstanding_requests_per_tenant: 32000
 ```
-Note: 32000 is Loki's upstream default.
+Note: 32000 is Loki's upstream default. See open question #2 below.
+
+#### V1 fields ignored in V2
+
+The following `frontend:` and `frontend_worker:` fields are V1-only. They are still parsed by Loki when V2 is active but their values are never used:
+
+- `frontend.max_outstanding_per_tenant`: V1 queue depth limit, replaced by `query_scheduler.max_outstanding_requests_per_tenant`.
+- `frontend_worker.frontend_address`: V1 direct querier→frontend address, replaced by `frontend_worker.scheduler_address`.
 
 ### Implementation Details
 
@@ -166,7 +175,7 @@ The query-scheduler is stateless and can be deployed as a `Deployment`.
 
 #### Replicas
 
-Loki's current implementation sets the RF of the query-scheduler component to 2. The same applies to the operator except for `1x.demo` where RF is 1.
+To achieve high availability on the query path we will want to target running the query-scheduler component with 2 replicas.
 
 #### Query Flow
 
@@ -194,6 +203,6 @@ The query-scheduler exposes the following Prometheus metrics:
 1. Resource requirements for query-scheduler: this is the primary open question this spike is meant to answer. The query-scheduler holds an in-memory queue of pending sub-queries per tenant. Memory usage scales with `max_outstanding_requests_per_tenant × active_tenants`. CPU usage is expected to be low (mostly queue bookkeeping and gRPC plumbing).
 
    **Investigation plan**: run the PoC branch against a realistic load profile (matching each supported t-shirt size) and record peak CPU and memory consumption of the scheduler pod. Use those measurements to set `Requests` values and derive sensible `Limits`.
-2. `max_outstanding_requests_per_tenant` default: Loki's upstream default is 32,000. The operator uses this default unchanged. The right value for a given deployment depends on tenant count and query concurrency; it could be surfaced as a `LokiStack` spec field once resource profiles are established.
+2. `max_outstanding_requests_per_tenant` default: in V1, the operator sets `frontend.max_outstanding_per_tenant: 4096`. In V2, that field belongs to the V1 frontend struct and is silently ignored. The effective queue limit becomes `query_scheduler.max_outstanding_requests_per_tenant`, which defaults to 32,000 upstream, which is an 8x increase. A higher limit means the queue can grow much deeper before clients are rejected. This will cause far fewer rejections, meaning the queue can grow very deep before clients are told to back off. A deeply filled queue will cause longer query-response delays instead of rejections, and potential memory spikes in the scheduler.
 3. V1→V2 rollout impact: a rolling reconciliation is expected to be sufficient, but the upgrade path was not validated in this PoC. During the rollout, pending queries on pods being terminated will fail and require client-side retries.
 
