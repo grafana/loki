@@ -29,3 +29,22 @@ bitpack.UnpackInt32(unpacked, dst, bitWidth)
 ```
 
 For complete working examples, see the [examples](./examples) directory.
+
+## GOEXPERIMENT=simd
+
+When built with Go 1.26 and `GOEXPERIMENT=simd`, the amd64 unpacking kernels
+are implemented with the experimental
+[`simd/archsimd`](https://pkg.go.dev/simd/archsimd) package instead of the
+hand-written assembly. The algorithms are the same; the Go versions are
+maintainable, feature-gated by the compiler, and can be inlined and
+instrumented like regular Go code.
+
+```bash
+GOEXPERIMENT=simd GOAMD64=v3 go build ./...
+```
+
+The experiment must be enabled by the final consumer's build; without it (or
+on other architectures) the assembly and pure Go implementations are used,
+unchanged. Building with `GOAMD64=v3` (or `v4`) is recommended for the simd
+paths. Since the archsimd implementations are pure Go, they are also used
+when building with `-tags=purego` under the experiment.
