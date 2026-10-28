@@ -621,7 +621,7 @@ github.com/aws/smithy-go/traits
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
 github.com/aws/smithy-go/waiter
-# github.com/axiomhq/hyperloglog v0.2.6
+# github.com/axiomhq/hyperloglog v0.3.0
 ## explicit; go 1.23
 github.com/axiomhq/hyperloglog
 # github.com/bahlo/generic-list-go v0.2.0
