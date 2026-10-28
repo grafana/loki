@@ -64,6 +64,13 @@ message LogMerge {
   // Field 4 held the sort schema. Do not reuse it.
   reserved 4;
   reserved "sort_schema";
+  // key_range limits the merge to the streams in the range. A missing
+  // key_range means the full key space.
+  proto.KeyRange key_range = 5;
+  // input_bytes is the uncompressed size of the log records in key_range
+  // across the sections of runs, from the index stats. It is 0 if the size is
+  // unknown, and then the merge does not check the size of what it reads.
+  int64 input_bytes = 6;
 }
 
 // IndexFilter copies the postings and stats rows of the listed log objects

@@ -1161,6 +1161,14 @@ dataobj:
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
 
+    # Experimental: Maximum uncompressed input size of one LogMerge task. The
+    # planner splits a larger merge into tasks by stream sort prefix and never
+    # splits one sort prefix. A task exceeds the maximum in two cases: a sort
+    # prefix above it gets a task of its own, and the last task of a merge can
+    # take in a leftover of up to 10% of it. 0 disables the split.
+    # CLI flag: -dataobj.compaction.logs.max-task-size
+    [logs_max_task_size: <int> | default = 0B]
+
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout

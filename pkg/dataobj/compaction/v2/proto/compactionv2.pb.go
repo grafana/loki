@@ -180,6 +180,13 @@ func (m *RunRef) GetSections() []*SectionRef {
 type TaskSpec struct {
 	Tenant string    `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant"`
 	Runs   []*RunRef `protobuf:"bytes,2,rep,name=runs,proto3" json:"runs"`
+	// key_range limits the task to the streams in the range. A missing
+	// key_range means the full key space.
+	KeyRange *KeyRange `protobuf:"bytes,4,opt,name=key_range,json=keyRange,proto3" json:"key_range"`
+	// input_bytes is the uncompressed size of the log records in key_range
+	// across the sections of runs, from the index stats. It is 0 if the size is
+	// unknown.
+	InputBytes int64 `protobuf:"varint,5,opt,name=input_bytes,json=inputBytes,proto3" json:"input_bytes"`
 }
 
 func (m *TaskSpec) Reset()      { *m = TaskSpec{} }
@@ -228,10 +235,135 @@ func (m *TaskSpec) GetRuns() []*RunRef {
 	return nil
 }
 
+func (m *TaskSpec) GetKeyRange() *KeyRange {
+	if m != nil {
+		return m.KeyRange
+	}
+	return nil
+}
+
+func (m *TaskSpec) GetInputBytes() int64 {
+	if m != nil {
+		return m.InputBytes
+	}
+	return 0
+}
+
+// KeyRange is the half-open range [start, end) of stream sort prefixes. Both
+// bounds are required, and start must be below end. The full key space starts
+// at (shard_bucket 0, no schema values) and ends at (shard_bucket 65536, no
+// schema values), which is above the prefix of every stream.
+type KeyRange struct {
+	Start *KeyRangePrefix `protobuf:"bytes,1,opt,name=start,proto3" json:"start"`
+	End   *KeyRangePrefix `protobuf:"bytes,2,opt,name=end,proto3" json:"end"`
+}
+
+func (m *KeyRange) Reset()      { *m = KeyRange{} }
+func (*KeyRange) ProtoMessage() {}
+func (*KeyRange) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7f32d9e22d0d4ec3, []int{3}
+}
+func (m *KeyRange) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *KeyRange) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_KeyRange.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *KeyRange) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_KeyRange.Merge(m, src)
+}
+func (m *KeyRange) XXX_Size() int {
+	return m.Size()
+}
+func (m *KeyRange) XXX_DiscardUnknown() {
+	xxx_messageInfo_KeyRange.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_KeyRange proto.InternalMessageInfo
+
+func (m *KeyRange) GetStart() *KeyRangePrefix {
+	if m != nil {
+		return m.Start
+	}
+	return nil
+}
+
+func (m *KeyRange) GetEnd() *KeyRangePrefix {
+	if m != nil {
+		return m.End
+	}
+	return nil
+}
+
+// KeyRangePrefix is the (shard bucket, sort-schema label values) prefix of a
+// stream sort key. schema_values holds one value per sort-schema label, in
+// schema order.
+type KeyRangePrefix struct {
+	ShardBucket  uint32   `protobuf:"varint,1,opt,name=shard_bucket,json=shardBucket,proto3" json:"shard_bucket"`
+	SchemaValues []string `protobuf:"bytes,2,rep,name=schema_values,json=schemaValues,proto3" json:"schema_values"`
+}
+
+func (m *KeyRangePrefix) Reset()      { *m = KeyRangePrefix{} }
+func (*KeyRangePrefix) ProtoMessage() {}
+func (*KeyRangePrefix) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7f32d9e22d0d4ec3, []int{4}
+}
+func (m *KeyRangePrefix) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *KeyRangePrefix) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_KeyRangePrefix.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *KeyRangePrefix) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_KeyRangePrefix.Merge(m, src)
+}
+func (m *KeyRangePrefix) XXX_Size() int {
+	return m.Size()
+}
+func (m *KeyRangePrefix) XXX_DiscardUnknown() {
+	xxx_messageInfo_KeyRangePrefix.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_KeyRangePrefix proto.InternalMessageInfo
+
+func (m *KeyRangePrefix) GetShardBucket() uint32 {
+	if m != nil {
+		return m.ShardBucket
+	}
+	return 0
+}
+
+func (m *KeyRangePrefix) GetSchemaValues() []string {
+	if m != nil {
+		return m.SchemaValues
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*SectionRef)(nil), "proto.SectionRef")
 	proto.RegisterType((*RunRef)(nil), "proto.RunRef")
 	proto.RegisterType((*TaskSpec)(nil), "proto.TaskSpec")
+	proto.RegisterType((*KeyRange)(nil), "proto.KeyRange")
+	proto.RegisterType((*KeyRangePrefix)(nil), "proto.KeyRangePrefix")
 }
 
 func init() {
@@ -239,37 +371,47 @@ func init() {
 }
 
 var fileDescriptor_7f32d9e22d0d4ec3 = []byte{
-	// 476 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x92, 0xb1, 0x6e, 0xdb, 0x30,
-	0x10, 0x86, 0xc5, 0xd8, 0x51, 0x1c, 0xda, 0x46, 0x63, 0xa1, 0x05, 0x84, 0x0e, 0x94, 0x61, 0x74,
-	0x30, 0x50, 0xc0, 0x2a, 0x1c, 0x20, 0x43, 0xbb, 0x09, 0xe8, 0xd0, 0x76, 0x29, 0xe8, 0x4c, 0x5d,
-	0x0c, 0x5a, 0x66, 0x6c, 0xc6, 0x25, 0x29, 0x88, 0xb4, 0xa1, 0x64, 0xea, 0x23, 0xf4, 0x31, 0xfa,
-	0x28, 0x1d, 0x3d, 0x66, 0x12, 0x6a, 0x79, 0x29, 0x34, 0x65, 0xea, 0x5c, 0x88, 0x52, 0x62, 0x05,
-	0x1d, 0xba, 0xe8, 0x78, 0xff, 0xff, 0x7f, 0x20, 0x71, 0x27, 0x38, 0x8e, 0x56, 0x0b, 0x7f, 0x4e,
-	0x34, 0x91, 0xb3, 0x6b, 0x3f, 0x94, 0x3c, 0x22, 0xa1, 0x66, 0x52, 0xf8, 0x9b, 0xb1, 0x1f, 0xc5,
-	0x52, 0xcb, 0x9a, 0xb6, 0x19, 0x8f, 0x8c, 0xe4, 0x1c, 0x9b, 0xf2, 0xf2, 0xf9, 0x42, 0x2e, 0x64,
-	0x19, 0x2a, 0x4e, 0xa5, 0x39, 0xf8, 0x73, 0x04, 0xe1, 0x84, 0x1a, 0x00, 0xd3, 0x2b, 0xe7, 0x0d,
-	0x6c, 0xcb, 0xd9, 0x35, 0x0d, 0xf5, 0x34, 0x22, 0x7a, 0xe9, 0x82, 0x3e, 0x18, 0x9e, 0x06, 0xcf,
-	0xf2, 0xd4, 0xab, 0xcb, 0x18, 0x96, 0xcd, 0x67, 0xa2, 0x97, 0xce, 0x05, 0xec, 0xaa, 0x92, 0x9f,
-	0x32, 0x31, 0xa7, 0x89, 0x7b, 0xd4, 0x07, 0xc3, 0x46, 0xd0, 0xcb, 0x53, 0xef, 0xa9, 0x81, 0x3b,
-	0x55, 0xfb, 0xa1, 0xe8, 0x9c, 0x57, 0xf0, 0x84, 0x33, 0x31, 0x5d, 0xd1, 0x1b, 0xb7, 0xd1, 0x6f,
-	0x0c, 0x4f, 0x83, 0x76, 0x9e, 0x7a, 0x0f, 0x12, 0xb6, 0x39, 0x13, 0x9f, 0xe8, 0x8d, 0x49, 0x91,
-	0xc4, 0xa4, 0x9a, 0xb5, 0x54, 0x29, 0x61, 0x9b, 0x93, 0xa4, 0x48, 0x5d, 0xc0, 0x6e, 0x01, 0x6a,
-	0xc6, 0xa9, 0xd2, 0x84, 0x47, 0xee, 0xf1, 0xe1, 0x0d, 0x4f, 0x0c, 0xdc, 0xe1, 0x4c, 0x5c, 0x3e,
-	0x74, 0x86, 0x23, 0x49, 0x8d, 0xb3, 0x6b, 0x5c, 0xdd, 0xc0, 0x1d, 0x4e, 0x92, 0x03, 0x17, 0xc0,
-	0xde, 0x5a, 0x14, 0x93, 0x8e, 0xa9, 0x52, 0x74, 0x3e, 0x55, 0xec, 0x96, 0xba, 0x27, 0x86, 0x7d,
-	0x91, 0xa7, 0xde, 0xbf, 0x26, 0x3e, 0xab, 0x4b, 0x13, 0x76, 0x4b, 0x07, 0xef, 0xa1, 0x8d, 0xd7,
-	0x66, 0xe6, 0xef, 0x60, 0xab, 0x9a, 0x8c, 0x72, 0x41, 0xbf, 0x31, 0x6c, 0x8f, 0x7b, 0xe5, 0x72,
-	0x46, 0x87, 0xc5, 0x04, 0x9d, 0x3c, 0xf5, 0x1e, 0x63, 0xf8, 0xf1, 0x34, 0x10, 0xb0, 0x75, 0x49,
-	0xd4, 0x6a, 0x12, 0xd1, 0xd0, 0x19, 0x40, 0x5b, 0x53, 0x41, 0x84, 0xae, 0xf6, 0x06, 0xf3, 0xd4,
-	0xab, 0x14, 0x5c, 0x55, 0xe7, 0x35, 0x6c, 0xc6, 0x6b, 0xa1, 0xdc, 0x23, 0x73, 0x51, 0xb7, 0xba,
-	0xa8, 0x7c, 0x49, 0xd0, 0xca, 0x53, 0xcf, 0xd8, 0xd8, 0x7c, 0x3f, 0x36, 0x5b, 0x8d, 0xb3, 0x26,
-	0x6e, 0x2b, 0x19, 0xeb, 0xa9, 0x0a, 0x97, 0x94, 0x93, 0x20, 0xda, 0xee, 0x90, 0x75, 0xb7, 0x43,
-	0xd6, 0xfd, 0x0e, 0x81, 0x6f, 0x19, 0x02, 0x3f, 0x32, 0x04, 0x7e, 0x66, 0x08, 0x6c, 0x33, 0x04,
-	0x7e, 0x65, 0x08, 0xfc, 0xce, 0x90, 0x75, 0x9f, 0x21, 0xf0, 0x7d, 0x8f, 0xac, 0xed, 0x1e, 0x59,
-	0x77, 0x7b, 0x64, 0x7d, 0x79, 0xbb, 0x60, 0x7a, 0xb9, 0x9e, 0x8d, 0x42, 0xc9, 0xfd, 0x45, 0x4c,
-	0xae, 0x88, 0x20, 0xfe, 0x57, 0xb9, 0x62, 0xfe, 0xe6, 0xdc, 0xff, 0xcf, 0x1f, 0x3d, 0xb3, 0x4d,
-	0x39, 0xff, 0x3b, 0x00, 0xa2, 0xd1, 0x93, 0x22, 0xfb, 0x02, 0x00, 0x00,
+	// 634 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x54, 0x3f, 0x6b, 0xdb, 0x4c,
+	0x18, 0xf7, 0xd9, 0x8e, 0x63, 0x9f, 0xec, 0x37, 0x89, 0x78, 0x03, 0xa2, 0xc3, 0xc9, 0x98, 0x0e,
+	0x86, 0x42, 0x14, 0x1c, 0xc8, 0xd0, 0x6c, 0x82, 0x0e, 0x6d, 0x96, 0x70, 0x09, 0x1d, 0xba, 0x88,
+	0xb3, 0x7c, 0xb1, 0x15, 0x45, 0x27, 0xa1, 0x3b, 0x19, 0x39, 0x50, 0xe8, 0x47, 0xe8, 0xc7, 0xe8,
+	0x47, 0xe9, 0x98, 0x31, 0x4b, 0x45, 0xa3, 0x2c, 0x45, 0x53, 0xa6, 0xce, 0x45, 0x77, 0x4a, 0x2c,
+	0xb7, 0xd0, 0x2e, 0xba, 0xfb, 0xfd, 0xe3, 0x1e, 0x3d, 0x8f, 0x4e, 0x70, 0x12, 0xf9, 0x73, 0x6b,
+	0x46, 0x04, 0x09, 0xa7, 0x57, 0x96, 0x1b, 0x06, 0x11, 0x71, 0x85, 0x17, 0x32, 0x6b, 0x39, 0xb1,
+	0xa2, 0x38, 0x14, 0x61, 0x8d, 0x5b, 0x4e, 0x0e, 0x24, 0xa5, 0x6f, 0xc9, 0xe5, 0xc5, 0xff, 0xf3,
+	0x70, 0x1e, 0x2a, 0x53, 0xb9, 0x53, 0xe2, 0xe8, 0x67, 0x13, 0xc2, 0x73, 0x2a, 0x03, 0x98, 0x5e,
+	0xea, 0x87, 0x50, 0x0b, 0xa7, 0x57, 0xd4, 0x15, 0x4e, 0x44, 0xc4, 0xc2, 0x00, 0x43, 0x30, 0xee,
+	0xd9, 0x3b, 0x45, 0x66, 0xd6, 0x69, 0x0c, 0x15, 0x38, 0x23, 0x62, 0xa1, 0x1f, 0xc3, 0x01, 0x57,
+	0x79, 0xc7, 0x63, 0x33, 0x9a, 0x1a, 0xcd, 0x21, 0x18, 0xb7, 0xec, 0xbd, 0x22, 0x33, 0x37, 0x05,
+	0xdc, 0xaf, 0xe0, 0xdb, 0x12, 0xe9, 0x2f, 0xe1, 0x76, 0xe0, 0x31, 0xc7, 0xa7, 0x2b, 0xa3, 0x35,
+	0x6c, 0x8d, 0x7b, 0xb6, 0x56, 0x64, 0xe6, 0x13, 0x85, 0x3b, 0x81, 0xc7, 0x4e, 0xe9, 0x4a, 0xba,
+	0x48, 0x2a, 0x5d, 0xed, 0x9a, 0x4b, 0x51, 0xb8, 0x13, 0x90, 0xb4, 0x74, 0x1d, 0xc3, 0x41, 0x19,
+	0x14, 0x5e, 0x40, 0xb9, 0x20, 0x41, 0x64, 0x6c, 0xad, 0x6b, 0xd8, 0x10, 0x70, 0x3f, 0xf0, 0xd8,
+	0xc5, 0x13, 0x92, 0x39, 0x92, 0xd6, 0x72, 0x9d, 0x5a, 0xae, 0x2e, 0xe0, 0x7e, 0x40, 0xd2, 0x75,
+	0xce, 0x86, 0x7b, 0x09, 0x2b, 0x3b, 0x1d, 0x53, 0xce, 0xe9, 0xcc, 0xe1, 0xde, 0x0d, 0x35, 0xb6,
+	0x65, 0x76, 0xbf, 0xc8, 0xcc, 0x3f, 0x45, 0xbc, 0x5b, 0xa7, 0xce, 0xbd, 0x1b, 0x3a, 0x7a, 0x03,
+	0x3b, 0x38, 0x91, 0x3d, 0x3f, 0x81, 0xdd, 0xaa, 0x33, 0xdc, 0x00, 0xc3, 0xd6, 0x58, 0x9b, 0xec,
+	0xa9, 0xe1, 0x1c, 0xac, 0x07, 0x63, 0xf7, 0x8b, 0xcc, 0x7c, 0xb6, 0xe1, 0xe7, 0xdd, 0xe8, 0x1b,
+	0x80, 0xdd, 0x0b, 0xc2, 0xfd, 0xf3, 0x88, 0xba, 0xfa, 0x08, 0x76, 0x04, 0x65, 0x84, 0x89, 0x6a,
+	0x70, 0xb0, 0xc8, 0xcc, 0x8a, 0xc1, 0xd5, 0xaa, 0xbf, 0x82, 0xed, 0x38, 0x61, 0xdc, 0x68, 0xca,
+	0x93, 0x06, 0xd5, 0x49, 0xaa, 0x14, 0xbb, 0x5b, 0x64, 0xa6, 0x94, 0xb1, 0x7c, 0xea, 0x27, 0xb0,
+	0xe7, 0xd3, 0x95, 0x13, 0x13, 0x36, 0xa7, 0x46, 0x7b, 0x08, 0xc6, 0xda, 0x64, 0xa7, 0x4a, 0x9c,
+	0xd2, 0x15, 0x2e, 0x69, 0x7b, 0x50, 0x64, 0xe6, 0xda, 0x85, 0xbb, 0x7e, 0x25, 0x94, 0xdf, 0x92,
+	0xc7, 0xa2, 0x44, 0x38, 0xd3, 0x95, 0xa0, 0xbc, 0x9a, 0x89, 0xfc, 0x96, 0x6a, 0x34, 0x86, 0x12,
+	0xd8, 0xe5, 0xfe, 0x5d, 0xbb, 0xdb, 0xda, 0x6d, 0x63, 0x8d, 0x87, 0xb1, 0x70, 0xb8, 0xbb, 0xa0,
+	0x01, 0x19, 0x09, 0xd8, 0x7d, 0x3a, 0x49, 0x3f, 0x86, 0x5b, 0x5c, 0x90, 0x58, 0xbd, 0x9d, 0x36,
+	0xd9, 0xff, 0xad, 0x92, 0xb3, 0x98, 0x5e, 0x7a, 0xa9, 0xdd, 0x2b, 0x32, 0x53, 0xf9, 0xb0, 0x5a,
+	0xf4, 0x43, 0xd8, 0xa2, 0x6c, 0x66, 0x34, 0xff, 0x96, 0xda, 0x2e, 0x32, 0xb3, 0x74, 0xe1, 0xf2,
+	0x31, 0xfa, 0x08, 0xff, 0xdb, 0xd4, 0xf5, 0x23, 0xd8, 0xe7, 0x0b, 0x12, 0xcf, 0x9c, 0x69, 0xe2,
+	0xfa, 0x54, 0x95, 0x30, 0xb0, 0x77, 0x8b, 0xcc, 0xdc, 0xe0, 0xb1, 0x26, 0x91, 0x2d, 0x81, 0xbc,
+	0x1b, 0xf2, 0x35, 0x9c, 0x25, 0xb9, 0x4e, 0xa8, 0x6a, 0x7a, 0xaf, 0xba, 0x1b, 0x75, 0x01, 0xf7,
+	0x15, 0x7c, 0x2f, 0x91, 0x1d, 0xdd, 0xde, 0xa3, 0xc6, 0xdd, 0x3d, 0x6a, 0x3c, 0xde, 0x23, 0xf0,
+	0x29, 0x47, 0xe0, 0x4b, 0x8e, 0xc0, 0xd7, 0x1c, 0x81, 0xdb, 0x1c, 0x81, 0xef, 0x39, 0x02, 0x3f,
+	0x72, 0xd4, 0x78, 0xcc, 0x11, 0xf8, 0xfc, 0x80, 0x1a, 0xb7, 0x0f, 0xa8, 0x71, 0xf7, 0x80, 0x1a,
+	0x1f, 0x5e, 0xcf, 0x3d, 0xb1, 0x48, 0xa6, 0x07, 0x6e, 0x18, 0x58, 0xf3, 0x98, 0x5c, 0x12, 0x46,
+	0xac, 0xeb, 0xd0, 0xf7, 0xac, 0xe5, 0x91, 0xf5, 0x8f, 0xdf, 0xc6, 0xb4, 0x23, 0x97, 0xa3, 0x5f,
+	0x03, 0x00, 0x60, 0x5b, 0x58, 0x12, 0x60, 0x04, 0x00, 0x00,
 }
 
 func (this *SectionRef) Equal(that interface{}) bool {
@@ -383,6 +525,71 @@ func (this *TaskSpec) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if !this.KeyRange.Equal(that1.KeyRange) {
+		return false
+	}
+	if this.InputBytes != that1.InputBytes {
+		return false
+	}
+	return true
+}
+func (this *KeyRange) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*KeyRange)
+	if !ok {
+		that2, ok := that.(KeyRange)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Start.Equal(that1.Start) {
+		return false
+	}
+	if !this.End.Equal(that1.End) {
+		return false
+	}
+	return true
+}
+func (this *KeyRangePrefix) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*KeyRangePrefix)
+	if !ok {
+		that2, ok := that.(KeyRangePrefix)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ShardBucket != that1.ShardBucket {
+		return false
+	}
+	if len(this.SchemaValues) != len(that1.SchemaValues) {
+		return false
+	}
+	for i := range this.SchemaValues {
+		if this.SchemaValues[i] != that1.SchemaValues[i] {
+			return false
+		}
+	}
 	return true
 }
 func (this *SectionRef) GoString() string {
@@ -417,12 +624,42 @@ func (this *TaskSpec) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 8)
 	s = append(s, "&proto.TaskSpec{")
 	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
 	if this.Runs != nil {
 		s = append(s, "Runs: "+fmt.Sprintf("%#v", this.Runs)+",\n")
 	}
+	if this.KeyRange != nil {
+		s = append(s, "KeyRange: "+fmt.Sprintf("%#v", this.KeyRange)+",\n")
+	}
+	s = append(s, "InputBytes: "+fmt.Sprintf("%#v", this.InputBytes)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *KeyRange) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&proto.KeyRange{")
+	if this.Start != nil {
+		s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
+	}
+	if this.End != nil {
+		s = append(s, "End: "+fmt.Sprintf("%#v", this.End)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *KeyRangePrefix) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&proto.KeyRangePrefix{")
+	s = append(s, "ShardBucket: "+fmt.Sprintf("%#v", this.ShardBucket)+",\n")
+	s = append(s, "SchemaValues: "+fmt.Sprintf("%#v", this.SchemaValues)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -559,6 +796,23 @@ func (m *TaskSpec) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.InputBytes != 0 {
+		i = encodeVarintCompactionv2(dAtA, i, uint64(m.InputBytes))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.KeyRange != nil {
+		{
+			size, err := m.KeyRange.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintCompactionv2(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
 	if len(m.Runs) > 0 {
 		for iNdEx := len(m.Runs) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -579,6 +833,90 @@ func (m *TaskSpec) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintCompactionv2(dAtA, i, uint64(len(m.Tenant)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *KeyRange) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *KeyRange) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *KeyRange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.End != nil {
+		{
+			size, err := m.End.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintCompactionv2(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Start != nil {
+		{
+			size, err := m.Start.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintCompactionv2(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *KeyRangePrefix) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *KeyRangePrefix) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *KeyRangePrefix) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.SchemaValues) > 0 {
+		for iNdEx := len(m.SchemaValues) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.SchemaValues[iNdEx])
+			copy(dAtA[i:], m.SchemaValues[iNdEx])
+			i = encodeVarintCompactionv2(dAtA, i, uint64(len(m.SchemaValues[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if m.ShardBucket != 0 {
+		i = encodeVarintCompactionv2(dAtA, i, uint64(m.ShardBucket))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -662,6 +1000,48 @@ func (m *TaskSpec) Size() (n int) {
 			n += 1 + l + sovCompactionv2(uint64(l))
 		}
 	}
+	if m.KeyRange != nil {
+		l = m.KeyRange.Size()
+		n += 1 + l + sovCompactionv2(uint64(l))
+	}
+	if m.InputBytes != 0 {
+		n += 1 + sovCompactionv2(uint64(m.InputBytes))
+	}
+	return n
+}
+
+func (m *KeyRange) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Start != nil {
+		l = m.Start.Size()
+		n += 1 + l + sovCompactionv2(uint64(l))
+	}
+	if m.End != nil {
+		l = m.End.Size()
+		n += 1 + l + sovCompactionv2(uint64(l))
+	}
+	return n
+}
+
+func (m *KeyRangePrefix) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ShardBucket != 0 {
+		n += 1 + sovCompactionv2(uint64(m.ShardBucket))
+	}
+	if len(m.SchemaValues) > 0 {
+		for _, s := range m.SchemaValues {
+			l = len(s)
+			n += 1 + l + sovCompactionv2(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -714,6 +1094,30 @@ func (this *TaskSpec) String() string {
 	s := strings.Join([]string{`&TaskSpec{`,
 		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
 		`Runs:` + repeatedStringForRuns + `,`,
+		`KeyRange:` + strings.Replace(this.KeyRange.String(), "KeyRange", "KeyRange", 1) + `,`,
+		`InputBytes:` + fmt.Sprintf("%v", this.InputBytes) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *KeyRange) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&KeyRange{`,
+		`Start:` + strings.Replace(this.Start.String(), "KeyRangePrefix", "KeyRangePrefix", 1) + `,`,
+		`End:` + strings.Replace(this.End.String(), "KeyRangePrefix", "KeyRangePrefix", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *KeyRangePrefix) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&KeyRangePrefix{`,
+		`ShardBucket:` + fmt.Sprintf("%v", this.ShardBucket) + `,`,
+		`SchemaValues:` + fmt.Sprintf("%v", this.SchemaValues) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1132,6 +1536,290 @@ func (m *TaskSpec) Unmarshal(dAtA []byte) error {
 			if err := m.Runs[len(m.Runs)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KeyRange", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCompactionv2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.KeyRange == nil {
+				m.KeyRange = &KeyRange{}
+			}
+			if err := m.KeyRange.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InputBytes", wireType)
+			}
+			m.InputBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCompactionv2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.InputBytes |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipCompactionv2(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *KeyRange) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowCompactionv2
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: KeyRange: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: KeyRange: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Start", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCompactionv2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Start == nil {
+				m.Start = &KeyRangePrefix{}
+			}
+			if err := m.Start.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field End", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCompactionv2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.End == nil {
+				m.End = &KeyRangePrefix{}
+			}
+			if err := m.End.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipCompactionv2(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *KeyRangePrefix) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowCompactionv2
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: KeyRangePrefix: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: KeyRangePrefix: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardBucket", wireType)
+			}
+			m.ShardBucket = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCompactionv2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ShardBucket |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SchemaValues", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCompactionv2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SchemaValues = append(m.SchemaValues, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
