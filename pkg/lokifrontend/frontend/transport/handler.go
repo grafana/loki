@@ -79,7 +79,6 @@ func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
 }
 
-// Validate rejects a log_query_request_headers list that contains headers which carry credentials or session material.
 func (cfg *HandlerConfig) Validate() error {
 	var rejected []string
 	for _, h := range cfg.LogQueryRequestHeaders {
@@ -257,8 +256,6 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-// safeHeader is a request header that is not in the sensitive-header deny list.
-// Build it with newSafeHeader so the deny-list check cannot be bypassed.
 type safeHeader struct {
 	name   string // canonical header name, for example User-Agent
 	logKey string // log field name, for example header_user_agent
@@ -279,8 +276,6 @@ func isSensitiveHeaderName(name string) bool {
 	return slices.Contains(sensitiveHeaderNames, strings.ToLower(strings.TrimSpace(name)))
 }
 
-// safeHeadersToLog drops sensitive headers from headersToLog. Config validation
-// rejects them already; this keeps them out of the logs if validation is skipped.
 func safeHeadersToLog(headersToLog []string) (safeHeaders []safeHeader) {
 	for _, h := range headersToLog {
 		if s, ok := newSafeHeader(h); ok {
@@ -290,10 +285,6 @@ func safeHeadersToLog(headersToLog []string) (safeHeaders []safeHeader) {
 	return safeHeaders
 }
 
-// formatRequestHeaders returns the log fields for every header in headersToLog
-// that is present in the request. Values longer than maxLoggedHeaderValueLength
-// are truncated, and control and formatting characters are dropped so a client
-// cannot inject log lines.
 func formatRequestHeaders(h *http.Header, headersToLog []safeHeader) (fields []interface{}) {
 	for _, s := range headersToLog {
 		vv := (*h)[s.name]
