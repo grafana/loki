@@ -26,6 +26,17 @@ profile:
 test:
 	$(DRUN) go test $(LDFLAGS) ./ -run $(TEST) -timeout 10s $(ARGS) -v
 
+# Full test suite including the heavy iteration-count suites that the standard
+# `proof audit` skips (property-based, reference-oracle, fuzz-harness coverage).
+# Run this in the dedicated CI fuzz job or locally before a release.
+test-full:
+	go test ./... -count=1 -race -timeout 5m
+
+# Structure-aware JSON fuzzer (grammar-based, far faster than generic
+# libFuzzer for finding parser-specific defects). See json_fuzz_test.go.
+fuzz-json:
+	go test -run='^$$' -fuzz=FuzzJSONStructureAware -fuzztime=$(FUZZTIME) ./...
+
 fmt:
 	$(DRUN) go fmt ./...
 
