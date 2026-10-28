@@ -11,6 +11,7 @@ import (
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
 	routev1 "github.com/openshift/api/route/v1"
+	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -89,6 +90,7 @@ func TestMain(m *testing.M) {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(routev1.AddToScheme(scheme))
 	utilruntime.Must(lokiv1.AddToScheme(scheme))
+	utilruntime.Must(cloudcredentialv1.AddToScheme(scheme))
 
 	os.Exit(m.Run())
 }

@@ -2,20 +2,24 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/status"
 )
 
 func credentialsRequestFakeClient(cr *cloudcredentialv1.CredentialsRequest, lokistack *lokiv1.LokiStack) *k8sfakes.FakeClient {
@@ -24,14 +28,20 @@ func credentialsRequestFakeClient(cr *cloudcredentialv1.CredentialsRequest, loki
 		switch object.(type) {
 		case *cloudcredentialv1.CredentialsRequest:
 			if cr == nil {
-				return errors.NewNotFound(schema.GroupResource{}, name.Name)
+				return apierrors.NewNotFound(schema.GroupResource{}, name.Name)
 			}
 			k.SetClientObject(object, cr)
 		case *lokiv1.LokiStack:
 			if lokistack == nil {
-				return errors.NewNotFound(schema.GroupResource{}, name.Name)
+				return apierrors.NewNotFound(schema.GroupResource{}, name.Name)
 			}
 			k.SetClientObject(object, lokistack)
+		case *unstructured.Unstructured:
+			// Ownership check reads the existing CredentialsRequest as an unstructured object.
+			if cr == nil {
+				return apierrors.NewNotFound(schema.GroupResource{}, name.Name)
+			}
+			object.SetOwnerReferences(cr.GetOwnerReferences())
 		}
 		return nil
 	}
@@ -127,12 +137,23 @@ func TestCreateUpdateDeleteCredentialsRequest_Update_WhenCredentialsRequestExist
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "ns",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         lokiv1.GroupVersion.String(),
+					Kind:               "LokiStack",
+					Name:               "my-stack",
+					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			},
 		},
 	}
 	lokistack := &lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 	}
 
@@ -140,7 +161,7 @@ func TestCreateUpdateDeleteCredentialsRequest_Update_WhenCredentialsRequestExist
 
 	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, tokenCCOAuth, k, req)
 	require.NoError(t, err)
-	require.Equal(t, 2, k.GetCallCount())
+	require.Equal(t, 3, k.GetCallCount())
 	require.Equal(t, 0, k.CreateCallCount())
 	require.Equal(t, 1, k.UpdateCallCount())
 }
@@ -219,4 +240,54 @@ func TestCreateUpdateDeleteCredentialsRequest_DoNothing_WhenNotManagedMode(t *te
 	require.Equal(t, 0, k.CreateCallCount())
 	require.Equal(t, 0, k.UpdateCallCount())
 	require.Equal(t, 0, k.DeleteCallCount())
+}
+
+func TestCreateUpdateDeleteCredentialsRequest_WhenCredentialsRequestNotOwnedByLokiStack_ReturnsError(t *testing.T) {
+	req := ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
+	}
+
+	tokenCCOAuth := &config.TokenCCOAuthConfig{
+		AWS: &config.AWSEnvironment{
+			RoleARN: "a-role-arn",
+		},
+	}
+
+	cr := &cloudcredentialv1.CredentialsRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "ns",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "apps/v1",
+					Kind:               "Deployment",
+					Name:               "some-other-owner",
+					UID:                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			},
+		},
+	}
+	lokistack := &lokiv1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+	}
+
+	k := credentialsRequestFakeClient(cr, lokistack)
+
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, tokenCCOAuth, k, req)
+	require.Error(t, err)
+
+	var degradedErr *status.DegradedError
+	require.True(t, errors.As(err, &degradedErr), "Expected DegradedError")
+	require.Equal(t, lokiv1.ReasonResourceOwnershipConflict, degradedErr.Reason)
+	require.Contains(t, degradedErr.Message, "Resource ownership conflict detected")
+	require.Contains(t, degradedErr.Message, "CredentialsRequest/my-stack", "Error message should list conflicting resources")
+	require.True(t, degradedErr.Requeue, "Should requeue to allow user to fix the conflict")
+	require.Equal(t, 0, k.CreateCallCount())
+	require.Equal(t, 0, k.UpdateCallCount())
 }
