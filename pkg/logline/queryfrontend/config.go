@@ -51,6 +51,8 @@ type Config struct {
 	// hint cache. Only used when no external cache backend is configured.
 	// Defaults to 100 when zero.
 	HintCacheMaxSizeMB int64 `yaml:"hint_cache_max_size_mb"`
+	// AlignQueriesWithStep floors both ends of a range metric query onto the step
+	// before the splitter rounds the end up. Default false leaves only that rounding.
 	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
 }
 

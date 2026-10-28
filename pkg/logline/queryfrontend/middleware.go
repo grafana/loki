@@ -80,8 +80,8 @@ type hintPrefetchResult struct {
 	err            error
 	stats          *hintprovider.QueryStats
 	queryBytes     uint64
-	queryStart     time.Time     // original query start
-	queryEnd       time.Time     // original query end
+	queryStart     time.Time     // read window start
+	queryEnd       time.Time     // read window end
 	ingesterCutoff time.Time     // data after this is in ingester window only
 	minDate        time.Time     // data before this has no index coverage; zero if unknown
 	lookupDuration time.Duration // wall time of the lookup, set before done is closed
@@ -675,6 +675,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 	firstWindowEnd := readStart
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		// End of the oldest lookback. A log selector has a zero interval, so this stays at readStart.
 		firstWindowEnd = readStart.Add(groups[0].Interval)
 	}
 	eligibleEnd := readEnd
@@ -914,8 +915,6 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.next.Do(ctx, req)
 	}
 
-	qb := querybounds.GetQueryBounds(req, expr, h.alignQueriesWithStep)
-
 	if _, isMetric := expr.(syntax.SampleExpr); isMetric {
 		if mode != ModeDryRun || len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
 			return h.next.Do(ctx, req)
@@ -932,6 +931,8 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	if h.ngramLength > 0 && len(hintprovider.SupportedQuery(expr, h.ngramLength)) == 0 {
 		return h.nextWithOutcome(ctx, req, mode, outcomeUnsupportedQuery)
 	}
+
+	qb := querybounds.GetQueryBounds(req, expr, h.alignQueriesWithStep)
 
 	// Shared eligibility: stats-based byte threshold.
 	readStart := qb.ReadStart

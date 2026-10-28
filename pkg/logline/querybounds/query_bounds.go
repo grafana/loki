@@ -24,8 +24,6 @@ func GetQueryBounds(req queryrangebase.Request, expr syntax.Expr, alignQueriesWi
 	}
 }
 
-//------- Step 1: Align and round steps
-
 func alignStartEnd(req queryrangebase.Request, expr syntax.Expr, alignQueriesWithStep bool) (time.Time, time.Time) {
 	_, isRange := req.(*queryrange.LokiRequest)
 	_, isMetric := expr.(syntax.SampleExpr)
@@ -57,16 +55,12 @@ func alignMetricBounds(req queryrangebase.Request, alignQueriesWithStep bool) (t
 	return roundStep(start, end, step)
 }
 
-// If cfg.AlignQueriesWithStep = true, floor the
-// start and end to the nearest step
 func alignStep(start, end time.Time, step int64) (time.Time, time.Time) {
 	floorStart := (start.UnixMilli() / step) * step
 	floorEnd := (end.UnixMilli() / step) * step
 	return time.UnixMilli(floorStart), time.UnixMilli(floorEnd)
 }
 
-// Round the start down to the nearest step and the end up.
-// This mimics what the QF does with Loki queries in split_by_interval.
 func roundStep(start, end time.Time, step int64) (time.Time, time.Time) {
 	stepNs := step * 1e6
 	startNs := start.UnixNano()
@@ -79,8 +73,7 @@ func roundStep(start, end time.Time, step int64) (time.Time, time.Time) {
 	return time.Unix(0, startNs-startNs%stepNs), time.Unix(0, endNs)
 }
 
-//------- Step 2: Widen read range to account for step intervals
-
+// readBounds moves the bounds back by each group's range and offset and returns their union.
 func readBounds(expr syntax.Expr, start, end time.Time) (time.Time, time.Time) {
 	groups, err := syntax.MatcherGroups(expr)
 	if err != nil || len(groups) == 0 {
