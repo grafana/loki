@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"go/scanner"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -68,10 +69,10 @@ func usage() {
 	os.Exit(2)
 }
 
-func isGoFile(f os.FileInfo) bool {
+func isGoFile(d fs.DirEntry) bool {
 	// ignore non-Go files
-	name := f.Name()
-	return !f.IsDir() && !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".go")
+	name := d.Name()
+	return !d.IsDir() && !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".go")
 }
 
 // argumentType is which mode goimports was invoked as.
@@ -185,8 +186,8 @@ func processFile(filename string, in io.Reader, out io.Writer, argType argumentT
 	return err
 }
 
-func visitFile(path string, f os.FileInfo, err error) error {
-	if err == nil && isGoFile(f) {
+func visitFile(path string, d fs.DirEntry, err error) error {
+	if err == nil && isGoFile(d) {
 		err = processFile(path, nil, os.Stdout, multipleArg)
 	}
 	if err != nil {
@@ -196,7 +197,7 @@ func visitFile(path string, f os.FileInfo, err error) error {
 }
 
 func walkDir(path string) {
-	filepath.Walk(path, visitFile)
+	filepath.WalkDir(path, visitFile)
 }
 
 func main() {
