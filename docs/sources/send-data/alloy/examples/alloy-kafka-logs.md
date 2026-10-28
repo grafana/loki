@@ -103,7 +103,7 @@ In this step, we will set up our environment by cloning the repository that cont
     ✔ Container loki-fundamentals-kafka-1        Started
     ```
 
-We will be access two UI interfaces:
+We will access two UI interfaces:
 
 - Alloy at [http://localhost:12345](http://localhost:12345)
 - Grafana at [http://localhost:3000](http://localhost:3000)
@@ -253,8 +253,11 @@ Now add the following configuration to the `config.alloy` file:
 otelcol.receiver.kafka "default" {
   brokers          = ["kafka:9092"]
   protocol_version = "2.0.0"
-  topic           = "otlp"
-  encoding        = "otlp_proto"
+
+  logs {
+    topics   = ["otlp"]
+    encoding = "otlp_proto"
+  }
 
   output {
     logs    = [otelcol.processor.batch.default.input]
@@ -266,8 +269,7 @@ In this configuration:
 
 - `brokers`: The Kafka brokers to connect to.
 - `protocol_version`: The Kafka protocol version to use.
-- `topic`: The Kafka topic to consume. In this case, we are consuming the `otlp` topic.
-- `encoding`: The encoding of the incoming logs. Which decodes messages as OTLP protobuf.
+- `logs`: Configures how to receive logs from Kafka. The `topics` argument sets the Kafka topics to consume, in this case the `otlp` topic. The `encoding` sets the encoding of the incoming logs, which decodes messages as OTLP protobuf.
 - `output`: The list of receivers to forward the logs to. In this case, we are forwarding the logs to the `otelcol.processor.batch.default.input`.
 
 For more information on the `otelcol.receiver.kafka` configuration, see the [OpenTelemetry Receiver Kafka documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.kafka/).
@@ -338,7 +340,7 @@ curl -X POST http://localhost:12345/-/reload
 
 <!-- INTERACTIVE page step4.md START -->
 
-## Step 3: Start the Carnivorous Greenhouse
+## Step 4: Start the Carnivorous Greenhouse
 
 In this step, we will start the Carnivorous Greenhouse application. To start the application, run the following command:
 <!-- INTERACTIVE ignore START -->
