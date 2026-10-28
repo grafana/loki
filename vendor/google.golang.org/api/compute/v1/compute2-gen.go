@@ -169,21 +169,6 @@ func (c *AcceleratorTypesAggregatedListCall) PageToken(pageToken string) *Accele
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *AcceleratorTypesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *AcceleratorTypesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -224,7 +209,7 @@ func (c *AcceleratorTypesAggregatedListCall) Header() http.Header {
 }
 
 func (c *AcceleratorTypesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -361,7 +346,7 @@ func (c *AcceleratorTypesGetCall) Header() http.Header {
 }
 
 func (c *AcceleratorTypesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -559,21 +544,6 @@ func (c *AcceleratorTypesListCall) PageToken(pageToken string) *AcceleratorTypes
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *AcceleratorTypesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *AcceleratorTypesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -606,7 +576,7 @@ func (c *AcceleratorTypesListCall) Header() http.Header {
 }
 
 func (c *AcceleratorTypesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -841,21 +811,6 @@ func (c *AddressesAggregatedListCall) PageToken(pageToken string) *AddressesAggr
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *AddressesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *AddressesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -896,7 +851,7 @@ func (c *AddressesAggregatedListCall) Header() http.Header {
 }
 
 func (c *AddressesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -1046,7 +1001,7 @@ func (c *AddressesDeleteCall) Header() http.Header {
 }
 
 func (c *AddressesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/addresses/{address}")
@@ -1160,7 +1115,7 @@ func (c *AddressesGetCall) Header() http.Header {
 }
 
 func (c *AddressesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -1291,7 +1246,7 @@ func (c *AddressesInsertCall) Header() http.Header {
 }
 
 func (c *AddressesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.address)
 	if err != nil {
 		return nil, err
@@ -1487,21 +1442,6 @@ func (c *AddressesListCall) PageToken(pageToken string) *AddressesListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *AddressesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *AddressesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -1534,7 +1474,7 @@ func (c *AddressesListCall) Header() http.Header {
 }
 
 func (c *AddressesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -1686,7 +1626,7 @@ func (c *AddressesMoveCall) Header() http.Header {
 }
 
 func (c *AddressesMoveCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.regionaddressesmoverequest)
 	if err != nil {
 		return nil, err
@@ -1821,7 +1761,7 @@ func (c *AddressesSetLabelsCall) Header() http.Header {
 }
 
 func (c *AddressesSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.regionsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -1933,7 +1873,7 @@ func (c *AddressesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *AddressesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -2048,7 +1988,7 @@ func (c *AdviceCalendarModeCall) Header() http.Header {
 }
 
 func (c *AdviceCalendarModeCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.calendarmodeadvicerequest)
 	if err != nil {
 		return nil, err
@@ -2107,6 +2047,226 @@ func (c *AdviceCalendarModeCall) Do(opts ...googleapi.CallOption) (*CalendarMode
 		return nil, err
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.advice.calendarMode", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type AdviceCapacityCall struct {
+	s                     *Service
+	project               string
+	region                string
+	capacityadvicerequest *CapacityAdviceRequest
+	urlParams_            gensupport.URLParams
+	ctx_                  context.Context
+	header_               http.Header
+}
+
+// Capacity: Advice on making real-time decisions (such as choosing zone
+// or
+// machine types) during deployment to maximize your chances of
+// obtaining
+// capacity.
+//
+// - project: Project ID for this request.
+// - region: Name of the region for this request.
+func (r *AdviceService) Capacity(project string, region string, capacityadvicerequest *CapacityAdviceRequest) *AdviceCapacityCall {
+	c := &AdviceCapacityCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	c.capacityadvicerequest = capacityadvicerequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AdviceCapacityCall) Fields(s ...googleapi.Field) *AdviceCapacityCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AdviceCapacityCall) Context(ctx context.Context) *AdviceCapacityCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AdviceCapacityCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AdviceCapacityCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.capacityadvicerequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/advice/capacity")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project": c.project,
+		"region":  c.region,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.advice.capacity", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.advice.capacity" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *CapacityAdviceResponse.ServerResponse.Header or (if a response was returned
+// at all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *AdviceCapacityCall) Do(opts ...googleapi.CallOption) (*CapacityAdviceResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &CapacityAdviceResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.advice.capacity", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type AdviceCapacityHistoryCall struct {
+	s                      *Service
+	project                string
+	region                 string
+	capacityhistoryrequest *CapacityHistoryRequest
+	urlParams_             gensupport.URLParams
+	ctx_                   context.Context
+	header_                http.Header
+}
+
+// CapacityHistory: Gets the capacity history.
+//
+// - project: Project ID for this request.
+// - region: Name of the region for this request.
+func (r *AdviceService) CapacityHistory(project string, region string, capacityhistoryrequest *CapacityHistoryRequest) *AdviceCapacityHistoryCall {
+	c := &AdviceCapacityHistoryCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	c.capacityhistoryrequest = capacityhistoryrequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AdviceCapacityHistoryCall) Fields(s ...googleapi.Field) *AdviceCapacityHistoryCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AdviceCapacityHistoryCall) Context(ctx context.Context) *AdviceCapacityHistoryCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AdviceCapacityHistoryCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AdviceCapacityHistoryCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.capacityhistoryrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/advice/capacityHistory")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project": c.project,
+		"region":  c.region,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.advice.capacityHistory", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.advice.capacityHistory" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *CapacityHistoryResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *AdviceCapacityHistoryCall) Do(opts ...googleapi.CallOption) (*CapacityHistoryResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &CapacityHistoryResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.advice.capacityHistory", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -2263,21 +2423,6 @@ func (c *AutoscalersAggregatedListCall) PageToken(pageToken string) *Autoscalers
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *AutoscalersAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *AutoscalersAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -2318,7 +2463,7 @@ func (c *AutoscalersAggregatedListCall) Header() http.Header {
 }
 
 func (c *AutoscalersAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -2468,7 +2613,7 @@ func (c *AutoscalersDeleteCall) Header() http.Header {
 }
 
 func (c *AutoscalersDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/autoscalers/{autoscaler}")
@@ -2582,7 +2727,7 @@ func (c *AutoscalersGetCall) Header() http.Header {
 }
 
 func (c *AutoscalersGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -2713,7 +2858,7 @@ func (c *AutoscalersInsertCall) Header() http.Header {
 }
 
 func (c *AutoscalersInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.autoscaler)
 	if err != nil {
 		return nil, err
@@ -2909,21 +3054,6 @@ func (c *AutoscalersListCall) PageToken(pageToken string) *AutoscalersListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *AutoscalersListCall) ReturnPartialSuccess(returnPartialSuccess bool) *AutoscalersListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -2956,7 +3086,7 @@ func (c *AutoscalersListCall) Header() http.Header {
 }
 
 func (c *AutoscalersListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -3116,7 +3246,7 @@ func (c *AutoscalersPatchCall) Header() http.Header {
 }
 
 func (c *AutoscalersPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.autoscaler)
 	if err != nil {
 		return nil, err
@@ -3227,7 +3357,7 @@ func (c *AutoscalersTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *AutoscalersTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -3367,7 +3497,7 @@ func (c *AutoscalersUpdateCall) Header() http.Header {
 }
 
 func (c *AutoscalersUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.autoscaler)
 	if err != nil {
 		return nil, err
@@ -3501,7 +3631,7 @@ func (c *BackendBucketsAddSignedUrlKeyCall) Header() http.Header {
 }
 
 func (c *BackendBucketsAddSignedUrlKeyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.signedurlkey)
 	if err != nil {
 		return nil, err
@@ -3717,21 +3847,6 @@ func (c *BackendBucketsAggregatedListCall) PageToken(pageToken string) *BackendB
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *BackendBucketsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *BackendBucketsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -3772,7 +3887,7 @@ func (c *BackendBucketsAggregatedListCall) Header() http.Header {
 }
 
 func (c *BackendBucketsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -3919,7 +4034,7 @@ func (c *BackendBucketsDeleteCall) Header() http.Header {
 }
 
 func (c *BackendBucketsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/backendBuckets/{backendBucket}")
@@ -4049,7 +4164,7 @@ func (c *BackendBucketsDeleteSignedUrlKeyCall) Header() http.Header {
 }
 
 func (c *BackendBucketsDeleteSignedUrlKeyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/backendBuckets/{backendBucket}/deleteSignedUrlKey")
@@ -4159,7 +4274,7 @@ func (c *BackendBucketsGetCall) Header() http.Header {
 }
 
 func (c *BackendBucketsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -4281,7 +4396,7 @@ func (c *BackendBucketsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *BackendBucketsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -4407,7 +4522,7 @@ func (c *BackendBucketsInsertCall) Header() http.Header {
 }
 
 func (c *BackendBucketsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendbucket)
 	if err != nil {
 		return nil, err
@@ -4600,21 +4715,6 @@ func (c *BackendBucketsListCall) PageToken(pageToken string) *BackendBucketsList
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *BackendBucketsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *BackendBucketsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -4647,7 +4747,7 @@ func (c *BackendBucketsListCall) Header() http.Header {
 }
 
 func (c *BackendBucketsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -4860,21 +4960,6 @@ func (c *BackendBucketsListUsableCall) PageToken(pageToken string) *BackendBucke
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *BackendBucketsListUsableCall) ReturnPartialSuccess(returnPartialSuccess bool) *BackendBucketsListUsableCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -4907,7 +4992,7 @@ func (c *BackendBucketsListUsableCall) Header() http.Header {
 }
 
 func (c *BackendBucketsListUsableCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -5060,7 +5145,7 @@ func (c *BackendBucketsPatchCall) Header() http.Header {
 }
 
 func (c *BackendBucketsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendbucket)
 	if err != nil {
 		return nil, err
@@ -5193,7 +5278,7 @@ func (c *BackendBucketsSetEdgeSecurityPolicyCall) Header() http.Header {
 }
 
 func (c *BackendBucketsSetEdgeSecurityPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicyreference)
 	if err != nil {
 		return nil, err
@@ -5302,7 +5387,7 @@ func (c *BackendBucketsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *BackendBucketsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -5410,7 +5495,7 @@ func (c *BackendBucketsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *BackendBucketsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -5542,7 +5627,7 @@ func (c *BackendBucketsUpdateCall) Header() http.Header {
 }
 
 func (c *BackendBucketsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendbucket)
 	if err != nil {
 		return nil, err
@@ -5676,7 +5761,7 @@ func (c *BackendServicesAddSignedUrlKeyCall) Header() http.Header {
 }
 
 func (c *BackendServicesAddSignedUrlKeyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.signedurlkey)
 	if err != nil {
 		return nil, err
@@ -5892,21 +5977,6 @@ func (c *BackendServicesAggregatedListCall) PageToken(pageToken string) *Backend
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *BackendServicesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *BackendServicesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -5947,7 +6017,7 @@ func (c *BackendServicesAggregatedListCall) Header() http.Header {
 }
 
 func (c *BackendServicesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -6094,7 +6164,7 @@ func (c *BackendServicesDeleteCall) Header() http.Header {
 }
 
 func (c *BackendServicesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/backendServices/{backendService}")
@@ -6224,7 +6294,7 @@ func (c *BackendServicesDeleteSignedUrlKeyCall) Header() http.Header {
 }
 
 func (c *BackendServicesDeleteSignedUrlKeyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/backendServices/{backendService}/deleteSignedUrlKey")
@@ -6334,7 +6404,7 @@ func (c *BackendServicesGetCall) Header() http.Header {
 }
 
 func (c *BackendServicesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -6448,7 +6518,7 @@ func (c *BackendServicesGetEffectiveSecurityPoliciesCall) Header() http.Header {
 }
 
 func (c *BackendServicesGetEffectiveSecurityPoliciesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -6539,7 +6609,7 @@ func (c *BackendServicesGetHealthCall) Header() http.Header {
 }
 
 func (c *BackendServicesGetHealthCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.resourcegroupreference)
 	if err != nil {
 		return nil, err
@@ -6663,7 +6733,7 @@ func (c *BackendServicesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *BackendServicesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -6790,7 +6860,7 @@ func (c *BackendServicesInsertCall) Header() http.Header {
 }
 
 func (c *BackendServicesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendservice)
 	if err != nil {
 		return nil, err
@@ -6983,21 +7053,6 @@ func (c *BackendServicesListCall) PageToken(pageToken string) *BackendServicesLi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *BackendServicesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *BackendServicesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -7030,7 +7085,7 @@ func (c *BackendServicesListCall) Header() http.Header {
 }
 
 func (c *BackendServicesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -7247,21 +7302,6 @@ func (c *BackendServicesListUsableCall) PageToken(pageToken string) *BackendServ
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *BackendServicesListUsableCall) ReturnPartialSuccess(returnPartialSuccess bool) *BackendServicesListUsableCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -7294,7 +7334,7 @@ func (c *BackendServicesListUsableCall) Header() http.Header {
 }
 
 func (c *BackendServicesListUsableCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -7448,7 +7488,7 @@ func (c *BackendServicesPatchCall) Header() http.Header {
 }
 
 func (c *BackendServicesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendservice)
 	if err != nil {
 		return nil, err
@@ -7581,7 +7621,7 @@ func (c *BackendServicesSetEdgeSecurityPolicyCall) Header() http.Header {
 }
 
 func (c *BackendServicesSetEdgeSecurityPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicyreference)
 	if err != nil {
 		return nil, err
@@ -7690,7 +7730,7 @@ func (c *BackendServicesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *BackendServicesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -7825,7 +7865,7 @@ func (c *BackendServicesSetSecurityPolicyCall) Header() http.Header {
 }
 
 func (c *BackendServicesSetSecurityPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicyreference)
 	if err != nil {
 		return nil, err
@@ -7933,7 +7973,7 @@ func (c *BackendServicesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *BackendServicesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -8066,7 +8106,7 @@ func (c *BackendServicesUpdateCall) Header() http.Header {
 }
 
 func (c *BackendServicesUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendservice)
 	if err != nil {
 		return nil, err
@@ -8194,7 +8234,7 @@ func (c *CrossSiteNetworksDeleteCall) Header() http.Header {
 }
 
 func (c *CrossSiteNetworksDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}")
@@ -8304,7 +8344,7 @@ func (c *CrossSiteNetworksGetCall) Header() http.Header {
 }
 
 func (c *CrossSiteNetworksGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -8440,7 +8480,7 @@ func (c *CrossSiteNetworksInsertCall) Header() http.Header {
 }
 
 func (c *CrossSiteNetworksInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.crosssitenetwork)
 	if err != nil {
 		return nil, err
@@ -8631,21 +8671,6 @@ func (c *CrossSiteNetworksListCall) PageToken(pageToken string) *CrossSiteNetwor
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *CrossSiteNetworksListCall) ReturnPartialSuccess(returnPartialSuccess bool) *CrossSiteNetworksListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -8678,7 +8703,7 @@ func (c *CrossSiteNetworksListCall) Header() http.Header {
 }
 
 func (c *CrossSiteNetworksListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -8846,7 +8871,7 @@ func (c *CrossSiteNetworksPatchCall) Header() http.Header {
 }
 
 func (c *CrossSiteNetworksPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.crosssitenetwork)
 	if err != nil {
 		return nil, err
@@ -9060,21 +9085,6 @@ func (c *DiskTypesAggregatedListCall) PageToken(pageToken string) *DiskTypesAggr
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *DiskTypesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *DiskTypesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -9115,7 +9125,7 @@ func (c *DiskTypesAggregatedListCall) Header() http.Header {
 }
 
 func (c *DiskTypesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -9252,7 +9262,7 @@ func (c *DiskTypesGetCall) Header() http.Header {
 }
 
 func (c *DiskTypesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -9448,21 +9458,6 @@ func (c *DiskTypesListCall) PageToken(pageToken string) *DiskTypesListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *DiskTypesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *DiskTypesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -9495,7 +9490,7 @@ func (c *DiskTypesListCall) Header() http.Header {
 }
 
 func (c *DiskTypesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -9650,7 +9645,7 @@ func (c *DisksAddResourcePoliciesCall) Header() http.Header {
 }
 
 func (c *DisksAddResourcePoliciesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.disksaddresourcepoliciesrequest)
 	if err != nil {
 		return nil, err
@@ -9865,21 +9860,6 @@ func (c *DisksAggregatedListCall) PageToken(pageToken string) *DisksAggregatedLi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *DisksAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *DisksAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -9920,7 +9900,7 @@ func (c *DisksAggregatedListCall) Header() http.Header {
 }
 
 func (c *DisksAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -10069,7 +10049,7 @@ func (c *DisksBulkInsertCall) Header() http.Header {
 }
 
 func (c *DisksBulkInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bulkinsertdiskresource)
 	if err != nil {
 		return nil, err
@@ -10207,7 +10187,7 @@ func (c *DisksBulkSetLabelsCall) Header() http.Header {
 }
 
 func (c *DisksBulkSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bulkzonesetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -10352,7 +10332,7 @@ func (c *DisksCreateSnapshotCall) Header() http.Header {
 }
 
 func (c *DisksCreateSnapshotCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.snapshot)
 	if err != nil {
 		return nil, err
@@ -10488,7 +10468,7 @@ func (c *DisksDeleteCall) Header() http.Header {
 }
 
 func (c *DisksDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/disks/{disk}")
@@ -10602,7 +10582,7 @@ func (c *DisksGetCall) Header() http.Header {
 }
 
 func (c *DisksGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -10728,7 +10708,7 @@ func (c *DisksGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *DisksGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -10869,7 +10849,7 @@ func (c *DisksInsertCall) Header() http.Header {
 }
 
 func (c *DisksInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.disk)
 	if err != nil {
 		return nil, err
@@ -11065,21 +11045,6 @@ func (c *DisksListCall) PageToken(pageToken string) *DisksListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *DisksListCall) ReturnPartialSuccess(returnPartialSuccess bool) *DisksListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -11112,7 +11077,7 @@ func (c *DisksListCall) Header() http.Header {
 }
 
 func (c *DisksListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -11264,7 +11229,7 @@ func (c *DisksRemoveResourcePoliciesCall) Header() http.Header {
 }
 
 func (c *DisksRemoveResourcePoliciesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.disksremoveresourcepoliciesrequest)
 	if err != nil {
 		return nil, err
@@ -11398,7 +11363,7 @@ func (c *DisksResizeCall) Header() http.Header {
 }
 
 func (c *DisksResizeCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.disksresizerequest)
 	if err != nil {
 		return nil, err
@@ -11511,7 +11476,7 @@ func (c *DisksSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *DisksSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.zonesetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -11646,7 +11611,7 @@ func (c *DisksSetLabelsCall) Header() http.Header {
 }
 
 func (c *DisksSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.zonesetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -11780,7 +11745,7 @@ func (c *DisksStartAsyncReplicationCall) Header() http.Header {
 }
 
 func (c *DisksStartAsyncReplicationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.disksstartasyncreplicationrequest)
 	if err != nil {
 		return nil, err
@@ -11912,7 +11877,7 @@ func (c *DisksStopAsyncReplicationCall) Header() http.Header {
 }
 
 func (c *DisksStopAsyncReplicationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/disks/{disk}/stopAsyncReplication")
@@ -12043,7 +12008,7 @@ func (c *DisksStopGroupAsyncReplicationCall) Header() http.Header {
 }
 
 func (c *DisksStopGroupAsyncReplicationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.disksstopgroupasyncreplicationresource)
 	if err != nil {
 		return nil, err
@@ -12154,7 +12119,7 @@ func (c *DisksTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *DisksTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -12304,7 +12269,7 @@ func (c *DisksUpdateCall) Header() http.Header {
 }
 
 func (c *DisksUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.disk2)
 	if err != nil {
 		return nil, err
@@ -12438,7 +12403,7 @@ func (c *DisksUpdateKmsKeyCall) Header() http.Header {
 }
 
 func (c *DisksUpdateKmsKeyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.diskupdatekmskeyrequest)
 	if err != nil {
 		return nil, err
@@ -12566,7 +12531,7 @@ func (c *ExternalVpnGatewaysDeleteCall) Header() http.Header {
 }
 
 func (c *ExternalVpnGatewaysDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/externalVpnGateways/{externalVpnGateway}")
@@ -12678,7 +12643,7 @@ func (c *ExternalVpnGatewaysGetCall) Header() http.Header {
 }
 
 func (c *ExternalVpnGatewaysGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -12805,7 +12770,7 @@ func (c *ExternalVpnGatewaysInsertCall) Header() http.Header {
 }
 
 func (c *ExternalVpnGatewaysInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.externalvpngateway)
 	if err != nil {
 		return nil, err
@@ -12998,21 +12963,6 @@ func (c *ExternalVpnGatewaysListCall) PageToken(pageToken string) *ExternalVpnGa
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *ExternalVpnGatewaysListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ExternalVpnGatewaysListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -13045,7 +12995,7 @@ func (c *ExternalVpnGatewaysListCall) Header() http.Header {
 }
 
 func (c *ExternalVpnGatewaysListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -13175,7 +13125,7 @@ func (c *ExternalVpnGatewaysSetLabelsCall) Header() http.Header {
 }
 
 func (c *ExternalVpnGatewaysSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -13283,7 +13233,7 @@ func (c *ExternalVpnGatewaysTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *ExternalVpnGatewaysTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -13421,7 +13371,7 @@ func (c *FirewallPoliciesAddAssociationCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesAddAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicyassociation)
 	if err != nil {
 		return nil, err
@@ -13546,7 +13496,7 @@ func (c *FirewallPoliciesAddRuleCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesAddRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicyrule)
 	if err != nil {
 		return nil, err
@@ -13676,7 +13626,7 @@ func (c *FirewallPoliciesCloneRulesCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesCloneRulesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/firewallPolicies/{firewallPolicy}/cloneRules")
@@ -13795,7 +13745,7 @@ func (c *FirewallPoliciesDeleteCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/firewallPolicies/{firewallPolicy}")
@@ -13901,7 +13851,7 @@ func (c *FirewallPoliciesGetCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -14018,7 +13968,7 @@ func (c *FirewallPoliciesGetAssociationCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesGetAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -14137,7 +14087,7 @@ func (c *FirewallPoliciesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -14254,7 +14204,7 @@ func (c *FirewallPoliciesGetRuleCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesGetRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -14386,7 +14336,7 @@ func (c *FirewallPoliciesInsertCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicy)
 	if err != nil {
 		return nil, err
@@ -14581,21 +14531,6 @@ func (c *FirewallPoliciesListCall) ParentId(parentId string) *FirewallPoliciesLi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *FirewallPoliciesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *FirewallPoliciesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -14628,7 +14563,7 @@ func (c *FirewallPoliciesListCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -14772,7 +14707,7 @@ func (c *FirewallPoliciesListAssociationsCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesListAssociationsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -14902,7 +14837,7 @@ func (c *FirewallPoliciesMoveCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesMoveCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/firewallPolicies/{firewallPolicy}/move")
@@ -15023,7 +14958,7 @@ func (c *FirewallPoliciesPatchCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicy)
 	if err != nil {
 		return nil, err
@@ -15155,7 +15090,7 @@ func (c *FirewallPoliciesPatchRuleCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesPatchRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicyrule)
 	if err != nil {
 		return nil, err
@@ -15285,7 +15220,7 @@ func (c *FirewallPoliciesRemoveAssociationCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesRemoveAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/firewallPolicies/{firewallPolicy}/removeAssociation")
@@ -15411,7 +15346,7 @@ func (c *FirewallPoliciesRemoveRuleCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesRemoveRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/firewallPolicies/{firewallPolicy}/removeRule")
@@ -15512,7 +15447,7 @@ func (c *FirewallPoliciesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalorganizationsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -15616,7 +15551,7 @@ func (c *FirewallPoliciesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *FirewallPoliciesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -15743,7 +15678,7 @@ func (c *FirewallsDeleteCall) Header() http.Header {
 }
 
 func (c *FirewallsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/firewalls/{firewall}")
@@ -15853,7 +15788,7 @@ func (c *FirewallsGetCall) Header() http.Header {
 }
 
 func (c *FirewallsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -15980,7 +15915,7 @@ func (c *FirewallsInsertCall) Header() http.Header {
 }
 
 func (c *FirewallsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewall)
 	if err != nil {
 		return nil, err
@@ -16173,21 +16108,6 @@ func (c *FirewallsListCall) PageToken(pageToken string) *FirewallsListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *FirewallsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *FirewallsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -16220,7 +16140,7 @@ func (c *FirewallsListCall) Header() http.Header {
 }
 
 func (c *FirewallsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -16372,7 +16292,7 @@ func (c *FirewallsPatchCall) Header() http.Header {
 }
 
 func (c *FirewallsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewall2)
 	if err != nil {
 		return nil, err
@@ -16480,7 +16400,7 @@ func (c *FirewallsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *FirewallsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -16615,7 +16535,7 @@ func (c *FirewallsUpdateCall) Header() http.Header {
 }
 
 func (c *FirewallsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewall2)
 	if err != nil {
 		return nil, err
@@ -16829,21 +16749,6 @@ func (c *ForwardingRulesAggregatedListCall) PageToken(pageToken string) *Forward
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *ForwardingRulesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ForwardingRulesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -16884,7 +16789,7 @@ func (c *ForwardingRulesAggregatedListCall) Header() http.Header {
 }
 
 func (c *ForwardingRulesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -17034,7 +16939,7 @@ func (c *ForwardingRulesDeleteCall) Header() http.Header {
 }
 
 func (c *ForwardingRulesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/forwardingRules/{forwardingRule}")
@@ -17164,7 +17069,7 @@ func (c *ForwardingRulesGetCall) Header() http.Header {
 }
 
 func (c *ForwardingRulesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -17295,7 +17200,7 @@ func (c *ForwardingRulesInsertCall) Header() http.Header {
 }
 
 func (c *ForwardingRulesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.forwardingrule)
 	if err != nil {
 		return nil, err
@@ -17492,21 +17397,6 @@ func (c *ForwardingRulesListCall) PageToken(pageToken string) *ForwardingRulesLi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *ForwardingRulesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ForwardingRulesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -17539,7 +17429,7 @@ func (c *ForwardingRulesListCall) Header() http.Header {
 }
 
 func (c *ForwardingRulesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -17697,7 +17587,7 @@ func (c *ForwardingRulesPatchCall) Header() http.Header {
 }
 
 func (c *ForwardingRulesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.forwardingrule)
 	if err != nil {
 		return nil, err
@@ -17833,7 +17723,7 @@ func (c *ForwardingRulesSetLabelsCall) Header() http.Header {
 }
 
 func (c *ForwardingRulesSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.regionsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -17969,7 +17859,7 @@ func (c *ForwardingRulesSetTargetCall) Header() http.Header {
 }
 
 func (c *ForwardingRulesSetTargetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.targetreference)
 	if err != nil {
 		return nil, err
@@ -18184,21 +18074,6 @@ func (c *FutureReservationsAggregatedListCall) PageToken(pageToken string) *Futu
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *FutureReservationsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -18239,7 +18114,7 @@ func (c *FutureReservationsAggregatedListCall) Header() http.Header {
 }
 
 func (c *FutureReservationsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -18390,7 +18265,7 @@ func (c *FutureReservationsCancelCall) Header() http.Header {
 }
 
 func (c *FutureReservationsCancelCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/futureReservations/{futureReservation}/cancel")
@@ -18518,7 +18393,7 @@ func (c *FutureReservationsDeleteCall) Header() http.Header {
 }
 
 func (c *FutureReservationsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/futureReservations/{futureReservation}")
@@ -18633,7 +18508,7 @@ func (c *FutureReservationsGetCall) Header() http.Header {
 }
 
 func (c *FutureReservationsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -18763,7 +18638,7 @@ func (c *FutureReservationsInsertCall) Header() http.Header {
 }
 
 func (c *FutureReservationsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.futurereservation)
 	if err != nil {
 		return nil, err
@@ -18960,21 +18835,6 @@ func (c *FutureReservationsListCall) PageToken(pageToken string) *FutureReservat
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *FutureReservationsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *FutureReservationsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -19007,7 +18867,7 @@ func (c *FutureReservationsListCall) Header() http.Header {
 }
 
 func (c *FutureReservationsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -19168,7 +19028,7 @@ func (c *FutureReservationsUpdateCall) Header() http.Header {
 }
 
 func (c *FutureReservationsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.futurereservation)
 	if err != nil {
 		return nil, err
@@ -19296,7 +19156,7 @@ func (c *GlobalAddressesDeleteCall) Header() http.Header {
 }
 
 func (c *GlobalAddressesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/addresses/{address}")
@@ -19406,7 +19266,7 @@ func (c *GlobalAddressesGetCall) Header() http.Header {
 }
 
 func (c *GlobalAddressesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -19533,7 +19393,7 @@ func (c *GlobalAddressesInsertCall) Header() http.Header {
 }
 
 func (c *GlobalAddressesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.address)
 	if err != nil {
 		return nil, err
@@ -19724,21 +19584,6 @@ func (c *GlobalAddressesListCall) PageToken(pageToken string) *GlobalAddressesLi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalAddressesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalAddressesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -19771,7 +19616,7 @@ func (c *GlobalAddressesListCall) Header() http.Header {
 }
 
 func (c *GlobalAddressesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -19920,7 +19765,7 @@ func (c *GlobalAddressesMoveCall) Header() http.Header {
 }
 
 func (c *GlobalAddressesMoveCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globaladdressesmoverequest)
 	if err != nil {
 		return nil, err
@@ -20029,7 +19874,7 @@ func (c *GlobalAddressesSetLabelsCall) Header() http.Header {
 }
 
 func (c *GlobalAddressesSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -20137,7 +19982,7 @@ func (c *GlobalAddressesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *GlobalAddressesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -20265,7 +20110,7 @@ func (c *GlobalForwardingRulesDeleteCall) Header() http.Header {
 }
 
 func (c *GlobalForwardingRulesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/forwardingRules/{forwardingRule}")
@@ -20393,7 +20238,7 @@ func (c *GlobalForwardingRulesGetCall) Header() http.Header {
 }
 
 func (c *GlobalForwardingRulesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -20520,7 +20365,7 @@ func (c *GlobalForwardingRulesInsertCall) Header() http.Header {
 }
 
 func (c *GlobalForwardingRulesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.forwardingrule)
 	if err != nil {
 		return nil, err
@@ -20713,21 +20558,6 @@ func (c *GlobalForwardingRulesListCall) PageToken(pageToken string) *GlobalForwa
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalForwardingRulesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalForwardingRulesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -20760,7 +20590,7 @@ func (c *GlobalForwardingRulesListCall) Header() http.Header {
 }
 
 func (c *GlobalForwardingRulesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -20914,7 +20744,7 @@ func (c *GlobalForwardingRulesPatchCall) Header() http.Header {
 }
 
 func (c *GlobalForwardingRulesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.forwardingrule)
 	if err != nil {
 		return nil, err
@@ -21024,7 +20854,7 @@ func (c *GlobalForwardingRulesSetLabelsCall) Header() http.Header {
 }
 
 func (c *GlobalForwardingRulesSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -21156,7 +20986,7 @@ func (c *GlobalForwardingRulesSetTargetCall) Header() http.Header {
 }
 
 func (c *GlobalForwardingRulesSetTargetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.targetreference)
 	if err != nil {
 		return nil, err
@@ -21214,6 +21044,234 @@ func (c *GlobalForwardingRulesSetTargetCall) Do(opts ...googleapi.CallOption) (*
 		return nil, err
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.globalForwardingRules.setTarget", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type GlobalFrontendSettingsGetCall struct {
+	s            *Service
+	project      string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets the Global Frontend Billing Bundle Settings for a project.
+//
+// - project: Project ID for this request.
+func (r *GlobalFrontendSettingsService) Get(project string) *GlobalFrontendSettingsGetCall {
+	c := &GlobalFrontendSettingsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *GlobalFrontendSettingsGetCall) Fields(s ...googleapi.Field) *GlobalFrontendSettingsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *GlobalFrontendSettingsGetCall) IfNoneMatch(entityTag string) *GlobalFrontendSettingsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *GlobalFrontendSettingsGetCall) Context(ctx context.Context) *GlobalFrontendSettingsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *GlobalFrontendSettingsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *GlobalFrontendSettingsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/globalFrontendSettings")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project": c.project,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.globalFrontendSettings.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.globalFrontendSettings.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GlobalFrontendSettings.ServerResponse.Header or (if a response was returned
+// at all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *GlobalFrontendSettingsGetCall) Do(opts ...googleapi.CallOption) (*GlobalFrontendSettings, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GlobalFrontendSettings{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.globalFrontendSettings.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type GlobalFrontendSettingsPatchCall struct {
+	s                      *Service
+	project                string
+	globalfrontendsettings *GlobalFrontendSettings
+	urlParams_             gensupport.URLParams
+	ctx_                   context.Context
+	header_                http.Header
+}
+
+// Patch: Updates the Global Frontend Billing Bundle Settings for a project.
+//
+// - project: Project ID for this request.
+func (r *GlobalFrontendSettingsService) Patch(project string, globalfrontendsettings *GlobalFrontendSettings) *GlobalFrontendSettingsPatchCall {
+	c := &GlobalFrontendSettingsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.globalfrontendsettings = globalfrontendsettings
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests.
+func (c *GlobalFrontendSettingsPatchCall) RequestId(requestId string) *GlobalFrontendSettingsPatchCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// UpdateMask sets the optional parameter "updateMask": Field mask to support
+// patch. E.g., "type".
+func (c *GlobalFrontendSettingsPatchCall) UpdateMask(updateMask string) *GlobalFrontendSettingsPatchCall {
+	c.urlParams_.Set("updateMask", updateMask)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *GlobalFrontendSettingsPatchCall) Fields(s ...googleapi.Field) *GlobalFrontendSettingsPatchCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *GlobalFrontendSettingsPatchCall) Context(ctx context.Context) *GlobalFrontendSettingsPatchCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *GlobalFrontendSettingsPatchCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *GlobalFrontendSettingsPatchCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalfrontendsettings)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/globalFrontendSettings")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project": c.project,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.globalFrontendSettings.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.globalFrontendSettings.patch" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GlobalFrontendSettingsPatchResponse.ServerResponse.Header or (if a response
+// was returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *GlobalFrontendSettingsPatchCall) Do(opts ...googleapi.CallOption) (*GlobalFrontendSettingsPatchResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GlobalFrontendSettingsPatchResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.globalFrontendSettings.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -21289,7 +21347,7 @@ func (c *GlobalNetworkEndpointGroupsAttachNetworkEndpointsCall) Header() http.He
 }
 
 func (c *GlobalNetworkEndpointGroupsAttachNetworkEndpointsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalnetworkendpointgroupsattachendpointsrequest)
 	if err != nil {
 		return nil, err
@@ -21421,7 +21479,7 @@ func (c *GlobalNetworkEndpointGroupsDeleteCall) Header() http.Header {
 }
 
 func (c *GlobalNetworkEndpointGroupsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}")
@@ -21550,7 +21608,7 @@ func (c *GlobalNetworkEndpointGroupsDetachNetworkEndpointsCall) Header() http.He
 }
 
 func (c *GlobalNetworkEndpointGroupsDetachNetworkEndpointsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalnetworkendpointgroupsdetachendpointsrequest)
 	if err != nil {
 		return nil, err
@@ -21665,7 +21723,7 @@ func (c *GlobalNetworkEndpointGroupsGetCall) Header() http.Header {
 }
 
 func (c *GlobalNetworkEndpointGroupsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -21807,7 +21865,7 @@ func (c *GlobalNetworkEndpointGroupsInsertCall) Header() http.Header {
 }
 
 func (c *GlobalNetworkEndpointGroupsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkendpointgroup)
 	if err != nil {
 		return nil, err
@@ -22000,21 +22058,6 @@ func (c *GlobalNetworkEndpointGroupsListCall) PageToken(pageToken string) *Globa
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalNetworkEndpointGroupsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalNetworkEndpointGroupsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -22047,7 +22090,7 @@ func (c *GlobalNetworkEndpointGroupsListCall) Header() http.Header {
 }
 
 func (c *GlobalNetworkEndpointGroupsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -22264,21 +22307,6 @@ func (c *GlobalNetworkEndpointGroupsListNetworkEndpointsCall) PageToken(pageToke
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalNetworkEndpointGroupsListNetworkEndpointsCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalNetworkEndpointGroupsListNetworkEndpointsCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -22303,7 +22331,7 @@ func (c *GlobalNetworkEndpointGroupsListNetworkEndpointsCall) Header() http.Head
 }
 
 func (c *GlobalNetworkEndpointGroupsListNetworkEndpointsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}/listNetworkEndpoints")
@@ -22535,21 +22563,6 @@ func (c *GlobalOperationsAggregatedListCall) PageToken(pageToken string) *Global
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalOperationsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalOperationsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -22590,7 +22603,7 @@ func (c *GlobalOperationsAggregatedListCall) Header() http.Header {
 }
 
 func (c *GlobalOperationsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -22718,7 +22731,7 @@ func (c *GlobalOperationsDeleteCall) Header() http.Header {
 }
 
 func (c *GlobalOperationsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/operations/{operation}")
@@ -22807,7 +22820,7 @@ func (c *GlobalOperationsGetCall) Header() http.Header {
 }
 
 func (c *GlobalOperationsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -23000,21 +23013,6 @@ func (c *GlobalOperationsListCall) PageToken(pageToken string) *GlobalOperations
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalOperationsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalOperationsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -23047,7 +23045,7 @@ func (c *GlobalOperationsListCall) Header() http.Header {
 }
 
 func (c *GlobalOperationsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -23196,7 +23194,7 @@ func (c *GlobalOperationsWaitCall) Header() http.Header {
 }
 
 func (c *GlobalOperationsWaitCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/operations/{operation}/wait")
@@ -23303,7 +23301,7 @@ func (c *GlobalOrganizationOperationsDeleteCall) Header() http.Header {
 }
 
 func (c *GlobalOrganizationOperationsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/operations/{operation}")
@@ -23397,7 +23395,7 @@ func (c *GlobalOrganizationOperationsGetCall) Header() http.Header {
 }
 
 func (c *GlobalOrganizationOperationsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -23591,21 +23589,6 @@ func (c *GlobalOrganizationOperationsListCall) ParentId(parentId string) *Global
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalOrganizationOperationsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalOrganizationOperationsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -23638,7 +23621,7 @@ func (c *GlobalOrganizationOperationsListCall) Header() http.Header {
 }
 
 func (c *GlobalOrganizationOperationsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -23782,7 +23765,7 @@ func (c *GlobalPublicDelegatedPrefixesDeleteCall) Header() http.Header {
 }
 
 func (c *GlobalPublicDelegatedPrefixesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/publicDelegatedPrefixes/{publicDelegatedPrefix}")
@@ -23893,7 +23876,7 @@ func (c *GlobalPublicDelegatedPrefixesGetCall) Header() http.Header {
 }
 
 func (c *GlobalPublicDelegatedPrefixesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -24021,7 +24004,7 @@ func (c *GlobalPublicDelegatedPrefixesInsertCall) Header() http.Header {
 }
 
 func (c *GlobalPublicDelegatedPrefixesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.publicdelegatedprefix)
 	if err != nil {
 		return nil, err
@@ -24212,21 +24195,6 @@ func (c *GlobalPublicDelegatedPrefixesListCall) PageToken(pageToken string) *Glo
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalPublicDelegatedPrefixesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalPublicDelegatedPrefixesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -24259,7 +24227,7 @@ func (c *GlobalPublicDelegatedPrefixesListCall) Header() http.Header {
 }
 
 func (c *GlobalPublicDelegatedPrefixesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -24413,7 +24381,7 @@ func (c *GlobalPublicDelegatedPrefixesPatchCall) Header() http.Header {
 }
 
 func (c *GlobalPublicDelegatedPrefixesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.publicdelegatedprefix)
 	if err != nil {
 		return nil, err
@@ -24628,21 +24596,6 @@ func (c *GlobalVmExtensionPoliciesAggregatedListCall) PageToken(pageToken string
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalVmExtensionPoliciesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalVmExtensionPoliciesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -24683,7 +24636,7 @@ func (c *GlobalVmExtensionPoliciesAggregatedListCall) Header() http.Header {
 }
 
 func (c *GlobalVmExtensionPoliciesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -24842,7 +24795,7 @@ func (c *GlobalVmExtensionPoliciesDeleteCall) Header() http.Header {
 }
 
 func (c *GlobalVmExtensionPoliciesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalvmextensionpolicyrolloutoperationrolloutinput)
 	if err != nil {
 		return nil, err
@@ -24957,7 +24910,7 @@ func (c *GlobalVmExtensionPoliciesGetCall) Header() http.Header {
 }
 
 func (c *GlobalVmExtensionPoliciesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -25083,7 +25036,7 @@ func (c *GlobalVmExtensionPoliciesInsertCall) Header() http.Header {
 }
 
 func (c *GlobalVmExtensionPoliciesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalvmextensionpolicy)
 	if err != nil {
 		return nil, err
@@ -25274,21 +25227,6 @@ func (c *GlobalVmExtensionPoliciesListCall) PageToken(pageToken string) *GlobalV
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *GlobalVmExtensionPoliciesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *GlobalVmExtensionPoliciesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -25321,7 +25259,7 @@ func (c *GlobalVmExtensionPoliciesListCall) Header() http.Header {
 }
 
 func (c *GlobalVmExtensionPoliciesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -25470,7 +25408,7 @@ func (c *GlobalVmExtensionPoliciesUpdateCall) Header() http.Header {
 }
 
 func (c *GlobalVmExtensionPoliciesUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalvmextensionpolicy)
 	if err != nil {
 		return nil, err
@@ -25686,21 +25624,6 @@ func (c *HealthChecksAggregatedListCall) PageToken(pageToken string) *HealthChec
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *HealthChecksAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *HealthChecksAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -25741,7 +25664,7 @@ func (c *HealthChecksAggregatedListCall) Header() http.Header {
 }
 
 func (c *HealthChecksAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -25888,7 +25811,7 @@ func (c *HealthChecksDeleteCall) Header() http.Header {
 }
 
 func (c *HealthChecksDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/healthChecks/{healthCheck}")
@@ -25998,7 +25921,7 @@ func (c *HealthChecksGetCall) Header() http.Header {
 }
 
 func (c *HealthChecksGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -26125,7 +26048,7 @@ func (c *HealthChecksInsertCall) Header() http.Header {
 }
 
 func (c *HealthChecksInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.healthcheck)
 	if err != nil {
 		return nil, err
@@ -26318,21 +26241,6 @@ func (c *HealthChecksListCall) PageToken(pageToken string) *HealthChecksListCall
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *HealthChecksListCall) ReturnPartialSuccess(returnPartialSuccess bool) *HealthChecksListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -26365,7 +26273,7 @@ func (c *HealthChecksListCall) Header() http.Header {
 }
 
 func (c *HealthChecksListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -26518,7 +26426,7 @@ func (c *HealthChecksPatchCall) Header() http.Header {
 }
 
 func (c *HealthChecksPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.healthcheck)
 	if err != nil {
 		return nil, err
@@ -26626,7 +26534,7 @@ func (c *HealthChecksTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *HealthChecksTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -26758,7 +26666,7 @@ func (c *HealthChecksUpdateCall) Header() http.Header {
 }
 
 func (c *HealthChecksUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.healthcheck)
 	if err != nil {
 		return nil, err
@@ -26817,6 +26725,528 @@ func (c *HealthChecksUpdateCall) Do(opts ...googleapi.CallOption) (*Operation, e
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.healthChecks.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
+}
+
+type HostsGetCall struct {
+	s            *Service
+	project      string
+	zone         string
+	association  string
+	host         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Retrieves information about the specified host.
+//
+//   - association: The parent resource association for the Host. This field
+//     specifies the
+//     hierarchical context (e.g., reservation, block, sub-block) when
+//     accessing the host. For example,
+//     reservations/reservation_name,
+//     reservations/reservation_name/reservationBlocks/reservation_block_name
+//     or
+//     reservations/reservation_name/reservationBlocks/reservation_block_name/rese
+//     rvationSubBlocks/reservation_sub_block_name.
+//   - host: The name of the host, formatted as RFC1035 or a resource ID
+//
+// number.
+// - project: The project ID for this request.
+// - zone: The name of the zone for this request, formatted as RFC1035.
+func (r *HostsService) Get(project string, zone string, association string, host string) *HostsGetCall {
+	c := &HostsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.zone = zone
+	c.association = association
+	c.host = host
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *HostsGetCall) Fields(s ...googleapi.Field) *HostsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *HostsGetCall) IfNoneMatch(entityTag string) *HostsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *HostsGetCall) Context(ctx context.Context) *HostsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *HostsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *HostsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/{association}/hosts/{host}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":     c.project,
+		"zone":        c.zone,
+		"association": c.association,
+		"host":        c.host,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.hosts.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.hosts.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Host.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *HostsGetCall) Do(opts ...googleapi.CallOption) (*Host, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Host{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.hosts.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type HostsGetVersionCall struct {
+	s                      *Service
+	project                string
+	zone                   string
+	association            string
+	host                   string
+	hostsgetversionrequest *HostsGetVersionRequest
+	urlParams_             gensupport.URLParams
+	ctx_                   context.Context
+	header_                http.Header
+}
+
+// GetVersion: Allows customers to get SBOM versions of a host.
+//
+//   - association: The parent resource association for the Host. This field
+//     specifies the
+//     hierarchical context (e.g., reservation, block, sub-block) when
+//     accessing the host.
+//   - host: The name of the host, formatted as RFC1035 or a resource ID
+//
+// number.
+//   - project: Project ID for this request.
+//   - zone: Name of the zone for this request. Zone name should conform to
+//     RFC1035.
+func (r *HostsService) GetVersion(project string, zone string, association string, host string, hostsgetversionrequest *HostsGetVersionRequest) *HostsGetVersionCall {
+	c := &HostsGetVersionCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.zone = zone
+	c.association = association
+	c.host = host
+	c.hostsgetversionrequest = hostsgetversionrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so
+// that if you must retry your request, the server will know to ignore
+// the
+// request if it has already been completed.
+func (c *HostsGetVersionCall) RequestId(requestId string) *HostsGetVersionCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *HostsGetVersionCall) Fields(s ...googleapi.Field) *HostsGetVersionCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *HostsGetVersionCall) Context(ctx context.Context) *HostsGetVersionCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *HostsGetVersionCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *HostsGetVersionCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.hostsgetversionrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/{association}/hosts/{host}/getVersion")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":     c.project,
+		"zone":        c.zone,
+		"association": c.association,
+		"host":        c.host,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.hosts.getVersion", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.hosts.getVersion" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *HostsGetVersionCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.hosts.getVersion", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type HostsListCall struct {
+	s            *Service
+	project      string
+	zone         string
+	association  string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Retrieves a list of hosts.
+//
+//   - association: The parent resource association for the Host. This field
+//     specifies the
+//     hierarchical context (e.g., reservation, block, sub-block) when
+//     accessing the host. For example,
+//     reservations/reservation_name,
+//     reservations/reservation_name/reservationBlocks/reservation_block_name
+//     or
+//     reservations/reservation_name/reservationBlocks/reservation_block_name/rese
+//     rvationSubBlocks/reservation_sub_block_name.
+//   - project: The project ID for this request.
+//   - zone: The name of the zone for this request, formatted as RFC1035.
+func (r *HostsService) List(project string, zone string, association string) *HostsListCall {
+	c := &HostsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.zone = zone
+	c.association = association
+	return c
+}
+
+// Filter sets the optional parameter "filter": A filter expression that
+// filters resources listed in the response. Most
+// Compute resources support two types of filter expressions:
+// expressions that support regular expressions and expressions that follow
+// API improvement proposal AIP-160.
+// These two types of filter expressions cannot be mixed in one request.
+//
+// If you want to use AIP-160, your expression must specify the field name,
+// an
+// operator, and the value that you want to use for filtering. The value
+// must be a string, a number, or a boolean. The operator
+// must be either `=`, `!=`, `>`, `<`, `<=`, `>=` or `:`.
+//
+// For example, if you are filtering Compute Engine instances, you can
+// exclude instances named `example-instance` by specifying
+// `name != example-instance`.
+//
+// The `:*` comparison can be used to test whether a key has been defined.
+// For example, to find all objects with `owner` label
+// use:
+// ```
+// labels.owner:*
+// ```
+//
+// You can also filter nested fields. For example, you could
+// specify
+// `scheduling.automaticRestart = false` to include instances only
+// if they are not scheduled for automatic restarts. You can use filtering
+// on nested fields to filter based onresource labels.
+//
+// To filter on multiple expressions, provide each separate expression
+// within
+// parentheses. For example:
+// ```
+// (scheduling.automaticRestart = true)
+// (cpuPlatform = "Intel Skylake")
+// ```
+// By default, each expression is an `AND` expression. However, you
+// can include `AND` and `OR` expressions explicitly.
+// For example:
+// ```
+// (cpuPlatform = "Intel Skylake") OR
+// (cpuPlatform = "Intel Broadwell") AND
+// (scheduling.automaticRestart = true)
+// ```
+//
+// If you want to use a regular expression, use the `eq` (equal) or `ne`
+// (not equal) operator against a single un-parenthesized expression with
+// or
+// without quotes or against multiple parenthesized expressions.
+// Examples:
+//
+// `fieldname eq unquoted literal`
+// `fieldname eq 'single quoted literal'`
+// `fieldname eq "double quoted literal"
+// `(fieldname1 eq literal) (fieldname2 ne "literal")`
+//
+// The literal value is interpreted as a regular expression using GoogleRE2
+// library syntax.
+// The literal value must match the entire field.
+//
+// For example, to filter for instances that do not end with name
+// "instance",
+// you would use `name ne .*instance`.
+//
+// You cannot combine constraints on multiple fields using regular
+// expressions.
+func (c *HostsListCall) Filter(filter string) *HostsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// MaxResults sets the optional parameter "maxResults": The maximum number of
+// results per page that should be returned.
+// If the number of available results is larger than `maxResults`,
+// Compute Engine returns a `nextPageToken` that can be used to get
+// the next page of results in subsequent list requests. Acceptable values
+// are
+// `0` to `500`, inclusive. (Default: `500`)
+func (c *HostsListCall) MaxResults(maxResults int64) *HostsListCall {
+	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
+	return c
+}
+
+// OrderBy sets the optional parameter "orderBy": Sorts list results by a
+// certain order. By default, results
+// are returned in alphanumerical order based on the resource name.
+//
+// You can also sort results in descending order based on the
+// creation
+// timestamp using `orderBy="creationTimestamp desc". This sorts
+// results based on the `creationTimestamp` field in
+// reverse chronological order (newest result first). Use this to
+// sort
+// resources like operations so that the newest operation is returned
+// first.
+//
+// Currently, only sorting by `name` or
+// `creationTimestamp desc` is supported.
+func (c *HostsListCall) OrderBy(orderBy string) *HostsListCall {
+	c.urlParams_.Set("orderBy", orderBy)
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": Specifies a page token to
+// use. Set `pageToken` to the
+// `nextPageToken` returned by a previous list request to get
+// the next page of results.
+func (c *HostsListCall) PageToken(pageToken string) *HostsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *HostsListCall) Fields(s ...googleapi.Field) *HostsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *HostsListCall) IfNoneMatch(entityTag string) *HostsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *HostsListCall) Context(ctx context.Context) *HostsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *HostsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *HostsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/{association}/hosts")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":     c.project,
+		"zone":        c.zone,
+		"association": c.association,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.hosts.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.hosts.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *HostsListResponse.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *HostsListCall) Do(opts ...googleapi.CallOption) (*HostsListResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &HostsListResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.hosts.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *HostsListCall) Pages(ctx context.Context, f func(*HostsListResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
 }
 
 type HttpHealthChecksDeleteCall struct {
@@ -26885,7 +27315,7 @@ func (c *HttpHealthChecksDeleteCall) Header() http.Header {
 }
 
 func (c *HttpHealthChecksDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/httpHealthChecks/{httpHealthCheck}")
@@ -26995,7 +27425,7 @@ func (c *HttpHealthChecksGetCall) Header() http.Header {
 }
 
 func (c *HttpHealthChecksGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -27123,7 +27553,7 @@ func (c *HttpHealthChecksInsertCall) Header() http.Header {
 }
 
 func (c *HttpHealthChecksInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.httphealthcheck)
 	if err != nil {
 		return nil, err
@@ -27316,21 +27746,6 @@ func (c *HttpHealthChecksListCall) PageToken(pageToken string) *HttpHealthChecks
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *HttpHealthChecksListCall) ReturnPartialSuccess(returnPartialSuccess bool) *HttpHealthChecksListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -27363,7 +27778,7 @@ func (c *HttpHealthChecksListCall) Header() http.Header {
 }
 
 func (c *HttpHealthChecksListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -27516,7 +27931,7 @@ func (c *HttpHealthChecksPatchCall) Header() http.Header {
 }
 
 func (c *HttpHealthChecksPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.httphealthcheck)
 	if err != nil {
 		return nil, err
@@ -27624,7 +28039,7 @@ func (c *HttpHealthChecksTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *HttpHealthChecksTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -27756,7 +28171,7 @@ func (c *HttpHealthChecksUpdateCall) Header() http.Header {
 }
 
 func (c *HttpHealthChecksUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.httphealthcheck)
 	if err != nil {
 		return nil, err
@@ -27883,7 +28298,7 @@ func (c *HttpsHealthChecksDeleteCall) Header() http.Header {
 }
 
 func (c *HttpsHealthChecksDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}")
@@ -27993,7 +28408,7 @@ func (c *HttpsHealthChecksGetCall) Header() http.Header {
 }
 
 func (c *HttpsHealthChecksGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -28121,7 +28536,7 @@ func (c *HttpsHealthChecksInsertCall) Header() http.Header {
 }
 
 func (c *HttpsHealthChecksInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.httpshealthcheck)
 	if err != nil {
 		return nil, err
@@ -28314,21 +28729,6 @@ func (c *HttpsHealthChecksListCall) PageToken(pageToken string) *HttpsHealthChec
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *HttpsHealthChecksListCall) ReturnPartialSuccess(returnPartialSuccess bool) *HttpsHealthChecksListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -28361,7 +28761,7 @@ func (c *HttpsHealthChecksListCall) Header() http.Header {
 }
 
 func (c *HttpsHealthChecksListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -28514,7 +28914,7 @@ func (c *HttpsHealthChecksPatchCall) Header() http.Header {
 }
 
 func (c *HttpsHealthChecksPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.httpshealthcheck)
 	if err != nil {
 		return nil, err
@@ -28622,7 +29022,7 @@ func (c *HttpsHealthChecksTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *HttpsHealthChecksTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -28754,7 +29154,7 @@ func (c *HttpsHealthChecksUpdateCall) Header() http.Header {
 }
 
 func (c *HttpsHealthChecksUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.httpshealthcheck)
 	if err != nil {
 		return nil, err
@@ -28873,7 +29273,7 @@ func (c *ImageFamilyViewsGetCall) Header() http.Header {
 }
 
 func (c *ImageFamilyViewsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -28933,6 +29333,374 @@ func (c *ImageFamilyViewsGetCall) Do(opts ...googleapi.CallOption) (*ImageFamily
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.imageFamilyViews.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
+}
+
+type ImageViewsGetCall struct {
+	s            *Service
+	project      string
+	region       string
+	resourceId   string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Returns the specified global ImageView resource, with a
+// regional
+// context.
+//
+// - project: Project ID for this request.
+// - region: Name of the region for this request.
+// - resourceId: Name of the image resource to return.
+func (r *ImageViewsService) Get(project string, region string, resourceId string) *ImageViewsGetCall {
+	c := &ImageViewsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	c.resourceId = resourceId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ImageViewsGetCall) Fields(s ...googleapi.Field) *ImageViewsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ImageViewsGetCall) IfNoneMatch(entityTag string) *ImageViewsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ImageViewsGetCall) Context(ctx context.Context) *ImageViewsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ImageViewsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ImageViewsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/imageViews/{resourceId}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":    c.project,
+		"region":     c.region,
+		"resourceId": c.resourceId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.imageViews.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.imageViews.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ImageView.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ImageViewsGetCall) Do(opts ...googleapi.CallOption) (*ImageView, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ImageView{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.imageViews.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ImageViewsListCall struct {
+	s            *Service
+	project      string
+	region       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Returns a list of global ImageView resources, with a regional
+// context.
+//
+// - project: Project ID for this request.
+// - region: Name of the region for this request.
+func (r *ImageViewsService) List(project string, region string) *ImageViewsListCall {
+	c := &ImageViewsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	return c
+}
+
+// Filter sets the optional parameter "filter": A filter expression that
+// filters resources listed in the response. Most
+// Compute resources support two types of filter expressions:
+// expressions that support regular expressions and expressions that follow
+// API improvement proposal AIP-160.
+// These two types of filter expressions cannot be mixed in one request.
+//
+// If you want to use AIP-160, your expression must specify the field name,
+// an
+// operator, and the value that you want to use for filtering. The value
+// must be a string, a number, or a boolean. The operator
+// must be either `=`, `!=`, `>`, `<`, `<=`, `>=` or `:`.
+//
+// For example, if you are filtering Compute Engine instances, you can
+// exclude instances named `example-instance` by specifying
+// `name != example-instance`.
+//
+// The `:*` comparison can be used to test whether a key has been defined.
+// For example, to find all objects with `owner` label
+// use:
+// ```
+// labels.owner:*
+// ```
+//
+// You can also filter nested fields. For example, you could
+// specify
+// `scheduling.automaticRestart = false` to include instances only
+// if they are not scheduled for automatic restarts. You can use filtering
+// on nested fields to filter based onresource labels.
+//
+// To filter on multiple expressions, provide each separate expression
+// within
+// parentheses. For example:
+// ```
+// (scheduling.automaticRestart = true)
+// (cpuPlatform = "Intel Skylake")
+// ```
+// By default, each expression is an `AND` expression. However, you
+// can include `AND` and `OR` expressions explicitly.
+// For example:
+// ```
+// (cpuPlatform = "Intel Skylake") OR
+// (cpuPlatform = "Intel Broadwell") AND
+// (scheduling.automaticRestart = true)
+// ```
+//
+// If you want to use a regular expression, use the `eq` (equal) or `ne`
+// (not equal) operator against a single un-parenthesized expression with
+// or
+// without quotes or against multiple parenthesized expressions.
+// Examples:
+//
+// `fieldname eq unquoted literal`
+// `fieldname eq 'single quoted literal'`
+// `fieldname eq "double quoted literal"
+// `(fieldname1 eq literal) (fieldname2 ne "literal")`
+//
+// The literal value is interpreted as a regular expression using GoogleRE2
+// library syntax.
+// The literal value must match the entire field.
+//
+// For example, to filter for instances that do not end with name
+// "instance",
+// you would use `name ne .*instance`.
+//
+// You cannot combine constraints on multiple fields using regular
+// expressions.
+func (c *ImageViewsListCall) Filter(filter string) *ImageViewsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// MaxResults sets the optional parameter "maxResults": The maximum number of
+// results per page that should be returned.
+// If the number of available results is larger than `maxResults`,
+// Compute Engine returns a `nextPageToken` that can be used to get
+// the next page of results in subsequent list requests. Acceptable values
+// are
+// `0` to `500`, inclusive. (Default: `500`)
+func (c *ImageViewsListCall) MaxResults(maxResults int64) *ImageViewsListCall {
+	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
+	return c
+}
+
+// OrderBy sets the optional parameter "orderBy": Sorts list results by a
+// certain order. By default, results
+// are returned in alphanumerical order based on the resource name.
+//
+// You can also sort results in descending order based on the
+// creation
+// timestamp using `orderBy="creationTimestamp desc". This sorts
+// results based on the `creationTimestamp` field in
+// reverse chronological order (newest result first). Use this to
+// sort
+// resources like operations so that the newest operation is returned
+// first.
+//
+// Currently, only sorting by `name` or
+// `creationTimestamp desc` is supported.
+func (c *ImageViewsListCall) OrderBy(orderBy string) *ImageViewsListCall {
+	c.urlParams_.Set("orderBy", orderBy)
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": Specifies a page token to
+// use. Set `pageToken` to the
+// `nextPageToken` returned by a previous list request to get
+// the next page of results.
+func (c *ImageViewsListCall) PageToken(pageToken string) *ImageViewsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ImageViewsListCall) Fields(s ...googleapi.Field) *ImageViewsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ImageViewsListCall) IfNoneMatch(entityTag string) *ImageViewsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ImageViewsListCall) Context(ctx context.Context) *ImageViewsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ImageViewsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ImageViewsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/imageViews")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project": c.project,
+		"region":  c.region,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.imageViews.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.imageViews.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ImageViewsListResponse.ServerResponse.Header or (if a response was returned
+// at all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ImageViewsListCall) Do(opts ...googleapi.CallOption) (*ImageViewsListResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ImageViewsListResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.imageViews.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ImageViewsListCall) Pages(ctx context.Context, f func(*ImageViewsListResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
 }
 
 type ImagesDeleteCall struct {
@@ -29001,7 +29769,7 @@ func (c *ImagesDeleteCall) Header() http.Header {
 }
 
 func (c *ImagesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/images/{image}")
@@ -29128,7 +29896,7 @@ func (c *ImagesDeprecateCall) Header() http.Header {
 }
 
 func (c *ImagesDeprecateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.deprecationstatus)
 	if err != nil {
 		return nil, err
@@ -29242,7 +30010,7 @@ func (c *ImagesGetCall) Header() http.Header {
 }
 
 func (c *ImagesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -29361,7 +30129,7 @@ func (c *ImagesGetFromFamilyCall) Header() http.Header {
 }
 
 func (c *ImagesGetFromFamilyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -29483,7 +30251,7 @@ func (c *ImagesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *ImagesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -29616,7 +30384,7 @@ func (c *ImagesInsertCall) Header() http.Header {
 }
 
 func (c *ImagesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.image)
 	if err != nil {
 		return nil, err
@@ -29816,21 +30584,6 @@ func (c *ImagesListCall) PageToken(pageToken string) *ImagesListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *ImagesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ImagesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -29863,7 +30616,7 @@ func (c *ImagesListCall) Header() http.Header {
 }
 
 func (c *ImagesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -30014,7 +30767,7 @@ func (c *ImagesPatchCall) Header() http.Header {
 }
 
 func (c *ImagesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.image2)
 	if err != nil {
 		return nil, err
@@ -30123,7 +30876,7 @@ func (c *ImagesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *ImagesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -30232,7 +30985,7 @@ func (c *ImagesSetLabelsCall) Header() http.Header {
 }
 
 func (c *ImagesSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -30340,7 +31093,7 @@ func (c *ImagesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *ImagesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -30483,7 +31236,7 @@ func (c *InstanceGroupManagerResizeRequestsCancelCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagerResizeRequestsCancelCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/resizeRequests/{resizeRequest}/cancel")
@@ -30621,7 +31374,7 @@ func (c *InstanceGroupManagerResizeRequestsDeleteCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagerResizeRequestsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/resizeRequests/{resizeRequest}")
@@ -30743,7 +31496,7 @@ func (c *InstanceGroupManagerResizeRequestsGetCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagerResizeRequestsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -30887,7 +31640,7 @@ func (c *InstanceGroupManagerResizeRequestsInsertCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagerResizeRequestsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagerresizerequest)
 	if err != nil {
 		return nil, err
@@ -31089,21 +31842,6 @@ func (c *InstanceGroupManagerResizeRequestsListCall) PageToken(pageToken string)
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupManagerResizeRequestsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupManagerResizeRequestsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -31136,7 +31874,7 @@ func (c *InstanceGroupManagerResizeRequestsListCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagerResizeRequestsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -31311,7 +32049,7 @@ func (c *InstanceGroupManagersAbandonInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersAbandonInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersabandoninstancesrequest)
 	if err != nil {
 		return nil, err
@@ -31527,21 +32265,6 @@ func (c *InstanceGroupManagersAggregatedListCall) PageToken(pageToken string) *I
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupManagersAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupManagersAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -31582,7 +32305,7 @@ func (c *InstanceGroupManagersAggregatedListCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -31716,7 +32439,7 @@ func (c *InstanceGroupManagersApplyUpdatesToInstancesCall) Header() http.Header 
 }
 
 func (c *InstanceGroupManagersApplyUpdatesToInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersapplyupdatesrequest)
 	if err != nil {
 		return nil, err
@@ -31858,7 +32581,7 @@ func (c *InstanceGroupManagersCreateInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersCreateInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagerscreateinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -32003,7 +32726,7 @@ func (c *InstanceGroupManagersDeleteCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}")
@@ -32161,7 +32884,7 @@ func (c *InstanceGroupManagersDeleteInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersDeleteInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersdeleteinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -32279,7 +33002,7 @@ func (c *InstanceGroupManagersDeletePerInstanceConfigsCall) Header() http.Header
 }
 
 func (c *InstanceGroupManagersDeletePerInstanceConfigsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersdeleteperinstanceconfigsreq)
 	if err != nil {
 		return nil, err
@@ -32398,7 +33121,7 @@ func (c *InstanceGroupManagersGetCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -32543,7 +33266,7 @@ func (c *InstanceGroupManagersInsertCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanager)
 	if err != nil {
 		return nil, err
@@ -32741,21 +33464,6 @@ func (c *InstanceGroupManagersListCall) PageToken(pageToken string) *InstanceGro
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupManagersListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupManagersListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -32788,7 +33496,7 @@ func (c *InstanceGroupManagersListCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -33016,21 +33724,6 @@ func (c *InstanceGroupManagersListErrorsCall) PageToken(pageToken string) *Insta
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupManagersListErrorsCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupManagersListErrorsCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -33063,7 +33756,7 @@ func (c *InstanceGroupManagersListErrorsCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersListErrorsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -33294,21 +33987,6 @@ func (c *InstanceGroupManagersListManagedInstancesCall) PageToken(pageToken stri
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupManagersListManagedInstancesCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupManagersListManagedInstancesCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -33333,7 +34011,7 @@ func (c *InstanceGroupManagersListManagedInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersListManagedInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/listManagedInstances")
@@ -33555,21 +34233,6 @@ func (c *InstanceGroupManagersListPerInstanceConfigsCall) PageToken(pageToken st
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupManagersListPerInstanceConfigsCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupManagersListPerInstanceConfigsCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -33594,7 +34257,7 @@ func (c *InstanceGroupManagersListPerInstanceConfigsCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersListPerInstanceConfigsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/listPerInstanceConfigs")
@@ -33765,7 +34428,7 @@ func (c *InstanceGroupManagersPatchCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanager)
 	if err != nil {
 		return nil, err
@@ -33905,7 +34568,7 @@ func (c *InstanceGroupManagersPatchPerInstanceConfigsCall) Header() http.Header 
 }
 
 func (c *InstanceGroupManagersPatchPerInstanceConfigsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagerspatchperinstanceconfigsreq)
 	if err != nil {
 		return nil, err
@@ -34066,7 +34729,7 @@ func (c *InstanceGroupManagersRecreateInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersRecreateInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersrecreateinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -34234,7 +34897,7 @@ func (c *InstanceGroupManagersResizeCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersResizeCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/resize")
@@ -34386,7 +35049,7 @@ func (c *InstanceGroupManagersResumeInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersResumeInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersresumeinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -34525,7 +35188,7 @@ func (c *InstanceGroupManagersSetInstanceTemplateCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersSetInstanceTemplateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagerssetinstancetemplaterequest)
 	if err != nil {
 		return nil, err
@@ -34669,7 +35332,7 @@ func (c *InstanceGroupManagersSetTargetPoolsCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersSetTargetPoolsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagerssettargetpoolsrequest)
 	if err != nil {
 		return nil, err
@@ -34824,7 +35487,7 @@ func (c *InstanceGroupManagersStartInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersStartInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersstartinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -34997,7 +35660,7 @@ func (c *InstanceGroupManagersStopInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersStopInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersstopinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -35164,7 +35827,7 @@ func (c *InstanceGroupManagersSuspendInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupManagersSuspendInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagerssuspendinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -35304,7 +35967,7 @@ func (c *InstanceGroupManagersUpdatePerInstanceConfigsCall) Header() http.Header
 }
 
 func (c *InstanceGroupManagersUpdatePerInstanceConfigsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupmanagersupdateperinstanceconfigsreq)
 	if err != nil {
 		return nil, err
@@ -35444,7 +36107,7 @@ func (c *InstanceGroupsAddInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsAddInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupsaddinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -35660,21 +36323,6 @@ func (c *InstanceGroupsAggregatedListCall) PageToken(pageToken string) *Instance
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -35715,7 +36363,7 @@ func (c *InstanceGroupsAggregatedListCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -35871,7 +36519,7 @@ func (c *InstanceGroupsDeleteCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}")
@@ -35992,7 +36640,7 @@ func (c *InstanceGroupsGetCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -36124,7 +36772,7 @@ func (c *InstanceGroupsInsertCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroup)
 	if err != nil {
 		return nil, err
@@ -36326,21 +36974,6 @@ func (c *InstanceGroupsListCall) PageToken(pageToken string) *InstanceGroupsList
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -36373,7 +37006,7 @@ func (c *InstanceGroupsListCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -36600,21 +37233,6 @@ func (c *InstanceGroupsListInstancesCall) PageToken(pageToken string) *InstanceG
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceGroupsListInstancesCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceGroupsListInstancesCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -36639,7 +37257,7 @@ func (c *InstanceGroupsListInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsListInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupslistinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -36806,7 +37424,7 @@ func (c *InstanceGroupsRemoveInstancesCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsRemoveInstancesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupsremoveinstancesrequest)
 	if err != nil {
 		return nil, err
@@ -36942,7 +37560,7 @@ func (c *InstanceGroupsSetNamedPortsCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsSetNamedPortsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancegroupssetnamedportsrequest)
 	if err != nil {
 		return nil, err
@@ -37054,7 +37672,7 @@ func (c *InstanceGroupsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *InstanceGroupsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -37170,7 +37788,7 @@ func (c *InstanceSettingsGetCall) Header() http.Header {
 }
 
 func (c *InstanceSettingsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -37306,7 +37924,7 @@ func (c *InstanceSettingsPatchCall) Header() http.Header {
 }
 
 func (c *InstanceSettingsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancesettings)
 	if err != nil {
 		return nil, err
@@ -37522,21 +38140,6 @@ func (c *InstanceTemplatesAggregatedListCall) PageToken(pageToken string) *Insta
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceTemplatesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceTemplatesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -37577,7 +38180,7 @@ func (c *InstanceTemplatesAggregatedListCall) Header() http.Header {
 }
 
 func (c *InstanceTemplatesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -37727,7 +38330,7 @@ func (c *InstanceTemplatesDeleteCall) Header() http.Header {
 }
 
 func (c *InstanceTemplatesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/instanceTemplates/{instanceTemplate}")
@@ -37837,7 +38440,7 @@ func (c *InstanceTemplatesGetCall) Header() http.Header {
 }
 
 func (c *InstanceTemplatesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -37960,7 +38563,7 @@ func (c *InstanceTemplatesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InstanceTemplatesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -38092,7 +38695,7 @@ func (c *InstanceTemplatesInsertCall) Header() http.Header {
 }
 
 func (c *InstanceTemplatesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancetemplate)
 	if err != nil {
 		return nil, err
@@ -38284,21 +38887,6 @@ func (c *InstanceTemplatesListCall) PageToken(pageToken string) *InstanceTemplat
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstanceTemplatesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstanceTemplatesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -38331,7 +38919,7 @@ func (c *InstanceTemplatesListCall) Header() http.Header {
 }
 
 func (c *InstanceTemplatesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -38460,7 +39048,7 @@ func (c *InstanceTemplatesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InstanceTemplatesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -38568,7 +39156,7 @@ func (c *InstanceTemplatesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *InstanceTemplatesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -38704,7 +39292,7 @@ func (c *InstancesAddAccessConfigCall) Header() http.Header {
 }
 
 func (c *InstancesAddAccessConfigCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.accessconfig)
 	if err != nil {
 		return nil, err
@@ -38839,7 +39427,7 @@ func (c *InstancesAddNetworkInterfaceCall) Header() http.Header {
 }
 
 func (c *InstancesAddNetworkInterfaceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkinterface)
 	if err != nil {
 		return nil, err
@@ -38976,7 +39564,7 @@ func (c *InstancesAddResourcePoliciesCall) Header() http.Header {
 }
 
 func (c *InstancesAddResourcePoliciesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancesaddresourcepoliciesrequest)
 	if err != nil {
 		return nil, err
@@ -39197,21 +39785,6 @@ func (c *InstancesAggregatedListCall) PageToken(pageToken string) *InstancesAggr
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstancesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstancesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -39252,7 +39825,7 @@ func (c *InstancesAggregatedListCall) Header() http.Header {
 }
 
 func (c *InstancesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -39418,7 +39991,7 @@ func (c *InstancesAttachDiskCall) Header() http.Header {
 }
 
 func (c *InstancesAttachDiskCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.attacheddisk)
 	if err != nil {
 		return nil, err
@@ -39551,7 +40124,7 @@ func (c *InstancesBulkInsertCall) Header() http.Header {
 }
 
 func (c *InstancesBulkInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bulkinsertinstanceresource)
 	if err != nil {
 		return nil, err
@@ -39637,6 +40210,13 @@ func (r *InstancesService) Delete(project string, zone string, instance string) 
 	return c
 }
 
+// NoGracefulShutdown sets the optional parameter "noGracefulShutdown": If set
+// to true, Graceful Shutdown is skipped.
+func (c *InstancesDeleteCall) NoGracefulShutdown(noGracefulShutdown bool) *InstancesDeleteCall {
+	c.urlParams_.Set("noGracefulShutdown", fmt.Sprint(noGracefulShutdown))
+	return c
+}
+
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so
 // that if you must retry your request, the server will know to ignore
@@ -39683,7 +40263,7 @@ func (c *InstancesDeleteCall) Header() http.Header {
 }
 
 func (c *InstancesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}")
@@ -39815,7 +40395,7 @@ func (c *InstancesDeleteAccessConfigCall) Header() http.Header {
 }
 
 func (c *InstancesDeleteAccessConfigCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/deleteAccessConfig")
@@ -39952,7 +40532,7 @@ func (c *InstancesDeleteNetworkInterfaceCall) Header() http.Header {
 }
 
 func (c *InstancesDeleteNetworkInterfaceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/deleteNetworkInterface")
@@ -40084,7 +40664,7 @@ func (c *InstancesDetachDiskCall) Header() http.Header {
 }
 
 func (c *InstancesDetachDiskCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/detachDisk")
@@ -40198,7 +40778,7 @@ func (c *InstancesGetCall) Header() http.Header {
 }
 
 func (c *InstancesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -40319,7 +40899,7 @@ func (c *InstancesGetEffectiveFirewallsCall) Header() http.Header {
 }
 
 func (c *InstancesGetEffectiveFirewallsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -40451,7 +41031,7 @@ func (c *InstancesGetGuestAttributesCall) Header() http.Header {
 }
 
 func (c *InstancesGetGuestAttributesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -40578,7 +41158,7 @@ func (c *InstancesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InstancesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -40695,7 +41275,7 @@ func (c *InstancesGetScreenshotCall) Header() http.Header {
 }
 
 func (c *InstancesGetScreenshotCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -40850,7 +41430,7 @@ func (c *InstancesGetSerialPortOutputCall) Header() http.Header {
 }
 
 func (c *InstancesGetSerialPortOutputCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -40969,7 +41549,7 @@ func (c *InstancesGetShieldedInstanceIdentityCall) Header() http.Header {
 }
 
 func (c *InstancesGetShieldedInstanceIdentityCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -41135,7 +41715,7 @@ func (c *InstancesInsertCall) Header() http.Header {
 }
 
 func (c *InstancesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instance)
 	if err != nil {
 		return nil, err
@@ -41331,21 +41911,6 @@ func (c *InstancesListCall) PageToken(pageToken string) *InstancesListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstancesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstancesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -41378,7 +41943,7 @@ func (c *InstancesListCall) Header() http.Header {
 }
 
 func (c *InstancesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -41606,21 +42171,6 @@ func (c *InstancesListReferrersCall) PageToken(pageToken string) *InstancesListR
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstancesListReferrersCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstancesListReferrersCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -41653,7 +42203,7 @@ func (c *InstancesListReferrersCall) Header() http.Header {
 }
 
 func (c *InstancesListReferrersCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -41805,7 +42355,7 @@ func (c *InstancesPerformMaintenanceCall) Header() http.Header {
 }
 
 func (c *InstancesPerformMaintenanceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/performMaintenance")
@@ -41934,7 +42484,7 @@ func (c *InstancesRemoveResourcePoliciesCall) Header() http.Header {
 }
 
 func (c *InstancesRemoveResourcePoliciesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancesremoveresourcepoliciesrequest)
 	if err != nil {
 		return nil, err
@@ -42068,7 +42618,7 @@ func (c *InstancesReportHostAsFaultyCall) Header() http.Header {
 }
 
 func (c *InstancesReportHostAsFaultyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancesreporthostasfaultyrequest)
 	if err != nil {
 		return nil, err
@@ -42201,7 +42751,7 @@ func (c *InstancesResetCall) Header() http.Header {
 }
 
 func (c *InstancesResetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/reset")
@@ -42330,7 +42880,7 @@ func (c *InstancesResumeCall) Header() http.Header {
 }
 
 func (c *InstancesResumeCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/resume")
@@ -42435,7 +42985,7 @@ func (c *InstancesSendDiagnosticInterruptCall) Header() http.Header {
 }
 
 func (c *InstancesSendDiagnosticInterruptCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/sendDiagnosticInterrupt")
@@ -42545,7 +43095,7 @@ func (c *InstancesSetDeletionProtectionCall) Header() http.Header {
 }
 
 func (c *InstancesSetDeletionProtectionCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{resource}/setDeletionProtection")
@@ -42678,7 +43228,7 @@ func (c *InstancesSetDiskAutoDeleteCall) Header() http.Header {
 }
 
 func (c *InstancesSetDiskAutoDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/setDiskAutoDelete")
@@ -42787,7 +43337,7 @@ func (c *InstancesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InstancesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.zonesetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -42922,7 +43472,7 @@ func (c *InstancesSetLabelsCall) Header() http.Header {
 }
 
 func (c *InstancesSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancessetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -43057,7 +43607,7 @@ func (c *InstancesSetMachineResourcesCall) Header() http.Header {
 }
 
 func (c *InstancesSetMachineResourcesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancessetmachineresourcesrequest)
 	if err != nil {
 		return nil, err
@@ -43192,7 +43742,7 @@ func (c *InstancesSetMachineTypeCall) Header() http.Header {
 }
 
 func (c *InstancesSetMachineTypeCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancessetmachinetyperequest)
 	if err != nil {
 		return nil, err
@@ -43327,7 +43877,7 @@ func (c *InstancesSetMetadataCall) Header() http.Header {
 }
 
 func (c *InstancesSetMetadataCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.metadata)
 	if err != nil {
 		return nil, err
@@ -43465,7 +44015,7 @@ func (c *InstancesSetMinCpuPlatformCall) Header() http.Header {
 }
 
 func (c *InstancesSetMinCpuPlatformCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancessetmincpuplatformrequest)
 	if err != nil {
 		return nil, err
@@ -43598,7 +44148,7 @@ func (c *InstancesSetNameCall) Header() http.Header {
 }
 
 func (c *InstancesSetNameCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancessetnamerequest)
 	if err != nil {
 		return nil, err
@@ -43737,7 +44287,7 @@ func (c *InstancesSetSchedulingCall) Header() http.Header {
 }
 
 func (c *InstancesSetSchedulingCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.scheduling)
 	if err != nil {
 		return nil, err
@@ -43876,7 +44426,7 @@ func (c *InstancesSetSecurityPolicyCall) Header() http.Header {
 }
 
 func (c *InstancesSetSecurityPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancessetsecuritypolicyrequest)
 	if err != nil {
 		return nil, err
@@ -44012,7 +44562,7 @@ func (c *InstancesSetServiceAccountCall) Header() http.Header {
 }
 
 func (c *InstancesSetServiceAccountCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancessetserviceaccountrequest)
 	if err != nil {
 		return nil, err
@@ -44149,7 +44699,7 @@ func (c *InstancesSetShieldedInstanceIntegrityPolicyCall) Header() http.Header {
 }
 
 func (c *InstancesSetShieldedInstanceIntegrityPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.shieldedinstanceintegritypolicy)
 	if err != nil {
 		return nil, err
@@ -44283,7 +44833,7 @@ func (c *InstancesSetTagsCall) Header() http.Header {
 }
 
 func (c *InstancesSetTagsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.tags)
 	if err != nil {
 		return nil, err
@@ -44425,7 +44975,7 @@ func (c *InstancesSimulateMaintenanceEventCall) Header() http.Header {
 }
 
 func (c *InstancesSimulateMaintenanceEventCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/simulateMaintenanceEvent")
@@ -44554,7 +45104,7 @@ func (c *InstancesStartCall) Header() http.Header {
 }
 
 func (c *InstancesStartCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/start")
@@ -44686,7 +45236,7 @@ func (c *InstancesStartWithEncryptionKeyCall) Header() http.Header {
 }
 
 func (c *InstancesStartWithEncryptionKeyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancesstartwithencryptionkeyrequest)
 	if err != nil {
 		return nil, err
@@ -44788,6 +45338,13 @@ func (c *InstancesStopCall) DiscardLocalSsd(discardLocalSsd bool) *InstancesStop
 	return c
 }
 
+// NoGracefulShutdown sets the optional parameter "noGracefulShutdown": If set
+// to true, Graceful Shutdown is skipped.
+func (c *InstancesStopCall) NoGracefulShutdown(noGracefulShutdown bool) *InstancesStopCall {
+	c.urlParams_.Set("noGracefulShutdown", fmt.Sprint(noGracefulShutdown))
+	return c
+}
+
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so
 // that if you must retry your request, the server will know to ignore
@@ -44834,7 +45391,7 @@ func (c *InstancesStopCall) Header() http.Header {
 }
 
 func (c *InstancesStopCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/stop")
@@ -44982,7 +45539,7 @@ func (c *InstancesSuspendCall) Header() http.Header {
 }
 
 func (c *InstancesSuspendCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instances/{instance}/suspend")
@@ -45090,7 +45647,7 @@ func (c *InstancesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *InstancesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -45272,7 +45829,7 @@ func (c *InstancesUpdateCall) Header() http.Header {
 }
 
 func (c *InstancesUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instance2)
 	if err != nil {
 		return nil, err
@@ -45412,7 +45969,7 @@ func (c *InstancesUpdateAccessConfigCall) Header() http.Header {
 }
 
 func (c *InstancesUpdateAccessConfigCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.accessconfig)
 	if err != nil {
 		return nil, err
@@ -45550,7 +46107,7 @@ func (c *InstancesUpdateDisplayDeviceCall) Header() http.Header {
 }
 
 func (c *InstancesUpdateDisplayDeviceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.displaydevice)
 	if err != nil {
 		return nil, err
@@ -45691,7 +46248,7 @@ func (c *InstancesUpdateNetworkInterfaceCall) Header() http.Header {
 }
 
 func (c *InstancesUpdateNetworkInterfaceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkinterface)
 	if err != nil {
 		return nil, err
@@ -45829,7 +46386,7 @@ func (c *InstancesUpdateShieldedInstanceConfigCall) Header() http.Header {
 }
 
 func (c *InstancesUpdateShieldedInstanceConfigCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.shieldedinstanceconfig)
 	if err != nil {
 		return nil, err
@@ -45960,7 +46517,7 @@ func (c *InstantSnapshotGroupsDeleteCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotGroupsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instantSnapshotGroups/{instantSnapshotGroup}")
@@ -46075,7 +46632,7 @@ func (c *InstantSnapshotGroupsGetCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotGroupsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -46202,7 +46759,7 @@ func (c *InstantSnapshotGroupsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotGroupsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -46338,7 +46895,7 @@ func (c *InstantSnapshotGroupsInsertCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotGroupsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instantsnapshotgroup)
 	if err != nil {
 		return nil, err
@@ -46535,21 +47092,6 @@ func (c *InstantSnapshotGroupsListCall) PageToken(pageToken string) *InstantSnap
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstantSnapshotGroupsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstantSnapshotGroupsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -46582,7 +47124,7 @@ func (c *InstantSnapshotGroupsListCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotGroupsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -46715,7 +47257,7 @@ func (c *InstantSnapshotGroupsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotGroupsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.zonesetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -46827,7 +47369,7 @@ func (c *InstantSnapshotGroupsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotGroupsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -47043,21 +47585,6 @@ func (c *InstantSnapshotsAggregatedListCall) PageToken(pageToken string) *Instan
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstantSnapshotsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstantSnapshotsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -47098,7 +47625,7 @@ func (c *InstantSnapshotsAggregatedListCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -47259,7 +47786,7 @@ func (c *InstantSnapshotsDeleteCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instantSnapshots/{instantSnapshot}")
@@ -47373,7 +47900,7 @@ func (c *InstantSnapshotsGetCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -47500,7 +48027,7 @@ func (c *InstantSnapshotsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -47629,7 +48156,7 @@ func (c *InstantSnapshotsInsertCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instantsnapshot)
 	if err != nil {
 		return nil, err
@@ -47825,21 +48352,6 @@ func (c *InstantSnapshotsListCall) PageToken(pageToken string) *InstantSnapshots
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InstantSnapshotsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InstantSnapshotsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -47872,7 +48384,7 @@ func (c *InstantSnapshotsListCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -48005,7 +48517,7 @@ func (c *InstantSnapshotsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.zonesetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -48141,7 +48653,7 @@ func (c *InstantSnapshotsSetLabelsCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.zonesetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -48253,7 +48765,7 @@ func (c *InstantSnapshotsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *InstantSnapshotsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -48384,7 +48896,7 @@ func (c *InterconnectAttachmentGroupsDeleteCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentGroupsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/interconnectAttachmentGroups/{interconnectAttachmentGroup}")
@@ -48497,7 +49009,7 @@ func (c *InterconnectAttachmentGroupsGetCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentGroupsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -48620,7 +49132,7 @@ func (c *InterconnectAttachmentGroupsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentGroupsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -48736,7 +49248,7 @@ func (c *InterconnectAttachmentGroupsGetOperationalStatusCall) Header() http.Hea
 }
 
 func (c *InterconnectAttachmentGroupsGetOperationalStatusCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -48865,7 +49377,7 @@ func (c *InterconnectAttachmentGroupsInsertCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentGroupsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnectattachmentgroup)
 	if err != nil {
 		return nil, err
@@ -49057,21 +49569,6 @@ func (c *InterconnectAttachmentGroupsListCall) PageToken(pageToken string) *Inte
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InterconnectAttachmentGroupsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InterconnectAttachmentGroupsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -49104,7 +49601,7 @@ func (c *InterconnectAttachmentGroupsListCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentGroupsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -49266,7 +49763,7 @@ func (c *InterconnectAttachmentGroupsPatchCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentGroupsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnectattachmentgroup)
 	if err != nil {
 		return nil, err
@@ -49375,7 +49872,7 @@ func (c *InterconnectAttachmentGroupsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentGroupsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -49483,7 +49980,7 @@ func (c *InterconnectAttachmentGroupsTestIamPermissionsCall) Header() http.Heade
 }
 
 func (c *InterconnectAttachmentGroupsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -49699,21 +50196,6 @@ func (c *InterconnectAttachmentsAggregatedListCall) PageToken(pageToken string) 
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InterconnectAttachmentsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InterconnectAttachmentsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -49754,7 +50236,7 @@ func (c *InterconnectAttachmentsAggregatedListCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -49904,7 +50386,7 @@ func (c *InterconnectAttachmentsDeleteCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/interconnectAttachments/{interconnectAttachment}")
@@ -50018,7 +50500,7 @@ func (c *InterconnectAttachmentsGetCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -50157,7 +50639,7 @@ func (c *InterconnectAttachmentsInsertCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnectattachment)
 	if err != nil {
 		return nil, err
@@ -50353,21 +50835,6 @@ func (c *InterconnectAttachmentsListCall) PageToken(pageToken string) *Interconn
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InterconnectAttachmentsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InterconnectAttachmentsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -50400,7 +50867,7 @@ func (c *InterconnectAttachmentsListCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -50557,7 +51024,7 @@ func (c *InterconnectAttachmentsPatchCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnectattachment)
 	if err != nil {
 		return nil, err
@@ -50693,7 +51160,7 @@ func (c *InterconnectAttachmentsSetLabelsCall) Header() http.Header {
 }
 
 func (c *InterconnectAttachmentsSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.regionsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -50803,7 +51270,7 @@ func (c *InterconnectGroupsCreateMembersCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsCreateMembersCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnectgroupscreatemembersrequest)
 	if err != nil {
 		return nil, err
@@ -50931,7 +51398,7 @@ func (c *InterconnectGroupsDeleteCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/interconnectGroups/{interconnectGroup}")
@@ -51041,7 +51508,7 @@ func (c *InterconnectGroupsGetCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -51164,7 +51631,7 @@ func (c *InterconnectGroupsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -51279,7 +51746,7 @@ func (c *InterconnectGroupsGetOperationalStatusCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsGetOperationalStatusCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -51408,7 +51875,7 @@ func (c *InterconnectGroupsInsertCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnectgroup)
 	if err != nil {
 		return nil, err
@@ -51599,21 +52066,6 @@ func (c *InterconnectGroupsListCall) PageToken(pageToken string) *InterconnectGr
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InterconnectGroupsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InterconnectGroupsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -51646,7 +52098,7 @@ func (c *InterconnectGroupsListCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -51807,7 +52259,7 @@ func (c *InterconnectGroupsPatchCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnectgroup)
 	if err != nil {
 		return nil, err
@@ -51916,7 +52368,7 @@ func (c *InterconnectGroupsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -52024,7 +52476,7 @@ func (c *InterconnectGroupsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *InterconnectGroupsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -52141,7 +52593,7 @@ func (c *InterconnectLocationsGetCall) Header() http.Header {
 }
 
 func (c *InterconnectLocationsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -52335,21 +52787,6 @@ func (c *InterconnectLocationsListCall) PageToken(pageToken string) *Interconnec
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InterconnectLocationsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InterconnectLocationsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -52382,7 +52819,7 @@ func (c *InterconnectLocationsListCall) Header() http.Header {
 }
 
 func (c *InterconnectLocationsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -52519,7 +52956,7 @@ func (c *InterconnectRemoteLocationsGetCall) Header() http.Header {
 }
 
 func (c *InterconnectRemoteLocationsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -52713,21 +53150,6 @@ func (c *InterconnectRemoteLocationsListCall) PageToken(pageToken string) *Inter
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InterconnectRemoteLocationsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InterconnectRemoteLocationsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -52760,7 +53182,7 @@ func (c *InterconnectRemoteLocationsListCall) Header() http.Header {
 }
 
 func (c *InterconnectRemoteLocationsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -52907,7 +53329,7 @@ func (c *InterconnectsDeleteCall) Header() http.Header {
 }
 
 func (c *InterconnectsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/interconnects/{interconnect}")
@@ -53019,7 +53441,7 @@ func (c *InterconnectsGetCall) Header() http.Header {
 }
 
 func (c *InterconnectsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -53142,7 +53564,7 @@ func (c *InterconnectsGetDiagnosticsCall) Header() http.Header {
 }
 
 func (c *InterconnectsGetDiagnosticsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -53258,7 +53680,7 @@ func (c *InterconnectsGetMacsecConfigCall) Header() http.Header {
 }
 
 func (c *InterconnectsGetMacsecConfigCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -53385,7 +53807,7 @@ func (c *InterconnectsInsertCall) Header() http.Header {
 }
 
 func (c *InterconnectsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnect)
 	if err != nil {
 		return nil, err
@@ -53577,21 +53999,6 @@ func (c *InterconnectsListCall) PageToken(pageToken string) *InterconnectsListCa
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *InterconnectsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *InterconnectsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -53624,7 +54031,7 @@ func (c *InterconnectsListCall) Header() http.Header {
 }
 
 func (c *InterconnectsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -53777,7 +54184,7 @@ func (c *InterconnectsPatchCall) Header() http.Header {
 }
 
 func (c *InterconnectsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnect2)
 	if err != nil {
 		return nil, err
@@ -53887,7 +54294,7 @@ func (c *InterconnectsSetLabelsCall) Header() http.Header {
 }
 
 func (c *InterconnectsSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -53945,6 +54352,134 @@ func (c *InterconnectsSetLabelsCall) Do(opts ...googleapi.CallOption) (*Operatio
 		return nil, err
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.interconnects.setLabels", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type InterconnectsSetNameCall struct {
+	s                           *Service
+	project                     string
+	interconnect                string
+	interconnectssetnamerequest *InterconnectsSetNameRequest
+	urlParams_                  gensupport.URLParams
+	ctx_                        context.Context
+	header_                     http.Header
+}
+
+// SetName: Sets name of an interconnect.
+//
+// - interconnect: Name of the interconnect to update.
+// - project: Project ID for this request.
+func (r *InterconnectsService) SetName(project string, interconnect string, interconnectssetnamerequest *InterconnectsSetNameRequest) *InterconnectsSetNameCall {
+	c := &InterconnectsSetNameCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.interconnect = interconnect
+	c.interconnectssetnamerequest = interconnectssetnamerequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID
+// so that if you must retry your request, the server will know to ignore
+// the request if it has already been completed.
+//
+// For example, consider a situation where you make an initial request and
+// the request times out. If you make the request again with the same
+// request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request.
+// This
+// prevents clients from accidentally creating duplicate commitments.
+//
+// The request ID must be
+// a valid UUID with the exception that zero UUID is not
+// supported
+// (00000000-0000-0000-0000-000000000000).
+func (c *InterconnectsSetNameCall) RequestId(requestId string) *InterconnectsSetNameCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *InterconnectsSetNameCall) Fields(s ...googleapi.Field) *InterconnectsSetNameCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *InterconnectsSetNameCall) Context(ctx context.Context) *InterconnectsSetNameCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *InterconnectsSetNameCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *InterconnectsSetNameCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.interconnectssetnamerequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/interconnects/{interconnect}/setName")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":      c.project,
+		"interconnect": c.interconnect,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.interconnects.setName", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.interconnects.setName" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *InterconnectsSetNameCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.interconnects.setName", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -54008,7 +54543,7 @@ func (c *LicenseCodesGetCall) Header() http.Header {
 }
 
 func (c *LicenseCodesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -54136,7 +54671,7 @@ func (c *LicenseCodesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *LicenseCodesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -54250,7 +54785,7 @@ func (c *LicenseCodesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *LicenseCodesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -54364,7 +54899,7 @@ func (c *LicenseCodesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *LicenseCodesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -54498,7 +55033,7 @@ func (c *LicensesDeleteCall) Header() http.Header {
 }
 
 func (c *LicensesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/licenses/{license}")
@@ -54614,7 +55149,7 @@ func (c *LicensesGetCall) Header() http.Header {
 }
 
 func (c *LicensesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -54742,7 +55277,7 @@ func (c *LicensesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *LicensesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -54873,7 +55408,7 @@ func (c *LicensesInsertCall) Header() http.Header {
 }
 
 func (c *LicensesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.license)
 	if err != nil {
 		return nil, err
@@ -55078,21 +55613,6 @@ func (c *LicensesListCall) PageToken(pageToken string) *LicensesListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *LicensesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *LicensesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -55125,7 +55645,7 @@ func (c *LicensesListCall) Header() http.Header {
 }
 
 func (c *LicensesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -55260,7 +55780,7 @@ func (c *LicensesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *LicensesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -55374,7 +55894,7 @@ func (c *LicensesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *LicensesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -55517,7 +56037,7 @@ func (c *LicensesUpdateCall) Header() http.Header {
 }
 
 func (c *LicensesUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.license2)
 	if err != nil {
 		return nil, err
@@ -55646,7 +56166,7 @@ func (c *MachineImagesDeleteCall) Header() http.Header {
 }
 
 func (c *MachineImagesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/machineImages/{machineImage}")
@@ -55756,7 +56276,7 @@ func (c *MachineImagesGetCall) Header() http.Header {
 }
 
 func (c *MachineImagesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -55878,7 +56398,7 @@ func (c *MachineImagesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *MachineImagesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -56017,7 +56537,7 @@ func (c *MachineImagesInsertCall) Header() http.Header {
 }
 
 func (c *MachineImagesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.machineimage)
 	if err != nil {
 		return nil, err
@@ -56209,21 +56729,6 @@ func (c *MachineImagesListCall) PageToken(pageToken string) *MachineImagesListCa
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *MachineImagesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *MachineImagesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -56256,7 +56761,7 @@ func (c *MachineImagesListCall) Header() http.Header {
 }
 
 func (c *MachineImagesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -56385,7 +56890,7 @@ func (c *MachineImagesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *MachineImagesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -56494,7 +56999,7 @@ func (c *MachineImagesSetLabelsCall) Header() http.Header {
 }
 
 func (c *MachineImagesSetLabelsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetlabelsrequest)
 	if err != nil {
 		return nil, err
@@ -56602,7 +57107,7 @@ func (c *MachineImagesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *MachineImagesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -56817,21 +57322,6 @@ func (c *MachineTypesAggregatedListCall) PageToken(pageToken string) *MachineTyp
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *MachineTypesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *MachineTypesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -56872,7 +57362,7 @@ func (c *MachineTypesAggregatedListCall) Header() http.Header {
 }
 
 func (c *MachineTypesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -57009,7 +57499,7 @@ func (c *MachineTypesGetCall) Header() http.Header {
 }
 
 func (c *MachineTypesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -57205,21 +57695,6 @@ func (c *MachineTypesListCall) PageToken(pageToken string) *MachineTypesListCall
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *MachineTypesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *MachineTypesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -57252,7 +57727,7 @@ func (c *MachineTypesListCall) Header() http.Header {
 }
 
 func (c *MachineTypesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -57317,6 +57792,363 @@ func (c *MachineTypesListCall) Do(opts ...googleapi.CallOption) (*MachineTypeLis
 // A non-nil error returned from f will halt the iteration.
 // The provided context supersedes any context provided to the Context method.
 func (c *MachineTypesListCall) Pages(ctx context.Context, f func(*MachineTypeList) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ManagedRulesetsGetCall struct {
+	s              *Service
+	project        string
+	managedRuleset string
+	urlParams_     gensupport.URLParams
+	ifNoneMatch_   string
+	ctx_           context.Context
+	header_        http.Header
+}
+
+// Get: Gets the details for the specified managed ruleset name.
+//
+// - managedRuleset: Name of the managed ruleset to return.
+// - project: Project ID for this request.
+func (r *ManagedRulesetsService) Get(project string, managedRuleset string) *ManagedRulesetsGetCall {
+	c := &ManagedRulesetsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.managedRuleset = managedRuleset
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedRulesetsGetCall) Fields(s ...googleapi.Field) *ManagedRulesetsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ManagedRulesetsGetCall) IfNoneMatch(entityTag string) *ManagedRulesetsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedRulesetsGetCall) Context(ctx context.Context) *ManagedRulesetsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedRulesetsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedRulesetsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/managedRulesets/{managedRuleset}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":        c.project,
+		"managedRuleset": c.managedRuleset,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.managedRulesets.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.managedRulesets.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ManagedRuleset.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ManagedRulesetsGetCall) Do(opts ...googleapi.CallOption) (*ManagedRuleset, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ManagedRuleset{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.managedRulesets.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ManagedRulesetsListCall struct {
+	s            *Service
+	project      string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Retrieves the list of all the managed rulesets available.
+//
+// - project: Project ID for this request.
+func (r *ManagedRulesetsService) List(project string) *ManagedRulesetsListCall {
+	c := &ManagedRulesetsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	return c
+}
+
+// Filter sets the optional parameter "filter": A filter expression that
+// filters resources listed in the response. Most
+// Compute resources support two types of filter expressions:
+// expressions that support regular expressions and expressions that follow
+// API improvement proposal AIP-160.
+// These two types of filter expressions cannot be mixed in one request.
+//
+// If you want to use AIP-160, your expression must specify the field name,
+// an
+// operator, and the value that you want to use for filtering. The value
+// must be a string, a number, or a boolean. The operator
+// must be either `=`, `!=`, `>`, `<`, `<=`, `>=` or `:`.
+//
+// For example, if you are filtering Compute Engine instances, you can
+// exclude instances named `example-instance` by specifying
+// `name != example-instance`.
+//
+// The `:*` comparison can be used to test whether a key has been defined.
+// For example, to find all objects with `owner` label
+// use:
+// ```
+// labels.owner:*
+// ```
+//
+// You can also filter nested fields. For example, you could
+// specify
+// `scheduling.automaticRestart = false` to include instances only
+// if they are not scheduled for automatic restarts. You can use filtering
+// on nested fields to filter based onresource labels.
+//
+// To filter on multiple expressions, provide each separate expression
+// within
+// parentheses. For example:
+// ```
+// (scheduling.automaticRestart = true)
+// (cpuPlatform = "Intel Skylake")
+// ```
+// By default, each expression is an `AND` expression. However, you
+// can include `AND` and `OR` expressions explicitly.
+// For example:
+// ```
+// (cpuPlatform = "Intel Skylake") OR
+// (cpuPlatform = "Intel Broadwell") AND
+// (scheduling.automaticRestart = true)
+// ```
+//
+// If you want to use a regular expression, use the `eq` (equal) or `ne`
+// (not equal) operator against a single un-parenthesized expression with
+// or
+// without quotes or against multiple parenthesized expressions.
+// Examples:
+//
+// `fieldname eq unquoted literal`
+// `fieldname eq 'single quoted literal'`
+// `fieldname eq "double quoted literal"
+// `(fieldname1 eq literal) (fieldname2 ne "literal")`
+//
+// The literal value is interpreted as a regular expression using GoogleRE2
+// library syntax.
+// The literal value must match the entire field.
+//
+// For example, to filter for instances that do not end with name
+// "instance",
+// you would use `name ne .*instance`.
+//
+// You cannot combine constraints on multiple fields using regular
+// expressions.
+func (c *ManagedRulesetsListCall) Filter(filter string) *ManagedRulesetsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// MaxResults sets the optional parameter "maxResults": The maximum number of
+// results per page that should be returned.
+// If the number of available results is larger than `maxResults`,
+// Compute Engine returns a `nextPageToken` that can be used to get
+// the next page of results in subsequent list requests. Acceptable values
+// are
+// `0` to `500`, inclusive. (Default: `500`)
+func (c *ManagedRulesetsListCall) MaxResults(maxResults int64) *ManagedRulesetsListCall {
+	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
+	return c
+}
+
+// OrderBy sets the optional parameter "orderBy": Sorts list results by a
+// certain order. By default, results
+// are returned in alphanumerical order based on the resource name.
+//
+// You can also sort results in descending order based on the
+// creation
+// timestamp using `orderBy="creationTimestamp desc". This sorts
+// results based on the `creationTimestamp` field in
+// reverse chronological order (newest result first). Use this to
+// sort
+// resources like operations so that the newest operation is returned
+// first.
+//
+// Currently, only sorting by `name` or
+// `creationTimestamp desc` is supported.
+func (c *ManagedRulesetsListCall) OrderBy(orderBy string) *ManagedRulesetsListCall {
+	c.urlParams_.Set("orderBy", orderBy)
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": Specifies a page token to
+// use. Set `pageToken` to the
+// `nextPageToken` returned by a previous list request to get
+// the next page of results.
+func (c *ManagedRulesetsListCall) PageToken(pageToken string) *ManagedRulesetsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedRulesetsListCall) Fields(s ...googleapi.Field) *ManagedRulesetsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ManagedRulesetsListCall) IfNoneMatch(entityTag string) *ManagedRulesetsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedRulesetsListCall) Context(ctx context.Context) *ManagedRulesetsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedRulesetsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedRulesetsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/managedRulesets")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project": c.project,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.managedRulesets.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.managedRulesets.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ManagedRulesetList.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ManagedRulesetsListCall) Do(opts ...googleapi.CallOption) (*ManagedRulesetList, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ManagedRulesetList{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.managedRulesets.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ManagedRulesetsListCall) Pages(ctx context.Context, f func(*ManagedRulesetList) error) error {
 	c.ctx_ = ctx
 	defer c.PageToken(c.urlParams_.Get("pageToken"))
 	for {
@@ -57489,21 +58321,6 @@ func (c *NetworkAttachmentsAggregatedListCall) PageToken(pageToken string) *Netw
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkAttachmentsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkAttachmentsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -57544,7 +58361,7 @@ func (c *NetworkAttachmentsAggregatedListCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -57695,7 +58512,7 @@ func (c *NetworkAttachmentsDeleteCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/networkAttachments/{networkAttachment}")
@@ -57809,7 +58626,7 @@ func (c *NetworkAttachmentsGetCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -57936,7 +58753,7 @@ func (c *NetworkAttachmentsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -58068,7 +58885,7 @@ func (c *NetworkAttachmentsInsertCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkattachment)
 	if err != nil {
 		return nil, err
@@ -58263,21 +59080,6 @@ func (c *NetworkAttachmentsListCall) PageToken(pageToken string) *NetworkAttachm
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkAttachmentsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkAttachmentsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -58310,7 +59112,7 @@ func (c *NetworkAttachmentsListCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -58468,7 +59270,7 @@ func (c *NetworkAttachmentsPatchCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkattachment)
 	if err != nil {
 		return nil, err
@@ -58581,7 +59383,7 @@ func (c *NetworkAttachmentsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.regionsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -58693,7 +59495,7 @@ func (c *NetworkAttachmentsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *NetworkAttachmentsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -58911,21 +59713,6 @@ func (c *NetworkEdgeSecurityServicesAggregatedListCall) PageToken(pageToken stri
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkEdgeSecurityServicesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkEdgeSecurityServicesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -58966,7 +59753,7 @@ func (c *NetworkEdgeSecurityServicesAggregatedListCall) Header() http.Header {
 }
 
 func (c *NetworkEdgeSecurityServicesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -59117,7 +59904,7 @@ func (c *NetworkEdgeSecurityServicesDeleteCall) Header() http.Header {
 }
 
 func (c *NetworkEdgeSecurityServicesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/networkEdgeSecurityServices/{networkEdgeSecurityService}")
@@ -59232,7 +60019,7 @@ func (c *NetworkEdgeSecurityServicesGetCall) Header() http.Header {
 }
 
 func (c *NetworkEdgeSecurityServicesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -59371,7 +60158,7 @@ func (c *NetworkEdgeSecurityServicesInsertCall) Header() http.Header {
 }
 
 func (c *NetworkEdgeSecurityServicesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkedgesecurityservice)
 	if err != nil {
 		return nil, err
@@ -59517,7 +60304,7 @@ func (c *NetworkEdgeSecurityServicesPatchCall) Header() http.Header {
 }
 
 func (c *NetworkEdgeSecurityServicesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkedgesecurityservice)
 	if err != nil {
 		return nil, err
@@ -59733,21 +60520,6 @@ func (c *NetworkEndpointGroupsAggregatedListCall) PageToken(pageToken string) *N
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkEndpointGroupsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkEndpointGroupsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -59788,7 +60560,7 @@ func (c *NetworkEndpointGroupsAggregatedListCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -59945,7 +60717,7 @@ func (c *NetworkEndpointGroupsAttachNetworkEndpointsCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsAttachNetworkEndpointsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkendpointgroupsattachendpointsrequest)
 	if err != nil {
 		return nil, err
@@ -60086,7 +60858,7 @@ func (c *NetworkEndpointGroupsDeleteCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}")
@@ -60221,7 +60993,7 @@ func (c *NetworkEndpointGroupsDetachNetworkEndpointsCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsDetachNetworkEndpointsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkendpointgroupsdetachendpointsrequest)
 	if err != nil {
 		return nil, err
@@ -60341,7 +61113,7 @@ func (c *NetworkEndpointGroupsGetCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -60491,7 +61263,7 @@ func (c *NetworkEndpointGroupsInsertCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkendpointgroup)
 	if err != nil {
 		return nil, err
@@ -60690,21 +61462,6 @@ func (c *NetworkEndpointGroupsListCall) PageToken(pageToken string) *NetworkEndp
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkEndpointGroupsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkEndpointGroupsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -60737,7 +61494,7 @@ func (c *NetworkEndpointGroupsListCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -60961,21 +61718,6 @@ func (c *NetworkEndpointGroupsListNetworkEndpointsCall) PageToken(pageToken stri
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkEndpointGroupsListNetworkEndpointsCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkEndpointGroupsListNetworkEndpointsCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -61000,7 +61742,7 @@ func (c *NetworkEndpointGroupsListNetworkEndpointsCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsListNetworkEndpointsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkendpointgroupslistendpointsrequest)
 	if err != nil {
 		return nil, err
@@ -61134,7 +61876,7 @@ func (c *NetworkEndpointGroupsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *NetworkEndpointGroupsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -61276,7 +62018,7 @@ func (c *NetworkFirewallPoliciesAddAssociationCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesAddAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicyassociation)
 	if err != nil {
 		return nil, err
@@ -61424,7 +62166,7 @@ func (c *NetworkFirewallPoliciesAddPacketMirroringRuleCall) Header() http.Header
 }
 
 func (c *NetworkFirewallPoliciesAddPacketMirroringRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicyrule)
 	if err != nil {
 		return nil, err
@@ -61571,7 +62313,7 @@ func (c *NetworkFirewallPoliciesAddRuleCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesAddRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicyrule)
 	if err != nil {
 		return nil, err
@@ -61789,21 +62531,6 @@ func (c *NetworkFirewallPoliciesAggregatedListCall) PageToken(pageToken string) 
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkFirewallPoliciesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkFirewallPoliciesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -61844,7 +62571,7 @@ func (c *NetworkFirewallPoliciesAggregatedListCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -61998,7 +62725,7 @@ func (c *NetworkFirewallPoliciesCloneRulesCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesCloneRulesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/firewallPolicies/{firewallPolicy}/cloneRules")
@@ -62121,7 +62848,7 @@ func (c *NetworkFirewallPoliciesDeleteCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/firewallPolicies/{firewallPolicy}")
@@ -62231,7 +62958,7 @@ func (c *NetworkFirewallPoliciesGetCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -62352,7 +63079,7 @@ func (c *NetworkFirewallPoliciesGetAssociationCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesGetAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -62475,7 +63202,7 @@ func (c *NetworkFirewallPoliciesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -62597,7 +63324,7 @@ func (c *NetworkFirewallPoliciesGetPacketMirroringRuleCall) Header() http.Header
 }
 
 func (c *NetworkFirewallPoliciesGetPacketMirroringRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -62719,7 +63446,7 @@ func (c *NetworkFirewallPoliciesGetRuleCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesGetRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -62847,7 +63574,7 @@ func (c *NetworkFirewallPoliciesInsertCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicy)
 	if err != nil {
 		return nil, err
@@ -63039,21 +63766,6 @@ func (c *NetworkFirewallPoliciesListCall) PageToken(pageToken string) *NetworkFi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkFirewallPoliciesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkFirewallPoliciesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -63086,7 +63798,7 @@ func (c *NetworkFirewallPoliciesListCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -63235,7 +63947,7 @@ func (c *NetworkFirewallPoliciesPatchCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicy)
 	if err != nil {
 		return nil, err
@@ -63372,7 +64084,7 @@ func (c *NetworkFirewallPoliciesPatchPacketMirroringRuleCall) Header() http.Head
 }
 
 func (c *NetworkFirewallPoliciesPatchPacketMirroringRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicyrule)
 	if err != nil {
 		return nil, err
@@ -63508,7 +64220,7 @@ func (c *NetworkFirewallPoliciesPatchRuleCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesPatchRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.firewallpolicyrule)
 	if err != nil {
 		return nil, err
@@ -63642,7 +64354,7 @@ func (c *NetworkFirewallPoliciesRemoveAssociationCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesRemoveAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/firewallPolicies/{firewallPolicy}/removeAssociation")
@@ -63773,7 +64485,7 @@ func (c *NetworkFirewallPoliciesRemovePacketMirroringRuleCall) Header() http.Hea
 }
 
 func (c *NetworkFirewallPoliciesRemovePacketMirroringRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/firewallPolicies/{firewallPolicy}/removePacketMirroringRule")
@@ -63903,7 +64615,7 @@ func (c *NetworkFirewallPoliciesRemoveRuleCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesRemoveRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/firewallPolicies/{firewallPolicy}/removeRule")
@@ -64008,7 +64720,7 @@ func (c *NetworkFirewallPoliciesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.globalsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -64116,7 +64828,7 @@ func (c *NetworkFirewallPoliciesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *NetworkFirewallPoliciesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -64231,7 +64943,7 @@ func (c *NetworkProfilesGetCall) Header() http.Header {
 }
 
 func (c *NetworkProfilesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -64424,21 +65136,6 @@ func (c *NetworkProfilesListCall) PageToken(pageToken string) *NetworkProfilesLi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworkProfilesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkProfilesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -64471,7 +65168,7 @@ func (c *NetworkProfilesListCall) Header() http.Header {
 }
 
 func (c *NetworkProfilesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -64620,7 +65317,7 @@ func (c *NetworksAddPeeringCall) Header() http.Header {
 }
 
 func (c *NetworksAddPeeringCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networksaddpeeringrequest)
 	if err != nil {
 		return nil, err
@@ -64753,7 +65450,7 @@ func (c *NetworksCancelRequestRemovePeeringCall) Header() http.Header {
 }
 
 func (c *NetworksCancelRequestRemovePeeringCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networkscancelrequestremovepeeringrequest)
 	if err != nil {
 		return nil, err
@@ -64880,7 +65577,7 @@ func (c *NetworksDeleteCall) Header() http.Header {
 }
 
 func (c *NetworksDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/networks/{network}")
@@ -64990,7 +65687,7 @@ func (c *NetworksGetCall) Header() http.Header {
 }
 
 func (c *NetworksGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -65103,7 +65800,7 @@ func (c *NetworksGetEffectiveFirewallsCall) Header() http.Header {
 }
 
 func (c *NetworksGetEffectiveFirewallsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -65231,7 +65928,7 @@ func (c *NetworksInsertCall) Header() http.Header {
 }
 
 func (c *NetworksInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.network)
 	if err != nil {
 		return nil, err
@@ -65422,21 +66119,6 @@ func (c *NetworksListCall) PageToken(pageToken string) *NetworksListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworksListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworksListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -65469,7 +66151,7 @@ func (c *NetworksListCall) Header() http.Header {
 }
 
 func (c *NetworksListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -65711,21 +66393,6 @@ func (c *NetworksListPeeringRoutesCall) Region(region string) *NetworksListPeeri
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NetworksListPeeringRoutesCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworksListPeeringRoutesCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -65758,7 +66425,7 @@ func (c *NetworksListPeeringRoutesCall) Header() http.Header {
 }
 
 func (c *NetworksListPeeringRoutesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -65910,7 +66577,7 @@ func (c *NetworksPatchCall) Header() http.Header {
 }
 
 func (c *NetworksPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.network2)
 	if err != nil {
 		return nil, err
@@ -66039,7 +66706,7 @@ func (c *NetworksRemovePeeringCall) Header() http.Header {
 }
 
 func (c *NetworksRemovePeeringCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networksremovepeeringrequest)
 	if err != nil {
 		return nil, err
@@ -66170,7 +66837,7 @@ func (c *NetworksRequestRemovePeeringCall) Header() http.Header {
 }
 
 func (c *NetworksRequestRemovePeeringCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networksrequestremovepeeringrequest)
 	if err != nil {
 		return nil, err
@@ -66298,7 +66965,7 @@ func (c *NetworksSwitchToCustomModeCall) Header() http.Header {
 }
 
 func (c *NetworksSwitchToCustomModeCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/networks/{network}/switchToCustomMode")
@@ -66428,7 +67095,7 @@ func (c *NetworksUpdatePeeringCall) Header() http.Header {
 }
 
 func (c *NetworksUpdatePeeringCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.networksupdatepeeringrequest)
 	if err != nil {
 		return nil, err
@@ -66560,7 +67227,7 @@ func (c *NodeGroupsAddNodesCall) Header() http.Header {
 }
 
 func (c *NodeGroupsAddNodesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.nodegroupsaddnodesrequest)
 	if err != nil {
 		return nil, err
@@ -66776,21 +67443,6 @@ func (c *NodeGroupsAggregatedListCall) PageToken(pageToken string) *NodeGroupsAg
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NodeGroupsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NodeGroupsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -66831,7 +67483,7 @@ func (c *NodeGroupsAggregatedListCall) Header() http.Header {
 }
 
 func (c *NodeGroupsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -66981,7 +67633,7 @@ func (c *NodeGroupsDeleteCall) Header() http.Header {
 }
 
 func (c *NodeGroupsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}")
@@ -67110,7 +67762,7 @@ func (c *NodeGroupsDeleteNodesCall) Header() http.Header {
 }
 
 func (c *NodeGroupsDeleteNodesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.nodegroupsdeletenodesrequest)
 	if err != nil {
 		return nil, err
@@ -67232,7 +67884,7 @@ func (c *NodeGroupsGetCall) Header() http.Header {
 }
 
 func (c *NodeGroupsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -67358,7 +68010,7 @@ func (c *NodeGroupsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *NodeGroupsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -67491,7 +68143,7 @@ func (c *NodeGroupsInsertCall) Header() http.Header {
 }
 
 func (c *NodeGroupsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.nodegroup)
 	if err != nil {
 		return nil, err
@@ -67688,21 +68340,6 @@ func (c *NodeGroupsListCall) PageToken(pageToken string) *NodeGroupsListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NodeGroupsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NodeGroupsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -67735,7 +68372,7 @@ func (c *NodeGroupsListCall) Header() http.Header {
 }
 
 func (c *NodeGroupsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -67952,21 +68589,6 @@ func (c *NodeGroupsListNodesCall) PageToken(pageToken string) *NodeGroupsListNod
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NodeGroupsListNodesCall) ReturnPartialSuccess(returnPartialSuccess bool) *NodeGroupsListNodesCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -67991,7 +68613,7 @@ func (c *NodeGroupsListNodesCall) Header() http.Header {
 }
 
 func (c *NodeGroupsListNodesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/listNodes")
@@ -68142,7 +68764,7 @@ func (c *NodeGroupsPatchCall) Header() http.Header {
 }
 
 func (c *NodeGroupsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.nodegroup)
 	if err != nil {
 		return nil, err
@@ -68276,7 +68898,7 @@ func (c *NodeGroupsPerformMaintenanceCall) Header() http.Header {
 }
 
 func (c *NodeGroupsPerformMaintenanceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.nodegroupsperformmaintenancerequest)
 	if err != nil {
 		return nil, err
@@ -68389,7 +69011,7 @@ func (c *NodeGroupsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *NodeGroupsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.zonesetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -68522,7 +69144,7 @@ func (c *NodeGroupsSetNodeTemplateCall) Header() http.Header {
 }
 
 func (c *NodeGroupsSetNodeTemplateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.nodegroupssetnodetemplaterequest)
 	if err != nil {
 		return nil, err
@@ -68659,7 +69281,7 @@ func (c *NodeGroupsSimulateMaintenanceEventCall) Header() http.Header {
 }
 
 func (c *NodeGroupsSimulateMaintenanceEventCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.nodegroupssimulatemaintenanceeventrequest)
 	if err != nil {
 		return nil, err
@@ -68771,7 +69393,7 @@ func (c *NodeGroupsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *NodeGroupsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -68987,21 +69609,6 @@ func (c *NodeTemplatesAggregatedListCall) PageToken(pageToken string) *NodeTempl
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NodeTemplatesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NodeTemplatesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -69042,7 +69649,7 @@ func (c *NodeTemplatesAggregatedListCall) Header() http.Header {
 }
 
 func (c *NodeTemplatesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -69192,7 +69799,7 @@ func (c *NodeTemplatesDeleteCall) Header() http.Header {
 }
 
 func (c *NodeTemplatesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/nodeTemplates/{nodeTemplate}")
@@ -69306,7 +69913,7 @@ func (c *NodeTemplatesGetCall) Header() http.Header {
 }
 
 func (c *NodeTemplatesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -69432,7 +70039,7 @@ func (c *NodeTemplatesGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *NodeTemplatesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -69563,7 +70170,7 @@ func (c *NodeTemplatesInsertCall) Header() http.Header {
 }
 
 func (c *NodeTemplatesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.nodetemplate)
 	if err != nil {
 		return nil, err
@@ -69759,21 +70366,6 @@ func (c *NodeTemplatesListCall) PageToken(pageToken string) *NodeTemplatesListCa
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NodeTemplatesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NodeTemplatesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -69806,7 +70398,7 @@ func (c *NodeTemplatesListCall) Header() http.Header {
 }
 
 func (c *NodeTemplatesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -69939,7 +70531,7 @@ func (c *NodeTemplatesSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *NodeTemplatesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.regionsetpolicyrequest)
 	if err != nil {
 		return nil, err
@@ -70051,7 +70643,7 @@ func (c *NodeTemplatesTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *NodeTemplatesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -70267,21 +70859,6 @@ func (c *NodeTypesAggregatedListCall) PageToken(pageToken string) *NodeTypesAggr
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NodeTypesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NodeTypesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -70322,7 +70899,7 @@ func (c *NodeTypesAggregatedListCall) Header() http.Header {
 }
 
 func (c *NodeTypesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -70459,7 +71036,7 @@ func (c *NodeTypesGetCall) Header() http.Header {
 }
 
 func (c *NodeTypesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -70655,21 +71232,6 @@ func (c *NodeTypesListCall) PageToken(pageToken string) *NodeTypesListCall {
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *NodeTypesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NodeTypesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -70702,7 +71264,7 @@ func (c *NodeTypesListCall) Header() http.Header {
 }
 
 func (c *NodeTypesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -70874,7 +71436,7 @@ func (c *OrganizationSecurityPoliciesAddAssociationCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesAddAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicyassociation)
 	if err != nil {
 		return nil, err
@@ -71005,7 +71567,7 @@ func (c *OrganizationSecurityPoliciesAddRuleCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesAddRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicyrule)
 	if err != nil {
 		return nil, err
@@ -71143,7 +71705,7 @@ func (c *OrganizationSecurityPoliciesCopyRulesCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesCopyRulesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/securityPolicies/{securityPolicy}/copyRules")
@@ -71268,7 +71830,7 @@ func (c *OrganizationSecurityPoliciesDeleteCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/securityPolicies/{securityPolicy}")
@@ -71381,7 +71943,7 @@ func (c *OrganizationSecurityPoliciesGetCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -71505,7 +72067,7 @@ func (c *OrganizationSecurityPoliciesGetAssociationCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesGetAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -71629,7 +72191,7 @@ func (c *OrganizationSecurityPoliciesGetRuleCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesGetRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -71767,7 +72329,7 @@ func (c *OrganizationSecurityPoliciesInsertCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicy)
 	if err != nil {
 		return nil, err
@@ -71965,21 +72527,6 @@ func (c *OrganizationSecurityPoliciesListCall) ParentId(parentId string) *Organi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *OrganizationSecurityPoliciesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *OrganizationSecurityPoliciesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -72012,7 +72559,7 @@ func (c *OrganizationSecurityPoliciesListCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -72152,7 +72699,7 @@ func (c *OrganizationSecurityPoliciesListAssociationsCall) Header() http.Header 
 }
 
 func (c *OrganizationSecurityPoliciesListAssociationsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -72344,21 +72891,6 @@ func (c *OrganizationSecurityPoliciesListPreconfiguredExpressionSetsCall) Parent
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *OrganizationSecurityPoliciesListPreconfiguredExpressionSetsCall) ReturnPartialSuccess(returnPartialSuccess bool) *OrganizationSecurityPoliciesListPreconfiguredExpressionSetsCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -72391,7 +72923,7 @@ func (c *OrganizationSecurityPoliciesListPreconfiguredExpressionSetsCall) Header
 }
 
 func (c *OrganizationSecurityPoliciesListPreconfiguredExpressionSetsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -72524,7 +73056,7 @@ func (c *OrganizationSecurityPoliciesMoveCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesMoveCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/securityPolicies/{securityPolicy}/move")
@@ -72652,7 +73184,7 @@ func (c *OrganizationSecurityPoliciesPatchCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicy)
 	if err != nil {
 		return nil, err
@@ -72791,7 +73323,7 @@ func (c *OrganizationSecurityPoliciesPatchRuleCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesPatchRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicyrule)
 	if err != nil {
 		return nil, err
@@ -72930,7 +73462,7 @@ func (c *OrganizationSecurityPoliciesRemoveAssociationCall) Header() http.Header
 }
 
 func (c *OrganizationSecurityPoliciesRemoveAssociationCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/securityPolicies/{securityPolicy}/removeAssociation")
@@ -73064,7 +73596,7 @@ func (c *OrganizationSecurityPoliciesRemoveRuleCall) Header() http.Header {
 }
 
 func (c *OrganizationSecurityPoliciesRemoveRuleCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "locations/global/securityPolicies/{securityPolicy}/removeRule")
@@ -73273,21 +73805,6 @@ func (c *PacketMirroringsAggregatedListCall) PageToken(pageToken string) *Packet
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *PacketMirroringsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *PacketMirroringsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -73328,7 +73845,7 @@ func (c *PacketMirroringsAggregatedListCall) Header() http.Header {
 }
 
 func (c *PacketMirroringsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -73478,7 +73995,7 @@ func (c *PacketMirroringsDeleteCall) Header() http.Header {
 }
 
 func (c *PacketMirroringsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/packetMirrorings/{packetMirroring}")
@@ -73592,7 +74109,7 @@ func (c *PacketMirroringsGetCall) Header() http.Header {
 }
 
 func (c *PacketMirroringsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -73724,7 +74241,7 @@ func (c *PacketMirroringsInsertCall) Header() http.Header {
 }
 
 func (c *PacketMirroringsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.packetmirroring)
 	if err != nil {
 		return nil, err
@@ -73921,21 +74438,6 @@ func (c *PacketMirroringsListCall) PageToken(pageToken string) *PacketMirrorings
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *PacketMirroringsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *PacketMirroringsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -73968,7 +74470,7 @@ func (c *PacketMirroringsListCall) Header() http.Header {
 }
 
 func (c *PacketMirroringsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -74125,7 +74627,7 @@ func (c *PacketMirroringsPatchCall) Header() http.Header {
 }
 
 func (c *PacketMirroringsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.packetmirroring)
 	if err != nil {
 		return nil, err
@@ -74237,7 +74739,7 @@ func (c *PacketMirroringsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *PacketMirroringsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -74353,7 +74855,7 @@ func (c *PreviewFeaturesGetCall) Header() http.Header {
 }
 
 func (c *PreviewFeaturesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -74544,21 +75046,6 @@ func (c *PreviewFeaturesListCall) PageToken(pageToken string) *PreviewFeaturesLi
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *PreviewFeaturesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *PreviewFeaturesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -74591,7 +75078,7 @@ func (c *PreviewFeaturesListCall) Header() http.Header {
 }
 
 func (c *PreviewFeaturesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -74742,7 +75229,7 @@ func (c *PreviewFeaturesUpdateCall) Header() http.Header {
 }
 
 func (c *PreviewFeaturesUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.previewfeature)
 	if err != nil {
 		return nil, err
@@ -74800,6 +75287,130 @@ func (c *PreviewFeaturesUpdateCall) Do(opts ...googleapi.CallOption) (*Operation
 		return nil, err
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.previewFeatures.update", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectViewsGetCall struct {
+	s            *Service
+	project      string
+	region       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Returns the specified global ProjectViews resource, with a
+// regional
+// context.
+// This regional API endpoint reads resource metadata from regional
+// read-only replicas. Because changes are copied to these regional
+// replicas
+// asynchronously, for real-time resource reads or any write
+// operations
+// (creating, updating, or deleting resources), use the global
+// projects.get
+// (https://cloud.google.com/compute/docs/reference/rest/v1/projects/get)
+// endpoint.
+//
+// - project: Project ID for this request. This is part of the URL path.
+// - region: Name of the region for this request. This is part of the URL path.
+func (r *ProjectViewsService) Get(project string, region string) *ProjectViewsGetCall {
+	c := &ProjectViewsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectViewsGetCall) Fields(s ...googleapi.Field) *ProjectViewsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectViewsGetCall) IfNoneMatch(entityTag string) *ProjectViewsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectViewsGetCall) Context(ctx context.Context) *ProjectViewsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectViewsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectViewsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/projectViews")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project": c.project,
+		"region":  c.region,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.projectViews.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.projectViews.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ProjectView.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectViewsGetCall) Do(opts ...googleapi.CallOption) (*ProjectView, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ProjectView{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.projectViews.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -74866,7 +75477,7 @@ func (c *ProjectsDisableXpnHostCall) Header() http.Header {
 }
 
 func (c *ProjectsDisableXpnHostCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/disableXpnHost")
@@ -74989,7 +75600,7 @@ func (c *ProjectsDisableXpnResourceCall) Header() http.Header {
 }
 
 func (c *ProjectsDisableXpnResourceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.projectsdisablexpnresourcerequest)
 	if err != nil {
 		return nil, err
@@ -75112,7 +75723,7 @@ func (c *ProjectsEnableXpnHostCall) Header() http.Header {
 }
 
 func (c *ProjectsEnableXpnHostCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/enableXpnHost")
@@ -75236,7 +75847,7 @@ func (c *ProjectsEnableXpnResourceCall) Header() http.Header {
 }
 
 func (c *ProjectsEnableXpnResourceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.projectsenablexpnresourcerequest)
 	if err != nil {
 		return nil, err
@@ -75358,7 +75969,7 @@ func (c *ProjectsGetCall) Header() http.Header {
 }
 
 func (c *ProjectsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -75469,7 +76080,7 @@ func (c *ProjectsGetXpnHostCall) Header() http.Header {
 }
 
 func (c *ProjectsGetXpnHostCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -75661,21 +76272,6 @@ func (c *ProjectsGetXpnResourcesCall) PageToken(pageToken string) *ProjectsGetXp
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *ProjectsGetXpnResourcesCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsGetXpnResourcesCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -75708,7 +76304,7 @@ func (c *ProjectsGetXpnResourcesCall) Header() http.Header {
 }
 
 func (c *ProjectsGetXpnResourcesCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -75922,21 +76518,6 @@ func (c *ProjectsListXpnHostsCall) PageToken(pageToken string) *ProjectsListXpnH
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *ProjectsListXpnHostsCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsListXpnHostsCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -75961,7 +76542,7 @@ func (c *ProjectsListXpnHostsCall) Header() http.Header {
 }
 
 func (c *ProjectsListXpnHostsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.projectslistxpnhostsrequest)
 	if err != nil {
 		return nil, err
@@ -76125,7 +76706,7 @@ func (c *ProjectsMoveDiskCall) Header() http.Header {
 }
 
 func (c *ProjectsMoveDiskCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.diskmoverequest)
 	if err != nil {
 		return nil, err
@@ -76261,7 +76842,7 @@ func (c *ProjectsMoveInstanceCall) Header() http.Header {
 }
 
 func (c *ProjectsMoveInstanceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.instancemoverequest)
 	if err != nil {
 		return nil, err
@@ -76390,7 +76971,7 @@ func (c *ProjectsSetCloudArmorTierCall) Header() http.Header {
 }
 
 func (c *ProjectsSetCloudArmorTierCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.projectssetcloudarmortierrequest)
 	if err != nil {
 		return nil, err
@@ -76517,7 +77098,7 @@ func (c *ProjectsSetCommonInstanceMetadataCall) Header() http.Header {
 }
 
 func (c *ProjectsSetCommonInstanceMetadataCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.metadata)
 	if err != nil {
 		return nil, err
@@ -76646,7 +77227,7 @@ func (c *ProjectsSetDefaultNetworkTierCall) Header() http.Header {
 }
 
 func (c *ProjectsSetDefaultNetworkTierCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.projectssetdefaultnetworktierrequest)
 	if err != nil {
 		return nil, err
@@ -76775,7 +77356,7 @@ func (c *ProjectsSetUsageExportBucketCall) Header() http.Header {
 }
 
 func (c *ProjectsSetUsageExportBucketCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.usageexportlocation)
 	if err != nil {
 		return nil, err
@@ -76902,7 +77483,7 @@ func (c *PublicAdvertisedPrefixesAnnounceCall) Header() http.Header {
 }
 
 func (c *PublicAdvertisedPrefixesAnnounceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}/announce")
@@ -77026,7 +77607,7 @@ func (c *PublicAdvertisedPrefixesDeleteCall) Header() http.Header {
 }
 
 func (c *PublicAdvertisedPrefixesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}")
@@ -77137,7 +77718,7 @@ func (c *PublicAdvertisedPrefixesGetCall) Header() http.Header {
 }
 
 func (c *PublicAdvertisedPrefixesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -77264,7 +77845,7 @@ func (c *PublicAdvertisedPrefixesInsertCall) Header() http.Header {
 }
 
 func (c *PublicAdvertisedPrefixesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.publicadvertisedprefix)
 	if err != nil {
 		return nil, err
@@ -77455,21 +78036,6 @@ func (c *PublicAdvertisedPrefixesListCall) PageToken(pageToken string) *PublicAd
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *PublicAdvertisedPrefixesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *PublicAdvertisedPrefixesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -77502,7 +78068,7 @@ func (c *PublicAdvertisedPrefixesListCall) Header() http.Header {
 }
 
 func (c *PublicAdvertisedPrefixesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -77656,7 +78222,7 @@ func (c *PublicAdvertisedPrefixesPatchCall) Header() http.Header {
 }
 
 func (c *PublicAdvertisedPrefixesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.publicadvertisedprefix)
 	if err != nil {
 		return nil, err
@@ -77784,7 +78350,7 @@ func (c *PublicAdvertisedPrefixesWithdrawCall) Header() http.Header {
 }
 
 func (c *PublicAdvertisedPrefixesWithdrawCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}/withdraw")
@@ -77996,21 +78562,6 @@ func (c *PublicDelegatedPrefixesAggregatedListCall) PageToken(pageToken string) 
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *PublicDelegatedPrefixesAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *PublicDelegatedPrefixesAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
 // Shared VPC service project id or service project number for which
 // aggregated list request is invoked for subnetworks list-usable api.
@@ -78051,7 +78602,7 @@ func (c *PublicDelegatedPrefixesAggregatedListCall) Header() http.Header {
 }
 
 func (c *PublicDelegatedPrefixesAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -78203,7 +78754,7 @@ func (c *PublicDelegatedPrefixesAnnounceCall) Header() http.Header {
 }
 
 func (c *PublicDelegatedPrefixesAnnounceCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}/announce")
@@ -78331,7 +78882,7 @@ func (c *PublicDelegatedPrefixesDeleteCall) Header() http.Header {
 }
 
 func (c *PublicDelegatedPrefixesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}")
@@ -78447,7 +78998,7 @@ func (c *PublicDelegatedPrefixesGetCall) Header() http.Header {
 }
 
 func (c *PublicDelegatedPrefixesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -78579,7 +79130,7 @@ func (c *PublicDelegatedPrefixesInsertCall) Header() http.Header {
 }
 
 func (c *PublicDelegatedPrefixesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.publicdelegatedprefix)
 	if err != nil {
 		return nil, err
@@ -78774,21 +79325,6 @@ func (c *PublicDelegatedPrefixesListCall) PageToken(pageToken string) *PublicDel
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *PublicDelegatedPrefixesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *PublicDelegatedPrefixesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -78821,7 +79357,7 @@ func (c *PublicDelegatedPrefixesListCall) Header() http.Header {
 }
 
 func (c *PublicDelegatedPrefixesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -78979,7 +79515,7 @@ func (c *PublicDelegatedPrefixesPatchCall) Header() http.Header {
 }
 
 func (c *PublicDelegatedPrefixesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.publicdelegatedprefix)
 	if err != nil {
 		return nil, err
@@ -79112,7 +79648,7 @@ func (c *PublicDelegatedPrefixesWithdrawCall) Header() http.Header {
 }
 
 func (c *PublicDelegatedPrefixesWithdrawCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}/withdraw")
@@ -79239,7 +79775,7 @@ func (c *RegionAutoscalersDeleteCall) Header() http.Header {
 }
 
 func (c *RegionAutoscalersDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/autoscalers/{autoscaler}")
@@ -79353,7 +79889,7 @@ func (c *RegionAutoscalersGetCall) Header() http.Header {
 }
 
 func (c *RegionAutoscalersGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -79483,7 +80019,7 @@ func (c *RegionAutoscalersInsertCall) Header() http.Header {
 }
 
 func (c *RegionAutoscalersInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.autoscaler)
 	if err != nil {
 		return nil, err
@@ -79679,21 +80215,6 @@ func (c *RegionAutoscalersListCall) PageToken(pageToken string) *RegionAutoscale
 	return c
 }
 
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *RegionAutoscalersListCall) ReturnPartialSuccess(returnPartialSuccess bool) *RegionAutoscalersListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -79726,7 +80247,7 @@ func (c *RegionAutoscalersListCall) Header() http.Header {
 }
 
 func (c *RegionAutoscalersListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_, "x-goog-api-version", "2026-09-01")
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
@@ -79886,7 +80407,7 @@ func (c *RegionAutoscalersPatchCall) Header() http.Header {
 }
 
 func (c *RegionAutoscalersPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.autoscaler)
 	if err != nil {
 		return nil, err
@@ -79997,7 +80518,7 @@ func (c *RegionAutoscalersTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *RegionAutoscalersTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
 	if err != nil {
 		return nil, err
@@ -80136,7 +80657,7 @@ func (c *RegionAutoscalersUpdateCall) Header() http.Header {
 }
 
 func (c *RegionAutoscalersUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_, "x-goog-api-version", "2026-09-01")
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.autoscaler)
 	if err != nil {
 		return nil, err
@@ -80194,3192 +80715,5 @@ func (c *RegionAutoscalersUpdateCall) Do(opts ...googleapi.CallOption) (*Operati
 		return nil, err
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionAutoscalers.update", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendBucketsDeleteCall struct {
-	s             *Service
-	project       string
-	region        string
-	backendBucket string
-	urlParams_    gensupport.URLParams
-	ctx_          context.Context
-	header_       http.Header
-}
-
-// Delete: Deletes the specified regional BackendBucket resource.
-//
-// - backendBucket: Name of the BackendBucket resource to delete.
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendBucketsService) Delete(project string, region string, backendBucket string) *RegionBackendBucketsDeleteCall {
-	c := &RegionBackendBucketsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendBucket = backendBucket
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-// end_interface: MixerMutationRequestBuilder
-func (c *RegionBackendBucketsDeleteCall) RequestId(requestId string) *RegionBackendBucketsDeleteCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsDeleteCall) Fields(s ...googleapi.Field) *RegionBackendBucketsDeleteCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsDeleteCall) Context(ctx context.Context) *RegionBackendBucketsDeleteCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsDeleteCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets/{backendBucket}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":       c.project,
-		"region":        c.region,
-		"backendBucket": c.backendBucket,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.delete", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.delete" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendBucketsDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.delete", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendBucketsGetCall struct {
-	s             *Service
-	project       string
-	region        string
-	backendBucket string
-	urlParams_    gensupport.URLParams
-	ifNoneMatch_  string
-	ctx_          context.Context
-	header_       http.Header
-}
-
-// Get: Returns the specified regional BackendBucket resource.
-//
-// - backendBucket: Name of the BackendBucket resource to return.
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendBucketsService) Get(project string, region string, backendBucket string) *RegionBackendBucketsGetCall {
-	c := &RegionBackendBucketsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendBucket = backendBucket
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsGetCall) Fields(s ...googleapi.Field) *RegionBackendBucketsGetCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *RegionBackendBucketsGetCall) IfNoneMatch(entityTag string) *RegionBackendBucketsGetCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsGetCall) Context(ctx context.Context) *RegionBackendBucketsGetCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsGetCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets/{backendBucket}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":       c.project,
-		"region":        c.region,
-		"backendBucket": c.backendBucket,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.get", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.get" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *BackendBucket.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendBucketsGetCall) Do(opts ...googleapi.CallOption) (*BackendBucket, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &BackendBucket{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.get", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendBucketsGetIamPolicyCall struct {
-	s            *Service
-	project      string
-	region       string
-	resource     string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// GetIamPolicy: Gets the access control policy for a resource. May be empty if
-// no such
-// policy or resource exists.
-//
-// - project: Project ID for this request.
-// - region: The name of the region for this request.
-// - resource: Name or id of the resource for this request.
-func (r *RegionBackendBucketsService) GetIamPolicy(project string, region string, resource string) *RegionBackendBucketsGetIamPolicyCall {
-	c := &RegionBackendBucketsGetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.resource = resource
-	return c
-}
-
-// OptionsRequestedPolicyVersion sets the optional parameter
-// "optionsRequestedPolicyVersion": Requested IAM Policy version.
-func (c *RegionBackendBucketsGetIamPolicyCall) OptionsRequestedPolicyVersion(optionsRequestedPolicyVersion int64) *RegionBackendBucketsGetIamPolicyCall {
-	c.urlParams_.Set("optionsRequestedPolicyVersion", fmt.Sprint(optionsRequestedPolicyVersion))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsGetIamPolicyCall) Fields(s ...googleapi.Field) *RegionBackendBucketsGetIamPolicyCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *RegionBackendBucketsGetIamPolicyCall) IfNoneMatch(entityTag string) *RegionBackendBucketsGetIamPolicyCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsGetIamPolicyCall) Context(ctx context.Context) *RegionBackendBucketsGetIamPolicyCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsGetIamPolicyCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets/{resource}/getIamPolicy")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":  c.project,
-		"region":   c.region,
-		"resource": c.resource,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.getIamPolicy", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.getIamPolicy" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendBucketsGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Policy{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.getIamPolicy", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendBucketsInsertCall struct {
-	s             *Service
-	project       string
-	region        string
-	backendbucket *BackendBucket
-	urlParams_    gensupport.URLParams
-	ctx_          context.Context
-	header_       http.Header
-}
-
-// Insert: Creates a RegionBackendBucket in the specified project in the given
-// scope
-// using the parameters that are included in the request.
-//
-// - project: Project ID for this request.
-// - region: Name of the region of this request.
-func (r *RegionBackendBucketsService) Insert(project string, region string, backendbucket *BackendBucket) *RegionBackendBucketsInsertCall {
-	c := &RegionBackendBucketsInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendbucket = backendbucket
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-func (c *RegionBackendBucketsInsertCall) RequestId(requestId string) *RegionBackendBucketsInsertCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsInsertCall) Fields(s ...googleapi.Field) *RegionBackendBucketsInsertCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsInsertCall) Context(ctx context.Context) *RegionBackendBucketsInsertCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsInsertCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendbucket)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-		"region":  c.region,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.insert" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendBucketsInsertCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.insert", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendBucketsListCall struct {
-	s            *Service
-	project      string
-	region       string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// List: Retrieves the list of BackendBucket resources available to the
-// specified
-// project in the given region.
-//
-// - project: Project ID for this request.
-// - region: Name of the region of this request.
-func (r *RegionBackendBucketsService) List(project string, region string) *RegionBackendBucketsListCall {
-	c := &RegionBackendBucketsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	return c
-}
-
-// Filter sets the optional parameter "filter": A filter expression that
-// filters resources listed in the response. Most
-// Compute resources support two types of filter expressions:
-// expressions that support regular expressions and expressions that follow
-// API improvement proposal AIP-160.
-// These two types of filter expressions cannot be mixed in one request.
-//
-// If you want to use AIP-160, your expression must specify the field name,
-// an
-// operator, and the value that you want to use for filtering. The value
-// must be a string, a number, or a boolean. The operator
-// must be either `=`, `!=`, `>`, `<`, `<=`, `>=` or `:`.
-//
-// For example, if you are filtering Compute Engine instances, you can
-// exclude instances named `example-instance` by specifying
-// `name != example-instance`.
-//
-// The `:*` comparison can be used to test whether a key has been defined.
-// For example, to find all objects with `owner` label
-// use:
-// ```
-// labels.owner:*
-// ```
-//
-// You can also filter nested fields. For example, you could
-// specify
-// `scheduling.automaticRestart = false` to include instances only
-// if they are not scheduled for automatic restarts. You can use filtering
-// on nested fields to filter based onresource labels.
-//
-// To filter on multiple expressions, provide each separate expression
-// within
-// parentheses. For example:
-// ```
-// (scheduling.automaticRestart = true)
-// (cpuPlatform = "Intel Skylake")
-// ```
-// By default, each expression is an `AND` expression. However, you
-// can include `AND` and `OR` expressions explicitly.
-// For example:
-// ```
-// (cpuPlatform = "Intel Skylake") OR
-// (cpuPlatform = "Intel Broadwell") AND
-// (scheduling.automaticRestart = true)
-// ```
-//
-// If you want to use a regular expression, use the `eq` (equal) or `ne`
-// (not equal) operator against a single un-parenthesized expression with
-// or
-// without quotes or against multiple parenthesized expressions.
-// Examples:
-//
-// `fieldname eq unquoted literal`
-// `fieldname eq 'single quoted literal'`
-// `fieldname eq "double quoted literal"
-// `(fieldname1 eq literal) (fieldname2 ne "literal")`
-//
-// The literal value is interpreted as a regular expression using GoogleRE2
-// library syntax.
-// The literal value must match the entire field.
-//
-// For example, to filter for instances that do not end with name
-// "instance",
-// you would use `name ne .*instance`.
-//
-// You cannot combine constraints on multiple fields using regular
-// expressions.
-func (c *RegionBackendBucketsListCall) Filter(filter string) *RegionBackendBucketsListCall {
-	c.urlParams_.Set("filter", filter)
-	return c
-}
-
-// MaxResults sets the optional parameter "maxResults": The maximum number of
-// results per page that should be returned.
-// If the number of available results is larger than `maxResults`,
-// Compute Engine returns a `nextPageToken` that can be used to get
-// the next page of results in subsequent list requests. Acceptable values
-// are
-// `0` to `500`, inclusive. (Default: `500`)
-func (c *RegionBackendBucketsListCall) MaxResults(maxResults int64) *RegionBackendBucketsListCall {
-	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
-	return c
-}
-
-// OrderBy sets the optional parameter "orderBy": Sorts list results by a
-// certain order. By default, results
-// are returned in alphanumerical order based on the resource name.
-//
-// You can also sort results in descending order based on the
-// creation
-// timestamp using `orderBy="creationTimestamp desc". This sorts
-// results based on the `creationTimestamp` field in
-// reverse chronological order (newest result first). Use this to
-// sort
-// resources like operations so that the newest operation is returned
-// first.
-//
-// Currently, only sorting by `name` or
-// `creationTimestamp desc` is supported.
-func (c *RegionBackendBucketsListCall) OrderBy(orderBy string) *RegionBackendBucketsListCall {
-	c.urlParams_.Set("orderBy", orderBy)
-	return c
-}
-
-// PageToken sets the optional parameter "pageToken": Specifies a page token to
-// use. Set `pageToken` to the
-// `nextPageToken` returned by a previous list request to get
-// the next page of results.
-func (c *RegionBackendBucketsListCall) PageToken(pageToken string) *RegionBackendBucketsListCall {
-	c.urlParams_.Set("pageToken", pageToken)
-	return c
-}
-
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *RegionBackendBucketsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *RegionBackendBucketsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsListCall) Fields(s ...googleapi.Field) *RegionBackendBucketsListCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *RegionBackendBucketsListCall) IfNoneMatch(entityTag string) *RegionBackendBucketsListCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsListCall) Context(ctx context.Context) *RegionBackendBucketsListCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsListCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-		"region":  c.region,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.list", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.list" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *BackendBucketList.ServerResponse.Header or (if a response was returned at
-// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified was
-// returned.
-func (c *RegionBackendBucketsListCall) Do(opts ...googleapi.CallOption) (*BackendBucketList, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &BackendBucketList{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.list", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-// Pages invokes f for each page of results.
-// A non-nil error returned from f will halt the iteration.
-// The provided context supersedes any context provided to the Context method.
-func (c *RegionBackendBucketsListCall) Pages(ctx context.Context, f func(*BackendBucketList) error) error {
-	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken"))
-	for {
-		x, err := c.Do()
-		if err != nil {
-			return err
-		}
-		if err := f(x); err != nil {
-			return err
-		}
-		if x.NextPageToken == "" {
-			return nil
-		}
-		c.PageToken(x.NextPageToken)
-	}
-}
-
-type RegionBackendBucketsListUsableCall struct {
-	s            *Service
-	project      string
-	region       string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// ListUsable: Retrieves a list of all usable backend buckets in the specified
-// project in
-// the given region.
-//
-//   - project: Project ID for this request.
-//   - region: Name of the region scoping this request.
-//     It must be a string that meets the requirements in RFC1035.
-func (r *RegionBackendBucketsService) ListUsable(project string, region string) *RegionBackendBucketsListUsableCall {
-	c := &RegionBackendBucketsListUsableCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	return c
-}
-
-// Filter sets the optional parameter "filter": A filter expression that
-// filters resources listed in the response. Most
-// Compute resources support two types of filter expressions:
-// expressions that support regular expressions and expressions that follow
-// API improvement proposal AIP-160.
-// These two types of filter expressions cannot be mixed in one request.
-//
-// If you want to use AIP-160, your expression must specify the field name,
-// an
-// operator, and the value that you want to use for filtering. The value
-// must be a string, a number, or a boolean. The operator
-// must be either `=`, `!=`, `>`, `<`, `<=`, `>=` or `:`.
-//
-// For example, if you are filtering Compute Engine instances, you can
-// exclude instances named `example-instance` by specifying
-// `name != example-instance`.
-//
-// The `:*` comparison can be used to test whether a key has been defined.
-// For example, to find all objects with `owner` label
-// use:
-// ```
-// labels.owner:*
-// ```
-//
-// You can also filter nested fields. For example, you could
-// specify
-// `scheduling.automaticRestart = false` to include instances only
-// if they are not scheduled for automatic restarts. You can use filtering
-// on nested fields to filter based onresource labels.
-//
-// To filter on multiple expressions, provide each separate expression
-// within
-// parentheses. For example:
-// ```
-// (scheduling.automaticRestart = true)
-// (cpuPlatform = "Intel Skylake")
-// ```
-// By default, each expression is an `AND` expression. However, you
-// can include `AND` and `OR` expressions explicitly.
-// For example:
-// ```
-// (cpuPlatform = "Intel Skylake") OR
-// (cpuPlatform = "Intel Broadwell") AND
-// (scheduling.automaticRestart = true)
-// ```
-//
-// If you want to use a regular expression, use the `eq` (equal) or `ne`
-// (not equal) operator against a single un-parenthesized expression with
-// or
-// without quotes or against multiple parenthesized expressions.
-// Examples:
-//
-// `fieldname eq unquoted literal`
-// `fieldname eq 'single quoted literal'`
-// `fieldname eq "double quoted literal"
-// `(fieldname1 eq literal) (fieldname2 ne "literal")`
-//
-// The literal value is interpreted as a regular expression using GoogleRE2
-// library syntax.
-// The literal value must match the entire field.
-//
-// For example, to filter for instances that do not end with name
-// "instance",
-// you would use `name ne .*instance`.
-//
-// You cannot combine constraints on multiple fields using regular
-// expressions.
-func (c *RegionBackendBucketsListUsableCall) Filter(filter string) *RegionBackendBucketsListUsableCall {
-	c.urlParams_.Set("filter", filter)
-	return c
-}
-
-// MaxResults sets the optional parameter "maxResults": The maximum number of
-// results per page that should be returned.
-// If the number of available results is larger than `maxResults`,
-// Compute Engine returns a `nextPageToken` that can be used to get
-// the next page of results in subsequent list requests. Acceptable values
-// are
-// `0` to `500`, inclusive. (Default: `500`)
-func (c *RegionBackendBucketsListUsableCall) MaxResults(maxResults int64) *RegionBackendBucketsListUsableCall {
-	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
-	return c
-}
-
-// OrderBy sets the optional parameter "orderBy": Sorts list results by a
-// certain order. By default, results
-// are returned in alphanumerical order based on the resource name.
-//
-// You can also sort results in descending order based on the
-// creation
-// timestamp using `orderBy="creationTimestamp desc". This sorts
-// results based on the `creationTimestamp` field in
-// reverse chronological order (newest result first). Use this to
-// sort
-// resources like operations so that the newest operation is returned
-// first.
-//
-// Currently, only sorting by `name` or
-// `creationTimestamp desc` is supported.
-func (c *RegionBackendBucketsListUsableCall) OrderBy(orderBy string) *RegionBackendBucketsListUsableCall {
-	c.urlParams_.Set("orderBy", orderBy)
-	return c
-}
-
-// PageToken sets the optional parameter "pageToken": Specifies a page token to
-// use. Set `pageToken` to the
-// `nextPageToken` returned by a previous list request to get
-// the next page of results.
-func (c *RegionBackendBucketsListUsableCall) PageToken(pageToken string) *RegionBackendBucketsListUsableCall {
-	c.urlParams_.Set("pageToken", pageToken)
-	return c
-}
-
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *RegionBackendBucketsListUsableCall) ReturnPartialSuccess(returnPartialSuccess bool) *RegionBackendBucketsListUsableCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsListUsableCall) Fields(s ...googleapi.Field) *RegionBackendBucketsListUsableCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *RegionBackendBucketsListUsableCall) IfNoneMatch(entityTag string) *RegionBackendBucketsListUsableCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsListUsableCall) Context(ctx context.Context) *RegionBackendBucketsListUsableCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsListUsableCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsListUsableCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets/listUsable")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-		"region":  c.region,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.listUsable", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.listUsable" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *BackendBucketListUsable.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was because
-// http.StatusNotModified was returned.
-func (c *RegionBackendBucketsListUsableCall) Do(opts ...googleapi.CallOption) (*BackendBucketListUsable, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &BackendBucketListUsable{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.listUsable", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-// Pages invokes f for each page of results.
-// A non-nil error returned from f will halt the iteration.
-// The provided context supersedes any context provided to the Context method.
-func (c *RegionBackendBucketsListUsableCall) Pages(ctx context.Context, f func(*BackendBucketListUsable) error) error {
-	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken"))
-	for {
-		x, err := c.Do()
-		if err != nil {
-			return err
-		}
-		if err := f(x); err != nil {
-			return err
-		}
-		if x.NextPageToken == "" {
-			return nil
-		}
-		c.PageToken(x.NextPageToken)
-	}
-}
-
-type RegionBackendBucketsPatchCall struct {
-	s             *Service
-	project       string
-	region        string
-	backendBucket string
-	backendbucket *BackendBucket
-	urlParams_    gensupport.URLParams
-	ctx_          context.Context
-	header_       http.Header
-}
-
-// Patch: Updates the specified  BackendBucket resource with the data included
-// in the
-// request. This method supportsPATCH
-// semantics and uses theJSON merge
-// patch format and processing rules.
-//
-// - backendBucket: Name of the BackendBucket resource to patch.
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendBucketsService) Patch(project string, region string, backendBucket string, backendbucket *BackendBucket) *RegionBackendBucketsPatchCall {
-	c := &RegionBackendBucketsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendBucket = backendBucket
-	c.backendbucket = backendbucket
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-// end_interface: MixerMutationRequestBuilder
-func (c *RegionBackendBucketsPatchCall) RequestId(requestId string) *RegionBackendBucketsPatchCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsPatchCall) Fields(s ...googleapi.Field) *RegionBackendBucketsPatchCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsPatchCall) Context(ctx context.Context) *RegionBackendBucketsPatchCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsPatchCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendbucket)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets/{backendBucket}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("PATCH", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":       c.project,
-		"region":        c.region,
-		"backendBucket": c.backendBucket,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.patch" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendBucketsPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.patch", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendBucketsSetIamPolicyCall struct {
-	s                      *Service
-	project                string
-	region                 string
-	resource               string
-	regionsetpolicyrequest *RegionSetPolicyRequest
-	urlParams_             gensupport.URLParams
-	ctx_                   context.Context
-	header_                http.Header
-}
-
-// SetIamPolicy: Sets the access control policy on the specified
-// resource.
-// Replaces any existing policy.
-//
-// - project: Project ID for this request.
-// - region: The name of the region for this request.
-// - resource: Name or id of the resource for this request.
-func (r *RegionBackendBucketsService) SetIamPolicy(project string, region string, resource string, regionsetpolicyrequest *RegionSetPolicyRequest) *RegionBackendBucketsSetIamPolicyCall {
-	c := &RegionBackendBucketsSetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.resource = resource
-	c.regionsetpolicyrequest = regionsetpolicyrequest
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsSetIamPolicyCall) Fields(s ...googleapi.Field) *RegionBackendBucketsSetIamPolicyCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsSetIamPolicyCall) Context(ctx context.Context) *RegionBackendBucketsSetIamPolicyCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsSetIamPolicyCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.regionsetpolicyrequest)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets/{resource}/setIamPolicy")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":  c.project,
-		"region":   c.region,
-		"resource": c.resource,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.setIamPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.setIamPolicy" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendBucketsSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Policy{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.setIamPolicy", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendBucketsTestIamPermissionsCall struct {
-	s                      *Service
-	project                string
-	region                 string
-	resource               string
-	testpermissionsrequest *TestPermissionsRequest
-	urlParams_             gensupport.URLParams
-	ctx_                   context.Context
-	header_                http.Header
-}
-
-// TestIamPermissions: Returns permissions that a caller has on the specified
-// resource.
-//
-// - project: Project ID for this request.
-// - region: The name of the region for this request.
-// - resource: Name or id of the resource for this request.
-func (r *RegionBackendBucketsService) TestIamPermissions(project string, region string, resource string, testpermissionsrequest *TestPermissionsRequest) *RegionBackendBucketsTestIamPermissionsCall {
-	c := &RegionBackendBucketsTestIamPermissionsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.resource = resource
-	c.testpermissionsrequest = testpermissionsrequest
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendBucketsTestIamPermissionsCall) Fields(s ...googleapi.Field) *RegionBackendBucketsTestIamPermissionsCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendBucketsTestIamPermissionsCall) Context(ctx context.Context) *RegionBackendBucketsTestIamPermissionsCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendBucketsTestIamPermissionsCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendBucketsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendBuckets/{resource}/testIamPermissions")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":  c.project,
-		"region":   c.region,
-		"resource": c.resource,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.testIamPermissions", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendBuckets.testIamPermissions" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *TestPermissionsResponse.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was because
-// http.StatusNotModified was returned.
-func (c *RegionBackendBucketsTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestPermissionsResponse, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &TestPermissionsResponse{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendBuckets.testIamPermissions", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesDeleteCall struct {
-	s              *Service
-	project        string
-	region         string
-	backendService string
-	urlParams_     gensupport.URLParams
-	ctx_           context.Context
-	header_        http.Header
-}
-
-// Delete: Deletes the specified regional BackendService resource.
-//
-// - backendService: Name of the BackendService resource to delete.
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendServicesService) Delete(project string, region string, backendService string) *RegionBackendServicesDeleteCall {
-	c := &RegionBackendServicesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendService = backendService
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-func (c *RegionBackendServicesDeleteCall) RequestId(requestId string) *RegionBackendServicesDeleteCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesDeleteCall) Fields(s ...googleapi.Field) *RegionBackendServicesDeleteCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesDeleteCall) Context(ctx context.Context) *RegionBackendServicesDeleteCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesDeleteCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{backendService}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":        c.project,
-		"region":         c.region,
-		"backendService": c.backendService,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.delete", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.delete" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendServicesDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.delete", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesGetCall struct {
-	s              *Service
-	project        string
-	region         string
-	backendService string
-	urlParams_     gensupport.URLParams
-	ifNoneMatch_   string
-	ctx_           context.Context
-	header_        http.Header
-}
-
-// Get: Returns the specified regional BackendService resource.
-//
-// - backendService: Name of the BackendService resource to return.
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendServicesService) Get(project string, region string, backendService string) *RegionBackendServicesGetCall {
-	c := &RegionBackendServicesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendService = backendService
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesGetCall) Fields(s ...googleapi.Field) *RegionBackendServicesGetCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *RegionBackendServicesGetCall) IfNoneMatch(entityTag string) *RegionBackendServicesGetCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesGetCall) Context(ctx context.Context) *RegionBackendServicesGetCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesGetCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{backendService}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":        c.project,
-		"region":         c.region,
-		"backendService": c.backendService,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.get", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.get" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *BackendService.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendServicesGetCall) Do(opts ...googleapi.CallOption) (*BackendService, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &BackendService{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.get", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesGetHealthCall struct {
-	s                      *Service
-	project                string
-	region                 string
-	backendService         string
-	resourcegroupreference *ResourceGroupReference
-	urlParams_             gensupport.URLParams
-	ctx_                   context.Context
-	header_                http.Header
-}
-
-// GetHealth: Gets the most recent health check results for this
-// regional BackendService.
-//
-//   - backendService: Name of the BackendService resource for which to get
-//     health.
-//   - project: .
-//   - region: Name of the region scoping this request.
-func (r *RegionBackendServicesService) GetHealth(project string, region string, backendService string, resourcegroupreference *ResourceGroupReference) *RegionBackendServicesGetHealthCall {
-	c := &RegionBackendServicesGetHealthCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendService = backendService
-	c.resourcegroupreference = resourcegroupreference
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesGetHealthCall) Fields(s ...googleapi.Field) *RegionBackendServicesGetHealthCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesGetHealthCall) Context(ctx context.Context) *RegionBackendServicesGetHealthCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesGetHealthCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesGetHealthCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.resourcegroupreference)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{backendService}/getHealth")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":        c.project,
-		"region":         c.region,
-		"backendService": c.backendService,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.getHealth", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.getHealth" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *BackendServiceGroupHealth.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was because
-// http.StatusNotModified was returned.
-func (c *RegionBackendServicesGetHealthCall) Do(opts ...googleapi.CallOption) (*BackendServiceGroupHealth, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &BackendServiceGroupHealth{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.getHealth", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesGetIamPolicyCall struct {
-	s            *Service
-	project      string
-	region       string
-	resource     string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// GetIamPolicy: Gets the access control policy for a resource. May be empty if
-// no such
-// policy or resource exists.
-//
-// - project: Project ID for this request.
-// - region: The name of the region for this request.
-// - resource: Name or id of the resource for this request.
-func (r *RegionBackendServicesService) GetIamPolicy(project string, region string, resource string) *RegionBackendServicesGetIamPolicyCall {
-	c := &RegionBackendServicesGetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.resource = resource
-	return c
-}
-
-// OptionsRequestedPolicyVersion sets the optional parameter
-// "optionsRequestedPolicyVersion": Requested IAM Policy version.
-func (c *RegionBackendServicesGetIamPolicyCall) OptionsRequestedPolicyVersion(optionsRequestedPolicyVersion int64) *RegionBackendServicesGetIamPolicyCall {
-	c.urlParams_.Set("optionsRequestedPolicyVersion", fmt.Sprint(optionsRequestedPolicyVersion))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesGetIamPolicyCall) Fields(s ...googleapi.Field) *RegionBackendServicesGetIamPolicyCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *RegionBackendServicesGetIamPolicyCall) IfNoneMatch(entityTag string) *RegionBackendServicesGetIamPolicyCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesGetIamPolicyCall) Context(ctx context.Context) *RegionBackendServicesGetIamPolicyCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesGetIamPolicyCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{resource}/getIamPolicy")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":  c.project,
-		"region":   c.region,
-		"resource": c.resource,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.getIamPolicy", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.getIamPolicy" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendServicesGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Policy{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.getIamPolicy", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesInsertCall struct {
-	s              *Service
-	project        string
-	region         string
-	backendservice *BackendService
-	urlParams_     gensupport.URLParams
-	ctx_           context.Context
-	header_        http.Header
-}
-
-// Insert: Creates a regional BackendService resource in the specified project
-// using
-// the data included in the request. For more information, see
-// Backend services overview.
-//
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendServicesService) Insert(project string, region string, backendservice *BackendService) *RegionBackendServicesInsertCall {
-	c := &RegionBackendServicesInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendservice = backendservice
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-func (c *RegionBackendServicesInsertCall) RequestId(requestId string) *RegionBackendServicesInsertCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesInsertCall) Fields(s ...googleapi.Field) *RegionBackendServicesInsertCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesInsertCall) Context(ctx context.Context) *RegionBackendServicesInsertCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesInsertCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendservice)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-		"region":  c.region,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.insert" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendServicesInsertCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.insert", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesListCall struct {
-	s            *Service
-	project      string
-	region       string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// List: Retrieves the list of regional BackendService resources available to
-// the
-// specified project in the given region.
-//
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendServicesService) List(project string, region string) *RegionBackendServicesListCall {
-	c := &RegionBackendServicesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	return c
-}
-
-// Filter sets the optional parameter "filter": A filter expression that
-// filters resources listed in the response. Most
-// Compute resources support two types of filter expressions:
-// expressions that support regular expressions and expressions that follow
-// API improvement proposal AIP-160.
-// These two types of filter expressions cannot be mixed in one request.
-//
-// If you want to use AIP-160, your expression must specify the field name,
-// an
-// operator, and the value that you want to use for filtering. The value
-// must be a string, a number, or a boolean. The operator
-// must be either `=`, `!=`, `>`, `<`, `<=`, `>=` or `:`.
-//
-// For example, if you are filtering Compute Engine instances, you can
-// exclude instances named `example-instance` by specifying
-// `name != example-instance`.
-//
-// The `:*` comparison can be used to test whether a key has been defined.
-// For example, to find all objects with `owner` label
-// use:
-// ```
-// labels.owner:*
-// ```
-//
-// You can also filter nested fields. For example, you could
-// specify
-// `scheduling.automaticRestart = false` to include instances only
-// if they are not scheduled for automatic restarts. You can use filtering
-// on nested fields to filter based onresource labels.
-//
-// To filter on multiple expressions, provide each separate expression
-// within
-// parentheses. For example:
-// ```
-// (scheduling.automaticRestart = true)
-// (cpuPlatform = "Intel Skylake")
-// ```
-// By default, each expression is an `AND` expression. However, you
-// can include `AND` and `OR` expressions explicitly.
-// For example:
-// ```
-// (cpuPlatform = "Intel Skylake") OR
-// (cpuPlatform = "Intel Broadwell") AND
-// (scheduling.automaticRestart = true)
-// ```
-//
-// If you want to use a regular expression, use the `eq` (equal) or `ne`
-// (not equal) operator against a single un-parenthesized expression with
-// or
-// without quotes or against multiple parenthesized expressions.
-// Examples:
-//
-// `fieldname eq unquoted literal`
-// `fieldname eq 'single quoted literal'`
-// `fieldname eq "double quoted literal"
-// `(fieldname1 eq literal) (fieldname2 ne "literal")`
-//
-// The literal value is interpreted as a regular expression using GoogleRE2
-// library syntax.
-// The literal value must match the entire field.
-//
-// For example, to filter for instances that do not end with name
-// "instance",
-// you would use `name ne .*instance`.
-//
-// You cannot combine constraints on multiple fields using regular
-// expressions.
-func (c *RegionBackendServicesListCall) Filter(filter string) *RegionBackendServicesListCall {
-	c.urlParams_.Set("filter", filter)
-	return c
-}
-
-// MaxResults sets the optional parameter "maxResults": The maximum number of
-// results per page that should be returned.
-// If the number of available results is larger than `maxResults`,
-// Compute Engine returns a `nextPageToken` that can be used to get
-// the next page of results in subsequent list requests. Acceptable values
-// are
-// `0` to `500`, inclusive. (Default: `500`)
-func (c *RegionBackendServicesListCall) MaxResults(maxResults int64) *RegionBackendServicesListCall {
-	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
-	return c
-}
-
-// OrderBy sets the optional parameter "orderBy": Sorts list results by a
-// certain order. By default, results
-// are returned in alphanumerical order based on the resource name.
-//
-// You can also sort results in descending order based on the
-// creation
-// timestamp using `orderBy="creationTimestamp desc". This sorts
-// results based on the `creationTimestamp` field in
-// reverse chronological order (newest result first). Use this to
-// sort
-// resources like operations so that the newest operation is returned
-// first.
-//
-// Currently, only sorting by `name` or
-// `creationTimestamp desc` is supported.
-func (c *RegionBackendServicesListCall) OrderBy(orderBy string) *RegionBackendServicesListCall {
-	c.urlParams_.Set("orderBy", orderBy)
-	return c
-}
-
-// PageToken sets the optional parameter "pageToken": Specifies a page token to
-// use. Set `pageToken` to the
-// `nextPageToken` returned by a previous list request to get
-// the next page of results.
-func (c *RegionBackendServicesListCall) PageToken(pageToken string) *RegionBackendServicesListCall {
-	c.urlParams_.Set("pageToken", pageToken)
-	return c
-}
-
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *RegionBackendServicesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *RegionBackendServicesListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesListCall) Fields(s ...googleapi.Field) *RegionBackendServicesListCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *RegionBackendServicesListCall) IfNoneMatch(entityTag string) *RegionBackendServicesListCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesListCall) Context(ctx context.Context) *RegionBackendServicesListCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesListCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-		"region":  c.region,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.list", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.list" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *BackendServiceList.ServerResponse.Header or (if a response was returned at
-// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified was
-// returned.
-func (c *RegionBackendServicesListCall) Do(opts ...googleapi.CallOption) (*BackendServiceList, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &BackendServiceList{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.list", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-// Pages invokes f for each page of results.
-// A non-nil error returned from f will halt the iteration.
-// The provided context supersedes any context provided to the Context method.
-func (c *RegionBackendServicesListCall) Pages(ctx context.Context, f func(*BackendServiceList) error) error {
-	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken"))
-	for {
-		x, err := c.Do()
-		if err != nil {
-			return err
-		}
-		if err := f(x); err != nil {
-			return err
-		}
-		if x.NextPageToken == "" {
-			return nil
-		}
-		c.PageToken(x.NextPageToken)
-	}
-}
-
-type RegionBackendServicesListUsableCall struct {
-	s            *Service
-	project      string
-	region       string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// ListUsable: Retrieves a list of all usable backend services for Application
-// Load
-// Balancers and Proxy Network Load Balancers in the specified project in
-// the
-// given region. Backend services for external and internal passthrough
-// Network Load Balancers are not included in the response.
-//
-//   - project: Project ID for this request.
-//   - region: Name of the region scoping this request.
-//     It must be a string that meets the requirements in RFC1035.
-func (r *RegionBackendServicesService) ListUsable(project string, region string) *RegionBackendServicesListUsableCall {
-	c := &RegionBackendServicesListUsableCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	return c
-}
-
-// Filter sets the optional parameter "filter": A filter expression that
-// filters resources listed in the response. Most
-// Compute resources support two types of filter expressions:
-// expressions that support regular expressions and expressions that follow
-// API improvement proposal AIP-160.
-// These two types of filter expressions cannot be mixed in one request.
-//
-// If you want to use AIP-160, your expression must specify the field name,
-// an
-// operator, and the value that you want to use for filtering. The value
-// must be a string, a number, or a boolean. The operator
-// must be either `=`, `!=`, `>`, `<`, `<=`, `>=` or `:`.
-//
-// For example, if you are filtering Compute Engine instances, you can
-// exclude instances named `example-instance` by specifying
-// `name != example-instance`.
-//
-// The `:*` comparison can be used to test whether a key has been defined.
-// For example, to find all objects with `owner` label
-// use:
-// ```
-// labels.owner:*
-// ```
-//
-// You can also filter nested fields. For example, you could
-// specify
-// `scheduling.automaticRestart = false` to include instances only
-// if they are not scheduled for automatic restarts. You can use filtering
-// on nested fields to filter based onresource labels.
-//
-// To filter on multiple expressions, provide each separate expression
-// within
-// parentheses. For example:
-// ```
-// (scheduling.automaticRestart = true)
-// (cpuPlatform = "Intel Skylake")
-// ```
-// By default, each expression is an `AND` expression. However, you
-// can include `AND` and `OR` expressions explicitly.
-// For example:
-// ```
-// (cpuPlatform = "Intel Skylake") OR
-// (cpuPlatform = "Intel Broadwell") AND
-// (scheduling.automaticRestart = true)
-// ```
-//
-// If you want to use a regular expression, use the `eq` (equal) or `ne`
-// (not equal) operator against a single un-parenthesized expression with
-// or
-// without quotes or against multiple parenthesized expressions.
-// Examples:
-//
-// `fieldname eq unquoted literal`
-// `fieldname eq 'single quoted literal'`
-// `fieldname eq "double quoted literal"
-// `(fieldname1 eq literal) (fieldname2 ne "literal")`
-//
-// The literal value is interpreted as a regular expression using GoogleRE2
-// library syntax.
-// The literal value must match the entire field.
-//
-// For example, to filter for instances that do not end with name
-// "instance",
-// you would use `name ne .*instance`.
-//
-// You cannot combine constraints on multiple fields using regular
-// expressions.
-func (c *RegionBackendServicesListUsableCall) Filter(filter string) *RegionBackendServicesListUsableCall {
-	c.urlParams_.Set("filter", filter)
-	return c
-}
-
-// MaxResults sets the optional parameter "maxResults": The maximum number of
-// results per page that should be returned.
-// If the number of available results is larger than `maxResults`,
-// Compute Engine returns a `nextPageToken` that can be used to get
-// the next page of results in subsequent list requests. Acceptable values
-// are
-// `0` to `500`, inclusive. (Default: `500`)
-func (c *RegionBackendServicesListUsableCall) MaxResults(maxResults int64) *RegionBackendServicesListUsableCall {
-	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
-	return c
-}
-
-// OrderBy sets the optional parameter "orderBy": Sorts list results by a
-// certain order. By default, results
-// are returned in alphanumerical order based on the resource name.
-//
-// You can also sort results in descending order based on the
-// creation
-// timestamp using `orderBy="creationTimestamp desc". This sorts
-// results based on the `creationTimestamp` field in
-// reverse chronological order (newest result first). Use this to
-// sort
-// resources like operations so that the newest operation is returned
-// first.
-//
-// Currently, only sorting by `name` or
-// `creationTimestamp desc` is supported.
-func (c *RegionBackendServicesListUsableCall) OrderBy(orderBy string) *RegionBackendServicesListUsableCall {
-	c.urlParams_.Set("orderBy", orderBy)
-	return c
-}
-
-// PageToken sets the optional parameter "pageToken": Specifies a page token to
-// use. Set `pageToken` to the
-// `nextPageToken` returned by a previous list request to get
-// the next page of results.
-func (c *RegionBackendServicesListUsableCall) PageToken(pageToken string) *RegionBackendServicesListUsableCall {
-	c.urlParams_.Set("pageToken", pageToken)
-	return c
-}
-
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in
-// case
-// of failure. The default value is false.
-//
-// For example, when partial success behavior is enabled, aggregatedList for
-// a
-// single zone scope either returns all resources in the zone or no
-// resources,
-// with an error code.
-func (c *RegionBackendServicesListUsableCall) ReturnPartialSuccess(returnPartialSuccess bool) *RegionBackendServicesListUsableCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesListUsableCall) Fields(s ...googleapi.Field) *RegionBackendServicesListUsableCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *RegionBackendServicesListUsableCall) IfNoneMatch(entityTag string) *RegionBackendServicesListUsableCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesListUsableCall) Context(ctx context.Context) *RegionBackendServicesListUsableCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesListUsableCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesListUsableCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/listUsable")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-		"region":  c.region,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.listUsable", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.listUsable" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *BackendServiceListUsable.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was because
-// http.StatusNotModified was returned.
-func (c *RegionBackendServicesListUsableCall) Do(opts ...googleapi.CallOption) (*BackendServiceListUsable, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &BackendServiceListUsable{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.listUsable", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-// Pages invokes f for each page of results.
-// A non-nil error returned from f will halt the iteration.
-// The provided context supersedes any context provided to the Context method.
-func (c *RegionBackendServicesListUsableCall) Pages(ctx context.Context, f func(*BackendServiceListUsable) error) error {
-	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken"))
-	for {
-		x, err := c.Do()
-		if err != nil {
-			return err
-		}
-		if err := f(x); err != nil {
-			return err
-		}
-		if x.NextPageToken == "" {
-			return nil
-		}
-		c.PageToken(x.NextPageToken)
-	}
-}
-
-type RegionBackendServicesPatchCall struct {
-	s              *Service
-	project        string
-	region         string
-	backendService string
-	backendservice *BackendService
-	urlParams_     gensupport.URLParams
-	ctx_           context.Context
-	header_        http.Header
-}
-
-// Patch: Updates the specified regional BackendService resource with the
-// data
-// included in the request. For more information, see
-// Understanding backend services This method
-// supports PATCH semantics and uses the JSON merge
-// patch format and processing rules.
-//
-// - backendService: Name of the BackendService resource to patch.
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendServicesService) Patch(project string, region string, backendService string, backendservice *BackendService) *RegionBackendServicesPatchCall {
-	c := &RegionBackendServicesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendService = backendService
-	c.backendservice = backendservice
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-func (c *RegionBackendServicesPatchCall) RequestId(requestId string) *RegionBackendServicesPatchCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesPatchCall) Fields(s ...googleapi.Field) *RegionBackendServicesPatchCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesPatchCall) Context(ctx context.Context) *RegionBackendServicesPatchCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesPatchCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendservice)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{backendService}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("PATCH", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":        c.project,
-		"region":         c.region,
-		"backendService": c.backendService,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.patch" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendServicesPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.patch", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesSetIamPolicyCall struct {
-	s                      *Service
-	project                string
-	region                 string
-	resource               string
-	regionsetpolicyrequest *RegionSetPolicyRequest
-	urlParams_             gensupport.URLParams
-	ctx_                   context.Context
-	header_                http.Header
-}
-
-// SetIamPolicy: Sets the access control policy on the specified
-// resource.
-// Replaces any existing policy.
-//
-// - project: Project ID for this request.
-// - region: The name of the region for this request.
-// - resource: Name or id of the resource for this request.
-func (r *RegionBackendServicesService) SetIamPolicy(project string, region string, resource string, regionsetpolicyrequest *RegionSetPolicyRequest) *RegionBackendServicesSetIamPolicyCall {
-	c := &RegionBackendServicesSetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.resource = resource
-	c.regionsetpolicyrequest = regionsetpolicyrequest
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesSetIamPolicyCall) Fields(s ...googleapi.Field) *RegionBackendServicesSetIamPolicyCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesSetIamPolicyCall) Context(ctx context.Context) *RegionBackendServicesSetIamPolicyCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesSetIamPolicyCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.regionsetpolicyrequest)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{resource}/setIamPolicy")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":  c.project,
-		"region":   c.region,
-		"resource": c.resource,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.setIamPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.setIamPolicy" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendServicesSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Policy{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.setIamPolicy", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesSetSecurityPolicyCall struct {
-	s                       *Service
-	project                 string
-	region                  string
-	backendService          string
-	securitypolicyreference *SecurityPolicyReference
-	urlParams_              gensupport.URLParams
-	ctx_                    context.Context
-	header_                 http.Header
-}
-
-// SetSecurityPolicy: Sets the Google Cloud Armor security policy for the
-// specified backend
-// service. For more information, seeGoogle
-// Cloud Armor Overview
-//
-//   - backendService: Name of the BackendService resource to which the security
-//     policy should be
-//
-// set. The name should conform to RFC1035.
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendServicesService) SetSecurityPolicy(project string, region string, backendService string, securitypolicyreference *SecurityPolicyReference) *RegionBackendServicesSetSecurityPolicyCall {
-	c := &RegionBackendServicesSetSecurityPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendService = backendService
-	c.securitypolicyreference = securitypolicyreference
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-func (c *RegionBackendServicesSetSecurityPolicyCall) RequestId(requestId string) *RegionBackendServicesSetSecurityPolicyCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesSetSecurityPolicyCall) Fields(s ...googleapi.Field) *RegionBackendServicesSetSecurityPolicyCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesSetSecurityPolicyCall) Context(ctx context.Context) *RegionBackendServicesSetSecurityPolicyCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesSetSecurityPolicyCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesSetSecurityPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.securitypolicyreference)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{backendService}/setSecurityPolicy")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":        c.project,
-		"region":         c.region,
-		"backendService": c.backendService,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.setSecurityPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.setSecurityPolicy" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendServicesSetSecurityPolicyCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.setSecurityPolicy", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesTestIamPermissionsCall struct {
-	s                      *Service
-	project                string
-	region                 string
-	resource               string
-	testpermissionsrequest *TestPermissionsRequest
-	urlParams_             gensupport.URLParams
-	ctx_                   context.Context
-	header_                http.Header
-}
-
-// TestIamPermissions: Returns permissions that a caller has on the specified
-// resource.
-//
-// - project: Project ID for this request.
-// - region: The name of the region for this request.
-// - resource: Name or id of the resource for this request.
-func (r *RegionBackendServicesService) TestIamPermissions(project string, region string, resource string, testpermissionsrequest *TestPermissionsRequest) *RegionBackendServicesTestIamPermissionsCall {
-	c := &RegionBackendServicesTestIamPermissionsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.resource = resource
-	c.testpermissionsrequest = testpermissionsrequest
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesTestIamPermissionsCall) Fields(s ...googleapi.Field) *RegionBackendServicesTestIamPermissionsCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesTestIamPermissionsCall) Context(ctx context.Context) *RegionBackendServicesTestIamPermissionsCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesTestIamPermissionsCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testpermissionsrequest)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{resource}/testIamPermissions")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":  c.project,
-		"region":   c.region,
-		"resource": c.resource,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.testIamPermissions", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.testIamPermissions" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *TestPermissionsResponse.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was because
-// http.StatusNotModified was returned.
-func (c *RegionBackendServicesTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestPermissionsResponse, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &TestPermissionsResponse{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.testIamPermissions", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
-type RegionBackendServicesUpdateCall struct {
-	s              *Service
-	project        string
-	region         string
-	backendService string
-	backendservice *BackendService
-	urlParams_     gensupport.URLParams
-	ctx_           context.Context
-	header_        http.Header
-}
-
-// Update: Updates the specified regional BackendService resource with the
-// data
-// included in the request. For more information,
-// see
-// Backend services overview.
-//
-// - backendService: Name of the BackendService resource to update.
-// - project: Project ID for this request.
-// - region: Name of the region scoping this request.
-func (r *RegionBackendServicesService) Update(project string, region string, backendService string, backendservice *BackendService) *RegionBackendServicesUpdateCall {
-	c := &RegionBackendServicesUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.region = region
-	c.backendService = backendService
-	c.backendservice = backendservice
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-func (c *RegionBackendServicesUpdateCall) RequestId(requestId string) *RegionBackendServicesUpdateCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *RegionBackendServicesUpdateCall) Fields(s ...googleapi.Field) *RegionBackendServicesUpdateCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *RegionBackendServicesUpdateCall) Context(ctx context.Context) *RegionBackendServicesUpdateCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *RegionBackendServicesUpdateCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *RegionBackendServicesUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.backendservice)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/backendServices/{backendService}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("PUT", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":        c.project,
-		"region":         c.region,
-		"backendService": c.backendService,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.regionBackendServices.update", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.regionBackendServices.update" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *RegionBackendServicesUpdateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.regionBackendServices.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
