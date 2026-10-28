@@ -1,0 +1,81 @@
+<lexer>
+  <config>
+    <name>Gemfile.lock</name>
+    <alias>gemfile-lock</alias>
+    <alias>gemfilelock</alias>
+    <filename>Gemfile.lock</filename>
+    <filename>*.gemfile.lock</filename>
+  </config>
+  <rules>
+    <state name="root">
+      <rule pattern="^(GIT|PATH|GEM|PLUGIN SOURCE|PLATFORMS|DEPENDENCIES|BUNDLED WITH|RUBY VERSION|CHECKSUMS)$">
+        <token type="Keyword"/>
+      </rule>
+      <rule pattern="^([ \t]+)(remote|revision|ref|branch|tag|submodules|specs|glob)(:)">
+        <bygroups>
+          <token type="Text"/>
+          <token type="NameAttribute"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="\(">
+        <token type="Punctuation"/>
+        <push state="version"/>
+      </rule>
+      <rule pattern="!">
+        <token type="Operator"/>
+      </rule>
+      <rule pattern="https?://\S+">
+        <token type="LiteralStringSymbol"/>
+      </rule>
+      <rule pattern="git@\S+">
+        <token type="LiteralStringSymbol"/>
+      </rule>
+      <rule pattern="sha\d+=[A-Fa-f0-9]+">
+        <token type="LiteralNumberHex"/>
+      </rule>
+      <rule pattern="\b[a-f0-9]{7,40}\b">
+        <token type="LiteralNumberHex"/>
+      </rule>
+      <rule pattern="\b\d[\w.]*">
+        <token type="LiteralNumber"/>
+      </rule>
+      <rule pattern="[A-Za-z_][A-Za-z0-9_.-]*">
+        <token type="Name"/>
+      </rule>
+      <rule pattern="\n">
+        <token type="Text"/>
+      </rule>
+      <rule pattern="[ \t]+">
+        <token type="Text"/>
+      </rule>
+      <rule pattern=".">
+        <token type="Text"/>
+      </rule>
+    </state>
+    <state name="version">
+      <rule pattern="\)">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="(~&gt;|&gt;=|&lt;=|!=|=|&lt;|&gt;)">
+        <token type="Operator"/>
+      </rule>
+      <rule pattern="[0-9][\w.]*">
+        <token type="LiteralNumber"/>
+      </rule>
+      <rule pattern="[A-Za-z][\w.-]*">
+        <token type="Name"/>
+      </rule>
+      <rule pattern=",">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="\s+">
+        <token type="Text"/>
+      </rule>
+      <rule pattern=".">
+        <token type="Text"/>
+      </rule>
+    </state>
+  </rules>
+</lexer>

@@ -18,11 +18,14 @@
 package minio
 
 import (
+	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash"
 	"io"
 	"math/bits"
@@ -30,8 +33,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/klauspost/crc32"
 	"github.com/minio/crc64nvme"
+	"github.com/zeebo/xxh3"
 )
 
 // ChecksumMode contains information about the checksum mode on the object
@@ -49,6 +54,9 @@ const (
 
 	// checksumModeMask is a mask for valid checksum mode types.
 	checksumModeMask = checksumLastMode - 1
+
+	// ChecksumUnknownMode indicates no or unknown checksum mode.
+	ChecksumUnknownMode ChecksumMode = 0
 )
 
 // Is returns if c is all of t.
@@ -64,9 +72,9 @@ func (c ChecksumMode) Key() string {
 func (c ChecksumMode) String() string {
 	switch c & checksumModeMask {
 	case ChecksumFullObjectMode:
-		return "FULL_OBJECT"
+		return amzChecksumModeFullObject
 	case ChecksumCompositeMode:
-		return "COMPOSITE"
+		return amzChecksumModeComposite
 	}
 	return ""
 }
@@ -86,6 +94,16 @@ const (
 	ChecksumCRC32C
 	// ChecksumCRC64NVME indicates CRC64 with 0xad93d23594c93659 polynomial.
 	ChecksumCRC64NVME
+	// ChecksumMD5 indicates an MD5 checksum.
+	ChecksumMD5
+	// ChecksumSHA512 indicates a SHA-512 checksum.
+	ChecksumSHA512
+	// ChecksumXXHash64 indicates an XXHash64 checksum.
+	ChecksumXXHash64
+	// ChecksumXXHash3 indicates an XXH3-64 checksum.
+	ChecksumXXHash3
+	// ChecksumXXHash128 indicates an XXH3-128 checksum.
+	ChecksumXXHash128
 
 	// Keep after all valid checksums
 	checksumLast
@@ -112,7 +130,15 @@ const (
 	amzChecksumSHA1      = "x-amz-checksum-sha1"
 	amzChecksumSHA256    = "x-amz-checksum-sha256"
 	amzChecksumCRC64NVME = "x-amz-checksum-crc64nvme"
+	amzChecksumMD5       = "x-amz-checksum-md5"
+	amzChecksumSHA512    = "x-amz-checksum-sha512"
+	amzChecksumXXHash64  = "x-amz-checksum-xxhash64"
+	amzChecksumXXHash3   = "x-amz-checksum-xxhash3"
+	amzChecksumXXHash128 = "x-amz-checksum-xxhash128"
 	amzChecksumMode      = "x-amz-checksum-type"
+
+	amzChecksumModeComposite  = "COMPOSITE"
+	amzChecksumModeFullObject = "FULL_OBJECT"
 )
 
 // Base returns the base type, without modifiers.
@@ -139,6 +165,16 @@ func (c ChecksumType) Key() string {
 		return amzChecksumSHA256
 	case ChecksumCRC64NVME:
 		return amzChecksumCRC64NVME
+	case ChecksumMD5:
+		return amzChecksumMD5
+	case ChecksumSHA512:
+		return amzChecksumSHA512
+	case ChecksumXXHash64:
+		return amzChecksumXXHash64
+	case ChecksumXXHash3:
+		return amzChecksumXXHash3
+	case ChecksumXXHash128:
+		return amzChecksumXXHash128
 	}
 	return ""
 }
@@ -146,7 +182,8 @@ func (c ChecksumType) Key() string {
 // CanComposite will return if the checksum type can be used for composite multipart upload on AWS.
 func (c ChecksumType) CanComposite() bool {
 	switch c & checksumMask {
-	case ChecksumSHA256, ChecksumSHA1, ChecksumCRC32, ChecksumCRC32C:
+	case ChecksumSHA256, ChecksumSHA1, ChecksumCRC32, ChecksumCRC32C,
+		ChecksumMD5, ChecksumSHA512, ChecksumXXHash64, ChecksumXXHash3, ChecksumXXHash128:
 		return true
 	}
 	return false
@@ -186,6 +223,14 @@ func (c ChecksumType) RawByteLen() int {
 		return sha256.Size
 	case ChecksumCRC64NVME:
 		return crc64nvme.Size
+	case ChecksumXXHash64, ChecksumXXHash3:
+		return 8
+	case ChecksumMD5:
+		return md5.Size
+	case ChecksumSHA512:
+		return sha512.Size
+	case ChecksumXXHash128:
+		return 16
 	}
 	return 0
 }
@@ -206,6 +251,16 @@ func (c ChecksumType) Hasher() hash.Hash {
 		return sha256.New()
 	case ChecksumCRC64NVME:
 		return crc64nvme.New()
+	case ChecksumMD5:
+		return md5.New()
+	case ChecksumSHA512:
+		return sha512.New()
+	case ChecksumXXHash64:
+		return xxhash.New()
+	case ChecksumXXHash3:
+		return xxh3.New()
+	case ChecksumXXHash128:
+		return xxh3.New128()
 	}
 	return nil
 }
@@ -233,7 +288,6 @@ func (c ChecksumType) EncodeToString(b []byte) string {
 }
 
 // String returns the type as a string.
-// CRC32, CRC32C, SHA1, and SHA256 for valid values.
 // Empty string for unset and "<invalid>" if not valid.
 func (c ChecksumType) String() string {
 	switch c & checksumMask {
@@ -249,8 +303,147 @@ func (c ChecksumType) String() string {
 		return ""
 	case ChecksumCRC64NVME:
 		return "CRC64NVME"
+	case ChecksumMD5:
+		return "MD5"
+	case ChecksumSHA512:
+		return "SHA512"
+	case ChecksumXXHash64:
+		return "XXHASH64"
+	case ChecksumXXHash3:
+		return "XXHASH3"
+	case ChecksumXXHash128:
+		return "XXHASH128"
 	}
 	return "<invalid>"
+}
+
+// Checksum returns the checksum for the given type.
+// Will return the empty string if not set.
+func (o ObjectInfo) Checksum(t ChecksumType) string {
+	switch {
+	case t.Is(ChecksumCRC32C):
+		return o.ChecksumCRC32C
+	case t.Is(ChecksumCRC32):
+		return o.ChecksumCRC32
+	case t.Is(ChecksumSHA1):
+		return o.ChecksumSHA1
+	case t.Is(ChecksumSHA256):
+		return o.ChecksumSHA256
+	case t.Is(ChecksumCRC64NVME):
+		return o.ChecksumCRC64NVME
+	case t.Is(ChecksumMD5):
+		return o.ChecksumMD5
+	case t.Is(ChecksumSHA512):
+		return o.ChecksumSHA512
+	case t.Is(ChecksumXXHash64):
+		return o.ChecksumXXHash64
+	case t.Is(ChecksumXXHash3):
+		return o.ChecksumXXHash3
+	case t.Is(ChecksumXXHash128):
+		return o.ChecksumXXHash128
+	}
+	return ""
+}
+
+// setChecksumAlgorithm fills in ChecksumAlgorithm from the checksum value the
+// object carries, when the server did not name the algorithm itself.
+// AWS never sends x-amz-checksum-algorithm on HEAD/GET and only reports
+// <ChecksumAlgorithm>/<ChecksumType> - never a value - when listing, while
+// AiStor reports the values as well, but only when listing with WithMetadata.
+// Deriving the name keeps ChecksumAlgorithm populated on every path.
+func (o *ObjectInfo) setChecksumAlgorithm() {
+	if o.ChecksumAlgorithm != "" {
+		return
+	}
+	for _, t := range [...]ChecksumType{
+		ChecksumCRC32, ChecksumCRC32C, ChecksumSHA1, ChecksumSHA256, ChecksumCRC64NVME,
+		ChecksumMD5, ChecksumSHA512, ChecksumXXHash64, ChecksumXXHash3, ChecksumXXHash128,
+	} {
+		if o.Checksum(t) != "" {
+			o.ChecksumAlgorithm = t.String()
+			return
+		}
+	}
+}
+
+// checksumVerifyingReader verifies the checksum of data as it is read.
+type checksumVerifyingReader struct {
+	io.ReadCloser
+	hash.Hash
+	expectChecksum string
+}
+
+// newChecksumVerifyingReader returns a checksum-verifying reader for obj,
+// wrapping the given response body, or nil if obj carries no usable checksum.
+func (c *Client) newChecksumVerifyingReader(obj ObjectInfo) *checksumVerifyingReader {
+	switch {
+	case obj.ChecksumCRC32 != "":
+		return &checksumVerifyingReader{Hash: ChecksumCRC32.Hasher(), expectChecksum: obj.ChecksumCRC32}
+	case obj.ChecksumCRC32C != "":
+		return &checksumVerifyingReader{Hash: ChecksumCRC32C.Hasher(), expectChecksum: obj.ChecksumCRC32C}
+	case obj.ChecksumSHA1 != "":
+		return &checksumVerifyingReader{Hash: ChecksumSHA1.Hasher(), expectChecksum: obj.ChecksumSHA1}
+	case obj.ChecksumSHA256 != "":
+		return &checksumVerifyingReader{Hash: c.sha256Hasher(), expectChecksum: obj.ChecksumSHA256}
+	case obj.ChecksumCRC64NVME != "":
+		return &checksumVerifyingReader{Hash: ChecksumCRC64NVME.Hasher(), expectChecksum: obj.ChecksumCRC64NVME}
+	case obj.ChecksumMD5 != "":
+		return &checksumVerifyingReader{Hash: c.md5Hasher(), expectChecksum: obj.ChecksumMD5}
+	case obj.ChecksumSHA512 != "":
+		return &checksumVerifyingReader{Hash: ChecksumSHA512.Hasher(), expectChecksum: obj.ChecksumSHA512}
+	case obj.ChecksumXXHash64 != "":
+		return &checksumVerifyingReader{Hash: ChecksumXXHash64.Hasher(), expectChecksum: obj.ChecksumXXHash64}
+	case obj.ChecksumXXHash3 != "":
+		return &checksumVerifyingReader{Hash: ChecksumXXHash3.Hasher(), expectChecksum: obj.ChecksumXXHash3}
+	case obj.ChecksumXXHash128 != "":
+		return &checksumVerifyingReader{Hash: ChecksumXXHash128.Hasher(), expectChecksum: obj.ChecksumXXHash128}
+	default:
+		return nil
+	}
+}
+
+func (c *checksumVerifyingReader) SetReader(r io.ReadCloser) {
+	c.ReadCloser = r
+}
+
+// Close returns any pooled hasher and closes the underlying reader if one is set.
+func (c *checksumVerifyingReader) Close() error {
+	if closer, ok := c.Hash.(interface{ Close() }); ok {
+		closer.Close()
+	}
+	if c.ReadCloser == nil {
+		return nil
+	}
+	return c.ReadCloser.Close()
+}
+
+// Read reads data and hashes it. At EOF the checksum is verified; on
+// mismatch the mismatch error is returned in place of io.EOF.
+func (c *checksumVerifyingReader) Read(p []byte) (int, error) {
+	n, err := c.ReadCloser.Read(p)
+	if n > 0 {
+		n2, werr := c.Write(p[:n])
+		if werr != nil {
+			return n, werr
+		}
+		if n2 != n {
+			return n, io.ErrShortWrite
+		}
+	}
+	if err == io.EOF {
+		if verr := c.VerifyChecksum(); verr != nil {
+			return n, verr
+		}
+	}
+	return n, err
+}
+
+// VerifyChecksum returns an error if the computed checksum does not match.
+func (c *checksumVerifyingReader) VerifyChecksum() error {
+	if got := base64.StdEncoding.EncodeToString(c.Sum(nil)); got != c.expectChecksum {
+		return fmt.Errorf("checksum mismatch, expected %s, got %s", c.expectChecksum, got)
+	}
+	return nil
 }
 
 // ChecksumReader reads all of r and returns a checksum of type c.
