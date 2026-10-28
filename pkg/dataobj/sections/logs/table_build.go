@@ -121,7 +121,7 @@ type metadataCell struct {
 
 // splitMetadata groups the metadata values of records by key. It returns the
 // keys in the order they first appear, and for each key its cells in row
-// order.
+// order. If a record repeats a key, only its last value is kept.
 //
 // The cost is linear in the number of values, so many sparse keys stay cheap.
 // A first pass counts the values of each key, so each cell slice is
@@ -152,6 +152,12 @@ func splitMetadata(records []Record) ([]string, [][]metadataCell) {
 	for row, record := range records {
 		record.Metadata.Range(func(md labels.Label) {
 			i := index[md.Name]
+			// A record can repeat a key. A column holds one value per row,
+			// so the last value wins, as it does in LogQL.
+			if n := len(cells[i]); n > 0 && cells[i][n-1].row == row {
+				cells[i][n-1].value = md.Value
+				return
+			}
 			cells[i] = append(cells[i], metadataCell{row: row, value: md.Value})
 		})
 	}
