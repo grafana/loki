@@ -1272,7 +1272,7 @@ In microservices mode, the `/config` endpoint is exposed by all components.
 GET /loki/api/v1/exposed-config
 ```
 
-`/loki/api/v1/exposed-config` returns a fixed, operator-configured subset of `/config`, set with
+`/loki/api/v1/exposed-config` returns a fixed, user-configured subset of `/config`, set with
 `-config.exposed-fields`. It's meant for cases where `/config` itself isn't safe to expose directly,
 such as through a datasource proxy. Empty by default, meaning the endpoint returns `{}`.
 
