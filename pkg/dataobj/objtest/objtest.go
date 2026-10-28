@@ -92,8 +92,8 @@ func WithMaxPageRows(rows int) Option {
 }
 
 // WithTenantOverrides sets the per-tenant settings that the logs builder reads for [Tenant]: the
-// sort schema and the shard layout. The default is no overrides: no schema labels and the default
-// shard layout.
+// sort schema and the shard layout. The default is [logsobj.NoTenantOverrides]: no schema labels
+// and the default shard layout.
 //
 // The builder reads the settings once for each object, at the first append to it. A change applies
 // to the objects that start after it. The object in progress keeps its layout.
@@ -120,7 +120,7 @@ type Builder struct {
 
 // NewBuilder creates a builder that can be used for accumulating logs.
 func NewBuilder(t testing.TB, opts ...Option) *Builder {
-	var options builderOptions
+	options := builderOptions{overrides: logsobj.NoTenantOverrides{}}
 	for _, opt := range opts {
 		opt(&options)
 	}

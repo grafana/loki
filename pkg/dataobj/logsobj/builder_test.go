@@ -85,7 +85,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 
 		for _, entry := range testStreams {
@@ -112,13 +112,21 @@ func TestBuilder(t *testing.T) {
 	})
 }
 
+func TestNewBuilder(t *testing.T) {
+	t.Run("returns an error when the overrides are nil", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		require.EqualError(t, err, "tenant overrides must not be nil")
+		require.Nil(t, builder)
+	})
+}
+
 // TestBuilder_Append ensures that appending to the buffer eventually reports
 // that the buffer is full.
 func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 	require.NoError(t, err)
 
 	tenant := "test"
@@ -162,7 +170,7 @@ func TestBuilder_AppendRecord(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 	require.NoError(t, err)
 
 	tenant := "test"
@@ -211,13 +219,13 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	}
 
 	t.Run("zero on an empty builder", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		require.True(t, builder.GetEarliestRecordTime().IsZero())
 	})
 
 	t.Run("set on first append", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 
 		recTime := time.Unix(100, 0).UTC()
@@ -226,7 +234,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	})
 
 	t.Run("tracks the minimum across appends", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 
 		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
@@ -239,7 +247,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	})
 
 	t.Run("reset on Reset", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 
 		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
@@ -248,7 +256,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	})
 
 	t.Run("reset on Flush", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 
 		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
@@ -260,8 +268,8 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 }
 
 func testFlushAndSortOrder(t *testing.T) {
-	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
-	sortBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+	sortBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 
 	type copiedRecord struct {
 		tenant    string
@@ -413,7 +421,7 @@ func testFlushAndSortShardBuckets(t *testing.T) {
 
 	t.Run("gives every stream the bucket of the shard layout of the tenant and records that layout", func(t *testing.T) {
 		shardLayout := mustShardLayout(t, 8)
-		shardOverrides := &mutableOverrides{schema: []string{"label:app"}, shard: &shardLayout}
+		shardOverrides := &mutableOverrides{schema: []string{"label:app"}, shardLayout: &shardLayout}
 		obj, closer, err := newFilledBuilder(t, shardOverrides).FlushAndSort(t.Context())
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
@@ -435,7 +443,7 @@ func testFlushAndSortShardBuckets(t *testing.T) {
 	t.Run("orders stream IDs by the sort key of the shard layout of the tenant", func(t *testing.T) {
 		shardLayout := mustShardLayout(t, 4)
 		schema := []string{"label:app"}
-		obj, closer, err := newFilledBuilder(t, &mutableOverrides{schema: schema, shard: &shardLayout}).FlushAndSort(t.Context())
+		obj, closer, err := newFilledBuilder(t, &mutableOverrides{schema: schema, shardLayout: &shardLayout}).FlushAndSort(t.Context())
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
@@ -504,8 +512,9 @@ func BenchmarkBuilder_FlushAndSort(b *testing.B) {
 		labels    func(tenant string, i int) string
 	}{
 		{
-			name: "default_sort_schema",
-			cfg:  benchBaseCfg,
+			name:      "default_sort_schema",
+			cfg:       benchBaseCfg,
+			overrides: NoTenantOverrides{},
 			labels: func(_ string, i int) string {
 				app := apps[i%len(apps)]
 				inst := instances[i%len(instances)]
@@ -1198,7 +1207,7 @@ func (s *failingReadStore) Remove(h scratch.Handle) error {
 
 func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	store := &failingReadStore{inner: scratch.NewMemory()}
-	builder, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	builder, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 	require.NoError(t, err)
 	require.NoError(t, builder.Append("tenant", logproto.Stream{
 		Labels:  `{cluster="test",app="foo"}`,
@@ -1236,7 +1245,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder, err := NewBuilder(testBuilderConfig, tt.store, NewBuilderMetrics(), log.NewNopLogger(), nil)
+			builder, err := NewBuilder(testBuilderConfig, tt.store, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 			require.NoError(t, err)
 			require.NoError(t, builder.Append("tenant", stream, time.Now()))
 
@@ -1258,11 +1267,11 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 // mutableOverrides gives every tenant the same sort schema and shard layout.
 // A test can change them between appends.
 //
-// A nil shard means the default shard layout. The field is a pointer because
-// the zero ShardLayout has one bucket, not the default count.
+// A nil shardLayout means the default shard layout. The field is a pointer
+// because the zero ShardLayout has one bucket, not the default count.
 type mutableOverrides struct {
 	schema      []string
-	shard       *streams.ShardLayout
+	shardLayout *streams.ShardLayout
 	schemaCalls int
 	shardCalls  int
 }
@@ -1274,10 +1283,10 @@ func (o *mutableOverrides) SortSchemaLabels(string) []string {
 
 func (o *mutableOverrides) DataObjShardLayout(string) streams.ShardLayout {
 	o.shardCalls++
-	if o.shard == nil {
+	if o.shardLayout == nil {
 		return streams.DefaultShardLayout()
 	}
-	return *o.shard
+	return *o.shardLayout
 }
 
 func testFlushAndSortLayoutPerObject(t *testing.T) {
@@ -1334,7 +1343,7 @@ func testFlushAndSortLayoutPerObject(t *testing.T) {
 
 	t.Run("keeps the shard layout of the open object when the overrides change, and applies the change to the next object", func(t *testing.T) {
 		first, second := mustShardLayout(t, 8), mustShardLayout(t, 16)
-		overrides := &mutableOverrides{schema: []string{"label:app"}, shard: &first}
+		overrides := &mutableOverrides{schema: []string{"label:app"}, shardLayout: &first}
 		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
 
@@ -1344,7 +1353,7 @@ func testFlushAndSortLayoutPerObject(t *testing.T) {
 				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
 			}, now))
 			if i == 1 {
-				overrides.shard = &second
+				overrides.shardLayout = &second
 			}
 		}
 		require.Equal(t, 1, overrides.shardCalls, "the builder must read the shard layout once per tenant per object")
@@ -1372,7 +1381,7 @@ func testFlushAndSortErrors(t *testing.T) {
 	}
 
 	t.Run("returns ErrBuilderEmpty when nothing was appended", func(t *testing.T) {
-		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 
 		obj, closer, err := b.FlushAndSort(t.Context())
@@ -1402,7 +1411,7 @@ func testFlushAndSortErrors(t *testing.T) {
 
 	t.Run("returns the sorted object and counts a release failure when releasing the built object fails", func(t *testing.T) {
 		metrics := NewBuilderMetrics()
-		b, err := NewBuilder(testBuilderConfig, &failingRemoveStore{Store: scratch.NewMemory()}, metrics, log.NewNopLogger(), nil)
+		b, err := NewBuilder(testBuilderConfig, &failingRemoveStore{Store: scratch.NewMemory()}, metrics, log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		require.NoError(t, b.Append("tenant", stream, time.Now()))
 
@@ -1416,7 +1425,7 @@ func testFlushAndSortErrors(t *testing.T) {
 
 	t.Run("returns nothing and releases the buffered sections when the build fails", func(t *testing.T) {
 		store := &failingReadStore{inner: scratch.NewMemory()}
-		b, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		b, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		require.NoError(t, b.Append("tenant", stream, time.Now()))
 
