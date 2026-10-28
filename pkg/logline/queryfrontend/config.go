@@ -73,6 +73,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"TTL for cached hint results. Uses Loki results cache backend; set to 0 to disable.")
 	f.Int64Var(&c.HintCacheMaxSizeMB, prefix+".hint-cache-max-size-mb", 0,
 		"Max size in MB for embedded hint cache when no external backend is configured (default 100)")
+
 	// Cancel-and-rerun no longer reads these. Keep them so existing
 	// deployments still start, and remove them in a follow-up.
 	const shardPlanningDeprecated = "Deprecated: cancel-and-rerun has been removed. This flag is ignored and will be removed in a future release."
