@@ -112,7 +112,8 @@ func (m *Base) FacilityMessage() *string {
 	return nil
 }
 
-// FacilityLevel returns the
+// FacilityLevel returns the keyword level for the current facility value (e.g., "kern", "user", "mail").
+// Falls back to the facility message if no keyword is defined.
 func (m *Base) FacilityLevel() *string {
 	if m.Facility != nil {
 		if msg, ok := common.FacilityKeywords[*m.Facility]; ok {

@@ -74,7 +74,9 @@ action select_msg_mode {
 	fgoto msg_any;
 }
 
+# Referencing the body label makes Ragel export its entry state.
 action set_prival {
+	_ = fentry(main::message_body);
 	output.priority = uint8(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
 	output.prioritySet = true
 }
@@ -277,7 +279,7 @@ procid = procidrange >mark %set_procid $err(err_procid);
 
 msgid = msgidrange >mark %set_msgid $err(err_msgid);
 
-header = (pri version sp timestamp sp hostname sp appname sp procid sp msgid) <>err(err_parse);
+header_fields = version sp timestamp sp hostname sp appname sp procid sp msgid;
 
 # \", \], \\
 escapes = (bs >add_slash toescape) $err(err_escape);
@@ -309,24 +311,25 @@ msg = any? @select_msg_mode;
 
 fail := (any - [\n\r])* @err{ fgoto main; };
 
-main := header sp structureddata (sp msg)? $err(err_parse);
+main := pri message_body: (header_fields sp structureddata (sp msg)?) $err(err_parse);
 
 }%%
 
 %% write data noerror noprefix;
 
 type machine struct {
-	data         []byte
-	cs           int
-	p, pe, eof   int
-	pb           int
-	err          error
-	currentelem  string
-	currentparam string
-	msgat        int
-	backslashat  []int
-	bestEffort 	 bool
-	compliantMsg bool
+	data             []byte
+	cs               int
+	p, pe, eof       int
+	pb               int
+	err              error
+	currentelem      string
+	currentparam     string
+	msgat            int
+	backslashat      []int
+	bestEffort       bool
+	compliantMsg     bool
+	optionalPriority bool
 }
 
 // NewMachine creates a new FSM able to parse RFC5424 syslog messages.
@@ -349,6 +352,11 @@ func NewMachine(options ...syslog.MachineOption) syslog.Machine {
 // WithBestEffort enables best effort mode.
 func (m *machine) WithBestEffort() {
 	m.bestEffort = true
+}
+
+// WithOptionalPriority enables parsing messages without a PRI prefix.
+func (m *machine) WithOptionalPriority() {
+	m.optionalPriority = true
 }
 
 // HasBestEffort tells whether the receiving machine has best effort mode on or off.
@@ -375,6 +383,7 @@ func (m *machine) text() []byte {
 // It can also partially parse input messages returning a partially valid structured representation
 // and the error that stopped the parsing.
 func (m *machine) Parse(input []byte) (syslog.Message, error) {
+	hasPriority := len(input) > 0 && input[0] == '<'
 	m.data = input
 	m.p = 0
 	m.pb = 0
@@ -383,9 +392,12 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 	m.pe = len(input)
 	m.eof = len(input)
 	m.err = nil
-	output := &syslogMessage{}
+	output := &syslogMessage{priorityOptional: m.optionalPriority}
 
 	%% write init;
+	if m.optionalPriority && !hasPriority {
+		m.cs = en_main_message_body
+	}
 	%% write exec;
 
 	if m.cs < first_final || m.cs == en_fail {
