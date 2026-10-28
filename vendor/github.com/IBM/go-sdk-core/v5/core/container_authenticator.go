@@ -119,63 +119,63 @@ func NewContainerAuthenticatorBuilder() *ContainerAuthenticatorBuilder {
 
 // SetCRTokenFilename sets the CRTokenFilename field in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetCRTokenFilename(s string) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.CRTokenFilename = s
+	builder.CRTokenFilename = s
 	return builder
 }
 
 // SetIAMProfileName sets the IAMProfileName field in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetIAMProfileName(s string) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.IAMProfileName = s
+	builder.IAMProfileName = s
 	return builder
 }
 
 // SetIAMProfileID sets the IAMProfileID field in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetIAMProfileID(s string) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.IAMProfileID = s
+	builder.IAMProfileID = s
 	return builder
 }
 
 // SetURL sets the URL field in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetURL(s string) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.URL = s
+	builder.URL = s
 	return builder
 }
 
 // SetClientIDSecret sets the ClientID and ClientSecret fields in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetClientIDSecret(clientID, clientSecret string) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.ClientID = clientID
-	builder.ContainerAuthenticator.ClientSecret = clientSecret
+	builder.ClientID = clientID
+	builder.ClientSecret = clientSecret
 	return builder
 }
 
 // SetDisableSSLVerification sets the DisableSSLVerification field in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetDisableSSLVerification(b bool) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.DisableSSLVerification = b
+	builder.DisableSSLVerification = b
 	return builder
 }
 
 // SetScope sets the Scope field in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetScope(s string) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.Scope = s
+	builder.Scope = s
 	return builder
 }
 
 // SetHeaders sets the Headers field in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetHeaders(headers map[string]string) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.Headers = headers
+	builder.Headers = headers
 	return builder
 }
 
 // SetClient sets the Client field in the builder.
 func (builder *ContainerAuthenticatorBuilder) SetClient(client *http.Client) *ContainerAuthenticatorBuilder {
-	builder.ContainerAuthenticator.Client = client
+	builder.Client = client
 	return builder
 }
 
 // Build() returns a validated instance of the ContainerAuthenticator with the config that was set in the builder.
 func (builder *ContainerAuthenticatorBuilder) Build() (*ContainerAuthenticator, error) {
 	// Make sure the config is valid.
-	err := builder.ContainerAuthenticator.Validate()
+	err := builder.Validate()
 	if err != nil {
 		return nil, RepurposeSDKProblem(err, "validation-failed")
 	}
@@ -529,7 +529,7 @@ func (authenticator *ContainerAuthenticator) readFile(filename string) (crToken 
 
 	// Read the entire file into a byte slice, then convert to string.
 	var bytes []byte
-	bytes, err = os.ReadFile(filename) // #nosec G304
+	bytes, err = os.ReadFile(filename) // #nosec G304 G703
 	if err != nil {
 		err = SDKErrorf(err, "", "read-file-error", getComponentInfo())
 		GetLogger().Debug(err.(*SDKProblem).GetDebugMessage())
