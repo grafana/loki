@@ -50,7 +50,7 @@ type DetailedResponse struct {
 	// response body as a "generic" JSON object.
 	// If the JSON response for an unsuccessful operation could not be properly un-marshalled, then the
 	// RawResult field will contain the raw response body.
-	Result interface{} `yaml:"result,omitempty"`
+	Result any `yaml:"result,omitempty"`
 
 	// This field will contain the raw response body as a byte array under these conditions:
 	// 1) there was a problem un-marshalling a JSON response body -
@@ -70,14 +70,14 @@ func (response *DetailedResponse) GetStatusCode() int {
 }
 
 // GetResult returns the result from the service
-func (response *DetailedResponse) GetResult() interface{} {
+func (response *DetailedResponse) GetResult() any {
 	return response.Result
 }
 
 // GetResultAsMap returns the result as a map (generic JSON object), if the
 // DetailedResponse.Result field contains an instance of a map.
-func (response *DetailedResponse) GetResultAsMap() (map[string]interface{}, bool) {
-	m, ok := response.Result.(map[string]interface{})
+func (response *DetailedResponse) GetResultAsMap() (map[string]any, bool) {
+	m, ok := response.Result.(map[string]any)
 	return m, ok
 }
 
