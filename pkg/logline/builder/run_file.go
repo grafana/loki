@@ -137,8 +137,6 @@ func writeRun(path string, keys [][8]byte, docs []uint32, counts []int32, swp **
 }
 
 // runReader streams (ngram, docID) records for a single shard from a run file.
-// Records are decoded from s2 a chunk at a time: a 12-byte io.ReadFull per
-// record made the read call itself the dominant per-pair cost of the merge.
 type runReader struct {
 	f  *os.File
 	sr *s2.Reader
