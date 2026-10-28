@@ -1404,7 +1404,7 @@ github.com/kamstrup/intmap
 ## explicit; go 1.16
 github.com/klauspost/asmfmt
 github.com/klauspost/asmfmt/cmd/asmfmt
-# github.com/klauspost/compress v1.20.1
+# github.com/klauspost/compress v1.20.3
 ## explicit; go 1.25
 github.com/klauspost/compress
 github.com/klauspost/compress/flate
@@ -1428,7 +1428,7 @@ github.com/klauspost/cpuid/v2
 # github.com/klauspost/crc32 v1.3.0
 ## explicit; go 1.23.0
 github.com/klauspost/crc32
-# github.com/klauspost/pgzip v1.2.7
+# github.com/klauspost/pgzip v1.3.0
 ## explicit; go 1.25
 github.com/klauspost/pgzip
 # github.com/knadh/koanf/maps v0.1.2
