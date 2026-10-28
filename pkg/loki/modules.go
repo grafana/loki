@@ -2446,6 +2446,7 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 	// One n-gram length for the whole index, owned by logline.index. The index
 	// does not record it, so a reader must use the value the builder did.
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+	cfg.AlignQueriesWithStep = t.Cfg.QueryRange.AlignQueriesWithStep
 
 	wrapped, storeService, cleanup, err := loglinequeryfrontend.WrapMiddleware(
 		cfg,
