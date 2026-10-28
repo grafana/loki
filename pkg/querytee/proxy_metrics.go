@@ -1,8 +1,10 @@
 package querytee
 
 import (
+	"math"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -28,6 +30,46 @@ const (
 // causeCompareError is the cause of a failed comparison when the comparator fails. The other causes
 // say how the bodies differ, or why a backend failed.
 const causeCompareError = "compare_error"
+
+// statBucket is a range of values of a stat. It holds the values above the upper bound of the
+// previous bucket, up to and including its own upper bound.
+type statBucket struct {
+	upperBound float64
+	label      string
+}
+
+// bytesProcessedBuckets are the buckets for the bytes that the primary backend processed. The sizes
+// are decimal: 1 GB is 10^9 bytes.
+var bytesProcessedBuckets = []statBucket{
+	{upperBound: humanize.GByte, label: "less_than_1gb"},
+	{upperBound: 10 * humanize.GByte, label: "1gb_to_10gb"},
+	{upperBound: 100 * humanize.GByte, label: "10gb_to_100gb"},
+	{upperBound: humanize.TByte, label: "100gb_to_1tb"},
+	{upperBound: math.Inf(1), label: "more_than_1tb"},
+}
+
+// execTimeBuckets are the buckets for the execution time of the primary backend, in seconds.
+var execTimeBuckets = []statBucket{
+	{upperBound: 0.1, label: "less_than_100ms"},
+	{upperBound: 0.5, label: "100ms_to_500ms"},
+	{upperBound: 1, label: "500ms_to_1s"},
+	{upperBound: 5, label: "1s_to_5s"},
+	{upperBound: 10, label: "5s_to_10s"},
+	{upperBound: 30, label: "10s_to_30s"},
+	{upperBound: 60, label: "30s_to_60s"},
+	{upperBound: math.Inf(1), label: "more_than_60s"},
+}
+
+// bucketLabel returns the label of the first bucket that holds value. The buckets must be in
+// ascending order of upper bound.
+func bucketLabel(buckets []statBucket, value float64) string {
+	for _, bucket := range buckets {
+		if value <= bucket.upperBound {
+			return bucket.label
+		}
+	}
+	return buckets[len(buckets)-1].label
+}
 
 type ProxyMetrics struct {
 	requestsTotal              *prometheus.CounterVec
@@ -73,18 +115,19 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 		}, []string{"route", "decision"}),
 		secondaryBackendStatsRatio: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "loki_querytee_secondary_backend_stats_ratio",
-			Help:                            "Ratio of a query stat of the secondary backend over the same stat of the primary backend.",
+			Help:                            "Ratio of a query stat of the secondary backend over the same stat of the primary backend, by the bucket of the primary value.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
-		}, []string{"route", "stat", "queriers_load_status", "result_cache_status"}),
+		}, []string{"route", "stat", "primary_bucket", "queriers_load_status", "result_cache_status"}),
 	}
 
 	return m
 }
 
 // observeSecondaryBackendStats observes the ratio of each stat of the secondary over the same stat
-// of the primary. It skips a stat when the primary value is zero.
+// of the primary. It labels the ratio with the bucket of the primary value, and it skips a stat when
+// the primary value is zero.
 func (m *ProxyMetrics) observeSecondaryBackendStats(route string, primary, secondary stats.Result) {
 	// comparisonStatus returns the label value for the status of the two backends. The arguments
 	// tell whether the primary and the secondary are in the state named by yes. The value is
@@ -114,19 +157,18 @@ func (m *ProxyMetrics) observeSecondaryBackendStats(route string, primary, secon
 
 	for _, stat := range []struct {
 		name               string
+		buckets            []statBucket
 		primary, secondary float64
 	}{
-		{"bytes_processed", float64(primary.Summary.TotalBytesProcessed), float64(secondary.Summary.TotalBytesProcessed)},
-		{"lines_processed", float64(primary.Summary.TotalLinesProcessed), float64(secondary.Summary.TotalLinesProcessed)},
-		{"exec_time", primary.Summary.ExecTime, secondary.Summary.ExecTime},
-		{"queue_time", primary.Summary.QueueTime, secondary.Summary.QueueTime},
-		{"splits", float64(primary.Summary.Splits), float64(secondary.Summary.Splits)},
-		{"shards", float64(primary.Summary.Shards), float64(secondary.Summary.Shards)},
+		{"bytes_processed", bytesProcessedBuckets, float64(primary.Summary.TotalBytesProcessed), float64(secondary.Summary.TotalBytesProcessed)},
+		{"exec_time", execTimeBuckets, primary.Summary.ExecTime, secondary.Summary.ExecTime},
 	} {
 		if stat.primary == 0 {
 			continue
 		}
-		m.secondaryBackendStatsRatio.WithLabelValues(route, stat.name, queriersLoadStatus, resultCacheStatus).Observe(stat.secondary / stat.primary)
+		m.secondaryBackendStatsRatio.WithLabelValues(
+			route, stat.name, bucketLabel(stat.buckets, stat.primary), queriersLoadStatus, resultCacheStatus,
+		).Observe(stat.secondary / stat.primary)
 	}
 }
 
