@@ -18,6 +18,11 @@ import (
 type RemappedSection struct {
 	Section *dataobj.Section
 	Remap   map[int64]int64
+
+	// DropStreamIDs holds local stream IDs whose records the section skips.
+	// Remap needs no entry for them. Records of any other stream must be in
+	// Remap, so a record of an unknown stream still fails the merge.
+	DropStreamIDs []int64
 }
 
 // Run is a sequence of sections sorted by global stream ID ascending, then
@@ -224,7 +229,7 @@ func openRemappedSection(ctx context.Context, input RemappedSection, bufferSize 
 	if err != nil {
 		return nil, fmt.Errorf("opening logs section: %w", err)
 	}
-	seq, err := openSectionSequence(ctx, sec, bufferSize)
+	seq, err := openSectionSequence(ctx, sec, bufferSize, input.DropStreamIDs)
 	if err != nil {
 		return nil, err
 	}

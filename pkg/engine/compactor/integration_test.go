@@ -279,10 +279,18 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 		schemaLabels[name] = streamLabels.Get(name)
 	}
 	for _, sourcePath := range sourcePaths {
+		// LogMerge checks its input bytes against the stats, so they must hold
+		// the real size of the source records.
+		obj, err := dataobj.FromBucket(ctx, bucket, sourcePath, 0)
+		require.NoError(t, err)
+		var uncompressedSize int64
+		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
+			uncompressedSize += record.UncompressedSize()
+		}
 		statsBuilder.Append(stats.Stat{
 			ObjectPath: sourcePath, SectionIndex: 0, SortSchema: strings.Join(sortSchema, ","),
 			Labels: schemaLabels, MinTimestamp: ts.UnixNano(), MaxTimestamp: ts.Add(time.Second).UnixNano(),
-			RowCount: 2, UncompressedSize: 100, ShardBucket: streams.DefaultShardLayout().BucketFromLabels(streamLabels),
+			RowCount: 2, UncompressedSize: uncompressedSize, ShardBucket: streams.DefaultShardLayout().BucketFromLabels(streamLabels),
 		})
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: sourcePath, ShardBuckets: shardCount, SectionIndex: 0,
@@ -319,6 +327,16 @@ func TestE2ECompactionConvergence(t *testing.T) {
 			wantTasks: map[string]int{"log-merge": 3, "index-filter": 2},
 		})
 	})
+
+	t.Run("a merge above the maximum task size splits into key range tasks that keep every record once", func(t *testing.T) {
+		// A 100KB maximum splits the merges into many tasks. Their disjoint
+		// outputs still converge to one sorted run.
+		runConvergenceTest(t, convergenceCase{
+			layouts:     fiveSourceLayouts(),
+			maxTaskSize: 100_000,
+			wantTasks:   map[string]int{"log-merge": 13, "index-filter": 2},
+		})
+	})
 }
 
 // convergenceCase configures runConvergenceTest.
@@ -336,6 +354,10 @@ type convergenceCase struct {
 
 	// wantTasks, when set, is the number of log tasks run for each actor.
 	wantTasks map[string]int
+
+	// maxTaskSize is the maximum input size of one LogMerge task. 0 disables
+	// the split.
+	maxTaskSize uint64
 }
 
 // runConvergenceTest creates one overlapping object for every layout and
@@ -380,6 +402,7 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 		require.NoError(t, err)
 		scenario.coordinator.logMergePlanningStrategy = strategy
 	}
+	scenario.coordinator.cfg.LogMaxTaskSize = flagext.Bytes(test.maxTaskSize)
 	actors := recordLogActors(scenario.coordinator)
 	indexes := scenario.stored.Indexes(ctx, t, tenant)
 	require.Len(t, indexes, len(test.layouts))
@@ -765,4 +788,93 @@ func TestE2ECompactionLegacyObjects(t *testing.T) {
 		require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-a", "compaction must rewrite the legacy objects")
 		require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-b", "compaction must rewrite the legacy objects")
 	})
+}
+
+// TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes pins the planner side of
+// the key range contract to the worker side. The planner cuts by the sort
+// prefixes of the stats rows that the index calculator writes. The worker
+// derives each stream's prefix with logsobj.StreamSortPrefix. If they
+// disagree, a split task can miss records, and nothing at run time detects
+// it.
+func TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes(t *testing.T) {
+	const tenant = "acme"
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	base := window.Add(time.Hour)
+
+	tests := []struct {
+		name    string
+		schema  []string
+		streams []string
+	}{
+		{
+			name:    "agree for a one-label schema",
+			schema:  []string{"label:app"},
+			streams: []string{`{app="api"}`, `{app="web"}`, `{app="db"}`},
+		},
+		{
+			name:    "agree for a multi-label schema",
+			schema:  []string{"label:app", "label:cluster"},
+			streams: []string{`{app="api",cluster="prod"}`, `{app="api",cluster="dev"}`, `{app="web",cluster="prod"}`},
+		},
+		{
+			name:    "agree when a stream has no value for a schema label",
+			schema:  []string{"label:app", "label:cluster"},
+			streams: []string{`{app="api"}`, `{cluster="prod"}`, `{app="api",cluster="prod"}`},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			layout := streams.NewLayout(streams.DefaultShardLayout(), tc.schema)
+			entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(tc.schema...))
+			for i, ls := range tc.streams {
+				entries.ForStream(ls).Entry(int(base.Unix())+i, "{}", fmt.Sprintf("line-%d", i))
+			}
+			source := newScenarioLogSource(t, "objects/source-0", tenant, entries, layout)
+			scenario := compactortest.New(ctx, t, window, []compactortest.Source{source})
+
+			refs, err := logSectionRefsFor(ctx, scenario.Bucket, tenant, compactortest.IndexPath(0))
+			require.NoError(t, err)
+
+			obj, err := dataobj.FromBucket(ctx, scenario.Bucket, source.Path, 0)
+			require.NoError(t, err)
+			tenantSections, err := sections.ForTenant(obj.Sections(), tenant)
+			require.NoError(t, err)
+			streamsSection, err := streams.Open(ctx, tenantSections.Streams)
+			require.NoError(t, err)
+			labelsByID := make(map[int64]labels.Labels)
+			for res := range streams.IterSection(ctx, streamsSection) {
+				stream, err := res.Value()
+				require.NoError(t, err)
+				labelsByID[stream.ID] = stream.Labels.Copy()
+			}
+
+			for i, section := range obj.Sections().Filter(logs.CheckSection) {
+				if section.Tenant != tenant {
+					continue
+				}
+				logsSection, err := logs.Open(ctx, section)
+				require.NoError(t, err)
+				workerPrefixes := make(map[streams.SortPrefix]bool)
+				for res := range logs.IterSection(ctx, logsSection) {
+					record, err := res.Value()
+					require.NoError(t, err)
+					prefix, err := logsobj.StreamSortPrefix(labelsByID[record.StreamID], layout)
+					require.NoError(t, err)
+					workerPrefixes[prefix] = true
+				}
+
+				plannerPrefixes := make(map[streams.SortPrefix]bool)
+				for _, ref := range refs {
+					if ref.Ref.ObjectPath == source.Path && ref.Ref.SectionIndex == int64(i) {
+						for _, key := range ref.Keys {
+							plannerPrefixes[key.Key.prefix] = true
+						}
+					}
+				}
+				require.NotEmpty(t, workerPrefixes, "logs section %d", i)
+				require.Equal(t, workerPrefixes, plannerPrefixes, "logs section %d", i)
+			}
+		})
+	}
 }
