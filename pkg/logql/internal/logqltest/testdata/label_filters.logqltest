@@ -911,7 +911,7 @@ eval instant at 60s count_over_time({app="a"} | logfmt | addr < ip("10.0.0.0/8")
 eval instant at 60s count_over_time({app="a"} | logfmt | addr <= ip("10.0.0.0/8") [1m])
   expect fail msg: syntax error: unexpected ip
 
-# label filter over a line that already carries an error: ip() is the only kind that always keeps it.
+# label filter over a line that already carries an error: every kind compares the line as usual.
 clear
 load
   {app="a"} `{"addr":"1.2.3.4","took":"2s"}` @ 20s [repeat every 20s for 4]
@@ -920,17 +920,16 @@ load
 # The parser fails on "not json" and sets __error__ on that line.
 eval instant at 60s count_over_time({app="a"} | json [1m])
   expect fail msg: JSONParserErr
-# ip() returns true for any errored line, so the error still reaches the result.
+# An ip(), duration, bytes or number filter needs its label. The failed line carries none, so the
+# filter drops it and no __error__ filter is needed.
 eval instant at 60s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") [1m])
-  expect fail msg: JSONParserErr
-eval instant at 60s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m])
   {app="a", addr="1.2.3.4", took="2s"} 3
-eval range from 40s to 80s step 20s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m])   # overlapping
+eval range from 40s to 80s step 20s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") [1m])   # overlapping
   {app="a", addr="1.2.3.4", took="2s"} 2 3 3
-eval range from 60s to 180s step 120s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m]) # non-overlapping
+eval range from 60s to 180s step 120s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") [1m]) # non-overlapping
   {app="a", addr="1.2.3.4", took="2s"} 3 _
-# A duration, bytes or number filter needs its label. The failed line carries none, so the filter
-# drops it and no __error__ filter is needed.
+eval instant at 60s count_over_time({app="a"} | json | addr != ip("9.9.9.0/24") [1m])
+  {app="a", addr="1.2.3.4", took="2s"} 3
 eval instant at 60s count_over_time({app="a"} | json | took > 1s [1m])
   {app="a", addr="1.2.3.4", took="2s"} 3
 # A string filter reads the absent addr as "" and compares it, so the comparison decides. Here ""
