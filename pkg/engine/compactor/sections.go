@@ -429,7 +429,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 					}
 				}
 				key := newLogSortPrefix(stat.ShardBucket, labels)
-				keySize := v2.KeySize[logSortPrefix]{Key: key, Size: uint64(stat.UncompressedSize)}
+				keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]

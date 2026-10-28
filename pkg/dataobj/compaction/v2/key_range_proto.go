@@ -10,7 +10,7 @@ import (
 // new value that the caller owns.
 func FullKeyRangeProto() *compactionv2pb.KeyRange {
 	return &compactionv2pb.KeyRange{
-		Start: &compactionv2pb.SortPrefix{ShardBucket: streams.MinSortPrefix().ShardBucket},
-		End:   &compactionv2pb.SortPrefix{ShardBucket: streams.SortPrefixLimit().ShardBucket},
+		Start: &compactionv2pb.KeyRangePrefix{ShardBucket: streams.MinSortPrefix().ShardBucket},
+		End:   &compactionv2pb.KeyRangePrefix{ShardBucket: streams.SortPrefixLimit().ShardBucket},
 	}
 }

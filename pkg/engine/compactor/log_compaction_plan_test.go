@@ -67,4 +67,13 @@ func TestLogMergeTaskLogStats(t *testing.T) {
 
 		require.Equal(t, logTaskStats{inputBytes: 60, oldestTimestamp: time.Unix(0, 100).UTC()}, task.logStats())
 	})
+
+	t.Run("reports the input bytes of the spec instead of the section sizes when it has them", func(t *testing.T) {
+		task := newLogMergeTask(&compactionv2pb.TaskSpec{
+			Runs:       []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{section("logs/a", 500, 100), section("logs/b", 100, 50)}}},
+			InputBytes: 70,
+		})
+
+		require.Equal(t, logTaskStats{inputBytes: 70, oldestTimestamp: time.Unix(0, 100).UTC()}, task.logStats())
+	})
 }

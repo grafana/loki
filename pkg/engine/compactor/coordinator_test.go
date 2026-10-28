@@ -469,7 +469,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, plan.tasks, 2)
-		cut := &compactionv2pb.SortPrefix{ShardBucket: 0, SchemaValues: []string{"billing"}}
+		cut := &compactionv2pb.KeyRangePrefix{ShardBucket: 0, SchemaValues: []string{"billing"}}
 		wantRanges := []*compactionv2pb.KeyRange{{Start: sortPrefixOf("auth"), End: cut}, {Start: cut, End: sortPrefixLimitProto}}
 		for i, task := range plan.tasks {
 			merge, ok := task.(logMergeTask)

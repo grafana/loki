@@ -279,10 +279,18 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 		schemaLabels[name] = streamLabels.Get(name)
 	}
 	for _, sourcePath := range sourcePaths {
+		// LogMerge checks its input bytes against the stats, so they must hold
+		// the real size of the source records.
+		obj, err := dataobj.FromBucket(ctx, bucket, sourcePath, 0)
+		require.NoError(t, err)
+		var uncompressedSize int64
+		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
+			uncompressedSize += record.UncompressedSize()
+		}
 		statsBuilder.Append(stats.Stat{
 			ObjectPath: sourcePath, SectionIndex: 0, SortSchema: strings.Join(sortSchema, ","),
 			Labels: schemaLabels, MinTimestamp: ts.UnixNano(), MaxTimestamp: ts.Add(time.Second).UnixNano(),
-			RowCount: 2, UncompressedSize: 100, ShardBucket: streams.DefaultShardLayout().BucketFromLabels(streamLabels),
+			RowCount: 2, UncompressedSize: uncompressedSize, ShardBucket: streams.DefaultShardLayout().BucketFromLabels(streamLabels),
 		})
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: sourcePath, ShardBuckets: shardCount, SectionIndex: 0,

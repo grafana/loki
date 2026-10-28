@@ -26,6 +26,12 @@ type LogMerge struct {
 	// can hold streams outside it, and the merge drops their records. A nil
 	// KeyRange means the full key space.
 	KeyRange *compactionv2pb.KeyRange
+
+	// InputBytes is the uncompressed size of the log records in KeyRange
+	// across the sections in Runs, from the index stats. The merge fails if
+	// it reads a different size. 0 means the size is unknown and skips the
+	// check.
+	InputBytes int64
 }
 
 // ID implements the Node interface.

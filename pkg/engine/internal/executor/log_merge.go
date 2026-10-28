@@ -117,6 +117,13 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	// Count any remaining records that haven't been added to the metric yet
 	observeBatch()
+	// The index stats record the same UncompressedSize per record, so a
+	// difference means the planner and this merge disagree on which records
+	// the key range holds. Fail before the index is written, so the source
+	// index stays and no record is lost.
+	if node.InputBytes > 0 && inputBytesTotal != node.InputBytes {
+		return nil, fmt.Errorf("LogMerge: read %d input bytes, but the index stats hold %d bytes for the key range", inputBytesTotal, node.InputBytes)
+	}
 	stats, err := w.finish(ctx)
 	if err != nil {
 		return nil, err
@@ -318,7 +325,7 @@ func dropStreamsOutsideRange(byID map[int64]streams.Stream, layout streams.Layou
 		if err != nil {
 			return nil, err
 		}
-		if !keyRange.Contains(prefix, streams.SortPrefix.Compare) {
+		if !keyRange.Contains(prefix) {
 			dropped = append(dropped, id)
 			delete(byID, id)
 		}

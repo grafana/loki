@@ -1092,9 +1092,9 @@ func appSortPrefix(t *testing.T, app string, sortSchema []string) streams.SortPr
 	return prefix
 }
 
-func appSortPrefixProto(t *testing.T, app string, sortSchema []string) *compactionv2pb.SortPrefix {
+func appSortPrefixProto(t *testing.T, app string, sortSchema []string) *compactionv2pb.KeyRangePrefix {
 	t.Helper()
-	return &compactionv2pb.SortPrefix{ShardBucket: appSortPrefix(t, app, sortSchema).ShardBucket, SchemaValues: []string{app}}
+	return &compactionv2pb.KeyRangePrefix{ShardBucket: appSortPrefix(t, app, sortSchema).ShardBucket, SchemaValues: []string{app}}
 }
 
 var (
@@ -1208,6 +1208,35 @@ func TestDoLogObjectMerge(t *testing.T) {
 		require.Len(t, inputs.runs, 1, "the run of objB must be skipped")
 	})
 
+	t.Run("checks the bytes it reads against the input bytes of the task", func(t *testing.T) {
+		dataBucket := objstore.NewInMemBucket()
+		day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		// wideLinesAt writes 100-byte lines without metadata, so app a holds
+		// 400 input bytes and app b 300.
+		buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
+			tenant: {{labels: `{app="a"}`, entries: wideLinesAt(day, 4)}, {labels: `{app="b"}`, entries: wideLinesAt(day, 3)}},
+		})
+		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", sortSchema)}
+		if appSortPrefix(t, "a", sortSchema).Compare(appSortPrefix(t, "b", sortSchema)) > 0 {
+			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", sortSchema), End: sortPrefixLimitProto}
+		}
+		merge := func(inputBytes int64) error {
+			c := newTestExecutorContext(t, objstore.NewInMemBucket())
+			c.dataBucket = dataBucket
+			_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{
+				Tenant:     tenant,
+				Runs:       sourceLogRuns(t, dataBucket, tenant, "objA"),
+				KeyRange:   keyRange,
+				InputBytes: inputBytes,
+			})
+			return err
+		}
+
+		require.NoError(t, merge(400), "succeeds when the bytes match")
+		require.NoError(t, merge(0), "skips the check when the input bytes are unknown")
+		require.ErrorContains(t, merge(700), "read 400 input bytes, but the index stats hold 700 bytes")
+	})
+
 	t.Run("keeps no record of an object with no stream in range", func(t *testing.T) {
 		dataBucket := objstore.NewInMemBucket()
 		day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -1284,27 +1313,30 @@ func TestDropStreamsOutsideRange(t *testing.T) {
 }
 
 func TestSortPrefixRange(t *testing.T) {
-	full := prefixRange(t, streams.MinSortPrefix(), streams.SortPrefixLimit())
-	at := func(bucket uint32, values ...string) *compactionv2pb.SortPrefix {
-		return &compactionv2pb.SortPrefix{ShardBucket: bucket, SchemaValues: values}
+	bounds := func(r v2.KeyRange[streams.SortPrefix]) [2]streams.SortPrefix {
+		return [2]streams.SortPrefix{r.Start(), r.End()}
+	}
+	full := [2]streams.SortPrefix{streams.MinSortPrefix(), streams.SortPrefixLimit()}
+	at := func(bucket uint32, values ...string) *compactionv2pb.KeyRangePrefix {
+		return &compactionv2pb.KeyRangePrefix{ShardBucket: bucket, SchemaValues: values}
 	}
 
 	t.Run("returns the full range when the range is missing", func(t *testing.T) {
 		got, err := sortPrefixRange(nil)
 		require.NoError(t, err)
-		require.Equal(t, full, got)
+		require.Equal(t, full, bounds(got))
 	})
 
 	t.Run("returns the range with both bounds", func(t *testing.T) {
 		got, err := sortPrefixRange(&compactionv2pb.KeyRange{Start: at(1, "a"), End: at(2, "b")})
 		require.NoError(t, err)
-		require.Equal(t, prefixRange(t, streams.NewSortPrefix(1, []string{"a"}), streams.NewSortPrefix(2, []string{"b"})), got)
+		require.Equal(t, [2]streams.SortPrefix{streams.NewSortPrefix(1, []string{"a"}), streams.NewSortPrefix(2, []string{"b"})}, bounds(got))
 	})
 
 	t.Run("accepts the full range from the coordinator", func(t *testing.T) {
 		got, err := sortPrefixRange(&compactionv2pb.KeyRange{Start: minSortPrefixProto, End: sortPrefixLimitProto})
 		require.NoError(t, err)
-		require.Equal(t, full, got)
+		require.Equal(t, full, bounds(got))
 	})
 
 	errorCases := []struct {

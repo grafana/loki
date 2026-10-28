@@ -72,14 +72,14 @@ func copyKeyRange(in *compactionv2pb.KeyRange) *compactionv2pb.KeyRange {
 	if in == nil {
 		return nil
 	}
-	return &compactionv2pb.KeyRange{Start: copySortPrefix(in.Start), End: copySortPrefix(in.End)}
+	return &compactionv2pb.KeyRange{Start: copyKeyRangePrefix(in.Start), End: copyKeyRangePrefix(in.End)}
 }
 
-func copySortPrefix(in *compactionv2pb.SortPrefix) *compactionv2pb.SortPrefix {
+func copyKeyRangePrefix(in *compactionv2pb.KeyRangePrefix) *compactionv2pb.KeyRangePrefix {
 	if in == nil {
 		return nil
 	}
-	return &compactionv2pb.SortPrefix{ShardBucket: in.ShardBucket, SchemaValues: slices.Clone(in.SchemaValues)}
+	return &compactionv2pb.KeyRangePrefix{ShardBucket: in.ShardBucket, SchemaValues: slices.Clone(in.SchemaValues)}
 }
 
 // MarshalPhysical converts a protobuf LogMerge into a physical plan node.
@@ -95,6 +95,7 @@ func (n *LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		ToCWindowStart: n.TocWindowStartUnixNanos,
 		Runs:           copyRunRefs(n.Runs),
 		KeyRange:       copyKeyRange(n.KeyRange),
+		InputBytes:     n.InputBytes,
 	}, nil
 }
 

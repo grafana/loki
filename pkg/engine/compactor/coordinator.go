@@ -282,16 +282,14 @@ func (c *coordinator) planLogMerge(
 		return logCompactionPlan{}, fmt.Errorf("no log merge tasks to execute for source index %q: %d runs, %d unmerged", sourceIndex.Path, len(runs), len(unmerged))
 	}
 
-	split := func(merge *compactionv2pb.TaskSpec) []*compactionv2pb.TaskSpec {
-		merge.KeyRange = v2.FullKeyRangeProto()
-		return []*compactionv2pb.TaskSpec{merge}
-	}
+	keys := newSectionKeySizes(sections)
+	var splitter logTaskSplitter = newNoopLogTaskSplitter(keys)
 	if c.cfg.LogMaxTaskSize > 0 {
-		split = newLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), sections).split
+		splitter = newSizeLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), keys)
 	}
 	var specs []*compactionv2pb.TaskSpec
 	for _, merge := range merges {
-		specs = append(specs, split(merge)...)
+		specs = append(specs, splitter.split(merge)...)
 	}
 
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmerged))
