@@ -118,8 +118,8 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		return nil, err
 	}
 
-	if resp != nil && q.metricAggregationEnabled(ctx) {
-		resp.Values = q.filterAggregatedMetricsLabel(resp.Values)
+	if resp != nil && !req.Values {
+		resp.Values = slices.DeleteFunc(resp.Values, constants.IsInternalLabel)
 	}
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
@@ -356,31 +356,14 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, e
 }
 
 func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
-	for i := 0; i < len(resp.Series); i++ {
-		keys := make([]string, 0, len(resp.Series[i].Labels))
-		for _, label := range resp.Series[i].Labels {
-			keys = append(keys, label.Key)
-		}
-
-		if slices.Contains(keys, constants.AggregatedMetricLabel) || slices.Contains(keys, constants.PatternLabel) {
-			resp.Series = slices.Delete(resp.Series, i, i+1)
-			i--
-		}
-	}
-
+	resp.Series = slices.DeleteFunc(resp.Series, isPatternIngesterSeries)
 	return resp
 }
 
-func (q *QuerierAPI) filterAggregatedMetricsLabel(labels []string) []string {
-	newLabels := make([]string, 0, len(labels))
-	for _, label := range labels {
-		if label == constants.AggregatedMetricLabel || label == constants.PatternLabel {
-			continue
-		}
-		newLabels = append(newLabels, label)
-	}
-
-	return newLabels
+func isPatternIngesterSeries(s logproto.SeriesIdentifier) bool {
+	return constants.IsPatternIngesterStream(func(name string) bool {
+		return slices.ContainsFunc(s.Labels, func(l logproto.SeriesIdentifier_LabelsEntry) bool { return l.Key == name })
+	})
 }
 
 func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
@@ -620,6 +603,11 @@ func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.De
 	resp, err := q.querier.DetectedLabels(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+	if resp != nil {
+		resp.DetectedLabels = slices.DeleteFunc(resp.DetectedLabels, func(l *logproto.DetectedLabel) bool {
+			return constants.IsInternalLabel(l.GetLabel())
+		})
 	}
 	return resp, nil
 }

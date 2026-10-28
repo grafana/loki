@@ -63,8 +63,6 @@ const (
 	ringKey = "distributor"
 
 	ringAutoForgetUnhealthyPeriods = 2
-
-	timeShardLabel = "__time_shard__"
 )
 
 var (
@@ -696,7 +694,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 				continue
 			}
 
-			if !d.validator.IsInternalStream(lbs) {
+			if !constants.IsInternalStream(lbs.Has) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
