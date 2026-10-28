@@ -18,6 +18,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -373,6 +374,7 @@ func newLoglinePrefetchHandler(
 		limits:               limits,
 		metrics:              metrics,
 		logger:               logger,
+		alignQueriesWithStep: cfg.AlignQueriesWithStep,
 	}
 }
 
@@ -388,6 +390,7 @@ type loglinePrefetchHandler struct {
 	limits               logline_query_limits.Limits
 	metrics              *Metrics
 	logger               log.Logger
+	alignQueriesWithStep bool
 }
 
 // Mode controls how logline filtering behaves for a tenant.
@@ -448,7 +451,7 @@ func resolveMode(header string, tenantMode, defaultMode Mode, requireOptInHeader
 	return mode, false
 }
 
-func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time, stepMillis int64) (uint64, error) {
+func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, readStart, readEnd time.Time) (uint64, error) {
 	matcherGroups, err := syntax.MatcherGroups(expr)
 	if err != nil {
 		return 0, err
@@ -462,11 +465,9 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 
 	var totalBytes uint64
 	for _, group := range matcherGroups {
-		adjustedFrom, adjustedThrough := metricLookupBounds(group, from, through, stepMillis)
-
 		resp, err := h.next.Do(ctx, &logproto.IndexStatsRequest{
-			From:     model.Time(adjustedFrom.UnixMilli()),
-			Through:  model.Time(adjustedThrough.UnixMilli()),
+			From:     model.Time(readStart.UnixMilli()),
+			Through:  model.Time(readEnd.UnixMilli()),
 			Matchers: syntax.MatchersString(group.Matchers),
 		})
 		if err != nil {
@@ -484,28 +485,6 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	}
 
 	return totalBytes, nil
-}
-
-// metricLookupBounds rounds onto the step, then widens by the range and offset.
-// Prefetch runs before the splitter, which floors the start and rounds the end up.
-// A zero interval or a zero step is only widened.
-func metricLookupBounds(group syntax.MatcherRange, from, through time.Time, stepMillis int64) (time.Time, time.Time) {
-	if group.Interval > 0 && stepMillis > 0 {
-		from, through = alignMetricStep(from, through, stepMillis)
-	}
-	return group.Widen(from, through)
-}
-
-// alignMetricStep matches metricQuerySplitter.alignStartEnd: floor the start and
-// round the end up to the next step.
-func alignMetricStep(start, end time.Time, stepMillis int64) (time.Time, time.Time) {
-	stepNs := stepMillis * int64(time.Millisecond)
-	startNs := start.UnixNano()
-	endNs := end.UnixNano()
-	if mod := endNs % stepNs; mod != 0 {
-		endNs += stepNs - mod
-	}
-	return time.Unix(0, startNs-startNs%stepNs).UTC(), time.Unix(0, endNs).UTC()
 }
 
 // dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
@@ -688,16 +667,14 @@ func (h *loglinePrefetchHandler) doDryRun(
 	req queryrangebase.Request,
 	direction logproto.Direction,
 	expr syntax.Expr,
-	from, through time.Time,
+	qb querybounds.QueryBounds,
 	queryBytes uint64,
 ) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, h.logger)
-	// A supported metric query has one log selector, so it has one matcher group.
-	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
-	readStart, readEnd := from, through
-	firstWindowEnd := from
+
+	readStart, readEnd := qb.ReadStart, qb.ReadEnd
+	firstWindowEnd := readStart
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		readStart, readEnd = metricLookupBounds(groups[0], from, through, req.GetStep())
 		firstWindowEnd = readStart.Add(groups[0].Interval)
 	}
 	eligibleEnd := readEnd
@@ -783,8 +760,8 @@ func (h *loglinePrefetchHandler) doDryRun(
 	logger = log.With(logger,
 		"query_hash", util.HashedQuery(req.GetQuery()),
 		"query_timeout", queryTimeout,
-		"query_start", from.Format(time.RFC3339Nano),
-		"query_end", through.Format(time.RFC3339Nano),
+		"query_start", qb.RequestedStart.Format(time.RFC3339Nano),
+		"query_end", qb.RequestedEnd.Format(time.RFC3339Nano),
 		"query_duration", queryDuration,
 		"query_bytes", queryBytes,
 	)
@@ -937,6 +914,8 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.next.Do(ctx, req)
 	}
 
+	qb := querybounds.GetQueryBounds(req, expr, h.alignQueriesWithStep)
+
 	if _, isMetric := expr.(syntax.SampleExpr); isMetric {
 		if mode != ModeDryRun || len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
 			return h.next.Do(ctx, req)
@@ -955,11 +934,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	// Shared eligibility: stats-based byte threshold.
-	from := req.GetStart().UTC()
-	through := req.GetEnd().UTC()
+	readStart := qb.ReadStart
+	readEnd := qb.ReadEnd
 	queryBytes := uint64(0)
 	if minQueryBytes > 0 {
-		queryBytes, err = h.getQueryBytes(ctx, expr, from, through, req.GetStep())
+		queryBytes, err = h.getQueryBytes(ctx, expr, readStart, readEnd)
 		if err != nil {
 			level.Warn(logger).Log(
 				"msg", "failed to get query stats for logline gating; skipping hint lookup",
@@ -990,24 +969,24 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	if mode == ModeDryRun {
-		return h.doDryRun(ctx, req, direction, expr, from, through, queryBytes)
+		return h.doDryRun(ctx, req, direction, expr, qb, queryBytes)
 	}
 
-	ingesterCutoff := through
+	ingesterCutoff := readEnd
 	if h.queryIngestersWithin > 0 {
 		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
-		if cutoff.After(from) && cutoff.Before(through) {
+		if cutoff.After(readStart) && cutoff.Before(readEnd) {
 			ingesterCutoff = cutoff
-		} else if !cutoff.After(from) {
+		} else if !cutoff.After(readStart) {
 			// Entire query is in the ingester window. Store this so filter middleware
 			// can pass through without waiting for object storage hints.
-			ingesterCutoff = from
+			ingesterCutoff = readStart
 		}
 	}
 
 	result := &hintPrefetchResult{
-		queryStart:     from,
-		queryEnd:       through,
+		queryStart:     readStart,
+		queryEnd:       readEnd,
 		queryBytes:     queryBytes,
 		ingesterCutoff: ingesterCutoff,
 		minDate:        h.minDate(),
@@ -1019,13 +998,13 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// return before it finishes.
 	prefetchCtx, cancelPrefetch := context.WithCancel(ctx)
 	defer cancelPrefetch()
-	if ingesterCutoff.After(maxTime(from, result.minDate)) {
+	if ingesterCutoff.After(maxTime(readStart, result.minDate)) {
 		go h.lookupHints(prefetchCtx, logger, tenant, expr, result)
 	} else {
 		// Every sub-request passes through, so nothing reads the lookup. When
 		// the stored part of the query predates the index, report the range the
 		// lookup would have returned so stats treat the query as not indexed.
-		if ingesterCutoff.After(from) {
+		if ingesterCutoff.After(readStart) {
 			result.ranges = []hintprovider.HintTimeRange{{
 				End:    result.minDate,
 				Source: hintprovider.HintSourcePreMinDate,

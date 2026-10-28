@@ -51,6 +51,7 @@ type Config struct {
 	// hint cache. Only used when no external cache backend is configured.
 	// Defaults to 100 when zero.
 	HintCacheMaxSizeMB int64 `yaml:"hint_cache_max_size_mb"`
+	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
 }
 
 // RegisterFlagsWithPrefix registers the section's flags under prefix.
@@ -69,7 +70,8 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"TTL for cached hint results. Uses Loki results cache backend; set to 0 to disable.")
 	f.Int64Var(&c.HintCacheMaxSizeMB, prefix+".hint-cache-max-size-mb", 0,
 		"Max size in MB for embedded hint cache when no external backend is configured (default 100)")
-
+	f.BoolVar(&c.AlignQueriesWithStep, prefix+".align-queries-with-step", false,
+		"Enable step alignment for metric queries.")
 	// Cancel-and-rerun no longer reads these. Keep them so existing
 	// deployments still start, and remove them in a follow-up.
 	const shardPlanningDeprecated = "Deprecated: cancel-and-rerun has been removed. This flag is ignored and will be removed in a future release."
