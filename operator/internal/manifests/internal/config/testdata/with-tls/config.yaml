@@ -189,7 +189,6 @@ server:
   grpc_server_max_concurrent_streams: 1000
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
-  grpc_compression: gzip
   http_listen_port: 3100
   http_server_idle_timeout: 30s
   http_server_read_timeout: 30s
