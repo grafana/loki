@@ -68,6 +68,20 @@ func copyRunRefs(in []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
 	return runs
 }
 
+func copyKeyRange(in *compactionv2pb.KeyRange) *compactionv2pb.KeyRange {
+	if in == nil {
+		return nil
+	}
+	return &compactionv2pb.KeyRange{Start: copyKeyRangePrefix(in.Start), End: copyKeyRangePrefix(in.End)}
+}
+
+func copyKeyRangePrefix(in *compactionv2pb.KeyRangePrefix) *compactionv2pb.KeyRangePrefix {
+	if in == nil {
+		return nil
+	}
+	return &compactionv2pb.KeyRangePrefix{ShardBucket: in.ShardBucket, SchemaValues: slices.Clone(in.SchemaValues)}
+}
+
 // MarshalPhysical converts a protobuf LogMerge into a physical plan node.
 func (n *Node_LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return n.LogMerge.MarshalPhysical(nodeID)
@@ -80,6 +94,8 @@ func (n *LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		Tenant:         n.Tenant,
 		ToCWindowStart: n.TocWindowStartUnixNanos,
 		Runs:           copyRunRefs(n.Runs),
+		KeyRange:       copyKeyRange(n.KeyRange),
+		InputBytes:     n.InputBytes,
 	}, nil
 }
 

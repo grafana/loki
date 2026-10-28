@@ -73,10 +73,10 @@ func TestFanOutHandler_Do(t *testing.T) {
 	}
 
 	// statRatio returns the count and the sum of the observed ratios of a stat.
-	statRatio := func(t *testing.T, handler *FanOutHandler, stat, queriersLoadStatus, resultCacheStatus string) (uint64, float64) {
+	statRatio := func(t *testing.T, handler *FanOutHandler, stat, primaryBucket, queriersLoadStatus, resultCacheStatus string) (uint64, float64) {
 		t.Helper()
 
-		ratio, err := handler.metrics.secondaryBackendStatsRatio.GetMetricWithLabelValues(routeName, stat, queriersLoadStatus, resultCacheStatus)
+		ratio, err := handler.metrics.secondaryBackendStatsRatio.GetMetricWithLabelValues(routeName, stat, primaryBucket, queriersLoadStatus, resultCacheStatus)
 		require.NoError(t, err)
 		var observed dto.Metric
 		require.NoError(t, ratio.(prometheus.Metric).Write(&observed))
@@ -164,7 +164,7 @@ func TestFanOutHandler_Do(t *testing.T) {
 		require.Empty(t, comp.recorded())
 	})
 
-	t.Run("counts a match and observes the ratio of every stat with a primary value when both backends answer", func(t *testing.T) {
+	t.Run("counts a match and observes the ratio of the bytes processed and the execution time when both backends answer", func(t *testing.T) {
 		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK,
 			bodyWithSummary(`{"totalBytesProcessed":250,"totalLinesProcessed":300,"execTime":1,"queueTime":0.02,"splits":8,"shards":3}`))
 		handler := newHandler(staticComparator{summary: &comparator.ComparisonSummary{}},
@@ -177,20 +177,58 @@ func TestFanOutHandler_Do(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
-		for stat, expectedRatio := range map[string]float64{
-			"bytes_processed": 0.25,
-			"lines_processed": 0.75,
-			"exec_time":       0.5,
-			"queue_time":      0.4,
-			"splits":          2,
+		for stat, tc := range map[string]struct {
+			primaryBucket string
+			expectedRatio float64
+		}{
+			"bytes_processed": {primaryBucket: "less_than_1gb", expectedRatio: 0.25},
+			"exec_time":       {primaryBucket: "1s_to_5s", expectedRatio: 0.5},
 		} {
-			count, sum := statRatio(t, handler, stat, "both_idle", "both_miss")
+			count, sum := statRatio(t, handler, stat, tc.primaryBucket, "both_idle", "both_miss")
 			require.Equal(t, uint64(1), count, stat)
-			require.InDelta(t, expectedRatio, sum, 1e-9, stat)
+			require.InDelta(t, tc.expectedRatio, sum, 1e-9, stat)
 		}
-		count, _ := statRatio(t, handler, "shards", "both_idle", "both_miss")
-		require.Zero(t, count)
+		require.Equal(t, 2, prom_testutil.CollectAndCount(handler.metrics.secondaryBackendStatsRatio))
 	})
+
+	for name, tc := range map[string]struct {
+		summary, stat, bucket string
+	}{
+		"puts a primary of 0.5 GB in the less_than_1gb bytes bucket":           {summary: `{"totalBytesProcessed":500000000}`, stat: "bytes_processed", bucket: "less_than_1gb"},
+		"puts a primary of exactly 1 GB in the less_than_1gb bytes bucket":     {summary: `{"totalBytesProcessed":1000000000}`, stat: "bytes_processed", bucket: "less_than_1gb"},
+		"puts a primary just above 1 GB in the 1gb_to_10gb bytes bucket":       {summary: `{"totalBytesProcessed":1000000001}`, stat: "bytes_processed", bucket: "1gb_to_10gb"},
+		"puts a primary of exactly 10 GB in the 1gb_to_10gb bytes bucket":      {summary: `{"totalBytesProcessed":10000000000}`, stat: "bytes_processed", bucket: "1gb_to_10gb"},
+		"puts a primary of 50 GB in the 10gb_to_100gb bytes bucket":            {summary: `{"totalBytesProcessed":50000000000}`, stat: "bytes_processed", bucket: "10gb_to_100gb"},
+		"puts a primary of 500 GB in the 100gb_to_1tb bytes bucket":            {summary: `{"totalBytesProcessed":500000000000}`, stat: "bytes_processed", bucket: "100gb_to_1tb"},
+		"puts a primary of exactly 1 TB in the 100gb_to_1tb bytes bucket":      {summary: `{"totalBytesProcessed":1000000000000}`, stat: "bytes_processed", bucket: "100gb_to_1tb"},
+		"puts a primary of 2 TB in the more_than_1tb bytes bucket":             {summary: `{"totalBytesProcessed":2000000000000}`, stat: "bytes_processed", bucket: "more_than_1tb"},
+		"puts a primary of 50 ms in the less_than_100ms execution time bucket": {summary: `{"execTime":0.05}`, stat: "exec_time", bucket: "less_than_100ms"},
+		"puts a primary of 300 ms in the 100ms_to_500ms execution bucket":      {summary: `{"execTime":0.3}`, stat: "exec_time", bucket: "100ms_to_500ms"},
+		"puts a primary of 800 ms in the 500ms_to_1s execution time bucket":    {summary: `{"execTime":0.8}`, stat: "exec_time", bucket: "500ms_to_1s"},
+		"puts a primary of 3 s in the 1s_to_5s execution time bucket":          {summary: `{"execTime":3}`, stat: "exec_time", bucket: "1s_to_5s"},
+		"puts a primary of 7 s in the 5s_to_10s execution time bucket":         {summary: `{"execTime":7}`, stat: "exec_time", bucket: "5s_to_10s"},
+		"puts a primary of 20 s in the 10s_to_30s execution time bucket":       {summary: `{"execTime":20}`, stat: "exec_time", bucket: "10s_to_30s"},
+		"puts a primary of 45 s in the 30s_to_60s execution time bucket":       {summary: `{"execTime":45}`, stat: "exec_time", bucket: "30s_to_60s"},
+		"puts a primary of exactly 60 s in the 30s_to_60s execution bucket":    {summary: `{"execTime":60}`, stat: "exec_time", bucket: "30s_to_60s"},
+		"puts a primary of 61 s in the more_than_60s execution time bucket":    {summary: `{"execTime":61}`, stat: "exec_time", bucket: "more_than_60s"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, bodyWithSummary(tc.summary))
+			handler := newHandler(staticComparator{summary: &comparator.ComparisonSummary{}},
+				newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithSummary(tc.summary)),
+				secondary,
+			)
+
+			_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
+
+			require.NoError(t, err)
+			require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
+			count, sum := statRatio(t, handler, tc.stat, tc.bucket, "both_idle", "both_miss")
+			require.Equal(t, uint64(1), count)
+			require.InDelta(t, 1, sum, 1e-9)
+			require.Equal(t, 1, prom_testutil.CollectAndCount(handler.metrics.secondaryBackendStatsRatio))
+		})
+	}
 
 	for name, tc := range map[string]struct {
 		primaryBody, secondaryBody  string
@@ -224,7 +262,7 @@ func TestFanOutHandler_Do(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
-			count, sum := statRatio(t, handler, "bytes_processed", tc.expectedLoad, tc.expectedCache)
+			count, sum := statRatio(t, handler, "bytes_processed", "less_than_1gb", tc.expectedLoad, tc.expectedCache)
 			require.Equal(t, uint64(1), count)
 			require.InDelta(t, 0.5, sum, 1e-9)
 		})
@@ -255,7 +293,7 @@ func TestFanOutHandler_Do(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonFailed, "http_4xx") == 1 }, 5*time.Second, 10*time.Millisecond)
-		count, _ := statRatio(t, handler, "bytes_processed", "both_idle", "both_miss")
+		count, _ := statRatio(t, handler, "bytes_processed", "less_than_1gb", "both_idle", "both_miss")
 		require.Zero(t, count)
 		require.Contains(t, logs.String(), "secondary_err=")
 		require.Contains(t, logs.String(), "desc = invalid query")
@@ -323,7 +361,7 @@ func TestFanOutHandler_Do(t *testing.T) {
 		} {
 			require.Contains(t, output, expected)
 		}
-		count, sum := statRatio(t, handler, "bytes_processed", "both_idle", "both_miss")
+		count, sum := statRatio(t, handler, "bytes_processed", "less_than_1gb", "both_idle", "both_miss")
 		require.Equal(t, uint64(1), count)
 		require.InDelta(t, 0.5, sum, 1e-9)
 	})
@@ -349,7 +387,7 @@ func TestFanOutHandler_Do(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
-		count, sum := statRatio(t, handler, "bytes_processed", "both_idle", "both_miss")
+		count, sum := statRatio(t, handler, "bytes_processed", "less_than_1gb", "both_idle", "both_miss")
 		require.Equal(t, uint64(1), count)
 		require.InDelta(t, 0.5, sum, 1e-9)
 	})

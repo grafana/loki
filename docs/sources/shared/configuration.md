@@ -1161,6 +1161,14 @@ dataobj:
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
 
+    # Experimental: Maximum uncompressed input size of one LogMerge task. The
+    # planner splits a larger merge into tasks by stream sort prefix and never
+    # splits one sort prefix. A task exceeds the maximum in two cases: a sort
+    # prefix above it gets a task of its own, and the last task of a merge can
+    # take in a leftover of up to 10% of it. 0 disables the split.
+    # CLI flag: -dataobj.compaction.logs.max-task-size
+    [logs_max_task_size: <int> | default = 0B]
+
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout
@@ -4080,11 +4088,15 @@ discover_generic_fields:
 # CLI flag: -validation.discover-service-name
 [discover_service_name: <list of strings> | default = [service app application app_name name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
 
-# Discover and add log levels during ingestion, if not present already. Levels
-# would be added to Structured Metadata with name
-# level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and
-# one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical',
-# 'fatal' (case insensitive).
+# Discover the log level of each entry during ingestion and add it to Structured
+# Metadata as detected_level, unless it is already present. The level is read
+# from the first stream label or Structured Metadata field whose name is in
+# log_level_fields (default: level, LEVEL, Level, log.level, severity, SEVERITY,
+# Severity, SeverityText, lvl, LVL, Lvl, severity_text, Severity_Text,
+# SEVERITY_TEXT). Otherwise it is derived from the OTLP severity number, or from
+# the log line: a JSON or logfmt field named in log_level_fields, then keywords.
+# Recognized values (case insensitive) are normalized to 'trace', 'debug',
+# 'info', 'warn', 'error', 'critical' or 'fatal'.
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
