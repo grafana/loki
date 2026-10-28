@@ -16,6 +16,7 @@ package pubsub
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -23,6 +24,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	ipubsub "cloud.google.com/go/internal/pubsub"
@@ -37,7 +39,9 @@ import (
 	"google.golang.org/api/support/bundler"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding/gzip"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -49,6 +53,8 @@ const (
 	// in bytes, as defined by the PubSub service.
 	MaxPublishRequestBytes = 1e7
 )
+
+const pubsubClientTelemetryHeader = "x-goog-pubsub-client-telemetry"
 
 // ErrOversizedMessage indicates that a message's size exceeds MaxPublishRequestBytes.
 var ErrOversizedMessage = bundler.ErrOversizedItem
@@ -78,6 +84,17 @@ type Publisher struct {
 	// This is configured at client instantiation, and allows
 	// disabling tracing even when a tracer provider is detectd.
 	enableTracing bool
+
+	hedgingDelay             time.Duration
+	hedgingMaxMilliTokens    int64
+	hedgingRefillMilliTokens int64
+	hedgingSettingsErr       error
+	hedgingTokenBucket       atomic.Int64 // scaled by tokenScaleFactor; starts empty
+
+	hedgingMu      sync.Mutex
+	hedgingQueue   []*hedgedRequest
+	hedgingTimer   *time.Timer
+	hedgingStopped bool
 }
 
 // PublishSettings control the bundling of published messages.
@@ -111,6 +128,10 @@ type PublishSettings struct {
 	// CompressionBytesThreshold defines the threshold (in bytes) above which messages
 	// are compressed for transport. Only takes effect if EnableCompression is true.
 	CompressionBytesThreshold int
+
+	// HedgingSettings enables publish hedging when non-nil. See HedgingSettings
+	// for details. Defaults to nil (hedging disabled).
+	HedgingSettings *HedgingSettings
 }
 
 func (ps *PublishSettings) shouldCompress(batchSize int) bool {
@@ -205,7 +226,7 @@ var errPublisherOrderingNotEnabled = errors.New("Publisher.EnableMessageOrdering
 func (t *Publisher) Publish(ctx context.Context, msg *Message) *PublishResult {
 	var createSpan trace.Span
 	if t.enableTracing {
-		opts := getPublishSpanAttributes(t.c.projectID, t.ID(), msg)
+		opts := getPublishSpanAttributes(t.c.projectID, t.name, msg)
 		opts = append(opts, trace.WithAttributes(semconv.CodeFunction("Publish")))
 		ctx, createSpan = startSpan(ctx, createSpanName, t.ID(), opts...)
 	}
@@ -218,6 +239,11 @@ func (t *Publisher) Publish(ctx context.Context, msg *Message) *PublishResult {
 	if !t.EnableMessageOrdering && msg.OrderingKey != "" {
 		ipubsub.SetPublishResult(r, "", errPublisherOrderingNotEnabled)
 		spanRecordError(createSpan, errPublisherOrderingNotEnabled)
+		return r
+	}
+	if t.EnableMessageOrdering && t.PublishSettings.HedgingSettings != nil {
+		ipubsub.SetPublishResult(r, "", errPublisherHedgingAndOrderingEnabled)
+		spanRecordError(createSpan, errPublisherHedgingAndOrderingEnabled)
 		return r
 	}
 
@@ -238,6 +264,11 @@ func (t *Publisher) Publish(ctx context.Context, msg *Message) *PublishResult {
 	if t.stopped {
 		ipubsub.SetPublishResult(r, "", ErrPublisherStopped)
 		spanRecordError(createSpan, ErrPublisherStopped)
+		return r
+	}
+	if t.hedgingSettingsErr != nil {
+		ipubsub.SetPublishResult(r, "", t.hedgingSettingsErr)
+		spanRecordError(createSpan, t.hedgingSettingsErr)
 		return r
 	}
 
@@ -273,6 +304,7 @@ func (t *Publisher) Publish(ctx context.Context, msg *Message) *PublishResult {
 	}
 
 	if err := t.scheduler.Add(msg.OrderingKey, bmsg, msgSize); err != nil {
+		t.flowController.release(ctx, msgSize)
 		t.scheduler.Pause(msg.OrderingKey)
 		ipubsub.SetPublishResult(r, "", err)
 		spanRecordError(createSpan, err)
@@ -292,6 +324,7 @@ func (t *Publisher) Stop() {
 	if noop {
 		return
 	}
+	t.stopHedging()
 	t.scheduler.FlushAndStop()
 }
 
@@ -386,6 +419,20 @@ func (t *Publisher) initBundler() {
 	// The max size of publish messages in a system should be handled by the flow controller,
 	// not the scheduler or bundler. Disable this by setting to MaxInt.
 	t.scheduler.BufferedByteLimit = math.MaxInt
+
+	t.initHedging()
+}
+
+func encodePubsubClientTelemetry(hedgedAttemptCount int, startTime time.Time) string {
+	b, _ := proto.Marshal(&pb.PubsubClientTelemetry{
+		Operation: &pb.PubsubClientTelemetry_PublishOperation_{
+			PublishOperation: &pb.PubsubClientTelemetry_PublishOperation{
+				HedgedAttemptCount: int32(hedgedAttemptCount),
+				PublishStartTime:   timestamppb.New(startTime),
+			},
+		},
+	})
+	return base64.StdEncoding.EncodeToString(b)
 }
 
 // ErrPublishingPaused is a custom error indicating that the publish paused for the specified ordering key.
@@ -423,7 +470,7 @@ func (t *Publisher) publishMessageBundle(ctx context.Context, bms []*bundledMess
 
 		projectID, topicID := parseResourceName(t.name)
 		var pSpan trace.Span
-		opts := getCommonOptions(projectID, topicID)
+		opts := getCommonOptions(projectID, t.name)
 		// Add link to publish RPC span of createSpan(s).
 		opts = append(opts, trace.WithLinks(links...))
 		opts = append(
@@ -479,10 +526,23 @@ func (t *Publisher) publishMessageBundle(ctx context.Context, bms []*bundledMess
 		if t.PublishSettings.shouldCompress(batchSize) {
 			gaxOpts = append(gaxOpts, gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
 		}
-		res, err = t.c.TopicAdminClient.Publish(ctx, &pb.PublishRequest{
-			Topic:    t.name,
-			Messages: pbMsgs,
-		}, gaxOpts...)
+
+		canHedge := t.hedgingDelay > 0 && orderingKey == "" && t.PublishSettings.Timeout > t.hedgingDelay
+
+		if canHedge {
+			res, err = t.publishHedged(ctx, start, pbMsgs, bms, gaxOpts)
+		} else {
+			// regular publish without hedging
+			publishCtx := metadata.AppendToOutgoingContext(
+				ctx,
+				pubsubClientTelemetryHeader,
+				encodePubsubClientTelemetry(0, start),
+			)
+			res, err = t.c.TopicAdminClient.Publish(publishCtx, &pb.PublishRequest{
+				Topic:    t.name,
+				Messages: pbMsgs,
+			}, gaxOpts...)
+		}
 	}
 	end := time.Now()
 	if err != nil {

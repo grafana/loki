@@ -1,5 +1,42 @@
 # Changes
 
+## [2.8.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v2.7.0...pubsub/v2.8.0) (2026-10-21)
+
+
+### Features
+
+* **all:** Update supported go versions ([#20520](https://github.com/googleapis/google-cloud-go/issues/20520)) ([90413d3](https://github.com/googleapis/google-cloud-go/commit/90413d3e9d381ef4b92e3c496d98b023c5b2d8cc))
+* **pubsub/v2:** Add publish hedging ([#20136](https://github.com/googleapis/google-cloud-go/issues/20136)) ([6a92ef7](https://github.com/googleapis/google-cloud-go/commit/6a92ef79dc4969fc5f84dc9060aeff998747aa94))
+* Update API sources and regenerate ([#20526](https://github.com/googleapis/google-cloud-go/issues/20526)) ([e6f37a3](https://github.com/googleapis/google-cloud-go/commit/e6f37a362b6e37b0bc74e77b8d7f151dc7443fb8))
+* Update API sources and regenerate ([#20683](https://github.com/googleapis/google-cloud-go/issues/20683)) ([005d7ce](https://github.com/googleapis/google-cloud-go/commit/005d7ce4872f1cf1ad269cd5d0ce8da7a844d3c8))
+* Update API sources and regenerate ([#20728](https://github.com/googleapis/google-cloud-go/issues/20728)) ([ab1da9d](https://github.com/googleapis/google-cloud-go/commit/ab1da9d200416594ae18fa7a2944961f1c92c928))
+* Update API sources and regenerate. ([e6f37a3](https://github.com/googleapis/google-cloud-go/commit/e6f37a362b6e37b0bc74e77b8d7f151dc7443fb8))
+
+## [2.7.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v2.6.2...pubsub/v2.7.0) (2026-08-26)
+
+
+### Features
+
+* Update API sources and regenerate ([#20427](https://github.com/googleapis/google-cloud-go/issues/20427)) ([eb07af9](https://github.com/googleapis/google-cloud-go/commit/eb07af97288cb3446ef50ff1806c7bc12d5c6350))
+
+## [2.6.2](https://github.com/googleapis/google-cloud-go/compare/pubsub/v2.6.1...pubsub/v2.6.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* **pubsub/v2:** Update ackID batch size to 1000 ([#20393](https://github.com/googleapis/google-cloud-go/issues/20393)) ([530b88a](https://github.com/googleapis/google-cloud-go/commit/530b88ac7ff8ecb87a6bb4eae035d36c1958a9b2)), refs [#20391](https://github.com/googleapis/google-cloud-go/issues/20391)
+
+## [2.6.1](https://github.com/googleapis/google-cloud-go/compare/pubsub/v2.6.0...pubsub/v2.6.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* **pubsub/v2/pstest:** Make ackIDs unique per delivery ([#14554](https://github.com/googleapis/google-cloud-go/issues/14554)) ([9072072](https://github.com/googleapis/google-cloud-go/commit/9072072537a0e3284043c803b54c5d60065e752f)), closes [#10707](https://github.com/googleapis/google-cloud-go/issues/10707)
+* **pubsub/v2:** Manage exactly once spans properly on failure ([#14559](https://github.com/googleapis/google-cloud-go/issues/14559)) ([dd8448b](https://github.com/googleapis/google-cloud-go/commit/dd8448b9186401259e24a68286e41522e0a8a27c)), closes [#14555](https://github.com/googleapis/google-cloud-go/issues/14555)
+* **pubsub/v2:** Release flow control credit on scheduler.Add error ([#20079](https://github.com/googleapis/google-cloud-go/issues/20079)) ([18d7b77](https://github.com/googleapis/google-cloud-go/commit/18d7b77ad527cb28e98f7b670e9926e781b2535d)), closes [#20078](https://github.com/googleapis/google-cloud-go/issues/20078)
+
+## [2.6.0](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.6.0) (2026-04-14)
+
 ## [2.5.1](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.5.1) (2026-03-31)
 
 ### Bug Fixes

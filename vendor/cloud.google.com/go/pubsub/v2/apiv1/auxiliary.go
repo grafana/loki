@@ -17,9 +17,18 @@
 package pubsub
 
 import (
+	"iter"
+
 	pubsubpb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
+	gaxiter "github.com/googleapis/gax-go/v2/iterator"
 	"google.golang.org/api/iterator"
 )
+
+// All returns an iterator. If an error is returned by the iterator, the
+// iterator will stop after that iteration.
+func (it *SchemaIterator) All() iter.Seq2[*pubsubpb.Schema, error] {
+	return gaxiter.RangeAdapter(it.Next)
+}
 
 // SchemaIterator manages a stream of *pubsubpb.Schema.
 type SchemaIterator struct {
@@ -66,6 +75,12 @@ func (it *SchemaIterator) takeBuf() interface{} {
 	b := it.items
 	it.items = nil
 	return b
+}
+
+// All returns an iterator. If an error is returned by the iterator, the
+// iterator will stop after that iteration.
+func (it *SnapshotIterator) All() iter.Seq2[*pubsubpb.Snapshot, error] {
+	return gaxiter.RangeAdapter(it.Next)
 }
 
 // SnapshotIterator manages a stream of *pubsubpb.Snapshot.
@@ -115,6 +130,12 @@ func (it *SnapshotIterator) takeBuf() interface{} {
 	return b
 }
 
+// All returns an iterator. If an error is returned by the iterator, the
+// iterator will stop after that iteration.
+func (it *StringIterator) All() iter.Seq2[string, error] {
+	return gaxiter.RangeAdapter(it.Next)
+}
+
 // StringIterator manages a stream of string.
 type StringIterator struct {
 	items    []string
@@ -162,6 +183,12 @@ func (it *StringIterator) takeBuf() interface{} {
 	return b
 }
 
+// All returns an iterator. If an error is returned by the iterator, the
+// iterator will stop after that iteration.
+func (it *SubscriptionIterator) All() iter.Seq2[*pubsubpb.Subscription, error] {
+	return gaxiter.RangeAdapter(it.Next)
+}
+
 // SubscriptionIterator manages a stream of *pubsubpb.Subscription.
 type SubscriptionIterator struct {
 	items    []*pubsubpb.Subscription
@@ -207,6 +234,12 @@ func (it *SubscriptionIterator) takeBuf() interface{} {
 	b := it.items
 	it.items = nil
 	return b
+}
+
+// All returns an iterator. If an error is returned by the iterator, the
+// iterator will stop after that iteration.
+func (it *TopicIterator) All() iter.Seq2[*pubsubpb.Topic, error] {
+	return gaxiter.RangeAdapter(it.Next)
 }
 
 // TopicIterator manages a stream of *pubsubpb.Topic.
