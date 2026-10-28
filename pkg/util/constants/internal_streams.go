@@ -33,10 +33,12 @@ func IsPatternIngesterStream(has func(name string) bool) bool {
 	return has(AggregatedMetricLabel) || has(PatternLabel)
 }
 
-// IsInternalLabel reports whether name is one of the labels that label name APIs do not return.
+// IsInternalLabel reports whether name is a label that the label names and detected labels
+// endpoints leave out of their responses. The label values endpoint still returns values for it,
+// so clients can query by it.
 func IsInternalLabel(name string) bool {
 	switch name {
-	case AggregatedMetricLabel, PatternLabel, TimeShardLabel:
+	case AggregatedMetricLabel, PatternLabel, TimeShardLabel, StreamShardLabel:
 		return true
 	}
 	return false

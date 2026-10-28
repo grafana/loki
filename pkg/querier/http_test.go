@@ -328,7 +328,7 @@ func TestVolumeHandler(t *testing.T) {
 }
 
 func TestLabelsHandler(t *testing.T) {
-	internalLabels := []string{constants.AggregatedMetricLabel, constants.PatternLabel, constants.TimeShardLabel}
+	internalLabels := []string{constants.AggregatedMetricLabel, constants.PatternLabel, constants.TimeShardLabel, constants.StreamShardLabel}
 
 	for _, tc := range []struct {
 		name                     string
@@ -356,6 +356,12 @@ func TestLabelsHandler(t *testing.T) {
 			metricAggregationEnabled: true,
 			values:                   append([]string{"bar"}, internalLabels...),
 			expected:                 append([]string{"bar"}, internalLabels...),
+		},
+		{
+			name:     "keep values of the stream shard label",
+			path:     "/loki/api/v1/label/" + constants.StreamShardLabel + "/values",
+			values:   []string{"0", "1", "2"},
+			expected: []string{"0", "1", "2"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -409,6 +415,7 @@ func TestDetectedLabelsHandler(t *testing.T) {
 				{Label: "foo", Cardinality: 3},
 				{Label: constants.PatternLabel, Cardinality: 1},
 				{Label: constants.TimeShardLabel, Cardinality: 2},
+				{Label: constants.StreamShardLabel, Cardinality: 4},
 			},
 		}
 
