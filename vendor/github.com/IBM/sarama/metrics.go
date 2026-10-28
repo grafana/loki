@@ -59,10 +59,10 @@ func newCleanupRegistry(parent metrics.Registry) metrics.Registry {
 	}
 }
 
-func (r *cleanupRegistry) Each(fn func(string, interface{})) {
+func (r *cleanupRegistry) Each(fn func(string, any)) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	wrappedFn := func(name string, iface interface{}) {
+	wrappedFn := func(name string, iface any) {
 		if _, ok := r.metrics[name]; ok {
 			fn(name, iface)
 		}
@@ -70,7 +70,7 @@ func (r *cleanupRegistry) Each(fn func(string, interface{})) {
 	r.parent.Each(wrappedFn)
 }
 
-func (r *cleanupRegistry) Get(name string) interface{} {
+func (r *cleanupRegistry) Get(name string) any {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 	if _, ok := r.metrics[name]; ok {
@@ -79,14 +79,14 @@ func (r *cleanupRegistry) Get(name string) interface{} {
 	return nil
 }
 
-func (r *cleanupRegistry) GetOrRegister(name string, metric interface{}) interface{} {
+func (r *cleanupRegistry) GetOrRegister(name string, metric any) any {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	r.metrics[name] = struct{}{}
 	return r.parent.GetOrRegister(name, metric)
 }
 
-func (r *cleanupRegistry) Register(name string, metric interface{}) error {
+func (r *cleanupRegistry) Register(name string, metric any) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	r.metrics[name] = struct{}{}
@@ -97,7 +97,7 @@ func (r *cleanupRegistry) RunHealthchecks() {
 	r.parent.RunHealthchecks()
 }
 
-func (r *cleanupRegistry) GetAll() map[string]map[string]interface{} {
+func (r *cleanupRegistry) GetAll() map[string]map[string]any {
 	return r.parent.GetAll()
 }
 

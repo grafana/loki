@@ -11,12 +11,19 @@ func (r *SaslAuthenticateRequest) setVersion(v int16) {
 }
 
 func (r *SaslAuthenticateRequest) encode(pe packetEncoder) error {
-	return pe.putBytes(r.SaslAuthBytes)
+	if err := pe.putBytes(r.SaslAuthBytes); err != nil {
+		return err
+	}
+	pe.putEmptyTaggedFieldArray()
+	return nil
 }
 
 func (r *SaslAuthenticateRequest) decode(pd packetDecoder, version int16) (err error) {
 	r.Version = version
-	r.SaslAuthBytes, err = pd.getBytes()
+	if r.SaslAuthBytes, err = pd.getBytes(); err != nil {
+		return err
+	}
+	_, err = pd.getEmptyTaggedFieldArray()
 	return err
 }
 
@@ -29,15 +36,28 @@ func (r *SaslAuthenticateRequest) version() int16 {
 }
 
 func (r *SaslAuthenticateRequest) headerVersion() int16 {
+	if r.Version >= 2 {
+		return 2
+	}
 	return 1
 }
 
 func (r *SaslAuthenticateRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 1
+	return r.Version >= 0 && r.Version <= 2
+}
+
+func (r *SaslAuthenticateRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *SaslAuthenticateRequest) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (r *SaslAuthenticateRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 2:
+		return V2_5_0_0
 	case 1:
 		return V2_2_0_0
 	default:

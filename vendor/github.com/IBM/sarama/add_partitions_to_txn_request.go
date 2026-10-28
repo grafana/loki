@@ -30,8 +30,10 @@ func (a *AddPartitionsToTxnRequest) encode(pe packetEncoder) error {
 		if err := pe.putInt32Array(partitions); err != nil {
 			return err
 		}
+		pe.putEmptyTaggedFieldArray()
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -50,9 +52,12 @@ func (a *AddPartitionsToTxnRequest) decode(pd packetDecoder, version int16) (err
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	a.TopicPartitions = make(map[string][]int32)
-	for i := 0; i < n; i++ {
+	for range n {
 		topic, err := pd.getString()
 		if err != nil {
 			return err
@@ -64,9 +69,14 @@ func (a *AddPartitionsToTxnRequest) decode(pd packetDecoder, version int16) (err
 		}
 
 		a.TopicPartitions[topic] = partitions
+
+		if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+			return err
+		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (a *AddPartitionsToTxnRequest) key() int16 {
@@ -78,15 +88,28 @@ func (a *AddPartitionsToTxnRequest) version() int16 {
 }
 
 func (a *AddPartitionsToTxnRequest) headerVersion() int16 {
+	if a.Version >= 3 {
+		return 2
+	}
 	return 1
 }
 
 func (a *AddPartitionsToTxnRequest) isValidVersion() bool {
-	return a.Version >= 0 && a.Version <= 2
+	return a.Version >= 0 && a.Version <= 3
+}
+
+func (a *AddPartitionsToTxnRequest) isFlexible() bool {
+	return a.isFlexibleVersion(a.Version)
+}
+
+func (a *AddPartitionsToTxnRequest) isFlexibleVersion(version int16) bool {
+	return version >= 3
 }
 
 func (a *AddPartitionsToTxnRequest) requiredVersion() KafkaVersion {
 	switch a.Version {
+	case 3:
+		return V2_8_0_0
 	case 2:
 		return V2_7_0_0
 	case 1:

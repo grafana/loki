@@ -46,14 +46,20 @@ func (a *AlterClientQuotasRequest) encode(pe packetEncoder) error {
 	// ValidateOnly
 	pe.putBool(a.ValidateOnly)
 
+	pe.putEmptyTaggedFieldArray()
+
 	return nil
 }
 
 func (a *AlterClientQuotasRequest) decode(pd packetDecoder, version int16) error {
+	a.Version = version
 	// Entries
 	entryCount, err := pd.getArrayLength()
 	if err != nil {
 		return err
+	}
+	if entryCount < 0 {
+		return errInvalidArrayLength
 	}
 	if entryCount > 0 {
 		a.Entries = make([]AlterClientQuotasEntry, entryCount)
@@ -74,6 +80,10 @@ func (a *AlterClientQuotasRequest) decode(pd packetDecoder, version int16) error
 		return err
 	}
 	a.ValidateOnly = validateOnly
+
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -99,6 +109,8 @@ func (a *AlterClientQuotasEntry) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
+
 	return nil
 }
 
@@ -108,9 +120,12 @@ func (a *AlterClientQuotasEntry) decode(pd packetDecoder, version int16) error {
 	if err != nil {
 		return err
 	}
+	if componentCount < 0 {
+		return errInvalidArrayLength
+	}
 	if componentCount > 0 {
 		a.Entity = make([]QuotaEntityComponent, componentCount)
-		for i := 0; i < componentCount; i++ {
+		for i := range componentCount {
 			component := QuotaEntityComponent{}
 			if err := component.decode(pd, version); err != nil {
 				return err
@@ -126,6 +141,9 @@ func (a *AlterClientQuotasEntry) decode(pd packetDecoder, version int16) error {
 	if err != nil {
 		return err
 	}
+	if opCount < 0 {
+		return errInvalidArrayLength
+	}
 	if opCount > 0 {
 		a.Ops = make([]ClientQuotasOp, opCount)
 		for i := range a.Ops {
@@ -137,6 +155,10 @@ func (a *AlterClientQuotasEntry) decode(pd packetDecoder, version int16) error {
 		}
 	} else {
 		a.Ops = []ClientQuotasOp{}
+	}
+
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
 	}
 
 	return nil
@@ -153,6 +175,8 @@ func (c *ClientQuotasOp) encode(pe packetEncoder) error {
 
 	// Remove
 	pe.putBool(c.Remove)
+
+	pe.putEmptyTaggedFieldArray()
 
 	return nil
 }
@@ -179,6 +203,10 @@ func (c *ClientQuotasOp) decode(pd packetDecoder, version int16) error {
 	}
 	c.Remove = remove
 
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -191,13 +219,29 @@ func (a *AlterClientQuotasRequest) version() int16 {
 }
 
 func (a *AlterClientQuotasRequest) headerVersion() int16 {
+	if a.Version >= 1 {
+		return 2
+	}
 	return 1
 }
 
 func (a *AlterClientQuotasRequest) isValidVersion() bool {
-	return a.Version == 0
+	return a.Version >= 0 && a.Version <= 1
+}
+
+func (a *AlterClientQuotasRequest) isFlexible() bool {
+	return a.isFlexibleVersion(a.Version)
+}
+
+func (a *AlterClientQuotasRequest) isFlexibleVersion(version int16) bool {
+	return version >= 1
 }
 
 func (a *AlterClientQuotasRequest) requiredVersion() KafkaVersion {
-	return V2_6_0_0
+	switch a.Version {
+	case 1:
+		return V2_8_0_0
+	default:
+		return V2_6_0_0
+	}
 }

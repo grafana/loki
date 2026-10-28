@@ -3,7 +3,7 @@ package sarama
 import "sync"
 
 var expectationsPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return make(chan *ProducerError, 1)
 	},
 }
@@ -54,8 +54,18 @@ type SyncProducer interface {
 	// AddOffsetsToTxn add associated offsets to current transaction.
 	AddOffsetsToTxn(offsets map[string][]*PartitionOffsetMetadata, groupId string) error
 
+	// AddOffsetsToTxnWithGroupMetadata adds associated offsets to the current
+	// transaction, carrying the consumer group member metadata so the broker
+	// can fence stale members (KIP-447).
+	AddOffsetsToTxnWithGroupMetadata(offsets map[string][]*PartitionOffsetMetadata, groupMetadata *ConsumerGroupMetadata) error
+
 	// AddMessageToTxn add message offsets to current transaction.
 	AddMessageToTxn(msg *ConsumerMessage, groupId string, metadata *string) error
+
+	// AddMessageToTxnWithGroupMetadata adds the message offset to the current
+	// transaction, carrying the consumer group member metadata so the broker
+	// can fence stale members (KIP-447).
+	AddMessageToTxnWithGroupMetadata(msg *ConsumerMessage, groupMetadata *ConsumerGroupMetadata, metadata *string) error
 }
 
 type syncProducer struct {
@@ -200,8 +210,16 @@ func (sp *syncProducer) AddOffsetsToTxn(offsets map[string][]*PartitionOffsetMet
 	return sp.producer.AddOffsetsToTxn(offsets, groupId)
 }
 
+func (sp *syncProducer) AddOffsetsToTxnWithGroupMetadata(offsets map[string][]*PartitionOffsetMetadata, groupMetadata *ConsumerGroupMetadata) error {
+	return sp.producer.AddOffsetsToTxnWithGroupMetadata(offsets, groupMetadata)
+}
+
 func (sp *syncProducer) AddMessageToTxn(msg *ConsumerMessage, groupId string, metadata *string) error {
 	return sp.producer.AddMessageToTxn(msg, groupId, metadata)
+}
+
+func (sp *syncProducer) AddMessageToTxnWithGroupMetadata(msg *ConsumerMessage, groupMetadata *ConsumerGroupMetadata, metadata *string) error {
+	return sp.producer.AddMessageToTxnWithGroupMetadata(msg, groupMetadata, metadata)
 }
 
 func (p *syncProducer) TxnStatus() ProducerTxnStatusFlag {

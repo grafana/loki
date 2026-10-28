@@ -38,7 +38,7 @@ func (r *DescribeUserScramCredentialsRequest) decode(pd packetDecoder, version i
 	if err != nil {
 		return err
 	}
-	if n == -1 {
+	if n < 0 {
 		n = 0
 	}
 

@@ -21,6 +21,7 @@ func (c *CreateAclsRequest) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -30,17 +31,21 @@ func (c *CreateAclsRequest) decode(pd packetDecoder, version int16) (err error) 
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	c.AclCreations = make([]*AclCreation, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		c.AclCreations[i] = new(AclCreation)
 		if err := c.AclCreations[i].decode(pd, version); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (c *CreateAclsRequest) key() int16 {
@@ -52,15 +57,28 @@ func (c *CreateAclsRequest) version() int16 {
 }
 
 func (c *CreateAclsRequest) headerVersion() int16 {
+	if c.Version >= 2 {
+		return 2
+	}
 	return 1
 }
 
 func (c *CreateAclsRequest) isValidVersion() bool {
-	return c.Version >= 0 && c.Version <= 1
+	return c.Version >= 0 && c.Version <= 2
+}
+
+func (c *CreateAclsRequest) isFlexible() bool {
+	return c.isFlexibleVersion(c.Version)
+}
+
+func (c *CreateAclsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (c *CreateAclsRequest) requiredVersion() KafkaVersion {
 	switch c.Version {
+	case 2:
+		return V2_5_0_0
 	case 1:
 		return V2_0_0_0
 	default:
@@ -82,6 +100,7 @@ func (a *AclCreation) encode(pe packetEncoder, version int16) error {
 		return err
 	}
 
+	// empty tagged fields encoded in Acl
 	return nil
 }
 
@@ -93,5 +112,6 @@ func (a *AclCreation) decode(pd packetDecoder, version int16) (err error) {
 		return err
 	}
 
-	return nil
+	// empty tagged fields decoded in Acl
+	return err
 }

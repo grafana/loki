@@ -17,7 +17,15 @@ func NewDeleteTopicsRequest(version KafkaVersion, topics []string, timeout time.
 		Topics:  topics,
 		Timeout: timeout,
 	}
-	if version.IsAtLeast(V2_4_0_0) {
+	// Versions 0, 1, 2, and 3 are the same.
+	if version.IsAtLeast(V2_8_0_0) {
+		// Version 6 reorganizes topics, adds topic IDs and allows topic names to be null (KIP-516)
+		d.Version = 6
+	} else if version.IsAtLeast(V2_7_0_0) {
+		// version 5 may return THROTTLING_QUOTA_EXCEEDED
+		d.Version = 5
+	} else if version.IsAtLeast(V2_4_0_0) {
+		// Version 4 is first flexible version.
 		d.Version = 4
 	} else if version.IsAtLeast(V2_1_0_0) {
 		d.Version = 3
@@ -30,8 +38,24 @@ func NewDeleteTopicsRequest(version KafkaVersion, topics []string, timeout time.
 }
 
 func (d *DeleteTopicsRequest) encode(pe packetEncoder) error {
-	if err := pe.putStringArray(d.Topics); err != nil {
-		return err
+	if d.Version >= 6 {
+		if err := pe.putArrayLength(len(d.Topics)); err != nil {
+			return err
+		}
+		for _, topic := range d.Topics {
+			// deletion by topic ID is not supported, so send the name with a null topic ID
+			if err := pe.putNullableString(&topic); err != nil {
+				return err
+			}
+			if err := pe.putUuid(Uuid{}); err != nil {
+				return err
+			}
+			pe.putEmptyTaggedFieldArray()
+		}
+	} else {
+		if err := pe.putStringArray(d.Topics); err != nil {
+			return err
+		}
 	}
 	pe.putInt32(int32(d.Timeout / time.Millisecond))
 	pe.putEmptyTaggedFieldArray()
@@ -39,15 +63,40 @@ func (d *DeleteTopicsRequest) encode(pe packetEncoder) error {
 }
 
 func (d *DeleteTopicsRequest) decode(pd packetDecoder, version int16) (err error) {
-	if d.Topics, err = pd.getStringArray(); err != nil {
-		return err
+	d.Version = version
+	if version >= 6 {
+		n, err := pd.getArrayLength()
+		if err != nil {
+			return err
+		}
+		if n < 0 {
+			return errInvalidArrayLength
+		}
+		for range n {
+			name, err := pd.getNullableString()
+			if err != nil {
+				return err
+			}
+			if _, err := pd.getUuid(); err != nil {
+				return err
+			}
+			if name != nil {
+				d.Topics = append(d.Topics, *name)
+			}
+			if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+				return err
+			}
+		}
+	} else {
+		if d.Topics, err = pd.getStringArray(); err != nil {
+			return err
+		}
 	}
 	timeout, err := pd.getInt32()
 	if err != nil {
 		return err
 	}
 	d.Timeout = time.Duration(timeout) * time.Millisecond
-	d.Version = version
 
 	_, err = pd.getEmptyTaggedFieldArray()
 	return err
@@ -77,11 +126,15 @@ func (d *DeleteTopicsRequest) isFlexibleVersion(version int16) bool {
 }
 
 func (d *DeleteTopicsRequest) isValidVersion() bool {
-	return d.Version >= 0 && d.Version <= 4
+	return d.Version >= 0 && d.Version <= 6
 }
 
 func (d *DeleteTopicsRequest) requiredVersion() KafkaVersion {
 	switch d.Version {
+	case 6:
+		return V2_8_0_0
+	case 5:
+		return V2_7_0_0
 	case 4:
 		return V2_4_0_0
 	case 3:
