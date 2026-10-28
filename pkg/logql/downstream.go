@@ -534,7 +534,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	params Params,
-	isRootExpr bool,
+	isRootExpr, outputPreserving bool,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 
@@ -756,7 +756,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		inner := NewCountDistinctSketchMatrixStepEvaluator(matrix, params)
 		return NewCountDistinctSketchVectorStepEvaluator(inner), nil
 	default:
-		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, isRootExpr)
+		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, isRootExpr, outputPreserving)
 	}
 }
 

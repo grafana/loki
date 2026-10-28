@@ -281,13 +281,17 @@ type SampleEvaluatorFactory interface {
 	//
 	// isRootExpr is true only for the root expression of the query, whose output is the query
 	// result.
-	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error)
+	//
+	// outputPreserving is true when every operator between expr and the root keeps the series
+	// count unchanged, so expr holds at least as many series as the query returns. It is always
+	// true for the root expression.
+	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr, outputPreserving bool) (StepEvaluator, error)
 }
 
-type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error)
+type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr, outputPreserving bool) (StepEvaluator, error)
 
-func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error) {
-	return s(ctx, nextEvaluatorFactory, expr, p, isRootExpr)
+func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr, outputPreserving bool) (StepEvaluator, error) {
+	return s(ctx, nextEvaluatorFactory, expr, p, isRootExpr, outputPreserving)
 }
 
 type EntryEvaluatorFactory interface {
@@ -348,7 +352,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	q Params,
-	isRootExpr bool,
+	isRootExpr, outputPreserving bool,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
@@ -357,7 +361,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ bool) (StepEvaluator, error) {
+			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _, _ bool) (StepEvaluator, error) {
 				keepsErroredLines, err := syntax.KeepsErroredLines(rangExpr.Left)
 				if err != nil {
 					return nil, err
@@ -378,7 +382,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				}
 			})
 		}
-		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
+		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize, outputPreserving)
 	case *CountMinSketchEvalExpr:
 		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
@@ -397,7 +401,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *syntax.CountDistinctSketchExpr:
 		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, true)
 	case *syntax.BinOpExpr:
-		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
+		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q, outputPreserving)
 	case *syntax.LabelReplaceExpr:
 		return newLabelReplaceEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.VectorExpr:
@@ -497,11 +501,13 @@ func newVectorAggEvaluator(
 	expr *syntax.VectorAggregationExpr,
 	q Params,
 	maxCountMinSketchHeapSize int,
+	outputPreserving bool,
 ) (StepEvaluator, error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false)
+	leftPreserving := outputPreserving && vectorAggPreservesSeries(expr.Operation)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false, leftPreserving)
 	if err != nil {
 		return nil, err
 	}
@@ -943,6 +949,34 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 	return r.iter.Error()
 }
 
+// vectorAggPreservesSeries reports whether the vector aggregation op returns one series for each
+// series of its input.
+func vectorAggPreservesSeries(op string) bool {
+	return op == syntax.OpTypeSort || op == syntax.OpTypeSortDesc
+}
+
+// binOpPreservesSeries reports whether expr returns at least as many series as each of its
+// non-literal legs.
+//
+// With a literal leg, arithmetic and bool comparisons map each series to one series, while a
+// filtering comparison drops them. Between two vectors, only an or matching on the whole label
+// set keeps every series of both legs: on() and ignoring(labels) let a left series hide right
+// series with different labels. ignoring() with no labels parses the same as no modifier.
+func binOpPreservesSeries(expr *syntax.BinOpExpr) bool {
+	_, leftLit := expr.SampleExpr.(*syntax.LiteralExpr)
+	_, rightLit := expr.RHS.(*syntax.LiteralExpr)
+	if leftLit || rightLit {
+		return !syntax.IsComparisonOperator(expr.Op) || (expr.Opts != nil && expr.Opts.ReturnBool)
+	}
+	if expr.Op != syntax.OpTypeOr {
+		return false
+	}
+	if expr.Opts == nil || expr.Opts.VectorMatching == nil {
+		return true
+	}
+	return !expr.Opts.VectorMatching.On && len(expr.Opts.VectorMatching.MatchingLabels) == 0
+}
+
 // newBinOpStepEvaluator explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func newBinOpStepEvaluator(
@@ -950,14 +984,17 @@ func newBinOpStepEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.BinOpExpr,
 	q Params,
+	outputPreserving bool,
 ) (StepEvaluator, error) {
+	legsPreserving := outputPreserving && binOpPreservesSeries(expr)
+
 	// first check if either side is a literal
 	leftLit, lOk := expr.SampleExpr.(*syntax.LiteralExpr)
 	rightLit, rOk := expr.RHS.(*syntax.LiteralExpr)
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false)
+		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false, legsPreserving)
 		if err != nil {
 			return nil, err
 		}
@@ -970,7 +1007,7 @@ func newBinOpStepEvaluator(
 		)
 	}
 	if rOk {
-		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false)
+		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false, legsPreserving)
 		if err != nil {
 			return nil, err
 		}
@@ -992,7 +1029,7 @@ func newBinOpStepEvaluator(
 	// load them in parallel
 	g.Go(func() error {
 		var err error
-		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false)
+		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false, legsPreserving)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
@@ -1000,7 +1037,7 @@ func newBinOpStepEvaluator(
 	})
 	g.Go(func() error {
 		var err error
-		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false)
+		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false, legsPreserving)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
@@ -1425,7 +1462,7 @@ func newLabelReplaceEvaluator(
 	expr *syntax.LabelReplaceExpr,
 	q Params,
 ) (*LabelReplaceEvaluator, error) {
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false, false)
 	if err != nil {
 		return nil, err
 	}

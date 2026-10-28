@@ -140,7 +140,7 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 
 	t.Run("reports the error when the next step evaluator factory fails", func(t *testing.T) {
 		factoryErr := errors.New("failed to build next step evaluator")
-		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			return nil, factoryErr
 		})
 
@@ -156,7 +156,7 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 
 	t.Run("reports the error when the next step evaluator is exhausted with an error", func(t *testing.T) {
 		nextEvErr := errors.New("next step evaluator failed mid-iteration")
-		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			return &fakeEvaluator{err: nextEvErr}, nil
 		})
 
@@ -171,7 +171,7 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 
 	t.Run("reports the error when the next step evaluator succeeds but also reports an error", func(t *testing.T) {
 		nextEvErr := errors.New("next step evaluator loaded a partial result")
-		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			return &fakeEvaluator{ok: true, result: CountMinSketchVector{T: 42}, err: nextEvErr}, nil
 		})
 
@@ -185,7 +185,7 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 	})
 
 	t.Run("reports no error when the next step evaluator is exhausted cleanly", func(t *testing.T) {
-		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			return &fakeEvaluator{}, nil
 		})
 
@@ -201,7 +201,7 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 	t.Run("a second call after a factory error stays exhausted and does not rebuild the next step evaluator", func(t *testing.T) {
 		factoryErr := errors.New("failed to build next step evaluator")
 		calls := 0
-		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			calls++
 			return nil, factoryErr
 		})
@@ -222,7 +222,7 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 
 	t.Run("a second call after a successful step reports exhaustion instead of recomputing it", func(t *testing.T) {
 		calls := 0
-		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			calls++
 			return &fakeEvaluator{ok: true, result: CountMinSketchVector{T: 42}}, nil
 		})
@@ -244,7 +244,7 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 
 	t.Run("Next closes the next step evaluator exactly once, and Close reports the stored result afterwards", func(t *testing.T) {
 		closes := 0
-		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			return &fakeEvaluator{onClose: func() { closes++ }}, nil
 		})
 
@@ -261,7 +261,7 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 
 	t.Run("Close reports the error from closing the next step evaluator", func(t *testing.T) {
 		closeErr := errors.New("failed to close next step evaluator")
-		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			return &fakeEvaluator{closeErr: closeErr}, nil
 		})
 
