@@ -553,9 +553,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
     $.queryPanel(
       |||
         sum by (scaledObject, metric) (
-          label_replace(
-            rate({__name__=~"keda_scaler_detail_errors_total|keda_scaler_errors", %(cluster_label)s=~"$cluster", exported_namespace=~"$namespace"}[$__rate_interval]),
-            "namespace", "$1", "exported_namespace", "(.+)"
+          # Using `max by ()` so duplicate series for the same trigger (both metric
+          # names, or several KEDA operator replicas) aren't counted twice.
+          max by (%(group_by)s, scaledObject, metric) (
+            label_replace(
+              rate({__name__=~"keda_scaler_detail_errors_total|keda_scaler_errors", %(cluster_label)s=~"$cluster", exported_namespace=~"$namespace"}[$__rate_interval]),
+              "namespace", "$1", "exported_namespace", "(.+)"
+            )
           )
           + on (%(group_by)s, scaledObject, metric) group_left
           # Using `max by ()` so that series churn doesn't break the promQL join
