@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -439,7 +440,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"k8s_job_name",
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
-	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
+	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, fmt.Sprintf("Discover the log level of each entry during ingestion and add it to Structured Metadata as %s, unless it is already present. The level is read from the first stream label or Structured Metadata field whose name is in log_level_fields (default: %s). Otherwise it is derived from the OTLP severity number, or from the log line: a JSON or logfmt field named in log_level_fields, then keywords. Recognized values (case insensitive) are normalized to 'trace', 'debug', 'info', 'warn', 'error', 'critical' or 'fatal'.", constants.LevelLabel, strings.Join(DefaultAllowedLevelFields, ", ")))
 	l.LogLevelFields = make([]string, len(DefaultAllowedLevelFields))
 	copy(l.LogLevelFields, DefaultAllowedLevelFields)
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
