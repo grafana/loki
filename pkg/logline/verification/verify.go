@@ -1,9 +1,11 @@
 package verification
 
 import (
+	"sort"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 // Report summarizes whether provided hint ranges cover actual query results.
@@ -26,6 +28,77 @@ type Report struct {
 // Correct returns true when there are no false negatives.
 func (r *Report) Correct() bool {
 	return r.FalseNegatives == 0
+}
+
+type MetricSample struct {
+	Time  time.Time
+	Value float64
+}
+
+// VerifySamples checks hint overage against a list of metric samples.
+// A sample is considered "covered" when its Value > 0 and any hint overlaps its lookback.
+// Records the full lookback period as a false-negative range if no hints cover it.
+func VerifySamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples []MetricSample, eligibleEnd time.Time) Report {
+	report := Report{HintRanges: len(hints)}
+	if IsAbsentOverTime(expr) {
+		return report
+	}
+	group := MetricMatcherGroup(expr)
+	for _, sample := range samples {
+		if sample.Value <= 0 {
+			continue
+		}
+		winStart, winEnd := group.Widen(sample.Time, sample.Time)
+		if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
+			continue
+		}
+		report.TotalEntries++
+		if !RangesOverlap(hints, winStart, winEnd) {
+			report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
+				Start: winStart,
+				End:   winEnd,
+			})
+			continue
+		}
+		report.CoveredEntries++
+	}
+	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
+	return report
+}
+
+// IsAbsentOverTime reports whether expr is an absent_over_time aggregation,
+// including one wrapped in vector aggregations.
+func IsAbsentOverTime(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return IsAbsentOverTime(e.Left)
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeAbsent
+	default:
+		return false
+	}
+}
+
+// MetricMatcherGroup returns the single matcher group for a supported metric query.
+func MetricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
+	groups, err := syntax.MatcherGroups(expr)
+	if err != nil || len(groups) != 1 {
+		return syntax.MatcherRange{}
+	}
+	return groups[0]
+}
+
+// RangesOverlap reports whether any half-open hint [Start, End) overlaps the
+// lookback (start, end]. A hint that only ends at start shares no time with
+// the lookback. Ranges must be sorted by Start.
+func RangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+	if len(ranges) == 0 {
+		return false
+	}
+	idx := sort.Search(len(ranges), func(i int) bool {
+		return ranges[i].End.After(start)
+	})
+	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }
 
 // VerifyEntries checks hint coverage against a list of log entry timestamps.

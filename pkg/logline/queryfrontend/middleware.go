@@ -491,35 +491,20 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 // The hint may not be the line that produced the sample. TotalEntries counts the positive
 // steps whose lookback ended at or before the ingester cutoff. A miss records that whole lookback.
 func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
-	report := verification.Report{HintRanges: len(hints)}
-	// For now, we don't check absent_over_time for correctness
-	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
-		return report
+	if promResp == nil || promResp.Response == nil {
+		return verification.Report{HintRanges: len(hints)}
 	}
-	group := metricMatcherGroup(expr)
+
+	var samples []verification.MetricSample
 	for _, stream := range promResp.Response.Data.Result {
 		for _, sample := range stream.Samples {
-			if sample.Value <= 0 {
-				continue
-			}
-			step := time.UnixMilli(sample.TimestampMs)
-			winStart, winEnd := group.Widen(step, step)
-			if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
-				continue
-			}
-			report.TotalEntries++
-			if !rangesOverlap(hints, winStart, winEnd) {
-				report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
-					Start: winStart,
-					End:   winEnd,
-				})
-				continue
-			}
-			report.CoveredEntries++
+			samples = append(samples, verification.MetricSample{
+				Time:  time.UnixMilli(sample.TimestampMs),
+				Value: sample.Value,
+			})
 		}
 	}
-	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
-	return report
+	return verification.VerifySamples(expr, hints, samples, eligibleEnd)
 }
 
 // metricMatcherGroup returns the single matcher group for a supported metric query.
@@ -932,7 +917,8 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.nextWithOutcome(ctx, req, mode, outcomeUnsupportedQuery)
 	}
 
-	qb := querybounds.GetQueryBounds(req, expr, h.alignQueriesWithStep)
+	qt := querybounds.GetQueryType(req, expr)
+	qb := querybounds.GetQueryBounds(req.GetStart(), req.GetEnd(), req.GetStep(), expr, qt, h.alignQueriesWithStep)
 
 	// Shared eligibility: stats-based byte threshold.
 	readStart := qb.ReadStart

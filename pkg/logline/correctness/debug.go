@@ -78,7 +78,7 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 
 	overlapping := s.indexStore.IndexesForRange(req.start, req.end)
 
-	entries, _, err := s.queryRange(r.Context(), hq.query, req.start, req.end, s.cfg.LogQueryLimit)
+	entries, _, err := s.queryLogs(r.Context(), hq.query, req.start, req.end, s.cfg.LogQueryLimit)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "correctness debug query failed", "query", hq.query, "err", err)
 		http.Error(w, "failed to query Loki", http.StatusInternalServerError)
