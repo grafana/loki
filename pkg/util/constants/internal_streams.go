@@ -12,6 +12,9 @@ const (
 	BackfillShardLabel = "__backfill_shard__"
 	// TimeShardLabel partitions streams by time window when the distributor time-shards old logs.
 	TimeShardLabel = "__time_shard__"
+	// StreamShardLabel is the label the distributor adds when it divides a stream into smaller
+	// pieces. Its value is the shard number, counting up from 0 and wrapping at the shard count.
+	StreamShardLabel = "__stream_shard__"
 	// LogsDrilldownAppName is the app name used to identify requests from Logs Drilldown
 	LogsDrilldownAppName = "grafana-lokiexplore-app"
 )

@@ -269,7 +269,7 @@ func TestGetStreamRates(t *testing.T) {
 
 func labelHashNoShard(l labels.Labels) uint64 {
 	buf := make([]byte, 256)
-	hash, _ := l.HashWithoutLabels(buf, ShardLbName)
+	hash, _ := l.HashWithoutLabels(buf, constants.StreamShardLabel)
 	return hash
 }
 
@@ -528,7 +528,7 @@ func entries(n int, t time.Time) []logproto.Entry {
 	return result
 }
 
-var labelNames = []string{"app", "instance", "namespace", "user", "cluster", ShardLbName}
+var labelNames = []string{"app", "instance", "namespace", "user", "cluster", constants.StreamShardLabel}
 
 func makeRandomLabels() labels.Labels {
 	ls := labels.NewBuilder(labels.EmptyLabels())
@@ -1929,7 +1929,7 @@ func TestMemoryStreamShardsMetric(t *testing.T) {
 	require.Equal(t, 2.0, promtestutil.ToFloat64(inst.memoryStreamShards))
 
 	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
-		if s.labels.Has(ShardLbName) {
+		if s.labels.Has(constants.StreamShardLabel) {
 			inst.removeStream(s)
 		}
 		return true, nil
