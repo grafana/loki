@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,7 +82,7 @@ func (c *Client) Bucket(name string) *BucketHandle {
 // Create creates the Bucket in the project.
 // If attrs is nil the API defaults will be used.
 func (b *BucketHandle) Create(ctx context.Context, projectID string, attrs *BucketAttrs) (err error) {
-	ctx, _ = startSpan(ctx, "Bucket.Create")
+	ctx, _ = startSpanWithBucket(ctx, b.c, b.name, "Bucket.Create")
 	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
@@ -94,7 +95,7 @@ func (b *BucketHandle) Create(ctx context.Context, projectID string, attrs *Buck
 
 // Delete deletes the Bucket.
 func (b *BucketHandle) Delete(ctx context.Context) (err error) {
-	ctx, _ = startSpan(ctx, "Bucket.Delete")
+	ctx, _ = startSpanWithBucket(ctx, b.c, b.name, "Bucket.Delete")
 	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
@@ -149,16 +150,21 @@ func (b *BucketHandle) Object(name string) *ObjectHandle {
 
 // Attrs returns the metadata for the bucket.
 func (b *BucketHandle) Attrs(ctx context.Context) (attrs *BucketAttrs, err error) {
-	ctx, _ = startSpan(ctx, "Bucket.Attrs")
+	ctx, _ = startSpanWithBucket(ctx, b.c, b.name, "Bucket.Attrs")
 	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
-	return b.c.tc.GetBucket(ctx, b.name, b.conds, o...)
+	attrs, err = b.c.tc.GetBucket(ctx, b.name, b.conds, o...)
+	if err == nil && b.c != nil && b.c.bucketMetadataCache != nil {
+		resource, location := getMetadataFromAttrs(attrs.Location, attrs.LocationType, strconv.FormatUint(attrs.ProjectNumber, 10), b.name)
+		b.c.bucketMetadataCache.put(b.name, bucketMetadata{resource: resource, location: location})
+	}
+	return attrs, err
 }
 
 // Update updates a bucket's attributes.
 func (b *BucketHandle) Update(ctx context.Context, uattrs BucketAttrsToUpdate) (attrs *BucketAttrs, err error) {
-	ctx, _ = startSpan(ctx, "Bucket.Update")
+	ctx, _ = startSpanWithBucket(ctx, b.c, b.name, "Bucket.Update")
 	defer func() { endSpan(ctx, err) }()
 
 	isIdempotent := b.conds != nil && b.conds.MetagenerationMatch != 0
