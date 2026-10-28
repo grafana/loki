@@ -24,9 +24,15 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// Pacemaker monitors the runtime scheduling delay
-// It measures the time difference between when a ticker was scheduled to fire
-// and when the ticker actually fires.
+// pacemakerInterval is how often the pacemaker goroutine wakes up. It only
+// sets the sampling rate: the delay reported per tick is independent of it.
+const pacemakerInterval = 100 * time.Millisecond
+
+// Pacemaker monitors the runtime scheduling delay. It measures the time
+// between when a tick was scheduled to fire and when the pacemaker goroutine
+// was actually scheduled to handle it, which is a proxy for how contended the
+// process is -- for CPU (an undersized GOMAXPROCS, or CFS throttling against a
+// cgroup quota), or for the scheduler generally (a stop-the-world pause).
 type Pacemaker struct {
 	meterProvider metric.MeterProvider
 	logger        *log.Logger
@@ -75,32 +81,40 @@ func (p *Pacemaker) Start(ctx context.Context) {
 	}
 
 	go func() {
-		interval := 100 * time.Millisecond
-		ticker := time.NewTicker(interval)
+		ticker := time.NewTicker(pacemakerInterval)
 		defer ticker.Stop()
-
-		lastTick := time.Now()
 
 		for {
 			select {
-			case t := <-ticker.C:
-				actualInterval := t.Sub(lastTick)
-
-				delay := actualInterval - interval
-				if delay < 0 {
-					delay = 0
-				}
-
-				delayUs := float64(delay.Nanoseconds()) / 1e3
-				p.histogram.Record(ctx, delayUs, p.attrs)
-
-				lastTick = t
+			case scheduled := <-ticker.C:
+				p.recordTick(ctx, scheduled, time.Now())
 
 			case <-ctx.Done():
 				return
 			}
 		}
 	}()
+}
+
+// recordTick records how late this goroutine was to handle a tick that was
+// scheduled for the given time.
+//
+// The value a ticker sends on its channel is not the time of delivery: the
+// runtime reconstructs the time the tick was *due* (time.sendTime sends
+// Now().Add(-delta)). So the gap between that and the moment we get around to
+// reading it is exactly the delay we want to report -- the time the goroutine
+// spent waiting for a P, plus any time the tick sat in the channel buffer.
+//
+// Comparing consecutive tick timestamps instead would measure nothing: due
+// times are one interval apart by construction, so the difference is exactly
+// the interval unless the runtime drops a tick entirely. That only registers
+// starvation longer than a whole interval, and only in interval-sized steps.
+func (p *Pacemaker) recordTick(ctx context.Context, scheduled, now time.Time) {
+	delay := now.Sub(scheduled)
+	if delay < 0 {
+		delay = 0
+	}
+	p.histogram.Record(ctx, float64(delay)/float64(time.Microsecond), p.attrs)
 }
 
 // Stop acts as a cleanup method. no-op

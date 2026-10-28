@@ -129,6 +129,28 @@ func DefaultClientOptions(endpoint, mtlsEndpoint, scope, userAgent string) ([]op
 	return o, nil
 }
 
+// DirectAccessOptions returns the option set that opts a gRPC dial in to
+// Bigtable DirectAccess (DirectPath + DirectPathXds + ALTS-bound tokens).
+//
+// All four options must be applied together. Omitting
+// AllowNonDefaultServiceAccount causes api/transport's DirectPath
+// compatibility check (isTokenSourceDirectPathCompatible in
+// google.golang.org/api/transport/grpc/dial.go) to require the ADC
+// token's legacy oauth2.google.tokenSource / oauth2.google.serviceAccount
+// extras. The newer cloud.google.com/go/auth library — now the default
+// ADC path — does not populate those extras, so the check fails and the
+// dial silently falls back to CFE+TLS instead of DirectPath. This helper
+// keeps the classic client, the DirectAccess probe, and the session
+// client on one option set so they cannot drift.
+func DirectAccessOptions() []option.ClientOption {
+	return []option.ClientOption{
+		internaloption.EnableDirectPath(true),
+		internaloption.EnableDirectPathXds(),
+		internaloption.AllowHardBoundTokens("ALTS"),
+		internaloption.AllowNonDefaultServiceAccount(true),
+	}
+}
+
 // ClientInterceptorOptions returns client options to use for the client's gRPC
 // connection, using the given streaming and unary RPC interceptors.
 //
@@ -191,16 +213,20 @@ func BigtableLoadBalancingStrategy() LoadBalancingStrategy {
 	return parseLoadBalancingStrategy(strategyStr)
 }
 
-// EnableBigtableConnectionPool uses new conn pool if envVar is set.
+// EnableBigtableConnectionPool returns true if the custom connection pool should be used. It returns false if the emulator is detected or if the pool is explicitly disabled via environment variable.
 func EnableBigtableConnectionPool() bool {
+	// Connection pool is not supported/needed with the emulator.
+	if os.Getenv("BIGTABLE_EMULATOR_HOST") != "" {
+		return false
+	}
 	bigtableConnPoolEnvVal := os.Getenv(BigtableConnectionPoolEnvVar)
 	if bigtableConnPoolEnvVal == "" {
-		return false
+		return true
 	}
 	enableBigtableConnPool, err := strconv.ParseBool(bigtableConnPoolEnvVal)
 	if err != nil {
-		// just fail and use default conn pool
-		return false
+		// just fail and use bigtable conn pool
+		return true
 	}
 	return enableBigtableConnPool
 }
@@ -245,11 +271,18 @@ type DynamicChannelPoolConfig struct {
 	// E.g., 30 means a maximum increase of 30%.
 }
 
-// DefaultDynamicChannelPoolConfig is default settings for dynamic channel pool
+// DefaultDynamicChannelPoolConfig is default settings for dynamic channel pool.
+//
+// Enabled is false by default while the upstream gRPC-Go xDS client memory leak
+// is being addressed; scale events churn DirectPath-xDS connections often
+// enough to expose that leak as steady heap growth
+// (see https://github.com/googleapis/google-cloud-go/issues/14582). Callers
+// that want dynamic scaling can construct a DynamicChannelPoolConfig with
+// Enabled: true.
 func DefaultDynamicChannelPoolConfig() DynamicChannelPoolConfig {
 	return DynamicChannelPoolConfig{
-		Enabled:                          true, // Enabled by default
-		MinConns:                         10,
+		Enabled:                          false,
+		MinConns:                         4,
 		MaxConns:                         200,
 		AvgLoadHighThreshold:             50,
 		AvgLoadLowThreshold:              5,
@@ -287,11 +320,17 @@ type ConnectionRecycleConfig struct {
 }
 
 // DefaultConnectionRecycleConfig returns the default configuration:
-// MaxAge: 45 minutes, Jitter: 5 minutes, RunFrequency: 1 minute, Enabled: true.
+// MaxAge: 7 days, MaxJitter: 12 hours, RunFrequency: 1 hour.
+//
+// MaxAge was raised from 45 minutes to 7 days to limit the recycle rate while
+// the upstream gRPC-Go xDS client memory leak is being addressed; the prior
+// default churned DirectPath-xDS connections frequently enough to expose that
+// leak as steady heap growth
+// (see https://github.com/googleapis/google-cloud-go/issues/14582).
 func DefaultConnectionRecycleConfig() ConnectionRecycleConfig {
 	return ConnectionRecycleConfig{
-		MaxAge:       45 * time.Minute,
-		MaxJitter:    5 * time.Minute,
-		RunFrequency: 1 * time.Minute,
+		MaxAge:       7 * 24 * time.Hour,
+		MaxJitter:    12 * time.Hour,
+		RunFrequency: 1 * time.Hour,
 	}
 }

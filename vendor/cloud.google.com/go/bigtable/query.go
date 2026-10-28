@@ -25,6 +25,7 @@ import (
 	"time"
 
 	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
+	metrics "cloud.google.com/go/bigtable/internal/metrics"
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/apierror"
@@ -107,15 +108,16 @@ func (c *Client) prepareStatementWithMetadata(ctx context.Context, query string,
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	mt := c.newBuiltinMetricsTracer(ctx, "", false)
-	defer mt.recordOperationCompletion()
+	defer mt.RecordOperationCompletion()
+	ctx = metrics.NewContext(ctx, mt)
 
-	preparedStatement, err = c.prepareStatement(ctx, mt, query, paramTypes, opts...)
-	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode)
+	preparedStatement, err = c.prepareStatement(ctx, query, paramTypes, opts...)
+	statusCode, statusErr := metrics.ConvertToGrpcStatusErr(err)
+	mt.SetCurrOpStatus(statusCode)
 	return preparedStatement, statusErr
 }
 
-func (c *Client) prepareStatement(ctx context.Context, mt *builtinMetricsTracer, query string, paramTypes map[string]SQLType, opts ...PrepareOption) (*PreparedStatement, error) {
+func (c *Client) prepareStatement(ctx context.Context, query string, paramTypes map[string]SQLType, opts ...PrepareOption) (*PreparedStatement, error) {
 	reqParamTypes := map[string]*btpb.Type{}
 	for k, v := range paramTypes {
 		if v == nil {
@@ -140,7 +142,7 @@ func (c *Client) prepareStatement(ctx context.Context, mt *builtinMetricsTracer,
 		ParamTypes: reqParamTypes,
 	}
 	var res *btpb.PrepareQueryResponse
-	err := gaxInvokeWithRecorder(ctx, mt, "PrepareQuery", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	err := gaxInvokeWithRecorder(ctx, "PrepareQuery", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		var err error
 		res, err = c.client.PrepareQuery(ctx, req, grpc.Header(headerMD), grpc.Trailer(trailerMD))
 		return err
@@ -286,11 +288,12 @@ func (bs *BoundStatement) Execute(ctx context.Context, f func(ResultRow) bool, o
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	mt := bs.ps.c.newBuiltinMetricsTracer(ctx, "", true)
-	defer mt.recordOperationCompletion()
+	defer mt.RecordOperationCompletion()
+	ctx = metrics.NewContext(ctx, mt)
 
-	err = bs.execute(ctx, f, mt)
-	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode)
+	err = bs.execute(ctx, f)
+	statusCode, statusErr := metrics.ConvertToGrpcStatusErr(err)
+	mt.SetCurrOpStatus(statusCode)
 	return statusErr
 }
 
@@ -299,7 +302,7 @@ func newPreparedQueryData(ps *PreparedStatement) *preparedQueryData {
 	return &data
 }
 
-func (bs *BoundStatement) execute(ctx context.Context, f func(ResultRow) bool, mt *builtinMetricsTracer) error {
+func (bs *BoundStatement) execute(ctx context.Context, f func(ResultRow) bool) error {
 	// buffer data constructed from the fields in PartialRows`
 	var ongoingResultBatch bytes.Buffer
 
@@ -321,7 +324,7 @@ func (bs *BoundStatement) execute(ctx context.Context, f func(ResultRow) bool, m
 	//
 	// So, do not use latest metadata from `bs.ps`
 	var finalizedStmt *preparedQueryData
-	err := gaxInvokeWithRecorder(ctx, mt, "ExecuteQuery", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	err := gaxInvokeWithRecorder(ctx, "ExecuteQuery", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		ctx, cancel := context.WithCancel(ctx) // for aborting the stream
 		defer cancel()
 

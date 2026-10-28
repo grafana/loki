@@ -17,6 +17,7 @@ package bigtable
 import (
 	"context"
 
+	metrics "cloud.google.com/go/bigtable/internal/metrics"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -46,14 +47,44 @@ type Table struct {
 	md               metadata.MD
 	authorizedView   string
 	materializedView string
+
+	// divertible, when non-nil, layers session routing on top of the
+	// classic body for the methods that have session equivalents:
+	// Apply, ReadRow, and single-row shapes of ReadRows. Populated by
+	// Open when c.diverter != nil so callers that hold a bare *Table
+	// transparently participate in the session/classic split. Nil for
+	// classic-only clients — the gate in Table.Apply / Table.ReadRow /
+	// Table.ReadRows short-circuits to the *Classic helper, preserving
+	// the old fast path.
+	//
+	// The value is a *TableShim whose classic side wraps a *tableImpl
+	// built from a snapshot of this Table with divertible EXPLICITLY
+	// nil-ed. That break in the loop is what prevents infinite
+	// recursion: the shim's classic branch dispatches into tableImpl,
+	// whose Apply/ReadRow/ReadRows overrides land on applyClassic /
+	// readRowClassic / readRowsClassic directly — not back through the
+	// gated Table.Apply / Table.ReadRow / Table.ReadRows.
+	divertible TableAPI
 }
 
+// ReadRows bypasses the Table.ReadRows divertible gate — a tableImpl
+// used as the classic side of a TableShim would otherwise recurse
+// back through the gate into the shim itself when the shim's classic
+// branch dispatches a single-row ReadRows call. See Table.divertible.
 func (ti *tableImpl) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) error {
-	return ti.Table.ReadRows(ctx, arg, f, opts...)
+	return ti.Table.readRowsClassic(ctx, arg, f, opts...)
 }
 
+// ReadRow bypasses the Table.ReadRow divertible gate — a tableImpl used
+// as the classic side of a TableShim would otherwise recurse back through
+// the gate into the shim itself. See Table.divertible.
+func (ti *tableImpl) ReadRow(ctx context.Context, row string, opts ...ReadOption) (Row, error) {
+	return ti.Table.readRowClassic(ctx, row, opts...)
+}
+
+// Apply bypasses the Table.Apply divertible gate — same reason as ReadRow.
 func (ti *tableImpl) Apply(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) error {
-	return ti.Table.Apply(ctx, row, m, opts...)
+	return ti.Table.applyClassic(ctx, row, m, opts...)
 }
 
 func (ti *tableImpl) ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutation, opts ...ApplyOption) ([]error, error) {
@@ -68,10 +99,10 @@ func (ti *tableImpl) ApplyReadModifyWrite(ctx context.Context, row string, m *Re
 	return ti.Table.ApplyReadModifyWrite(ctx, row, m)
 }
 
-func (ti *tableImpl) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *builtinMetricsTracer {
+func (ti *tableImpl) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *metrics.Tracer {
 	return ti.Table.newBuiltinMetricsTracer(ctx, isStreaming)
 }
 
-func (t *Table) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *builtinMetricsTracer {
+func (t *Table) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *metrics.Tracer {
 	return t.c.newBuiltinMetricsTracer(ctx, t.table, isStreaming)
 }

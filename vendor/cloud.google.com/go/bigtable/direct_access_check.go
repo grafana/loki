@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
+	btopt "cloud.google.com/go/bigtable/internal/option"
 	"google.golang.org/api/option"
-	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 )
@@ -90,13 +90,9 @@ func CheckDirectAccessSupported(ctx context.Context, project, instance, appProfi
 		option.WithGRPCDialOption(grpc.WithUnaryInterceptor(interceptor)),
 	}, opts...)
 
-	// Force DirectPath and ALTS using internal options
-	allOpts = append(allOpts,
-		internaloption.EnableDirectPath(true),
-		internaloption.EnableDirectPathXds(),
-		internaloption.AllowHardBoundTokens("ALTS"),
-		internaloption.AllowNonDefaultServiceAccount(true),
-	)
+	// Force DirectPath and ALTS. Shared with the classic client and the
+	// session client via btopt so the three call sites cannot drift.
+	allOpts = append(allOpts, btopt.DirectAccessOptions()...)
 
 	config := ClientConfig{
 		AppProfile:      appProfile,
