@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,7 +70,7 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 		step:        time.Minute,
 		hintRanges:  hintRanges,
 	}
-	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, true)
+	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, true, true)
 	require.NoError(t, err)
 	require.NoError(t, stepEvaluator.Close())
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
@@ -97,7 +98,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 			options := &logproto.DataObjOptions{Eligible: true}
 			params := newParams(t, query).WithDataObjOptions(options)
 
-			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true, true)
 			require.NoError(t, err)
 			require.NoError(t, stepEvaluator.Close())
 
@@ -110,7 +111,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
 		params := newParams(t, queries["a sum of a range aggregation"])
 
-		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true, true)
 		require.NoError(t, err)
 		require.NoError(t, stepEvaluator.Close())
 
@@ -679,11 +680,11 @@ func TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace(t *testing.T) {
 		Grouping:  &syntax.Grouping{Groups: []string{"b", "a"}},
 	}
 
-	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ bool) (StepEvaluator, error) {
+	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _, _ bool) (StepEvaluator, error) {
 		return &emptyEvaluator{}, nil
 	})
 
-	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0)
+	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0, false)
 	require.NoError(t, err)
 	require.Equal(t, []string{"b", "a"}, expr.Grouping.Groups)
 }
@@ -1030,6 +1031,80 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 	})
 }
 
+func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
+	const (
+		a = `rate({app="a"}[1m])`
+		b = `rate({app="b"}[1m])`
+	)
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  map[string]bool
+	}{
+		{"root", a, map[string]bool{`{app="a"}`: true}},
+		{"sort", `sort(` + a + `)`, map[string]bool{`{app="a"}`: true}},
+		{"sort_desc", `sort_desc(` + a + `)`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal on the right", a + ` * 2`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal on the left", `2 - ` + a, map[string]bool{`{app="a"}`: true}},
+		{"bool comparison with a literal on the right", a + ` > bool 1`, map[string]bool{`{app="a"}`: true}},
+		{"bool comparison with a literal on the left", `1 < bool ` + a, map[string]bool{`{app="a"}`: true}},
+		{"filtering comparison with a literal on the right", a + ` > 1`, map[string]bool{`{app="a"}`: false}},
+		{"filtering comparison with a literal on the left", `1 == ` + a, map[string]bool{`{app="a"}`: false}},
+		{"or", a + ` or ` + b, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+		{"or ignoring no labels", a + ` or ignoring() ` + b, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+		{"or on labels", a + ` or on(app) ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or on no labels", a + ` or on() ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or ignoring labels", a + ` or ignoring(app) ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"and", a + ` and ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"unless", a + ` unless ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"arithmetic between vectors", a + ` + ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"bool comparison between vectors", a + ` > bool ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"group_left", a + ` * on(app) group_left ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"group_right", a + ` * on(app) group_right ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"label_replace", `label_replace(` + a + `, "dst", "$1", "app", "(.*)")`, map[string]bool{`{app="a"}`: false}},
+		{"sum", `sum(` + a + ` * 2)`, map[string]bool{`{app="a"}`: false}},
+		{"avg by", `avg by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"count", `count(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"max without", `max without (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"topk", `topk(1, ` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"bottomk", `bottomk(1, ` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"sort of arithmetic with a literal", `sort(` + a + ` * 2)`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal of sort", `sort(` + a + `) * 2`, map[string]bool{`{app="a"}`: true}},
+		{"sort of label_replace", `sort(label_replace(` + a + `, "dst", "$1", "app", "(.*)"))`, map[string]bool{`{app="a"}`: false}},
+		{"sort of a filtering comparison", `sort(` + a + ` > 1)`, map[string]bool{`{app="a"}`: false}},
+		{"sort of topk", `sort(topk(1, ` + a + `))`, map[string]bool{`{app="a"}`: false}},
+		{"or of a filtering comparison", a + ` or (` + b + ` > 1)`, map[string]bool{`{app="a"}`: true, `{app="b"}`: false}},
+		{"or under a filtering comparison", `(` + a + ` or ` + b + `) > 1`, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or under and", `(` + a + ` or ` + b + `) and rate({app="c"}[1m])`, map[string]bool{`{app="a"}`: false, `{app="b"}`: false, `{app="c"}`: false}},
+		{"arithmetic with a literal of or", `(` + a + ` or ` + b + `) / 2`, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			params, err := NewLiteralParams(tc.query, time.Unix(0, 0), time.Unix(60, 0), time.Minute, 0, logproto.FORWARD, 0, nil, nil)
+			require.NoError(t, err)
+
+			var mu sync.Mutex
+			got := map[string]bool{}
+			ev := NewDefaultEvaluator(nil, 0, 0, NoLimits)
+			var factory SampleEvaluatorFunc
+			factory = func(ctx context.Context, _ SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr, outputPreserving bool) (StepEvaluator, error) {
+				if e, ok := expr.(*syntax.RangeAggregationExpr); ok {
+					mu.Lock()
+					defer mu.Unlock()
+					got[e.Left.Left.String()] = outputPreserving
+					return newReturnVectorEvaluator(nil), nil
+				}
+				return ev.NewStepEvaluator(ctx, factory, expr, p, isRootExpr, outputPreserving)
+			}
+
+			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, true, true)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // TestVectorAggEvaluator_Precision checks that the sum() and avg()
 // aggregations of VectorAggEvaluator use Kahan summation, and that avg()
 // switches to an incremental mean when the sum overflows float64.
@@ -1043,10 +1118,10 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 			Operation: op,
 			Grouping:  grouping,
 		}
-		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
 			return next, nil
 		})
-		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0)
+		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0, false)
 		require.NoError(t, err)
 		return ev
 	}
