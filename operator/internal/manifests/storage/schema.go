@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -9,6 +10,16 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/validation"
 )
+
+// DeprecatedSchemaError is returned when the spec contains deprecated schema
+// versions which must be migrated before the LokiStack can reconcile.
+type DeprecatedSchemaError struct {
+	Versions []lokiv1.ObjectStorageSchemaVersion
+}
+
+func (e *DeprecatedSchemaError) Error() string {
+	return fmt.Sprintf("spec contains deprecated schema versions: %v", e.Versions)
+}
 
 // BuildSchemaConfig creates a list of schemas to be used to configure
 // the storage schemas for the cluster. This method assumes that the following
@@ -27,10 +38,14 @@ func BuildSchemaConfig(
 	}
 
 	// Reject any v11/v12 schemas - only v13 is supported
+	deprecated := make([]lokiv1.ObjectStorageSchemaVersion, 0, len(spec.Schemas))
 	for _, schema := range spec.Schemas {
 		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 { //nolint:staticcheck
-			return nil, kverrors.New("spec contains deprecated schema versions")
+			deprecated = append(deprecated, schema.Version)
 		}
+	}
+	if len(deprecated) > 0 {
+		return nil, &DeprecatedSchemaError{Versions: deprecated}
 	}
 
 	errors := validation.ValidateSchemas(&spec, utcTime, status, limits)

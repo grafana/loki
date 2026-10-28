@@ -19,6 +19,34 @@ func TestBuildSchemaConfig_NoSchemas(t *testing.T) {
 	require.Nil(t, expected)
 }
 
+func TestBuildSchemaConfig_DeprecatedSchemaVersions(t *testing.T) {
+	spec := lokiv1.ObjectStorageSpec{
+		Schemas: []lokiv1.ObjectStorageSchema{
+			{
+				//nolint:staticcheck
+				Version:       lokiv1.ObjectStorageSchemaV11,
+				EffectiveDate: "2020-10-01",
+			},
+			{
+				//nolint:staticcheck
+				Version:       lokiv1.ObjectStorageSchemaV12,
+				EffectiveDate: "2023-10-01",
+			},
+		},
+	}
+	status := lokiv1.LokiStackStorageStatus{}
+
+	expected, err := BuildSchemaConfig(time.Now().UTC(), spec, status, nil)
+
+	require.Error(t, err)
+	require.Nil(t, expected)
+
+	var depErr *DeprecatedSchemaError
+	require.ErrorAs(t, err, &depErr)
+	//nolint:staticcheck
+	require.Equal(t, []lokiv1.ObjectStorageSchemaVersion{lokiv1.ObjectStorageSchemaV11, lokiv1.ObjectStorageSchemaV12}, depErr.Versions)
+}
+
 func TestBuildSchemaConfig_AddSchema_NoStatuses(t *testing.T) {
 	spec := lokiv1.ObjectStorageSpec{
 		Schemas: []lokiv1.ObjectStorageSchema{

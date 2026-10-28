@@ -189,7 +189,7 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#Lokistack-Schema-Upgrades-Required"
     expr: |
       sum (
-        lokistack_status_condition{condition="Degraded",reason="InvalidObjectStorageSchema",status="true"}
+        lokistack_status_condition{condition="Degraded",reason="StorageNeedsSchemaUpdate",status="true"}
       ) by (stack_namespace, stack_name)
       > 0
     for: 5m
