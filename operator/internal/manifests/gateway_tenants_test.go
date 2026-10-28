@@ -591,7 +591,10 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 			},
 		},
 		{
-			desc: "passthrough mode on openshift",
+			// Passthrough requires mTLS client certificates, which the reencrypt
+			// Route used for the other gateway modes does not forward. Exposing it
+			// needs a dedicated solution, tracked in LOG-10477.
+			desc: "passthrough mode on openshift does not create a route",
 			opts: &Options{
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
@@ -624,64 +627,6 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Passthrough,
-					},
-				},
-				Timeouts: TimeoutConfig{
-					Gateway: GatewayTimeoutConfig{
-						WriteTimeout: 1 * time.Minute,
-					},
-				},
-				OpenShiftOptions: openshift.Options{
-					BuildOpts: openshift.BuildOptions{
-						LokiStackName:         "lokistack-ocp",
-						LokiStackNamespace:    "stack-ns",
-						GatewayName:           "lokistack-ocp-gateway",
-						GatewaySvcName:        "lokistack-ocp-gateway-http",
-						GatewaySvcTargetPort:  "public",
-						GatewayRouteTimeout:   75 * time.Second,
-						RulerName:             "lokistack-ocp-ruler",
-						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
-						ExternalAccessEnabled: true,
-					},
-				},
-			},
-		},
-		{
-			desc: "passthrough mode on openshift with external access disabled",
-			opts: &Options{
-				Name:              "lokistack-ocp",
-				Namespace:         "stack-ns",
-				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
-						Enabled: true,
-					},
-				},
-				Stack: lokiv1.LokiStackSpec{
-					Tenants: &lokiv1.TenantsSpec{
-						Mode:           lokiv1.Passthrough,
-						DisableIngress: true,
-					},
-				},
-				Timeouts: TimeoutConfig{
-					Gateway: GatewayTimeoutConfig{
-						WriteTimeout: 1 * time.Minute,
-					},
-				},
-			},
-			want: &Options{
-				Name:              "lokistack-ocp",
-				Namespace:         "stack-ns",
-				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
-						Enabled: true,
-					},
-				},
-				Stack: lokiv1.LokiStackSpec{
-					Tenants: &lokiv1.TenantsSpec{
-						Mode:           lokiv1.Passthrough,
-						DisableIngress: true,
 					},
 				},
 				Timeouts: TimeoutConfig{

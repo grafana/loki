@@ -20,7 +20,7 @@ import (
 )
 
 // ApplyGatewayDefaultOptions applies defaults on the LokiStackSpec depending on selected
-// tenant mode. For modes static, dynamic, and passthrough, ExternalAccessEnabled is set to control Route creation.
+// tenant mode. For modes static and dynamic, ExternalAccessEnabled is set to control Route creation.
 // For modes openshift-logging and openshift-network, the tenant spec is filled with defaults
 // for authentication and authorization.
 func ApplyGatewayDefaultOptions(opts *Options) error {
@@ -44,9 +44,9 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	)
 
 	switch opts.Stack.Tenants.Mode {
-	case lokiv1.Static, lokiv1.Dynamic, lokiv1.Passthrough:
+	case lokiv1.Static, lokiv1.Dynamic:
 		// Set ExternalAccessEnabled to control Route creation on OpenShift
-		o.BuildOpts.ExternalAccessEnabled = opts.Stack.Tenants == nil || !opts.Stack.Tenants.DisableIngress
+		o.BuildOpts.ExternalAccessEnabled = !opts.Stack.Tenants.DisableIngress
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tenantData := make(map[string]openshift.TenantData)
 		for name, tenant := range opts.Tenants.Configs {
@@ -57,7 +57,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 
 		o.WithTenantsForMode(opts.Stack.Tenants.Mode, opts.GatewayBaseDomain, tenantData)
 
-		o.BuildOpts.ExternalAccessEnabled = opts.Stack.Tenants == nil || !opts.Stack.Tenants.DisableIngress
+		o.BuildOpts.ExternalAccessEnabled = !opts.Stack.Tenants.DisableIngress
 	}
 
 	if err := mergo.Merge(&opts.OpenShiftOptions, o, mergo.WithOverride); err != nil {
