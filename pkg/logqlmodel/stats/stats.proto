@@ -79,6 +79,11 @@ message Logline {
   // Nanosecond wall time during which at least one sub-request was held
   // waiting for the hint lookup. Overlapping waits count once.
   int64 hintWaitTime = 14 [(gogoproto.jsontag) = "hintWaitTime"];
+  // Sub-requests sent on without hint ranges. This covers the ingester window,
+  // time before the index min date, and lookup fallbacks (timeout, unsupported,
+  // or error). Together with skippedRequests and narrowedRequests it accounts
+  // for every sub-request the hint filter classified.
+  int64 passthroughRequests = 15 [(gogoproto.jsontag) = "passthroughRequests"];
 }
 
 message Caches {
