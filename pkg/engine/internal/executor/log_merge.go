@@ -282,8 +282,8 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 // error if two sources have different layouts, because their stream IDs and
 // row orders are not comparable.
 //
-// The output builder writes only the default shard layout, so sourcesLayout
-// also returns an error for any other shard layout.
+// sourcesLayout also returns an error for a non-default shard layout, because
+// readers assume the default shard layout for every object.
 func sourcesLayout(sources []*logSource) (streams.Layout, error) {
 	layout := sources[0].layout
 	for _, src := range sources[1:] {
@@ -422,12 +422,13 @@ type logObjectWriter struct {
 	stats logMergeStats
 }
 
-// fixedSortSchema gives every tenant the same sort schema, so the output
-// builder writes the schema labels of the source layout instead of the tenant
-// overrides.
-type fixedSortSchema []string
+// fixedLayout gives every tenant the same layout, so the output builder
+// writes the layout of the source objects instead of the tenant overrides.
+type fixedLayout struct{ layout streams.Layout }
 
-func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
+func (l fixedLayout) SortSchemaLabels(string) []string { return l.layout.SchemaLabels() }
+
+func (l fixedLayout) DataObjShardLayout(string) streams.ShardLayout { return l.layout.ShardLayout() }
 
 func (c *Context) newLogObjectWriter(node *physical.LogMerge, layout streams.Layout, table *logsobj.MultiSourceRankedStreams, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
 	// Merging an object should not modify an object by dropping duplicates
@@ -450,7 +451,7 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, layout streams.Lay
 
 func (w *logObjectWriter) startNewObject() error {
 	cfg := w.c.logsobjCfg
-	overrides := fixedSortSchema(w.layout.SchemaLabels())
+	overrides := fixedLayout{layout: w.layout}
 
 	var err error
 	w.logsBuilder, err = logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides)

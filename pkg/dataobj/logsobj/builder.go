@@ -130,6 +130,14 @@ func (cfg *BuilderBaseConfig) Validate() error {
 // TenantOverrides provides per-tenant configuration for the Builder.
 type TenantOverrides interface {
 	SortSchemaLabels(tenant string) []string
+
+	// DataObjShardLayout returns the shard layout for the streams of the tenant in a new object.
+	// The builder calls it at the first append of the tenant to an object. It keeps the result
+	// until the next flush or reset.
+	//
+	// The builder records the layout in the object and does not check that readers support it.
+	// An implementation must return only layouts that every reader supports.
+	DataObjShardLayout(tenant string) streams.ShardLayout
 }
 
 // A Builder constructs a logs-oriented data object from a set of incoming
@@ -213,16 +221,21 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 // section and stream of an object must use the same layout, and the
 // overrides can change while the object is open.
 //
-// If overrides is nil, the layout has no schema labels.
+// If overrides is nil, the layout uses the default shard layout and has no
+// schema labels.
 func (b *Builder) layoutFor(tenant string) streams.Layout {
 	if layout, ok := b.layouts[tenant]; ok {
 		return layout
 	}
-	var schemaLabels []string
+	var (
+		schemaLabels []string
+		shardLayout  = streams.DefaultShardLayout()
+	)
 	if b.overrides != nil {
 		schemaLabels = b.overrides.SortSchemaLabels(tenant)
+		shardLayout = b.overrides.DataObjShardLayout(tenant)
 	}
-	layout := streams.NewLayout(streams.DefaultShardLayout(), schemaLabels)
+	layout := streams.NewLayout(shardLayout, schemaLabels)
 	b.layouts[tenant] = layout
 	return layout
 }

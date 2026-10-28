@@ -1501,8 +1501,7 @@ func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
 	layout, err := o.getOverridesForUser(userID).DataObjShardFactor.Layout()
 	if err != nil {
 		// Limits.Validate rejects invalid factors, so only unvalidated limits
-		// reach this branch. It does not log, because writers call
-		// ShardLayout once per record.
+		// reach this branch.
 		return streams.DefaultShardLayout()
 	}
 	return layout

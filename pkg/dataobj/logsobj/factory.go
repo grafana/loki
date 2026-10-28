@@ -31,9 +31,9 @@ func NewBuilderFactory(
 	metrics.ObserveConfig(cfg)
 
 	if overrides != nil {
-		level.Info(logger).Log("msg", "sort schema overrides wired to builder factory at construction")
+		level.Info(logger).Log("msg", "tenant overrides wired to builder factory at construction")
 	} else {
-		level.Info(logger).Log("msg", "no sort schema overrides at construction")
+		level.Info(logger).Log("msg", "no tenant overrides at construction")
 	}
 
 	return &BuilderFactory{
