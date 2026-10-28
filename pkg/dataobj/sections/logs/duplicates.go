@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-// DuplicateCounter counts duplicate records in a stream of records.
+// DuplicateTracker detects & counts duplicate records in a stream of records.
 //
 // Records must arrive grouped by stream ID and timestamp. The order of records
 // within a group does not matter.
@@ -18,7 +18,7 @@ import (
 // are not comparable.
 //
 // The zero value is ready to use.
-type DuplicateCounter struct {
+type DuplicateTracker struct {
 	duplicates int
 
 	groupStreamID  int64
@@ -42,7 +42,7 @@ type trackedRecord struct {
 // IsDuplicate compares each record against every distinct record in its group.
 // The cost is quadratic in the group size, but each comparison is one uint64
 // compare unless the line hashes match.
-func (c *DuplicateCounter) IsDuplicate(rec Record) bool {
+func (c *DuplicateTracker) IsDuplicate(rec Record) bool {
 	if !c.inCurrentGroup(rec) {
 		c.startGroup(rec)
 	}
@@ -57,19 +57,19 @@ func (c *DuplicateCounter) IsDuplicate(rec Record) bool {
 }
 
 // Duplicates returns the number of duplicate records observed.
-func (c *DuplicateCounter) Duplicates() int {
+func (c *DuplicateTracker) Duplicates() int {
 	return c.duplicates
 }
 
 // inCurrentGroup reports whether rec has the stream and timestamp of the
 // current group.
-func (c *DuplicateCounter) inCurrentGroup(rec Record) bool {
+func (c *DuplicateTracker) inCurrentGroup(rec Record) bool {
 	return rec.StreamID == c.groupStreamID && rec.Timestamp.Equal(c.groupTimestamp)
 }
 
 // startGroup forgets the records of the current group and starts a new group
 // for the stream and timestamp of rec.
-func (c *DuplicateCounter) startGroup(rec Record) {
+func (c *DuplicateTracker) startGroup(rec Record) {
 	c.groupRecords = c.groupRecords[:0]
 	c.groupStreamID = rec.StreamID
 	c.groupTimestamp = rec.Timestamp
@@ -77,7 +77,7 @@ func (c *DuplicateCounter) startGroup(rec Record) {
 
 // seenInGroup reports whether the current group already has a record equal
 // to r.
-func (c *DuplicateCounter) seenInGroup(r trackedRecord) bool {
+func (c *DuplicateTracker) seenInGroup(r trackedRecord) bool {
 	return slices.ContainsFunc(c.groupRecords, r.equal)
 }
 

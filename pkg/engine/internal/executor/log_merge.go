@@ -84,7 +84,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	var (
 		inputBytesTotal int64
-		dups            logs.DuplicateCounter
+		dups            logs.DuplicateTracker
 		inputBytesBatch int64
 		count           int
 	)

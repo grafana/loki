@@ -41,11 +41,14 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 	})
 
 	// The split runs while the columns above build.
-	for builder, cells := range splitMetadata(buf, records, pageSize, pageRowCount, compressionOpts) {
-		appender.Append(builder, len(cells), func(i int) (int, dataset.Value) {
+	keys, cells := splitMetadata(records)
+	for i, key := range keys {
+		builder := buf.Metadata(key, pageSize, pageRowCount, compressionOpts)
+		column := cells[i]
+		appender.Append(builder, len(column), func(j int) (int, dataset.Value) {
 			// Passing around the value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
-			return cells[i].row, dataset.BinaryValue(unsafeSlice(cells[i].value, 0))
+			return column[j].row, dataset.BinaryValue(unsafeSlice(column[j].value, 0))
 		})
 	}
 	appender.Wait()
@@ -60,13 +63,13 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 
 // withoutDuplicates removes duplicate records in place and returns the
 // shortened slice. Every sort order keeps the records of one stream and
-// timestamp together, as DuplicateCounter requires.
+// timestamp together, as DuplicateTracker requires.
 //
 // It reuses the backing array of records instead of copying it. The records
 // after the returned length are stale. buildTable already sorts records in
 // place, and its caller clears them after the build.
 func withoutDuplicates(records []Record) []Record {
-	var duplicates DuplicateCounter
+	var duplicates DuplicateTracker
 	kept := records[:0]
 	for _, record := range records {
 		if !duplicates.IsDuplicate(record) {
@@ -114,18 +117,43 @@ type metadataCell struct {
 	value string
 }
 
-// splitMetadata groups the metadata values of records by column, in row
-// order. It creates every metadata column in buf, so it must run on one
-// goroutine: tableBuffer is not safe for concurrent use.
-func splitMetadata(buf *tableBuffer, records []Record, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions) map[*dataset.ColumnBuilder][]metadataCell {
-	columns := make(map[*dataset.ColumnBuilder][]metadataCell)
-	for row, record := range records {
+// splitMetadata groups the metadata values of records by key. It returns the
+// keys in the order they first appear, and for each key its cells in row
+// order.
+//
+// The cost is linear in the number of values, so many sparse keys stay cheap.
+// A first pass counts the values of each key, so each cell slice is
+// allocated once at its final size.
+func splitMetadata(records []Record) ([]string, [][]metadataCell) {
+	var (
+		index  = make(map[string]int)
+		keys   []string
+		counts []int
+	)
+	for _, record := range records {
 		record.Metadata.Range(func(md labels.Label) {
-			builder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
-			columns[builder] = append(columns[builder], metadataCell{row: row, value: md.Value})
+			i, ok := index[md.Name]
+			if !ok {
+				i = len(keys)
+				index[md.Name] = i
+				keys = append(keys, md.Name)
+				counts = append(counts, 0)
+			}
+			counts[i]++
 		})
 	}
-	return columns
+
+	cells := make([][]metadataCell, len(keys))
+	for i, n := range counts {
+		cells[i] = make([]metadataCell, 0, n)
+	}
+	for row, record := range records {
+		record.Metadata.Range(func(md labels.Label) {
+			i := index[md.Name]
+			cells[i] = append(cells[i], metadataCell{row: row, value: md.Value})
+		})
+	}
+	return keys, cells
 }
 
 // sortRecords sorts the set of records according to the specified sort order.
