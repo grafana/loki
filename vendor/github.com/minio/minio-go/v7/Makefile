@@ -8,11 +8,8 @@ all: checks
 checks: lint test examples functional-test
 
 lint:
-	@mkdir -p ${GOPATH}/bin
-	@echo "Installing golangci-lint" && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOPATH)/bin
 	@echo "Running $@ check"
-	@GO111MODULE=on ${GOPATH}/bin/golangci-lint cache clean
-	@GO111MODULE=on ${GOPATH}/bin/golangci-lint run --timeout=5m --config ./.golangci.yml
+	go tool golangci-lint run
 
 vet: lint
 

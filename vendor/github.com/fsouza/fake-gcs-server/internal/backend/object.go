@@ -91,7 +91,7 @@ func (o *StreamingObject) BufferedObject() (Object, error) {
 }
 
 func (o *StreamingObject) patch(attrsToUpdate ObjectAttrs) {
-	currObjValues := reflect.ValueOf(&(o.ObjectAttrs)).Elem()
+	currObjValues := reflect.ValueOf(&o.ObjectAttrs).Elem()
 	currObjType := currObjValues.Type()
 	newObjValues := reflect.ValueOf(attrsToUpdate)
 	for i := 0; i < newObjValues.NumField(); i++ {

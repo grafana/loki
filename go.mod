@@ -6,7 +6,7 @@ ignore ./tools/dev
 
 require (
 	cloud.google.com/go/bigtable v1.45.0
-	cloud.google.com/go/pubsub/v2 v2.5.1
+	cloud.google.com/go/pubsub/v2 v2.6.2
 	cloud.google.com/go/storage v1.70.0
 	dario.cat/mergo v1.0.2
 	github.com/Azure/azure-pipeline-go v0.2.3
@@ -39,7 +39,7 @@ require (
 	github.com/fatih/color v1.19.0
 	github.com/felixge/fgprof v0.9.5
 	github.com/fluent/fluent-bit-go v0.0.0-20230731091245-a7a013e2473c
-	github.com/fsouza/fake-gcs-server v1.54.0
+	github.com/fsouza/fake-gcs-server v1.56.1
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
@@ -68,7 +68,7 @@ require (
 	github.com/klauspost/pgzip v1.2.7
 	github.com/leodido/go-syslog/v4 v4.6.0
 	github.com/mattn/go-ieproxy v0.0.12
-	github.com/minio/minio-go/v7 v7.0.99
+	github.com/minio/minio-go/v7 v7.3.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee
@@ -217,7 +217,6 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
-	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/swag/cmdutils v0.29.2 // indirect
@@ -332,6 +331,7 @@ require (
 	golang.org/x/telemetry v0.0.0-20261021172232-6cd571d43fbb // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
+	gopkg.in/ini.v1 v1.67.3 // indirect
 	modernc.org/libc v1.79.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
@@ -359,9 +359,9 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1 // indirect
 	github.com/Code-Hex/go-generics-cache v1.5.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
+	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alecthomas/chroma/v2 v2.23.1
+	github.com/alecthomas/chroma/v2 v2.24.1
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29 // indirect
@@ -437,7 +437,7 @@ require (
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/jpillora/backoff v1.1.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/leodido/ragel-machinery v0.0.0-20190525184631-5f46317e436b // indirect

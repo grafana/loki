@@ -4,7 +4,11 @@
 
 package backend
 
-import "time"
+import (
+	"time"
+
+	"cloud.google.com/go/storage"
+)
 
 // Bucket represents the bucket that is stored within the fake server.
 type Bucket struct {
@@ -12,6 +16,7 @@ type Bucket struct {
 	VersioningEnabled     bool
 	TimeCreated           time.Time
 	DefaultEventBasedHold bool
+	ACL                   []storage.ACLRule
 }
 
 const bucketMetadataSuffix = ".bucketMetadata"
@@ -19,4 +24,5 @@ const bucketMetadataSuffix = ".bucketMetadata"
 type BucketAttrs struct {
 	DefaultEventBasedHold bool
 	VersioningEnabled     bool
+	ACL                   []storage.ACLRule
 }

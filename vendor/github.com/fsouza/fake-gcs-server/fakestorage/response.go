@@ -29,10 +29,11 @@ type listResponse struct {
 	NextPageToken string   `json:"nextPageToken,omitempty"`
 }
 
-func newListBucketsResponse(buckets []backend.Bucket, location string, externalURL string) listResponse {
+func newListBucketsResponse(buckets []backend.Bucket, location string, externalURL string, nextPageToken string) listResponse {
 	resp := listResponse{
-		Kind:  "storage#buckets",
-		Items: make([]any, len(buckets)),
+		Kind:          "storage#buckets",
+		Items:         make([]any, len(buckets)),
+		NextPageToken: nextPageToken,
 	}
 	for i, bucket := range buckets {
 		resp.Items[i] = newBucketResponse(bucket, location, externalURL)
@@ -77,6 +78,28 @@ func newBucketResponse(bucket backend.Bucket, location string, externalURL strin
 		Etag:                  "RVRhZw==",
 		LocationType:          "region",
 		SelfLink:              fmt.Sprintf("%s/storage/v1/b/%s", externalURL, url.PathEscape(bucket.Name)),
+	}
+}
+
+type bucketStorageLayoutResponse struct {
+	Kind                  string                                    `json:"kind"`
+	Bucket                string                                    `json:"bucket"`
+	Location              string                                    `json:"location,omitempty"`
+	LocationType          string                                    `json:"locationType,omitempty"`
+	HierarchicalNamespace *bucketStorageLayoutHierarchicalNamespace `json:"hierarchicalNamespace,omitempty"`
+}
+
+type bucketStorageLayoutHierarchicalNamespace struct {
+	Enabled bool `json:"enabled"`
+}
+
+func newBucketStorageLayoutResponse(bucketName string, location string) bucketStorageLayoutResponse {
+	return bucketStorageLayoutResponse{
+		Kind:                  "storage#storageLayout",
+		Bucket:                bucketName,
+		Location:              location,
+		LocationType:          "region",
+		HierarchicalNamespace: &bucketStorageLayoutHierarchicalNamespace{Enabled: false},
 	}
 }
 
@@ -225,6 +248,42 @@ func getAccessControlsListFromObject(obj ObjectAttrs) []*objectAccessControl {
 		}
 	}
 	return aclItems
+}
+
+type bucketAccessControl struct {
+	Bucket string `json:"bucket,omitempty"`
+	Entity string `json:"entity,omitempty"`
+	Role   string `json:"role,omitempty"`
+	Etag   string `json:"etag,omitempty"`
+	ID     string `json:"id,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+}
+
+type bucketACLListResponse struct {
+	Kind  string                 `json:"kind"`
+	Items []*bucketAccessControl `json:"items"`
+}
+
+func newBucketAccessControl(bucketName string, rule storage.ACLRule) *bucketAccessControl {
+	return &bucketAccessControl{
+		Bucket: bucketName,
+		Entity: string(rule.Entity),
+		Role:   string(rule.Role),
+		Etag:   "RVRhZw==",
+		ID:     bucketName + "/" + string(rule.Entity),
+		Kind:   "storage#bucketAccessControl",
+	}
+}
+
+func newBucketACLListResponse(bucket backend.Bucket) bucketACLListResponse {
+	items := make([]*bucketAccessControl, len(bucket.ACL))
+	for idx, rule := range bucket.ACL {
+		items[idx] = newBucketAccessControl(bucket.Name, rule)
+	}
+	return bucketACLListResponse{
+		Kind:  "storage#bucketAccessControls",
+		Items: items,
+	}
 }
 
 type rewriteResponse struct {
