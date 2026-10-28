@@ -783,7 +783,7 @@ validate-dev-cluster-config: loki
 generate-example-config-doc:
 	echo "Removing existing doc at $(EXAMPLES_DOC_OUTPUT_PATH) and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Configuration\ndescription: Loki Configuration Examples and Snippets\nweight:  100\n---\n# Configuration" > $(EXAMPLES_DOC_OUTPUT_PATH)
+	echo -e "---\ntitle: Legacy configuration examples\nmenuTitle: Legacy examples\ndescription: Loki configuration examples and snippets using the legacy (pre-Thanos, non-default) storage clients.\nweight:  100\n---\n# Legacy configuration examples\n\nThese examples configure Loki's legacy, non-default storage clients. Since Loki 4.0, Loki uses the Thanos-based storage clients by default (the \`use_thanos_objstore\` setting defaults to \`true\`). For the current default storage client configuration, refer to [Configuration examples for using Thanos-based storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/)." > $(EXAMPLES_DOC_OUTPUT_PATH)
 	# Append each configuration and its file name to examples.md
 	for f in $$(find $(EXAMPLES_YAML_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
 		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
