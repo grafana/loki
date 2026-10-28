@@ -1654,21 +1654,39 @@ eval range from 60s to 70s step 10s stddev_over_time({app="a"} | logfmt | unwrap
 eval range from 60s to 70s step 10s stdvar_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
   {app="a"} 49 49
 
-# stdvar_over_time() / stddev_over_time() with repeated non-exact floats stay exactly 0.
-#
-# Welford's algorithm can accumulate floating-point rounding error on repeated non-integer
-# values; a regression here would surface as a tiny negative variance turning into NaN through
-# stddev_over_time()'s sqrt.
+# stdvar_over_time() / stddev_over_time() precision:
+# - Repeated non-exact floats give exactly 0. A rounding error in Welford's algorithm would give a
+#   tiny negative variance, which becomes NaN in the square root of stddev_over_time().
+# - Values around 1e16 give the exact variance. Welford's algorithm without compensation gives
+#   25.77777777777778 for this window.
 clear
 load
   {app="a"} "v=1.5990505637277868" @ 20s
   {app="a"} "v=1.5990505637277868" @ 30s
   {app="a"} "v=1.5990505637277868" @ 40s
+  {app="k"} "v=10000000000000000" @ 20s
+  {app="k"} "v=10000000000000002" @ 21s
+  {app="k"} "v=10000000000000004" @ 22s
+  {app="k"} "v=10000000000000006" @ 23s
+  {app="k"} "v=10000000000000008" @ 24s
+  {app="k"} "v=10000000000000010" @ 25s
+  {app="k"} "v=10000000000000012" @ 26s
+  {app="k"} "v=10000000000000014" @ 27s
+  {app="k"} "v=10000000000000016" @ 28s
+  {app="noise"} "v=1" @ 20s
 
 eval instant at 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
   {app="a"} 0
 eval instant at 60s stddev_over_time({app="a"} | logfmt | unwrap v [1m])
   {app="a"} 0
+eval instant at 60s stdvar_over_time({app="k"} | logfmt | unwrap v [1m])
+  {app="k"} 26.666666666666668   # 4 x (9^2 - 1) / 12
+eval instant at 60s stddev_over_time({app="k"} | logfmt | unwrap v [1m])
+  {app="k"} 5.163977794943222    # sqrt(26.666666666666668)
+eval range from 40s to 60s step 20s stdvar_over_time({app="k"} | logfmt | unwrap v [1m])  # overlapping
+  {app="k"} 26.666666666666668 26.666666666666668
+eval range from 40s to 60s step 20s stddev_over_time({app="k"} | logfmt | unwrap v [1m])  # overlapping
+  {app="k"} 5.163977794943222 5.163977794943222
 
 # stddev_over_time() / stdvar_over_time() over a structured metadata field.
 clear
