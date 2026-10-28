@@ -316,9 +316,6 @@ func (e *FastPostingsEncoder) flushBlock(s *fastStreamingSession) error {
 		return nil
 	}
 
-	// The block header is built with plain appends into a reused buffer. A
-	// binary.Write per offset cost more than the payload itself once blocks
-	// hold hundreds of thousands of single-document terms.
 	raw := slices.Grow(s.rawBuf[:0], 4+4*len(s.blockOffsets)+s.blockData.Len())
 	raw = binary.LittleEndian.AppendUint32(raw, uint32(s.blockTermCount))
 	for _, off := range s.blockOffsets {
