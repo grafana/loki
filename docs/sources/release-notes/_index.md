@@ -15,5 +15,8 @@ listed here by version number.
 - [V3.3 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3-3/)
 - [V3.2 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3-2/)
 - [V3.1 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3-1/)
+- [V3.0 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3-0/)
 
 The details about our release cadence are documented [here](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/cadence/).
+
+To view Release Notes for older versions of Loki, refer to the archived [v2.9 Release Notes](https://grafana.com/docs/loki/v2.9.x/release-notes/).
