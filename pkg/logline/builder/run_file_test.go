@@ -90,6 +90,36 @@ func TestRunFile_ManyRecordsSingleShard(t *testing.T) {
 	require.Equal(t, pairs, readShard(t, path, 0))
 }
 
+func TestRunFile_ChunkBoundariesMultiShard(t *testing.T) {
+	// Shard sizes straddle the writer's staging chunk: one past a chunk,
+	// empty, exactly two chunks, and a tiny tail. A chunk that leaked across
+	// a shard boundary would show up as records in the wrong shard.
+	counts := []int32{runChunkRecords + 1, 0, 2 * runChunkRecords, 3}
+	var total int
+	for _, c := range counts {
+		total += int(c)
+	}
+	pairs := randomPairs(t, total, false)
+	keys, docs := splitSoA(pairs)
+
+	path := filepath.Join(t.TempDir(), "run_0.frun")
+	var sw *s2.Writer
+	_, err := writeRun(path, keys, docs, counts, &sw)
+	require.NoError(t, err)
+
+	pos := 0
+	for s, c := range counts {
+		want := pairs[pos : pos+int(c)]
+		got := readShard(t, path, s)
+		if c == 0 {
+			require.Empty(t, got)
+		} else {
+			require.Equal(t, want, got, "shard %d", s)
+		}
+		pos += int(c)
+	}
+}
+
 func TestRunFile_BadMagic(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bogus.frun")
 	require.NoError(t, os.WriteFile(path, []byte("NOTARUNFILE-----"), 0o644))
