@@ -28,6 +28,11 @@ datemday_2digit = ('0' . nonzerodigit | '1'..'2' . '0'..'9' | '3' . '0'..'1');
 #  1 ..  9, 10..31
 datemday = (sp . nonzerodigit | '1'..'2' . '0'..'9' | '3' . '0'..'1');
 
+#  1 ..  9, 01 .. 09, 10..31
+# Lenient variant that also accepts 0-prefixed single-digit days (e.g., "Feb 05").
+# Not valid per RFC 3164 section 4.1.2, but produced by some devices.
+datemday_lenient = (sp . nonzerodigit | '0' . nonzerodigit | '1'..'2' . '0'..'9' | '3' . '0'..'1');
+
 # 01..12
 datemonth = ('0' . nonzerodigit | '1' . '0'..'2');
 
