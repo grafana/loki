@@ -1,5 +1,6 @@
 package jsonparser
 
+// SYS-REQ-014
 func FuzzParseString(data []byte) int {
 	r, err := ParseString(data)
 	if err != nil || r == "" {
@@ -8,6 +9,7 @@ func FuzzParseString(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-008
 func FuzzEachKey(data []byte) int {
 	paths := [][]string{
 		{"name"},
@@ -27,11 +29,13 @@ func FuzzEachKey(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-010
 func FuzzDelete(data []byte) int {
 	Delete(data, "test")
 	return 1
 }
 
+// SYS-REQ-009
 func FuzzSet(data []byte) int {
 	_, err := Set(data, []byte(`"new value"`), "test")
 	if err != nil {
@@ -40,6 +44,7 @@ func FuzzSet(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-007
 func FuzzObjectEach(data []byte) int {
 	_ = ObjectEach(data, func(key, value []byte, valueType ValueType, off int) error {
 		return nil
@@ -47,6 +52,7 @@ func FuzzObjectEach(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-013
 func FuzzParseFloat(data []byte) int {
 	_, err := ParseFloat(data)
 	if err != nil {
@@ -55,6 +61,7 @@ func FuzzParseFloat(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-015
 func FuzzParseInt(data []byte) int {
 	_, err := ParseInt(data)
 	if err != nil {
@@ -63,6 +70,7 @@ func FuzzParseInt(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-012
 func FuzzParseBool(data []byte) int {
 	_, err := ParseBoolean(data)
 	if err != nil {
@@ -71,11 +79,13 @@ func FuzzParseBool(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-001
 func FuzzTokenStart(data []byte) int {
 	_ = tokenStart(data)
 	return 1
 }
 
+// SYS-REQ-002
 func FuzzGetString(data []byte) int {
 	_, err := GetString(data, "test")
 	if err != nil {
@@ -84,6 +94,7 @@ func FuzzGetString(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-004
 func FuzzGetFloat(data []byte) int {
 	_, err := GetFloat(data, "test")
 	if err != nil {
@@ -92,6 +103,7 @@ func FuzzGetFloat(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-003
 func FuzzGetInt(data []byte) int {
 	_, err := GetInt(data, "test")
 	if err != nil {
@@ -100,6 +112,7 @@ func FuzzGetInt(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-005
 func FuzzGetBoolean(data []byte) int {
 	_, err := GetBoolean(data, "test")
 	if err != nil {
@@ -108,6 +121,7 @@ func FuzzGetBoolean(data []byte) int {
 	return 1
 }
 
+// SYS-REQ-011
 func FuzzGetUnsafeString(data []byte) int {
 	_, err := GetUnsafeString(data, "test")
 	if err != nil {
