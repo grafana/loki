@@ -133,7 +133,7 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		HintRanges:         buildDebugHintRanges(res.entries, hintRanges),
 	}
 
-	vr := verifyHints(hintRanges, res.entries)
+	vr := res.verify(hintRanges)
 	resp.Summary = debugSummary{
 		TotalResults:   vr.TotalResults,
 		CoveredResults: vr.CoveredResults,
