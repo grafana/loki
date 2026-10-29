@@ -228,7 +228,8 @@ func TestCountDistinctSketchEvalNilMergeExpr(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctSketchEvalExpr{}, params, RootContext())
+	missingMerge := &CountDistinctSketchEvalExpr{}
+	_, err = ev.NewStepEvaluator(context.Background(), nil, missingMerge, params, RootContext(missingMerge))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing merge expression")
 }
@@ -494,7 +495,7 @@ func TestCountDistinctSketchExprReturnsSketches(t *testing.T) {
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext())
+	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext(sketch))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = step.Close() })
 	okNext, _, result := step.Next()
@@ -535,7 +536,7 @@ func TestCountDistinctSketchExprRangeSteps(t *testing.T) {
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext())
+	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext(sketch))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stepEv.Close() })
 

@@ -70,7 +70,7 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 		step:        time.Minute,
 		hintRanges:  hintRanges,
 	}
-	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, RootContext())
+	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, RootContext(sampleExpr))
 	require.NoError(t, err)
 	require.NoError(t, stepEvaluator.Close())
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
@@ -98,7 +98,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 			options := &logproto.DataObjOptions{Eligible: true}
 			params := newParams(t, query).WithDataObjOptions(options)
 
-			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext())
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr)))
 			require.NoError(t, err)
 			require.NoError(t, stepEvaluator.Close())
 
@@ -111,7 +111,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
 		params := newParams(t, queries["a sum of a range aggregation"])
 
-		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext())
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr)))
 		require.NoError(t, err)
 		require.NoError(t, stepEvaluator.Close())
 
@@ -1061,6 +1061,9 @@ func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
 		{"bool comparison between vectors", a + ` > bool ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
 		{"group_left", a + ` * on(app) group_left ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
 		{"group_right", a + ` * on(app) group_right ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or ignoring no labels with group_left", a + ` or ignoring() group_left ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"arithmetic with a literal and group_right", a + ` * ignoring() group_right 2`, map[string]bool{`{app="a"}`: false}},
+		{"arithmetic with a literal and group_left", a + ` * on(app) group_left 2`, map[string]bool{`{app="a"}`: false}},
 		{"label_replace", `label_replace(` + a + `, "dst", "$1", "app", "(.*)")`, map[string]bool{`{app="a"}`: false}},
 		{"sum", `sum(` + a + ` * 2)`, map[string]bool{`{app="a"}`: false}},
 		{"avg by", `avg by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
@@ -1098,7 +1101,7 @@ func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
 				return ev.NewStepEvaluator(ctx, factory, expr, p, nc)
 			}
 
-			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, RootContext())
+			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, RootContext(expr))
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 		})
@@ -1211,4 +1214,79 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 			require.Equal(t, 2.0, got["steady"])
 		})
 	})
+}
+
+func TestNodeContext(t *testing.T) {
+	parse := func(t *testing.T, query string) syntax.SampleExpr {
+		t.Helper()
+		expr, err := syntax.ParseSampleExpr(query)
+		require.NoError(t, err)
+		return expr
+	}
+	const rate = `rate({app="a"}[1m])`
+
+	t.Run("zero value is neither root nor preserving", func(t *testing.T) {
+		var nc NodeContext
+		require.False(t, nc.IsRoot())
+		require.False(t, nc.OutputPreserving())
+		require.Equal(t, NodeContext{}, nc.child(true))
+	})
+
+	t.Run("root of a query that returns series is preserving", func(t *testing.T) {
+		nc := RootContext(parse(t, `sum by (app) (`+rate+`)`))
+		require.True(t, nc.IsRoot())
+		require.True(t, nc.OutputPreserving())
+	})
+
+	t.Run("child is never the root", func(t *testing.T) {
+		nc := RootContext(parse(t, rate))
+
+		preserving := nc.child(true)
+		require.False(t, preserving.IsRoot())
+		require.True(t, preserving.OutputPreserving())
+		require.True(t, preserving.child(true).OutputPreserving())
+
+		require.Equal(t, NodeContext{}, nc.child(false))
+		require.Equal(t, NodeContext{}, preserving.child(false))
+		require.Equal(t, NodeContext{}, nc.child(false).child(true))
+	})
+
+	sketches := map[string]func(t *testing.T) syntax.SampleExpr{
+		"count min sketch": func(t *testing.T) syntax.SampleExpr {
+			expr := parse(t, `sum by (app) (`+rate+`)`).(*syntax.VectorAggregationExpr)
+			expr.Operation = syntax.OpTypeCountMinSketch
+			return expr
+		},
+		"quantile sketch": func(t *testing.T) syntax.SampleExpr {
+			expr := parse(t, `quantile_over_time(0.5, {app="a"} | unwrap x [1m])`).(*syntax.RangeAggregationExpr)
+			expr.Operation = syntax.OpRangeTypeQuantileSketch
+			return expr
+		},
+		"count distinct sketch": func(t *testing.T) syntax.SampleExpr {
+			rangeExpr := parse(t, rate).(*syntax.RangeAggregationExpr)
+			return syntax.NewCountDistinctSketchExpr("x", rangeExpr.Left, nil)
+		},
+		"count min sketch eval": func(t *testing.T) syntax.SampleExpr {
+			return &CountMinSketchEvalExpr{SampleExpr: parse(t, rate)}
+		},
+		"quantile sketch eval": func(t *testing.T) syntax.SampleExpr {
+			return &QuantileSketchEvalExpr{SampleExpr: parse(t, rate)}
+		},
+		"count distinct sketch eval": func(t *testing.T) syntax.SampleExpr {
+			return &CountDistinctSketchEvalExpr{}
+		},
+		"sketch in the left leg of a binary operation": func(t *testing.T) syntax.SampleExpr {
+			expr := parse(t, rate+` or `+rate).(*syntax.BinOpExpr)
+			expr.SampleExpr.(*syntax.RangeAggregationExpr).Operation = syntax.OpRangeTypeQuantileSketch
+			return expr
+		},
+	}
+	for name, build := range sketches {
+		t.Run("root of a sketch is not preserving: "+name, func(t *testing.T) {
+			nc := RootContext(build(t))
+			require.True(t, nc.IsRoot())
+			require.False(t, nc.OutputPreserving())
+			require.False(t, nc.child(true).OutputPreserving())
+		})
+	}
 }

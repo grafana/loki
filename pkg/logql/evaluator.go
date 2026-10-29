@@ -275,47 +275,57 @@ type EvaluatorFactory interface {
 	EntryEvaluatorFactory
 }
 
-type nodePosition int
-
-const (
-	// positionReducing is the zero value so that a NodeContext nobody filled in never claims
-	// the series count is preserved.
-	positionReducing nodePosition = iota
-	positionPreserving
-	positionRoot
-)
-
 // NodeContext describes where an expression sits relative to the query's output. It is worked
 // out from the parent down while evaluators are built. The zero value is the conservative one:
-// an expression whose series count may differ from the query's output.
+// an expression that is neither the root nor known to preserve the output.
 type NodeContext struct {
-	position nodePosition
+	isRoot     bool
+	preserving bool
 }
 
-// RootContext returns the NodeContext of the root expression of a query.
-func RootContext() NodeContext {
-	return NodeContext{position: positionRoot}
+// RootContext returns the NodeContext of expr, the root expression of a query. The root
+// preserves the output unless expr produces a sketch, which is not counted as series.
+func RootContext(expr syntax.SampleExpr) NodeContext {
+	return NodeContext{isRoot: true, preserving: !producesSketch(expr)}
+}
+
+// producesSketch reports whether expr contains an operator that returns a sketch.
+func producesSketch(expr syntax.SampleExpr) bool {
+	found := false
+	expr.Walk(func(e syntax.Expr) bool {
+		switch e := e.(type) {
+		case *syntax.CountDistinctSketchExpr,
+			*CountDistinctSketchEvalExpr, *CountDistinctSketchMergeExpr,
+			*CountMinSketchEvalExpr,
+			*QuantileSketchEvalExpr, *QuantileSketchMergeExpr:
+			found = true
+		case *syntax.RangeAggregationExpr:
+			found = found || e.Operation == syntax.OpRangeTypeQuantileSketch
+		case *syntax.VectorAggregationExpr:
+			found = found || e.Operation == syntax.OpTypeCountMinSketch
+		}
+		return !found
+	})
+	return found
 }
 
 // IsRoot is true only for the root expression of the query, whose output is the query result.
 func (c NodeContext) IsRoot() bool {
-	return c.position == positionRoot
+	return c.isRoot
 }
 
-// OutputPreserving is true when every operator between the expression and the root keeps the
-// series count unchanged, so the expression holds at least as many series as the query returns.
-// It is always true for the root expression.
+// OutputPreserving is true when every operator between the expression and the root keeps every
+// series it receives, though it may add series from elsewhere. The query then returns at least as
+// many series as the expression holds. It is true for the root expression unless that produces a
+// sketch.
 func (c NodeContext) OutputPreserving() bool {
-	return c.position != positionReducing
+	return c.preserving
 }
 
-// child returns the NodeContext of an operand of an operator that keeps the series count
-// unchanged when opPreserves is true.
+// child returns the NodeContext of an operand of an operator that keeps every series it receives
+// when opPreserves is true.
 func (c NodeContext) child(opPreserves bool) NodeContext {
-	if c.OutputPreserving() && opPreserves {
-		return NodeContext{position: positionPreserving}
-	}
-	return NodeContext{}
+	return NodeContext{preserving: c.preserving && opPreserves}
 }
 
 type SampleEvaluatorFactory interface {
@@ -996,8 +1006,12 @@ func vectorAggPreservesSeries(op string) bool {
 // With a literal leg, arithmetic and bool comparisons map each series to one series, while a
 // filtering comparison drops them. Between two vectors, only an or matching on the whole label
 // set keeps every series of both legs: on() and ignoring(labels) let a left series hide right
-// series with different labels. ignoring() with no labels parses the same as no modifier.
+// series with different labels. ignoring() with no labels parses the same as no modifier. A
+// group_left or group_right modifier is never preserving.
 func binOpPreservesSeries(expr *syntax.BinOpExpr) bool {
+	if expr.Opts != nil && expr.Opts.VectorMatching != nil && expr.Opts.VectorMatching.Card != syntax.CardOneToOne {
+		return false
+	}
 	_, leftLit := expr.SampleExpr.(*syntax.LiteralExpr)
 	_, rightLit := expr.RHS.(*syntax.LiteralExpr)
 	if leftLit || rightLit {
