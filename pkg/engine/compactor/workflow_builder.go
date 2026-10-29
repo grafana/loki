@@ -50,7 +50,6 @@ func buildLogMergePlan(
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
 		Runs:           task.Runs,
-		SortSchema:     task.SortSchema,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -65,17 +64,6 @@ func buildIndexFilterPlan(tenant, sourceIndexPath string, objectPaths []string) 
 		Tenant:          tenant,
 		SourceIndexPath: sourceIndexPath,
 		ObjectPaths:     objectPaths,
-	}
-	var g dag.Graph[physical.Node]
-	g.Add(node)
-	return physical.FromGraph(g)
-}
-
-func buildSortObjectPlan(sourceObjectPath string, sortSchema []string) *physical.Plan {
-	node := &physical.SortObject{
-		NodeID:           ulid.Make(),
-		SourceObjectPath: sourceObjectPath,
-		SortSchema:       sortSchema,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)

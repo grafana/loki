@@ -203,7 +203,7 @@ func (t *task) TryAssign(doAssign func() error) error {
 //   - [schedulerstat.TaskTotalDuration] is always recorded.
 //
 // It also records [schedulerstat.TaskFinishTime], the absolute terminal
-// timestamp, which the workflow uses to approximate the query's critical path.
+// timestamp, which the workflow uses to approximate the critical path.
 //
 // RecordTerminalObservations must only be called once per task and only after
 // the task has produced a terminal result.

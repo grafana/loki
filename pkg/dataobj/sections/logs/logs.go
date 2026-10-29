@@ -4,12 +4,18 @@ package logs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
+
+// RegionRead is the xcap region name that holds the statistics of reading
+// rows from a logs section.
+var RegionRead = "logs.Reader.Read"
 
 // schemaSortVersion is the section type version for logs sections written in
 // schema sort order. Must not equal columnar.FormatVersion (currently 2).
@@ -161,10 +167,60 @@ func (s *Section) SortLayout() SortLayout {
 	}
 }
 
+// LegacyLayout returns the stream layout that the section recorded in its own
+// sort info. Writers recorded it there before the streams section did. ok is
+// false if the section records no such layout, or one that is not stable hash
+// ordered with the default shard layout, because no writer produced another.
+//
+// Readers use LegacyLayout only for objects whose streams section records no
+// layout.
+func (s *Section) LegacyLayout() (layout streams.Layout, ok bool) {
+	si := s.inner.SortInfo()
+	if si == nil || si.StreamOrder != datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1 {
+		return streams.Layout{}, false
+	}
+	if si.ShardCount != streams.DefaultShardLayout().Buckets() {
+		return streams.Layout{}, false
+	}
+	return streams.NewLayout(streams.DefaultShardLayout(), si.SchemaLabels), true
+}
+
+// LegacyLayoutOf returns the layout that every non-nil section of sections
+// records with [Section.LegacyLayout]. Readers use it for objects whose
+// streams section records no layout. It returns an error if a section records
+// no legacy layout, if the sections disagree, or if no section is non-nil.
+func LegacyLayoutOf(ctx context.Context, sections []*dataobj.Section) (streams.Layout, error) {
+	var (
+		layout streams.Layout
+		found  bool
+	)
+	for _, section := range sections {
+		if section == nil {
+			continue
+		}
+		opened, err := Open(ctx, section)
+		if err != nil {
+			return streams.Layout{}, fmt.Errorf("opening logs section: %w", err)
+		}
+		got, ok := opened.LegacyLayout()
+		if !ok {
+			return streams.Layout{}, errors.New("streams section records no layout, and a logs section records no legacy layout")
+		}
+		if found && !got.Equal(layout) {
+			return streams.Layout{}, errors.New("logs sections record different legacy layouts")
+		}
+		layout, found = got, true
+	}
+	if !found {
+		return streams.Layout{}, errors.New("streams section records no layout")
+	}
+	return layout, nil
+}
+
 // A Column represents one of the columns in the logs section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
-// Data in columns can be read by using a [Reader].
+// Data in columns can be read by using a [RowReader].
 type Column struct {
 	Section *Section   // Section that contains the column.
 	Name    string     // Optional name of the column.

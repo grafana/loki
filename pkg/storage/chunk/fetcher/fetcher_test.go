@@ -213,7 +213,7 @@ func Test(t *testing.T) {
 			assert.NoError(t, chunkClient.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback, false)
+			f, err := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback)
 			assert.NoError(t, err)
 
 			// Run the test
@@ -244,7 +244,7 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 	key := sc.ExternalKey(chunks[0].ChunkRef)
 	require.NoError(t, l1.Store(context.Background(), []string{key}, [][]byte{[]byte("not a chunk")}))
 
-	f, err := New(l1, l2, false, sc, chunkClient, 0, 0, true)
+	f, err := New(l1, l2, false, sc, chunkClient, 0, 0)
 	require.NoError(t, err)
 	t.Cleanup(f.Stop)
 
@@ -283,42 +283,40 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		for _, propagate := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/propagate=%t", test.name, propagate), func(t *testing.T) {
-				chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour})
-				test.client.chunks = chunks
-				if test.client.err != nil {
-					test.client.chunks = chunks[:1]
-				}
-				f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0, propagate)
+		t.Run(test.name, func(t *testing.T) {
+			chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour})
+			test.client.chunks = chunks
+			if test.client.err != nil {
+				test.client.chunks = chunks[:1]
+			}
+			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0)
+			require.NoError(t, err)
+			t.Cleanup(f.Stop)
+
+			before := readStorageErrorCounters(t)
+			statsCtx, ctx := stats.NewContext(context.Background())
+			got, err := f.FetchChunks(ctx, chunks)
+
+			if test.client.err != nil {
+				require.ErrorIs(t, err, test.client.err)
+				require.Nil(t, got)
+			} else {
 				require.NoError(t, err)
-				t.Cleanup(f.Stop)
+				require.Equal(t, test.client.chunks, got)
+			}
+			if test.wantReason == "" {
+				require.Empty(t, storageErrorCounterDeltas(t, before))
+			} else {
+				require.Equal(t, map[string]float64{test.wantReason: 1}, storageErrorCounterDeltas(t, before))
+			}
 
-				before := readStorageErrorCounters(t)
-				statsCtx, ctx := stats.NewContext(context.Background())
-				got, err := f.FetchChunks(ctx, chunks)
-
-				if propagate && test.client.err != nil {
-					require.ErrorIs(t, err, test.client.err)
-					require.Nil(t, got)
-				} else {
-					require.NoError(t, err)
-					require.Equal(t, test.client.chunks, got)
-				}
-				if test.wantReason == "" {
-					require.Empty(t, storageErrorCounterDeltas(t, before))
-				} else {
-					require.Equal(t, map[string]float64{test.wantReason: 1}, storageErrorCounterDeltas(t, before))
-				}
-
-				// One of the two requested chunks fails whenever the client returns an error.
-				wantFailures := int64(0)
-				if test.client.err != nil && test.wantReason != "" {
-					wantFailures = 1
-				}
-				require.Equal(t, wantFailures, statsCtx.Store().ChunkFetchFailures)
-			})
-		}
+			// One of the two requested chunks fails whenever the client returns an error.
+			wantFailures := int64(0)
+			if test.client.err != nil && test.wantReason != "" {
+				wantFailures = 1
+			}
+			require.Equal(t, wantFailures, statsCtx.Store().ChunkFetchFailures)
+		})
 	}
 }
 
@@ -328,19 +326,20 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 // failure per TestFetchChunks_HandlesStorageErrors). The context is still live when FetchChunks
 // starts -- otherwise the ctx.Err() guard at the top of FetchChunks would return early -- and is
 // canceled by the storage client itself right as it returns its error, mirroring a real race
-// between query cancellation and an in-flight fetch.
+// between query cancellation and an in-flight fetch. The error still propagates either way;
+// only the storage-error metric/stat accounting is skipped for this expected, benign case.
 func TestFetchChunks_QueryCanceledDuringFetchSkipsFailureAccounting(t *testing.T) {
 	chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour})
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &cancelingStorageClient{cancel: cancel, err: context.Canceled}
-	f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), client, 0, 0, false)
+	f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), client, 0, 0)
 	require.NoError(t, err)
 	t.Cleanup(f.Stop)
 
 	before := readStorageErrorCounters(t)
 	statsCtx, ctx := stats.NewContext(ctx)
 	_, err = f.FetchChunks(ctx, chunks)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, context.Canceled)
 
 	require.Empty(t, storageErrorCounterDeltas(t, before))
 	require.Equal(t, int64(0), statsCtx.Store().ChunkFetchFailures)
@@ -476,7 +475,7 @@ func BenchmarkFetch(b *testing.B) {
 	_ = chunkClient.PutChunks(context.Background(), test.storeStart)
 
 	// Build fetcher
-	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback, false)
+	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback)
 
 	for i := 0; i < b.N; i++ {
 		_, err := f.FetchChunks(context.Background(), test.fetch)

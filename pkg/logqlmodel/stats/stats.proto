@@ -239,8 +239,6 @@ message Store {
   int64 chunksDownloadTime = 3 [(gogoproto.jsontag) = "chunksDownloadTime"];
   // Whether the query referenced structured metadata
   bool queryReferencedStructured = 13 [(gogoproto.jsontag) = "queryReferencedStructuredMetadata"];
-  // Whether the V2 engine was used for some or all of the query.
-  bool queryUsedV2Engine = 14 [(gogoproto.jsontag) = "queryUsedV2Engine"];
 
   Chunk chunk = 4 [
     (gogoproto.nullable) = false,
@@ -262,14 +260,17 @@ message Store {
   ];
 
   // Total number of chunks that failed to be fetched or decoded for the query,
-  // counted even when propagateChunkFetchErrors tolerated the failure instead
-  // of failing the query outright.
+  // which always fails the query outright.
   int64 chunkFetchFailures = 15 [(gogoproto.jsontag) = "chunkFetchFailures"];
 
   // Chunk refs left to read after time and logline hint filtering. Unlike
   // totalChunksRef it leaves out the chunks those filters dropped, and unlike
   // totalChunksDownloaded it includes chunks that a query limit left unread.
   int64 totalChunksScanned = 16 [(gogoproto.jsontag) = "totalChunksScanned,omitempty"];
+
+  // The queryUsedV2Engine flag. Older queriers may still send it, so do not
+  // reuse the number.
+  reserved 14;
 }
 
 message Dataobj {

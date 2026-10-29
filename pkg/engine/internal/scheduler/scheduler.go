@@ -616,7 +616,7 @@ func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
 		// For now, we will treat every task as having an equal cost of 1.
 		//
 		// This provides some level of fairness, but not all tasks need the
-		// same amount of time to complete, so tenants running heavy queries
+		// same amount of time to complete, so tenants running heavy tasks
 		// do not get properly penalized.
 		//
 		// TODO(rfratto): Introduce a better cost estimate for tasks, which
@@ -1132,7 +1132,7 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 		return err
 	}
 
-	// Extract trace context from the query context and add it to each task's metadata.
+	// Extract trace context from ctx and add it to each task's metadata.
 	metadata := make(http.Header)
 
 	// Copy all headers from context to task metadata.

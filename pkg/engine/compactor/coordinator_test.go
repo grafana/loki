@@ -240,7 +240,7 @@ func mergeNodeRuns(t *testing.T, plan *physical.Plan) []*compactionv2pb.RunRef {
 }
 
 // planObjectPaths returns the sorted object paths that a LogMerge,
-// IndexMerge, IndexFilter, or SortObject plan reads.
+// IndexMerge, or IndexFilter plan reads.
 func planObjectPaths(t *testing.T, plan *physical.Plan) []string {
 	t.Helper()
 	root, err := plan.Root()
@@ -249,8 +249,6 @@ func planObjectPaths(t *testing.T, plan *physical.Plan) []string {
 	switch n := root.(type) {
 	case *physical.IndexFilter:
 		paths = slices.Clone(n.ObjectPaths)
-	case *physical.SortObject:
-		paths = []string{n.SourceObjectPath}
 	default:
 		for _, run := range mergeNodeRuns(t, plan) {
 			for _, section := range run.Sections {
@@ -358,7 +356,6 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	require.NoError(t, err)
 	node, ok := root.(*physical.LogMerge)
 	require.True(t, ok)
-	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
 	require.Len(t, node.Runs, 2)
 	require.Equal(t, []string{"logs/log-0#0", "logs/log-0#1"}, sectionRefNames(node.Runs[0].Sections))
 	require.Equal(t, []string{"logs/log-1#0", "logs/log-1#1"}, sectionRefNames(node.Runs[1].Sections))
@@ -366,55 +363,6 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	swaps := replacer.snapshot()
 	require.Len(t, swaps, 1, "log path now swaps the ToC after dispatch")
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
-}
-
-func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	convergedPath := "indexes/aa/converged"
-	logSortSchema := "label:cluster"
-	buildCurrentIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: logSortSchema,
-			Labels: map[string]string{"cluster": "dev"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 2, UncompressedSize: 100},
-		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: logSortSchema,
-			Labels: map[string]string{"cluster": "prod"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 3, UncompressedSize: 200},
-	})
-
-	// The tenant's requested sort-schema must not match the log schema to trigger a sort.
-	limits := newFakeLimits("acme")
-	require.Equal(t, limits.SortSchemaLabels("acme"), []string{"label:service_name"})
-	require.NotEqual(t, limits.SortSchemaLabels("acme"), logSortSchema)
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), limits)
-
-	result, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
-		Path: convergedPath,
-	})
-	require.NoError(t, err)
-	require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, result)
-
-	calls := runner.snapshot()
-	require.Len(t, calls, 2)
-	sources := make(map[string]bool)
-	for _, call := range calls {
-		// Check a sort-object was dispatched with the Tenant's requested sort-schema
-		require.Equal(t, []string{"compaction", "sort-object"}, call.opts.Actor)
-		root, err := call.plan.Root()
-		require.NoError(t, err)
-		node, ok := root.(*physical.SortObject)
-		require.True(t, ok)
-		require.Equal(t, []string{"label:service_name"}, node.SortSchema)
-		sources[node.SourceObjectPath] = true
-	}
-	require.Equal(t, map[string]bool{"logs/log-0": true, "logs/log-1": true}, sources)
-
-	swaps := replacer.snapshot()
-	require.Len(t, swaps, 1)
-	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
-	requireEntriesMatchCalls(t, calls, swaps[0].newEntries)
 }
 
 // totalLogInputBytes returns the sum of the log input bytes of plan.
@@ -486,7 +434,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Equal(t, uint64(200), totalLogInputBytes(plan))
 	})
 
-	t.Run("plans one SortObject task per object when the sort schema differs from the target", func(t *testing.T) {
+	t.Run("plans one LogMerge task for an index with a non-default sort schema", func(t *testing.T) {
 		cluster := map[string]string{"cluster": "dev"}
 		secondSection := stat("logs/log-0", "label:cluster", cluster, 30, 35)
 		secondSection.SectionIndex = 1
@@ -500,15 +448,8 @@ func TestPlanLogCompaction(t *testing.T) {
 		plan, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
 		require.NoError(t, err)
 
-		require.Len(t, plan.tasks, 2)
-		bytesByObject := map[string]uint64{}
-		for _, task := range plan.tasks {
-			sort, ok := task.(sortObjectTask)
-			require.True(t, ok)
-			require.Equal(t, []string{"label:service_name"}, sort.sortSchema)
-			bytesByObject[sort.objectPath] = sort.logStats().inputBytes
-		}
-		require.Equal(t, map[string]uint64{"logs/log-0": 150, "logs/log-1": 100}, bytesByObject)
+		require.Len(t, plan.tasks, 1)
+		require.IsType(t, logMergeTask{}, plan.tasks[0])
 		require.Equal(t, uint64(250), totalLogInputBytes(plan))
 	})
 
@@ -548,8 +489,12 @@ func TestExecuteLogCompaction(t *testing.T) {
 		window:      window,
 		sourceIndex: indexEntry{Path: "indexes/source"},
 		tasks: []logCompactionTask{
-			sortObjectTask{objectPath: "logs/a", sortSchema: []string{"label:app"}},
-			sortObjectTask{objectPath: "logs/b", sortSchema: []string{"label:app"}},
+			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/a"}}},
+			}}),
+			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b"}}},
+			}}),
 		},
 	}
 	newExecutor := func(t *testing.T) (*coordinator, *fakeRunner, *fakeReplacer) {
@@ -1192,31 +1137,18 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			if err != nil {
 				return false
 			}
-			switch n := root.(type) {
-			case *physical.SortObject:
-				return n.SourceObjectPath == path
-			case *physical.IndexMerge:
-				for _, run := range n.Runs {
-					for _, section := range run.Sections {
-						if section.ObjectPath == path {
-							return true
-						}
+			merge, ok := root.(*physical.IndexMerge)
+			if !ok {
+				return false
+			}
+			for _, run := range merge.Runs {
+				for _, section := range run.Sections {
+					if section.ObjectPath == path {
+						return true
 					}
 				}
 			}
 			return false
-		}
-	}
-	logIndex := func(t *testing.T, schema string, labels map[string]string) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		bucket := objstore.NewInMemBucket()
-		rows := make([]stats.Stat, 3)
-		for i := range rows {
-			rows[i] = stats.Stat{ObjectPath: fmt.Sprintf("logs/%d", i), SortSchema: schema, Labels: labels,
-				MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100}
-		}
-		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
-		return bucket, func(c *coordinator) (compactionStats, error) {
-			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source"})
 		}
 	}
 
@@ -1229,10 +1161,16 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		}
 	}
 	equalRuns := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		return logIndex(t, "label:service_name", map[string]string{"service_name": "auth"})
-	}
-	wrongSortSchema := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		return logIndex(t, "label:cluster", map[string]string{"cluster": "dev"})
+		bucket := objstore.NewInMemBucket()
+		rows := make([]stats.Stat, 3)
+		for i := range rows {
+			rows[i] = stats.Stat{ObjectPath: fmt.Sprintf("logs/%d", i), SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"},
+				MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100}
+		}
+		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
+		return bucket, func(c *coordinator) (compactionStats, error) {
+			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source"})
+		}
 	}
 
 	tests := []struct {
@@ -1247,8 +1185,6 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			wantActors: []string{"log-merge", "index-filter"}},
 		{name: "log compaction publishes nothing when a merge fails in the same batch as the index filter", seed: equalRuns, fail: failActor("log-merge"),
 			wantActors: []string{"log-merge", "index-filter"}},
-		{name: "sort object publishes nothing when one task fails", seed: wrongSortSchema, fail: failObject("logs/2"),
-			wantActors: []string{"sort-object", "sort-object", "sort-object"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

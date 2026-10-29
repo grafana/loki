@@ -174,7 +174,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		"a line filter reads the message and is pushed as a message predicate": {
 			wantUnpushedExpr:  `sum by (app) (count_over_time({app="x"}[1m]))`,
 			query:             `sum by (app) (count_over_time({app="x"} |= "boom" [1m]))`,
-			wantColumns:       []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
+			wantColumns:       []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata:      []string{"__error__", "__error_details__", "app"},
 			wantRowPredicates: []logs.RowPredicate{logs.LogMessageFilterRowPredicate{}},
 			wantKeepLines:     []string{"boom", "a boom b"},
@@ -183,7 +183,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		"chained line filters are pushed as one message predicate that requires all of them": {
 			wantUnpushedExpr:  `sum by (app) (count_over_time({app="x"}[1m]))`,
 			query:             `sum by (app) (count_over_time({app="x"} != "a" |~ "b.*" [1m]))`,
-			wantColumns:       []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
+			wantColumns:       []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata:      []string{"__error__", "__error_details__", "app"},
 			wantRowPredicates: []logs.RowPredicate{logs.LogMessageFilterRowPredicate{}},
 			wantKeepLines:     []string{"b", "xbx"},
@@ -192,7 +192,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		"an or chain is pushed as one message predicate that keeps a line matching any operand": {
 			wantUnpushedExpr:  `sum by (app) (count_over_time({app="x"}[1m]))`,
 			query:             `sum by (app) (count_over_time({app="x"} |= "a" or "b" [1m]))`,
-			wantColumns:       []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
+			wantColumns:       []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata:      []string{"__error__", "__error_details__", "app"},
 			wantRowPredicates: []logs.RowPredicate{logs.LogMessageFilterRowPredicate{}},
 			wantKeepLines:     []string{"a", "b", "xay"},
@@ -219,7 +219,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		"a line filter after a label filter is pushed after the metadata predicate": {
 			wantUnpushedExpr: `sum by (app) (count_over_time({app="x"} | level="error" [1m]))`,
 			query:            `sum by (app) (count_over_time({app="x"} | level="error" |= "boom" [1m]))`,
-			wantColumns:      []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
+			wantColumns:      []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata:     []string{"__error__", "__error_details__", "app", "level"},
 			wantRowPredicates: []logs.RowPredicate{
 				logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"},
@@ -232,7 +232,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		"a line filter before a label filter is still pushed after the metadata predicate": {
 			wantUnpushedExpr: `sum by (app) (count_over_time({app="x"} | level="error" [1m]))`,
 			query:            `sum by (app) (count_over_time({app="x"} |= "boom" | level="error" [1m]))`,
-			wantColumns:      []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
+			wantColumns:      []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata:     []string{"__error__", "__error_details__", "app", "level"},
 			wantRowPredicates: []logs.RowPredicate{
 				logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"},
@@ -284,7 +284,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		},
 		"an unwrap with a line filter pushes the filter and needs no line": {
 			query:             `sum by (app) (sum_over_time({app="x"} |= "boom" | unwrap duration [1m]))`,
-			wantColumns:       []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
+			wantColumns:       []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata:      []string{"__error__", "__error_details__", "app", "duration"},
 			wantRowPredicates: []logs.RowPredicate{logs.LogMessageFilterRowPredicate{}},
 			wantKeepLines:     []string{"boom"},
@@ -344,7 +344,7 @@ func TestNewProjectionPlan(t *testing.T) {
 			wantUnpushedExpr:      `sum by (app) (count_over_time({app="x"} | app="x" [1m]))`,
 			query:                 `sum by (app) (count_over_time({app="x"} | app="x" |= "boom" [1m]))`,
 			streamLabels:          []string{"app"},
-			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata:          []string{"__error__", "__error_details__", "app"},
 			wantRowPredicates:     []logs.RowPredicate{logs.LogMessageFilterRowPredicate{}},
 			wantKeepLines:         []string{"boom"},
@@ -401,13 +401,14 @@ func TestNewProjectionPlan(t *testing.T) {
 		},
 	}
 
+	lines := []string{"", "boom", "ok", "a", "b", "ab", "c", "xbx", "a boom b", "boom secret", "x", `{"level":"error"}`, "level=error boom", "\x1b[31mboom\x1b[0m"}
+
 	// requirePushedFilterMatchesQuery checks that the pushed filter followed by the unpushed query
 	// gives the same samples and labels as the whole query. The unpushed extractor gets no line when
 	// the plan says nothing reads it, so a stage that still reads the line fails the check.
 	requirePushedFilterMatchesQuery := func(t *testing.T, expr syntax.SampleExpr, plan ProjectionPlan) {
 		t.Helper()
 
-		lines := []string{"", "boom", "ok", "a", "b", "ab", "c", "xbx", "a boom b", "boom secret", "x", `{"level":"error"}`, "level=error boom", "\x1b[31mboom\x1b[0m"}
 		metadata := []labels.Labels{
 			labels.EmptyLabels(),
 			labels.FromStrings("level", "error", "duration", "3s", "latency", "2s", "status", "500"),
@@ -492,15 +493,31 @@ func TestNewProjectionPlan(t *testing.T) {
 			require.Equal(t, test.wantMetadata, metadata)
 			requirePredicatesEqual(t, test.wantRowPredicates, predicates)
 
-			if len(test.wantKeepLines)+len(test.wantRejectLines) > 0 {
+			if len(predicates) > 0 && plan.lineFilter != nil {
 				message, ok := predicates[len(predicates)-1].(logs.LogMessageFilterRowPredicate)
 				require.True(t, ok, "want the message predicate last, got %T", predicates[len(predicates)-1])
+
 				for _, line := range test.wantKeepLines {
 					require.True(t, message.Keep([]byte(line)), "line %q should be kept", line)
 				}
 				for _, line := range test.wantRejectLines {
 					require.False(t, message.Keep([]byte(line)), "line %q should be dropped", line)
 				}
+
+				var (
+					data    []byte
+					offsets = []int32{0}
+					want    []int32
+				)
+				for i, line := range lines {
+					data = append(data, line...)
+					offsets = append(offsets, int32(len(data)))
+					if message.Keep([]byte(line)) {
+						want = append(want, int32(i))
+					}
+				}
+				require.NotNil(t, message.KeepBatch)
+				require.Equal(t, want, message.KeepBatch(data, offsets, nil))
 			}
 
 			var sectionPredicates []string

@@ -22,8 +22,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -88,24 +86,18 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	BatchSize      int64
-	PrefetchBytes  int64
 	Bucket         objstore.Bucket
 	DataBucket     objstore.Bucket
-	Metastore      metastore.Metastore
 	Logger         log.Logger
-	StreamFilterer executor.RequestStreamFilterer
-	TaskCaches     executor.TaskCacheRegistry
 	ScratchStore   scratch.Store
 	IndexobjCfg    logsobj.BuilderBaseConfig
 	LogsobjCfg     logsobj.BuilderBaseConfig
-	UploaderCfg    uploader.Config
 	BuilderMetrics *logsobj.BuilderMetrics
 
-	// IndexMergeObserver is optional; nil for query-only workers.
+	// IndexMergeObserver is optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
 
-	// LogMergeObserver is optional; nil for query-only workers.
+	// LogMergeObserver is optional; nil disables observation.
 	LogMergeObserver executor.LogMergeObserver
 
 	Metrics    *metrics
@@ -199,48 +191,36 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	pprof.SetGoroutineLabels(ctx)
 
 	// Count external sources and sinks for observability.
-	// This is useful to know which tasks are scan tasks (no sources)
-	var countSources, countCachedSources, countSinks int
+	var countSources, countSinks int
 	for _, streams := range job.Task.Sources {
 		countSources += len(streams)
 	}
 	for _, streams := range job.Task.Sinks {
 		countSinks += len(streams)
 	}
-	for _, streams := range job.Task.CachedSources {
-		countCachedSources += len(streams)
-	}
 
 	level.Info(logger).Log(
 		"msg", "starting task",
-		"plan", physical.PrintAsTree(job.Task.Fragment),
+		"node_type", root.Type().String(),
 		"external_sources", countSources,
-		"cached_sources", countCachedSources,
 		"external_sinks", countSinks,
 	)
 
 	cfg := executor.Config{
-		BatchSize:      t.BatchSize,
-		PrefetchBytes:  t.PrefetchBytes,
 		Bucket:         t.Bucket,
 		DataBucket:     t.DataBucket,
-		Metastore:      t.Metastore,
-		StreamFilterer: t.StreamFilterer,
-		TaskCaches:     t.TaskCaches,
 		ScratchStore:   t.ScratchStore,
 		IndexobjCfg:    t.IndexobjCfg,
 		LogsobjCfg:     t.LogsobjCfg,
-		UploaderCfg:    t.UploaderCfg,
 		BuilderMetrics: t.BuilderMetrics,
 
 		IndexMergeObserver: t.IndexMergeObserver,
 		LogMergeObserver:   t.LogMergeObserver,
 
-		GetExternalInputs: func(fnCtx context.Context, node physical.Node) []executor.Pipeline {
+		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
-			nodeCachedSrcs := job.Task.CachedSources[node]
 
-			if len(streams) == 0 && len(nodeCachedSrcs) == 0 {
+			if len(streams) == 0 {
 				return nil
 			}
 
@@ -249,17 +229,11 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 				"node", node.ID(),
 				"node_type", node.Type(),
 				"external_sources", len(streams),
-				"cached_sources", len(nodeCachedSrcs),
 			)
 
-			// Create a single nodeSource for all inputs (live streams and/or
-			// cached sources). A single pipeline avoids "got N inputs" errors
-			// from operators that expect exactly one upstream.
-			//
 			// Binding a [streamSource] increases the reference count; each
-			// source decrements it when done. Spawning drainCachedSources also
-			// increments the count once and decrements it on return. When the
-			// count reaches zero, the nodeSource closes automatically.
+			// source decrements it when done. When the count reaches zero, the
+			// nodeSource closes automatically.
 			input := &nodeSource{Metrics: t.Metrics, TaskType: taskType}
 
 			var errs []error
@@ -291,11 +265,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 				return []executor.Pipeline{errorPipeline(errs)}
 			}
 
-			if len(nodeCachedSrcs) > 0 {
-				input.Add(1)
-				go drainCachedSources(fnCtx, input, nodeCachedSrcs, logger)
-			}
-
 			return []executor.Pipeline{executor.NewObservedPipeline("nodeSource", nil, input)}
 		},
 	}
@@ -305,7 +274,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
 	// Record the time spent preparing the task before we begin draining its
-	// pipeline (planning, pipeline construction, and source binding setup).
+	// pipeline (pipeline construction and source binding setup).
 	setupDuration := time.Since(startTime)
 	span.Record(workerstat.TaskExecutionSetupDuration.Observe(setupDuration.Nanoseconds()))
 	t.Metrics.setupSeconds.WithLabelValues(taskType.String()).Observe(setupDuration.Seconds())

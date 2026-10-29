@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"iter"
 	"unsafe"
+
+	"github.com/grafana/loki/v3/pkg/columnar"
 )
 
 // Predicate is an expression used to filter rows in a [RowReader].
@@ -71,6 +73,24 @@ type (
 		//
 		// If Keep returns true, the row is kept.
 		Keep func(column Column, value Value) bool
+
+		// KeepBatch is optional. It tests an array of values of a binary column at once.
+		// It appends to dstIndexes the index in values of every value that Keep keeps, in ascending
+		// order with no repeat, and returns the result. values holds a null value as an empty
+		// value.
+		//
+		// KeepBatch must give the same result as Keep on every value. Keep gets a nil Value
+		// for a null value, so Keep must treat a nil and an empty value alike.
+		//
+		// The reader can call Keep instead of KeepBatch, so Keep must always be set. It does so for:
+		//   - the first predicate,
+		//   - a predicate inside And, Or or Not,
+		//   - a column that another predicate reads,
+		//   - a column that is not binary.
+		//
+		// KeepBatch must not retain values or dstIndexes after the call, and must not modify
+		// values. It must be safe for concurrent use.
+		KeepBatch func(column Column, values *columnar.UTF8, dstIndexes []int32) []int32
 	}
 )
 

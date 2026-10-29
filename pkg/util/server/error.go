@@ -103,7 +103,7 @@ func ClassifyFailure(err error) (category, reason string) {
 
 // reasonForBadRequest refines a generic 400 into a category and reason by
 // matching the stable (pre-format) prefix of a known limit message template. It
-// is a fallback for the same limits raised on the queriers or in the v2 engine,
+// is a fallback for the same limits raised on the queriers,
 // where only the (status, body) pair survives the httpgrpc hop and the sentinel
 // does not, so it must return what the sentinel cases above return.
 func reasonForBadRequest(err error) (category, reason string) {

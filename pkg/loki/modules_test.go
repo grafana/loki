@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -269,4 +270,40 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	}
 
 	return cfg
+}
+
+func TestInitPatternIngesterTee(t *testing.T) {
+	tests := []struct {
+		name           string
+		patternEnabled bool
+		kafkaIngestion bool
+	}{
+		{name: "disabled", patternEnabled: false},
+		{name: "disabled when the pattern ingester consumes from Kafka", patternEnabled: true, kafkaIngestion: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			loki := &Loki{}
+			loki.Cfg.Pattern.Enabled = tc.patternEnabled
+			loki.Cfg.Pattern.KafkaIngestion.Enabled = tc.kafkaIngestion
+
+			svc, err := loki.initPatternIngesterTee()
+			require.NoError(t, err)
+			require.Nil(t, svc)
+			require.Nil(t, loki.Tee)
+		})
+	}
+}
+
+// Puts both servers and an ingester in the service map, then checks only the
+// ingester comes back - if the servers wait on each other, neither shuts down.
+func TestServerServicesToWaitFor(t *testing.T) {
+	ingester := services.NewIdleService(nil, nil)
+	l := &Loki{serviceMap: map[string]services.Service{
+		Server:         services.NewIdleService(nil, nil),
+		InternalServer: services.NewIdleService(nil, nil),
+		Ingester:       ingester,
+	}}
+
+	require.Equal(t, []services.Service{ingester}, l.serverServicesToWaitFor())
 }

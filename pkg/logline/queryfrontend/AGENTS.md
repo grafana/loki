@@ -61,7 +61,7 @@ running, so sub-requests that reach the filter in a later wave wait up to
 The hint wait is the wall time during which at least one sub-request was held at the
 filter for the lookup. It is the latency Logline adds by holding sub-requests, which
 isn't all of the latency Logline adds: it leaves out the index-stats call that checks
-the byte threshold and the re-planning after a shard-planning rerun. The filter runs
+the byte threshold. The filter runs
 once per split and shard sub-request, and those wait in parallel and in waves, so
 `waitTracker` records the union of their wait intervals rather than the sum.
 
@@ -87,8 +87,8 @@ queries that didn't go through this middleware, so the JSON key is left out for 
 Use `Statistics.LoglineStats()` to set fields.
 
 The filter adds the skipped and narrowed counts to the response it returns, so the split
-and shard merges sum them and discarded responses (retries, a canceled provisional query)
-drop them. The prefetch middleware adds the rest to the final response: the lookup
+and shard merges sum them and discarded responses (retries) drop them. The prefetch
+middleware adds the rest to the final response: the lookup
 status, time and ranges, the hint wait time, the lookup's object storage I/O, copies of
 `Index.ShardPlannedChunks` and `Index.ShardPlannedChunksScanned`, the chunk filter ratio,
 and the outcome. `Logline.Merge` sums the two counts and keeps the first value of every

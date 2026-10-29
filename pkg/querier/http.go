@@ -21,12 +21,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -53,37 +50,27 @@ type QueryResponse struct {
 
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
-	querier  Querier
-	cfgV1    Config        // current/legacy engine config
-	cfgV2    engine.Config // new/next generation engine config
-	engineV1 logql.Engine  // current/legacy query engine
-	engineV2 logql.Engine  // new/next generation query engine
-	limits   querier_limits.Limits
-	logger   log.Logger
+	querier Querier
+	cfg     Config
+	engine  logql.Engine
+	limits  querier_limits.Limits
+	logger  log.Logger
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(v1Cfg Config, v2Cfg engine.Config, ms metastore.Metastore, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
-	q := &QuerierAPI{
-		cfgV1:    v1Cfg,
-		cfgV2:    v2Cfg,
-		limits:   limits,
-		querier:  querier,
-		engineV1: logql.NewEngine(v1Cfg.Engine, querier, limits, logger),
-		logger:   logger,
+func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, logger log.Logger) *QuerierAPI {
+	return &QuerierAPI{
+		cfg:     cfg,
+		limits:  limits,
+		querier: querier,
+		engine:  logql.NewEngine(cfg.Engine, querier, limits, logger),
+		logger:  logger,
 	}
-
-	if v2Cfg.Enable {
-		q.engineV2 = engine.NewBasic(v2Cfg.Executor, ms, store, limits, reg, logger)
-	}
-
-	return q
 }
 
 // RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
 func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
 	var result logqlmodel.Result
-	logger := utillog.WithContext(ctx, q.logger)
 
 	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
 		return result, err
@@ -94,29 +81,8 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
-	if q.cfgV2.Enable && hasDataObjectsAvailable(q.cfgV2, params.Start(), params.End()) {
-		query := q.engineV2.Query(params)
-		result, err = query.Exec(ctx)
-		if err == nil {
-			return result, err
-		}
-		if !errors.Is(err, engine.ErrNotSupported) {
-			level.Error(logger).Log("msg", "query execution failed with new query engine", "err", err)
-			return result, errors.Wrap(err, "failed with new execution engine")
-		}
-		level.Warn(logger).Log("msg", "falling back to legacy query engine", "err", err)
-	}
-
-	query := q.engineV1.Query(params)
+	query := q.engine.Query(params)
 	return query.Exec(ctx)
-}
-
-func hasDataObjectsAvailable(config engine.Config, start, end time.Time) bool {
-	// Data objects in object storage lag behind 20-30 minutes.
-	// We are generous and only enable v2 engine queries that end earlier than 1DataObjStorageLag ago (default 1h),
-	// to ensure data objects are available.
-	v2Start, v2End := config.ValidQueryRange()
-	return end.Before(v2End) && start.After(v2Start)
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
@@ -135,22 +101,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 		return logqlmodel.Result{}, err
 	}
 
-	if q.cfgV2.Enable && hasDataObjectsAvailable(q.cfgV2, params.Start(), params.End()) {
-		query := q.engineV2.Query(params)
-		result, err := query.Exec(ctx)
-		if err == nil {
-			return result, err
-		}
-
-		logger := utillog.WithContext(ctx, q.logger)
-		if !errors.Is(err, engine.ErrNotSupported) {
-			level.Error(logger).Log("msg", "query execution failed with new query engine", "err", err)
-			return result, errors.Wrap(err, "failed with new execution engine")
-		}
-		level.Warn(logger).Log("msg", "falling back to legacy query engine", "err", err)
-	}
-
-	query := q.engineV1.Query(params)
+	query := q.engine.Query(params)
 	return query.Exec(ctx)
 }
 
@@ -475,13 +426,13 @@ func (r *asyncPatternResponses) len() int {
 
 func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	// Calculate query intervals for ingester vs store
-	ingesterQueryInterval, storeQueryInterval := BuildQueryIntervalsWithLookback(q.cfgV1, req.Start, req.End, q.cfgV1.QueryPatternIngestersWithin)
+	ingesterQueryInterval, storeQueryInterval := BuildQueryIntervalsWithLookback(q.cfg, req.Start, req.End, q.cfg.QueryPatternIngestersWithin)
 
 	responses := asyncPatternResponses{}
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Query pattern ingesters for recent data
-	if ingesterQueryInterval != nil && !q.cfgV1.QueryStoreOnly && q.querier != nil {
+	if ingesterQueryInterval != nil && !q.cfg.QueryStoreOnly && q.querier != nil {
 		g.Go(func() error {
 			splitReq := *req
 			splitReq.Start = ingesterQueryInterval.start
@@ -498,7 +449,7 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 
 	// Query store for older data by converting to LogQL query
 	// Only query the store if pattern persistence is enabled for at least one tenant
-	if storeQueryInterval != nil && !q.cfgV1.QueryIngesterOnly && q.engineV1 != nil {
+	if storeQueryInterval != nil && !q.cfg.QueryIngesterOnly && q.engine != nil {
 		tenantIDs, err := tenant.TenantIDs(ctx)
 		if err != nil {
 			return nil, err
@@ -550,7 +501,7 @@ func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.Qu
 
 	// Patterns are persisted as logfmt'd strings, so we need to run the query using the LogQL engine
 	// in order to extract the metric values from them.
-	query := q.engineV1.Query(params)
+	query := q.engine.Query(params)
 	res, err := query.Exec(ctx)
 	if err != nil {
 		return nil, err

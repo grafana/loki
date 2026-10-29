@@ -20,7 +20,6 @@ func (l *Loki) setupLBAC() error {
 	l.ModuleManager.RegisterModule(LabelAccess, l.initStoreChunkFilterer)
 	l.ModuleManager.RegisterModule(LabelAccessStoreWrapper, l.initLabelAccessStoreWrapper, modules.UserInvisibleModule)
 	l.ModuleManager.RegisterModule(LabelAccessIngesterWrapper, l.initLabelAccessIngesterWrapper)
-	l.ModuleManager.RegisterModule(LabelAccessV2Engine, l.initLabelAccessV2Engine, modules.UserInvisibleModule)
 	l.ModuleManager.RegisterModule(LabelAccessInterceptors, l.initLabelAccessInterceptors, modules.UserInvisibleModule)
 	l.ModuleManager.RegisterModule(LabelAccessTripperware, l.initLabelAccessMiddleware, modules.UserInvisibleModule)
 	l.ModuleManager.RegisterModule(Filterers, l.initFilterers, modules.UserInvisibleModule)
@@ -38,7 +37,6 @@ func (l *Loki) setupLBAC() error {
 		LabelAccessStoreWrapper: {Store},
 		LabelAccessTripperware:  {AuthTripperware},
 		Querier:                 {AuthMiddleware, LabelAccess, LabelAccessStoreWrapper},
-		QueryEngine:             {AuthMiddleware, LabelAccessV2Engine},
 		QueryFrontend:           {AuthMiddleware, LabelAccessTripperware},
 		Server:                  {LabelAccessInterceptors, LabelAccessUserIDTransformer},
 	}
@@ -109,18 +107,6 @@ func (l *Loki) initLabelAccessMiddleware() (services.Service, error) {
 func (l *Loki) initLabelAccessStoreWrapper() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing store wrapper")
 	l.Store = labelaccess.WrapStore(l.Store)
-
-	return nil, nil
-}
-
-func (l *Loki) initLabelAccessV2Engine() (services.Service, error) {
-	_ = level.Debug(util_log.Logger).Log("msg", "initializing LBAC support for V2 query engine")
-
-	// Set the StreamFilterer for filtering streams based on LBAC policies.
-	// LBAC policies are propagated via HTTP headers using PropagateAllHeadersMiddleware
-	// and httpreq.InjectHeader, then extracted at the worker via httpreq.ExtractAllHeaders.
-	streamFilterer := &labelaccess.RequestStreamFilterer{}
-	l.Cfg.QueryEngine.Executor.StreamFilterer = streamFilterer
 
 	return nil, nil
 }
