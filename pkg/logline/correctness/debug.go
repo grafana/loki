@@ -23,6 +23,8 @@ type debugResponse struct {
 	HintQueryType      string           `json:"hint_query_type"`
 	RangeStart         time.Time        `json:"range_start"`
 	RangeEnd           time.Time        `json:"range_end"`
+	ReadStart          time.Time        `json:"read_start,omitempty"`
+	ReadEnd            time.Time        `json:"read_end,omitempty"`
 	Selector           string           `json:"selector"`
 	Label              string           `json:"label,omitempty"`
 	Needle             string           `json:"needle"`
@@ -133,6 +135,8 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		HintQueryType:      string(req.queryType),
 		RangeStart:         req.start,
 		RangeEnd:           req.end,
+		ReadStart:          qb.ReadStart,
+		ReadEnd:            qb.ReadEnd,
 		Selector:           req.selector,
 		Label:              req.label,
 		Needle:             req.needle,
