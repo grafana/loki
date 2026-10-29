@@ -932,7 +932,8 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.nextWithOutcome(ctx, req, mode, outcomeUnsupportedQuery)
 	}
 
-	qb := querybounds.GetQueryBounds(req, expr, h.alignQueriesWithStep)
+	qt := querybounds.GetQueryType(req, expr)
+	qb := querybounds.GetQueryBounds(req.GetStart(), req.GetEnd(), req.GetStep(), expr, qt, h.alignQueriesWithStep)
 
 	// Shared eligibility: stats-based byte threshold.
 	readStart := qb.ReadStart

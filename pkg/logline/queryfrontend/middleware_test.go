@@ -3058,7 +3058,7 @@ func TestDryRun_MetricRange_StepExtendsLookup(t *testing.T) {
 	req.Step = time.Minute.Milliseconds()
 	expr, err := syntax.ParseExpr(query)
 	require.NoError(t, err)
-	qb := querybounds.GetQueryBounds(req, expr, false)
+	qb := querybounds.GetQueryBounds(req.GetStart(), req.GetEnd(), req.GetStep(), expr, querybounds.QueryTypeMetricRange, false)
 	lookupFrom, lookupThrough := qb.ReadStart, qb.ReadEnd
 
 	var statsFrom, statsThrough model.Time
