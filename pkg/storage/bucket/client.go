@@ -246,7 +246,7 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 	case GCS:
 		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger, instrumentTransport())
 	case Azure:
-		client, err = azure.NewBucketClient(cfg.Azure, name, logger, instrumentTransport())
+		client, err = azure.NewBucketClient(cfg.Azure, name, connectionPoolSize, logger, instrumentTransport())
 	case Swift:
 		client, err = swift.NewBucketClient(cfg.Swift, name, connectionPoolSize, logger, instrumentTransport())
 	case Filesystem:
