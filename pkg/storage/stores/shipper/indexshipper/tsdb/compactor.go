@@ -490,6 +490,12 @@ func (c *compactedIndex) ToIndexFiles() ([]shipperindex.Index, error) {
 	return []shipperindex.Index{idx}, nil
 }
 
+// ToShardedIndexFiles creates the files of the sharded index copy. The index is
+// not split by fingerprint yet, so this is the same single file as ToIndexFiles.
+func (c *compactedIndex) ToShardedIndexFiles() ([]shipperindex.Index, error) {
+	return c.ToIndexFiles()
+}
+
 func getUnsafeBytes(s string) []byte {
 	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
