@@ -136,7 +136,7 @@ func TestCheckDataObjReads(t *testing.T) {
 	})
 
 	t.Run("returns no error when no part of the query is stream-first", func(t *testing.T) {
-		const query = `sum(rate({a="b"}[1m]))`
+		const query = `sum(avg_over_time({a="b"} | logfmt | unwrap n [1m]))`
 
 		require.NoError(t, checkDataObjReads(query, vectorResult(afterStart, 0), dataObjStart))
 	})

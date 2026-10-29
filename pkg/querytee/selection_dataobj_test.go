@@ -60,7 +60,7 @@ func TestDataObjStrategy_Select(t *testing.T) {
 		},
 		"does not select a nested metric query that holds no stream-first sum": {
 			tenants:  []string{"enabled"},
-			query:    `max(sum(rate({app="a"}[5m])))`,
+			query:    `max(sum(avg_over_time({app="a"} | logfmt | unwrap n [5m])))`,
 			start:    now.Add(-24 * time.Hour),
 			end:      now.Add(-12 * time.Hour),
 			expected: Selection{Selected: false, Reason: "unsupported_query"},

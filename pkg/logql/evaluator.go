@@ -859,7 +859,6 @@ func newStreamFirstRangeAggEvaluator(
 ) (StepEvaluator, error) {
 	rangeIter, err := newStreamFirstRangeVectorIterator(
 		ctx, it, expr,
-		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 		grouping,
