@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
 )
 
@@ -76,23 +77,30 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	overlapping := s.indexStore.IndexesForRange(req.start, req.end)
+	qt := querybounds.QueryTypeLog
+	if hq.queryType == hintQueryTypeMetricRange {
+		qt = querybounds.QueryTypeMetricRange
+	}
+	qb := querybounds.GetQueryBounds(req.start, req.end, hq.step().Milliseconds(), hq.expr, qt, false)
+	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 
-	entries, _, err := s.queryLogs(r.Context(), hq.query, req.start, req.end, s.cfg.LogQueryLimit)
+	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
+
+	// Pass requested start/end values to Loki, as Loki pipelines will perform the same adjustment.
+	res, err := s.fetchNeedleResults(r.Context(), hq, qb.RequestedStart, qb.RequestedEnd)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "correctness debug query failed", "query", hq.query, "err", err)
 		http.Error(w, "failed to query Loki", http.StatusInternalServerError)
 		return
 	}
-	resultEntries := protoEntries(entries)
 
 	hintStart := time.Now()
 	hints, _, err := s.hintProvider.ProvideHints(
 		r.Context(),
 		s.cfg.TenantID,
 		hq.expr,
-		model.TimeFromUnixNano(req.start.UnixNano()),
-		model.TimeFromUnixNano(req.end.UnixNano()),
+		model.TimeFromUnixNano(readStart.UnixNano()),
+		model.TimeFromUnixNano(readEnd.UnixNano()),
 	)
 	hintDuration := time.Since(hintStart)
 	if err != nil {
@@ -121,11 +129,11 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		Needle:             req.needle,
 		OverlappingIndexes: len(overlapping),
 		HintDuration:       hintDuration.String(),
-		Entries:            buildDebugEntries(resultEntries, hintRanges),
-		HintRanges:         buildDebugHintRanges(resultEntries, hintRanges),
+		Entries:            buildDebugEntries(res.entries, hintRanges),
+		HintRanges:         buildDebugHintRanges(res.entries, hintRanges),
 	}
 
-	vr := verifyHints(hintRanges, resultEntries)
+	vr := verifyHints(hintRanges, res.entries)
 	resp.Summary = debugSummary{
 		TotalResults:   vr.TotalResults,
 		CoveredResults: vr.CoveredResults,
