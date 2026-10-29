@@ -24,10 +24,11 @@ type runtimeConfigValues struct {
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
 
-func (r runtimeConfigValues) validate() error {
+func (r *runtimeConfigValues) validate() error {
 	for t, c := range r.TenantLimits {
 		if c == nil {
-			level.Warn(util_log.Logger).Log("msg", "skipping empty tenant limit definition", "tenant", t)
+			level.Warn(util_log.Logger).Log("msg", "removing empty tenant limit definition", "tenant", t)
+			delete(r.TenantLimits, t)
 			continue
 		}
 
