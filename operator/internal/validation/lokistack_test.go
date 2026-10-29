@@ -534,7 +534,11 @@ var ltt = []struct {
 							},
 						},
 						"tenant-b": {
-							// no retention config = infinite retention
+							// no retention config = infinite retention; the ingestion limit is only
+							// set so the entry is not empty (per-tenant limits must set one limit)
+							IngestionLimits: &lokiv1.IngestionLimitSpec{
+								IngestionRate: 4,
+							},
 						},
 					},
 				},
@@ -1081,6 +1085,121 @@ var ltt = []struct {
 				),
 			},
 		),
+	},
+	{
+		desc: "lokistack with per-tenant limits that set no limit - should fail",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"queries": {},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "tenants", "queries"),
+					"queries",
+					lokiv1.ErrTenantLimitsEmpty.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "lokistack with per-tenant limits that set no limit next to a valid tenant - should fail",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							IngestionLimits: &lokiv1.IngestionLimitSpec{
+								IngestionRate: 4,
+							},
+						},
+						"queries": {},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "tenants", "queries"),
+					"queries",
+					lokiv1.ErrTenantLimitsEmpty.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "lokistack with per-tenant ingestion limits - should succeed",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							IngestionLimits: &lokiv1.IngestionLimitSpec{
+								IngestionRate: 4,
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		desc: "lokistack with per-tenant retention limits - should succeed",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							Retention: &lokiv1.RetentionLimitSpec{
+								Days: 7,
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+			},
+		},
 	},
 }
 

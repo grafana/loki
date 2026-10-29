@@ -91,6 +91,8 @@ var (
 	ErrOTLPTenantNoStreamLabel = errors.New("if no global OTLP configuration is present which defines at least one stream label, every tenant must define at least one stream label")
 	// ErrOTLPInvalidDrop when a OTLP configuration tries to drop an attribute also listed as a stream label
 	ErrOTLPInvalidDrop = errors.New("can not drop OTLP attribute also listed as a stream label")
+	// ErrTenantLimitsEmpty when a per-tenant limits entry does not set any limit.
+	ErrTenantLimitsEmpty = errors.New("per-tenant limits must define at least one limit (ingestion, queries, retention or otlp)")
 
 	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
 	// matchers for a namespace.
