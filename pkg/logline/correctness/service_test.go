@@ -242,10 +242,12 @@ func TestRunVerificationCycle_MetricRange(t *testing.T) {
 	defer loki.Close()
 
 	indexStore := newTestStore(t)
+	var buf bytes.Buffer
 	svc := newTestService(t, indexStore, loki.URL, base)
 	useMetricHintSeed(svc)
 	hints := &recordingHintProvider{}
 	svc.hintProvider = hints
+	svc.logger = log.NewLogfmtLogger(&buf)
 
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
@@ -258,6 +260,10 @@ func TestRunVerificationCycle_MetricRange(t *testing.T) {
 		Start: witnessTS.Add(-5 * time.Minute),
 		End:   witnessTS,
 	}}, report.FalseNegativeRanges)
+	logLine := buf.String()
+	require.Contains(t, logLine, "false_negative_ranges=")
+	require.NotContains(t, logLine, "false_negative_timestamps=")
+	require.NotContains(t, logLine, "excluded_covering_fn_count=")
 
 	expr, err := syntax.ParseExpr(report.HintQuery)
 	require.NoError(t, err)

@@ -44,7 +44,7 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
    - Every non-skipped cycle emits a `msg="correctness cycle step"` log at each major step: `picked_range`, `picked_label_value`, `fetched_sample_logs`, `picked_needle`, `fetched_needle_results`, `fetched_hints`.
    - Final outcome is logged as `msg="correctness cycle completed"` with the cycle report (selector, range, needle, candidate counts, true/false positives, correctness).
    - On an incorrect log cycle, `correctness failure detail` includes `excluded_covering_fn_count`, and each matching index is logged as `correctness failure FN covered by ingester-window index` — candidates for the Loki event-time vs logline `min_rec_ts` asymmetry (metadata only; no term probe).
-   - On an incorrect metric cycle, `correctness failure detail` still includes `false_negative_timestamps` and `excluded_covering_fn_count`, both empty, and adds `false_negative_ranges` when a positive sample's lookback is missed. The `correctness failure FN covered by ingester-window index` lines are emitted when a false-negative timestamp falls in an excluded index, so a metric miss emits none.
+   - On an incorrect metric cycle, `correctness failure detail` adds `false_negative_ranges` when a positive sample's lookback is missed, and omits `false_negative_timestamps` and `excluded_covering_fn_count`. The `correctness failure FN covered by ingester-window index` lines are emitted when a false-negative timestamp falls in an excluded index, so a metric miss emits none.
    - Aggregate counters are exported via Prometheus metrics.
 
 5. **Queryable token requirement**

@@ -507,26 +507,6 @@ func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse,
 	return verification.VerifySamples(expr, hints, samples, eligibleEnd)
 }
 
-// metricMatcherGroup returns the single matcher group for a supported metric query.
-func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
-	groups, err := syntax.MatcherGroups(expr)
-	if err != nil || len(groups) != 1 {
-		return syntax.MatcherRange{}
-	}
-	return groups[0]
-}
-
-func isAbsentOverTimeAgg(expr syntax.Expr) bool {
-	switch e := expr.(type) {
-	case *syntax.VectorAggregationExpr:
-		return isAbsentOverTimeAgg(e.Left)
-	case *syntax.RangeAggregationExpr:
-		return e.Operation == syntax.OpRangeTypeAbsent
-	default:
-		return false
-	}
-}
-
 func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
 	if resp == nil {
 		return verification.Report{HintRanges: len(hintRanges)}

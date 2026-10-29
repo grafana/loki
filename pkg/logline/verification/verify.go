@@ -40,10 +40,10 @@ type MetricSample struct {
 // Records the full lookback period as a false-negative range if no hints cover it.
 func VerifySamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples []MetricSample, eligibleEnd time.Time) Report {
 	report := Report{HintRanges: len(hints)}
-	if IsAbsentOverTime(expr) {
+	if isAbsentOverTime(expr) {
 		return report
 	}
-	group := MetricMatcherGroup(expr)
+	group := metricMatcherGroup(expr)
 	for _, sample := range samples {
 		if sample.Value <= 0 {
 			continue
@@ -53,7 +53,7 @@ func VerifySamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples
 			continue
 		}
 		report.TotalEntries++
-		if !RangesOverlap(hints, winStart, winEnd) {
+		if !rangesOverlap(hints, winStart, winEnd) {
 			report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
 				Start: winStart,
 				End:   winEnd,
@@ -66,12 +66,12 @@ func VerifySamples(expr syntax.Expr, hints []hintprovider.HintTimeRange, samples
 	return report
 }
 
-// IsAbsentOverTime reports whether expr is an absent_over_time aggregation,
+// isAbsentOverTime reports whether expr is an absent_over_time aggregation,
 // including one wrapped in vector aggregations.
-func IsAbsentOverTime(expr syntax.Expr) bool {
+func isAbsentOverTime(expr syntax.Expr) bool {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
-		return IsAbsentOverTime(e.Left)
+		return isAbsentOverTime(e.Left)
 	case *syntax.RangeAggregationExpr:
 		return e.Operation == syntax.OpRangeTypeAbsent
 	default:
@@ -79,8 +79,8 @@ func IsAbsentOverTime(expr syntax.Expr) bool {
 	}
 }
 
-// MetricMatcherGroup returns the single matcher group for a supported metric query.
-func MetricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
+// metricMatcherGroup returns the single matcher group for a supported metric query.
+func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 	groups, err := syntax.MatcherGroups(expr)
 	if err != nil || len(groups) != 1 {
 		return syntax.MatcherRange{}
@@ -88,10 +88,10 @@ func MetricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 	return groups[0]
 }
 
-// RangesOverlap reports whether any half-open hint [Start, End) overlaps the
+// rangesOverlap reports whether any half-open hint [Start, End) overlaps the
 // lookback (start, end]. A hint that only ends at start shares no time with
 // the lookback. Ranges must be sorted by Start.
-func RangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
 	if len(ranges) == 0 {
 		return false
 	}

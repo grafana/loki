@@ -432,15 +432,12 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 
 	excludedCoveringFN := s.excludedIndexesCoveringFNs(report.FalseNegativeTimestamps, readStart, readEnd)
 
-	// Log failure detail: which indexes were consulted, which timestamps were missed.
+	// A log miss records timestamps. A metric miss records each sample's lookback.
 	detail := []any{
 		"msg", "correctness failure detail",
 		"hint_query", report.HintQuery,
 		"overlapping_index_ids", strings.Join(report.OverlappingIndexIDs, ","),
-		"false_negative_timestamps", formatTimestamps(report.FalseNegativeTimestamps),
-		"excluded_covering_fn_count", len(excludedCoveringFN),
 	}
-
 	if len(report.FalseNegativeTimestamps) > 0 {
 		detail = append(detail,
 			"false_negative_timestamps", formatTimestamps(report.FalseNegativeTimestamps),
@@ -762,7 +759,6 @@ func (s *Service) queryMetrics(
 			lastErr = fmt.Errorf("endpoint %s decode query metrics response: %w", c.endpoint, err)
 			continue
 		}
-		// TODO
 		return samples, c.endpoint, seriesLimitTruncated(resp.Warnings), nil
 	}
 
