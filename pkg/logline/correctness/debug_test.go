@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
@@ -202,6 +204,80 @@ func TestBuildDebugSamples_UsesSampleLookback(t *testing.T) {
 	require.Equal(t, 1, ranges[0].EntryCount)
 }
 
+func TestHandleDebug_MetricRange(t *testing.T) {
+	start := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	end := start.Add(2 * time.Minute)
+
+	resp, metric, hints, qb := runMetricDebug(t, start, end)
+	require.Equal(t, end, qb.ReadEnd)
+	require.True(t, qb.ReadStart.Before(start))
+	require.Equal(t, qb.RequestedStart, metric.start)
+	require.Equal(t, qb.RequestedEnd, metric.end)
+	require.Equal(t, "60", metric.step)
+	require.Equal(t, model.TimeFromUnixNano(qb.ReadStart.UnixNano()), hints.from)
+	require.Equal(t, model.TimeFromUnixNano(qb.ReadEnd.UnixNano()), hints.through)
+
+	require.Empty(t, resp.Entries)
+	require.Len(t, resp.Samples, 1)
+	require.True(t, resp.Samples[0].Time.Equal(end))
+	require.Equal(t, float64(1), resp.Samples[0].Value)
+	require.True(t, resp.Samples[0].Covered)
+	require.Equal(t, 1, resp.HintRanges[0].EntryCount)
+	require.True(t, resp.Summary.Correct)
+}
+
+func TestHandleDebug_MetricRange_OffMinuteEnd(t *testing.T) {
+	start := time.Date(2026, 2, 26, 2, 0, 10, 0, time.UTC)
+	end := time.Date(2026, 2, 26, 2, 5, 10, 0, time.UTC)
+
+	_, metric, hints, qb := runMetricDebug(t, start, end)
+	require.Equal(t, end, qb.RequestedEnd)
+	require.Equal(t, time.Date(2026, 2, 26, 2, 6, 0, 0, time.UTC), qb.ReadEnd)
+	require.Equal(t, qb.RequestedStart, metric.start)
+	require.Equal(t, qb.RequestedEnd, metric.end)
+	require.Equal(t, "60", metric.step)
+	require.Equal(t, model.TimeFromUnixNano(qb.ReadEnd.UnixNano()), hints.through)
+}
+
+func runMetricDebug(t *testing.T, start, end time.Time) (debugResponse, *recordedMetricQuery, *debugWindowHintProvider, querybounds.QueryBounds) {
+	t.Helper()
+	needle := "9fA81cD2Ef0077aa"
+	metric := &recordedMetricQuery{}
+	loki := newTestLokiServerRecording(t, end, needle, metric)
+	t.Cleanup(loki.Close)
+
+	svc := newTestService(t, newTestStore(t), loki.URL, start)
+	hints := &debugWindowHintProvider{hints: &hintprovider.Hints{
+		TimeRanges: []hintprovider.HintTimeRange{{
+			Start:  end.Add(-5 * time.Minute),
+			End:    end,
+			Source: "metric",
+		}},
+	}}
+	svc.hintProvider = hints
+
+	query := url.Values{}
+	query.Set("start", start.Format(time.RFC3339))
+	query.Set("end", end.Format(time.RFC3339))
+	query.Set("selector", `{job="api"}`)
+	query.Set("needle", needle)
+	query.Set("query_type", "metric_range")
+	req := httptest.NewRequest(http.MethodGet, "/correctness/debug?"+query.Encode(), nil)
+	rec := httptest.NewRecorder()
+	svc.handleDebug(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var resp debugResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, resp.HintQuery)
+	require.Equal(t, string(hintQueryTypeMetricRange), resp.HintQueryType)
+
+	expr, err := syntax.ParseExpr(resp.HintQuery)
+	require.NoError(t, err)
+	qb := querybounds.GetQueryBounds(start, end, time.Minute.Milliseconds(), expr, querybounds.QueryTypeMetricRange, false)
+	return resp, metric, hints, qb
+}
+
 func TestBuildDebugHintQuery_MetricRange(t *testing.T) {
 	hq, err := buildDebugHintQuery(debugRequest{
 		selector:  `{job="api"}`,
@@ -283,6 +359,23 @@ func TestHandleDebug_UnsupportedQuery(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "query not supported by logline index")
+}
+
+// debugWindowHintProvider records the hint-lookup window and returns a fixed hint.
+type debugWindowHintProvider struct {
+	from, through model.Time
+	hints         *hintprovider.Hints
+}
+
+func (p *debugWindowHintProvider) ProvideHints(
+	_ context.Context,
+	_ string,
+	_ syntax.Expr,
+	from, through model.Time,
+) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
+	p.from = from
+	p.through = through
+	return p.hints, nil, nil
 }
 
 type staticHintProvider struct {
