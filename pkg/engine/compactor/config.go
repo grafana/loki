@@ -25,8 +25,7 @@ type Config struct {
 	Enabled bool `yaml:"enabled"`
 
 	// MaxRunningCompactionTasks caps how many IndexMerge tasks the coordinator
-	// runs concurrently per tenant. The cap includes the tasks that merge log
-	// compaction outputs. Zero means unlimited (one goroutine per task
+	// runs concurrently per tenant. Zero means unlimited (one goroutine per task
 	// with no admission throttle). Negative values are rejected at config
 	// validation.
 	MaxRunningCompactionTasks int `yaml:"max_running_compaction_tasks"`
@@ -58,8 +57,7 @@ type Config struct {
 	WindowLookback int `yaml:"window_lookback"`
 
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
-	// single IndexMerge task may consume. Memory grows linearly with K. It must
-	// be at least 2, because a task of one run cannot merge overlapping runs.
+	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
 	// LogMaxRunsPerTask (K for log compaction) is the maximum number of runs a
@@ -83,9 +81,9 @@ type Config struct {
 	ToCConsolidateTimeout time.Duration `yaml:"toc_consolidate_timeout"`
 
 	// DryRun, when true, skips the post-compaction ReplaceIndexPointers ToC
-	// swap. Planning and task execution for index and log compaction still
-	// run and the per-output audit log is still emitted, but the ToC is never
-	// mutated. Intended for testing compaction.
+	// swap. Planning and IndexMerge task execution still run and the
+	// per-output audit log is still emitted, but the ToC is never mutated.
+	// Intended for testing index compaction.
 	DryRun bool `yaml:"dry_run"`
 
 	// PlanVersion is hashed into IndexMerge output paths so a planner
@@ -195,7 +193,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Enable dataobj compaction modules (planner and worker targets when selected via -target).")
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
 		defaultMaxRunningCompactionTasks,
-		"Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks dispatched by the coordinator, including the tasks that merge log compaction outputs. 0 means unlimited (one goroutine per task with no admission throttle).")
+		"Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks dispatched by the coordinator. 0 means unlimited (one goroutine per task with no admission throttle).")
 	f.IntVar(&cfg.LogMaxRunningCompactionTasks, prefix+"logs.max-running-compaction-tasks",
 		defaultLogMaxRunningCompactionTasks,
 		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
@@ -208,7 +206,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
 		"Experimental: Number of prior metastore windows to compact in addition to the current window. Must be at least 1, which compacts the current and immediately prior window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
-		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K. Must be at least 2.")
+		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
 		"Experimental: Maximum runs per LogMerge task (K for log compaction). Log compaction starts only when a size level holds K runs, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")
@@ -219,7 +217,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
-		"Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap. Planning, task execution for index and log compaction, and per-output audit logging still run, but the ToC is never mutated.")
+		"Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap. Planning, IndexMerge task execution, and per-output audit logging still run, but the ToC is never mutated.")
 	f.UintVar(&cfg.PlanVersion, prefix+"plan-version", defaultPlanVersion,
 		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",

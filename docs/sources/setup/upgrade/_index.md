@@ -37,12 +37,6 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Experimental dataobj compaction requires `max_runs_per_task` of at least 2
-
-When dataobj compaction is enabled, Loki now rejects a `dataobj.compaction.max_runs_per_task` (`-dataobj.compaction.max-runs-per-task`) value below 2 at startup.
-An IndexMerge task that reads one run can't merge overlapping runs, so compaction never converges.
-If you set this value to 1, raise it to 2 or more before you upgrade.
-
 ### Statistics in detected-field query responses
 
 The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON

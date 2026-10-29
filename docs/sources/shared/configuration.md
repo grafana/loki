@@ -1111,9 +1111,8 @@ dataobj:
     [enabled: <boolean> | default = false]
 
     # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
-    # dispatched by the coordinator, including the tasks that merge log
-    # compaction outputs. 0 means unlimited (one goroutine per task with no
-    # admission throttle).
+    # dispatched by the coordinator. 0 means unlimited (one goroutine per task
+    # with no admission throttle).
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
@@ -1145,7 +1144,7 @@ dataobj:
     [window_lookback: <int> | default = 1]
 
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
-    # with K. Must be at least 2.
+    # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
@@ -1176,8 +1175,8 @@ dataobj:
     [toc_consolidate_timeout: <duration> | default = 30s]
 
     # Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap.
-    # Planning, task execution for index and log compaction, and per-output
-    # audit logging still run, but the ToC is never mutated.
+    # Planning, IndexMerge task execution, and per-output audit logging still
+    # run, but the ToC is never mutated.
     # CLI flag: -dataobj.compaction.dry-run
     [dry_run: <boolean> | default = false]
 
