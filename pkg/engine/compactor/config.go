@@ -57,7 +57,8 @@ type Config struct {
 	WindowLookback int `yaml:"window_lookback"`
 
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
-	// single IndexMerge task may consume. Memory grows linearly with K.
+	// single IndexMerge task may consume. Memory grows linearly with K. It must
+	// be at least 2, because a task of one run rewrites an index unchanged.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
 	// LogMaxRunsPerTask (K for log compaction) is the maximum number of runs a
@@ -206,7 +207,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
 		"Experimental: Number of prior metastore windows to compact in addition to the current window. Must be at least 1, which compacts the current and immediately prior window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
-		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
+		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K. Must be at least 2.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
 		"Experimental: Maximum runs per LogMerge task (K for log compaction). Log compaction starts only when a size level holds K runs, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")
@@ -289,7 +290,7 @@ func (cfg *Config) Validate() error {
 	if cfg.ToCConsolidateTimeout <= 0 {
 		return errInvalidToCConsolidateTimeout
 	}
-	if cfg.MaxRunsPerTask <= 0 {
+	if cfg.MaxRunsPerTask < 2 {
 		return errInvalidMaxRunsPerTask
 	}
 	if cfg.LogMaxRunsPerTask < 2 {
@@ -319,7 +320,7 @@ var (
 	errInvalidMaxBackoff                   = errors.New("dataobj.compaction.max_backoff must be >= dataobj.compaction.min_backoff when compaction is enabled")
 	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 1")
 	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
-	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be at least 2 when compaction is enabled")
 	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be at least 2 when compaction is enabled")
 	errInvalidLogMinCompactionSize         = errors.New("dataobj.compaction.logs.min_compaction_size must be > 0 when compaction is enabled")
 )
