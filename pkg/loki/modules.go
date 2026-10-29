@@ -2517,6 +2517,7 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 	// narrowing.
 	cfg := t.Cfg.Logline.Correctness
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+	cfg.AlignQueriesWithStep = t.Cfg.QueryRange.AlignQueriesWithStep
 
 	indexStore, err := loglinestore.New(
 		context.Background(),

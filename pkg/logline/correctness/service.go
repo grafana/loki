@@ -330,7 +330,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		qt = querybounds.QueryTypeMetricRange
 	}
 
-	qb := querybounds.GetQueryBounds(rangeStart, rangeEnd, hq.step().Milliseconds(), hq.expr, qt, false)
+	qb := querybounds.GetQueryBounds(rangeStart, rangeEnd, hq.step().Milliseconds(), hq.expr, qt, s.cfg.AlignQueriesWithStep)
 	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 
 	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
