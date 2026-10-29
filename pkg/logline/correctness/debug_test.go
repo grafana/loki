@@ -195,12 +195,40 @@ func TestBuildDebugSamples_UsesSampleLookback(t *testing.T) {
 		{Time: step.Add(-5 * time.Minute), Value: 0},
 	}
 
-	got := buildDebugSamples(hq.expr, samples, hints)
+	got := buildDebugSamples(hq.expr, samples, hints, time.Time{})
 	require.Len(t, got, 2)
 	require.True(t, got[0].Covered)
 	require.False(t, got[1].Covered)
 
-	ranges := buildDebugMetricHintRanges(hq.expr, samples, hints)
+	ranges := buildDebugMetricHintRanges(hq.expr, samples, hints, time.Time{})
+	require.Equal(t, 1, ranges[0].EntryCount)
+}
+
+func TestBuildDebugSamples_OmitsLookbackAfterEligibleEnd(t *testing.T) {
+	hq, err := buildDebugHintQuery(debugRequest{
+		selector:  `{job="api"}`,
+		needle:    "9fA81cD2Ef0077aa",
+		queryType: hintQueryTypeMetricRange,
+	})
+	require.NoError(t, err)
+
+	step := time.Date(2026, 2, 26, 2, 5, 0, 0, time.UTC)
+	later := step.Add(time.Minute)
+	hints := []hintprovider.HintTimeRange{{
+		Start: step.Add(-5 * time.Minute),
+		End:   later,
+	}}
+	samples := []verification.MetricSample{
+		{Time: step, Value: 1},
+		{Time: later, Value: 1},
+	}
+
+	got := buildDebugSamples(hq.expr, samples, hints, step)
+	require.Len(t, got, 1)
+	require.True(t, got[0].Time.Equal(step))
+	require.True(t, got[0].Covered)
+
+	ranges := buildDebugMetricHintRanges(hq.expr, samples, hints, step)
 	require.Equal(t, 1, ranges[0].EntryCount)
 }
 

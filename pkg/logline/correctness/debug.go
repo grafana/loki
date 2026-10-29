@@ -93,9 +93,10 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 
 	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
+	eligibleEnd := s.nowFn().UTC().Add(-s.cfg.QueryIngestersWithin)
 
 	// Pass requested start/end values to Loki, as Loki pipelines will perform the same adjustment.
-	res, err := s.fetchNeedleResults(r.Context(), hq, qb.RequestedStart, qb.RequestedEnd)
+	res, err := s.fetchNeedleResults(r.Context(), hq, qb.RequestedStart, qb.RequestedEnd, eligibleEnd)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "correctness debug query failed", "query", hq.query, "err", err)
 		http.Error(w, "failed to query Loki", http.StatusInternalServerError)
@@ -139,8 +140,8 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		HintDuration:       hintDuration.String(),
 	}
 	if hq.queryType == hintQueryTypeMetricRange {
-		resp.Samples = buildDebugSamples(hq.expr, res.samples, hintRanges)
-		resp.HintRanges = buildDebugMetricHintRanges(hq.expr, res.samples, hintRanges)
+		resp.Samples = buildDebugSamples(hq.expr, res.samples, hintRanges, eligibleEnd)
+		resp.HintRanges = buildDebugMetricHintRanges(hq.expr, res.samples, hintRanges, eligibleEnd)
 	} else {
 		resp.Entries = buildDebugEntries(res.entries, hintRanges)
 		resp.HintRanges = buildDebugHintRanges(res.entries, hintRanges)
@@ -283,7 +284,7 @@ func buildDebugHintRanges(entries []logproto.Entry, hintRanges []hintprovider.Hi
 	return respRanges
 }
 
-func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugSample {
+func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange, eligibleEnd time.Time) []debugSample {
 	out := make([]debugSample, 0, len(samples))
 	for _, sample := range samples {
 		// A zero sample is not scored. Leaving it in the response with covered
@@ -291,7 +292,11 @@ func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hi
 		if sample.Value <= 0 {
 			continue
 		}
-		report := verification.VerifySamples(expr, hintRanges, []verification.MetricSample{sample}, time.Time{})
+		report := verification.VerifySamples(expr, hintRanges, []verification.MetricSample{sample}, eligibleEnd)
+		// A lookback ending after eligibleEnd is not scored either.
+		if report.TotalEntries == 0 {
+			continue
+		}
 		out = append(out, debugSample{
 			Time:    sample.Time,
 			Value:   sample.Value,
@@ -301,10 +306,10 @@ func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hi
 	return out
 }
 
-func buildDebugMetricHintRanges(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugHintRange {
+func buildDebugMetricHintRanges(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange, eligibleEnd time.Time) []debugHintRange {
 	respRanges := make([]debugHintRange, 0, len(hintRanges))
 	for i, hintRange := range hintRanges {
-		report := verification.VerifySamples(expr, []hintprovider.HintTimeRange{hintRange}, samples, time.Time{})
+		report := verification.VerifySamples(expr, []hintprovider.HintTimeRange{hintRange}, samples, eligibleEnd)
 		respRanges = append(respRanges, debugHintRange{
 			Index:      i,
 			Start:      hintRange.Start,
