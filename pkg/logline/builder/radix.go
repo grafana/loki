@@ -32,6 +32,16 @@ type ngramSortVariant struct {
 // entry is the production default.
 var ngramSortVariants = []ngramSortVariant{
 	{name: "baseline", newSorter: newBaselineSorter},
+	{name: "fused-hist", newSorter: newFusedHistSorter},
+	{name: "width-8", newSorter: newLSDSorter(8)},
+	{name: "width-10", newSorter: newLSDSorter(10)},
+	{name: "width-12", newSorter: newLSDSorter(12)},
+	{name: "hist2", newSorter: newTweakedSorter(true, false, 0)},
+	{name: "unroll-bce", newSorter: newTweakedSorter(false, true, 0)},
+	{name: "unrolled", newSorter: newTweakedSorter(true, true, 0)},
+	{name: "hugepages", newSorter: newBaselineSorter, hugePages: true},
+	{name: "prefetch-8", newSorter: newTweakedSorter(false, false, 8)},
+	{name: "prefetch-16", newSorter: newTweakedSorter(false, false, 16)},
 }
 
 func lookupNgramSortVariant(name string) (ngramSortVariant, bool) {
