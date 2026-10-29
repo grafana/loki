@@ -109,10 +109,10 @@ var File_google_iam_v1_resource_policy_member_proto protoreflect.FileDescriptor
 
 const file_google_iam_v1_resource_policy_member_proto_rawDesc = "" +
 	"\n" +
-	"*google/iam/v1/resource_policy_member.proto\x12\rgoogle.iam.v1\x1a\x1fgoogle/api/field_behavior.proto\"\x94\x01\n" +
-	"\x14ResourcePolicyMember\x12>\n" +
-	"\x19iam_policy_name_principal\x18\x01 \x01(\tB\x03\xe0A\x03R\x16iamPolicyNamePrincipal\x12<\n" +
-	"\x18iam_policy_uid_principal\x18\x02 \x01(\tB\x03\xe0A\x03R\x15iamPolicyUidPrincipalB\x87\x01\n" +
+	"*google/iam/v1/resource_policy_member.proto\x12\rgoogle.iam.v1\x1a\x1fgoogle/api/field_behavior.proto\"\x96\x01\n" +
+	"\x14ResourcePolicyMember\x12?\n" +
+	"\x19iam_policy_name_principal\x18\x01 \x01(\tB\x04\xe2A\x01\x03R\x16iamPolicyNamePrincipal\x12=\n" +
+	"\x18iam_policy_uid_principal\x18\x02 \x01(\tB\x04\xe2A\x01\x03R\x15iamPolicyUidPrincipalB\x87\x01\n" +
 	"\x11com.google.iam.v1B\x19ResourcePolicyMemberProtoP\x01Z)cloud.google.com/go/iam/apiv1/iampb;iampb\xaa\x02\x13Google.Cloud.Iam.V1\xca\x02\x13Google\\Cloud\\Iam\\V1b\x06proto3"
 
 var (

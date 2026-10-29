@@ -149,7 +149,7 @@ require (
 	cloud.google.com/go/auth v0.24.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.3.0 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
-	cloud.google.com/go/iam v1.14.0 // indirect
+	cloud.google.com/go/iam v1.15.0 // indirect
 	cloud.google.com/go/monitoring v1.32.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.13.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/storage/internal v0.1.0 // indirect
@@ -375,7 +375,7 @@ require (
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
-	google.golang.org/genproto v0.0.0-20261019180522-ce908d29299b // indirect
+	google.golang.org/genproto v0.0.0-20261026165753-2ffab32bce7e // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261019180522-ce908d29299b // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

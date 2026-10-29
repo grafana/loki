@@ -34,7 +34,7 @@ cloud.google.com/go/auth/oauth2adapt
 # cloud.google.com/go/compute/metadata v0.10.0
 ## explicit; go 1.26.0
 cloud.google.com/go/compute/metadata
-# cloud.google.com/go/iam v1.14.0
+# cloud.google.com/go/iam v1.15.0
 ## explicit; go 1.26.0
 cloud.google.com/go/iam
 cloud.google.com/go/iam/apiv1/iampb
@@ -2066,7 +2066,7 @@ google.golang.org/api/storage/v1
 google.golang.org/api/transport
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
-# google.golang.org/genproto v0.0.0-20261019180522-ce908d29299b
+# google.golang.org/genproto v0.0.0-20261026165753-2ffab32bce7e
 ## explicit; go 1.26.0
 google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
