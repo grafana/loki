@@ -195,7 +195,8 @@ func (s *stream) Push(
 
 // PushReplay ingests entries read back from WAL segments during recovery.
 // Entries are not written to a WAL record again. It takes chunkMtx itself, so
-// callers must not hold it. Whole-stream rate limiting does not apply.
+// callers must not hold it. Whole-stream rate limiting does not apply, and
+// replayed entries are not sent to tailers.
 // The WAL does not record the request format, so discard metrics for replayed
 // entries are always attributed to "loki".
 func (s *stream) PushReplay(
@@ -230,7 +231,6 @@ func (s *stream) PushReplay(
 	if len(storedEntries) > 0 {
 		s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
 	}
-	s.sendToTailers(storedEntries)
 
 	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), len(entries))
 }
