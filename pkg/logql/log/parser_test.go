@@ -2347,6 +2347,8 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 		name        string
 		names       []string
 		required    []string
+		stream      labels.Labels // app="x" when empty
+		metadata    labels.Labels
 		line        string
 		want        labels.Labels
 		wantFillers bool
@@ -2364,6 +2366,16 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			required: []string{"app"},
 			line:     "app=y" + fillers.String() + " b=1",
 			want:     labels.FromStrings("app", "x", "b", ""),
+		},
+		{
+			// The metadata value c was renamed to c_extracted, so a parsed c would be dropped.
+			name:     "the renamed name of another name is held by a label",
+			names:    []string{"app", "c"},
+			required: []string{"app", "c_extracted"},
+			stream:   labels.FromStrings("app", "x", "c", "z"),
+			metadata: labels.FromStrings("c", "m"),
+			line:     "app=y" + fillers.String() + " c=1",
+			want:     labels.FromStrings("app", "x", "c", "z", "c_extracted", "m"),
 		},
 		{
 			name:        "another name is needed and comes later",
@@ -2384,15 +2396,107 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			require.NoError(t, err)
 
 			hints := &askedHints{ParserHint: NewParserHint(nil, tt.required, false, false, "")}
-			base := labels.FromStrings("app", "x")
+			base := tt.stream
+			if base.IsEmpty() {
+				base = labels.FromStrings("app", "x")
+			}
 			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 			b.parserKeyHints = hints
 			b.Reset()
+			b.Add(StructuredMetadataLabel, tt.metadata)
 			_, ok := parser.Process(0, []byte(tt.line), b)
 			require.True(t, ok)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 			require.Equal(t, tt.wantFillers, hints.readFillers(), "asked: %v", hints.asked)
 		})
+	}
+}
+
+// A parsed value that is renamed to `foo_extracted` must not replace a stream label or a structured
+// metadata value that has this name. That includes a metadata value that was itself renamed to
+// `foo_extracted` because its own name `foo` was taken (the three-way clash): the parsed value is
+// dropped.
+func TestParsedKeyDoesNotReplaceLabelWithTheName(t *testing.T) {
+	mustRegexp := func(re string) Stage {
+		p, err := NewRegexpParser(re)
+		require.NoError(t, err)
+		return p
+	}
+	mustPattern := func(pn string) Stage {
+		p, err := NewPatternParser(pn)
+		require.NoError(t, err)
+		return p
+	}
+	mustJSONExpr := func() Stage {
+		p, err := NewJSONExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")})
+		require.NoError(t, err)
+		return p
+	}
+	mustLogfmtExpr := func() Stage {
+		p, err := NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")}, false)
+		require.NoError(t, err)
+		return p
+	}
+
+	parsers := []struct {
+		name   string
+		parser Stage
+		line   string
+	}{
+		{"json", NewJSONParser(false), `{"foo":"p"}`},
+		{"logfmt", NewLogfmtParser(false, false), `foo=p`},
+		{"regexp", mustRegexp(`(?P<foo>\w+)`), `p`},
+		{"pattern", mustPattern(`<foo>`), `p`},
+		{"unpack", NewUnpackParser(), `{"foo":"p","_entry":"msg"}`},
+		{"json expression", mustJSONExpr(), `{"foo":"p"}`},
+		{"logfmt expression", mustLogfmtExpr(), `foo=p`},
+	}
+
+	for _, tc := range []struct {
+		name         string
+		stream       labels.Labels
+		metadata     labels.Labels
+		wantStream   labels.Labels
+		wantMetadata labels.Labels
+		wantParsed   labels.Labels
+	}{
+		{
+			name:       "stream label",
+			stream:     labels.FromStrings("foo", "l", "foo_extracted", "le"),
+			wantStream: labels.FromStrings("foo", "l", "foo_extracted", "le"),
+		},
+		{
+			name:         "metadata key",
+			stream:       labels.FromStrings("foo", "l"),
+			metadata:     labels.FromStrings("foo_extracted", "me"),
+			wantStream:   labels.FromStrings("foo", "l"),
+			wantMetadata: labels.FromStrings("foo_extracted", "me"),
+		},
+		{
+			// The metadata key `foo` is renamed to `foo_extracted` when it enters the pipeline. It
+			// keeps that name, like a metadata key that is called `foo_extracted`.
+			name:         "metadata value renamed to the name",
+			stream:       labels.FromStrings("foo", "l"),
+			metadata:     labels.FromStrings("foo", "m"),
+			wantStream:   labels.FromStrings("foo", "l"),
+			wantMetadata: labels.FromStrings("foo_extracted", "m"),
+		},
+	} {
+		for _, p := range parsers {
+			t.Run(tc.name+"/"+p.name, func(t *testing.T) {
+				b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+					ForLabels(tc.stream, labels.StableHash(tc.stream))
+				b.Reset()
+				b.Add(StructuredMetadataLabel, tc.metadata)
+				_, ok := p.parser.Process(0, []byte(p.line), b)
+				require.True(t, ok)
+
+				res := b.LabelsResult()
+				require.Equal(t, tc.wantStream, res.Stream())
+				require.Equal(t, tc.wantMetadata, res.StructuredMetadata())
+				require.Equal(t, tc.wantParsed, res.Parsed())
+			})
+		}
 	}
 }
 
