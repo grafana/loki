@@ -128,11 +128,11 @@ outer:
 	if hasEntries && version >= WALRecordEntriesV4 {
 		// Kafka timestamps have ms precision. Zero means there is none; only timestamps after the
 		// epoch are set, so it is never negative.
-		var ingestedAt int64
+		var ingestedAt uint64
 		if !r.IngestedAt.IsZero() {
-			ingestedAt = r.IngestedAt.UnixMilli()
+			ingestedAt = uint64(r.IngestedAt.UnixMilli())
 		}
-		buf.PutBE64int64(ingestedAt)
+		buf.PutUvarint64(ingestedAt)
 	}
 
 	for _, ref := range r.RefEntries {
@@ -178,8 +178,8 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 
 	if version >= WALRecordEntriesV4 {
 		var ingestedAt time.Time
-		if ms := dec.Be64int64(); ms > 0 {
-			ingestedAt = time.UnixMilli(ms)
+		if ms := dec.Uvarint64(); ms > 0 {
+			ingestedAt = time.UnixMilli(int64(ms))
 		}
 		rec.IngestedAt = ingestedAt
 	}
