@@ -5,6 +5,46 @@
 # what the query shows.
 #
 
+# A line has the key `foo` and a literal `foo_extracted` key, and the stream has the label `foo`.
+# Both keys target `foo_extracted`. The literal key wins, and the key order in the line does not
+# matter. JSON does not define a key order.
+clear
+load
+  {app="f1a", foo="l"}   `{"foo":"p","foo_extracted":"lit"}` @ 10s # the renamed key comes first
+  {app="f1b", foo="l"}   `{"foo_extracted":"lit","foo":"p"}` @ 10s # the literal key comes first
+  {app="noise", foo="l"} `{"foo":"noise"}`                   @ 10s
+
+# The literal key wins when the renamed key comes first.
+eval select from 0 to 30s forward {app="f1a"} | json
+  {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
+# The literal key wins when it comes first.
+eval select from 0 to 30s forward {app="f1b"} | json
+  {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
+# A filter after the parser must see the final value too. A parser may stop on a line early, when a
+# value that it just wrote fails a later filter (#24565). That check must not use the renamed value
+# `p`, which the literal key replaces. Otherwise the parser drops the line with the renamed key
+# first, before it reads the literal key. The queries below must agree with the `| json` queries
+# above. This filter keeps both lines.
+eval select from 0 to 30s forward {app=~"f1[ab]"} | json | foo_extracted="lit"
+  {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
+  {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
+# The renamed value `p` does not exist in the result, so no line passes.
+eval select from 0 to 30s forward {app=~"f1[ab]"} | json | foo_extracted="p"
+  expect empty
+# The same filter in a metric query.
+eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"f1[ab]"} | json | foo_extracted="lit" [1m]))
+  {foo_extracted="lit"} 2
+# The grouped form without a filter reads the same value. The grouping makes the parser extract only
+# `foo` and `foo_extracted`.
+eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"f1[ab]"} | json [1m]))
+  {foo_extracted="lit"} 2
+eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app=~"f1[ab]"} | json [1m])) # overlapping
+  {foo_extracted="lit"} 2 2
+# The expression form names the keys, and the order does not matter there either.
+eval select from 0 to 30s forward {app=~"f1[ab]"} | json foo, foo_extracted
+  {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
+  {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
+
 # The expression form of logfmt names the keys: `logfmt foo, foo_extracted, bar`. A renamed key
 # whose final name is also a name of the expression must not stop the parser, because the key after
 # the pair is still needed. The empty label that stands for a missing key must not take the place of
