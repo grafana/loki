@@ -89,7 +89,7 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 	if hq.queryType == hintQueryTypeMetricRange {
 		qt = querybounds.QueryTypeMetricRange
 	}
-	qb := querybounds.GetQueryBounds(req.start, req.end, hq.step().Milliseconds(), hq.expr, qt, false)
+	qb := querybounds.GetQueryBounds(req.start, req.end, hq.step().Milliseconds(), hq.expr, qt, s.cfg.AlignQueriesWithStep)
 	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 
 	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
