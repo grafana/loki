@@ -15,7 +15,7 @@ pkg/ingester/wal
 pkg/logproto/
 pkg/loghttp/
 pkg/logql/errors/
-pkg/logqlmodel/
+pkg/logql/model/
 pkg/push
 pkg/util
 production/
