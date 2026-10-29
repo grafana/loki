@@ -60,7 +60,7 @@ func (s *msdLSDSorter) seg(aK [][8]byte, aD []uint32, bK [][8]byte, bD []uint32,
 	}
 	h := &s.hist16[from/2]
 	clear(h[:])
-	shift := uint(48 - 8*from)
+	shift := uint(48-8*from) & 63
 	for i := range aK {
 		h[uint16(binary.BigEndian.Uint64(aK[i][:])>>shift)]++
 	}

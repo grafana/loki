@@ -47,7 +47,8 @@ func newDigitHists(digits []lsdDigit) [][]int32 {
 
 // countDigits builds every digit's histogram over key48 in one scan. The
 // common digit counts are unrolled so each element costs one load and one
-// increment per digit.
+// increment per digit. Shift counts are masked with 63, which they never
+// exceed, so the compiler drops its oversized-shift handling.
 func countDigits(keys [][8]byte, digits []lsdDigit, hists [][]int32) {
 	switch len(digits) {
 	case 3:
@@ -56,9 +57,9 @@ func countDigits(keys [][8]byte, digits []lsdDigit, hists [][]int32) {
 		h0, h1, h2 := hists[0], hists[1], hists[2]
 		for i := range keys {
 			k := key48(&keys[i])
-			h0[(k>>s0)&m0]++
-			h1[(k>>s1)&m1]++
-			h2[(k>>s2)&m2]++
+			h0[(k>>(s0&63))&m0]++
+			h1[(k>>(s1&63))&m1]++
+			h2[(k>>(s2&63))&m2]++
 		}
 	case 4:
 		s0, s1, s2, s3 := digits[0].shift, digits[1].shift, digits[2].shift, digits[3].shift
@@ -66,10 +67,10 @@ func countDigits(keys [][8]byte, digits []lsdDigit, hists [][]int32) {
 		h0, h1, h2, h3 := hists[0], hists[1], hists[2], hists[3]
 		for i := range keys {
 			k := key48(&keys[i])
-			h0[(k>>s0)&m0]++
-			h1[(k>>s1)&m1]++
-			h2[(k>>s2)&m2]++
-			h3[(k>>s3)&m3]++
+			h0[(k>>(s0&63))&m0]++
+			h1[(k>>(s1&63))&m1]++
+			h2[(k>>(s2&63))&m2]++
+			h3[(k>>(s3&63))&m3]++
 		}
 	case 5:
 		s0, s1, s2, s3, s4 := digits[0].shift, digits[1].shift, digits[2].shift, digits[3].shift, digits[4].shift
@@ -77,11 +78,11 @@ func countDigits(keys [][8]byte, digits []lsdDigit, hists [][]int32) {
 		h0, h1, h2, h3, h4 := hists[0], hists[1], hists[2], hists[3], hists[4]
 		for i := range keys {
 			k := key48(&keys[i])
-			h0[(k>>s0)&m0]++
-			h1[(k>>s1)&m1]++
-			h2[(k>>s2)&m2]++
-			h3[(k>>s3)&m3]++
-			h4[(k>>s4)&m4]++
+			h0[(k>>(s0&63))&m0]++
+			h1[(k>>(s1&63))&m1]++
+			h2[(k>>(s2&63))&m2]++
+			h3[(k>>(s3&63))&m3]++
+			h4[(k>>(s4&63))&m4]++
 		}
 	case 6:
 		h0, h1, h2, h3, h4, h5 := hists[0], hists[1], hists[2], hists[3], hists[4], hists[5]
@@ -98,7 +99,7 @@ func countDigits(keys [][8]byte, digits []lsdDigit, hists [][]int32) {
 		for i := range keys {
 			k := key48(&keys[i])
 			for d, dig := range digits {
-				hists[d][(k>>dig.shift)&dig.mask]++
+				hists[d][(k>>(dig.shift&63))&dig.mask]++
 			}
 		}
 	}
@@ -343,7 +344,7 @@ func scatter16Unrolled(fromK [][8]byte, fromD []uint32, toK [][8]byte, toD []uin
 	fd := unsafe.Pointer(unsafe.SliceData(fromD))
 	tk := unsafe.Pointer(unsafe.SliceData(toK))
 	td := unsafe.Pointer(unsafe.SliceData(toD))
-	sh := shift + 16
+	sh := (shift + 16) & 63
 	i := 0
 	for ; i+4 <= n; i += 4 {
 		src := unsafe.Add(fk, i*8)
@@ -393,6 +394,7 @@ func scatter16Unrolled(fromK [][8]byte, fromD []uint32, toK [][8]byte, toD []uin
 // is not yet written, so its bucket's next position is below the bucket end.
 func scatter16TouchAhead(fromK [][8]byte, fromD []uint32, toK [][8]byte, toD []uint32, shift uint, pos *[1 << 16]int32, dist int) uint32 {
 	n := len(fromK)
+	shift &= 63
 	fd := fromD[:n]
 	var sink uint32
 	i := 0
