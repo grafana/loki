@@ -1,0 +1,4 @@
+# Captured and generated benchmark datasets; regenerate with the gated
+# TestCaptureKafkaRecords / TestGenerateSyntheticRandom / TestGenerateLoghubCapture.
+*.bin
+loghub/

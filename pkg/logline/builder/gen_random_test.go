@@ -21,12 +21,14 @@ import (
 // dedup-based architecture (maximal run volume, sort work, and unique terms).
 //
 // Randomness is an AES-CTR keystream (hardware-accelerated, ~GB/s) mapped to a
-// 36-char alphabet. Deterministic (fixed key/IV) so the dataset is reproducible.
+// 36-char alphabet. Deterministic (fixed key/IV and a fixed GEN_NOW) so the
+// dataset is byte-for-byte reproducible.
 //
 //	GEN_RANDOM=1 go test ./pkg/logline/builder/ -run TestGenerateSyntheticRandom -v -timeout 20m
 //
 // Env: GEN_OUT (path), GEN_MB (target value MiB, default 250),
-// GEN_LINE_LEN (chars/line, default 100), GEN_ENTRIES (entries/record, default 50).
+// GEN_LINE_LEN (chars/line, default 100), GEN_ENTRIES (entries/record, default 50),
+// GEN_NOW (RFC 3339 reference time, default genDefaultNow).
 func TestGenerateSyntheticRandom(t *testing.T) {
 	if os.Getenv("GEN_RANDOM") == "" {
 		t.Skip("Set GEN_RANDOM=1 to generate the synthetic random dataset")
@@ -35,6 +37,7 @@ func TestGenerateSyntheticRandom(t *testing.T) {
 	targetBytes := int64(envInt("GEN_MB", 250)) << 20
 	lineLen := envInt("GEN_LINE_LEN", 100)
 	entriesPerRecord := envInt("GEN_ENTRIES", 50)
+	now := genNow(t)
 
 	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -68,7 +71,6 @@ func TestGenerateSyntheticRandom(t *testing.T) {
 
 	// Spread timestamps uniformly over the last 7 days so multiple date buckets
 	// (and, at high shard counts, many (date,shard) files) are exercised.
-	now := time.Now().UTC()
 	spanNanos := int64(7 * 24 * time.Hour)
 
 	lineBuf := make([]byte, lineLen)
@@ -115,6 +117,17 @@ func TestGenerateSyntheticRandom(t *testing.T) {
 
 	t.Logf("wrote %s: %d records, %d entries, %.1f MiB of values",
 		out, recordCount, int(recordCount)*entriesPerRecord, float64(valueBytes)/(1<<20))
+}
+
+// genDefaultNow is the reference time of the generated datasets. It is fixed
+// so regenerating a dataset yields identical bytes.
+const genDefaultNow = "2026-10-28T12:00:00Z"
+
+func genNow(t *testing.T) time.Time {
+	t.Helper()
+	now, err := time.Parse(time.RFC3339, envOr("GEN_NOW", genDefaultNow))
+	require.NoError(t, err, "GEN_NOW must be RFC 3339")
+	return now.UTC()
 }
 
 func envInt(k string, def int) int {
