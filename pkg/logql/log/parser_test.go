@@ -2263,6 +2263,19 @@ func TestLogfmtExpressionParserRenamedKeys(t *testing.T) {
 // With a grouping on every name of the expression, the parser stops once all of them are extracted.
 // The empty label that stands for a missing key must not count as extracted, or the parser stops
 // after the first name.
+// A name that the line lacks gets an empty label, but not when an earlier stage extracted the name.
+func TestLogfmtExpressionParserKeepsTheValueOfAnEarlierStage(t *testing.T) {
+	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")}, false)
+	require.NoError(t, err)
+
+	base := labels.FromStrings("app", "x")
+	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+	b.Reset()
+	_, _ = NewJSONParser(false).Process(0, []byte(`{"foo":"first"}`), b)
+	_, _ = parser.Process(0, []byte(`other=x`), b)
+	require.Equal(t, labels.FromStrings("app", "x", "foo", "first"), b.LabelsResult().Labels())
+}
+
 func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
 		NewLabelExtractionExpr("a", "a"),
