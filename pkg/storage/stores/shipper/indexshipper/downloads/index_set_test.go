@@ -260,3 +260,43 @@ func TestIndexSet_ForEach_ErrorPropagation(t *testing.T) {
 		})
 	}
 }
+
+func TestIndexSet_DropAllDBs_CommonIndexSetKeepsUserIndexSets(t *testing.T) {
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	tablePath := filepath.Join(tempDir, cacheDirName, tableName)
+
+	setupIndexesAtPath(t, "", filepath.Join(objectStoragePath, tableName), 0, 5)
+	setupIndexesAtPath(t, userID, filepath.Join(objectStoragePath, tableName, userID), 0, 5)
+
+	userIndexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
+	defer stopFunc()
+	commonIndexSet, _ := buildTestIndexSet(t, "", tempDir)
+	require.Len(t, userIndexSet.index, 5)
+	require.Len(t, commonIndexSet.index, 5)
+
+	// dropping the common index set must not remove the directory of the user index set
+	require.NoError(t, commonIndexSet.DropAllDBs())
+
+	entries, err := os.ReadDir(tablePath)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].IsDir())
+	require.Equal(t, userID, entries[0].Name())
+
+	userFiles, err := os.ReadDir(filepath.Join(tablePath, userID))
+	require.NoError(t, err)
+	require.Len(t, userFiles, 5)
+
+	// the user index set can still sync new files into its directory
+	setupIndexesAtPath(t, userID, filepath.Join(objectStoragePath, tableName, userID), 5, 6)
+	userIndexSet.baseIndexSet.RefreshIndexTableCache(context.Background(), tableName)
+	require.NoError(t, userIndexSet.Sync(context.Background()))
+	require.Len(t, userIndexSet.index, 6)
+
+	// once no user index set is left, dropping the common index set removes the table directory
+	require.NoError(t, userIndexSet.DropAllDBs())
+	commonIndexSet, _ = buildTestIndexSet(t, "", tempDir)
+	require.NoError(t, commonIndexSet.DropAllDBs())
+	require.NoDirExists(t, tablePath)
+}
