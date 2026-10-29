@@ -332,16 +332,17 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 
 	qb := querybounds.GetQueryBounds(rangeStart, rangeEnd, hq.step().Milliseconds(), hq.expr, qt, false)
 	readStart, readEnd := qb.ReadStart, qb.ReadEnd
+
 	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
 	ids := make([]string, len(overlapping))
 	for i, m := range overlapping {
 		ids[i] = m.ID()
 	}
 	report.OverlappingIndexIDs = ids
+	// Pass requested start/end values to Loki, as Loki pipelines will perform same adjustment
+	// to query bounds within the QF middlewares
+	res, err := s.fetchNeedleResults(ctx, hq, qb.RequestedStart, qb.RequestedEnd)
 
-	res, err := s.fetchNeedleResults(ctx, hq, readStart, readEnd)
-
-	// resultEntries, _, err := s.queryLogs(ctx, hq.query, qb.RequestedStart, qb.RequestedEnd, s.cfg.LogQueryLimit)
 	if err != nil {
 		return report, err
 	}

@@ -7,8 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/verification"
 )
 
 func TestVerifyHints_AllResultsCovered(t *testing.T) {
@@ -87,4 +89,55 @@ func TestVerifyHints_EmptyHints(t *testing.T) {
 	require.Equal(t, 1, report.FalseNegatives)
 	require.Equal(t, 0, report.FalsePositives)
 	require.False(t, report.Correct)
+}
+
+func TestVerifyMetricHints_EmptyResults(t *testing.T) {
+	report := verifyMetricHints(metricTestExpr(t), nil, nil)
+	require.Equal(t, 0, report.TotalResults)
+	require.Equal(t, 0, report.FalseNegatives)
+	require.Equal(t, 0, report.FalsePositives)
+	require.Empty(t, report.FalseNegativeRanges)
+	require.Empty(t, report.FalseNegativeTimestamps)
+	require.False(t, report.Correct)
+}
+
+func TestVerifyMetricHints_CoveredSample(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	hints := []hintprovider.HintTimeRange{
+		{Start: step.Add(-2 * time.Minute), End: step.Add(-1 * time.Minute)},
+	}
+
+	report := verifyMetricHints(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}})
+	require.Equal(t, 1, report.TotalResults)
+	require.Equal(t, 1, report.CoveredResults)
+	require.Equal(t, 0, report.FalseNegatives)
+	require.Equal(t, 0, report.FalsePositives)
+	require.Empty(t, report.FalseNegativeRanges)
+	require.True(t, report.Correct)
+}
+
+func TestVerifyMetricHints_MissCopiesLookback(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	hints := []hintprovider.HintTimeRange{
+		{Start: step.Add(-30 * time.Minute), End: step.Add(-20 * time.Minute)},
+	}
+
+	report := verifyMetricHints(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}})
+	require.Equal(t, 1, report.FalseNegatives)
+	require.Equal(t, []hintprovider.HintTimeRange{{
+		Start: step.Add(-5 * time.Minute),
+		End:   step,
+	}}, report.FalseNegativeRanges)
+	require.Empty(t, report.FalseNegativeTimestamps)
+	require.Equal(t, 0, report.FalsePositives)
+	require.False(t, report.Correct)
+}
+
+func metricTestExpr(t *testing.T) syntax.Expr {
+	t.Helper()
+	hq, err := newHintQuery(hintQueryTypeLineFilter, "timeout", `{job="api"} |= "timeout"`)
+	require.NoError(t, err)
+	metric, err := buildMetricQuery(hintQueryTypeMetricRange, hq)
+	require.NoError(t, err)
+	return metric.expr
 }
