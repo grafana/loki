@@ -99,7 +99,7 @@ func buildSyntheticDataobj(tb testing.TB, logsSectionSize flagext.Bytes, streamC
 		TargetSectionSize:       logsSectionSize,
 		BufferSize:              4 << 20,
 		SectionStripeMergeLimit: 2,
-	}, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
+	}, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), logsobj.NoTenantOverrides{})
 	require.NoError(tb, err)
 
 	// Deterministic so iteration-to-iteration variance is only from scheduling.

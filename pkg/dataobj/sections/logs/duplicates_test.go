@@ -1,20 +1,25 @@
 package logs
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 )
 
 func testRecord(streamID int64, ts time.Time, line string, metadata ...string) Record {
 	return Record{StreamID: streamID, Timestamp: ts, Line: []byte(line), Metadata: labels.FromStrings(metadata...)}
 }
 
-func TestDuplicateCounter(t *testing.T) {
+func TestDuplicateTracker(t *testing.T) {
 	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	tests := []struct {
@@ -85,7 +90,7 @@ func TestDuplicateCounter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var counter DuplicateCounter
+			var counter DuplicateTracker
 			for _, rec := range tt.records {
 				counter.IsDuplicate(rec)
 			}
@@ -137,11 +142,18 @@ func TestBuildTable_DropDuplicates(t *testing.T) {
 	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	records := func() []Record {
 		return []Record{
-			testRecord(1, ts, "a"),
-			testRecord(1, ts, "b"),
-			testRecord(1, ts, "a"),
-			testRecord(2, ts, "a"),
+			testRecord(1, ts, "a", "trace_id", "1"),
+			testRecord(1, ts, "b", "trace_id", "2", "user", "x"),
+			testRecord(1, ts, "a", "trace_id", "1"),
+			testRecord(1, ts, "a", "trace_id", "3"),
+			testRecord(2, ts, "a", "trace_id", "1"),
 		}
+	}
+	want := []string{
+		"1 a trace_id=1",
+		"1 a trace_id=3",
+		"1 b trace_id=2 user=x",
+		"2 a trace_id=1",
 	}
 
 	sortOrders := map[string]SortOrder{
@@ -150,14 +162,48 @@ func TestBuildTable_DropDuplicates(t *testing.T) {
 		"schema":    SortSchemaASC,
 	}
 	for name, sortOrder := range sortOrders {
-		t.Run("drops a non-adjacent duplicate when sorted by "+name, func(t *testing.T) {
+		t.Run("drops a non-adjacent duplicate and keeps each row's metadata when sorted by "+name, func(t *testing.T) {
 			table := buildTable(&tableBuffer{}, pageSize, pageRows, nil, records(), sortOrder, true)
-			require.Equal(t, 3, table.StreamID.Desc.RowsCount)
+			require.ElementsMatch(t, want, readTableRows(t, table))
 		})
 	}
 
 	t.Run("keeps every record when dropping is off", func(t *testing.T) {
 		table := buildTable(&tableBuffer{}, pageSize, pageRows, nil, records(), SortStreamASC, false)
-		require.Equal(t, 4, table.StreamID.Desc.RowsCount)
+		require.Len(t, readTableRows(t, table), 5)
 	})
+}
+
+// readTableRows returns each row of table as "<stream ID> <line> <key=value>...",
+// with metadata keys in sorted order and null metadata omitted.
+func readTableRows(t *testing.T, table *table) []string {
+	t.Helper()
+
+	columns := []dataset.Column{table.StreamID, table.Message}
+	for _, md := range table.Metadatas {
+		columns = append(columns, md)
+	}
+	r := dataset.NewRowReader(dataset.RowReaderOptions{Dataset: table, ProjectedColumns: columns})
+	t.Cleanup(func() { _ = r.Close() })
+	require.NoError(t, r.Open(context.Background()))
+
+	rowCount := table.StreamID.Desc.RowsCount
+	rows := make([]dataset.Row, rowCount)
+	n, err := r.Read(context.Background(), rows)
+	require.NoError(t, err)
+	require.Equal(t, rowCount, n)
+
+	out := make([]string, 0, n)
+	for _, row := range rows {
+		fields := []string{fmt.Sprint(row.Values[0].Int64()), string(row.Values[1].Binary())}
+		var metadata []string
+		for i, md := range table.Metadatas {
+			if v := row.Values[2+i]; !v.IsNil() {
+				metadata = append(metadata, md.Desc.Tag+"="+string(v.Binary()))
+			}
+		}
+		slices.Sort(metadata)
+		out = append(out, strings.Join(append(fields, metadata...), " "))
+	}
+	return out
 }

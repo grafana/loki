@@ -56,9 +56,8 @@ import (
 )
 
 const (
-	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
-	// Possible values are only increasing integers starting from 0.
-	ShardLbName        = "__stream_shard__"
+	// ShardLbPlaceholder stands in for the value of constants.StreamShardLabel in a label set template. The
+	// distributor replaces it with the real shard number.
 	ShardLbPlaceholder = "__placeholder__"
 
 	queryBatchSize       = 128
@@ -385,7 +384,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 
 func (i *instance) onStreamCreated(s *stream) {
 	i.memoryStreams.Inc()
-	if s.labels.Has(ShardLbName) {
+	if s.labels.Has(constants.StreamShardLabel) {
 		i.memoryStreamShards.Inc()
 	}
 	i.metrics.instance.memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
@@ -460,7 +459,7 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		i.memoryStreams.Dec()
-		if s.labels.Has(ShardLbName) {
+		if s.labels.Has(constants.StreamShardLabel) {
 			i.memoryStreamShards.Dec()
 		}
 		i.metrics.instance.memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))

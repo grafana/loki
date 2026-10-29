@@ -1991,7 +1991,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
-			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
+			require.Equal(t, lbls.Get(constants.StreamShardLabel), fmt.Sprint(i))
 		}
 
 		derivedStreams, _ = d.shardStream(*logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), streamRate, "fake", "", d.validator.ShardStreams("fake"))
@@ -2002,7 +2002,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
-			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i+2))
+			require.Equal(t, lbls.Get(constants.StreamShardLabel), fmt.Sprint(i+2))
 		}
 	})
 }
@@ -2821,8 +2821,8 @@ func TestDistributor_PushTimeSharding(t *testing.T) {
 			entries: []logproto.Entry{entry(old.Add(time.Second), "second"), entry(old, "first")},
 			rate:    &fakeRateStore{rate: 1000, pushRate: 1},
 			want: []logproto.Stream{
-				stream("compose", []logproto.Entry{entry(old, "first")}, constants.TimeShardLabel, window(old), ingester.ShardLbName, "0"),
-				stream("compose", []logproto.Entry{entry(old.Add(time.Second), "second")}, constants.TimeShardLabel, window(old), ingester.ShardLbName, "1"),
+				stream("compose", []logproto.Entry{entry(old, "first")}, constants.TimeShardLabel, window(old), constants.StreamShardLabel, "0"),
+				stream("compose", []logproto.Entry{entry(old.Add(time.Second), "second")}, constants.TimeShardLabel, window(old), constants.StreamShardLabel, "1"),
 			},
 		},
 	} {
@@ -2908,7 +2908,7 @@ func TestDistributor_SharedMetadataLimits(t *testing.T) {
 				require.NoError(t, err)
 				var want []logproto.Stream
 				for i, lines := range [][]string{{"a", "b"}, {"c", "d"}} {
-					ls := labels.FromStrings("app", "shared", ingester.ShardLbName, strconv.Itoa(i))
+					ls := labels.FromStrings("app", "shared", constants.StreamShardLabel, strconv.Itoa(i))
 					if timeSharding {
 						start := at.Truncate(time.Hour)
 						ls = labels.NewBuilder(ls).Set(constants.TimeShardLabel, fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())).Labels()
@@ -4617,7 +4617,7 @@ func TestDistributor_NestedLimitsServiceShard(t *testing.T) {
 
 				want := make([]logproto.Stream, len(entries))
 				for i, e := range entries {
-					shardedLabels := labels.NewBuilder(entryLabels[i]).Set(ingester.ShardLbName, shardNumbers[i]).Labels()
+					shardedLabels := labels.NewBuilder(entryLabels[i]).Set(constants.StreamShardLabel, shardNumbers[i]).Labels()
 					e.StructuredMetadata = buildNestedAttrs("e", "ee", "s", "ss", "r", "rr")
 					want[i] = logproto.Stream{Labels: shardedLabels.String(), Hash: labels.StableHash(shardedLabels), Entries: []logproto.Entry{e}}
 				}
