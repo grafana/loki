@@ -885,12 +885,13 @@ func TestPickRandomRange_ClampsToMaxLookback(t *testing.T) {
 		require.Empty(t, skip)
 		require.False(t, start.Before(earliest), "start %v before earliest %v", start, earliest)
 		require.True(t, start.After(startedAt), "expected clamp past started_at")
-		require.Equal(t, rangeDur, end.Sub(start))
 		require.False(t, end.After(eligibleEnd))
+		require.Equal(t, end.Truncate(time.Minute), end)
+		require.True(t, end.After(start))
 	}
 }
 
-func TestPickRandomRange_FloorsEligibleEndToTheMinute(t *testing.T) {
+func TestPickRandomRange_TruncatesEndToTheMinute(t *testing.T) {
 	now := time.Date(2026, 8, 3, 12, 0, 10, 0, time.UTC)
 	startedAt := now.Add(-60 * 24 * time.Hour)
 	rangeDur := 10 * time.Minute
@@ -906,11 +907,15 @@ func TestPickRandomRange_FloorsEligibleEndToTheMinute(t *testing.T) {
 		rand:      rand.New(rand.NewSource(1)),
 	}
 
-	eligibleEnd := now.Add(-3 * time.Hour).Truncate(time.Minute)
+	eligibleEnd := now.Add(-3 * time.Hour)
 	for i := 0; i < 50; i++ {
-		_, end, skip := svc.pickRandomRange(now)
+		start, end, skip := svc.pickRandomRange(now)
 		require.Empty(t, skip)
-		require.False(t, end.After(eligibleEnd), "end %v after floored cutoff %v", end, eligibleEnd)
+		require.False(t, end.After(eligibleEnd), "end %v after cutoff %v", end, eligibleEnd)
+		// A mid-minute end is still before the cutoff, and the query-frontend
+		// would floor it out from under a log sampled in that minute.
+		require.Equal(t, end.Truncate(time.Minute), end)
+		require.True(t, end.After(start))
 	}
 }
 
@@ -935,6 +940,7 @@ func TestPickRandomRange_RespectsRecentStartedAt(t *testing.T) {
 		start, end, skip := svc.pickRandomRange(now)
 		require.Empty(t, skip)
 		require.False(t, start.Before(startedAt), "start %v before started_at %v", start, startedAt)
-		require.Equal(t, rangeDur, end.Sub(start))
+		require.Equal(t, end.Truncate(time.Minute), end)
+		require.True(t, end.After(start))
 	}
 }
