@@ -45,6 +45,10 @@ Loki renames a parsed key to `<name>_extracted` when a stream label or a structu
 
 For the rules, refer to [Label name collisions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#label-name-collisions).
 
+### A `logfmt` expression no longer replaces a value from an earlier parser with an empty one
+
+A `logfmt` parser with label extraction expressions, for example `| logfmt foo, bar`, sets an empty label for a name that the log line does not contain. Loki used to set the empty label even when an earlier parser stage, for example `| json`, had already extracted a value with that name, so the empty value replaced the extracted value. Loki now keeps the value of the earlier stage.
+
 ### Statistics in detected-field query responses
 
 The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON
