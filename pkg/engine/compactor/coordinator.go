@@ -378,16 +378,17 @@ func (c *coordinator) mergeLogOutputIndexes(
 	window time.Time,
 	entries []metastore.TableOfContentsEntry,
 ) ([]metastore.TableOfContentsEntry, int, error) {
-	var dispatched int
-	for len(entries) > 1 {
-		inputs := make([]indexEntry, len(entries))
-		inputsByPath := make(map[string]indexEntry, len(entries))
-		for i, entry := range entries {
-			inputs[i] = indexEntry{Path: entry.Path, Start: entry.StartTime, End: entry.EndTime}
-			inputsByPath[entry.Path] = inputs[i]
-		}
+	if len(entries) < 2 {
+		return entries, 0, nil
+	}
+	indexes := make([]indexEntry, len(entries))
+	for i, entry := range entries {
+		indexes[i] = indexEntry{Path: entry.Path, Start: entry.StartTime, End: entry.EndTime}
+	}
 
-		sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, inputs)
+	var dispatched int
+	for len(indexes) > 1 {
+		sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, indexes)
 		if err != nil {
 			return nil, 0, fmt.Errorf("discover index section bounds: %w", err)
 		}
@@ -397,37 +398,69 @@ func (c *coordinator) mergeLogOutputIndexes(
 			return len(taskObjectPaths([]*compactionv2pb.TaskSpec{task})) < 2
 		})
 		if len(tasks) == 0 {
-			return entries, dispatched, nil
+			break
 		}
-		mergedPaths := taskObjectPaths(tasks)
 
-		plans := make([]*physical.Plan, len(tasks))
-		merged := make([]metastore.TableOfContentsEntry, len(tasks))
-		for i, task := range tasks {
-			start, end, err := indexTaskBounds(task, inputsByPath)
-			if err != nil {
-				return nil, 0, fmt.Errorf("task %d: %w", i, err)
-			}
-			plans[i] = buildIndexMergePlan(tenant, window, task)
-			merged[i] = metastore.TableOfContentsEntry{StartTime: start.UTC(), EndTime: end.UTC()}
-		}
-		artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
+		merged, err := c.runIndexMerges(ctx, tenant, window, tasks, indexes)
 		if err != nil {
-			return nil, 0, fmt.Errorf("execute index merge tasks: %w", err)
+			return nil, 0, err
 		}
 		dispatched += len(tasks)
-		if err := assignArtifactPaths(merged, artifacts); err != nil {
-			return nil, 0, fmt.Errorf("build merged index ToC entries: %w", err)
-		}
 
-		for _, entry := range entries {
-			if _, ok := slices.BinarySearch(mergedPaths, entry.Path); !ok {
-				merged = append(merged, entry)
+		mergedPaths := taskObjectPaths(tasks)
+		next := make([]indexEntry, 0, len(merged)+len(indexes))
+		for _, entry := range merged {
+			next = append(next, indexEntry{Path: entry.Path, Start: entry.StartTime, End: entry.EndTime})
+		}
+		for _, index := range indexes {
+			if _, ok := slices.BinarySearch(mergedPaths, index.Path); !ok {
+				next = append(next, index)
 			}
 		}
-		entries = merged
+		indexes = next
 	}
-	return entries, dispatched, nil
+
+	result := make([]metastore.TableOfContentsEntry, len(indexes))
+	for i, index := range indexes {
+		result[i] = metastore.TableOfContentsEntry{Path: index.Path, StartTime: index.Start.UTC(), EndTime: index.End.UTC()}
+	}
+	return result, dispatched, nil
+}
+
+// runIndexMerges dispatches one IndexMerge task for each of tasks and returns
+// one ToC entry for each, in task order. The time range of each entry spans
+// the source indexes of its task. inputs must list every index that tasks
+// read.
+func (c *coordinator) runIndexMerges(
+	ctx context.Context,
+	tenant string,
+	window time.Time,
+	tasks []*compactionv2pb.TaskSpec,
+	inputs []indexEntry,
+) ([]metastore.TableOfContentsEntry, error) {
+	inputsByPath := make(map[string]indexEntry, len(inputs))
+	for _, input := range inputs {
+		inputsByPath[input.Path] = input
+	}
+
+	plans := make([]*physical.Plan, len(tasks))
+	entries := make([]metastore.TableOfContentsEntry, len(tasks))
+	for i, task := range tasks {
+		start, end, err := indexTaskBounds(task, inputsByPath)
+		if err != nil {
+			return nil, fmt.Errorf("build index ToC entries: task %d: %w", i, err)
+		}
+		plans[i] = buildIndexMergePlan(tenant, window, task)
+		entries[i] = metastore.TableOfContentsEntry{StartTime: start.UTC(), EndTime: end.UTC()}
+	}
+	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
+	if err != nil {
+		return nil, fmt.Errorf("execute index merge tasks: %w", err)
+	}
+	if err := assignArtifactPaths(entries, artifacts); err != nil {
+		return nil, fmt.Errorf("build index ToC entries: %w", err)
+	}
+	return entries, nil
 }
 
 // existsInToC reports whether the latest ToC of the tenant's window lists
@@ -553,29 +586,9 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
 
-	entriesByPath := make(map[string]indexEntry, len(entries))
-	for _, entry := range entries {
-		entriesByPath[entry.Path] = entry
-	}
-	plans := make([]*physical.Plan, len(tasks))
-	newEntries := make([]metastore.TableOfContentsEntry, len(tasks))
-	for i, task := range tasks {
-		start, end, err := indexTaskBounds(task, entriesByPath)
-		if err != nil {
-			return compactionStats{}, fmt.Errorf("build index ToC entries: task %d: %w", i, err)
-		}
-		plans[i] = buildIndexMergePlan(tenant, window, task)
-		newEntries[i] = metastore.TableOfContentsEntry{
-			StartTime: start.UTC(),
-			EndTime:   end.UTC(),
-		}
-	}
-	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
+	newEntries, err := c.runIndexMerges(ctx, tenant, window, tasks, entries)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
-	}
-	if err := assignArtifactPaths(newEntries, artifacts); err != nil {
-		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
+		return compactionStats{}, err
 	}
 
 	oldPaths := taskObjectPaths(tasks)
