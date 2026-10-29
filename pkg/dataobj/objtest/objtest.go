@@ -45,6 +45,10 @@ const Tenant = "objtest"
 // bucket finds them.
 const indexPrefix = "index/v0"
 
+// objectsPerIndex is the most logs objects that one index covers. [Builder.Close] starts a new
+// index when the current one reaches this count, or when the next object has another layout.
+const objectsPerIndex = 16
+
 // Option customizes a [Builder].
 type Option func(*builderOptions)
 
@@ -253,8 +257,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 	calculator := index.NewCalculator(indexBuilder, index.NewCalculatorMetrics(nil))
 
 	var (
-		count           int
-		objectsPerIndex = 16
+		count int
 
 		// pending counts the objects in the calculator that no flushed index covers yet.
 		// pendingLayout is their layout. It has no meaning when pending is 0.

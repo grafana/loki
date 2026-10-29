@@ -420,7 +420,7 @@ func testFlushAndSortShardBuckets(t *testing.T) {
 	})
 
 	t.Run("gives every stream the bucket of the shard layout of the tenant and records that layout", func(t *testing.T) {
-		shardLayout := mustShardLayout(t, 8)
+		shardLayout := streams.MustShardLayoutFromBuckets(8)
 		shardOverrides := &mutableOverrides{schema: []string{"label:app"}, shardLayout: &shardLayout}
 		obj, closer, err := newFilledBuilder(t, shardOverrides).FlushAndSort(t.Context())
 		require.NoError(t, err)
@@ -431,17 +431,17 @@ func testFlushAndSortShardBuckets(t *testing.T) {
 		got := bucketsByLabels(t, obj)
 		require.Len(t, got, streamCount)
 		distinctBuckets := map[int64]struct{}{}
-		for i := range streamCount {
-			streamLabels := labels.FromStrings("app", fmt.Sprintf("app-%d", i), "cluster", "test")
-			want := int64(shardLayout.BucketFromLabels(streamLabels))
-			require.Equal(t, want, got[streamLabels.String()], "bucket of stream %s", streamLabels)
-			distinctBuckets[want] = struct{}{}
+		for streamLabels, bucket := range got {
+			parsed, err := syntax.ParseLabels(streamLabels)
+			require.NoError(t, err)
+			require.Equal(t, int64(shardLayout.BucketFromLabels(parsed)), bucket, "bucket of stream %s", streamLabels)
+			distinctBuckets[bucket] = struct{}{}
 		}
 		require.Greater(t, len(distinctBuckets), 1, "the streams must span several buckets, or a wrong bucket could go unseen")
 	})
 
 	t.Run("orders stream IDs by the sort key of the shard layout of the tenant", func(t *testing.T) {
-		shardLayout := mustShardLayout(t, 4)
+		shardLayout := streams.MustShardLayoutFromBuckets(4)
 		schema := []string{"label:app"}
 		obj, closer, err := newFilledBuilder(t, &mutableOverrides{schema: schema, shardLayout: &shardLayout}).FlushAndSort(t.Context())
 		require.NoError(t, err)
@@ -1342,7 +1342,7 @@ func testFlushAndSortLayoutPerObject(t *testing.T) {
 	})
 
 	t.Run("keeps the shard layout of the open object when the overrides change, and applies the change to the next object", func(t *testing.T) {
-		first, second := mustShardLayout(t, 8), mustShardLayout(t, 16)
+		first, second := streams.MustShardLayoutFromBuckets(8), streams.MustShardLayoutFromBuckets(16)
 		overrides := &mutableOverrides{schema: []string{"label:app"}, shardLayout: &first}
 		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
@@ -1479,8 +1479,8 @@ func requireStreamsLayout(t *testing.T, obj *dataobj.Object, tenant string, want
 func TestBuilder_FlushRecordsLayout(t *testing.T) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	layouts := tenantLayouts{
-		"t1": streams.NewLayout(mustShardLayout(t, 8), []string{"label:app"}),
-		"t2": streams.NewLayout(mustShardLayout(t, 16), []string{"label:cluster"}),
+		"t1": streams.NewLayout(streams.MustShardLayoutFromBuckets(8), []string{"label:app"}),
+		"t2": streams.NewLayout(streams.MustShardLayoutFromBuckets(16), []string{"label:cluster"}),
 	}
 	newFilledBuilder := func(t *testing.T) *Builder {
 		t.Helper()
@@ -1530,6 +1530,10 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 
 	t.Run("Flush keeps the rows in stream ID order when the streams arrive in the sort key order of a non-default shard layout", func(t *testing.T) {
 		layout := layouts["t1"]
+		require.NotEqual(t, streams.DefaultShardLayout(), layout.ShardLayout(), "the tenant must have a non-default shard layout")
+
+		// Flush expects the caller to append streams in sort key order. This is the sort key of the
+		// layout of t1.
 		sortKey := func(streamLabels labels.Labels) streams.SortKey {
 			schemaKey, err := ComputeSchemaKey(streamLabels, layout.SchemaLabels())
 			require.NoError(t, err)
@@ -1539,6 +1543,8 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		for i := range 16 {
 			appended = append(appended, labels.FromStrings("app", fmt.Sprintf("app-%d", i), "cluster", "test"))
 		}
+
+		// The builder numbers streams in append order, so the stream IDs ascend with the sort key.
 		slices.SortFunc(appended, func(a, b labels.Labels) int { return streams.CompareSortKey(sortKey(a), sortKey(b)) })
 
 		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), layouts)
@@ -1550,6 +1556,9 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
+		// Flush orders the rows by the stream key of each record, which starts with the shard bucket.
+		// A bucket from another layout moves rows out of the append order, and so out of the stream
+		// ID order.
 		var streamIDs []int64
 		for _, sec := range obj.Sections().Filter(logs.CheckSection) {
 			for res := range iterLogsSection(t, sec) {
@@ -1575,13 +1584,4 @@ func (m tenantLayouts) DataObjShardLayout(tenant string) streams.ShardLayout {
 		return streams.DefaultShardLayout()
 	}
 	return layout.ShardLayout()
-}
-
-// mustShardLayout returns the shard layout for buckets. It fails the test if buckets is not a
-// power of two from 1 to 65536.
-func mustShardLayout(t *testing.T, buckets uint32) streams.ShardLayout {
-	t.Helper()
-	layout, err := streams.ShardLayoutFromBuckets(buckets)
-	require.NoError(t, err)
-	return layout
 }

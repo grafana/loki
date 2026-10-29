@@ -101,31 +101,55 @@ func TestBuilderClose(t *testing.T) {
 		}
 	})
 
-	t.Run("writes one index that covers fewer than 16 objects of one layout", func(t *testing.T) {
+	t.Run("writes one index when the objects of one layout are fewer than one index covers", func(t *testing.T) {
+		const count = objectsPerIndex - 1
 		builder := NewBuilder(t)
-		appendObjects(t, builder, 3)
+		ctx := user.InjectOrgID(t.Context(), Tenant)
+		for i := range count {
+			builder.Append(ctx, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="objects", idx="%d"}`, i),
+				Entries: []push.Entry{{Timestamp: time.Unix(1, 0).UTC(), Line: "line"}},
+			})
+			builder.Flush(ctx)
+		}
 		builder.Close()
 
 		require.Equal(t, 1, countIndexObjects(t, builder))
-		require.Len(t, resolveSections(t, builder), 3)
+		require.Len(t, resolveSections(t, builder), count)
 	})
 
-	t.Run("writes one index that covers exactly 16 objects of one layout", func(t *testing.T) {
+	t.Run("writes one index when the objects of one layout fill exactly one index", func(t *testing.T) {
+		const count = objectsPerIndex
 		builder := NewBuilder(t)
-		appendObjects(t, builder, 16)
+		ctx := user.InjectOrgID(t.Context(), Tenant)
+		for i := range count {
+			builder.Append(ctx, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="objects", idx="%d"}`, i),
+				Entries: []push.Entry{{Timestamp: time.Unix(1, 0).UTC(), Line: "line"}},
+			})
+			builder.Flush(ctx)
+		}
 		builder.Close()
 
 		require.Equal(t, 1, countIndexObjects(t, builder))
-		require.Len(t, resolveSections(t, builder), 16)
+		require.Len(t, resolveSections(t, builder), count)
 	})
 
-	t.Run("writes a second index for the 17th object of one layout", func(t *testing.T) {
+	t.Run("writes a second index for the object of one layout that does not fit in the first", func(t *testing.T) {
+		const count = objectsPerIndex + 1
 		builder := NewBuilder(t)
-		appendObjects(t, builder, 17)
+		ctx := user.InjectOrgID(t.Context(), Tenant)
+		for i := range count {
+			builder.Append(ctx, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="objects", idx="%d"}`, i),
+				Entries: []push.Entry{{Timestamp: time.Unix(1, 0).UTC(), Line: "line"}},
+			})
+			builder.Flush(ctx)
+		}
 		builder.Close()
 
 		require.Equal(t, 2, countIndexObjects(t, builder))
-		require.Len(t, resolveSections(t, builder), 17)
+		require.Len(t, resolveSections(t, builder), count)
 	})
 }
 
@@ -133,11 +157,16 @@ func TestWithTenantOverrides(t *testing.T) {
 	t.Run("writes each object with the shard layout the overrides gave when it was written, and indexes them all", func(t *testing.T) {
 		overrides := &shardOverrides{}
 		builder := NewBuilder(t, WithTenantOverrides(overrides))
+		ctx := user.InjectOrgID(t.Context(), Tenant)
 
 		wantBuckets := []uint32{8, 16, 8, 16}
 		for i, buckets := range wantBuckets {
-			overrides.layout = mustShardLayout(t, buckets)
-			appendObject(t, builder, i)
+			overrides.layout = streams.MustShardLayoutFromBuckets(buckets)
+			builder.Append(ctx, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="objects", idx="%d"}`, i),
+				Entries: []push.Entry{{Timestamp: time.Unix(1, 0).UTC(), Line: "line"}},
+			})
+			builder.Flush(ctx)
 		}
 		builder.Close()
 
@@ -152,32 +181,43 @@ func TestWithTenantOverrides(t *testing.T) {
 		require.ElementsMatch(t, wantBuckets, gotBuckets)
 	})
 
-	t.Run("indexes every object when one of 16 objects has another shard layout", func(t *testing.T) {
+	t.Run("indexes every object when one object of a full index has another shard layout", func(t *testing.T) {
+		const count = objectsPerIndex
 		overrides := &shardOverrides{}
 		builder := NewBuilder(t, WithTenantOverrides(overrides))
+		ctx := user.InjectOrgID(t.Context(), Tenant)
 
-		for i := range 16 {
-			overrides.layout = mustShardLayout(t, 16)
+		for i := range count {
+			overrides.layout = streams.MustShardLayoutFromBuckets(16)
 			if i == 5 {
-				overrides.layout = mustShardLayout(t, 8)
+				overrides.layout = streams.MustShardLayoutFromBuckets(8)
 			}
-			appendObject(t, builder, i)
+			builder.Append(ctx, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="objects", idx="%d"}`, i),
+				Entries: []push.Entry{{Timestamp: time.Unix(1, 0).UTC(), Line: "line"}},
+			})
+			builder.Flush(ctx)
 		}
 		builder.Close()
 
-		require.Len(t, resolveSections(t, builder), 16)
+		require.Len(t, resolveSections(t, builder), count)
 	})
 
 	t.Run("indexes every object when the sort schema changes and the shard layout does not", func(t *testing.T) {
-		overrides := &shardOverrides{layout: mustShardLayout(t, 16)}
+		overrides := &shardOverrides{layout: streams.MustShardLayoutFromBuckets(16)}
 		builder := NewBuilder(t, WithTenantOverrides(overrides))
+		ctx := user.InjectOrgID(t.Context(), Tenant)
 
 		for i := range 4 {
 			overrides.schema = nil
 			if i%2 == 1 {
 				overrides.schema = []string{"label:app"}
 			}
-			appendObject(t, builder, i)
+			builder.Append(ctx, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="objects", idx="%d"}`, i),
+				Entries: []push.Entry{{Timestamp: time.Unix(1, 0).UTC(), Line: "line"}},
+			})
+			builder.Flush(ctx)
 		}
 		builder.Close()
 
@@ -195,29 +235,8 @@ func (o *shardOverrides) SortSchemaLabels(string) []string { return o.schema }
 
 func (o *shardOverrides) DataObjShardLayout(string) streams.ShardLayout { return o.layout }
 
-// appendObject writes one object of one stream, which the idx label numbers.
-func appendObject(t *testing.T, builder *Builder, idx int) {
-	t.Helper()
-
-	ctx := user.InjectOrgID(t.Context(), Tenant)
-	builder.Append(ctx, logproto.Stream{
-		Labels:  fmt.Sprintf(`{app="objects", idx="%d"}`, idx),
-		Entries: []push.Entry{{Timestamp: time.Unix(1, 0).UTC(), Line: "line"}},
-	})
-	builder.Flush(ctx)
-}
-
-// appendObjects writes count objects of one stream each.
-func appendObjects(t *testing.T, builder *Builder, count int) {
-	t.Helper()
-
-	for i := range count {
-		appendObject(t, builder, i)
-	}
-}
-
 // resolveSections returns the sections that the metastore of builder resolves for the streams
-// that appendObject writes.
+// with the label app="objects".
 func resolveSections(t *testing.T, builder *Builder) metastore.DataobjSectionDescriptors {
 	t.Helper()
 
@@ -243,11 +262,4 @@ func countIndexObjects(t *testing.T, builder *Builder) int {
 		return nil
 	}, objstore.WithRecursiveIter()))
 	return count
-}
-
-func mustShardLayout(t *testing.T, buckets uint32) streams.ShardLayout {
-	t.Helper()
-	layout, err := streams.ShardLayoutFromBuckets(buckets)
-	require.NoError(t, err)
-	return layout
 }
