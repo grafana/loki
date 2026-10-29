@@ -2276,6 +2276,29 @@ func TestLogfmtExpressionParserKeepsTheValueOfAnEarlierStage(t *testing.T) {
 	require.Equal(t, labels.FromStrings("app", "x", "foo", "first"), b.LabelsResult().Labels())
 }
 
+// A skipped renamed key may end the loop only when no other asked name can still change. The result must
+// not depend on where that key is in the line. An earlier stage extracted `b` here, and the line has `b`
+// too, so `b` has the same value in both orders, whichever value wins.
+func TestLogfmtExpressionParserEarlyExitDoesNotDependOnKeyOrder(t *testing.T) {
+	exprs := []LabelExtractionExpr{NewLabelExtractionExpr("app", "app"), NewLabelExtractionExpr("b", "b")}
+	run := func(t *testing.T, line string) labels.Labels {
+		parser, err := NewLogfmtExpressionParser(exprs, false)
+		require.NoError(t, err)
+
+		base := labels.FromStrings("app", "x")
+		b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+		b.parserKeyHints = NewParserHint(nil, []string{"app", "b"}, false, false, "")
+		b.Reset()
+		_, _ = NewJSONParser(false).Process(0, []byte(`{"b":"first"}`), b)
+		_, _ = parser.Process(0, []byte(line), b)
+		return b.LabelsResult().Labels()
+	}
+
+	renamedFirst := run(t, `app=y b=second`)
+	renamedLast := run(t, `b=second app=y`)
+	require.Equal(t, renamedLast, renamedFirst)
+}
+
 func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
 		NewLabelExtractionExpr("a", "a"),
@@ -2343,13 +2366,6 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			required: []string{"app"},
 			line:     "app=y" + fillers.String() + " b=1",
 			want:     labels.FromStrings("app", "x", "b", ""),
-		},
-		{
-			name:     "the other name comes before the renamed key",
-			names:    []string{"app", "b"},
-			required: []string{"app", "b"},
-			line:     "b=1 app=y" + fillers.String(),
-			want:     labels.FromStrings("app", "x", "b", "1"),
 		},
 		{
 			// The metadata value c was renamed to c_extracted, so a parsed c would be dropped.
