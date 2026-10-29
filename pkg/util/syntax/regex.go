@@ -1,4 +1,4 @@
-package util //nolint:revive
+package syntax
 
 import "github.com/grafana/regexp/syntax"
 

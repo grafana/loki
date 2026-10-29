@@ -17,8 +17,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -1526,8 +1526,8 @@ func pipelineErr[T any](keepsErroredLines bool, samples []T, metric func(T) labe
 		return nil
 	}
 	for _, s := range samples {
-		if m := metric(s); m.Has(logqlmodel.ErrorLabel) {
-			return logqlmodel.NewPipelineErr(m)
+		if m := metric(s); m.Has(logqlerr.ErrorLabel) {
+			return logqlerr.NewPipelineErr(m)
 		}
 	}
 	return nil

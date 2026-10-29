@@ -14,6 +14,7 @@ pkg/framedstdcopy/
 pkg/ingester/wal
 pkg/logproto/
 pkg/loghttp/
+pkg/logql/errors/
 pkg/logqlmodel/
 pkg/push
 pkg/util

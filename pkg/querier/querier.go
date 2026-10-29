@@ -34,6 +34,7 @@ import (
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -1238,7 +1239,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	parsed := make(map[string][]string, len(origParsed))
 
 	for lbl, values := range origParsed {
-		if logqlmodel.IsPipelineErrorLabel(lbl) {
+		if logqlerr.IsPipelineErrorLabel(lbl) {
 			continue
 		}
 
@@ -1285,7 +1286,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {
-		if logqlmodel.IsPipelineErrorLabel(lbl) {
+		if logqlerr.IsPipelineErrorLabel(lbl) {
 			continue
 		}
 		vals := make([]string, 0, len(values))
