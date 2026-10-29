@@ -567,7 +567,8 @@ func metaCoversAnyTimestamp(m store.Meta, timestamps []time.Time) bool {
 }
 
 func (s *Service) pickRandomRange(now time.Time) (time.Time, time.Time, string) {
-	eligibleEnd := now.Add(-s.cfg.QueryIngestersWithin)
+	// Floor to the minute so a metric query's step ceil stays outside the ingester window.
+	eligibleEnd := now.Add(-s.cfg.QueryIngestersWithin).Truncate(time.Minute)
 	// earliest = max(startedAt, now-maxLookback): started_at is the farthest
 	// allowed lookback, but never sample beyond max_lookback (retention safety).
 	earliest := s.startedAt

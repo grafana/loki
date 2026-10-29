@@ -46,7 +46,7 @@ func GetQueryBounds(
 	qt QueryType,
 	alignQueriesWithStep bool,
 ) QueryBounds {
-	alStart, alEnd := alignStartEnd(reqStart, reqEnd, step, expr, qt, alignQueriesWithStep)
+	alStart, alEnd := alignStartEnd(reqStart, reqEnd, step, qt, alignQueriesWithStep)
 	readStart, readEnd := readBounds(expr, alStart, alEnd)
 	return QueryBounds{
 		RequestedStart: reqStart.UTC(),
@@ -59,7 +59,6 @@ func GetQueryBounds(
 func alignStartEnd(
 	reqStart, reqEnd time.Time,
 	step int64,
-	expr syntax.Expr,
 	qt QueryType,
 	alignQueriesWithStep bool,
 ) (time.Time, time.Time) {

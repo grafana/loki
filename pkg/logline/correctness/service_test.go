@@ -890,6 +890,30 @@ func TestPickRandomRange_ClampsToMaxLookback(t *testing.T) {
 	}
 }
 
+func TestPickRandomRange_FloorsEligibleEndToTheMinute(t *testing.T) {
+	now := time.Date(2026, 8, 3, 12, 0, 10, 0, time.UTC)
+	startedAt := now.Add(-60 * 24 * time.Hour)
+	rangeDur := 10 * time.Minute
+
+	svc := &Service{
+		cfg: Config{
+			QueryIngestersWithin: 3 * time.Hour,
+			QueryRangeMin:        rangeDur,
+			QueryRangeMax:        rangeDur,
+			MaxLookback:          30 * 24 * time.Hour,
+		},
+		startedAt: startedAt,
+		rand:      rand.New(rand.NewSource(1)),
+	}
+
+	eligibleEnd := now.Add(-3 * time.Hour).Truncate(time.Minute)
+	for i := 0; i < 50; i++ {
+		_, end, skip := svc.pickRandomRange(now)
+		require.Empty(t, skip)
+		require.False(t, end.After(eligibleEnd), "end %v after floored cutoff %v", end, eligibleEnd)
+	}
+}
+
 func TestPickRandomRange_RespectsRecentStartedAt(t *testing.T) {
 	now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
 	startedAt := now.Add(-7 * 24 * time.Hour) // more recent than max lookback
