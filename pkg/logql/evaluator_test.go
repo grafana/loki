@@ -689,6 +689,35 @@ func TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace(t *testing.T) {
 	require.Equal(t, []string{"b", "a"}, expr.Grouping.Groups)
 }
 
+// TestNewVectorAggEvaluator_SumOfRangeAggregation checks the context handed to the operand of
+// sum(rate(X)). DefaultEvaluator swaps the factory for that shape, so the operand's context is
+// only visible where newVectorAggEvaluator derives it.
+func TestNewVectorAggEvaluator_SumOfRangeAggregation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{"sum", `sum(rate({app="a"}[1m]))`},
+		{"sum by", `sum by (app) (rate({app="a"}[1m]))`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+
+			var got NodeContext
+			nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, nc NodeContext) (StepEvaluator, error) {
+				got = nc
+				return &emptyEvaluator{}, nil
+			})
+
+			_, err = newVectorAggEvaluator(context.Background(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr))
+			require.NoError(t, err)
+			require.False(t, got.IsRoot())
+			require.False(t, got.OutputPreserving())
+		})
+	}
+}
+
 type emptyEvaluator struct{}
 
 func (*emptyEvaluator) Next() (ok bool, ts int64, r StepResult) {
@@ -1069,6 +1098,10 @@ func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
 		{"avg by", `avg by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
 		{"count", `count(` + a + `)`, map[string]bool{`{app="a"}`: false}},
 		{"max without", `max without (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"max", `max(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"min by", `min by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"stddev", `stddev(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"stdvar by", `stdvar by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
 		{"topk", `topk(1, ` + a + `)`, map[string]bool{`{app="a"}`: false}},
 		{"bottomk", `bottomk(1, ` + a + `)`, map[string]bool{`{app="a"}`: false}},
 		{"sort of arithmetic with a literal", `sort(` + a + ` * 2)`, map[string]bool{`{app="a"}`: true}},
