@@ -130,7 +130,24 @@ func (cfg *BuilderBaseConfig) Validate() error {
 // TenantOverrides provides per-tenant configuration for the Builder.
 type TenantOverrides interface {
 	SortSchemaLabels(tenant string) []string
+
+	// DataObjShardLayout returns the shard layout for the streams of the tenant in a new object.
+	DataObjShardLayout(tenant string) streams.ShardLayout
 }
+
+// NoTenantOverrides is a [TenantOverrides] that overrides nothing. Every tenant has no sort schema
+// labels and the default shard layout.
+type NoTenantOverrides struct{}
+
+// SortSchemaLabels returns no schema labels.
+func (NoTenantOverrides) SortSchemaLabels(string) []string { return nil }
+
+// DataObjShardLayout returns the default shard layout.
+func (NoTenantOverrides) DataObjShardLayout(string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
+}
+
+var errNilOverrides = errors.New("tenant overrides must not be nil")
 
 // A Builder constructs a logs-oriented data object from a set of incoming
 // log data. [Builder.Append] and [Builder.AppendRecord] add log data.
@@ -184,7 +201,14 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
+//
+// NewBuilder also returns an error if overrides is nil, so a caller cannot forget to set it. Use
+// [NoTenantOverrides] to give every tenant the default layout.
 func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides) (*Builder, error) {
+	if overrides == nil {
+		return nil, errNilOverrides
+	}
+
 	labelCache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
@@ -212,17 +236,13 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 // layoutFor reads the overrides only once per tenant per object. Every
 // section and stream of an object must use the same layout, and the
 // overrides can change while the object is open.
-//
-// If overrides is nil, the layout has no schema labels.
 func (b *Builder) layoutFor(tenant string) streams.Layout {
 	if layout, ok := b.layouts[tenant]; ok {
 		return layout
 	}
-	var schemaLabels []string
-	if b.overrides != nil {
-		schemaLabels = b.overrides.SortSchemaLabels(tenant)
-	}
-	layout := streams.NewLayout(streams.DefaultShardLayout(), schemaLabels)
+	schemaLabels := b.overrides.SortSchemaLabels(tenant)
+	shardLayout := b.overrides.DataObjShardLayout(tenant)
+	layout := streams.NewLayout(shardLayout, schemaLabels)
 	b.layouts[tenant] = layout
 	return layout
 }

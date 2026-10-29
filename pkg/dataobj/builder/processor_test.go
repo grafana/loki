@@ -696,7 +696,7 @@ func newRealStack(t *testing.T) *realStack {
 		idxBucket    = objstore.NewPrefixedBucket(bucket, "index/")
 		committer    = &mockCommitter{}
 	)
-	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, nil)
+	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
 	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg))
@@ -794,7 +794,7 @@ func startTestFlushLoop(ctx context.Context, t *testing.T, proc *processor) (sto
 func newTestBuilder(t *testing.T, reg prometheus.Registerer) *logsobj.Builder {
 	m := logsobj.NewBuilderMetrics()
 	require.NoError(t, m.Register(reg))
-	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), m, log.NewNopLogger(), nil)
+	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), m, log.NewNopLogger(), logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	return b
 }
