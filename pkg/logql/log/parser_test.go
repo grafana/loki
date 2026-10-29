@@ -365,10 +365,12 @@ type fakeParseHints struct {
 	count      int
 	keepGoing  bool
 	extractAll bool
+	extracted  map[string]struct{}
 }
 
-func (p *fakeParseHints) Extracted(_ string) bool {
-	return false
+func (p *fakeParseHints) Extracted(key string) bool {
+	_, ok := p.extracted[key]
+	return ok
 }
 
 func (p *fakeParseHints) ShouldExtract(key string) bool {
@@ -384,8 +386,12 @@ func (p *fakeParseHints) NoLabels() bool {
 	return false
 }
 
-func (p *fakeParseHints) RecordExtracted(_ string) {
+func (p *fakeParseHints) RecordExtracted(key string) {
 	p.count++
+	if p.extracted == nil {
+		p.extracted = map[string]struct{}{}
+	}
+	p.extracted[key] = struct{}{}
 }
 
 func (p *fakeParseHints) AllRequiredExtracted() bool {
@@ -395,6 +401,7 @@ func (p *fakeParseHints) AllRequiredExtracted() bool {
 func (p *fakeParseHints) Reset() {
 	p.checkCount = 0
 	p.count = 0
+	clear(p.extracted)
 }
 
 func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
@@ -2159,6 +2166,19 @@ func TestLogfmtExpressionParserRenamedKeys(t *testing.T) {
 // With a grouping on every name of the expression, the parser stops once all of them are extracted.
 // The empty label that stands for a missing key must not count as extracted, or the parser stops
 // after the first name.
+// A name that the line lacks gets an empty label, but not when an earlier stage extracted the name.
+func TestLogfmtExpressionParserKeepsTheValueOfAnEarlierStage(t *testing.T) {
+	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")}, false)
+	require.NoError(t, err)
+
+	base := labels.FromStrings("app", "x")
+	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+	b.Reset()
+	_, _ = NewJSONParser(false).Process(0, []byte(`{"foo":"first"}`), b)
+	_, _ = parser.Process(0, []byte(`other=x`), b)
+	require.Equal(t, labels.FromStrings("app", "x", "foo", "first"), b.LabelsResult().Labels())
+}
+
 func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
 		NewLabelExtractionExpr("a", "a"),
