@@ -194,7 +194,9 @@ func newLayoutKey(layout streams.Layout) layoutKey {
 	}
 }
 
-// replaceLogIndex swaps sourceIndex for newEntries.
+// replaceLogIndex swaps sourceIndex for newEntries. It returns the removed and
+// added index counts, or zero stats if the swap is a no-op. The caller sets
+// the dispatched count.
 func (c *coordinator) replaceLogIndex(
 	ctx context.Context,
 	tenant string,
@@ -214,9 +216,8 @@ func (c *coordinator) replaceLogIndex(
 		return compactionStats{}, nil
 	}
 	return compactionStats{
-		removed:    1,
-		added:      len(newEntries),
-		dispatched: len(newEntries),
+		removed: 1,
+		added:   len(newEntries),
 	}, nil
 }
 
@@ -308,9 +309,9 @@ func (c *coordinator) planLogMerge(
 	return plan, nil
 }
 
-// executeLogCompaction dispatches the tasks of plan and swaps its source index
-// for the results. Stats are zero-valued if plan has no work or the swap is a
-// no-op.
+// executeLogCompaction dispatches the tasks of plan, merges their output
+// indexes, and swaps the source index for the result. Stats are zero-valued if
+// plan has no work or the swap is a no-op.
 //
 // It reads the latest ToC of the window first. It returns an error that wraps
 // errStalePlan if the ToC no longer lists the source index.
@@ -360,14 +361,15 @@ func (c *coordinator) executeLogCompaction(
 	return stats, nil
 }
 
-// mergeLogOutputIndexes merges the output indexes of one log compaction into
-// one index, so the ToC swap adds a single entry. The intermediate indexes
-// never reach the ToC and stay in storage as orphans.
+// mergeLogOutputIndexes merges the output indexes of one log compaction, so
+// the ToC swap usually adds a single entry. The task output indexes and the
+// intermediate merge outputs never reach the ToC and stay in storage as
+// orphans.
 //
-// Each round merges at most MaxRunsPerTask runs per IndexMerge task, and
-// repeats until one index is left. This bounds the memory of each task. An
-// index that is alone in its task, or has no postings sections for tenant,
-// skips the round and stays in the result.
+// Each round runs IndexMerge tasks of at most MaxRunsPerTask runs, which bounds
+// the memory of each task. Rounds repeat until no task reads two or more
+// indexes. An index alone in its task, or without postings sections for
+// tenant, passes through unchanged.
 //
 // mergeLogOutputIndexes also returns the number of IndexMerge tasks it ran.
 func (c *coordinator) mergeLogOutputIndexes(
@@ -389,7 +391,7 @@ func (c *coordinator) mergeLogOutputIndexes(
 		if err != nil {
 			return nil, 0, fmt.Errorf("discover index section bounds: %w", err)
 		}
-		// A task that reads one index would only rewrite it, so its index
+		// A task that reads one index would copy it unchanged, so its index
 		// passes to the next round unchanged.
 		tasks := slices.DeleteFunc(v2.Plan(v2.CalculateRuns(sections, compareIndexSortKey), tenant, c.cfg.MaxRunsPerTask), func(task *compactionv2pb.TaskSpec) bool {
 			return len(taskObjectPaths([]*compactionv2pb.TaskSpec{task})) < 2
@@ -415,7 +417,7 @@ func (c *coordinator) mergeLogOutputIndexes(
 		}
 		dispatched += len(tasks)
 		if err := assignArtifactPaths(merged, artifacts); err != nil {
-			return nil, 0, err
+			return nil, 0, fmt.Errorf("build merged index ToC entries: %w", err)
 		}
 
 		for _, entry := range entries {

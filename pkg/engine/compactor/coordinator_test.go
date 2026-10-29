@@ -48,18 +48,29 @@ type fakeRunner struct {
 	// records it. It overrides err, failOnCall and the default artifact.
 	respond runFunc
 
-	// outputs, when non-nil, receives an index object at each default
-	// artifact path. The postings of all such indexes overlap, so the
-	// coordinator merges them.
-	outputs       objstore.Bucket
-	outputsTenant string
-	t             *testing.T
+	// failActor, when set, makes every call under that actor return an
+	// error while calls under other actors succeed.
+	failActor string
+
+	// writeOutput, when non-nil, writes the artifact of each successful call
+	// to path. It runs on dispatcher goroutines, so it must report failures
+	// as errors and not through t.
+	writeOutput func(ctx context.Context, path string, opts workflow.Options) error
 }
 
 // newOutputWritingRunner returns a fakeRunner that writes each artifact as an
-// index object of tenant to bucket.
-func newOutputWritingRunner(t *testing.T, bucket objstore.Bucket, tenant string) *fakeRunner {
-	return &fakeRunner{outputs: bucket, outputsTenant: tenant, t: t}
+// index object of tenant to bucket. The postings of all artifacts overlap, so
+// the coordinator merges them.
+func newOutputWritingRunner(bucket objstore.Bucket, tenant string) *fakeRunner {
+	return &fakeRunner{writeOutput: overlappingOutputWriter(bucket, tenant)}
+}
+
+func overlappingOutputWriter(bucket objstore.Bucket, tenant string) func(context.Context, string, workflow.Options) error {
+	return func(ctx context.Context, path string, _ workflow.Options) error {
+		return writeIndex(ctx, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 20, postings: []postings.Row{
+			{Kind: postings.KindLabel, ObjectPath: path + ".log", ColumnName: "service_name", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20},
+		}})
+	}
 }
 
 type runCall struct {
@@ -83,10 +94,13 @@ func (f *fakeRunner) run(ctx context.Context, opts workflow.Options, plan *physi
 	if f.failOnCall > 0 && n == f.failOnCall {
 		return nil, errors.New("fakeRunner: forced failure on call")
 	}
-	if f.outputs != nil {
-		buildIndexWithPostings(ctx, f.t, f.outputs, f.outputsTenant, path, 1<<20, []postings.Row{
-			{Kind: postings.KindLabel, ObjectPath: path + ".log", ColumnName: "service_name", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20},
-		})
+	if f.failActor != "" && slices.Equal(opts.Actor, []string{"compaction", f.failActor}) {
+		return nil, fmt.Errorf("fakeRunner: forced failure for actor %s", f.failActor)
+	}
+	if f.writeOutput != nil {
+		if err := f.writeOutput(ctx, path, opts); err != nil {
+			return nil, fmt.Errorf("fakeRunner: write output %s: %w", path, err)
+		}
 	}
 	return &v2.ResultArtifact{Path: path}, nil
 }
@@ -281,14 +295,24 @@ func planObjectPaths(t *testing.T, plan *physical.Plan) []string {
 // callByActor returns the only call in calls that ran under actor.
 func callByActor(t *testing.T, calls []runCall, actor string) runCall {
 	t.Helper()
-	var found []runCall
-	for _, call := range calls {
-		if slices.Equal(call.opts.Actor, []string{"compaction", actor}) {
-			found = append(found, call)
-		}
-	}
+	found := callsByActor(calls, actor)
 	require.Len(t, found, 1, "want exactly one %s call", actor)
 	return found[0]
+}
+
+// callsByActor returns the calls in calls that ran under any of actors, in
+// call order.
+func callsByActor(calls []runCall, actors ...string) []runCall {
+	var found []runCall
+	for _, call := range calls {
+		for _, actor := range actors {
+			if slices.Equal(call.opts.Actor, []string{"compaction", actor}) {
+				found = append(found, call)
+				break
+			}
+		}
+	}
+	return found
 }
 
 func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string) {
@@ -543,7 +567,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 	newExecutor := func(t *testing.T) (*coordinator, *fakeRunner, *fakeReplacer) {
 		t.Helper()
 		bucket := objstore.NewInMemBucket()
-		runner := newOutputWritingRunner(t, bucket, "acme")
+		runner := newOutputWritingRunner(bucket, "acme")
 		replacer := &fakeReplacer{swapped: true}
 		writeToCReferencing(t.Context(), t, bucket, "acme", window, plan.sourceIndex.Path)
 		return newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme")), runner, replacer
@@ -624,12 +648,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, compactionStats{removed: 1, added: 1, dispatched: 5}, stats)
 
-		var merges []runCall
-		for _, call := range runner.snapshot() {
-			if call.opts.Actor[len(call.opts.Actor)-1] == "index-merge" {
-				merges = append(merges, call)
-			}
-		}
+		merges := callsByActor(runner.snapshot(), "index-merge")
 		require.Len(t, merges, 2, "3 outputs with K=2 merge 2 and pass 1 through, then 1 task merges the last 2")
 		for _, merge := range merges {
 			require.Len(t, planObjectPaths(t, merge.plan), 2)
@@ -638,6 +657,87 @@ func TestExecuteLogCompaction(t *testing.T) {
 		swaps := replacer.snapshot()
 		require.Len(t, swaps, 1)
 		requireEntriesMatchCalls(t, merges[1:], swaps[0].newEntries)
+	})
+
+	t.Run("returns an error and does not swap when an index merge task fails", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		runner.failActor = "index-merge"
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
+		require.ErrorContains(t, err, "merge log compaction output indexes")
+		require.Zero(t, stats)
+		require.Len(t, runner.snapshot(), 3)
+		require.Empty(t, replacer.snapshot())
+	})
+
+	t.Run("returns an error and does not swap when a task output cannot be read", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		runner.writeOutput = nil
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
+		require.ErrorContains(t, err, "discover index section bounds")
+		require.Zero(t, stats)
+		require.Empty(t, replacer.snapshot())
+	})
+
+	t.Run("swaps in the log merge output without an index merge when the plan has one task", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		oneTask := plan
+		oneTask.tasks = plan.tasks[:1]
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", oneTask)
+		require.NoError(t, err)
+		require.Equal(t, compactionStats{removed: 1, added: 1, dispatched: 1}, stats)
+
+		calls := runner.snapshot()
+		require.Len(t, calls, 1)
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		requireEntriesMatchCalls(t, calls, swaps[0].newEntries)
+	})
+
+	t.Run("passes an output without postings through to the swap unmerged", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		writeOverlapping := runner.writeOutput
+		runner.writeOutput = func(ctx context.Context, path string, opts workflow.Options) error {
+			if !slices.Equal(opts.Actor, []string{"compaction", "index-filter"}) {
+				return writeOverlapping(ctx, path, opts)
+			}
+			return writeIndex(ctx, c.bucket, testIndexObject{tenant: "acme", path: path, sectionSize: 1 << 20, stats: []stats.Stat{
+				{ObjectPath: "logs/c", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
+			}})
+		}
+		withFilter := plan
+		withFilter.tasks = append(slices.Clone(plan.tasks), indexFilterTask{sourceIndexPath: plan.sourceIndex.Path, objectPaths: []string{"logs/c"}})
+
+		got, err := c.executeLogCompaction(t.Context(), "acme", withFilter)
+		require.NoError(t, err)
+		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 4}, got)
+
+		calls := runner.snapshot()
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		requireEntriesMatchCalls(t, []runCall{callByActor(t, calls, "index-merge"), callByActor(t, calls, "index-filter")}, swaps[0].newEntries)
+	})
+
+	t.Run("gives the merged entry the time range of all task outputs", func(t *testing.T) {
+		c, _, replacer := newExecutor(t)
+		task := func(path string, minTS, maxTS int64) logCompactionTask {
+			return newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: path, MinTimestamp: minTS, MaxTimestamp: maxTS}}},
+			}})
+		}
+		ranged := plan
+		ranged.tasks = []logCompactionTask{task("logs/a", 100, 200), task("logs/b", 50, 150), task("logs/c", 120, 300)}
+
+		_, err := c.executeLogCompaction(t.Context(), "acme", ranged)
+		require.NoError(t, err)
+
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		require.Len(t, swaps[0].newEntries, 1)
+		require.Equal(t, time.Unix(0, 50).UTC(), swaps[0].newEntries[0].StartTime)
+		require.Equal(t, time.Unix(0, 300).UTC(), swaps[0].newEntries[0].EndTime)
 	})
 
 	t.Run("builds new physical plans with new node IDs on every execution", func(t *testing.T) {
@@ -1049,7 +1149,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 25, MaxTimestamp: 50, RowCount: 1, UncompressedSize: 100},
 		})
 
-		runner := newOutputWritingRunner(t, bucket, "acme")
+		runner := newOutputWritingRunner(bucket, "acme")
 		defer runner.assertUniqueObjects(t)
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
@@ -1061,12 +1161,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 		require.Equal(t, 3, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks, plus 1 index merge of their outputs")
 		require.Equal(t, 1, stats.added)
 
-		var logTasks []runCall
-		for _, call := range runner.snapshot() {
-			if call.opts.Actor[len(call.opts.Actor)-1] != "index-merge" {
-				logTasks = append(logTasks, call)
-			}
-		}
+		logTasks := callsByActor(runner.snapshot(), "log-merge", "index-filter")
 		require.Len(t, logTasks, 2)
 		require.Equal(t, 3, countPlannedObjects(t, logTasks))
 	})
@@ -1151,7 +1246,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 			ctx := context.Background()
 			bucket := objstore.NewInMemBucket()
 			buildCurrentIndexWithStats(ctx, t, bucket, "acme", sourcePath, test.rows)
-			runner := newOutputWritingRunner(t, bucket, "acme")
+			runner := newOutputWritingRunner(bucket, "acme")
 			defer runner.assertUniqueObjects(t)
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))

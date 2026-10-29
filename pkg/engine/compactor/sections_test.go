@@ -140,6 +140,12 @@ func buildIndexWithPostings(ctx context.Context, t *testing.T, bucket objstore.B
 
 func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, object testIndexObject) {
 	t.Helper()
+	require.NoError(t, writeIndex(ctx, bucket, object))
+}
+
+// writeIndex uploads object to bucket. Unlike buildIndex, it is safe to call
+// from goroutines other than the test goroutine.
+func writeIndex(ctx context.Context, bucket objstore.Bucket, object testIndexObject) error {
 	cfg := logsobj.BuilderBaseConfig{
 		TargetPageSize:          2048,
 		MaxPageRows:             10000,
@@ -149,31 +155,44 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 		SectionStripeMergeLimit: 2,
 	}
 	builder, err := indexobj.NewMergeBuilder(cfg, nil, object.tenant, layoutOfStats(object.stats))
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 	for _, stat := range object.stats {
-		require.NoError(t, builder.AppendStat(object.tenant, stat))
+		if err := builder.AppendStat(object.tenant, stat); err != nil {
+			return err
+		}
 	}
 	for _, row := range object.postings {
 		switch row.Kind {
 		case postings.KindBloom:
-			require.NoError(t, builder.AppendPostingsBloomEntry(object.tenant, row.BloomEntry()))
+			err = builder.AppendPostingsBloomEntry(object.tenant, row.BloomEntry())
 		case postings.KindLabel:
-			require.NoError(t, builder.AppendPostingsLabelEntry(object.tenant, row.LabelEntry()))
+			err = builder.AppendPostingsLabelEntry(object.tenant, row.LabelEntry())
 		default:
-			t.Fatalf("unsupported posting kind %d", row.Kind)
+			err = fmt.Errorf("unsupported posting kind %d", row.Kind)
+		}
+		if err != nil {
+			return err
 		}
 	}
 
 	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 	defer closer.Close()
 
 	reader, err := obj.Reader(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 	defer reader.Close()
 	objBytes, err := io.ReadAll(reader)
-	require.NoError(t, err)
-	require.NoError(t, bucket.Upload(ctx, object.path, io.NopCloser(bytes.NewReader(objBytes))))
+	if err != nil {
+		return err
+	}
+	return bucket.Upload(ctx, object.path, io.NopCloser(bytes.NewReader(objBytes)))
 }
 
 // layoutOfStats returns the layout with the default shard layout and the
