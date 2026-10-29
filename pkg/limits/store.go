@@ -53,6 +53,25 @@ func getPolicyBucketAndStreamsLimit(limits Limits, numPartitions int, tenant, po
 	return noPolicy, defaultMaxStreams // Use default bucket (noPolicy)
 }
 
+// resolveIdleExpiry returns how long a stream in the policy bucket may go
+// unseen before it is evicted by EvictIdle, or 0 if the bucket has no idle
+// expiry or it is not shorter than the active window. The shared noPolicy
+// bucket never has one, as it holds the streams of every policy that does
+// not override the stream limits.
+//
+// It is shared by usageStore and streamShardStore so both evict the same
+// streams.
+func resolveIdleExpiry(limits Limits, activeWindow time.Duration, tenant, policyBucket string) time.Duration {
+	if policyBucket == noPolicy {
+		return 0
+	}
+	expiry, ok := limits.PolicyStreamIdleExpiry(tenant, policyBucket)
+	if !ok || expiry <= 0 || expiry >= activeWindow {
+		return 0
+	}
+	return expiry
+}
+
 // usageStore stores per-tenant stream usage data.
 type usageStore struct {
 	activeWindow  time.Duration
@@ -313,6 +332,33 @@ func (s *usageStore) Evict() map[string]int {
 					for streamHash, stream := range streams {
 						if stream.lastSeenAt < cutoff {
 							delete(s.stripes[i][tenant][partition][policy], streamHash)
+							evicted[tenant]++
+						}
+					}
+				}
+			}
+		}
+	})
+	return evicted
+}
+
+// EvictIdle evicts the streams of policy buckets with an idle expiry that
+// have not been seen within it, see [resolveIdleExpiry].
+func (s *usageStore) EvictIdle() map[string]int {
+	now := s.clock.Now()
+	evicted := make(map[string]int)
+	s.forEachLock(func(i int) {
+		for tenant, partitions := range s.stripes[i] {
+			for _, policies := range partitions {
+				for policy, streams := range policies {
+					expiry := resolveIdleExpiry(s.limits, s.activeWindow, tenant, policy)
+					if expiry == 0 {
+						continue
+					}
+					cutoff := now.Add(-expiry).UnixNano()
+					for streamHash, stream := range streams {
+						if stream.lastSeenAt < cutoff {
+							delete(streams, streamHash)
 							evicted[tenant]++
 						}
 					}

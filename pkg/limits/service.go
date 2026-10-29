@@ -379,6 +379,7 @@ func (s *Service) starting(ctx context.Context) (err error) {
 func (s *Service) running(ctx context.Context) error {
 	// Start the eviction goroutine
 	go s.evictOldStreamsPeriodic(ctx)
+	go s.evictIdleStreamsPeriodic(ctx)
 	go s.consumer.Run(ctx)
 	for {
 		select {
@@ -406,6 +407,28 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 				s.metrics.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}
 			for tenant, numEvicted := range s.streamShards.Evict() {
+				s.metrics.streamShardEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+			}
+		}
+	}
+}
+
+// evictIdleStreamsPeriodic runs a periodic job that evicts the idle streams
+// of policies with a stream idle expiry. It runs more often than
+// evictOldStreamsPeriodic, as these expiries are shorter than the active
+// window.
+func (s *Service) evictIdleStreamsPeriodic(ctx context.Context) {
+	ticker := time.NewTicker(s.cfg.IdleEvictionInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for tenant, numEvicted := range s.usage.EvictIdle() {
+				s.metrics.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+			}
+			for tenant, numEvicted := range s.streamShards.EvictIdle() {
 				s.metrics.streamShardEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}
 		}

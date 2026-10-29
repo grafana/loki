@@ -3,6 +3,7 @@ package limits
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
@@ -20,6 +21,10 @@ type Limits interface {
 	IngestionBurstSizeBytes(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
 	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
+	// PolicyStreamIdleExpiry returns how long a stream of the policy may go
+	// unseen before it expires, which can be shorter than the active window.
+	// It returns false when the policy does not override it.
+	PolicyStreamIdleExpiry(userID, policy string) (time.Duration, bool)
 	// PolicyShardStreams returns the shard-streams config for the policy, or
 	// the tenant's config when the policy does not override it. The shard
 	// store uses its desired_rate to turn an observed stream rate into a

@@ -27,6 +27,14 @@ const (
 
 	HTTPHeaderIngestionPolicyKey   = "X-Loki-Ingestion-Policy"
 	lowerIngestionPolicyHeaderName = "x-loki-ingestion-policy"
+
+	// MinStreamIdleExpiry is the shortest stream_idle_expiry allowed. A limits
+	// service instance only learns that a stream pushed through another zone
+	// is still live from that zone's metadata records, produced at most once
+	// a minute per stream, and the limits frontend can skip the backend for a
+	// minute for streams it has recently accepted. A shorter expiry could
+	// expire streams that are still live and let the tenant exceed its limit.
+	MinStreamIdleExpiry = 2 * time.Minute
 )
 
 type PriorityStream struct {
@@ -395,6 +403,20 @@ type PolicyOverridableLimits struct {
 	PerStreamRateLimitBurst *flagext.ByteSize        `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"hidden"`
 	ShardStreams            *PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"hidden"`
 
+	// StreamIdleExpiry makes the limits service evict streams of the policy
+	// that have not been seen for this long, instead of waiting for the
+	// whole active window, so that short-lived streams, such as those of a
+	// backfill, stop counting against the stream limits sooner. Streams are
+	// evicted periodically, every -ingest-limits.idle-eviction-interval.
+	//
+	// It applies to the policy's own stream bucket in the limits service, so
+	// it requires max_global_streams_per_user or inherit_limits to be set:
+	// without either, the policy's streams share the tenant's bucket. Zero or
+	// nil disables it, and so does a value at least as long as the active
+	// window. Otherwise it must be at least MinStreamIdleExpiry. It is not
+	// affected by inherit_limits as there is no tenant-level equivalent.
+	StreamIdleExpiry *model.Duration `yaml:"stream_idle_expiry" json:"stream_idle_expiry" doc:"hidden"`
+
 	// RejectPartialWrites is for rejecting the whole push with a 429 if
 	// any of its streams is rejected with a 429. It applies to any push
 	// containing at least one stream resolved to the policy. It is not
@@ -412,6 +434,14 @@ type PolicyOverridableLimits struct {
 // Validate checks that the overridden values are non-negative. Returned errors are field-scoped;
 // callers add the policy context.
 func (p PolicyOverridableLimits) Validate() error {
+	if p.StreamIdleExpiry != nil && *p.StreamIdleExpiry != 0 {
+		if time.Duration(*p.StreamIdleExpiry) < MinStreamIdleExpiry {
+			return fmt.Errorf("stream_idle_expiry must be 0 or >= %s", MinStreamIdleExpiry)
+		}
+		if p.MaxGlobalStreamsPerUser == nil && !p.InheritLimits {
+			return errors.New("stream_idle_expiry requires max_global_streams_per_user or inherit_limits to be set")
+		}
+	}
 	if (p.IngestionRateMB != nil && *p.IngestionRateMB < 0) || (p.IngestionBurstSizeMB != nil && *p.IngestionBurstSizeMB < 0) {
 		return errors.New("ingestion_rate_mb and ingestion_burst_size_mb must be >= 0")
 	}
@@ -459,6 +489,17 @@ func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) (int, bo
 		return o.MaxLocalStreamsPerUser(userID), true
 	}
 	return 0, false
+}
+
+// PolicyStreamIdleExpiry returns how long a stream of the policy may go
+// unseen before the limits service expires it. It reports false when the
+// policy does not set a positive expiry.
+func (o *Overrides) PolicyStreamIdleExpiry(userID, policy string) (time.Duration, bool) {
+	pl, ok := o.policyOverride(userID, policy)
+	if !ok || pl.StreamIdleExpiry == nil || *pl.StreamIdleExpiry <= 0 {
+		return 0, false
+	}
+	return time.Duration(*pl.StreamIdleExpiry), true
 }
 
 func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {

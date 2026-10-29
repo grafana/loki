@@ -1328,6 +1328,11 @@ ingest_limits:
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
 
+  # The interval at which streams of ingestion policies with a stream idle
+  # expiry are evicted once they have been idle for longer than it.
+  # CLI flag: -ingest-limits.idle-eviction-interval
+  [idle_eviction_interval: <duration> | default = 1m]
+
   # Enable durability for stream sharding. Rate buckets are written to the
   # stream metadata topic and restored from it, which removes the warm-up period
   # after a restart or a partition rebalance during which streams are not
