@@ -328,6 +328,7 @@ func (s *tweakedSorter) sort(keys [][8]byte, docs []uint32, kb [][8]byte, db []u
 // scatter16Unrolled is a 16-bit LSD pass, four elements per iteration. The
 // loads and digit extraction of all four are issued before the dependent
 // position updates, which stay in program order so equal digits stay stable.
+// Keys move as raw uint64 words: a local [8]byte would live on the stack.
 // Destinations are in bounds because pos holds exclusive prefix sums of this
 // pass's histogram over len(fromK) <= len(toK) elements.
 func scatter16Unrolled(fromK [][8]byte, fromD []uint32, toK [][8]byte, toD []uint32, shift uint, pos *[1 << 16]int32) {
@@ -345,43 +346,43 @@ func scatter16Unrolled(fromK [][8]byte, fromD []uint32, toK [][8]byte, toD []uin
 	sh := shift + 16
 	i := 0
 	for ; i+4 <= n; i += 4 {
-		k0 := *(*[8]byte)(unsafe.Add(fk, i*8))
-		k1 := *(*[8]byte)(unsafe.Add(fk, i*8+8))
-		k2 := *(*[8]byte)(unsafe.Add(fk, i*8+16))
-		k3 := *(*[8]byte)(unsafe.Add(fk, i*8+24))
+		src := unsafe.Add(fk, i*8)
+		k0 := *(*uint64)(src)
+		k1 := *(*uint64)(unsafe.Add(src, 8))
+		k2 := *(*uint64)(unsafe.Add(src, 16))
+		k3 := *(*uint64)(unsafe.Add(src, 24))
 		d0 := *(*uint32)(unsafe.Add(fd, i*4))
 		d1 := *(*uint32)(unsafe.Add(fd, i*4+4))
 		d2 := *(*uint32)(unsafe.Add(fd, i*4+8))
 		d3 := *(*uint32)(unsafe.Add(fd, i*4+12))
-		v0 := uint16(binary.BigEndian.Uint64(k0[:]) >> sh)
-		v1 := uint16(binary.BigEndian.Uint64(k1[:]) >> sh)
-		v2 := uint16(binary.BigEndian.Uint64(k2[:]) >> sh)
-		v3 := uint16(binary.BigEndian.Uint64(k3[:]) >> sh)
+		v0 := uint16(binary.BigEndian.Uint64((*[8]byte)(src)[:]) >> sh)
+		v1 := uint16(binary.BigEndian.Uint64((*[8]byte)(unsafe.Add(src, 8))[:]) >> sh)
+		v2 := uint16(binary.BigEndian.Uint64((*[8]byte)(unsafe.Add(src, 16))[:]) >> sh)
+		v3 := uint16(binary.BigEndian.Uint64((*[8]byte)(unsafe.Add(src, 24))[:]) >> sh)
 		p := uintptr(pos[v0])
 		pos[v0] = int32(p) + 1
-		*(*[8]byte)(unsafe.Add(tk, p*8)) = k0
+		*(*uint64)(unsafe.Add(tk, p*8)) = k0
 		*(*uint32)(unsafe.Add(td, p*4)) = d0
 		p = uintptr(pos[v1])
 		pos[v1] = int32(p) + 1
-		*(*[8]byte)(unsafe.Add(tk, p*8)) = k1
+		*(*uint64)(unsafe.Add(tk, p*8)) = k1
 		*(*uint32)(unsafe.Add(td, p*4)) = d1
 		p = uintptr(pos[v2])
 		pos[v2] = int32(p) + 1
-		*(*[8]byte)(unsafe.Add(tk, p*8)) = k2
+		*(*uint64)(unsafe.Add(tk, p*8)) = k2
 		*(*uint32)(unsafe.Add(td, p*4)) = d2
 		p = uintptr(pos[v3])
 		pos[v3] = int32(p) + 1
-		*(*[8]byte)(unsafe.Add(tk, p*8)) = k3
+		*(*uint64)(unsafe.Add(tk, p*8)) = k3
 		*(*uint32)(unsafe.Add(td, p*4)) = d3
 	}
 	for ; i < n; i++ {
-		k := *(*[8]byte)(unsafe.Add(fk, i*8))
-		d := *(*uint32)(unsafe.Add(fd, i*4))
-		v := uint16(binary.BigEndian.Uint64(k[:]) >> sh)
+		src := unsafe.Add(fk, i*8)
+		v := uint16(binary.BigEndian.Uint64((*[8]byte)(src)[:]) >> sh)
 		p := uintptr(pos[v])
 		pos[v] = int32(p) + 1
-		*(*[8]byte)(unsafe.Add(tk, p*8)) = k
-		*(*uint32)(unsafe.Add(td, p*4)) = d
+		*(*uint64)(unsafe.Add(tk, p*8)) = *(*uint64)(src)
+		*(*uint32)(unsafe.Add(td, p*4)) = *(*uint32)(unsafe.Add(fd, i*4))
 	}
 }
 
