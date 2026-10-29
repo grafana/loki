@@ -173,6 +173,23 @@ func TestHandleDebug_JSONLabelFilter(t *testing.T) {
 	require.True(t, resp.Summary.Correct)
 }
 
+func TestParseDebugRequest_MetricRange(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/correctness/debug?start=2026-02-26T10:00:00Z&end=2026-02-26T10:02:00Z&selector=%7Bjob%3D%22api%22%7D&needle=9fA81cD2Ef0077aa&query_type=metric_range", nil)
+
+	got, err := parseDebugRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, hintQueryTypeMetricRange, got.queryType)
+	require.Empty(t, got.label)
+}
+
+func TestParseDebugRequest_MetricInstantRejected(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/correctness/debug?start=2026-02-26T10:00:00Z&end=2026-02-26T10:02:00Z&selector=%7Bjob%3D%22api%22%7D&needle=9fA81cD2Ef0077aa&query_type=metric_instant", nil)
+
+	_, err := parseDebugRequest(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "query_type must be")
+}
+
 func TestHandleDebug_BadRequest(t *testing.T) {
 	svc := &Service{}
 

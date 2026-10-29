@@ -168,16 +168,17 @@ func parseDebugRequest(r *http.Request) (debugRequest, error) {
 		queryType = hintQueryTypeLineFilter
 	}
 	switch queryType {
-	case hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter:
+	case hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter, hintQueryTypeMetricRange:
 	default:
 		return debugRequest{}, fmt.Errorf(
-			"query_type must be %q, %q, %q, or %q",
-			hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter,
+			"query_type must be %q, %q, %q, %q, or %q",
+			hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter, hintQueryTypeMetricRange,
 		)
 	}
 
 	label := query.Get("label")
-	if queryType != hintQueryTypeLineFilter && label == "" {
+	// A metric range wraps a line filter, so it does not take a label.
+	if queryType != hintQueryTypeLineFilter && queryType != hintQueryTypeMetricRange && label == "" {
 		return debugRequest{}, fmt.Errorf("label is required for query_type=%q", queryType)
 	}
 
