@@ -48,10 +48,12 @@ func verifyHints(
 }
 
 // verifyMetricHints measures coverage of pre-fetched hint ranges against the
-// supplied metric samples. A miss is recorded as that sample's lookback. It
-// performs pure computation with no I/O.
-func verifyMetricHints(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange, samples []verification.MetricSample) *verificationReport {
-	r := verification.VerifySamples(expr, hintRanges, samples, time.Time{})
+// supplied metric samples. A miss is recorded as that sample's lookback.
+// A sample whose lookback ends after eligibleEnd is left unscored; a zero
+// eligibleEnd scores every positive sample. It performs pure computation
+// with no I/O.
+func verifyMetricHints(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange, samples []verification.MetricSample, eligibleEnd time.Time) *verificationReport {
+	r := verification.VerifySamples(expr, hintRanges, samples, eligibleEnd)
 	return &verificationReport{
 		HintRanges:          r.HintRanges,
 		TotalResults:        r.TotalEntries,
