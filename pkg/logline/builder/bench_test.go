@@ -704,10 +704,12 @@ func runBuilderE2E(t *testing.T, run e2eRun) {
 	runtime.GC()
 	debug.FreeOSMemory()
 
+	setupStart := time.Now()
 	builder, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	if err != nil {
 		t.Fatal(err)
 	}
+	setupSec := time.Since(setupStart).Seconds()
 
 	// Optional profiles for later inspection (BENCH_PROFILE_DIR=/path).
 	profDir := os.Getenv("BENCH_PROFILE_DIR")
@@ -775,9 +777,9 @@ func runBuilderE2E(t *testing.T, run e2eRun) {
 		textMiB/totalSec,
 		float64(m1.TotalAlloc-m0.TotalAlloc)/(1<<30),
 		float64(peak)/(1<<20))
-	t.Logf("RESULT dataset=%s variant=%s buffer_pairs=%d shards=%d workers=%d rep=%d extract_s=%.4f prepare_s=%.4f extract_mbps=%.2f e2e_mbps=%.2f sort_extract_ms=%.2f sort_flush_ms=%.2f fills_extract=%d fills_flush=%d sorted_pairs=%d spills_extract=%d spills=%d flushes=1 files=%d hash=%s thp_mib=%d",
+	t.Logf("RESULT dataset=%s variant=%s buffer_pairs=%d shards=%d workers=%d rep=%d setup_s=%.4f extract_s=%.4f prepare_s=%.4f extract_mbps=%.2f e2e_mbps=%.2f sort_extract_ms=%.2f sort_flush_ms=%.2f fills_extract=%d fills_flush=%d sorted_pairs=%d spills_extract=%d spills=%d flushes=1 files=%d hash=%s thp_mib=%d",
 		profTag(), run.variant.name, run.bufferPairs, shardCount, extractThreads, run.rep,
-		ingestSec, prepareSec, textMiB/ingestSec, textMiB/totalSec,
+		setupSec, ingestSec, prepareSec, textMiB/ingestSec, textMiB/totalSec,
 		float64(extractSort.dur.Microseconds())/1000, float64((totalSort.dur-extractSort.dur).Microseconds())/1000,
 		extractSort.calls, totalSort.calls-extractSort.calls, totalSort.pairs,
 		extractSpills, totalSpills, len(files), hash, thpMiB)
