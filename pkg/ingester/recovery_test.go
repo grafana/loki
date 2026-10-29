@@ -151,7 +151,7 @@ func (r *MemRecoverer) SetStream(_ context.Context, userID string, series record
 	return nil
 }
 
-func (r *MemRecoverer) Push(userID string, entries wal.RefEntries) error {
+func (r *MemRecoverer) Push(userID string, _ time.Time, entries wal.RefEntries) error {
 	r.Lock()
 	defer r.Unlock()
 

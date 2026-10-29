@@ -353,9 +353,14 @@ func buildChunkDesc(t testing.TB) *chunkDesc {
 	return desc
 }
 
-// nextUTCMidnight returns the beginning of the UTC day after t.
+// nextUTCMidnight returns t rounded up to the beginning of a UTC day, as the index does: a t
+// exactly at midnight stays as is.
 func nextUTCMidnight(t model.Time) model.Time {
-	return model.TimeFromUnixNano(t.Time().UTC().Truncate(24 * time.Hour).Add(24 * time.Hour).UnixNano())
+	day := t.Time().UTC().Truncate(24 * time.Hour)
+	if !day.Equal(t.Time()) {
+		day = day.Add(24 * time.Hour)
+	}
+	return model.TimeFromUnixNano(day.UnixNano())
 }
 
 // IngestedAt is part of the encoded chunk, so replicas that flush the same backfilled chunk must
@@ -431,6 +436,7 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 
 			before := model.Now()
 			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, descs, &sync.RWMutex{}))
+			after := model.Now()
 
 			require.NotEmpty(t, captured)
 			for _, c := range captured {
@@ -438,7 +444,8 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 				case "unset":
 					require.Equal(t, model.Time(0), c.IngestedAt)
 				case "flush time":
-					require.Equal(t, nextUTCMidnight(before), c.IngestedAt)
+					// The flush may cross a UTC midnight.
+					require.Contains(t, []model.Time{nextUTCMidnight(before), nextUTCMidnight(after)}, c.IngestedAt)
 				case "record time":
 					require.Equal(t, wantRecordIngestedAt, c.IngestedAt)
 				default:

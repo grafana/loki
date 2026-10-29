@@ -125,8 +125,9 @@ func TestChunkCodec(t *testing.T) {
 	}
 }
 
-// IngestedAt is serialized into the chunk header. Chunks written before it was stored at day
-// precision carry a millisecond value, so both forms must decode to the value that was written.
+// IngestedAt is serialized into the chunk header. It carries either a millisecond value (e.g. a
+// Kafka record timestamp) or a value at day precision (the flush-time fallback), so both forms
+// must decode to the value that was written.
 func TestChunkCodecIngestedAt(t *testing.T) {
 	decodeContext := NewDecodeContext()
 

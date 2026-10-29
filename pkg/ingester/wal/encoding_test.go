@@ -248,10 +248,10 @@ func TestEntriesRecordIngestedAt(t *testing.T) {
 		desc       string
 		version    RecordType
 		ingestedAt time.Time
-		// want is the timestamp expected on the decoded record and on each of its RefEntries.
+		// want is the timestamp expected on the decoded record.
 		want time.Time
 	}{
-		{desc: "V4 with a timestamp restores it on all entries", version: WALRecordEntriesV4, ingestedAt: ingestedAt, want: ingestedAt},
+		{desc: "V4 with a timestamp restores it", version: WALRecordEntriesV4, ingestedAt: ingestedAt, want: ingestedAt},
 		{desc: "V4 without a timestamp decodes to a zero time", version: WALRecordEntriesV4, ingestedAt: time.Time{}, want: time.Time{}},
 		{desc: "the current version stores the timestamp", version: CurrentEntriesRec, ingestedAt: ingestedAt, want: ingestedAt},
 		{desc: "V3 doesn't store the timestamp", version: WALRecordEntriesV3, ingestedAt: ingestedAt, want: time.Time{}},
@@ -271,11 +271,8 @@ func TestEntriesRecordIngestedAt(t *testing.T) {
 			decoded := recordPool.GetRecord()
 			require.NoError(t, DecodeRecord(rec.EncodeEntries(tc.version, nil), decoded))
 
-			require.True(t, tc.want.Equal(decoded.IngestedAt), "record: got %s, want %s", decoded.IngestedAt, tc.want)
+			require.True(t, tc.want.Equal(decoded.IngestedAt), "got %s, want %s", decoded.IngestedAt, tc.want)
 			require.Len(t, decoded.RefEntries, 2)
-			for _, re := range decoded.RefEntries {
-				require.True(t, tc.want.Equal(re.IngestedAt), "entries: got %s, want %s", re.IngestedAt, tc.want)
-			}
 			// The rest of the record is unaffected.
 			require.Equal(t, "first", decoded.RefEntries[0].Entries[0].Line)
 			require.Equal(t, "second", decoded.RefEntries[1].Entries[0].Line)

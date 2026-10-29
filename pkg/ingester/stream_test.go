@@ -520,14 +520,9 @@ func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
 			want:  []time.Time{late, early},
 		},
 		{
-			name:  "a duplicate entry from a later record counts",
+			name:  "a duplicate of the last line doesn't count",
 			steps: []step{{recordTime: early, line: "dup"}, {recordTime: late, line: "dup"}},
-			want:  []time.Time{late},
-		},
-		{
-			name:  "a duplicate entry from a later record counts whatever the push order",
-			steps: []step{{recordTime: late, line: "dup"}, {recordTime: early, line: "dup"}},
-			want:  []time.Time{late},
+			want:  []time.Time{early},
 		},
 		{
 			name: "a duplicate entry that is not the last line from a later record counts",

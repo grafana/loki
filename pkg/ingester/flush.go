@@ -581,16 +581,15 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			lastTime,
 		)
 
-		// For backfilled chunks, stamp IngestedAt (the time the records were ingested, or the
-		// flush time if there is none) so retention can be measured from ingestion rather than
-		// from the log timestamps.
-		i.maybeSetIngestedAt(&ch, firstTime, c.ingestedAt)
-
-		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
-		// for the duration of encode. Store Put remains unlocked.
+		// encodeChunk mutates the chunk (writes block offsets) and maybeSetIngestedAt reads its
+		// ingestedAt, so hold chunkMtx for both. Store Put remains unlocked.
 		if err := func() error {
 			chunkMtx.Lock()
 			defer chunkMtx.Unlock()
+			// For backfilled chunks, stamp IngestedAt (the time the records were ingested, or the
+			// flush time if there is none) so retention can be measured from ingestion rather than
+			// from the log timestamps. It is part of the encoded chunk, so it goes before encodeChunk.
+			i.maybeSetIngestedAt(&ch, firstTime, c.ingestedAt)
 			return i.encodeChunk(ctx, &ch, c)
 		}(); err != nil {
 			return err

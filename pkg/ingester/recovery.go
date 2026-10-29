@@ -1,13 +1,13 @@
 package ingester
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"runtime"
 	"sync"
-
-	"context"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -84,7 +84,7 @@ type Recoverer interface {
 	NumWorkers() int
 	Series(series *Series) error
 	SetStream(ctx context.Context, userID string, series record.RefSeries) error
-	Push(userID string, entries wal.RefEntries) error
+	Push(userID string, ingestedAt time.Time, entries wal.RefEntries) error
 	Done() <-chan struct{}
 }
 
@@ -187,7 +187,7 @@ func (r *ingesterRecoverer) SetStream(ctx context.Context, userID string, series
 	return nil
 }
 
-func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
+func (r *ingesterRecoverer) Push(userID string, ingestedAt time.Time, entries wal.RefEntries) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 		out, ok := r.users.Load(userID)
 		if !ok {
@@ -200,7 +200,7 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(withRecordTimestamp(context.Background(), entries.IngestedAt), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
+		bytesAdded, err := s.(*stream).Push(withRecordTimestamp(context.Background(), ingestedAt), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
@@ -262,7 +262,7 @@ func RecoverWAL(ctx context.Context, reader WALReader, recoverer Recoverer) erro
 			worker := int(uint64(entries.Ref) % uint64(len(inputs)))
 			inputs[worker] <- recoveryInput{
 				userID: rec.UserID,
-				data:   entries,
+				data:   walEntries{RefEntries: entries, ingestedAt: rec.IngestedAt},
 			}
 		}
 
@@ -278,13 +278,13 @@ func RecoverWAL(ctx context.Context, reader WALReader, recoverer Recoverer) erro
 				if !ok {
 					return
 				}
-				entries, ok := next.data.(wal.RefEntries)
+				entries, ok := next.data.(walEntries)
 				var err error
 				if !ok {
 					err = fmt.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
 				}
 				if err == nil {
-					err = recoverer.Push(next.userID, entries)
+					err = recoverer.Push(next.userID, entries.ingestedAt, entries.RefEntries)
 				}
 
 				// Pass the error back, but respect the quit signal.
@@ -355,6 +355,12 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 type recoveryInput struct {
 	userID string
 	data   interface{}
+}
+
+// walEntries are a stream's entries from a WAL record, along with the record's IngestedAt.
+type walEntries struct {
+	wal.RefEntries
+	ingestedAt time.Time
 }
 
 // recoverGeneric enables reusing the ability to recover from WALs of different types

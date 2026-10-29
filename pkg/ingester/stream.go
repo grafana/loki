@@ -106,8 +106,24 @@ type chunkDesc struct {
 }
 
 // observeRecordTimestamp keeps the highest record timestamp that fed the chunk. That doesn't
-// depend on the order records are pushed in, so replicas consuming the same records end up with
-// the same value for the same chunk.
+// depend on the order records are applied in, so replicas consuming the same records end up with
+// the same value for the same chunk, and the chunk is deduplicated.
+//
+// That holds for most duplicate entries too: they are not added to the chunk twice, but their
+// record timestamp still counts. The exception is a duplicate of the stream's last line, which is
+// discarded before its record timestamp is counted. Replicas apply records with several workers,
+// so they can apply them in a different order. For example, with a push of a single line A that
+// the client retries:
+//
+//	R1 (10:00): [A]
+//	R2 (10:01): [A]  (retry of R1)
+//
+//	replica 1 applies R1, then R2: stores A from R1, discards it from R2 -> 10:00
+//	replica 2 applies R2, then R1: stores A from R2, discards it from R1 -> 10:01
+//
+// Both replicas hold the same entries but stamp different values, so the chunk is stored twice.
+// Fixing it would mean counting the timestamps of discarded records and writing them to the WAL,
+// so a restart remembers them. We don't think the edge case is worth the extra complexity.
 func (c *chunkDesc) observeRecordTimestamp(ts time.Time) {
 	if ts.After(c.ingestedAt) {
 		c.ingestedAt = ts
@@ -441,7 +457,6 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		highestTs                            = s.highestTs
 		toStore                              = make([]logproto.Entry, 0, len(entries))
 	)
-	recordTs, hasRecordTs := recordTimestamp(ctx)
 
 	for i := range entries {
 		// If this entry matches our last appended line's timestamp and contents,
@@ -455,12 +470,6 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		if entries[i].Timestamp.Equal(lastLine.ts) &&
 			entries[i].Line == lastLine.content &&
 			labelsEqual(entries[i].StructuredMetadata, lastLine.structuredMetadata) {
-			// The entry is already in the last chunk. The record still counts for its timestamp,
-			// since replicas may process the records that carry the same entry in a different order.
-			// A closed chunk is already being flushed, so its value is final.
-			if hasRecordTs && len(s.chunks) > 0 && !s.chunks[len(s.chunks)-1].closed {
-				s.chunks[len(s.chunks)-1].observeRecordTimestamp(recordTs)
-			}
 			continue
 		}
 
