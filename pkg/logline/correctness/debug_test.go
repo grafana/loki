@@ -196,9 +196,9 @@ func TestBuildDebugSamples_UsesSampleLookback(t *testing.T) {
 	}
 
 	got := buildDebugSamples(hq.expr, samples, hints)
+	require.Len(t, got, 2)
 	require.True(t, got[0].Covered)
 	require.False(t, got[1].Covered)
-	require.False(t, got[2].Covered)
 
 	ranges := buildDebugMetricHintRanges(hq.expr, samples, hints)
 	require.Equal(t, 1, ranges[0].EntryCount)

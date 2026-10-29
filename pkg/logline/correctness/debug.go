@@ -286,6 +286,11 @@ func buildDebugHintRanges(entries []logproto.Entry, hintRanges []hintprovider.Hi
 func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugSample {
 	out := make([]debugSample, 0, len(samples))
 	for _, sample := range samples {
+		// A zero sample is not scored. Leaving it in the response with covered
+		// false would look like a miss.
+		if sample.Value <= 0 {
+			continue
+		}
 		report := verification.VerifySamples(expr, hintRanges, []verification.MetricSample{sample}, time.Time{})
 		out = append(out, debugSample{
 			Time:    sample.Time,
