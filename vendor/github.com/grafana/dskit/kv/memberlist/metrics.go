@@ -71,6 +71,20 @@ func (m *KV) createAndRegisterMetrics() {
 		Help:      "Total size of pulled state",
 	})
 
+	m.localStateCacheHits = promauto.With(m.registerer).NewCounterVec(prometheus.CounterOpts{
+		Namespace: m.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "local_state_cache_hits_total",
+		Help:      "Number of store entries served from the serialized local state cache when sending full state",
+	}, []string{"key"})
+
+	m.localStateCacheMisses = promauto.With(m.registerer).NewCounterVec(prometheus.CounterOpts{
+		Namespace: m.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "local_state_cache_misses_total",
+		Help:      "Number of store entries that had to be serialized when sending full state, because they changed since the last time they were sent",
+	}, []string{"key"})
+
 	const queueMetricName = "messages_in_broadcast_queue"
 	const queueMetricHelp = "Number of user messages in the broadcast queue"
 

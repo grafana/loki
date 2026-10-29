@@ -56,9 +56,8 @@ import (
 )
 
 const (
-	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
-	// Possible values are only increasing integers starting from 0.
-	ShardLbName        = "__stream_shard__"
+	// ShardLbPlaceholder stands in for the value of constants.StreamShardLabel in a label set template. The
+	// distributor replaces it with the real shard number.
 	ShardLbPlaceholder = "__placeholder__"
 
 	queryBatchSize       = 128
@@ -132,6 +131,8 @@ type instance struct {
 	limiter            *Limiter
 	streamCountLimiter *streamCountLimiter
 	ownedStreamsSvc    *ownedStreamService
+	// memoryPolicyStreams counts all in-memory streams per policy, regardless of ownership.
+	memoryPolicyStreams *policyStreamCounts
 
 	configs *runtime.TenantConfigs
 
@@ -178,6 +179,7 @@ func newInstance(
 	}
 	streams := newStreamsMap()
 	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
+	memoryPolicyStreams := newPolicyStreamCounts()
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
@@ -192,11 +194,12 @@ func newInstance(
 		memoryStreams:       metrics.instance.memoryStreams.WithLabelValues(instanceID),
 		memoryStreamShards:  metrics.instance.memoryStreamShards.WithLabelValues(instanceID),
 
-		tailers:            map[uint32]*tailer{},
-		limiter:            limiter,
-		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc, cfg.DelegateStreamLimits),
-		ownedStreamsSvc:    ownedStreamsSvc,
-		configs:            configs,
+		tailers:             map[uint32]*tailer{},
+		limiter:             limiter,
+		streamCountLimiter:  newStreamCountLimiter(instanceID, streams.Len, memoryPolicyStreams, limiter, ownedStreamsSvc),
+		ownedStreamsSvc:     ownedStreamsSvc,
+		memoryPolicyStreams: memoryPolicyStreams,
+		configs:             configs,
 
 		wal:                   wal,
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
@@ -381,13 +384,14 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 
 func (i *instance) onStreamCreated(s *stream) {
 	i.memoryStreams.Inc()
-	if s.labels.Has(ShardLbName) {
+	if s.labels.Has(constants.StreamShardLabel) {
 		i.memoryStreamShards.Inc()
 	}
 	i.metrics.instance.memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	i.metrics.instance.streamsCountStats.Add(1)
+	i.memoryPolicyStreams.inc(s.policy)
 	// we count newly created stream as owned
 	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true, s.policy)
 	if i.configs.LogStreamCreation(i.instanceID) {
@@ -455,11 +459,12 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		i.memoryStreams.Dec()
-		if s.labels.Has(ShardLbName) {
+		if s.labels.Has(constants.StreamShardLabel) {
 			i.memoryStreamShards.Dec()
 		}
 		i.metrics.instance.memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		i.metrics.instance.streamsCountStats.Add(-1)
+		i.memoryPolicyStreams.dec(s.policy)
 		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.policy)
 	}
 }
@@ -702,7 +707,7 @@ func combineByStreamFirst(streams []sampleStream) iter.SampleIterator {
 	if len(its) == 1 {
 		return its[0]
 	}
-	return iter.NewNonOverlappingSampleIterator(its)
+	return iter.NewChainedSampleIterator(its)
 }
 
 // Label returns the label names or values depending on the given request

@@ -33,16 +33,6 @@ type packedResp struct {
 	err  error
 }
 
-// joinPartialFromResponses keeps the usage of already-completed responses when
-// a fan-out exits on a failure or a cancellation.
-func joinPartialFromResponses(ctx context.Context, responses []queryrangebase.Response) {
-	for _, r := range responses {
-		if s, ok := statisticsFromResponse(r); ok {
-			stats.JoinPartial(ctx, s)
-		}
-	}
-}
-
 func statisticsFromResponse(resp queryrangebase.Response) (stats.Result, bool) {
 	switch r := resp.(type) {
 	case *LokiResponse:
@@ -52,6 +42,8 @@ func statisticsFromResponse(resp queryrangebase.Response) (stats.Result, bool) {
 	case *LokiSeriesResponse:
 		return r.Statistics, true
 	case *LokiLabelNamesResponse:
+		return r.Statistics, true
+	case *DetectedFieldsResponse:
 		return r.Statistics, true
 	default:
 		return stats.Result{}, false
@@ -118,16 +110,38 @@ func (h *splitByInterval) Feed(ctx context.Context, input []*lokiResult) chan *l
 	return ch
 }
 
+// Process returns one complete response on success and nil on error.
 func (h *splitByInterval) Process(
 	ctx context.Context,
 	parallelism int,
 	threshold int64,
 	input []*lokiResult,
 	maxSeries int,
-) ([]queryrangebase.Response, error) {
-	var responses []queryrangebase.Response
+) (queryrangebase.Response, error) {
 	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errors.New("split by interval process canceled"))
+	defer cancel(nil)
+	discardedUsage := &discardedResponseUsageTracker{}
+	var responses []queryrangebase.Response
+
+	finishResponses := func(queryErr error) (queryrangebase.Response, error) {
+		cancel(errors.New("split by interval process canceled"))
+		var response queryrangebase.Response
+		if queryErr == nil {
+			// Early log exits already compacted their responses. Merge normal
+			// completion here as well, before attaching discarded statistics.
+			if len(responses) == 1 {
+				response = responses[0]
+			} else {
+				response, queryErr = h.merger.MergeResponse(responses...)
+			}
+		}
+		if queryErr != nil {
+			// Both collection and merge failures must retain the original usage.
+			discardedUsage.finalizeFailedResponseUsage(ctx, responses)
+			return nil, queryErr
+		}
+		return discardedUsage.finalizeSuccessfulResponseUsage(response), nil
+	}
 
 	ch := h.Feed(ctx, input)
 
@@ -144,25 +158,22 @@ func (h *splitByInterval) Process(
 	// per request wrapped handler for limiting the amount of series.
 	next := newSeriesLimiter(maxSeries).Wrap(h.next)
 	for i := 0; i < p; i++ {
-		go h.loop(ctx, ch, next)
+		go h.loop(ctx, ch, next, discardedUsage)
 	}
 
 	for _, x := range input {
 		select {
 		case <-ctx.Done():
-			// Keep the usage of the intervals that completed before the
-			// cancellation, and report the cause so a real failure wins over a
-			// generic cancellation.
-			joinPartialFromResponses(ctx, responses)
-			return nil, context.Cause(ctx)
+			// Finalization preserves collected and uncollected usage. Keep the original
+			// cause so a real failure wins over a generic cancellation.
+			return finishResponses(context.Cause(ctx))
 		case data := <-x.ch:
+			discardedUsage.markResponseCollected(x)
 			if data.err != nil {
-				// Keep the usage of the intervals that completed before the failure.
-				joinPartialFromResponses(ctx, responses)
 				// Cancel the siblings with this failure as the cause, so it is not
 				// lost behind a generic cancellation.
 				cancel(data.err)
-				return nil, data.err
+				return finishResponses(data.err)
 			}
 
 			responses = append(responses, data.resp)
@@ -179,12 +190,12 @@ func (h *splitByInterval) Process(
 					// Each split still carries the original line limit, so holding
 					// every sub-response until a final merge is O(splits × limit).
 					// Compact immediately so oversized splits can be GC'd and so a
-					// single already-merged result keeps stats.Splits accurate.
+					// single result preserves the number of responses merged here.
 					if allLokiResponses(responses) {
 						responses = []queryrangebase.Response{mergeLokiResponse(responses...)}
 					}
 
-					return responses, nil
+					return finishResponses(nil)
 				}
 
 			}
@@ -192,10 +203,10 @@ func (h *splitByInterval) Process(
 		}
 	}
 
-	return responses, nil
+	return finishResponses(nil)
 }
 
-func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler) {
+func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler, discardedUsage *discardedResponseUsageTracker) {
 	for data := range ch {
 
 		ctx, sp := tracer.Start(ctx, "interval")
@@ -204,6 +215,9 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		}
 
 		resp, err := next.Do(ctx, data.req)
+		if err == nil {
+			discardedUsage.recordResponse(data, resp)
+		}
 		sp.End()
 
 		select {
@@ -225,20 +239,12 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	var interval time.Duration
-	switch r.(type) {
-	case *LokiSeriesRequest, *LabelRequest:
-		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.MetadataQuerySplitDuration)
-	default:
-		interval = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, h.limits.QuerySplitDuration)
-	}
+	intervals, enabled := h.splitter.split(time.Now().UTC(), tenantIDs, r)
 
 	// skip split by if unset
-	if interval == 0 {
+	if !enabled {
 		return h.next.Do(ctx, r)
 	}
-
-	intervals := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
 
 	h.metrics.splits.Observe(float64(len(intervals)))
 
@@ -282,20 +288,10 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		})
 	}
 
-	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQuerySeries)
 	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()))
-	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
-	if err != nil {
-		return nil, err
-	}
-	// A single response is already complete. Process compact-merges log
-	// early-exits (including a first interval that already filled the limit),
-	// so re-merging would call MergeSplit once more and reset stats.Splits to 1.
-	if len(resps) == 1 {
-		return resps[0], nil
-	}
-	return h.merger.MergeResponse(resps...)
+	// Process returns the final response; merging it again would reset its split count.
+	return h.Process(ctx, maxParallelism, limit, input, maxSeries)
 }
 
 func allLokiResponses(responses []queryrangebase.Response) bool {

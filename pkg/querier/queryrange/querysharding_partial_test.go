@@ -27,11 +27,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
-// TestASTMapperware_PartialStatsOnError runs a two-leg sharded query where the
+// TestASTMapperware_DiscardedWorkStatsOnError runs a two-leg sharded query where the
 // left leg completes while the right leg fails. The completed leg's usage is not
-// part of the failing Downstream call's results, so without the partial-stats
-// collector it would be dropped along with the engine result.
-func TestASTMapperware_PartialStatsOnError(t *testing.T) {
+// part of the failing Downstream call's results, so without the discarded-work
+// context it would be dropped along with the engine result.
+func TestASTMapperware_DiscardedWorkStatsOnError(t *testing.T) {
 	const (
 		bytesPerShard = 1000
 		shardsPerLeg  = 2
@@ -96,6 +96,7 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{
 			maxSeries:               math.MaxInt32,
 			maxQueryParallelism:     4,
@@ -103,7 +104,6 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 			queryTimeout:            time.Minute,
 		},
 		shardsPerLeg,
-		[]string{},
 	)
 
 	query := `count_over_time({app="left"}[1h]) / count_over_time({app="right"}[1h])`
@@ -128,7 +128,7 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 	// responses were accumulated before the failing leg cancelled it, so accept
 	// one shard up to the whole leg. Nothing else in this query reports usage:
 	// the failing shard carries no statistics and neither does the index lookup,
-	// so without the partial-stats collector this is 0B.
+	// so without the discarded-work context this is 0B.
 	kept := make([]string, 0, shardsPerLeg)
 	for shards := 1; shards <= shardsPerLeg; shards++ {
 		kept = append(kept, util.HumanizeBytes(uint64(shards*bytesPerShard)))
@@ -163,6 +163,7 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{
 			maxSeries:               math.MaxInt32,
 			maxQueryParallelism:     1,
@@ -171,7 +172,6 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 			maxQuerierBytesRead:     10,
 		},
 		0,
-		[]string{},
 	)
 
 	query := `avg_over_time({app="foo"} | json busy="utilization" | unwrap busy [5m])`

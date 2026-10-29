@@ -29,6 +29,7 @@ linters:
     - copyloopvar
     - depguard
     - errcheck
+    - forbidigo
     - gochecksumtype
     - govet
     - ineffassign
@@ -67,6 +68,14 @@ linters:
               desc: Use Loki OpenTelemetry tracing instead of Jaeger OpenTracing
             - pkg: github.com/opentracing-contrib/go-stdlib/nethttp$
               desc: Use Loki OpenTelemetry tracing instead of OpenTracing
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # The Prometheus parser panics on a label value over 16MB.
+        # https://github.com/prometheus/prometheus/issues/17993 (closed as not planned)
+        - pattern: ^parser\.NewParser$
+          pkg: ^github.com/prometheus/prometheus/promql/parser$
+          msg: Use github.com/grafana/loki/v3/pkg/logql/syntax.ParseLabels or .ParseMetric instead; it guards against a known upstream panic on pathological input
     goconst:
       min-occurrences: 5
     misspell:

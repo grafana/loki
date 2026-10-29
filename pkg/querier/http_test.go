@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -31,7 +32,7 @@ func TestInstantQueryHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
-		api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, nil, nil, limits, nil, nil, log.NewNopLogger())
+		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 
 		ctx := user.InjectOrgID(context.Background(), "user")
 		req, err := http.NewRequestWithContext(ctx, "GET", `/api/v1/query`, nil)
@@ -327,80 +328,114 @@ func TestVolumeHandler(t *testing.T) {
 }
 
 func TestLabelsHandler(t *testing.T) {
-	t.Run("remove __aggregated_metric__ label from response when present", func(t *testing.T) {
-		ret := &logproto.LabelResponse{
-			Values: []string{
-				constants.AggregatedMetricLabel,
-				"foo",
-				"bar",
-			},
-		}
-		expected := `{"status":"success","data":["foo","bar"]}`
+	internalLabels := []string{constants.AggregatedMetricLabel, constants.PatternLabel, constants.TimeShardLabel, constants.StreamShardLabel}
 
+	for _, tc := range []struct {
+		name                     string
+		path                     string
+		metricAggregationEnabled bool
+		values                   []string
+		expected                 []string
+	}{
+		{
+			name:                     "remove internal labels from label names",
+			path:                     "/loki/api/v1/labels",
+			metricAggregationEnabled: true,
+			values:                   append([]string{"foo", "bar"}, internalLabels...),
+			expected:                 []string{"foo", "bar"},
+		},
+		{
+			name:     "remove internal labels from label names without metric aggregation",
+			path:     "/loki/api/v1/labels",
+			values:   append([]string{"foo", "bar"}, internalLabels...),
+			expected: []string{"foo", "bar"},
+		},
+		{
+			name:                     "keep label values that match internal label names",
+			path:                     "/loki/api/v1/label/foo/values",
+			metricAggregationEnabled: true,
+			values:                   append([]string{"bar"}, internalLabels...),
+			expected:                 append([]string{"bar"}, internalLabels...),
+		},
+		{
+			name:     "keep values of the stream shard label",
+			path:     "/loki/api/v1/label/" + constants.StreamShardLabel + "/values",
+			values:   []string{"0", "1", "2"},
+			expected: []string{"0", "1", "2"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := newQuerierMock()
+			q.On("Label", mock.Anything, mock.Anything).Return(&logproto.LabelResponse{Values: tc.values}, nil)
+			api := setupAPI(t, q, tc.metricAggregationEnabled)
+
+			// Route like the querier does, so label value requests carry the {name} path variable.
+			handler := mux.NewRouter()
+			handler.Path(constants.PathLokiLabels).Handler(buildHandler(api))
+			handler.Path(constants.PathLokiLabelNameValues).Handler(buildHandler(api))
+
+			req := httptest.NewRequest(http.MethodGet, tc.path+"?start=0&end=1", nil)
+			req.Header.Set("X-Scope-OrgID", "test-org")
+			res := makeRequest(t, handler, req)
+
+			require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+			expected, err := json.Marshal(map[string]any{"status": "success", "data": tc.expected})
+			require.NoError(t, err)
+			require.JSONEq(t, string(expected), res.Body.String())
+		})
+	}
+
+	t.Run("nil response", func(t *testing.T) {
 		q := newQuerierMock()
-		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
+		q.On("Label", mock.Anything, mock.Anything).Return((*logproto.LabelResponse)(nil), nil)
 		api := setupAPI(t, q, true)
-		handler := buildHandler(api)
 
-		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
-			"?start=0"+
-			"&end=1", nil)
-		req.Header.Set("X-Scope-OrgID", "test-org")
-		res := makeRequest(t, handler, req)
-
-		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
-		require.JSONEq(t, expected, res.Body.String())
+		start, end := time.Unix(0, 0), time.Unix(1, 0)
+		resp, err := api.LabelHandler(context.Background(), &logproto.LabelRequest{Start: &start, End: &end})
+		require.NoError(t, err)
+		require.Nil(t, resp)
 	})
 
-	t.Run("remove __pattern__ label from response when present", func(t *testing.T) {
-		ret := &logproto.LabelResponse{
-			Values: []string{
-				constants.PatternLabel,
-				"foo",
-				"bar",
+	t.Run("querier error", func(t *testing.T) {
+		q := newQuerierMock()
+		q.On("Label", mock.Anything, mock.Anything).Return((*logproto.LabelResponse)(nil), errors.New("querier failed"))
+		api := setupAPI(t, q, true)
+
+		start, end := time.Unix(0, 0), time.Unix(1, 0)
+		_, err := api.LabelHandler(context.Background(), &logproto.LabelRequest{Start: &start, End: &end})
+		require.EqualError(t, err, "querier failed")
+	})
+}
+
+func TestDetectedLabelsHandler(t *testing.T) {
+	t.Run("remove internal labels from response", func(t *testing.T) {
+		ret := &logproto.DetectedLabelsResponse{
+			DetectedLabels: []*logproto.DetectedLabel{
+				{Label: constants.AggregatedMetricLabel, Cardinality: 1},
+				{Label: "foo", Cardinality: 3},
+				{Label: constants.PatternLabel, Cardinality: 1},
+				{Label: constants.TimeShardLabel, Cardinality: 2},
+				{Label: constants.StreamShardLabel, Cardinality: 4},
 			},
 		}
-		expected := `{"status":"success","data":["foo","bar"]}`
 
 		q := newQuerierMock()
-		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(t, q, true)
-		handler := buildHandler(api)
+		q.On("DetectedLabels", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, false)
 
-		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
-			"?start=0"+
-			"&end=1", nil)
-		req.Header.Set("X-Scope-OrgID", "test-org")
-		res := makeRequest(t, handler, req)
-
-		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
-		require.JSONEq(t, expected, res.Body.String())
+		resp, err := api.DetectedLabelsHandler(context.Background(), &logproto.DetectedLabelsRequest{})
+		require.NoError(t, err)
+		require.Equal(t, []*logproto.DetectedLabel{{Label: "foo", Cardinality: 3}}, resp.DetectedLabels)
 	})
 
-	t.Run("remove both __aggregated_metric__ and __pattern__ labels from response when present", func(t *testing.T) {
-		ret := &logproto.LabelResponse{
-			Values: []string{
-				constants.AggregatedMetricLabel,
-				constants.PatternLabel,
-				"foo",
-				"bar",
-			},
-		}
-		expected := `{"status":"success","data":["foo","bar"]}`
-
+	t.Run("nil response", func(t *testing.T) {
 		q := newQuerierMock()
-		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(t, q, true)
-		handler := buildHandler(api)
+		q.On("DetectedLabels", mock.Anything, mock.Anything).Return(nil, nil)
+		api := setupAPI(t, q, false)
 
-		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
-			"?start=0"+
-			"&end=1", nil)
-		req.Header.Set("X-Scope-OrgID", "test-org")
-		res := makeRequest(t, handler, req)
-
-		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
-		require.JSONEq(t, expected, res.Body.String())
+		resp, err := api.DetectedLabelsHandler(context.Background(), &logproto.DetectedLabelsRequest{})
+		require.NoError(t, err)
+		require.Nil(t, resp)
 	})
 }
 
@@ -419,7 +454,7 @@ func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) 
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, nil, querier, limits, nil, nil, log.NewNopLogger())
+	api := NewQuerierAPI(mockQuerierConfig(), querier, limits, log.NewNopLogger())
 	return api
 }
 
@@ -610,11 +645,11 @@ func TestPatternsHandler(t *testing.T) {
 			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
 
 			api := &QuerierAPI{
-				cfgV1:    conf,
-				querier:  querier,
-				limits:   limits,
-				engineV1: engineMock,
-				logger:   log.NewNopLogger(),
+				cfg:     conf,
+				querier: querier,
+				limits:  limits,
+				engine:  engineMock,
+				logger:  log.NewNopLogger(),
 			}
 
 			req := &logproto.QueryPatternsRequest{
@@ -719,11 +754,11 @@ func TestPatternsHandlerDisabled(t *testing.T) {
 			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
 
 			api := &QuerierAPI{
-				cfgV1:    conf,
-				querier:  querier,
-				limits:   limitsDisabled, // Use the disabled limits
-				engineV1: engineMock,
-				logger:   log.NewNopLogger(),
+				cfg:     conf,
+				querier: querier,
+				limits:  limitsDisabled, // Use the disabled limits
+				engine:  engineMock,
+				logger:  log.NewNopLogger(),
 			}
 
 			req := &logproto.QueryPatternsRequest{

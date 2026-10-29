@@ -120,6 +120,7 @@ func (r RuleNamespace) AggregateBy(label string, applyTo func(group rwrulefmt.Ru
 			}
 
 			log.WithFields(log.Fields{"rule": getRuleName(rule)}).Debugf("evaluating...")
+			//nolint:forbidigo // parses a real PromQL rule expression
 			exp, err := parser.NewParser(parser.Options{}).ParseExpr(rule.Expr)
 			if err != nil {
 				return count, mod, err
@@ -246,6 +247,7 @@ func ValidateRuleGroup(g rwrulefmt.RuleGroup) []error {
 			Alert:  yaml.Node{Value: r.Alert},
 			Expr:   yaml.Node{Value: r.Expr},
 		}
+		//nolint:forbidigo // validates a real PromQL rule expression
 		for _, err := range r.Validate(ruleNode, model.UTF8Validation, parser.NewParser(parser.Options{})) {
 			var ruleName string
 			if r.Alert != "" {

@@ -28,9 +28,13 @@ type SectionStreams struct {
 // streamSelector evaluates a LogQL stream selector against one or more postings
 // sections via postings.Scanner
 type streamSelector struct {
-	matchers        []*labels.Matcher
+	matchers []*labels.Matcher
+	// equalPredicates holds the equality predicates of the request.
 	equalPredicates []*labels.Matcher
 	start, end      time.Time
+
+	// bucketRange prunes the label rows to read. A nil range does not filter by bucket range.
+	bucketRange *postings.ShardBucketRange
 
 	compiledMatchers []postings.CompiledMatcher
 	compiledFilters  []postings.CompiledMatcher
@@ -39,14 +43,16 @@ type streamSelector struct {
 	opened           bool
 }
 
-func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time) *streamSelector {
-	var eq []*labels.Matcher
+func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time, bucketRange *postings.ShardBucketRange) *streamSelector {
+	// Only an equality can prune a section, because a bloom filter proves that a value is absent
+	// and nothing else.
+	var equal []*labels.Matcher
 	for _, p := range predicates {
 		if p != nil && p.Type == labels.MatchEqual {
-			eq = append(eq, p)
+			equal = append(equal, p)
 		}
 	}
-	return &streamSelector{matchers: matchers, equalPredicates: eq, start: start, end: end}
+	return &streamSelector{matchers: matchers, equalPredicates: equal, start: start, end: end, bucketRange: bucketRange}
 }
 
 func (s *streamSelector) open(ctx context.Context, sections []*postings.Section, maxConcurrency int) error {
@@ -94,6 +100,7 @@ func (s *streamSelector) open(ctx context.Context, sections []*postings.Section,
 				s.equalPredicates,
 				labelStats[i],
 				bloomStats[i],
+				s.bucketRange,
 			)
 			if err != nil {
 				return fmt.Errorf("creating postings scanner readers: %w", err)
@@ -468,9 +475,10 @@ func combineLabels(streamLabels, ambiguousNames map[string]struct{}) map[string]
 	return out
 }
 
-// refAdmitsPredicates reports whether every equal-predicate is satisfied for a
-// section: each predicate is either a stream label there or tests positive
-// against a bloom there.
+// refAdmitsPredicates reports whether a section can satisfy every equality
+// predicate. A predicate passes when its name is a stream label in the section.
+// Blooms index only structured metadata, so they cannot judge a stream label.
+// Otherwise the predicate value must hit the bloom for that name.
 func (s *streamSelector) refAdmitsPredicates(streamLabels map[string]struct{}, bloomHits map[postings.PredicateValue]struct{}) bool {
 	for _, p := range s.equalPredicates {
 		if _, isStreamLabel := streamLabels[p.Name]; isStreamLabel {
@@ -525,8 +533,8 @@ func compileAll(matchers []*labels.Matcher) ([]postings.CompiledMatcher, error) 
 	return out, nil
 }
 
-// ambiguousNames returns the equal-predicate names that are also stream labels in
-// the section.
+// ambiguousNames returns the equality predicate names that are also stream
+// labels in the section.
 func (s *streamSelector) ambiguousNames(acc *accum) []string {
 	var out []string
 	for _, p := range s.equalPredicates {

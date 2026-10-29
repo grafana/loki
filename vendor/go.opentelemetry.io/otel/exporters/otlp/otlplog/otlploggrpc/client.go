@@ -96,7 +96,6 @@ func nextExporterID() int64 {
 func newGRPCDialOptions(cfg config) []grpc.DialOption {
 	userAgent := "OTel Go OTLP over gRPC logs exporter/" + Version()
 	dialOpts := []grpc.DialOption{grpc.WithUserAgent(userAgent)}
-	dialOpts = append(dialOpts, cfg.dialOptions.Value...)
 
 	// Convert other grpc configs to the dial options.
 	// Service config
@@ -130,7 +129,10 @@ func newGRPCDialOptions(cfg config) []grpc.DialOption {
 		dialOpts = append(dialOpts, grpc.WithConnectParams(p))
 	}
 
-	return dialOpts
+	// User-supplied options are appended last so they take precedence over
+	// conflicting internal defaults. grpc.DialOption values are opaque, so
+	// precedence is the only way to honor WithDialOption's contract.
+	return append(dialOpts, cfg.dialOptions.Value...)
 }
 
 // UploadLogs sends proto logs to the connected endpoint.

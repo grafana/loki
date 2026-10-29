@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -15,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/loser"
@@ -24,29 +24,36 @@ import (
 // drive both merges, feed indexobj.Builder, upload the result, and emit a record
 // reporting the content-hash path.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
-	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-		arts, err := c.doIndexMerge(ctx, node)
+	return newLazyPipeline(func(ctx context.Context) Pipeline {
+		artifact, err := c.doIndexMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, arts))
-	}, nil)
+		if artifact == nil {
+			return errorPipeline(ctx, errors.New("IndexMerge: missing result artifact"))
+		}
+		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		if err != nil {
+			return errorPipeline(ctx, err)
+		}
+		return NewBufferedPipeline(rec)
+	})
 }
 
-func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
+func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (*v2.ResultArtifact, error) {
 	// Check prerequisites
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
 
 	// Classify sections from all runs, grouped by source object.
-	objects, err := c.classifyRuns(ctx, node)
+	objects, layout, err := c.classifyRuns(ctx, node)
 	if err != nil {
 		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
 
 	// Create index object builder
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore)
+	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
@@ -61,63 +68,66 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
-	// Snapshot the builder's in-memory accumulated size BEFORE Flush. This is the
-	// uncompressed pre-encoding size used for the output_bytes_uncompressed
-	// histogram observation below.
-	uncompressedBytes := int64(builder.GetEstimatedSize())
+	artifact, compressedBytes, uncompressedBytes, err := c.uploadIndex(ctx, node.Tenant, builder)
+	if err != nil {
+		return nil, fmt.Errorf("index merge output: %w", err)
+	}
+	if c.indexMergeObserver != nil {
+		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, compressedBytes, uncompressedBytes)
+	}
+	return artifact, nil
+}
 
-	// Flush builder and upload result
+// uploadIndex flushes builder and uploads the index object to a content-hash
+// path. It returns the artifact for the uploaded object and the object's
+// compressed and uncompressed sizes in bytes.
+func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *indexobj.MergeBuilder) (artifact *v2.ResultArtifact, compressedBytes, uncompressedBytes int64, err error) {
+	// Read the size before Flush, because Flush resets the builder.
+	uncompressedBytes = int64(builder.GetEstimatedSize())
+
 	obj, closer, err := builder.Flush()
 	if err != nil {
-		if errors.Is(err, indexobj.ErrBuilderEmpty) {
-			// Empty builder produces no artifact.
-			return nil, nil
-		}
-		return nil, fmt.Errorf("flushing builder: %w", err)
+		return nil, 0, 0, fmt.Errorf("flushing index: %w", err)
 	}
 
-	// Compute content-hash path and upload
 	pathReader, err := obj.Reader(ctx)
 	if err != nil {
-		return nil, errors.Join(err, closer.Close())
+		return nil, 0, 0, errors.Join(err, closer.Close())
 	}
-	path, hashErr := v2.CompactedIndexPath(node.Tenant, pathReader)
+	path, hashErr := v2.CompactedIndexPath(tenant, pathReader)
 	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
 		hashErr = cerr
 	}
 	if hashErr != nil {
-		return nil, errors.Join(hashErr, closer.Close())
+		return nil, 0, 0, errors.Join(hashErr, closer.Close())
 	}
 
+	compressedBytes = obj.Size()
 	uploadReader, err := obj.Reader(ctx)
 	if err != nil {
-		return nil, errors.Join(err, closer.Close())
+		return nil, 0, 0, errors.Join(err, closer.Close())
 	}
 	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
-		return nil, errors.Join(fmt.Errorf("uploading merged index: %w", err), uploadReader.Close(), closer.Close())
+		return nil, 0, 0, errors.Join(fmt.Errorf("uploading index %q: %w", path, err), uploadReader.Close(), closer.Close())
 	}
 	if err := uploadReader.Close(); err != nil {
-		return nil, errors.Join(fmt.Errorf("closing upload reader: %w", err), closer.Close())
-	}
-
-	// Observe output sizes once the upload has succeeded. obj.Size() reflects
-	// the encoded/compressed bytes that just got written.
-	if c.indexMergeObserver != nil {
-		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, obj.Size(), uncompressedBytes)
+		return nil, 0, 0, errors.Join(fmt.Errorf("closing upload reader for index %q: %w", path, err), closer.Close())
 	}
 
 	if err := closer.Close(); err != nil {
-		return nil, fmt.Errorf("closing merged index: %w", err)
+		return nil, 0, 0, fmt.Errorf("closing index %q: %w", path, err)
 	}
-
-	return []v2.ResultArtifact{{Path: path}}, nil
+	return &v2.ResultArtifact{Path: path}, compressedBytes, uncompressedBytes, nil
 }
 
 // classifyRuns opens each unique source object once and groups its mergable
 // sections by type (postings, stats), preserving section order within each
-// object. Non-mergable section types (streams, pointers, indexPointers) are
-// silently ignored. It validates that all stats sections share the same SortSchema
-func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, error) {
+// object. Non-mergable section types (streams, indexPointers) are silently
+// ignored.
+//
+// classifyRuns also returns the stream layout of the source indexes, and an
+// error if they do not share one, because the output records one layout.
+func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, streams.Layout, error) {
 	// Deduplicate source objects by path. One object may be referenced by
 	// multiple SectionRefs in the same or different runs; we open and scan it
 	// exactly once.
@@ -130,7 +140,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			}
 			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
 			if openErr != nil {
-				return nil, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
+				return nil, streams.Layout{}, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}
 			objects[sectionRef.ObjectPath] = obj
 		}
@@ -144,13 +154,14 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	sort.Strings(paths)
 
 	// For each unique source object, scan its sections and classify by type,
-	// preserving section order. Unknown section types (streams, pointers,
-	// indexPointers) are skipped silently. Make sure all stats sections share
-	// the same sort schema (checked from the first row of each). statsSeen
-	// counts stats sections across all objects, for stable error messages.
+	// preserving section order. Other section types (streams, indexPointers)
+	// are skipped silently. doIndexFilter also skips streams sections, but it
+	// rejects every other type.
 	grouped := make([]objectSections, 0, len(paths))
-	var firstSortSchema string
-	statsSeen := 0
+	var (
+		layout       streams.Layout
+		layoutSource string
+	)
 	for _, path := range paths {
 		obj := objects[path]
 		group := objectSections{path: path}
@@ -164,48 +175,28 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			case postings.CheckSection(sec):
 				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
-				sortSchema, readErr := readStatsSortSchema(ctx, sec)
-				if readErr != nil {
-					return nil, fmt.Errorf("reading stats section %d SortSchema: %w", statsSeen, readErr)
-				}
-				if statsSeen == 0 {
-					firstSortSchema = sortSchema
-				} else if sortSchema != firstSortSchema {
-					return nil, fmt.Errorf(
-						"stats sections have mismatched SortSchema: section 0 has %q, section %d has %q",
-						firstSortSchema, statsSeen, sortSchema,
-					)
-				}
-				statsSeen++
 				group.stats = append(group.stats, sec)
-				// default: skip silently (streams/pointers/indexPointers etc.)
+				// default: skip silently (streams/indexPointers etc.)
 			}
+		}
+		// Only stats sections record a layout, so an object without them does
+		// not constrain the layout of the output.
+		if len(group.stats) > 0 {
+			objLayout, _, err := indexobj.TenantLayout(ctx, obj, node.Tenant)
+			if err != nil {
+				return nil, streams.Layout{}, fmt.Errorf("reading stream layout of index %q: %w", path, err)
+			}
+			if layoutSource != "" && !objLayout.Equal(layout) {
+				return nil, streams.Layout{}, fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, objLayout, layoutSource, layout)
+			}
+			layout, layoutSource = objLayout, path
 		}
 		if len(group.postings) > 0 || len(group.stats) > 0 {
 			grouped = append(grouped, group)
 		}
 	}
 
-	return grouped, nil
-}
-
-// readStatsSortSchema opens a stats section and returns the SortSchema from
-// its first row. Returns an empty string if the section has no rows.
-func readStatsSortSchema(ctx context.Context, sec *dataobj.Section) (string, error) {
-	statsSec, err := stats.Open(ctx, sec)
-	if err != nil {
-		return "", fmt.Errorf("opening stats section: %w", err)
-	}
-	reader := stats.NewRowReader(ctx, statsSec)
-	defer reader.Close()
-	var row stats.Stat
-	if reader.Next() {
-		row = reader.At()
-	}
-	if err := reader.Err(); err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	return row.SortSchema, nil
+	return grouped, layout, nil
 }
 
 // objectSections holds one source object's mergable sections, split by type and

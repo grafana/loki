@@ -26,10 +26,11 @@ const DefaultHeadPrefetchBytes = 256 * 1024
 // time.
 const streamLabelsDecodeBatchSize = 1024
 
-// OpenObjects opens each data object once per query and holds its opened sections.
+// OpenObjects holds one opened copy of each data object and its opened sections.
 //
-// The same object is read first for its stream labels and then for its log rows, so opening it
-// once avoids re-reading the object header and section metadata. Lifetime is one query.
+// The same object is read first for its stream labels and then for its log rows, so keeping it
+// open avoids re-reading the object header and section metadata. Two callers can open a new
+// object at the same time. The registry keeps the first copy. Lifetime is one query.
 type OpenObjects struct {
 	bucket        objstore.BucketReader
 	tenant        string

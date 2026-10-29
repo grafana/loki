@@ -2158,7 +2158,8 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 		builder.Add(ln, lv)
 	}
 
-	// Commit built labels.
+	// Commit built labels. Labels(), not Overwrite(): callers such as the compactor retain these
+	// labels past the next series and after the index is closed.
 	builder.Sort()
 	*lbls = builder.Labels()
 	return &d, fprint, nil
@@ -2511,4 +2512,13 @@ func overlap(from, through, chkFrom, chkThrough int64) bool {
 	// note: chkThrough is inclusive as it represents the last
 	// sample timestamp in the chunk, whereas through is exclusive
 	return from <= chkThrough && through > chkFrom
+}
+
+// ShardPostings selects the candidate series interval for a fingerprint shard.
+// Callers must still check each series fingerprint because offsets are sampled.
+func (r *ByteSliceReader) ShardPostings(p Postings, fpFilter FingerprintFilter) Postings {
+	if fpFilter == nil {
+		return p
+	}
+	return NewShardedPostings(p, fpFilter, r.fingerprintOffsets)
 }

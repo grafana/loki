@@ -235,7 +235,7 @@ func (s *LokiStore) init() error {
 		if err != nil {
 			return err
 		}
-		f, err := fetcher.New(s.chunksCache, s.chunksCacheL2, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.L2ChunkCacheHandoff, s.storeCfg.SkipQueryWritebackOlderThan, s.storeCfg.PropagateChunkFetchErrors)
+		f, err := fetcher.New(s.chunksCache, s.chunksCacheL2, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.L2ChunkCacheHandoff, s.storeCfg.SkipQueryWritebackOlderThan)
 		if err != nil {
 			return err
 		}
@@ -291,19 +291,6 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func shouldUseTeeIndexGatewayClient(cfg indexshipper.Config) bool {
-	if !shouldUseIndexGatewayClient(cfg) {
-		return false
-	}
-
-	teeCfg := cfg.ShadowIndexGatewayClientConfig
-	if teeCfg.Mode == indexgateway.SimpleMode && teeCfg.Address == "" {
-		return false
-	}
-
-	return true
-}
-
 func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	// currently we only support one index type "tsdb" so all the code below here applies to tsdb only. this method will need to be improved should we ever support another type
 	if !slices.Contains(types.SupportedIndexTypes, p.IndexType) {
@@ -315,36 +302,16 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-		primaryClient, err := indexgateway.NewGatewayClient("primary", s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+		// inject the index-gateway client into the index store
+		gw, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-
-		var shadowClient *indexgateway.GatewayClient
-		var clientToUse series.GatewayClient = primaryClient
-		if shouldUseTeeIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-			shadowClient, err = indexgateway.NewGatewayClient("secondary", s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
-			if err != nil {
-				primaryClient.Stop()
-				return nil, nil, nil, err
-			}
-			teeClient, err := indexgateway.NewTeeGatewayClient(primaryClient, shadowClient, indexClientReg, indexClientLogger)
-			if err != nil {
-				primaryClient.Stop()
-				shadowClient.Stop()
-				return nil, nil, nil, err
-			}
-			clientToUse = teeClient
-		}
-
-		idx := series.NewIndexGatewayClientStore(clientToUse, indexClientLogger)
+		idx := series.NewIndexGatewayClientStore(gw, indexClientLogger)
 
 		return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
 			f.Stop()
-			primaryClient.Stop()
-			if shadowClient != nil {
-				shadowClient.Stop()
-			}
+			gw.Stop()
 		}, nil
 	}
 
@@ -354,7 +321,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	}
 
 	name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, s.registerer, indexClientLogger)
+	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, objectClient, s.limits, tableRange, indexClientReg, s.registerer, indexClientLogger)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -490,6 +457,7 @@ func (s *LokiStore) lazyChunks(
 		chks[i] = filterChunksByHintRanges(chks[i], hintRanges)
 		filtered += len(chks[i])
 	}
+	stats.AddChunksScanned(int64(filtered))
 
 	if storeChunksOverride != nil {
 		s.chunkMetrics.refsBypassed.Add(float64(len(storeChunksOverride.Refs)))

@@ -289,6 +289,10 @@ type CallSettings struct {
 	// clientTracing holds the pre-allocated OpenTelemetry tracer
 	// to use for this call.
 	clientTracing *ClientTracing
+
+	// clientLogging holds the pre-allocated OpenTelemetry/slog logger
+	// to use for this call.
+	clientLogging *ClientLogging
 }
 
 type clientTracingOpt struct {
@@ -305,4 +309,20 @@ func (o clientTracingOpt) Resolve(s *CallSettings) {
 // This is for internal use only.
 func WithClientTracing(ct *ClientTracing) CallOption {
 	return clientTracingOpt{ct: ct}
+}
+
+type clientLoggingOpt struct {
+	cl *ClientLogging
+}
+
+// Resolve applies the ClientLogging to the CallSettings.
+func (o clientLoggingOpt) Resolve(s *CallSettings) {
+	s.clientLogging = o.cl
+}
+
+// WithClientLogging applies logging instrumentation to the CallSettings.
+//
+// This is for internal use only.
+func WithClientLogging(cl *ClientLogging) CallOption {
+	return clientLoggingOpt{cl: cl}
 }

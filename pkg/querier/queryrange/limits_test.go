@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -152,7 +153,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -506,7 +507,7 @@ func Test_MaxQueryLengthClassification(t *testing.T) {
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
@@ -1110,4 +1111,62 @@ func TestAcquireWithTiming(t *testing.T) {
 	// Check that the waiting time for the third request is larger than 0 milliseconds and less than 10 milliseconds
 	require.Greater(t, waiting3, 0*time.Nanosecond)
 	require.Less(t, waiting3, 10*time.Millisecond)
+}
+
+func metricResponseWithScanUsage(bytesScanned int64, series ...string) *LokiPromResponse {
+	response := &LokiPromResponse{
+		Statistics: stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: bytesScanned}}}},
+		Response:   &queryrangebase.PrometheusResponse{Status: "success", Data: queryrangebase.PrometheusData{ResultType: "matrix"}},
+	}
+	response.Statistics.ComputeSummary(time.Second, 0, 0)
+	for _, name := range series {
+		response.Response.Data.Result = append(response.Response.Data.Result, queryrangebase.SampleStream{
+			Labels: []logproto.LabelAdapter{{Name: "series", Value: name}},
+		})
+	}
+	return response
+}
+
+func TestSeriesLimiterPreservesRejectedUsage(t *testing.T) {
+	for _, drilldown := range []bool{false, true} {
+		t.Run(fmt.Sprintf("drilldown=%t", drilldown), func(t *testing.T) {
+			ctx := context.Background()
+			if drilldown {
+				ctx = httpreq.InjectQueryTags(ctx, "Source="+constants.LogsDrilldownAppName)
+			}
+			_, ctx = metadata.NewContext(ctx)
+			discardedWork, ctx := stats.NewDiscardedWorkContext(ctx)
+			calls := 0
+			limiter := newSeriesLimiter(1).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+				calls++
+				return metricResponseWithScanUsage(50, "a", "b"), nil
+			}))
+			response, err := limiter.Do(ctx, &LokiRequest{})
+			if drilldown {
+				// Drilldown returns a response with a warning instead of failing;
+				// its usage must stay on that response to avoid counting it twice.
+				require.NoError(t, err)
+				require.NotNil(t, response)
+				require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed, "successful response owns its usage")
+			} else {
+				require.ErrorContains(t, err, "maximum number of series")
+				require.Nil(t, response)
+				require.Equal(t, int64(50), discardedWork.Result().Summary.TotalBytesProcessed)
+				// Once rejected, further requests are rejected before execution.
+				response, err = limiter.Do(ctx, &LokiRequest{})
+				require.ErrorContains(t, err, "maximum number of series")
+				require.Nil(t, response)
+				require.Equal(t, 1, calls)
+				require.Equal(t, int64(50), discardedWork.Result().Summary.TotalBytesProcessed)
+			}
+		})
+	}
+	discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
+	limiter := newSeriesLimiter(1).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		return metricResponseWithScanUsage(100, "a"), nil
+	}))
+	response, err := limiter.Do(ctx, &LokiRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
 }

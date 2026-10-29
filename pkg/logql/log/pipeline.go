@@ -44,6 +44,43 @@ type Stage interface {
 	Hints() StageHints
 }
 
+// Stages is the ordered sequence of stages a pipeline runs on a line.
+type Stages []Stage
+
+// RequiredLabelNames returns the unique label names that the stages read, in stage order.
+func (s Stages) RequiredLabelNames() []string {
+	var names []string
+	for _, stage := range s {
+		names = append(names, stage.RequiredLabelNames()...)
+	}
+	return uniqueString(names)
+}
+
+// RequiredLabelNamesForParsers returns the label names that the parsers may need to extract.
+func (s Stages) RequiredLabelNamesForParsers() []string {
+	// It starts at the first stage that can modify labels or reads the error label. It returns
+	// each name once, in stage order.
+	var names []string
+	started := false
+	for _, stage := range s {
+		hints := stage.Hints()
+		started = started || hints.CanModifyLabels || hints.ReadsErrorLabel
+		if started {
+			names = append(names, stage.RequiredLabelNames()...)
+		}
+	}
+	return uniqueString(names)
+}
+
+// Hints returns the hints of the stages as one.
+func (s Stages) Hints() StageHints {
+	var hints StageHints
+	for _, stage := range s {
+		hints = hints.Merge(stage.Hints())
+	}
+	return hints
+}
+
 // StageHints holds static properties of a Stage, or of a reduced pipeline of stages.
 //
 // Every field must be mergeable between two hints.
@@ -51,12 +88,32 @@ type StageHints struct {
 	// CanModifyLabels reports whether the stage can change a line's output labels: add, remove, or
 	// replace a label, or set __error__.
 	CanModifyLabels bool
+
+	// ReadsErrorLabel reports whether the result of the stage depends on the error of the line.
+	// A comparison of __error__ or __error_details__ does, whatever it does with the value.
+	//
+	// Only a label filter reports it. A converting comparison against either label cannot report
+	// it, and the parser rejects that form instead.
+	ReadsErrorLabel bool
+
+	// KeepsErroredLines reports whether the stage asks to keep the lines that carry __error__.
+	//
+	// The hints of a pipeline answer for the whole of it rather than per stage: they report true
+	// when any stage asks. A filter on __error__ therefore also covers an error returned by a
+	// stage placed after the __error__ filter.
+	KeepsErroredLines bool
+
+	// CanModifyLine reports whether the stage can return a line that differs from the one it received.
+	CanModifyLine bool
 }
 
-// Merge combines two StageHints into one.
+// Merge combines the hints of two stages that both run on a line.
 func (h StageHints) Merge(other StageHints) StageHints {
 	return StageHints{
-		CanModifyLabels: h.CanModifyLabels || other.CanModifyLabels,
+		CanModifyLabels:   h.CanModifyLabels || other.CanModifyLabels,
+		ReadsErrorLabel:   h.ReadsErrorLabel || other.ReadsErrorLabel,
+		KeepsErroredLines: h.KeepsErroredLines || other.KeepsErroredLines,
+		CanModifyLine:     h.CanModifyLine || other.CanModifyLine,
 	}
 }
 
@@ -134,8 +191,8 @@ func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) 
 
 // Hints implements Stage.
 func (noopStage) Hints() StageHints {
-	// It does nothing, so it changes no labels.
-	return StageHints{CanModifyLabels: false}
+	// It does nothing, so it changes no labels and no line.
+	return StageHints{CanModifyLabels: false, CanModifyLine: false}
 }
 
 func (noopStage) RequiredLabelNames() []string { return []string{} }
@@ -201,13 +258,15 @@ type AnalyzablePipeline interface {
 }
 
 // NewPipeline creates a new pipeline for a given set of stages.
-func NewPipeline(stages []Stage) Pipeline {
+func NewPipeline(stages Stages) Pipeline {
 	if len(stages) == 0 {
 		return NewNoopPipeline()
 	}
 
-	hints := NewParserHint(nil, nil, false, false, "", stages)
-	builder := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false)
+	hints := NewParserHint(nil, nil, false, false, "")
+
+	builder := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false).
+		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &pipeline{
 		stages:          stages,
 		baseBuilder:     builder,
@@ -220,7 +279,7 @@ type streamPipeline struct {
 	builder *LabelsBuilder
 }
 
-func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
+func NewStreamPipeline(stages Stages, labelsBuilder *LabelsBuilder) StreamPipeline {
 	return &streamPipeline{stages, labelsBuilder}
 }
 
@@ -374,17 +433,11 @@ func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, structur
 }
 
 // ReduceStages reduces multiple stages into one.
-func ReduceStages(stages []Stage) Stage {
+func ReduceStages(stages Stages) Stage {
 	if len(stages) == 0 {
 		return NoopStage
 	}
-	var requiredLabelNames []string
-	var hints StageHints
-	for _, s := range stages {
-		requiredLabelNames = append(requiredLabelNames, s.RequiredLabelNames()...)
-		hints = hints.Merge(s.Hints())
-	}
-	return NewStageFunc(requiredLabelNames, hints, func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(stages.RequiredLabelNames(), stages.Hints(), func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		var ok bool
 		for _, p := range stages {
 			line, ok = p.Process(ts, line, lbs)

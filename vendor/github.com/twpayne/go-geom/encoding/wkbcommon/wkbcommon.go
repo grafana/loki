@@ -52,8 +52,8 @@ func (e ErrUnsupportedType) Error() string {
 
 // An ErrUnexpectedType is returned when an unexpected type is encountered.
 type ErrUnexpectedType struct {
-	Got  interface{}
-	Want interface{}
+	Got  any
+	Want any
 }
 
 func (e ErrUnexpectedType) Error() string {

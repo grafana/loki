@@ -51,19 +51,25 @@ type Config struct {
 }
 
 type TLSConfig struct {
-	TLSCert                  string             `yaml:"cert"`
-	TLSKey                   config_util.Secret `yaml:"key"`
-	ClientCAsText            string             `yaml:"client_ca"`
-	TLSCertPath              string             `yaml:"cert_file"`
-	TLSKeyPath               string             `yaml:"key_file"`
-	ClientAuth               string             `yaml:"client_auth_type"`
-	ClientCAs                string             `yaml:"client_ca_file"`
-	CipherSuites             []Cipher           `yaml:"cipher_suites"`
-	CurvePreferences         []Curve            `yaml:"curve_preferences"`
-	MinVersion               TLSVersion         `yaml:"min_version"`
-	MaxVersion               TLSVersion         `yaml:"max_version"`
-	PreferServerCipherSuites bool               `yaml:"prefer_server_cipher_suites"`
-	ClientAllowedSans        []string           `yaml:"client_allowed_sans"`
+	TLSCert          string             `yaml:"cert"`
+	TLSKey           config_util.Secret `yaml:"key"`
+	ClientCAsText    string             `yaml:"client_ca"`
+	TLSCertPath      string             `yaml:"cert_file"`
+	TLSKeyPath       string             `yaml:"key_file"`
+	ClientAuth       string             `yaml:"client_auth_type"`
+	ClientCAs        string             `yaml:"client_ca_file"`
+	CipherSuites     []Cipher           `yaml:"cipher_suites"`
+	CurvePreferences []Curve            `yaml:"curve_preferences"`
+	MinVersion       TLSVersion         `yaml:"min_version"`
+	MaxVersion       TLSVersion         `yaml:"max_version"`
+	// PreferServerCipherSuites is parsed and ignored.
+	//
+	// Deprecated: it used to be passed to tls.Config, whose field of the same
+	// name has had no effect since Go 1.17. crypto/tls now picks the cipher
+	// suite itself. The key is still accepted so that existing configuration
+	// files keep loading.
+	PreferServerCipherSuites bool     `yaml:"prefer_server_cipher_suites"`
+	ClientAllowedSans        []string `yaml:"client_allowed_sans"`
 }
 
 type FlagConfig struct {
@@ -84,8 +90,15 @@ func (c *FlagConfig) checkFlags() error {
 	if c.WebConfigFile == nil {
 		return ErrMissingFlag
 	}
-	if c.WebSystemdSocket == nil && (c.WebListenAddresses == nil || len(*c.WebListenAddresses) == 0) {
-		return ErrNoListeners
+	// Listen addresses are only optional when systemd socket activation is
+	// actually enabled. Checking that WebSystemdSocket is non-nil is not
+	// enough: kingpinflag.AddFlags always hands out a non-nil pointer, so a
+	// nil-but-false flag would otherwise pass validation and then panic on the
+	// *flags.WebListenAddresses dereference in ListenAndServe.
+	if c.WebSystemdSocket == nil || !*c.WebSystemdSocket {
+		if c.WebListenAddresses == nil || len(*c.WebListenAddresses) == 0 {
+			return ErrNoListeners
+		}
 	}
 	return nil
 }
@@ -232,10 +245,11 @@ func ConfigToTLSConfig(c *TLSConfig) (*tls.Config, error) {
 		return nil, err
 	}
 
+	// c.PreferServerCipherSuites is deliberately not passed on: the tls.Config
+	// field of that name has had no effect since Go 1.17.
 	cfg := &tls.Config{
-		MinVersion:               (uint16)(c.MinVersion),
-		MaxVersion:               (uint16)(c.MaxVersion),
-		PreferServerCipherSuites: c.PreferServerCipherSuites,
+		MinVersion: (uint16)(c.MinVersion),
+		MaxVersion: (uint16)(c.MaxVersion),
 	}
 
 	cfg.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -440,10 +454,38 @@ func Serve(l net.Listener, server *http.Server, flags *FlagConfig, logger *slog.
 		if err != nil {
 			return nil, err
 		}
-		config.NextProtos = server.TLSConfig.NextProtos
+		config.NextProtos = tlsNextProtos(server, c.HTTPConfig.HTTP2)
 		return config, nil
 	}
 	return server.ServeTLS(l, "", "")
+}
+
+// tlsNextProtos preserves the server's ALPN policy on reloaded TLS configs.
+// ServeTLS does not necessarily populate the original server.TLSConfig: it
+// adjusts the protocols on an internal clone, which the reload callback replaces.
+func tlsNextProtos(server *http.Server, http2Enabled bool) []string {
+	// ServeTLS initializes protocol handlers before accepting connections. Checking
+	// registration respects GODEBUG=http2server=0 and custom HTTP/2 implementations.
+	http1 := true
+	http2 := http2Enabled && server.TLSNextProto["h2"] != nil
+	if server.Protocols != nil {
+		http1 = http1Enabled(*server.Protocols)
+		// An h2 handler may have been registered for unencrypted HTTP/2 only.
+		http2 = http2 && server.Protocols.HTTP2()
+	}
+
+	// Do not modify the original configuration or discard other ALPN protocols.
+	protos := slices.Clone(server.TLSConfig.NextProtos)
+	protos = slices.DeleteFunc(protos, func(proto string) bool {
+		return (proto == "h2" && !http2) || (proto == "http/1.1" && !http1)
+	})
+	if http2 && !slices.Contains(protos, "h2") {
+		protos = append(protos, "h2")
+	}
+	if http1 && !slices.Contains(protos, "http/1.1") {
+		protos = append(protos, "http/1.1")
+	}
+	return protos
 }
 
 // Validate configuration file by reading the configuration and the certificates.

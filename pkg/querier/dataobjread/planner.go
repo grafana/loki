@@ -14,17 +14,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_server "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const (
-	// maxParallelObjectResolves is how many objects the planner resolves at once, where one
-	// resolve is an object open plus a streams-section read.
+	// maxParallelObjectResolves caps how many planObject goroutines run at once. Each one reads the
+	// streams of one object and sends its tasks.
 	maxParallelObjectResolves = 128
 )
 
-// Planner turns a metric query into the section-read tasks the reader runs. It
-// resolves the sections, reads each object's streams to compute stream hashes, and applies the
-// per-stream filters.
+// Planner turns a metric query into the section-read tasks the reader runs. It takes the sections
+// from the metastore, reads their streams to compute stream hashes, and applies the per-stream
+// filters.
 type Planner struct {
 	metastore metastore.Metastore
 	objects   *OpenObjects
@@ -37,12 +38,13 @@ func NewPlanner(ms metastore.Metastore, objects *OpenObjects, filterer chunk.Fil
 	return &Planner{metastore: ms, objects: objects, filterer: filterer}
 }
 
-// Plan resolves the query's sections and streams the resulting tasks through the returned
-// iterator.
+// Plan streams the query's read tasks through the returned iterator.
 //
-// Resolution and the per-object streams reads run in a background goroutine, so the reader can
-// start on one object's logs while later objects still resolve. A resolution error is recorded
-// on the iterator and surfaces through its Err.
+// A background goroutine plans the sections of each index object as soon as the metastore has read
+// it. The reader can start on one object's logs while the metastore still reads later index
+// objects.
+//
+// The iterator records an error from the metastore or from planning. Err returns it.
 func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 	ctx, cancel := context.WithCancel(ctx)
 	tasks := make(chan ReadTask, planBufferSize)
@@ -53,9 +55,9 @@ func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 		defer close(tasks)
 
 		// Fail the query rather than the process. Every goroutine this package starts recovers:
-		// none of them is covered by the server's request-level recovery, and resolution decodes
-		// stored index objects, so one malformed object would otherwise take the querier down
-		// and abort every other in-flight query.
+		// none of them is covered by the server's request-level recovery, and the metastore lookup
+		// on this goroutine decodes stored objects, so one malformed object would otherwise take
+		// the querier down and abort every other in-flight query.
 		defer func() {
 			if panicked := recover(); panicked != nil {
 				util_server.RecordPanic()
@@ -69,18 +71,10 @@ func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 			}
 		}()
 
-		resolved, err := p.metastore.Sections(ctx, metastore.SectionsRequest{
-			Start:      query.Start,
-			End:        query.End,
-			Matchers:   query.Matchers,
-			Predicates: query.Projection.sectionPredicates(),
-		})
-		if err != nil {
-			it.setErr(fmt.Errorf("resolving data object sections: %w", err))
-			return
-		}
-
-		if err := p.planObjects(ctx, resolved.Sections, query, tasks); err != nil {
+		// The object opens and streams reads get a root region of their own. Without one their
+		// requests and bytes run outside any region and go uncounted.
+		planCtx, _ := xcap.StartRegion(ctx, regionStreamsReader)
+		if err := p.planSections(ctx, planCtx, query, tasks); err != nil {
 			it.setErr(err)
 		}
 	}()
@@ -88,73 +82,106 @@ func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 	return it
 }
 
-// planObjects groups the descriptors by object and plans each object concurrently, sending an
-// object's tasks as soon as it is planned.
-func (p *Planner) planObjects(ctx context.Context, descriptors metastore.DataobjSectionDescriptors, query QueryParams, out chan<- ReadTask) error {
-	group, ctx := errgroup.WithContext(ctx)
+// planSections plans the sections the metastore yields, as it yields them.
+//
+// The metastore yields one batch per index object: the sections that index object lists and no
+// earlier batch did. planSections groups a batch by data object and plans the data objects
+// concurrently. It sends the tasks of a data object as soon as that object is planned.
+//
+// ctx reaches the metastore and planCtx reaches the planning goroutines, so their requests count
+// in different regions.
+func (p *Planner) planSections(ctx, planCtx context.Context, query QueryParams, out chan<- ReadTask) error {
+	planCtx, cancelPlans := context.WithCancel(planCtx)
+	group, planCtx := errgroup.WithContext(planCtx)
 	group.SetLimit(maxParallelObjectResolves)
 
-	for path, objectDescriptors := range descriptors.ByObject() {
-		group.Go(func() (err error) {
-			// Decoding an object can panic on a column whose type does not match its schema.
-			// This runs on a goroutine an errgroup deliberately does not recover, so without
-			// this the panic takes the querier process down instead of one query.
-			defer func() {
-				if panicked := recover(); panicked != nil {
-					util_server.RecordPanic()
+	// Stop the planning goroutines and wait for them however this function ends, including a
+	// panic. The caller closes the out channel after this function returns. A goroutine that still
+	// sends would panic on the closed channel.
+	defer func() {
+		cancelPlans()
+		_ = group.Wait()
+	}()
 
-					level.Error(util_log.Logger).Log(
-						"msg", "panic planning reads of a data object",
-						"object", path,
-						"panic", panicked,
-						"stack", string(debug.Stack()),
-					)
-					err = fmt.Errorf("planning reads of data object %q: %v", path, panicked)
-				}
-			}()
+	// The metastore yields each section once. A repeat is a metastore bug. The planner then fails
+	// the query, because planning a section twice emits its rows twice.
+	planned := make(map[metastore.SectionKey]struct{})
 
-			tasks, err := p.planObject(ctx, path, objectDescriptors, query)
-			if err != nil {
-				return err
+	for batch, streamErr := range p.metastore.SectionsStream(ctx, metastore.SectionsRequest{
+		Start:            query.Start,
+		End:              query.End,
+		Matchers:         query.Matchers,
+		Predicates:       query.Projection.sectionPredicates(),
+		ShardBucketRange: query.Shard.metastoreBucketRange(),
+	}) {
+		// Planning failed or the query context ended. Returning from the loop cancels the metastore
+		// reads and waits for them to end.
+		if planCtx.Err() != nil {
+			return context.Cause(planCtx)
+		}
+
+		if streamErr != nil {
+			return fmt.Errorf("resolving data object sections: %w", streamErr)
+		}
+
+		for _, descriptor := range batch {
+			if _, repeated := planned[descriptor.SectionKey]; repeated {
+				return fmt.Errorf(
+					"data object %q logs section %d was listed twice, so reading it would count its rows twice",
+					descriptor.ObjectPath, descriptor.SectionIdx,
+				)
 			}
+			planned[descriptor.SectionKey] = struct{}{}
+		}
 
-			for _, task := range tasks {
-				select {
-				case out <- task:
-				case <-ctx.Done():
-					return ctx.Err()
+		for path, descriptors := range batch.ByObject() {
+			group.Go(func() (err error) {
+				// Decoding an object can panic on a column whose type does not match its schema.
+				// This runs on a goroutine an errgroup deliberately does not recover, so without
+				// this the panic takes the querier process down instead of one query.
+				defer func() {
+					if panicked := recover(); panicked != nil {
+						util_server.RecordPanic()
+
+						level.Error(util_log.Logger).Log(
+							"msg", "panic planning reads of a data object",
+							"object", path,
+							"panic", panicked,
+							"stack", string(debug.Stack()),
+						)
+						err = fmt.Errorf("planning reads of data object %q: %v", path, panicked)
+					}
+				}()
+
+				tasks, err := p.planObject(planCtx, path, descriptors, query)
+				if err != nil {
+					return err
 				}
-			}
-			return nil
-		})
+
+				for _, task := range tasks {
+					select {
+					case out <- task:
+					case <-planCtx.Done():
+						return planCtx.Err()
+					}
+				}
+				return nil
+			})
+		}
 	}
-
 	return group.Wait()
 }
 
-// planObject reads one object's streams once, then plans a task per logs section of it.
+// planObject reads the streams of the given sections in one read. It then plans one task for each
+// logs section that keeps a stream after filtering.
 //
 // descriptors must all belong to the object at path. Their stream IDs are only meaningful there,
-// because each object's builder assigns its own.
+// because each object's builder assigns its own. Another index object can list the other sections
+// of the same data object. planObject then runs again for that object.
 func (p *Planner) planObject(ctx context.Context, path string, descriptors metastore.DataobjSectionDescriptors, query QueryParams) ([]ReadTask, error) {
 	object, err := p.objects.get(ctx, path)
 	if err != nil {
 		return nil, err
-	}
-
-	// One task per section. The metastore concatenates the descriptors of every index object
-	// without merging across them, so two index objects describing one section would plan it
-	// twice and emit every one of its rows twice. Check before the streams read below, which
-	// costs a round trip to object storage.
-	planned := make(map[int64]struct{}, len(descriptors))
-	for _, descriptor := range descriptors {
-		if _, repeated := planned[descriptor.SectionIdx]; repeated {
-			return nil, fmt.Errorf(
-				"data object %q logs section %d was listed twice, so reading it would count its rows twice",
-				path, descriptor.SectionIdx,
-			)
-		}
-		planned[descriptor.SectionIdx] = struct{}{}
 	}
 
 	decoded, err := object.streamLabels(ctx, descriptors.StreamIDs(), query.Shard.bucketRange())
@@ -239,15 +266,16 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 	// would suppress pushdown this can keep.
 	columns, metadataNames, predicates := query.Projection.forStreams(labelNames)
 	return ReadTask{
-		objectPath:    descriptor.ObjectPath,
-		sectionIdx:    int(descriptor.SectionIdx),
-		streamIDs:     streamIDs,
-		streams:       streams,
-		columns:       columns,
-		metadataNames: metadataNames,
-		predicates:    predicates,
-		start:         query.Start,
-		end:           query.End,
+		objectPath:        descriptor.ObjectPath,
+		sectionIdx:        int(descriptor.SectionIdx),
+		streamIDs:         streamIDs,
+		streams:           streams,
+		columns:           columns,
+		metadataNames:     metadataNames,
+		predicates:        predicates,
+		needReturningLine: query.Projection.needReturningLine,
+		start:             query.Start,
+		end:               query.End,
 	}, true, nil
 }
 
@@ -258,7 +286,7 @@ func (p *Planner) admits(streamLabels labels.Labels, streamHash uint64, shard *Q
 	}
 
 	// The bucket range resolves a shard exactly only for a power-of-two shard of at most
-	// streams.ShardFactor. Any other shard maps to a range that covers streams outside it, so
+	// streams.DefaultShardBuckets. Any other shard maps to a range that covers streams outside it, so
 	// the stream hash still has to be checked.
 	if shard != nil && !shard.resolvesExactly() {
 		if !shard.assignment.Match(model.Fingerprint(streamHash)) {

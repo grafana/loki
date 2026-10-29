@@ -146,7 +146,6 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	s.AnywhereCaches = NewAnywhereCachesService(s)
 	s.BucketAccessControls = NewBucketAccessControlsService(s)
 	s.Buckets = NewBucketsService(s)
-	s.Channels = NewChannelsService(s)
 	s.DefaultObjectAccessControls = NewDefaultObjectAccessControlsService(s)
 	s.Folders = NewFoldersService(s)
 	s.ManagedFolders = NewManagedFoldersService(s)
@@ -185,8 +184,6 @@ type Service struct {
 	BucketAccessControls *BucketAccessControlsService
 
 	Buckets *BucketsService
-
-	Channels *ChannelsService
 
 	DefaultObjectAccessControls *DefaultObjectAccessControlsService
 
@@ -238,15 +235,6 @@ func NewBucketsService(s *Service) *BucketsService {
 }
 
 type BucketsService struct {
-	s *Service
-}
-
-func NewChannelsService(s *Service) *ChannelsService {
-	rs := &ChannelsService{s: s}
-	return rs
-}
-
-type ChannelsService struct {
 	s *Service
 }
 
@@ -1350,6 +1338,10 @@ type BucketSoftDeletePolicy struct {
 	// the policy, or one with a greater retention, was effective. This value is in
 	// RFC 3339 format.
 	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// HardDeletePause: The bucket's hard delete pause configuration. If set,
+	// soft-deleted objects in the bucket will not be permanently deleted until the
+	// hard delete pause is disabled.
+	HardDeletePause *BucketSoftDeletePolicyHardDeletePause `json:"hardDeletePause,omitempty"`
 	// RetentionDurationSeconds: The duration in seconds that soft-deleted objects
 	// in the bucket will be retained and cannot be permanently deleted.
 	RetentionDurationSeconds int64 `json:"retentionDurationSeconds,omitempty,string"`
@@ -1368,6 +1360,33 @@ type BucketSoftDeletePolicy struct {
 
 func (s BucketSoftDeletePolicy) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketSoftDeletePolicy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketSoftDeletePolicyHardDeletePause: The bucket's hard delete pause
+// configuration. If set, soft-deleted objects in the bucket will not be
+// permanently deleted until the hard delete pause is disabled.
+type BucketSoftDeletePolicyHardDeletePause struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// the hard delete pause became effective. This value is in RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// Enabled: Whether hard deletions are paused.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketSoftDeletePolicyHardDeletePause) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketSoftDeletePolicyHardDeletePause
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -1700,51 +1719,6 @@ type BulkRestoreObjectsRequest struct {
 
 func (s BulkRestoreObjectsRequest) MarshalJSON() ([]byte, error) {
 	type NoMethod BulkRestoreObjectsRequest
-	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
-}
-
-// Channel: An notification channel used to watch for resource changes.
-type Channel struct {
-	// Address: The address where notifications are delivered for this channel.
-	Address string `json:"address,omitempty"`
-	// Expiration: Date and time of notification channel expiration, expressed as a
-	// Unix timestamp, in milliseconds. Optional.
-	Expiration int64 `json:"expiration,omitempty,string"`
-	// Id: A UUID or similar unique string that identifies this channel.
-	Id string `json:"id,omitempty"`
-	// Kind: Identifies this as a notification channel used to watch for changes to
-	// a resource, which is "api#channel".
-	Kind string `json:"kind,omitempty"`
-	// Params: Additional parameters controlling delivery channel behavior.
-	// Optional.
-	Params map[string]string `json:"params,omitempty"`
-	// Payload: A Boolean value to indicate whether payload is wanted. Optional.
-	Payload bool `json:"payload,omitempty"`
-	// ResourceId: An opaque ID that identifies the resource being watched on this
-	// channel. Stable across different API versions.
-	ResourceId string `json:"resourceId,omitempty"`
-	// ResourceUri: A version-specific identifier for the watched resource.
-	ResourceUri string `json:"resourceUri,omitempty"`
-	// Token: An arbitrary string delivered to the target address with each
-	// notification delivered over this channel. Optional.
-	Token string `json:"token,omitempty"`
-	// Type: The type of delivery mechanism used for this channel.
-	Type string `json:"type,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Address") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Address") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s Channel) MarshalJSON() ([]byte, error) {
-	type NoMethod Channel
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2746,6 +2720,49 @@ type ObjectCustomContextPayload struct {
 
 func (s ObjectCustomContextPayload) MarshalJSON() ([]byte, error) {
 	type NoMethod ObjectCustomContextPayload
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ObjectFullContext: A full representation of an object context.
+type ObjectFullContext struct {
+	// CreateTime: The time at which the object context was created. This value is
+	// in RFC 3339 format.
+	CreateTime string `json:"createTime,omitempty"`
+	// ExtendedData: The extended data of the object context.
+	ExtendedData googleapi.RawMessage `json:"extendedData,omitempty"`
+	// Key: The key of the object context.
+	Key string `json:"key,omitempty"`
+	// Kind: The kind of item this is. For ObjectFullContext, this is always
+	// storage#objectFullContext.
+	Kind string `json:"kind,omitempty"`
+	// Type: The type of the object context.
+	//
+	// Possible values:
+	//   "CUSTOM" - Custom object context.
+	Type string `json:"type,omitempty"`
+	// UpdateTime: The time at which the object context was last updated. This
+	// value is in RFC 3339 format.
+	UpdateTime string `json:"updateTime,omitempty"`
+	// Value: The value of the object context.
+	Value string `json:"value,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ObjectFullContext) MarshalJSON() ([]byte, error) {
+	type NoMethod ObjectFullContext
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -6485,78 +6502,6 @@ func (c *BucketsUpdateCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-}
-
-type ChannelsStopCall struct {
-	s          *Service
-	channel    *Channel
-	urlParams_ gensupport.URLParams
-	ctx_       context.Context
-	header_    http.Header
-}
-
-// Stop: Stop watching resources through this channel
-func (r *ChannelsService) Stop(channel *Channel) *ChannelsStopCall {
-	c := &ChannelsStopCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.channel = channel
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *ChannelsStopCall) Fields(s ...googleapi.Field) *ChannelsStopCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *ChannelsStopCall) Context(ctx context.Context) *ChannelsStopCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *ChannelsStopCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *ChannelsStopCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.channel)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "channels/stop")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.channels.stop", "request", internallog.HTTPRequest(req, body.Bytes()))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "storage.channels.stop" call.
-func (c *ChannelsStopCall) Do(opts ...googleapi.CallOption) error {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if err != nil {
-		return err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return gensupport.WrapError(err)
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.channels.stop", "response", internallog.HTTPResponse(res, nil))
-	return nil
 }
 
 type DefaultObjectAccessControlsDeleteCall struct {
@@ -13131,6 +13076,139 @@ func (c *ObjectsUpdateCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 		return nil, err
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.update", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ObjectsViewFullContextCall struct {
+	s            *Service
+	bucket       string
+	object       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// ViewFullContext: Retrieves a specific object context with its extended data
+// for a given object.
+//
+//   - bucket: Name of the bucket in which the object resides.
+//   - contextKey: Key identifying the object context to retrieve.
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
+//     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
+func (r *ObjectsService) ViewFullContext(bucket string, object string) *ObjectsViewFullContextCall {
+	c := &ObjectsViewFullContextCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.object = object
+	return c
+}
+
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
+func (c *ObjectsViewFullContextCall) Generation(generation int64) *ObjectsViewFullContextCall {
+	c.urlParams_.Set("generation", fmt.Sprint(generation))
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
+func (c *ObjectsViewFullContextCall) UserProject(userProject string) *ObjectsViewFullContextCall {
+	c.urlParams_.Set("userProject", userProject)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ObjectsViewFullContextCall) Fields(s ...googleapi.Field) *ObjectsViewFullContextCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ObjectsViewFullContextCall) IfNoneMatch(entityTag string) *ObjectsViewFullContextCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ObjectsViewFullContextCall) Context(ctx context.Context) *ObjectsViewFullContextCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ObjectsViewFullContextCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ObjectsViewFullContextCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/viewFullContext")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+		"object": c.object,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.viewFullContext", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.objects.viewFullContext" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectFullContext.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ObjectsViewFullContextCall) Do(opts ...googleapi.CallOption) (*ObjectFullContext, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ObjectFullContext{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.viewFullContext", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 

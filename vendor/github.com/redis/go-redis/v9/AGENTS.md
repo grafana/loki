@@ -9,7 +9,7 @@ Zed, …) read `AGENTS.md` directly. Edit repository guidance here, not in
 ## Repository
 
 go-redis is the official Redis client for Go. Module path:
-`github.com/redis/go-redis/v9` (Go 1.24+). The repo is a multi-module workspace
+`github.com/redis/go-redis/v9` (Go 1.26+). The repo is a multi-module workspace
 — every directory containing a `go.mod` is built and tested independently:
 
 - root (`github.com/redis/go-redis/v9`) — the client library.
@@ -113,6 +113,16 @@ in FIFO order; each hook must call `next` to continue. When a hook wraps an
 error, it must call `cmd.SetErr(wrappedErr)` so the typed-error helpers
 (`redis.IsLoadingError`, `IsMovedError`, etc. in `error.go`) keep working through
 `errors.As`. The README has a longer pipeline-hook example.
+
+**Hook contract** (behavior is undefined otherwise — the mechanism assumes
+well-behaved hooks rather than defending every corner case): a hook must call
+`next` (unless deliberately terminating the command), must **not** call `Close`
+or other client control methods (it runs on the goroutine `Close` waits for, so
+it deadlocks), must **not** panic, and must **not** mutate client or connection
+state. It may observe and wrap errors only. User callbacks such as `CacheSizer`
+follow the same no-panic rule. Client-side caching additionally requires the
+**built-in** push processor; a custom `PushNotificationProcessor` is unsupported
+with CSC (the client logs a warning at init). See `.claude/specs/push.md`.
 
 ### Connection pool (`internal/pool`)
 

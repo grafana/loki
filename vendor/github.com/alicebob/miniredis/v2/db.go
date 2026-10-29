@@ -100,6 +100,9 @@ func (db *RedisDB) move(key string, to *RedisDB) bool {
 }
 
 func (db *RedisDB) rename(from, to string) {
+	if from == to {
+		return
+	}
 	db.del(to, true)
 	switch db.t(from) {
 	case keyTypeString:

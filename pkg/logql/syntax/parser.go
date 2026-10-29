@@ -60,7 +60,7 @@ type parser struct {
 
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -70,13 +70,13 @@ func ParseExpr(input string) (Expr, error) {
 	return expr, nil
 }
 
-// parseExprWithoutValidation parses a string and returns an Expr, skipping the
+// ParseExprWithoutValidation parses a string and returns an Expr, skipping the
 // semantic validation done by ParseExpr.
 //
 // The parse itself is inlined here rather than living on the parser type: parts
 // of LogQL parsing panic deliberately and rely on the recover below, so there
 // must be no way to invoke them without it.
-func parseExprWithoutValidation(input string) (expr Expr, err error) {
+func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
 		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
@@ -148,7 +148,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	if validate {
 		expr, err = ParseExpr(input)
 	} else {
-		expr, err = parseExprWithoutValidation(input)
+		expr, err = ParseExprWithoutValidation(input)
 	}
 
 	if err != nil {
@@ -263,7 +263,7 @@ func validateSortGrouping(grouping *Grouping) error {
 
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -288,23 +288,30 @@ func MustParseLogSelector(input string, validate bool) LogSelectorExpr {
 	return expr
 }
 
-// ParseLabels parses labels from a string using logql parser.
+// ParseLabels parses stream labels from a string using the logql parser.
+//
+// It drops labels with an empty value. An empty value and an absent label mean
+// the same thing in Prometheus, but they hash differently, so Loki normalizes
+// them away to keep a stream's hash stable.
 func ParseLabels(lbs string) (labels.Labels, error) {
-	if len(lbs) > maxStreamLabelsSize {
-		return labels.EmptyLabels(), fmt.Errorf("labels size %d MiB exceeds limit of %d", len(lbs)>>20, maxStreamLabelsSize>>20)
-	}
-	ls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
+	ls, err := ParseMetric(lbs)
 	if err != nil {
 		return labels.EmptyLabels(), err
 	}
-
-	// Empty label values are equivalent to absent labels
-	// in Prometheus, but they unfortunately alter the
-	// Hash values created. This can cause problems in Loki
-	// if we can't rely on a set of labels to have a deterministic
-	// hash value.
-	// Therefore we must normalize early in the write path.
-	// See https://github.com/grafana/loki/pull/7355
-	// for more information
 	return ls.WithoutEmpty(), nil
+}
+
+// ParseMetric parses a label set from a string using the logql parser,
+// keeping empty-value labels.
+//
+// Use this for labels that come from query processing, such as range-vector
+// aggregation output or extracted fields, where an empty value is distinct
+// from an absent label. Use ParseLabels instead for stream labels read from
+// storage, which Loki normalizes to drop empty values at write time.
+func ParseMetric(lbs string) (labels.Labels, error) {
+	if len(lbs) > maxStreamLabelsSize {
+		return labels.EmptyLabels(), fmt.Errorf("labels size %d MiB exceeds limit of %d", len(lbs)>>20, maxStreamLabelsSize>>20)
+	}
+	//nolint:forbidigo // this is the wrapper other packages must call instead
+	return promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
 }

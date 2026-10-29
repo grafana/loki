@@ -15,6 +15,15 @@
   ignorePaths: [
     'vendor/**',
   ],
+  // Renovate reads the root release tags (v0.4.0, v3.x) as versions of the nested
+  // pkg/push module. Go needs pkg/push/vX.Y.Z tags, so these versions do not resolve
+  // for modules that import Loki.
+  //
+  // Use ignoreDeps, not a packageRule with 'enabled: false'. The self-hosted runner
+  // sets force.enabled to true, and that overrides 'enabled: false' in every packageRule.
+  ignoreDeps: [
+    'github.com/grafana/loki/pkg/push',
+  ],
   prHourlyLimit: 4,
   baseBranchPatterns: [
     'main',
@@ -132,6 +141,31 @@
       enabled: true,
     },
     {
+      // Pin franz-go to 1.21.x; warpstream does not yet support the Kafka protocols
+      // introduced in later versions. See #24790.
+      matchPackageNames: [
+        'github.com/twmb/franz-go',
+      ],
+      allowedVersions: '~1.21.0',
+      enabled: true,
+    },
+    {
+      // Pin kadm to 1.18.x, matching the franz-go pin above. See #24790.
+      matchPackageNames: [
+        'github.com/twmb/franz-go/pkg/kadm',
+      ],
+      allowedVersions: '~1.18.0',
+      enabled: true,
+    },
+    {
+      // Pin kmsg to 1.13.x, matching the franz-go pin above. See #24790.
+      matchPackageNames: [
+        'github.com/twmb/franz-go/pkg/kmsg',
+      ],
+      allowedVersions: '~1.13.0',
+      enabled: true,
+    },
+    {
       // Track prometheus via pseudo-versions only (closest to main); do not switch to a tagged release and stick to that major.
       // Scoped to main branch only and excludes operator files to avoid overriding their disabled update rules.
       matchPackageNames: ['github.com/prometheus/prometheus'],
@@ -229,12 +263,6 @@
     {
       // Disable all updates for pkg/push/go.mod (deps of the submodule).
       matchFileNames: ['pkg/push/go.mod'],
-      enabled: false,
-    },
-    {
-      // Do not bump github.com/grafana/loki/pkg/push in any go.mod.
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/grafana/loki/pkg/push'],
       enabled: false,
     },
     {

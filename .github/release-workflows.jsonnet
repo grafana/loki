@@ -6,7 +6,7 @@ local releaseLibRef = (import 'jsonnetfile.json').dependencies[0].version;
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 local goVersion = std.extVar('GO_VERSION');
 local buildImage = 'golang:%s' % goVersion;
-local golangCiLintVersion = 'v2.13.2';
+local golangCiLintVersion = 'v2.14.0';
 local imageBuildTimeoutMin = 60;
 local weeklyImageRegistry = 'us-docker.pkg.dev';
 local weeklyImagePrefix = '%s/grafanalabs-global/dockerhub-loki-prod-mirror' % weeklyImageRegistry;
@@ -81,6 +81,29 @@ local weeklyImageJobs = {
       versioningStrategy='always-bump-minor',
     ) + {
       name: 'Prepare Minor Release PR from Weekly',
+    }, false, false
+  ),
+  'major-release-pr.yml': std.manifestYamlDoc(
+    lokiRelease.releasePRWorkflow(
+      branches=['release-[0-9]+.0.0'],
+      buildImage=buildImage,
+      checkTemplate=checkTemplate,
+      distRunsOn='ubuntu-x64',
+      distOptionalTargets=['dist/loki-linux-riscv64'],
+      golangCiLintVersion=golangCiLintVersion,
+      imageBuildTimeoutMin=imageBuildTimeoutMin,
+      imageJobs=imageJobs,
+      imagePrefix=imagePrefix,
+      releaseLibRef=releaseLibRef,
+      releaseRepo='grafana/loki',
+      skipArm=false,
+      skipValidation=false,
+      // Instead of hard-coding the release version, push an empty to the target branch `release-X.0.0`
+      // git commit --allow-empty -m "chore: Release X.0.0-rcY" -m "Release-As: X.0.0-rcY"
+      // https://github.com/googleapis/release-please#how-do-i-change-the-version-number
+      // releaseAs='x.0.0',
+    ) + {
+      name: 'Prepare Major Release PR',
     }, false, false
   ),
   'release.yml': std.manifestYamlDoc(
@@ -189,12 +212,10 @@ local weeklyImageJobs = {
             echo "linux/arm64 $IMAGE_DIGEST_ARM64"
             echo "linux/amd64 $IMAGE_DIGEST_AMD64"
             echo "linux/arm   $IMAGE_DIGEST_ARM"
-
             # 'needs.%(name)s-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
             # See https://github.com/actions/runner/issues/2316
             # Using the IMAGE_NAME env variable instead
             IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
             echo "Create multi-arch manifest for $IMAGE"
             docker buildx imagetools create -t $IMAGE \
               ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \

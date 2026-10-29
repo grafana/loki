@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -251,6 +250,7 @@ func newCountDistinctStepEvaluator(
 	params Params,
 	interval, offset time.Duration,
 	emitSketch bool,
+	keepsErroredLines bool,
 ) StepEvaluator {
 	iter := newCountDistinctIterator(
 		it,
@@ -262,9 +262,9 @@ func newCountDistinctStepEvaluator(
 		emitSketch,
 	)
 	if emitSketch {
-		return &countDistinctSketchEvaluator{iter: iter}
+		return &countDistinctSketchEvaluator{iter: iter, keepsErroredLines: keepsErroredLines}
 	}
-	return &RangeVectorEvaluator{iter: iter}
+	return &RangeVectorEvaluator{iter: iter, keepsErroredLines: keepsErroredLines}
 }
 
 func newCountDistinctIterator(
@@ -341,7 +341,12 @@ func countDistinctSketch(samples []promql.FPoint) *hyperloglog.Sketch {
 // SampleVector is empty on that StepResult, so pipeline errors are checked here.
 type countDistinctSketchEvaluator struct {
 	iter RangeVectorIterator
-	err  error
+
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not fail the query.
+	keepsErroredLines bool
+
+	err error
 }
 
 func (e *countDistinctSketchEvaluator) Next() (bool, int64, StepResult) {
@@ -351,11 +356,9 @@ func (e *countDistinctSketchEvaluator) Next() (bool, int64, StepResult) {
 	}
 	ts, r := e.iter.At()
 	vec := r.CountDistinctSketchVec()
-	for _, s := range vec {
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
-			e.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, CountDistinctSketchVector{}
-		}
+	if err := pipelineErr(e.keepsErroredLines, vec, func(s CountDistinctSketchSample) labels.Labels { return s.Metric }); err != nil {
+		e.err = err
+		return false, 0, CountDistinctSketchVector{}
 	}
 	return true, ts, vec
 }
@@ -435,6 +438,7 @@ func NewCountDistinctSketchMatrixStepEvaluator(m CountDistinctSketchMatrix, para
 // CountDistinctSketchVectorStepEvaluator estimates one sketch vector per step.
 type CountDistinctSketchVectorStepEvaluator struct {
 	inner StepEvaluator
+	err   error
 }
 
 var _ StepEvaluator = NewCountDistinctSketchVectorStepEvaluator(nil)
@@ -444,15 +448,20 @@ func NewCountDistinctSketchVectorStepEvaluator(inner StepEvaluator) *CountDistin
 }
 
 func (e *CountDistinctSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
-	ok, ts, r := e.inner.Next()
-	if !ok {
+	if e.err != nil {
 		return false, 0, SampleVector{}
 	}
-	return ok, ts, r.CountDistinctSketchVec().Estimate()
+
+	ok, ts, r := e.inner.Next()
+	e.err = e.inner.Error()
+	if !ok || e.err != nil {
+		return false, 0, SampleVector{}
+	}
+	return true, ts, r.CountDistinctSketchVec().Estimate()
 }
 
-func (*CountDistinctSketchVectorStepEvaluator) Close() error { return nil }
-func (*CountDistinctSketchVectorStepEvaluator) Error() error { return nil }
+func (e *CountDistinctSketchVectorStepEvaluator) Close() error { return e.inner.Close() }
+func (e *CountDistinctSketchVectorStepEvaluator) Error() error { return e.err }
 func (e *CountDistinctSketchVectorStepEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinctSketchVector")
 }

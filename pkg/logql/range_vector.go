@@ -9,7 +9,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -98,9 +97,13 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
+	err                                  error
 }
 
 func (r *batchRangeVectorIterator) Next() bool {
+	if r.err != nil {
+		return false
+	}
 	// slides the range window to the next position
 	r.current = r.current + r.step
 	if r.current > r.end {
@@ -111,7 +114,7 @@ func (r *batchRangeVectorIterator) Next() bool {
 	// load samples
 	r.popBack(rangeStart)
 	r.load(rangeStart, rangeEnd)
-	return true
+	return r.err == nil
 }
 
 func (r *batchRangeVectorIterator) Close() error {
@@ -119,6 +122,9 @@ func (r *batchRangeVectorIterator) Close() error {
 }
 
 func (r *batchRangeVectorIterator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
 	return r.iter.Err()
 }
 
@@ -167,10 +173,10 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			var metric labels.Labels
 			if metric, ok = r.metrics[lbs]; !ok {
 				var err error
-				metric, err = promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
+				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
-					_ = r.iter.Next()
-					continue
+					r.err = fmt.Errorf("failed to parse metric %q: %w", lbs, err)
+					return
 				}
 				r.metrics[lbs] = metric
 			}
@@ -259,15 +265,11 @@ func aggregator(r *syntax.RangeAggregationExpr) (BatchRangeVectorAggregator, err
 // rateLogs calculates the per-second rate of log lines or values extracted
 // from log lines
 func rateLogs(selRange time.Duration, computeValues bool) BatchRangeVectorAggregator {
-	return func(samples []promql.FPoint, _ int64) float64 {
+	return func(samples []promql.FPoint, rangeEnd int64) float64 {
 		if !computeValues {
 			return float64(len(samples)) / selRange.Seconds()
 		}
-		var result float64
-		for _, sample := range samples {
-			result += sample.F
-		}
-		return result / selRange.Seconds()
+		return sumOverTime(samples, rangeEnd) / selRange.Seconds()
 	}
 }
 
@@ -362,38 +364,21 @@ func countOverTime(samples []promql.FPoint, _ int64) float64 {
 	return float64(len(samples))
 }
 
+// sumOverTime adds up the samples with Kahan summation.
 func sumOverTime(samples []promql.FPoint, _ int64) float64 {
-	var sum float64
-	for _, v := range samples {
-		sum += v.F
-	}
-	return sum
+	var sum kahanSum
+	sum.addPoints(samples)
+	return sum.result()
 }
 
+// avgOverTime computes the mean of the samples with kahanAvg.
 func avgOverTime(samples []promql.FPoint, _ int64) float64 {
-	var mean, count float64
-	for _, v := range samples {
-		count++
-		if math.IsInf(mean, 0) {
-			if math.IsInf(v.F, 0) && (mean > 0) == (v.F > 0) {
-				// The `mean` and `v.V` values are `Inf` of the same sign.  They
-				// can't be subtracted, but the value of `mean` is correct
-				// already.
-				continue
-			}
-			if !math.IsInf(v.F, 0) && !math.IsNaN(v.F) {
-				// At this stage, the mean is an infinite. If the added
-				// value is neither an Inf or a Nan, we can keep that mean
-				// value.
-				// This is required because our calculation below removes
-				// the mean value, which would look like Inf += x - Inf and
-				// end up as a NaN.
-				continue
-			}
-		}
-		mean += v.F/count - mean/count
+	if len(samples) == 0 {
+		return 0
 	}
-	return mean
+	var avg kahanAvg
+	avg.addPoints(samples)
+	return avg.result()
 }
 
 func maxOverTime(samples []promql.FPoint, _ int64) float64 {
@@ -416,28 +401,18 @@ func minOverTime(samples []promql.FPoint, _ int64) float64 {
 	return minVal
 }
 
-// stdvarOverTime calculates the variance using Welford's online algorithm.
-// See https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+// stdvarOverTime computes the population variance of the samples with kahanVariance.
 func stdvarOverTime(samples []promql.FPoint, _ int64) float64 {
-	var aux, count, mean float64
-	for _, v := range samples {
-		count++
-		delta := v.F - mean
-		mean += delta / count
-		aux += delta * (v.F - mean)
-	}
-	return aux / count
+	var variance kahanVariance
+	variance.addPoints(samples)
+	return variance.result()
 }
 
+// stddevOverTime computes the population standard deviation of the samples with kahanVariance.
 func stddevOverTime(samples []promql.FPoint, _ int64) float64 {
-	var aux, count, mean float64
-	for _, v := range samples {
-		count++
-		delta := v.F - mean
-		mean += delta / count
-		aux += delta * (v.F - mean)
-	}
-	return math.Sqrt(aux / count)
+	var variance kahanVariance
+	variance.addPoints(samples)
+	return math.Sqrt(variance.result())
 }
 
 func quantileOverTime(q float64) BatchRangeVectorAggregator {
@@ -506,9 +481,13 @@ type streamRangeVectorIterator struct {
 	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
+	err                                  error
 }
 
 func (r *streamRangeVectorIterator) Next() bool {
+	if r.err != nil {
+		return false
+	}
 	// slides the range window to the next position
 	r.current = r.current + r.step
 	if r.current > r.end {
@@ -521,7 +500,7 @@ func (r *streamRangeVectorIterator) Next() bool {
 	r.windowRangeAgg = make(map[string]RangeStreamingAgg, 0)
 	r.metrics = map[string]labels.Labels{}
 	r.load(rangeStart, rangeEnd)
-	return true
+	return r.err == nil
 }
 
 func (r *streamRangeVectorIterator) Close() error {
@@ -529,6 +508,9 @@ func (r *streamRangeVectorIterator) Close() error {
 }
 
 func (r *streamRangeVectorIterator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
 	return r.iter.Err()
 }
 
@@ -552,10 +534,10 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 			var metric labels.Labels
 			if _, ok = r.metrics[lbs]; !ok {
 				var err error
-				metric, err = promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
+				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
-					_ = r.iter.Next()
-					continue
+					r.err = fmt.Errorf("failed to parse metric %q: %w", lbs, err)
+					return
 				}
 				r.metrics[lbs] = metric
 			}
@@ -632,25 +614,28 @@ func newRateLogs(selRange time.Duration, computeValues bool) RangeStreamingAgg {
 	}
 }
 
-// rateLogs calculates the per-second rate of log lines or values extracted
-// from log lines
+// RateLogsOverTime calculates the per-second rate of log lines or values
+// extracted from log lines.
 type RateLogsOverTime struct {
+	sum           kahanSum
 	selRange      time.Duration
-	val           float64
 	count         float64
 	computeValues bool
 }
 
 func (a *RateLogsOverTime) agg(sample promql.FPoint) {
+	if a.computeValues {
+		a.sum.addValue(sample.F)
+		return
+	}
 	a.count++
-	a.val += sample.F
 }
 
 func (a *RateLogsOverTime) at() float64 {
 	if !a.computeValues {
 		return a.count / a.selRange.Seconds()
 	}
-	return a.val / a.selRange.Seconds()
+	return a.sum.result() / a.selRange.Seconds()
 }
 
 // rateCounter calculates the per-second rate of values extracted from log lines
@@ -669,18 +654,18 @@ func (a *RateCounterOverTime) at() float64 {
 	return extrapolatedRate(a.samples, a.selRange, a.rangeEnd, true, true)
 }
 
-// rateLogBytes calculates the per-second rate of log bytes.
+// RateLogBytesOverTime calculates the per-second rate of log bytes.
 type RateLogBytesOverTime struct {
-	sum      float64
+	sum      kahanSum
 	selRange time.Duration
 }
 
 func (a *RateLogBytesOverTime) agg(sample promql.FPoint) {
-	a.sum += sample.F
+	a.sum.addValue(sample.F)
 }
 
 func (a *RateLogBytesOverTime) at() float64 {
-	return a.sum / a.selRange.Seconds()
+	return a.sum.result() / a.selRange.Seconds()
 }
 
 type CountOverTime struct {
@@ -695,46 +680,31 @@ func (a *CountOverTime) at() float64 {
 	return a.count
 }
 
+// SumOverTime is the streaming counterpart of sumOverTime: it keeps a
+// Kahan-compensated running sum, one sample at a time.
 type SumOverTime struct {
-	sum float64
+	sum kahanSum
 }
 
 func (a *SumOverTime) agg(sample promql.FPoint) {
-	a.sum += sample.F
+	a.sum.addValue(sample.F)
 }
 
 func (a *SumOverTime) at() float64 {
-	return a.sum
+	return a.sum.result()
 }
 
+// AvgOverTime is the streaming counterpart of avgOverTime.
 type AvgOverTime struct {
-	mean, count float64
+	avg kahanAvg
 }
 
 func (a *AvgOverTime) agg(sample promql.FPoint) {
-	a.count++
-	if math.IsInf(a.mean, 0) {
-		if math.IsInf(sample.F, 0) && (a.mean > 0) == (sample.F > 0) {
-			// The `mean` and `v.V` values are `Inf` of the same sign.  They
-			// can't be subtracted, but the value of `mean` is correct
-			// already.
-			return
-		}
-		if !math.IsInf(sample.F, 0) && !math.IsNaN(sample.F) {
-			// At this stage, the mean is an infinite. If the added
-			// value is neither an Inf or a Nan, we can keep that mean
-			// value.
-			// This is required because our calculation below removes
-			// the mean value, which would look like Inf += x - Inf and
-			// end up as a NaN.
-			return
-		}
-	}
-	a.mean += sample.F/a.count - a.mean/a.count
+	a.avg.addValue(sample.F)
 }
 
 func (a *AvgOverTime) at() float64 {
-	return a.mean
+	return a.avg.result()
 }
 
 type MaxOverTime struct {
@@ -765,34 +735,30 @@ func (a *MinOverTime) at() float64 {
 	return a.min
 }
 
+// StdvarOverTime is the streaming counterpart of stdvarOverTime.
 type StdvarOverTime struct {
-	aux, count, mean float64
+	variance kahanVariance
 }
 
 func (a *StdvarOverTime) agg(sample promql.FPoint) {
-	a.count++
-	delta := sample.F - a.mean
-	a.mean += delta / a.count
-	a.aux += delta * (sample.F - a.mean)
+	a.variance.addValue(sample.F)
 }
 
 func (a *StdvarOverTime) at() float64 {
-	return a.aux / a.count
+	return a.variance.result()
 }
 
+// StddevOverTime is the streaming counterpart of stddevOverTime.
 type StddevOverTime struct {
-	aux, count, mean float64
+	variance kahanVariance
 }
 
 func (a *StddevOverTime) agg(sample promql.FPoint) {
-	a.count++
-	delta := sample.F - a.mean
-	a.mean += delta / a.count
-	a.aux += delta * (sample.F - a.mean)
+	a.variance.addValue(sample.F)
 }
 
 func (a *StddevOverTime) at() float64 {
-	return math.Sqrt(a.aux / a.count)
+	return math.Sqrt(a.variance.result())
 }
 
 type QuantileOverTime struct {

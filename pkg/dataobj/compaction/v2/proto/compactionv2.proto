@@ -14,7 +14,7 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 // SectionRef identifies one section in object storage with its sort-key bounds.
 //
 // The section's sort-key is the tuple (sort_schema_label_values, __timestamp__)
-// per the tenant's sort_schema. To order sections correctly without imposing
+// per the sort_schema of the index. To order sections correctly without imposing
 // encoding contracts on the caller, the proto splits this tuple across two
 // field categories:
 //
@@ -46,5 +46,34 @@ message RunRef {
 message TaskSpec {
   string tenant = 1 [(gogoproto.jsontag) = "tenant"];
   repeated RunRef runs = 2 [(gogoproto.jsontag) = "runs"];
-  repeated string sort_schema = 3 [(gogoproto.jsontag) = "sort_schema"];
+
+  // Field 3 held the sort schema. Do not reuse it.
+  reserved 3;
+  reserved "sort_schema";
+
+  // key_range limits the task to the streams in the range. A missing
+  // key_range means the full key space.
+  KeyRange key_range = 4 [(gogoproto.jsontag) = "key_range"];
+
+  // input_bytes is the uncompressed size of the log records in key_range
+  // across the sections of runs, from the index stats. It is 0 if the size is
+  // unknown.
+  int64 input_bytes = 5 [(gogoproto.jsontag) = "input_bytes"];
+}
+
+// KeyRange is the half-open range [start, end) of stream sort prefixes. Both
+// bounds are required, and start must be below end. The full key space starts
+// at (shard_bucket 0, no schema values) and ends at (shard_bucket 65536, no
+// schema values), which is above the prefix of every stream.
+message KeyRange {
+  KeyRangePrefix start = 1 [(gogoproto.jsontag) = "start"];
+  KeyRangePrefix end = 2 [(gogoproto.jsontag) = "end"];
+}
+
+// KeyRangePrefix is the (shard bucket, sort-schema label values) prefix of a
+// stream sort key. schema_values holds one value per sort-schema label, in
+// schema order.
+message KeyRangePrefix {
+  uint32 shard_bucket = 1 [(gogoproto.jsontag) = "shard_bucket"];
+  repeated string schema_values = 2 [(gogoproto.jsontag) = "schema_values"];
 }

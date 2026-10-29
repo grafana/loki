@@ -81,7 +81,7 @@ func TestMixedRunIterator_SectionTransitions(t *testing.T) {
 	}
 	var timestamps []int64
 	metadata := map[string]string{}
-	for res := range MixedRunIterator(context.Background(), runs, nil) {
+	for res := range MixedRunIterator(context.Background(), runs) {
 		record, err := res.Value()
 		require.NoError(t, err)
 		require.Equal(t, int64(1), record.StreamID)
@@ -92,26 +92,61 @@ func TestMixedRunIterator_SectionTransitions(t *testing.T) {
 	require.Equal(t, map[string]string{"a": "value", "b": "value", "c": "value", "d": "value", "e": "value"}, metadata)
 }
 
+func TestMixedRunIterator(t *testing.T) {
+	sec := buildRunSection(t,
+		logs.Record{StreamID: 1, Timestamp: time.Unix(1, 0)},
+		logs.Record{StreamID: 2, Timestamp: time.Unix(2, 0)},
+		logs.Record{StreamID: 3, Timestamp: time.Unix(3, 0)},
+	)
+
+	streamIDsOf := func(input RemappedSection) ([]int64, error) {
+		var ids []int64
+		for res := range MixedRunIterator(context.Background(), []Run{{input}}) {
+			record, err := res.Value()
+			if err != nil {
+				return ids, err
+			}
+			ids = append(ids, record.StreamID)
+		}
+		return ids, nil
+	}
+
+	t.Run("keeps every record when no stream is dropped", func(t *testing.T) {
+		ids, err := streamIDsOf(RemappedSection{Section: sec, Remap: map[int64]int64{1: 1, 2: 2, 3: 3}})
+		require.NoError(t, err)
+		require.Equal(t, []int64{1, 2, 3}, ids)
+	})
+
+	t.Run("skips the records of dropped streams without remap entries for them", func(t *testing.T) {
+		ids, err := streamIDsOf(RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, DropStreamIDs: []int64{1, 3}})
+		require.NoError(t, err)
+		require.Equal(t, []int64{2}, ids)
+	})
+
+	t.Run("fails on a record of a stream that is neither dropped nor remapped", func(t *testing.T) {
+		_, err := streamIDsOf(RemappedSection{Section: sec, Remap: map[int64]int64{2: 2}, DropStreamIDs: []int64{1}})
+		require.ErrorContains(t, err, "absent from stream remap")
+	})
+}
+
 func TestMixedRunIterator_Errors(t *testing.T) {
 	sec := buildRunSection(t, logs.Record{StreamID: 1, Timestamp: time.Unix(1, 0)})
 	valid := RemappedSection{Section: sec, Remap: map[int64]int64{1: 1}}
 	later := RemappedSection{Section: buildRunSection(t, logs.Record{StreamID: 1, Timestamp: time.Unix(2, 0)}), Remap: valid.Remap}
 	tests := []struct {
-		name   string
-		run    Run
-		schema []string
-		want   string
+		name string
+		run  Run
+		want string
 	}{
-		{name: "later section fails", run: Run{valid, {}}, want: "section and stream remap are required"},
-		{name: "missing stream", run: Run{{Section: sec, Remap: map[int64]int64{}}}, want: "absent from stream remap"},
-		{name: "schema mismatch", run: Run{valid}, schema: []string{"label:app"}, want: "does not match expected sort schema"},
-		{name: "descending stream at boundary", run: Run{{Section: sec, Remap: map[int64]int64{1: 2}}, valid}, want: "run is not sorted"},
-		{name: "ascending timestamp at boundary", run: Run{valid, later}, want: "run is not sorted"},
+		{name: "returns an error when a later section in the run has no remap", run: Run{valid, {}}, want: "section and stream remap are required"},
+		{name: "returns an error when a record stream is absent from the remap", run: Run{{Section: sec, Remap: map[int64]int64{}}}, want: "absent from stream remap"},
+		{name: "returns an error when stream order descends at a section boundary", run: Run{{Section: sec, Remap: map[int64]int64{1: 2}}, valid}, want: "run is not sorted"},
+		{name: "returns an error when timestamps ascend at a section boundary", run: Run{valid, later}, want: "run is not sorted"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			errorsSeen := 0
-			for res := range MixedRunIterator(context.Background(), []Run{test.run}, test.schema) {
+			for res := range MixedRunIterator(context.Background(), []Run{test.run}) {
 				require.Zero(t, errorsSeen, "no result may follow the terminal error")
 				_, err := res.Value()
 				if err != nil {
@@ -125,14 +160,14 @@ func TestMixedRunIterator_Errors(t *testing.T) {
 	t.Run("cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err := result.Collect(MixedRunIterator(ctx, []Run{{valid}}, nil))
+		_, err := result.Collect(MixedRunIterator(ctx, []Run{{valid}}))
 		require.ErrorIs(t, err, context.Canceled)
 	})
 	t.Run("cancel during iteration", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		count := 0
-		for res := range MixedRunIterator(ctx, []Run{{valid, valid}}, nil) {
+		for res := range MixedRunIterator(ctx, []Run{{valid, valid}}) {
 			_, err := res.Value()
 			if count == 0 {
 				require.NoError(t, err)
@@ -366,7 +401,7 @@ func BenchmarkMixedRunIteratorFirstRecord(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				for res := range MixedRunIterator(context.Background(), runs, nil) {
+				for res := range MixedRunIterator(context.Background(), runs) {
 					_, err := res.Value()
 					require.NoError(b, err)
 					break

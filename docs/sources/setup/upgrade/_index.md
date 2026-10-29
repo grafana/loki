@@ -37,6 +37,58 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Statistics in detected-field query responses
+
+The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON
+responses now include a top-level `stats` object containing the underlying log query's
+statistics. Existing `fields`, `values`, and `limit` fields retain their format.
+Clients that validate response fields strictly must allow the new `stats` field.
+
+### Bloom filters are deprecated
+
+Query acceleration using bloom filters is deprecated and will be removed in a future release.
+This covers the Bloom Planner, Bloom Builder, and Bloom Gateway components and the following settings:
+
+- The `bloom_build` and `bloom_gateway` configuration blocks.
+- The `storage_config.bloom_shipper` configuration block.
+- The per-tenant `bloom_*` settings in `limits_config`, for example `bloom_creation_enabled` and `bloom_gateway_enable_filtering`.
+
+The components and settings still work. Each bloom component logs a deprecation warning on startup.
+The `deprecated-config-checker` tool flags the deprecated settings.
+
+### Breaking change: Compactor and retention metrics are renamed 
+
+A number of legacy Prometheus metrics prefixed with `loki_boltdb_shipper_*` are renamed to `loki_tsdb_shipper_*`.
+These metrics have already been exposing values from TSDB Shipper and do not change their semantics.
+
+```
+loki_boltdb_shipper_compactor_running
+loki_boltdb_shipper_compact_tables_operation_*
+loki_boltdb_shipper_retention_*
+```
+
+To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
+
+### Stream limit delegation is configurable per tenant
+
+Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.
+
+The ingester-wide setting `ingester.delegate_stream_limits_enabled` (`-ingester.delegate-stream-limits-enabled`) still works and is deprecated. It provides the default of the per-tenant limit, so existing configurations keep their behavior.
+
+### Optional deferred OTLP attribute expansion
+
+By default, Loki copies OTLP resource and scope attributes configured as structured metadata into each log entry during parsing.
+
+To defer expansion, set `distributor.otlp_config.defer_attribute_expansion` to `true` (`-distributor.otlp.defer-attribute-expansion`). This keeps those attributes shared during distributor processing and Kafka writes until downstream components need them expanded, reducing repeated copying. The option defaults to `false`.
+
+Enabling this option also changes the Kafka record format. Before enabling it, ensure all deployed services consuming log records from Kafka (`partition-ingester`, `dataobj-builder`, and `logline-index-builder`) are running Loki 4.0 or later.
+
+Disabling this option restores expansion during parsing and the previous format for new Kafka writes. Consumers must remain on Loki 4.0 or later for as long as records written while the option was enabled remain in Kafka.
+
+### Stricter JSON payload validation
+
+Both `/loki/api/v1/push` and the deprecated legacy `/api/prom/push` endpoint now return HTTP 400 if a JSON push payload contains a field name that the endpoint's schema does not recognize. For example, sending the legacy `labels`/`entries` payload shape to `/loki/api/v1/push`, or the regular `stream`/`values` payload shape to `/api/prom/push`, now fails with an error containing `found unknown field: <field>`.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
@@ -45,7 +97,7 @@ Set `-tsdb.shipper.index-gateway-client.max-retries` to a non-negative value to 
 
 The candidate instances are the healthy instances the ring or DNS reports, so an instance that already failed its heartbeat is not counted against the budget. If you leave `-index-gateway.shard-size` at its default of `0`, a request can choose from the whole index gateway fleet.
 
-Set `-tsdb.shipper.index-gateway-client.max-in-flight-requests` to a positive value to limit in-flight requests. The default of `0` disables this limit. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, so the query-frontend retries them. The limit applies per client: Loki builds one client for each `schema_config` period, doubled when the shadow index gateway client is enabled, so the process-wide limit is this value multiplied by the number of clients.
+Set `-tsdb.shipper.index-gateway-client.max-in-flight-requests` to a positive value to limit in-flight requests. The default of `0` disables this limit. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, so the query-frontend retries them. The limit applies per client: Loki builds one client for each `schema_config` period, so the process-wide limit is this value multiplied by the number of clients.
 
 ### `frontend.encoding` default changed to `protobuf`
 
@@ -57,6 +109,20 @@ Schedulers and queriers already accept both encodings, so mixed frontends during
 
 A query such as `| __error__ > 0`, `| __error__ != 1s`, `| __error_details__ == 1MB`, or `| __error__ = ip("1.2.3.4")` now fails to parse. These two labels always hold a string (or are unset), so a numeric, duration, bytes, or IP comparison against them could never find a match; such a query used to parse successfully and then silently return no results. This also applies after `| unwrap`. Use a string comparison instead, for example `| __error__ != ""` or `| __error__=""`.
 
+### `ip()` label filters no longer keep lines with an `__error__` label
+
+An `ip()` label filter used to keep every log line that already carried an `__error__` label, without checking the address. It now compares the line like a numeric, duration, or bytes filter does. A line that failed in an earlier stage, such as `json`, usually has no value for the label, so the filter drops it. For example, `| json | addr = ip("10.0.0.0/8")` no longer returns the lines that failed to parse, and a metric query with this filter no longer fails on them. To keep those lines, combine the filter with an `__error__` filter, for example `| addr = ip("10.0.0.0/8") or __error__ != ""`.
+
+### Breaking change: Errored samples in metric queries now follow the query's grouping and `__error__` filter
+
+Metric queries report errored log lines in a more consistent way now.
+
+Previously, an errored line's sample kept every stream label and every structured metadata key, ignoring the query's `by (...)` or `without (...)` grouping. Lines from the same stream that differed only in a label the grouping didn't name could form separate series. Now an errored sample reports the same labels a successful line would report for that grouping, plus `__error__` and `__error_details__`. `sum()` and `count()` totals are unchanged, but `first_over_time()`, `last_over_time()`, `quantile_over_time()`, and other range aggregations that accept a grouping can report fewer series, or different values, once errored lines collapse into the group they belong to. A failing query's `pipeline error` message now names the grouped labels instead of the whole label set; remove the grouping to identify the affected stream.
+
+Separately, whether a metric query fails on an errored sample, or returns it, now depends only on whether a `__error__` label filter in the pipeline asks to keep it (for example `| __error__ != ""`). It no longer depends on how the query is grouped: previously, `sum by (pod) (count_over_time({app="a"} | json | __error__!="" [1m]))` could return errored samples while the same pipeline written with `max`, `without (...)`, or no grouping instead failed the query.
+
+For the full set of rules, see [Pipeline Errors in Metric Queries](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_reference/#pipeline-errors-in-metric-queries).
+
 ### `frontend.compress_responses` default changed to `true`
 
 The default value of `frontend.compress_responses` changed to `true`. A bug in Loki 3.4.0 unintentionally switched it to `false`. If you don't want the query-frontend to compress HTTP responses, set `frontend.compress_responses` to `false` explicitly.
@@ -66,10 +132,6 @@ The default value of `frontend.compress_responses` changed to `true`. A bug in L
 The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
-
-### Optional chunk fetch error propagation
-
-`chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
 
 ### Breaking change: Removal of the `row_shards` schema setting
 
@@ -197,7 +259,7 @@ With the legacy backends removed, also the `table-manager` target and `table_man
 
 ### Distributor Max Receive Limits for uncompressed bytes
 
-The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
+The next Loki release introduces a new configuration option (i.e. `-distributor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
 
 Supported clients should check the configuration options for max send message size if applicable.
 

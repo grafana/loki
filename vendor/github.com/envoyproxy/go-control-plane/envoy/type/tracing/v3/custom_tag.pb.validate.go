@@ -69,6 +69,17 @@ func (m *CustomTag) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	if _, ok := CustomTag_ValueType_name[int32(m.GetValueType())]; !ok {
+		err := CustomTagValidationError{
+			field:  "ValueType",
+			reason: "value must be one of the defined enum values",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
 	oneofTypePresent := false
 	switch v := m.Type.(type) {
 	case *CustomTag_Literal_:

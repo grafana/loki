@@ -29,7 +29,7 @@ func (p Proc) Environ() ([]string, error) {
 	}
 
 	environments = strings.Split(string(data), "\000")
-	if len(environments) > 0 {
+	if environments[len(environments)-1] == "" {
 		environments = environments[:len(environments)-1]
 	}
 

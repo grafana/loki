@@ -152,6 +152,26 @@ func TestJobRunner_Run(t *testing.T) {
 			},
 		},
 		{
+			name: "delete request with a line filter that keeps every line deleting some data",
+			deleteRequests: []deletionproto.DeleteRequest{
+				{
+					RequestID: "test-request-9",
+					Query:     lblFoo.String() + ` |~ ".*"`,
+					StartTime: yesterdaysTableInterval.Start.Add(-7 * time.Hour),
+					EndTime:   yesterdaysTableInterval.Start.Add(time.Hour),
+				},
+			},
+			expectedResult: &deletionproto.StorageUpdates{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
+						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
+						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
+						Fingerprint: labels.StableHash(lblFoo),
+					},
+				},
+			},
+		},
+		{
 			name: "multiple delete requests deleting data",
 			deleteRequests: []deletionproto.DeleteRequest{
 				{

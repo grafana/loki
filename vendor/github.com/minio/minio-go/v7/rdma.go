@@ -12,7 +12,7 @@ package minio
 
 // #cgo CFLAGS: -DMINIO_CPP_RDMA
 // #cgo CXXFLAGS: --std=c++17 -DMINIO_CPP_RDMA
-// #cgo LDFLAGS: -lminiocpp
+// #cgo LDFLAGS: -lminio
 // #include <stdlib.h>
 // #include <miniocpp/c_api.h>
 import "C"
@@ -71,8 +71,19 @@ func newRDMAClient(c *Client) (*rdmaClientHandle, error) {
 		useHTTPS = 1
 	}
 
-	cptr := C.miniocpp_client_new(endpoint, region, accessKey, secretKey,
-		sessionToken, useHTTPS)
+	// Carry this client's trust decision across to libminiocpp, which makes the
+	// RDMA path's S3 requests itself and would otherwise verify against the
+	// system store regardless of what the caller configured here.
+	var skipCertCheck C.int
+	if rdmaSkipCertVerify(c.httpClient, c.secure) {
+		skipCertCheck = 1
+	}
+
+	// A CA bundle is left to SSL_CERT_FILE, which libminiocpp reads for every
+	// request: a *x509.CertPool cannot be turned back into the file path this
+	// argument wants.
+	cptr := C.miniocpp_client_new_tls(endpoint, region, accessKey, secretKey,
+		sessionToken, useHTTPS, skipCertCheck, nil)
 	if cptr == nil {
 		return nil, fmt.Errorf("RDMA: %s", lastRDMAError())
 	}

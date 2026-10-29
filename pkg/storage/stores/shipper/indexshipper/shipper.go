@@ -36,9 +36,6 @@ const (
 	ModeReadOnly = Mode("RO")
 	// ModeWriteOnly is to allow only write operations
 	ModeWriteOnly = Mode("WO")
-	// ModeDisabled is a no-op implementation which does nothing & does not error.
-	// It's used by the blockbuilder which handles index operations independently.
-	ModeDisabled = Mode("NO")
 
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
@@ -104,9 +101,6 @@ type Config struct {
 	StreamingIndexMaxIdleFileHandles uint         `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
 	PostingsCache                    cache.Config `yaml:"postings_cache" category:"experimental" doc:"description=Experimental. Caches expanded postings for downloaded per-tenant TSDB index files."`
 
-	// Temporary experimental feature
-	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`
-
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
@@ -120,7 +114,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.PostingsCache.RegisterFlagsWithPrefix(prefix+"shipper.postings-cache.", "", f)
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
-	cfg.ShadowIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.shadow-index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
@@ -165,10 +158,6 @@ func (cfg *Config) Validate() error {
 
 	if err := cfg.IndexGatewayClientConfig.Validate(); err != nil {
 		return fmt.Errorf("shipper.index-gateway-client: %w", err)
-	}
-
-	if err := cfg.ShadowIndexGatewayClientConfig.Validate(); err != nil {
-		return fmt.Errorf("shipper.shadow-index-gateway-client: %w", err)
 	}
 
 	return nil
@@ -221,11 +210,7 @@ type indexShipper struct {
 // This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
 func NewIndexShipper(prefix string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
 	tenantFilter downloads.TenantFilter, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
-	switch cfg.Mode {
-	case ModeDisabled:
-		return Noop{}, nil
-	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
-	default:
+	if cfg.Mode != ModeReadOnly && cfg.Mode != ModeWriteOnly && cfg.Mode != ModeReadWrite {
 		return nil, fmt.Errorf("invalid mode: %v", cfg.Mode)
 	}
 	shipper := indexShipper{

@@ -177,11 +177,27 @@ func (k JSONWebKey) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON reads a key from its JSON representation.
 //
 // Returns ErrUnsupportedKeyType for unrecognized or unsupported "kty" header values.
-func (k *JSONWebKey) UnmarshalJSON(data []byte) (err error) {
+//
+// Directly unmarshaling a JWK is not safe for untrusted input.
+func (k *JSONWebKey) UnmarshalJSON(data []byte) error {
+	return k.unmarshalJSON(data, true)
+}
+
+// unmarshalJSON reads a key from its JSON representation.
+//
+// If allowPrivate is false, a JWK with private key material is rejected and the
+// function is safe for use against untrusted input.
+func (k *JSONWebKey) unmarshalJSON(data []byte, allowPrivate bool) (err error) {
 	var raw rawJSONWebKey
 	err = json.Unmarshal(data, &raw)
 	if err != nil {
 		return err
+	}
+
+	if !allowPrivate &&
+		(raw.K != nil || raw.D != nil || raw.P != nil || raw.Q != nil ||
+			raw.Dp != nil || raw.Dq != nil || raw.Qi != nil) {
+		return errors.New("go-jose/go-jose: JWK contains private parameters")
 	}
 
 	certs, err := parseCertificateChain(raw.X5c)
@@ -505,13 +521,25 @@ func (k *JSONWebKey) Valid() bool {
 	return true
 }
 
+// MaxRSAModulusBits is the largest RSA modulus size, in bits, that will be
+// accepted when parsing a JWK. Applications that need larger keys can raise
+// this limit.
+//
+// If modifying MaxRSAModulusBits, do it before any parsing occurs.
+var MaxRSAModulusBits = 4096
+
 func (key rawJSONWebKey) rsaPublicKey() (*rsa.PublicKey, error) {
 	if key.N == nil || key.E == nil {
 		return nil, fmt.Errorf("go-jose/go-jose: invalid RSA key, missing n/e values")
 	}
 
+	n := key.N.bigInt()
+	if n.BitLen() > MaxRSAModulusBits {
+		return nil, fmt.Errorf("go-jose/go-jose: invalid RSA key, modulus too large")
+	}
+
 	return &rsa.PublicKey{
-		N: key.N.bigInt(),
+		N: n,
 		E: key.E.toInt(),
 	}, nil
 }
@@ -673,16 +701,23 @@ func (key rawJSONWebKey) rsaPrivateKey() (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("go-jose/go-jose: invalid RSA private key, missing %s value(s)", strings.Join(missing, ", "))
 	}
 
+	n := key.N.bigInt()
+	if n.BitLen() > MaxRSAModulusBits {
+		return nil, fmt.Errorf("go-jose/go-jose: invalid RSA key, modulus too large")
+	}
+
+	p, q := key.P.bigInt(), key.Q.bigInt()
+	if p.BitLen()+q.BitLen() > n.BitLen()+1 || new(big.Int).Mul(p, q).Cmp(n) != 0 {
+		return nil, errors.New("go-jose/go-jose: invalid RSA private key, p * q != n")
+	}
+
 	rv := &rsa.PrivateKey{
 		PublicKey: rsa.PublicKey{
-			N: key.N.bigInt(),
+			N: n,
 			E: key.E.toInt(),
 		},
-		D: key.D.bigInt(),
-		Primes: []*big.Int{
-			key.P.bigInt(),
-			key.Q.bigInt(),
-		},
+		D:      key.D.bigInt(),
+		Primes: []*big.Int{p, q},
 	}
 
 	if key.Dp != nil {

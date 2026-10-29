@@ -76,6 +76,8 @@ func removeFastRegexMatcherFromLabelFilterer(filterer log.LabelFilterer) log.Lab
 	case *log.BinaryLabelFilter:
 		typed.Left = removeFastRegexMatcherFromLabelFilterer(typed.Left)
 		typed.Right = removeFastRegexMatcherFromLabelFilterer(typed.Left)
+	default:
+		// Leave other filters unchanged.
 	}
 	return filterer
 }

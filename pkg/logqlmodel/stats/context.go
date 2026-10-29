@@ -36,8 +36,8 @@ type (
 )
 
 const (
-	statsKey        ctxKeyType = "stats"
-	partialStatsKey ctxKeyType = "partial-stats"
+	statsKey              ctxKeyType = "stats"
+	discardedWorkStatsKey ctxKeyType = "discarded-work-stats"
 )
 
 // Context is the statistics context. It is passed through the query path and accumulates statistics.
@@ -83,6 +83,7 @@ const (
 	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
 	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
 	TaskResultCache           CacheType = "task-result"           //nolint:staticcheck
+	DataObjMetadataCache      CacheType = "dataobj-metadata"      //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context
@@ -101,41 +102,49 @@ func FromContext(ctx context.Context) *Context {
 	return v
 }
 
-// PartialContext accumulates statistics from sub-queries that completed before
-// the overall query failed. It has its own context key so that the nested stats
-// Contexts opened deeper in the query path do not shadow it.
-type PartialContext struct {
+// DiscardedWorkContext accumulates statistics for completed work whose results
+// will not contribute statistics through the normal response path. This includes
+// successful child queries whose parent query later fails.
+//
+// Producers must record each result either here or through the normal response
+// path, never both. The root query merges a snapshot into its response on success
+// or uses the snapshot for failed-query reporting on error.
+// Its own context key prevents nested stats Contexts from shadowing it.
+type DiscardedWorkContext struct {
 	mtx    sync.Mutex
 	result Result
 }
 
-func NewPartialContext(ctx context.Context) (*PartialContext, context.Context) {
-	pc := &PartialContext{}
-	ctx = context.WithValue(ctx, partialStatsKey, pc)
-	return pc, ctx
+// NewDiscardedWorkContext installs a new collector for discarded-work statistics.
+func NewDiscardedWorkContext(ctx context.Context) (*DiscardedWorkContext, context.Context) {
+	discardedWork := &DiscardedWorkContext{}
+	ctx = context.WithValue(ctx, discardedWorkStatsKey, discardedWork)
+	return discardedWork, ctx
 }
 
-func PartialFromContext(ctx context.Context) (*PartialContext, bool) {
-	v, ok := ctx.Value(partialStatsKey).(*PartialContext)
+// DiscardedWorkFromContext returns the discarded-work collector, if installed.
+func DiscardedWorkFromContext(ctx context.Context) (*DiscardedWorkContext, bool) {
+	v, ok := ctx.Value(discardedWorkStatsKey).(*DiscardedWorkContext)
 	return v, ok
 }
 
-// JoinPartial merges res into the PartialContext installed in ctx, and is a
-// no-op if there is none, so fan-out sites can call it unconditionally.
-func JoinPartial(ctx context.Context, res Result) {
-	pc, ok := PartialFromContext(ctx)
+// JoinDiscardedWork merges res into the DiscardedWorkContext installed in ctx.
+// It is a no-op if no collector is installed.
+func JoinDiscardedWork(ctx context.Context, res Result) {
+	discardedWork, ok := DiscardedWorkFromContext(ctx)
 	if !ok {
 		return
 	}
-	pc.mtx.Lock()
-	defer pc.mtx.Unlock()
-	pc.result.Merge(res)
+	discardedWork.mtx.Lock()
+	defer discardedWork.mtx.Unlock()
+	discardedWork.result.Merge(res)
 }
 
-func (pc *PartialContext) Result() Result {
-	pc.mtx.Lock()
-	defer pc.mtx.Unlock()
-	return pc.result
+// Result returns a snapshot without clearing statistics or stopping further writes.
+func (c *DiscardedWorkContext) Result() Result {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.result
 }
 
 // Ingester returns the ingester statistics accumulated so far.
@@ -201,6 +210,11 @@ func (c *Context) Reset() {
 // Result calculates the summary based on store and ingester data.
 func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) Result {
 	r := c.result
+	// c.result keeps accumulating, so the returned Result gets its own Logline.
+	if r.Logline != nil {
+		logline := *r.Logline
+		r.Logline = &logline
+	}
 
 	r.Merge(Result{
 		// ewelch: I'm not sure why we have a separate store object in the context and we don't use the
@@ -302,12 +316,11 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
+	s.Dataobj.SectionsResolutionMaxTime = max(s.Dataobj.SectionsResolutionMaxTime, m.Dataobj.SectionsResolutionMaxTime)
 	s.ChunkFetchFailures += m.ChunkFetchFailures
+	s.TotalChunksScanned += m.TotalChunksScanned
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
-	}
-	if m.QueryUsedV2Engine {
-		s.QueryUsedV2Engine = true
 	}
 }
 
@@ -318,6 +331,8 @@ func (s *Store) ChunksDownloadDuration() time.Duration {
 func (s *Summary) Merge(m Summary) {
 	s.Splits += m.Splits
 	s.Shards += m.Shards
+	s.StreamFirstQueries += m.StreamFirstQueries
+	s.TimestampFirstQueries += m.TimestampFirstQueries
 	if m.EstimatedQueryBytes > s.EstimatedQueryBytes {
 		s.EstimatedQueryBytes = m.EstimatedQueryBytes
 	}
@@ -346,6 +361,47 @@ func (i *Index) Merge(m Index) {
 	i.BloomFilterTime += m.BloomFilterTime
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
+	}
+	i.ShardPlannedChunks += m.ShardPlannedChunks
+	i.ShardPlannedChunksScanned += m.ShardPlannedChunksScanned
+}
+
+// ChunkFilterRatio returns the share of ShardPlannedChunks that weren't
+// scanned, from 0 (no chunks filtered) to 1 (all chunks filtered). The planned
+// chunks are an estimate, so more chunks than planned can be scanned. It
+// reports false when no split went through shard planning.
+func (i Index) ChunkFilterRatio() (float64, bool) {
+	if i.ShardPlannedChunks <= 0 {
+		return 0, false
+	}
+	ratio := 1 - float64(i.ShardPlannedChunksScanned)/float64(i.ShardPlannedChunks)
+	return min(max(ratio, 0), 1), true
+}
+
+// Merge adds up the per-request counts. The other fields describe the one hint
+// lookup or the final response of the query, so the first value is kept.
+func (l *Logline) Merge(m Logline) {
+	l.SkippedRequests += m.SkippedRequests
+	l.NarrowedRequests += m.NarrowedRequests
+
+	keepFirst(&l.Outcome, m.Outcome)
+	keepFirst(&l.HintStatus, m.HintStatus)
+	keepFirst(&l.HintLookupTime, m.HintLookupTime)
+	keepFirst(&l.HintWaitTime, m.HintWaitTime)
+	keepFirst(&l.HintRanges, m.HintRanges)
+	keepFirst(&l.HintRangesDuration, m.HintRangesDuration)
+	keepFirst(&l.PlannedChunks, m.PlannedChunks)
+	keepFirst(&l.ScannedChunks, m.ScannedChunks)
+	keepFirst(&l.ChunkFilterRatio, m.ChunkFilterRatio)
+	keepFirst(&l.ObjectRequests, m.ObjectRequests)
+	keepFirst(&l.IOBytes, m.IOBytes)
+	keepFirst(&l.IOWait, m.IOWait)
+}
+
+func keepFirst[T comparable](dst *T, v T) {
+	var zero T
+	if *dst == zero {
+		*dst = v
 	}
 }
 
@@ -381,6 +437,14 @@ func (c *Cache) CacheQueryLengthServed() time.Duration {
 	return time.Duration(c.QueryLengthServed)
 }
 
+// LoglineStats returns the logline statistics, adding empty ones if r has none.
+func (r *Result) LoglineStats() *Logline {
+	if r.Logline == nil {
+		r.Logline = &Logline{}
+	}
+	return r.Logline
+}
+
 func (r *Result) MergeSplit(m Result) {
 	m.Summary.Splits = 1
 	r.Merge(m)
@@ -393,6 +457,11 @@ func (r *Result) Merge(m Result) {
 	r.Caches.Merge(m.Caches)
 	r.Summary.Merge(m.Summary)
 	r.Index.Merge(m.Index)
+	// Results are copied by value, so merge into r's own Logline rather than
+	// sharing m's.
+	if m.Logline != nil {
+		r.LoglineStats().Merge(*m.Logline)
+	}
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
 		int(r.Summary.TotalEntriesReturned+m.Summary.TotalEntriesReturned))
@@ -406,6 +475,12 @@ func ConvertSecondsToNanoseconds(seconds float64) time.Duration {
 
 func (r Result) ChunksDownloadTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunksDownloadTime + r.Ingester.Store.ChunksDownloadTime)
+}
+
+// DataobjSectionsResolutionMaxTime returns the longest time one data-object read spent resolving
+// sections.
+func (r Result) DataobjSectionsResolutionMaxTime() time.Duration {
+	return time.Duration(r.Querier.Store.Dataobj.SectionsResolutionMaxTime)
 }
 
 func (r Result) ChunkRefsFetchTime() time.Duration {
@@ -438,6 +513,12 @@ func (r Result) TotalChunkFetchFailures() int64 {
 	return r.Querier.Store.ChunkFetchFailures + r.Ingester.Store.ChunkFetchFailures
 }
 
+// TotalChunksScanned returns the chunks read from the store after time and
+// logline hint filtering, plus the chunks ingesters matched in memory.
+func (r Result) TotalChunksScanned() int64 {
+	return r.Querier.Store.TotalChunksScanned + r.Ingester.Store.TotalChunksScanned + r.Ingester.TotalChunksMatched
+}
+
 func (r Result) TotalDecompressedBytes() int64 {
 	return r.Querier.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.DecompressedBytes
 }
@@ -448,10 +529,6 @@ func (r Result) TotalDecompressedLines() int64 {
 
 func (r Result) QueryReferencedStructuredMetadata() bool {
 	return r.Querier.Store.QueryReferencedStructured || r.Ingester.Store.QueryReferencedStructured
-}
-
-func (r Result) QueryUsedV2Engine() bool {
-	return r.Querier.Store.QueryUsedV2Engine
 }
 
 func (c *Context) AddIngesterBatch(size int64) {
@@ -536,10 +613,15 @@ func (c *Context) AddChunksRef(i int64) {
 }
 
 // AddChunkFetchFailures counts chunks that could not be fetched or decoded for
-// the query, even when propagateChunkFetchErrors chose to tolerate the
-// failure instead of failing the whole query.
+// the query, which always fails the query outright.
 func (c *Context) AddChunkFetchFailures(i int64) {
 	atomic.AddInt64(&c.store.ChunkFetchFailures, i)
+}
+
+// AddChunksScanned counts chunk refs left to read after time and logline hint
+// filtering.
+func (c *Context) AddChunksScanned(i int64) {
+	atomic.AddInt64(&c.store.TotalChunksScanned, i)
 }
 
 func (c *Context) AddIndexTotalChunkRefs(i int64) {
@@ -638,6 +720,28 @@ func (c *Context) AddSplitQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.Splits, num)
 }
 
+func (c *Context) AddStreamFirstQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.StreamFirstQueries, num)
+}
+
+func (c *Context) AddTimestampFirstQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.TimestampFirstQueries, num)
+}
+
+// RecordDataobjSectionsResolutionTime records d as the section-resolution time of one data-object
+// read. The context keeps the largest value it has seen.
+func (c *Context) RecordDataobjSectionsResolutionTime(d time.Duration) {
+	for {
+		current := atomic.LoadInt64(&c.store.Dataobj.SectionsResolutionMaxTime)
+		if int64(d) <= current {
+			return
+		}
+		if atomic.CompareAndSwapInt64(&c.store.Dataobj.SectionsResolutionMaxTime, current, int64(d)) {
+			return
+		}
+	}
+}
+
 func (c *Context) AddPrePredicateDecompressedRows(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.PrePredicateDecompressedRows, i)
 }
@@ -692,10 +796,6 @@ func (c *Context) AddWireBytesTransferred(i int64) {
 
 func (c *Context) SetQueryReferencedStructuredMetadata() {
 	c.store.QueryReferencedStructured = true
-}
-
-func (c *Context) SetQueryUsedV2Engine() {
-	c.store.QueryUsedV2Engine = true
 }
 
 // AddQuerierExecTime accumulates the querier execution time.
@@ -767,13 +867,7 @@ func (r Result) KVList() []any {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
-		"Querier.QueryUsedV2Engine", r.Querier.Store.QueryUsedV2Engine,
 		"Querier.ChunkFetchFailures", r.Querier.Store.ChunkFetchFailures,
-	}
-
-	if r.QueryUsedV2Engine() {
-		// Specifying prefix in case r.Ingester.Store ever uses the new engine.
-		result = append(result, r.Querier.Store.Dataobj.kvList("Querier.")...)
 	}
 
 	result = append(result, r.Caches.kvList()...)
@@ -857,24 +951,5 @@ func (c Caches) kvList() []any {
 		"Cache.TaskResult.EntriesRequested", c.TaskResult.EntriesRequested,
 		"Cache.TaskResult.EntriesFound", c.TaskResult.EntriesFound,
 		"Cache.TaskResult.BytesReceived", humanize.Bytes(uint64(c.TaskResult.BytesReceived)),
-	}
-}
-
-func (d Dataobj) kvList(prefix string) []any {
-	return []any{
-		prefix + "Dataobj.PrePredicateDecompressedRows", d.PrePredicateDecompressedRows,
-		prefix + "Dataobj.PrePredicateDecompressedBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedBytes)),
-		prefix + "Dataobj.PrePredicateDecompressedStructuredMetadataBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedStructuredMetadataBytes)),
-		prefix + "Dataobj.PostPredicateRows", d.PostPredicateRows,
-		prefix + "Dataobj.PostPredicateDecompressedBytes", humanize.Bytes(uint64(d.PostPredicateDecompressedBytes)),
-		prefix + "Dataobj.PostPredicateStructuredMetadataBytes", humanize.Bytes(uint64(d.PostPredicateStructuredMetadataBytes)),
-		prefix + "Dataobj.PostFilterRows", d.PostFilterRows,
-		prefix + "Dataobj.PagesScanned", d.PagesScanned,
-		prefix + "Dataobj.PagesDownloaded", d.PagesDownloaded,
-		prefix + "Dataobj.PagesDownloadedBytes", humanize.Bytes(uint64(d.PagesDownloadedBytes)),
-		prefix + "Dataobj.PageBatches", d.PageBatches,
-		prefix + "Dataobj.TotalRowsAvailable", d.TotalRowsAvailable,
-		prefix + "Dataobj.TotalPageDownloadTime", time.Duration(d.TotalPageDownloadTime),
-		prefix + "Dataobj.WireBytesTransferred", humanize.Bytes(uint64(d.WireBytesTransferred)),
 	}
 }

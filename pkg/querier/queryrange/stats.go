@@ -40,6 +40,21 @@ type ctxKeyType string
 
 const ctxKey ctxKeyType = "stats"
 
+type internalRequestKeyType struct{}
+
+// WithInternalRequest marks a request that a middleware sends on behalf of the
+// user's query, such as the logline index stats gate. StatsCollectorMiddleware
+// never records such a request as the query's metrics.go line, so if the query
+// later fails, the internal request is not logged in its place.
+func WithInternalRequest(ctx context.Context) context.Context {
+	return context.WithValue(ctx, internalRequestKeyType{}, true)
+}
+
+func isInternalRequest(ctx context.Context) bool {
+	internal, _ := ctx.Value(internalRequestKeyType{}).(bool)
+	return internal
+}
+
 const (
 	queryTypeLog            = "log"
 	queryTypeMetric         = "metric"
@@ -82,7 +97,7 @@ func recordQueryMetrics(data *queryData) {
 
 	switch data.queryType {
 	case queryTypeLog, queryTypeMetric:
-		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result)
+		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result, nil)
 	case queryTypeLabel:
 		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.QueryString(), data.status, *data.statistics)
 	case queryTypeSeries:
@@ -265,8 +280,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
 			middlewareStats, statsCtx := stats.NewContext(ctx)
 
-			// start a partial-stats collector that survives the error path
-			partialStats, statsCtx := stats.NewPartialContext(statsCtx)
+			// Collect usage from discarded responses, even if the root query succeeds.
+			discardedWork, statsCtx := stats.NewDiscardedWorkContext(statsCtx)
 
 			// execute the request
 			resp, err := next.Do(statsCtx, req)
@@ -277,7 +292,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				// middleware, i.e. real user queries: internal users of the
 				// tripperware get no line.
 				if data != nil {
-					logFailedQueryUsage(ctx, req, err, partialStats, start)
+					logFailedQueryUsage(ctx, req, err, discardedWork, start)
 				}
 				return resp, err
 			}
@@ -343,7 +358,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &r.Response.Statistics
 					queryType = queryTypeShards
 				case *DetectedFieldsResponse:
-					responseStats = &stats.Result{} // TODO: support stats in detected fields
+					responseStats = &r.Statistics
 					totalEntries = 1
 					queryType = queryTypeDetectedFields
 				case *QueryPatternsResponse:
@@ -360,6 +375,21 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			if responseStats != nil {
+				// A later interval can finish one shard and then fail on another.
+				// The completed shard's statistics survive in discardedWork even
+				// though the interval returns an error. Interval responses are processed
+				// in order, so an earlier interval can satisfy the line limit before
+				// that error is seen. Include the discarded work in the successful
+				// root response; writes after this snapshot remain outside the report.
+				discardedStats := discardedWork.Result()
+				// Failed shards or attempts can belong to the same time intervals
+				// as the successful response. This aggregate has no interval
+				// identities, so adding its split count could count those intervals
+				// twice. Recover the work without adding another time partition.
+				discardedStats.Summary.Splits = 0
+				discardedStats.Summary.TotalEntriesReturned = 0
+				responseStats.Merge(discardedStats)
+
 				if data != nil && data.estimatedQueryBytes > responseStats.Summary.EstimatedQueryBytes &&
 					(queryType == queryTypeLog || queryType == queryTypeMetric) {
 					responseStats.Summary.EstimatedQueryBytes = data.estimatedQueryBytes
@@ -373,7 +403,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
 				logger.LogKV(responseStats.KVList()...)
 			}
-			if data != nil {
+			if data != nil && !isInternalRequest(ctx) {
 				data.recorded = true
 				data.statistics = responseStats
 				data.result = res
@@ -398,13 +428,13 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 }
 
 // logFailedQueryUsage emits the failed-query usage line: what the query consumed
-// before failing, plus the classified failure cause. Its field set is
-// deliberately minimal, so the line cannot be read as a regular query stats line.
+// before failing, plus the classified failure cause and the request context
+// used to identify the query in regular query stats logs.
 func logFailedQueryUsage(
 	ctx context.Context,
 	req queryrangebase.Request,
 	err error,
-	partialStats *stats.PartialContext,
+	discardedWork *stats.DiscardedWorkContext,
 	start time.Time,
 ) {
 	if !recordsQueryUsageBytes(queryTypeFromRequest(req)) {
@@ -415,29 +445,38 @@ func logFailedQueryUsage(
 		return
 	}
 
-	// Only partialStats is read here: middlewareStats may still have sub-queries
+	// Only discardedWork is read here: middlewareStats may still have sub-queries
 	// writing to it, so snapshotting it would be a data race.
-	partial := partialStats.Result()
-	partial.ComputeSummary(time.Since(start), 0, 0)
+	discardedStats := discardedWork.Result()
+	discardedStats.ComputeSummary(time.Since(start), 0, 0)
 
 	category, reason := server.ClassifyFailure(err)
 	// The canonical mapping, so the logged status is the one the client is served.
 	status, _ := server.ClientHTTPStatusAndError(err)
 	query := p.QueryString()
 
-	level.Info(failedQueryUsageLogger(ctx)).Log(
+	logValues := []any{
 		"msg", "failed query usage",
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"query_type", loggedQueryType(ctx, req),
 		"range_type", string(logql.GetRangeType(p)),
 		"length", p.End().Sub(p.Start()),
+		"start_delta", time.Since(p.Start()),
+		"end_delta", time.Since(p.End()),
+		"step", p.Step(),
+		"limit", p.Limit(),
 		"status", strconv.Itoa(status),
-		"duration", stats.ConvertSecondsToNanoseconds(partial.Summary.ExecTime),
-		"total_bytes", util.HumanizeBytes(uint64(partial.Summary.TotalBytesProcessed)),
+		"duration", stats.ConvertSecondsToNanoseconds(discardedStats.Summary.ExecTime),
+		"total_bytes", util.HumanizeBytes(uint64(discardedStats.Summary.TotalBytesProcessed)),
 		"failure_category", category,
 		"failure_reason", reason,
-	)
+	}
+	// Match regular query logs: attribution such as source, user and dashboard
+	// is supplied through query tags and logged with lowercase field names.
+	logValues = append(logValues, httpreq.TagsToKeyValues(httpreq.ExtractQueryTagsFromContext(ctx))...)
+	level.Info(failedQueryUsageLogger(ctx)).Log(logValues...)
 
 	failedQueryUsageRecordedTotal.WithLabelValues(category).Inc()
 }
@@ -452,7 +491,7 @@ func logFailedQueryUsageForRejection(ctx context.Context, req queryrangebase.Req
 	if data, _ := ctx.Value(ctxKey).(*queryData); data == nil {
 		return
 	}
-	logFailedQueryUsage(ctx, req, err, &stats.PartialContext{}, time.Now())
+	logFailedQueryUsage(ctx, req, err, &stats.DiscardedWorkContext{}, time.Now())
 }
 
 // loggedQueryType returns the query type in the taxonomy the regular stats line

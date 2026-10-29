@@ -17,10 +17,13 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	ring_client "github.com/grafana/dskit/ring/client"
 
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafkav2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
@@ -49,9 +52,41 @@ type Config struct {
 	MaxChunkAge           time.Duration         `yaml:"max_chunk_age,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
 	PatternSampleInterval time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
 	VolumeThreshold       float64               `yaml:"volume_threshold,omitempty" doc:"description=The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1)."`
+	KafkaIngestion        KafkaIngestionConfig  `yaml:"kafka_ingestion,omitempty" category:"experimental" doc:"description=Configures consumption of log entries from Kafka."`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
+}
+
+// KafkaIngestionConfig configures the pattern ingester to consume log entries
+// from the same Kafka topic as the ingesters.
+type KafkaIngestionConfig struct {
+	Enabled        bool          `yaml:"enabled" doc:"description=Whether the pattern ingester consumes log entries from Kafka. When enabled, the distributor does not tee log entries to the pattern ingester. When using CLI flags, this must be set on the distributors as well, otherwise it just needs to be set once in the config file."`
+	ConsumerGroup  string        `yaml:"consumer_group" doc:"description=The consumer group of the pattern ingesters."`
+	SessionTimeout time.Duration `yaml:"session_timeout" doc:"description=The session timeout of the consumer group. A pattern ingester that restarts and rejoins within this time gets its partitions back without a rebalance, but if it does not rejoin, its partitions are not consumed until the timeout expires."`
+	KafkaConfig    kafka.Config  `yaml:"-"`
+}
+
+// RegisterFlags registers pattern ingester Kafka ingestion related flags.
+func (cfg *KafkaIngestionConfig) RegisterFlags(fs *flag.FlagSet) {
+	fs.BoolVar(
+		&cfg.Enabled,
+		"pattern-ingester.kafka-ingestion-enabled",
+		false,
+		"Whether the pattern ingester consumes log entries from Kafka. When enabled, the distributor does not tee log entries to the pattern ingester. When using CLI flags, this must be set on the distributors as well, otherwise it just needs to be set once in the config file.",
+	)
+	fs.StringVar(
+		&cfg.ConsumerGroup,
+		"pattern-ingester.kafka-consumer-group",
+		"pattern-ingester",
+		"The consumer group of the pattern ingesters.",
+	)
+	fs.DurationVar(
+		&cfg.SessionTimeout,
+		"pattern-ingester.kafka-session-timeout",
+		3*time.Minute,
+		"The session timeout of the consumer group. A pattern ingester that restarts and rejoins within this time gets its partitions back without a rebalance, but if it does not rejoin, its partitions are not consumed until the timeout expires.",
+	)
 }
 
 // RegisterFlags registers pattern ingester related flags.
@@ -61,6 +96,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.metric-aggregation.")
 	cfg.PatternPersistence.RegisterFlagsWithPrefix(fs, "pattern-ingester.pattern-persistence.")
 	cfg.TeeConfig.RegisterFlags(fs, "pattern-ingester.")
+	cfg.KafkaIngestion.RegisterFlags(fs)
 
 	fs.BoolVar(
 		&cfg.Enabled,
@@ -191,6 +227,10 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("volume_threshold (%v) must be between 0 and 1", cfg.VolumeThreshold)
 	}
 
+	if cfg.KafkaIngestion.Enabled && cfg.KafkaIngestion.ConsumerGroup == "" {
+		return errors.New("pattern ingester kafka consumer group must be set")
+	}
+
 	return cfg.LifecyclerConfig.Validate()
 }
 
@@ -206,6 +246,7 @@ type Ingester struct {
 	services.Service
 	lifecycler *ring.Lifecycler
 	ringClient RingClient
+	owner      streamOwner
 
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -226,6 +267,14 @@ type Ingester struct {
 
 	metrics  *ingesterMetrics
 	drainCfg *drain.Config
+
+	// Set if consuming from Kafka.
+	kafkaClient   *kgo.Client
+	kafkaConsumer *kafkav2.GroupConsumer
+	kafkaRecords  chan *kgo.Record
+	kafkaDecoder  *kafka.Decoder
+	kafkaDone     sync.WaitGroup
+	kafkaStopOnce sync.Once
 }
 
 func New(
@@ -267,6 +316,17 @@ func New(
 	i.lifecyclerWatcher = services.NewFailureWatcher()
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
+	if cfg.KafkaIngestion.Enabled {
+		// Partitions are assigned by the broker, so the ring is not used to
+		// decide which streams are owned.
+		i.owner = allStreamsOwner{}
+		if err := i.initKafka(); err != nil {
+			return nil, err
+		}
+	} else {
+		i.owner = &ringOwner{ringClient: ringClient, ingesterID: i.lifecycler.ID}
+	}
+
 	return i, nil
 }
 
@@ -298,6 +358,17 @@ func (i *Ingester) starting(ctx context.Context) error {
 	// start our loop
 	i.loopDone.Add(1)
 	go i.loop()
+
+	if i.kafkaConsumer != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.kafkaConsumer); err != nil {
+			return fmt.Errorf("failed to start kafka consumer: %w", err)
+		}
+		i.kafkaDone.Add(1)
+		go func() {
+			defer i.kafkaDone.Done()
+			i.consumeRecords(ctx, i.kafkaRecords)
+		}()
+	}
 	return nil
 }
 
@@ -311,12 +382,21 @@ func (i *Ingester) running(ctx context.Context) error {
 		serviceError = fmt.Errorf("lifecycler failed: %w", err)
 	}
 
+	// Stop consuming before the flush loop so records are not pushed to
+	// instances that are being flushed.
+	i.stopKafka()
+
 	close(i.loopQuit)
 	i.loopDone.Wait()
 	return serviceError
 }
 
 func (i *Ingester) stopping(_ error) error {
+	// running calls stopKafka too, but it is skipped if the service context is
+	// canceled before the service reaches Running. stopKafka is idempotent, so
+	// calling it again here is a no-op in the normal case.
+	i.stopKafka()
+
 	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 	for _, flushQueue := range i.flushQueues {
 		flushQueue.Close()
@@ -404,6 +484,20 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return &logproto.PushResponse{}, err
 	}
 	return &logproto.PushResponse{}, instance.Push(ctx, req)
+}
+
+// PushInternal accepts streams in the internal data model, with resource and
+// scope attributes shared by their entries. It expands them on arrival and
+// handles them like Push.
+func (i *Ingester) PushInternal(ctx context.Context, req *logproto.InternalPushRequest) (*logproto.PushResponse, error) {
+	flat := &logproto.PushRequest{
+		Streams: make([]logproto.Stream, len(req.Streams)),
+		Format:  req.Format,
+	}
+	for idx := range req.Streams {
+		flat.Streams[idx] = req.Streams[idx].FlatView()
+	}
+	return i.Push(ctx, flat)
 }
 
 func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pattern_QueryServer) error {
@@ -501,8 +595,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			i.metrics,
 			i.drainCfg,
 			i.limits,
-			i.ringClient,
-			i.lifecycler.ID,
+			i.owner,
 			metricWriter,
 			patternWriter,
 			aggregationMetrics,

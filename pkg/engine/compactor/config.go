@@ -14,7 +14,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 )
 
 // Config is the top-level configuration for dataobj compaction.
@@ -50,14 +50,10 @@ type Config struct {
 	// with nothing to do stops hammering object storage.
 	MaxBackoff time.Duration `yaml:"max_backoff"`
 
-	// WindowLookback is the number of older metastore windows the coordinator
-	// compacts in addition to the current window. Zero (the default) compacts
-	// only the current window; 1 also compacts the immediately-preceding
-	// window, and so on. Raise it when the index-builder lags behind wall-clock
-	// so a ToC for the current window may not exist yet: the preceding
-	// window(s) still have populated ToCs and would otherwise never be
-	// compacted. Each extra window is an independent per-pass read + plan, so
-	// cost scales linearly with the count.
+	// WindowLookback is the number of metastore windows prior to the current one the coordinator
+	// compacts in addition to the current window. It must be at least 1 (the
+	// default), so tenants stay discoverable through the preceding window while
+	// the current window has no ToC yet.
 	WindowLookback int `yaml:"window_lookback"`
 
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
@@ -65,13 +61,19 @@ type Config struct {
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
 	// LogMaxRunsPerTask (K for log compaction) is the maximum number of runs a
-	// single LogMerge task may consume. Kept separate from index max runs
+	// single LogMerge task may consume. A size level must also hold K runs
+	// before log compaction starts. Kept separate from index max runs.
 	LogMaxRunsPerTask int `yaml:"logs_max_runs_per_task"`
 
 	// LogMinCompactionSize is the minimum total compactable data (sum of all
-	// runs' uncompressed size) that justifies log compaction. Converged
-	// windows below this floor are skipped.
+	// runs' uncompressed size) that justifies log compaction. Windows below
+	// this floor are skipped.
 	LogMinCompactionSize flagext.Bytes `yaml:"logs_min_compaction_size"`
+
+	// LogMaxTaskSize is the maximum uncompressed input size of one LogMerge
+	// task. The planner splits a larger merge into tasks by stream sort
+	// prefix. 0 disables the split.
+	LogMaxTaskSize flagext.Bytes `yaml:"logs_max_task_size"`
 
 	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
 	// call. NOT a task TTL — applied as context.WithTimeout around the metastore
@@ -92,8 +94,7 @@ type Config struct {
 	PlanVersion uint `yaml:"plan_version"`
 
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
-	// endpoint for the embedded engine.Scheduler instance. See
-	// pkg/engine/scheduler.go for the underlying SchedulerParams.
+	// endpoint for the embedded scheduler.
 	Scheduler SchedulerConfig `yaml:"scheduler"`
 
 	// Worker holds the worker-side knobs for the dataobj-compaction-worker
@@ -113,8 +114,7 @@ type Config struct {
 	LogsobjBuilder logsobj.BuilderBaseConfig `yaml:"logsobj_builder" category:"experimental"`
 }
 
-// SchedulerConfig holds the scheduler-side parameters that get passed
-// to engine.NewScheduler when the compaction planner target boots.
+// SchedulerConfig holds the parameters of the embedded compaction scheduler.
 type SchedulerConfig struct {
 	// AdvertiseAddr is the host:port the embedded scheduler advertises to
 	// remote workers. Empty string keeps the scheduler in-process-only
@@ -123,15 +123,13 @@ type SchedulerConfig struct {
 
 	// Endpoint is the absolute path on the Loki HTTP router where the
 	// embedded scheduler listens for worker frame traffic. Defaults to
-	// "/api/v2/compaction-frame" so it never collides with the
-	// query-engine scheduler at "/api/v2/frame".
+	// "/api/v2/compaction-frame".
 	Endpoint string `yaml:"endpoint"`
 }
 
 // WorkerConfig holds the worker-side parameters that get passed to
 // engine.NewWorker when the dataobj-compaction-worker target boots.
-// The compaction worker runs in remote-transport mode only; it discovers
-// the compaction scheduler via DNS-SRV lookup.
+// The compaction worker discovers the compaction scheduler via DNS-SRV lookup.
 //
 // The worker module is gated by Loki target -target=dataobj-compaction-worker
 // AND the same dataobj.compaction.enabled flag the planner uses. There is
@@ -139,7 +137,7 @@ type SchedulerConfig struct {
 // Loki target.
 type WorkerConfig struct {
 	// WorkerThreads is the per-pod task concurrency. Zero means use
-	// GOMAXPROCS (matches the engine worker's default).
+	// GOMAXPROCS.
 	WorkerThreads int `yaml:"worker_threads"`
 
 	// SchedulerLookupAddress is the DNS-SRV address used to discover the
@@ -156,15 +154,12 @@ type WorkerConfig struct {
 
 	// AdvertiseAddr is the host:port the embedded worker advertises to
 	// schedulers and other workers. Required when the worker module
-	// actually initializes (enforced in NewWorker): the compaction worker
-	// uses no LocalScheduler, and engine.NewWorker requires one of
-	// AdvertiseAddr or LocalScheduler to be set.
+	// actually initializes (enforced in NewWorker).
 	AdvertiseAddr string `yaml:"advertise_addr"`
 
 	// Endpoint is the absolute path on the worker's HTTP router where the
 	// wire frame handler is registered. Defaults to
-	// "/api/v2/compaction-frame" so it never collides with the
-	// query-engine worker at "/api/v2/frame".
+	// "/api/v2/compaction-frame".
 	Endpoint string `yaml:"endpoint"`
 }
 
@@ -178,9 +173,9 @@ const (
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMinBackoff            = 1 * time.Minute
 	defaultMaxBackoff            = 15 * time.Minute
-	defaultWindowLookback        = 0
+	defaultWindowLookback        = 1
 	defaultMaxRunsPerTask        = 8
-	defaultLogMaxRunsPerTask     = 3
+	defaultLogMaxRunsPerTask     = 8
 	defaultToCConsolidateTimeout = 30 * time.Second
 	defaultPlanVersion           = uint(1)
 )
@@ -209,14 +204,16 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxBackoff, prefix+"max-backoff", defaultMaxBackoff,
 		"Experimental: Maximum wait a per-tenant worker backs off to after consecutive no-work (converged or empty) or failing phases, so an idle worker stops hammering object storage.")
 	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
-		"Experimental: Number of older metastore windows to compact in addition to the current window. 0 compacts only the current window; 1 also compacts the previous window.")
+		"Experimental: Number of prior metastore windows to compact in addition to the current window. Must be at least 1, which compacts the current and immediately prior window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
-		"Experimental: Maximum runs per LogMerge task (K for log compaction). Separate from max-runs-per-task to scale independently")
+		"Experimental: Maximum runs per LogMerge task (K for log compaction). Log compaction starts only when a size level holds K runs, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")
 	f.Var(&cfg.LogMinCompactionSize, prefix+"logs.min-compaction-size",
-		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Converged windows below this floor are skipped.")
+		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Windows below this floor are skipped.")
+	f.Var(&cfg.LogMaxTaskSize, prefix+"logs.max-task-size",
+		"Experimental: Maximum uncompressed input size of one LogMerge task. The planner splits a larger merge into tasks by stream sort prefix and never splits one sort prefix. A task exceeds the maximum in two cases: a sort prefix above it gets a task of its own, and the last task of a merge can take in a leftover of up to 10% of it. 0 disables the split.")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
@@ -286,7 +283,7 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxBackoff < cfg.MinBackoff {
 		return errInvalidMaxBackoff
 	}
-	if cfg.WindowLookback < 0 {
+	if cfg.WindowLookback < 1 {
 		return errInvalidWindowLookback
 	}
 	if cfg.ToCConsolidateTimeout <= 0 {
@@ -295,7 +292,7 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxRunsPerTask <= 0 {
 		return errInvalidMaxRunsPerTask
 	}
-	if cfg.LogMaxRunsPerTask <= 0 {
+	if cfg.LogMaxRunsPerTask < 2 {
 		return errInvalidLogMaxRunsPerTask
 	}
 	if cfg.LogMinCompactionSize == 0 {
@@ -320,9 +317,9 @@ var (
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")
 	errInvalidMaxBackoff                   = errors.New("dataobj.compaction.max_backoff must be >= dataobj.compaction.min_backoff when compaction is enabled")
-	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 0")
+	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 1")
 	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
-	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be at least 2 when compaction is enabled")
 	errInvalidLogMinCompactionSize         = errors.New("dataobj.compaction.logs.min_compaction_size must be > 0 when compaction is enabled")
 )

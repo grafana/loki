@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -148,6 +150,41 @@ func (s *stubHintProvider) MinDate() time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.minDate
+}
+
+// inclusivePassthroughHintProvider mirrors unconstrained QueryHints: a
+// zero-Start sentinel whose End is exclusive of the inclusive through bound.
+type inclusivePassthroughHintProvider struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (s *inclusivePassthroughHintProvider) ProvideHints(
+	_ context.Context,
+	_ string,
+	_ syntax.Expr,
+	_,
+	through model.Time,
+) (*Hints, *QueryStats, error) {
+	s.mu.Lock()
+	s.calls++
+	s.mu.Unlock()
+	return &Hints{TimeRanges: []HintTimeRange{passthroughForInclusiveThrough(through.Time())}}, NewQueryStats(), nil
+}
+
+func (s *inclusivePassthroughHintProvider) Calls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
+}
+
+func coversTimestamp(ranges []HintTimeRange, ts time.Time) bool {
+	for _, r := range ranges {
+		if !r.Start.After(ts) && ts.Before(r.End) {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneHints(h *Hints) *Hints {
@@ -332,6 +369,7 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 		{"ends exactly at midnight", HintTimeRange{Start: d11.Add(-time.Minute), End: d11}},
 		{"starts exactly at midnight", HintTimeRange{Start: d11, End: d11.Add(time.Minute)}},
 		{"final millisecond of the day", HintTimeRange{Start: d11.Add(-time.Millisecond), End: d11}},
+		{"unconstrained passthrough covering last millisecond", passthroughForInclusiveThrough(d11.Add(-time.Millisecond))},
 		{"spans a whole day", HintTimeRange{Start: d10.Add(23 * time.Hour), End: d12.Add(time.Hour)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -357,10 +395,32 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 			// whole span at once. Any gap or spill at midnight shows up here.
 			require.Equal(t,
 				clipRangesToDay([]HintTimeRange{tc.input}, d10, d12),
-				normalizeRanges(union),
+				NormalizeRanges(union),
 			)
 		})
 	}
+}
+
+func TestCachingHintProvider_UnconstrainedPassthroughCoversLastMillisecond(t *testing.T) {
+	backend := newMockHintCacheBackend()
+	delegate := &inclusivePassthroughHintProvider{}
+	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+
+	dayStart := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	lastMs := dayStart.Add(24*time.Hour - time.Millisecond)
+	expr := mustParseExpr(t, `{job="api"} |= "12345678"`)
+	from := model.TimeFromUnixNano(dayStart.UnixNano())
+	through := model.TimeFromUnixNano(lastMs.UnixNano())
+
+	miss, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	require.NoError(t, err)
+	require.True(t, coversTimestamp(miss.TimeRanges, lastMs))
+
+	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	require.NoError(t, err)
+	require.Equal(t, 1, delegate.Calls())
+	require.True(t, coversTimestamp(hit.TimeRanges, lastMs),
+		"cached day payload must still cover the inclusive through bound; got %v", hit.TimeRanges)
 }
 
 func TestBuildDayWindows_SplitsAcrossUTCMidnight(t *testing.T) {
@@ -447,7 +507,145 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	require.Equal(t, 1, backend.StoreCalls(), "coalesced miss should store once")
 }
 
-func TestCachedHints_JSONRoundTripOmitsSource(t *testing.T) {
+// cancelFirstCallHintProvider blocks its first call until that call's context
+// ends and answers later calls straight away.
+type cancelFirstCallHintProvider struct {
+	calls   atomic.Int64
+	started chan struct{}
+	hints   *Hints
+}
+
+func (p *cancelFirstCallHintProvider) ProvideHints(ctx context.Context, _ string, _ syntax.Expr, _, _ model.Time) (*Hints, *QueryStats, error) {
+	if p.calls.Inc() == 1 {
+		close(p.started)
+		<-ctx.Done()
+		return nil, NewQueryStats(), ctx.Err()
+	}
+	return cloneHints(p.hints), NewQueryStats(), nil
+}
+
+// releasedHintProvider blocks each call until release is closed or the call's
+// context ends.
+type releasedHintProvider struct {
+	calls   atomic.Int64
+	started chan struct{}
+	release chan struct{}
+	hints   *Hints
+}
+
+func (p *releasedHintProvider) ProvideHints(ctx context.Context, _ string, _ syntax.Expr, _, _ model.Time) (*Hints, *QueryStats, error) {
+	if p.calls.Inc() == 1 {
+		close(p.started)
+	}
+	select {
+	case <-p.release:
+		return cloneHints(p.hints), NewQueryStats(), nil
+	case <-ctx.Done():
+		return nil, NewQueryStats(), ctx.Err()
+	}
+}
+
+func TestCachingHintProvider_SingleflightJoinerStopsWaitingWhenCanceled(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	hintRange := HintTimeRange{
+		Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
+	}
+	delegate := &releasedHintProvider{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		hints:   &Hints{TimeRanges: []HintTimeRange{hintRange}},
+	}
+	provider := NewCachingHintProvider(delegate, nil, reg)
+
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	tenant := "tenant-a"
+	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 23, 0, 0, 0, time.UTC).UnixNano())
+
+	type result struct {
+		hints *Hints
+		err   error
+	}
+	leader := make(chan result, 1)
+	go func() {
+		hints, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+		leader <- result{hints: hints, err: err}
+	}()
+	<-delegate.started
+
+	joinerCtx, cancelJoiner := context.WithCancel(context.Background())
+	joinerErr := make(chan error, 1)
+	go func() {
+		_, _, err := provider.ProvideHints(joinerCtx, tenant, expr, from, through)
+		joinerErr <- err
+	}()
+	// Give the joiner time to join the leader's lookup before it is canceled.
+	time.Sleep(100 * time.Millisecond)
+	cancelJoiner()
+
+	select {
+	case err := <-joinerErr:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the canceled joiner kept waiting for the shared lookup")
+	}
+
+	close(delegate.release)
+	res := <-leader
+	require.NoError(t, res.err)
+	require.Equal(t, []HintTimeRange{hintRange}, res.hints.TimeRanges)
+	require.Equal(t, int64(1), delegate.calls.Load(), "the joiner must not start its own lookup")
+	require.Zero(t, testutil.ToFloat64(provider.singleflightRetriesTot))
+}
+
+func TestCachingHintProvider_SingleflightJoinerOutlivesCanceledLeader(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	hintRange := HintTimeRange{
+		Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
+	}
+	delegate := &cancelFirstCallHintProvider{
+		started: make(chan struct{}),
+		hints:   &Hints{TimeRanges: []HintTimeRange{hintRange}},
+	}
+	provider := NewCachingHintProvider(delegate, nil, reg)
+
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	tenant := "tenant-a"
+	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 23, 0, 0, 0, time.UTC).UnixNano())
+
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leaderErr := make(chan error, 1)
+	go func() {
+		_, _, err := provider.ProvideHints(leaderCtx, tenant, expr, from, through)
+		leaderErr <- err
+	}()
+	<-delegate.started
+
+	type result struct {
+		hints *Hints
+		err   error
+	}
+	joiner := make(chan result, 1)
+	go func() {
+		hints, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+		joiner <- result{hints: hints, err: err}
+	}()
+	// Give the joiner time to join the leader's lookup before it is canceled.
+	time.Sleep(100 * time.Millisecond)
+	cancelLeader()
+
+	require.ErrorIs(t, <-leaderErr, context.Canceled)
+	res := <-joiner
+	require.NoError(t, res.err, "the leader's cancellation must not fail a caller whose context is live")
+	require.Equal(t, []HintTimeRange{hintRange}, res.hints.TimeRanges)
+	require.Equal(t, int64(2), delegate.calls.Load())
+	require.Equal(t, 1.0, testutil.ToFloat64(provider.singleflightRetriesTot))
+}
+
+func TestCachedHints_JSONRoundTrip(t *testing.T) {
 	input := []HintTimeRange{
 		{
 			Start:  time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
@@ -482,7 +680,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	tenant := "tenant-a"
 	from := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
 	through := time.Date(2026, 6, 4, 0, 5, 0, 0, time.UTC)
-	// Non-zero duration required: normalizeRanges drops empty [start, end) ranges.
+	// Non-zero duration required: NormalizeRanges drops empty [start, end) ranges.
 	inWindow := HintTimeRange{
 		Start: time.Date(2026, 6, 4, 0, 3, 21, 0, time.UTC),
 		End:   time.Date(2026, 6, 4, 0, 3, 21, 0, time.UTC).Add(time.Millisecond),
@@ -682,6 +880,42 @@ func TestCachingHintProvider_SkipCacheBypassesFetchAndStore(t *testing.T) {
 	require.Equal(t, 0, backend.StoreCalls(), "skip should avoid cache store")
 }
 
+func TestCachingHintProvider_SkipCacheFetchesDaysInParallelWithoutStore(t *testing.T) {
+	backend := newMockHintCacheBackend()
+	delegate := &stubHintProvider{
+		hints: &Hints{
+			TimeRanges: []HintTimeRange{
+				{
+					Start: time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC),
+					End:   time.Date(2026, 3, 10, 12, 15, 0, 0, time.UTC),
+				},
+				{
+					Start: time.Date(2026, 3, 11, 9, 0, 0, 0, time.UTC),
+					End:   time.Date(2026, 3, 11, 9, 10, 0, 0, time.UTC),
+				},
+			},
+		},
+	}
+	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	from := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
+	through := time.Date(2026, 3, 11, 17, 0, 0, 0, time.UTC)
+	require.Len(t, buildDayWindows("tenant-a", expr.String(), "", from, through), 2)
+
+	hints, _, err := provider.ProvideHints(
+		WithSkipCache(context.Background()),
+		"tenant-a",
+		expr,
+		model.TimeFromUnixNano(from.UnixNano()),
+		model.TimeFromUnixNano(through.UnixNano()),
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, delegate.Calls(), "skip should still fetch each day")
+	require.Equal(t, 0, backend.FetchCalls(), "skip should avoid cache fetch")
+	require.Equal(t, 0, backend.StoreCalls(), "skip should avoid cache store")
+	require.Equal(t, delegate.hints.TimeRanges, hints.TimeRanges)
+}
+
 func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	backend := newMockHintCacheBackend()
@@ -759,6 +993,15 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 	require.NotContains(t, backend.data, withoutMinDate[0].hashedKey)
 }
 
+func TestCachingHintProvider_MinDate(t *testing.T) {
+	minDate := time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC)
+	withMinDate := NewCachingHintProvider(&stubHintProvider{minDate: minDate}, nil, prometheus.NewRegistry())
+	require.Equal(t, minDate, withMinDate.MinDate())
+
+	withoutMinDate := NewCachingHintProvider(&inclusivePassthroughHintProvider{}, nil, prometheus.NewRegistry())
+	require.True(t, withoutMinDate.MinDate().IsZero())
+}
+
 type mutableWindowHintProvider struct {
 	mu sync.Mutex
 
@@ -791,7 +1034,7 @@ func (p *mutableWindowHintProvider) ProvideHints(
 		}
 		out = append(out, r)
 	}
-	return &Hints{TimeRanges: normalizeRanges(out)}, NewQueryStats(), nil
+	return &Hints{TimeRanges: NormalizeRanges(out)}, NewQueryStats(), nil
 }
 
 func (p *mutableWindowHintProvider) Calls() int {

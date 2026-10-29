@@ -134,7 +134,7 @@ type Config struct {
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 
-	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled."`
+	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=Deprecated: use the per-tenant limit delegate_stream_limits_enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled."`
 
 	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
@@ -166,7 +166,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
-	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled.")
+	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "Deprecated: use the per-tenant limit -limits.delegate-stream-limits-enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled.")
 }
 
 func (cfg *Config) Validate() error {
@@ -230,7 +230,7 @@ type Interface interface {
 	logproto.StreamDataServer
 
 	CheckReady(ctx context.Context) error
-	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	FlushHandler(w http.ResponseWriter, r *http.Request)
 	FlushTenantHandler(w http.ResponseWriter, r *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
@@ -253,6 +253,10 @@ type Ingester struct {
 	instances    map[string]*instance
 	readonly     bool
 
+	// indexFlushMtx allows one flush_index request (/flush or /flush/tenant) at a
+	// time; concurrent ones are rejected rather than queued (see tryLockIndexFlush).
+	indexFlushMtx sync.Mutex
+
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -264,7 +268,8 @@ type Ingester struct {
 	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
-	// pick a queue.
+	// pick a queue, so a stream is always flushed by the same
+	// queue and only one flush op operates on it at a time.
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
@@ -382,13 +387,16 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 			}
 		}
-		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+		i.partitionRingLifecycler, err = ring.NewPartitionInstanceLifecycler(
 			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
 			PartitionRingName,
 			PartitionRingKey,
 			partitionRingKV,
 			logger,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+		if err != nil {
+			return nil, fmt.Errorf("creating ingester partition ring lifecycler: %w", err)
+		}
 
 		i.partitionReader, err = partition.NewReaderService(
 			cfg.KafkaIngestion.KafkaConfig,
@@ -478,7 +486,14 @@ func (i *Ingester) setupAutoForget() {
 		defer ticker.Stop()
 
 		var forgetList []string
-		for range ticker.C {
+		for {
+			select {
+			case <-ticker.C:
+			case <-i.loopQuit:
+				// the ring entry goes away with the ingester, nothing left to clean
+				return
+			}
+
 			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				forgetList = forgetList[:0]
 				if in == nil {
