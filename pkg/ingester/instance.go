@@ -235,13 +235,14 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 // and all three failed, the returned error only describes what happened to the last processed stream.
 func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) error {
 	record := recordPool.GetRecord()
-	record.UserID = i.instanceID
-	record.IngestedAt = req.IngestedAt
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
 	var appendErr error
 	for _, reqStream := range req.Streams {
+		record.Reset()
+		record.UserID = i.instanceID
+		record.IngestedAt = req.IngestedAt
 
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
@@ -264,12 +265,14 @@ func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) e
 		}
 
 		_, appendErr = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, req.Format, req.IngestedAt)
+		var walErr error
+		if !record.IsEmpty() {
+			walErr = i.wal.Log(record)
+		}
 		s.chunkMtx.Unlock()
-	}
 
-	if !record.IsEmpty() {
-		if err := i.wal.Log(record); err != nil {
-			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
+		if walErr != nil {
+			if e, ok := walErr.(*os.PathError); ok && e.Err == syscall.ENOSPC {
 				i.metrics.walDiskFullFailures.Inc()
 				i.flushOnShutdownSwitch.TriggerAnd(func() {
 					level.Error(util_log.Logger).Log(
@@ -278,7 +281,7 @@ func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) e
 					)
 				})
 			} else {
-				return err
+				return walErr
 			}
 		}
 	}
