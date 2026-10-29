@@ -1671,7 +1671,7 @@ github.com/parquet-go/bitpack/unsafecast
 # github.com/parquet-go/jsonlite v1.5.5
 ## explicit; go 1.24.0
 github.com/parquet-go/jsonlite
-# github.com/parquet-go/parquet-go v0.29.0
+# github.com/parquet-go/parquet-go v0.32.0
 ## explicit; go 1.24.9
 github.com/parquet-go/parquet-go
 github.com/parquet-go/parquet-go/bloom
@@ -1700,6 +1700,7 @@ github.com/parquet-go/parquet-go/internal/debug
 github.com/parquet-go/parquet-go/internal/memory
 github.com/parquet-go/parquet-go/internal/unsafecast
 github.com/parquet-go/parquet-go/sparse
+github.com/parquet-go/parquet-go/variant
 # github.com/pb33f/go-yaml v0.1.1
 ## explicit; go 1.18
 github.com/pb33f/go-yaml

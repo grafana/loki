@@ -273,7 +273,7 @@ func (p *rowBufferPage) Size() int64 { return 0 }
 func (p *rowBufferPage) Values() ValueReader {
 	return &rowBufferPageValueReader{
 		page:        p,
-		columnIndex: ^int16(p.column),
+		columnIndex: ^uint16(p.column),
 	}
 }
 
@@ -379,7 +379,7 @@ func (p *rowBufferPage) Data() encoding.Values {
 }
 
 func (p *rowBufferPage) scan(f func(Value)) {
-	columnIndex := ^int16(p.column)
+	columnIndex := ^uint16(p.column)
 
 	for _, row := range p.rows {
 		for _, value := range row {
@@ -402,7 +402,7 @@ type rowBufferPageValueReader struct {
 	page        *rowBufferPage
 	rowIndex    int
 	valueIndex  int
-	columnIndex int16
+	columnIndex uint16
 }
 
 func (r *rowBufferPageValueReader) ReadValues(values []Value) (n int, err error) {

@@ -385,14 +385,7 @@ func (s *Schema) Reconstruct(value any, row Row) error {
 		v = v.Elem()
 	}
 
-	b := valuesSliceBufferPool.Get(
-		func() *valuesSliceBuffer {
-			return &valuesSliceBuffer{
-				values: make([][]Value, 0, 64),
-			}
-		},
-		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
-	)
+	b := acquireValuesSliceBuffer()
 
 	state := s.lazyLoadState()
 	funcs := s.lazyLoadFuncs()
@@ -431,6 +424,17 @@ func (v *valuesSliceBuffer) release() {
 }
 
 var valuesSliceBufferPool memory.Pool[valuesSliceBuffer]
+
+func acquireValuesSliceBuffer() *valuesSliceBuffer {
+	return valuesSliceBufferPool.Get(
+		func() *valuesSliceBuffer {
+			return &valuesSliceBuffer{
+				values: make([][]Value, 0, 64),
+			}
+		},
+		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
+	)
+}
 
 // Lookup returns the leaf column at the given path.
 //
@@ -516,6 +520,7 @@ func appendStructFields(path []string, t reflect.Type, fields []reflect.StructFi
 
 		ftags := fromStructTag(f.Tag)
 
+		parquetNameSet := false
 		if tag := ftags.parquet; tag != "" {
 			name, _ := split(tag)
 			if tag != "-," && name == "-" {
@@ -523,13 +528,14 @@ func appendStructFields(path []string, t reflect.Type, fields []reflect.StructFi
 			}
 			if name != "" {
 				f.Name = name
+				parquetNameSet = true
 			}
 		}
 
 		// If no explicit parquet name was set, check for protobuf tag name.
 		// This allows protobuf-generated structs to use their proto field names
 		// (typically snake_case) as parquet column names.
-		if f.Name == t.Field(i).Name { // Name wasn't changed by parquet tag
+		if !parquetNameSet {
 			if protoName := protoFieldNameFromTag(f.Tag); protoName != "" {
 				f.Name = protoName
 			}
@@ -748,7 +754,7 @@ func nodeOf(path []string, t reflect.Type, tags parquetTags, tagReplacements []S
 				}
 				n = FieldID(n, id)
 			default:
-				throwUnknownTag(t, "map", option)
+				throwUnknownTag(t, "map", joinOptionArgs(option, args))
 			}
 		})
 
@@ -784,6 +790,17 @@ func splitOptionArgs(s string) (option, args string) {
 		args = "()"
 	}
 	return
+}
+
+// joinOptionArgs is the inverse of splitOptionArgs for the purpose of
+// rendering a tag back to the user. splitOptionArgs returns args="()" as
+// a sentinel meaning "no parens in the source"; we drop it here so plain
+// options don't render as "foo()" in panic messages.
+func joinOptionArgs(option, args string) string {
+	if args == "()" {
+		return option
+	}
+	return option + args
 }
 
 func parseDecimalArgs(args string) (scale, precision int, err error) {
@@ -1010,6 +1027,9 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 			case "json":
 				setNode(JSON())
 
+			case "variant":
+				setNode(Variant())
+
 			case "delta":
 				switch t.Kind() {
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -1039,9 +1059,21 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 				}
 
 			case "split":
-				switch t.Kind() {
-				case reflect.Float32, reflect.Float64:
+				kind := t.Kind()
+				baseType := t
+				if kind == reflect.Ptr {
+					kind = t.Elem().Kind()
+					baseType = t.Elem()
+				}
+				switch kind {
+				case reflect.Float32, reflect.Float64, reflect.Int32, reflect.Int64:
 					setEncoding(&ByteStreamSplit)
+				case reflect.Array:
+					if baseType.Elem().Kind() == reflect.Uint8 {
+						setEncoding(&ByteStreamSplit)
+					} else {
+						throwInvalidTag(t, name, option)
+					}
 				default:
 					throwInvalidTag(t, name, option)
 				}
@@ -1052,7 +1084,15 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					if t == reflect.TypeFor[json.RawMessage]() {
 						throwInvalidTag(t, name, option)
 					}
-					element := makeNodeOf(append(path, "list", "element"), t.Elem(), t.Name(), tags.getListElementNodeTags(), tagReplacements)
+					elementTags := tags.getListElementNodeTags()
+					if elem := t.Elem(); elem.Kind() == reflect.Slice && elem.Elem().Kind() != reflect.Uint8 && !strings.Contains(elementTags.parquet, "list") {
+						// A nested slice under a list is itself a list: recurse the
+						// list option implicitly so any nesting depth is expressible
+						// with a single `list` tag on the field. An explicit
+						// parquet-element tag still takes precedence.
+						elementTags.parquet += ",list"
+					}
+					element := makeNodeOf(append(path, "list", "element"), t.Elem(), t.Name(), elementTags, tagReplacements)
 					setNode(element)
 					setList()
 				default:
@@ -1085,19 +1125,30 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 				if err != nil {
 					throwInvalidTag(t, name, option+args)
 				}
-				var baseType Type
-				switch t.Kind() {
-				case reflect.Int32:
-					baseType = Int32Type
-				case reflect.Int64:
-					baseType = Int64Type
-				case reflect.Array, reflect.Slice:
-					baseType = FixedLenByteArrayType(decimalFixedLenByteArraySize(precision))
-				default:
-					throwInvalidTag(t, name, option)
+				decimalBaseType := func(et reflect.Type) Type {
+					switch et.Kind() {
+					case reflect.Int32:
+						return Int32Type
+					case reflect.Int64:
+						return Int64Type
+					case reflect.Array, reflect.Slice:
+						return FixedLenByteArrayType(decimalFixedLenByteArraySize(precision))
+					}
+					return nil
 				}
-
-				setNode(Decimal(scale, precision, baseType))
+				if t.Kind() == reflect.Ptr {
+					baseType := decimalBaseType(t.Elem())
+					if baseType == nil {
+						throwInvalidTag(t, name, option)
+					}
+					setNode(Optional(Decimal(scale, precision, baseType)))
+				} else {
+					baseType := decimalBaseType(t)
+					if baseType == nil {
+						throwInvalidTag(t, name, option)
+					}
+					setNode(Decimal(scale, precision, baseType))
+				}
 
 			case "string":
 				switch {
@@ -1122,10 +1173,13 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 				case reflect.Int32:
 					setNode(Date())
 				case reflect.Ptr:
-					// Support *time.Time with date tag
-					if t.Elem() == reflect.TypeFor[time.Time]() {
+					elem := t.Elem()
+					switch {
+					case elem == reflect.TypeFor[time.Time]():
 						setNode(Optional(Date()))
-					} else {
+					case elem.Kind() == reflect.Int32:
+						setNode(Optional(Date()))
+					default:
 						throwInvalidTag(t, name, option)
 					}
 				default:
@@ -1195,15 +1249,21 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					}
 					setNode(TimestampAdjusted(timeUnit, adjusted))
 				case reflect.Ptr:
-					// Support *time.Time with timestamp tags
-					if t.Elem() == reflect.TypeFor[time.Time]() {
+					elem := t.Elem()
+					switch {
+					case elem == reflect.TypeFor[time.Time]():
 						timeUnit, adjusted, err := parseTimestampArgs(args)
 						if err != nil {
 							throwInvalidTag(t, name, option+args)
 						}
-						// Wrap in Optional for schema correctness (nil pointers = NULL values)
 						setNode(Optional(TimestampAdjusted(timeUnit, adjusted)))
-					} else {
+					case elem.Kind() == reflect.Int64:
+						timeUnit, adjusted, err := parseTimestampArgs(args)
+						if err != nil {
+							throwInvalidTag(t, name, option+args)
+						}
+						setNode(Optional(TimestampAdjusted(timeUnit, adjusted)))
+					default:
 						throwInvalidTag(t, name, option)
 					}
 				default:
@@ -1217,6 +1277,16 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					default:
 						throwInvalidTag(t, name, option)
 					}
+				}
+
+			case "interval":
+				switch {
+				case t == reflect.TypeOf(Interval{}):
+					setNode(IntervalNode())
+				case t.Kind() == reflect.Array && t.Elem().Kind() == reflect.Uint8 && t.Len() == 12:
+					setNode(IntervalNode())
+				default:
+					throwInvalidTag(t, name, option)
 				}
 
 			case "int":
@@ -1280,6 +1350,8 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					throwInvalidTag(t, name, option+args)
 				}
 				setNode(Geography(crs, alg))
+			default:
+				throwUnknownTag(t, name, joinOptionArgs(option, args))
 			}
 		})
 	}
@@ -1343,6 +1415,7 @@ func forEachTagOption(tags []string, do func(option, args string)) {
 			option, tag = split(tag)
 			var args string
 			option, args = splitOptionArgs(option)
+			option = strings.TrimSpace(option)
 			do(option, args)
 		}
 	}

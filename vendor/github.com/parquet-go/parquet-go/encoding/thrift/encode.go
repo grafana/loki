@@ -79,6 +79,10 @@ func EncodeFuncOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 		return f
 	}
 
+	if isUnion(t) {
+		return encodeFuncUnionOf(t, seen)
+	}
+
 	// Check if type implements Value interface first
 	if t.Implements(valueType) {
 		zv := reflect.Zero(t).Interface().(Value)
@@ -258,7 +262,6 @@ func encodeFuncMapAsSetOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 
 type structEncoder struct {
 	fields []structEncoderField
-	union  bool
 }
 
 func dereference(v reflect.Value) reflect.Value {
@@ -347,18 +350,7 @@ encodeFields:
 		return err
 	}
 
-	if numFields > 1 && enc.union {
-		return fmt.Errorf("thrift union had more than one field with a non-zero value (%d)", numFields)
-	}
-
 	return nil
-}
-
-func (enc *structEncoder) String() string {
-	if enc.union {
-		return "union"
-	}
-	return "struct"
 }
 
 type structEncoderField struct {
@@ -378,18 +370,14 @@ func encodeFuncStructOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 	seen[t] = encode
 
 	forEachStructField(t, nil, func(f structField) {
-		if f.flags.Have(Union) {
-			enc.union = true
-		} else {
-			enc.fields = append(enc.fields, structEncoderField{
-				index:  f.index,
-				id:     f.id,
-				flags:  f.flags,
-				typ:    TypeOf(f.typ),
-				encode: encodeFuncStructFieldOf(f, seen),
-				null:   nullFuncOf(f),
-			})
-		}
+		enc.fields = append(enc.fields, structEncoderField{
+			index:  f.index,
+			id:     f.id,
+			flags:  f.flags,
+			typ:    TypeOf(f.typ),
+			encode: encodeFuncStructFieldOf(f, seen),
+			null:   nullFuncOf(f),
+		})
 	})
 
 	slices.SortStableFunc(enc.fields, func(a, b structEncoderField) int {
@@ -422,6 +410,10 @@ func nullFuncOf(f structField) NullFunc {
 	// Required fields are never skipped
 	if f.flags.Have(Required) {
 		return neverNull
+	}
+	// Union structs are unset when their member field is nil.
+	if f.flags.Have(UnionType) {
+		return unionLayoutOf(f.typ).nullFunc()
 	}
 	// Value types: use their NullFunc
 	if f.flags.Have(ValueType) {

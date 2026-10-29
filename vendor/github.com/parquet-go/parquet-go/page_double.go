@@ -12,10 +12,10 @@ import (
 type doublePage struct {
 	typ         Type
 	values      memory.SliceBuffer[float64]
-	columnIndex int16
+	columnIndex uint16
 }
 
-func newDoublePage(typ Type, columnIndex int16, numValues int32, values encoding.Values) *doublePage {
+func newDoublePage(typ Type, columnIndex uint16, numValues int32, values encoding.Values) *doublePage {
 	return &doublePage{
 		typ:         typ,
 		values:      memory.SliceBufferFrom(values.Double()[:numValues]),
