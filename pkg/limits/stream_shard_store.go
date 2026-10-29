@@ -497,17 +497,11 @@ func (s *streamShardStore) EvictIdle() map[string]int {
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
-			// Resolve each policy's expiry once per tenant rather than once
-			// per partition.
-			expiries := make(map[string]time.Duration)
+			expiries := tenantIdleExpiries(s.limits, tenant, partitions)
 			for _, policies := range partitions {
-				for policy, bucket := range policies {
-					expiry, ok := expiries[policy]
+				for policy, expiry := range expiries {
+					bucket, ok := policies[policy]
 					if !ok {
-						expiry = resolveIdleExpiry(s.limits, tenant, policy)
-						expiries[policy] = expiry
-					}
-					if expiry == 0 {
 						continue
 					}
 					cutoff := now.Add(-expiry).UnixNano()

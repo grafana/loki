@@ -71,6 +71,29 @@ func resolveIdleExpiry(limits Limits, tenant, policyBucket string) time.Duration
 	return expiry
 }
 
+// tenantIdleExpiries returns the idle expiry of each of the tenant's policy
+// buckets that has one, resolving each policy once rather than once per
+// partition.
+func tenantIdleExpiries[B any](limits Limits, tenant string, partitions map[int32]map[string]B) map[string]time.Duration {
+	var expiries map[string]time.Duration
+	seen := make(map[string]struct{})
+	for _, policies := range partitions {
+		for policy := range policies {
+			if _, ok := seen[policy]; ok {
+				continue
+			}
+			seen[policy] = struct{}{}
+			if expiry := resolveIdleExpiry(limits, tenant, policy); expiry > 0 {
+				if expiries == nil {
+					expiries = make(map[string]time.Duration)
+				}
+				expiries[policy] = expiry
+			}
+		}
+	}
+	return expiries
+}
+
 // usageStore stores per-tenant stream usage data.
 type usageStore struct {
 	activeWindow  time.Duration
@@ -348,20 +371,11 @@ func (s *usageStore) EvictIdle() map[string]int {
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
-			// Resolve each policy's expiry once per tenant rather than once
-			// per partition.
-			expiries := make(map[string]time.Duration)
+			expiries := tenantIdleExpiries(s.limits, tenant, partitions)
 			for _, policies := range partitions {
-				for policy, streams := range policies {
-					expiry, ok := expiries[policy]
-					if !ok {
-						expiry = resolveIdleExpiry(s.limits, tenant, policy)
-						expiries[policy] = expiry
-					}
-					if expiry == 0 {
-						continue
-					}
+				for policy, expiry := range expiries {
 					cutoff := now.Add(-expiry).UnixNano()
+					streams := policies[policy]
 					for streamHash, stream := range streams {
 						if stream.lastSeenAt < cutoff {
 							delete(streams, streamHash)

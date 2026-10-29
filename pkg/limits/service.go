@@ -40,8 +40,8 @@ const (
 const (
 	// evictionReasonOld is for streams not seen within the active window.
 	evictionReasonOld = "old"
-	// evictionReasonPerPolicyOld is for streams not seen within the stream
-	// idle expiry of their policy.
+	// evictionReasonPerPolicyOld is for streams evicted by a policy override
+	// for a shorter eviction.
 	evictionReasonPerPolicyOld = "per-policy-old"
 )
 
