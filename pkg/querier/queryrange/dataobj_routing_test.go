@@ -81,6 +81,63 @@ func TestDataObjResolve(t *testing.T) {
 		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
 	})
 
+	t.Run("accepts a stream-first sum nested in another expression", func(t *testing.T) {
+		for _, query := range []string{
+			`label_replace(sum by (app) (count_over_time({app="a"}[1m])), "b", "c", "app", ".+")`,
+			`max by (node) (sum by (node, pod) (count_over_time({app="a"}[1m])))`,
+			`(sum(count_over_time({app="a"}[1m])) or vector(0)) > bool 0`,
+			`sum(count_over_time({app="a"}[1m])) + sum(rate({app="a"}[1m]))`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+			})
+		}
+	})
+
+	t.Run("rejects an expression with no stream-first part", func(t *testing.T) {
+		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `max(sum(rate({app="a"}[1m])))`, insideStart, insideEnd)
+
+		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
+	})
+
+	t.Run("accepts a query when only one of its stream-first parts overlaps the data-object range", func(t *testing.T) {
+		const outside = `sum(count_over_time({app="a"}[1m] offset 100h))`
+		const inside = `sum(count_over_time({app="a"}[1m]))`
+
+		for _, query := range []string{outside + " + " + inside, inside + " + " + outside} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+				require.InDelta(t, 1.0, res.Coverage, 1e-9)
+			})
+		}
+	})
+
+	t.Run("rejects a query when none of its stream-first parts overlaps the data-object range", func(t *testing.T) {
+		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `sum(count_over_time({app="a"}[1m] offset 100h)) + sum(count_over_time({app="a"}[1m] offset 200h))`, insideStart, insideEnd)
+
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
+	})
+
+	t.Run("reports the largest share of the read window that data objects hold among the stream-first parts", func(t *testing.T) {
+		windowStart := dataObjRoutingBandEnd.Add(-25 * time.Minute)
+		start, end := streamFirstRequestRange(windowStart, windowStart.Add(100*time.Minute))
+		const partial = `sum(count_over_time({app="a"}[1m]))`
+		const full = `sum(count_over_time({app="a"}[1m] offset 24h))`
+
+		for _, query := range []string{partial + " + " + full, full + " + " + partial} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, start, end)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+				require.InDelta(t, 1.0, res.Coverage, 1e-9)
+			})
+		}
+	})
+
 	t.Run("rejects a tenant that turns stream-first off", func(t *testing.T) {
 		limits := dataObjTenantLimits("1")
 		limits.streamFirstEnabled["1"] = false

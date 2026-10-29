@@ -30,7 +30,7 @@ type DataObjResolutionOutcome string
 const (
 	// DataObjOutcomeEligible means the expression passed every check.
 	DataObjOutcomeEligible DataObjResolutionOutcome = "eligible"
-	// DataObjOutcomeUnsupportedQuery means the expression is not a stream-first sum.
+	// DataObjOutcomeUnsupportedQuery means no part of the expression can run in stream-first order.
 	DataObjOutcomeUnsupportedQuery DataObjResolutionOutcome = "unsupported_query"
 	// DataObjOutcomeStreamFirstDisabled means a tenant has stream-first off.
 	DataObjOutcomeStreamFirstDisabled DataObjResolutionOutcome = "stream_first_disabled"
@@ -60,34 +60,45 @@ func (r DataObjResolution) prefers() bool {
 	return r.Eligible() && r.Coverage > DataObjCoverageThreshold
 }
 
-// dataObjResolve decides whether a querier may read the expression from data objects, with the
-// settings of the frontend config. See ResolveDataObj.
+// dataObjResolve decides whether a querier may read any part of the expression from data objects,
+// with the settings of the frontend config. See ResolveDataObj.
 func dataObjResolve(cfg Config, limits Limits, tenantIDs []string, expr syntax.Expr, start, end time.Time) DataObjResolution {
 	return ResolveDataObj(cfg.DataObjEnabled, cfg.DataObjStorageLag, limits, tenantIDs, expr, start, end, cfg.now)
 }
 
-// ResolveDataObj decides whether a querier may read the expression from data objects. The request
-// covers the time range from start to end.
+// ResolveDataObj decides whether a querier may read any part of the expression from data objects.
+// The request covers the time range from start to end.
 //
-// The checks mirror the ones the querier makes. Data objects must be enabled. The expression must be
-// a stream-first sum. Every tenant must turn stream-first and data objects on. The read window must
-// overlap the held range.
+// The checks mirror the ones the querier makes. Data objects must be enabled. At least one part of
+// the expression must be able to run in stream-first order, at any depth. Every tenant must turn
+// stream-first and data objects on. The read window must overlap the held range.
 //
-// The read window of a query is the time range the query reads. It is wider than the request,
-// because it includes the range vector and moves back by the offset. The held range is the time
-// range that data objects hold. It runs from the latest start time of the tenants to the current
-// time minus the storage lag. A nil now means time.Now.
+// The read window of a stream-first part is the time range that the part reads. It is wider than
+// the request, because it includes the range vector and moves back by the offset. The held range
+// is the time range that data objects hold. It runs from the latest start time of the tenants to
+// the current time minus the storage lag. A nil now means time.Now.
+//
+// ResolveDataObj resolves each stream-first part with its own read window. It returns the eligible
+// resolution with the largest coverage. On a tie, it keeps the earlier part in walk order. When no
+// part is eligible, it returns the resolution of the first part.
 func ResolveDataObj(enabled bool, storageLag time.Duration, limits DataObjLimits, tenantIDs []string, expr syntax.Expr, start, end time.Time, now func() time.Time) DataObjResolution {
 	if !enabled {
 		return DataObjResolution{Outcome: DataObjOutcomeDataObjectsDisabled}
 	}
 
-	rng, ok := logql.StreamFirstRangeAggregationExpr(expr)
-	if !ok {
+	rangeAggs := logql.StreamFirstRangeAggregations(expr)
+	if len(rangeAggs) == 0 {
 		return DataObjResolution{Outcome: DataObjOutcomeUnsupportedQuery}
 	}
 
-	return dataObjResolveWindow(enabled, storageLag, limits, tenantIDs, rng.Left.Interval, rng.Left.Offset, start, end, now)
+	var best DataObjResolution
+	for i, rng := range rangeAggs {
+		res := dataObjResolveWindow(enabled, storageLag, limits, tenantIDs, rng.Left.Interval, rng.Left.Offset, start, end, now)
+		if i == 0 || (res.Eligible() && (!best.Eligible() || res.Coverage > best.Coverage)) {
+			best = res
+		}
+	}
+	return best
 }
 
 // dataObjAnyPrefers predicts whether a piece of a query will prefer data objects. The caller has
@@ -95,7 +106,7 @@ func ResolveDataObj(enabled bool, storageLag time.Duration, limits DataObjLimits
 //
 // It reports true only when data objects are on and every tenant turns stream-first and data
 // objects on. It also needs both of these:
-//   - A sub-expression has the stream-first shape, such as one leg of a binary expression.
+//   - A part of the query can run in stream-first order, such as one leg of a binary expression.
 //   - Data objects hold more than DataObjCoverageThreshold of the read window. The window uses the
 //     longest range vector and the longest offset of the whole query.
 //

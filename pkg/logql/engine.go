@@ -413,20 +413,18 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	// Only count the real query evaluation, not the *DownstreamEvaluator the query-frontend uses
 	// to dispatch a sharded or astmapper-rewritten query. It never reads a sample itself.
 	//
-	// expr here is always the query's root: evalSample never recurses, so isRootExpr is always
-	// true, matching the NewStepEvaluator call below.
+	// A query counts as stream-first when any part of it runs in stream-first order.
 	if _, ok := q.evaluator.(*DefaultEvaluator); ok {
-		switch sampleOrderFor(ctx, expr, q.limits, true) {
-		case logproto.SAMPLE_ORDER_BY_STREAM:
+		if sampleOrderForQuery(ctx, expr, q.limits) == logproto.SAMPLE_ORDER_BY_STREAM {
 			stats.FromContext(ctx).AddStreamFirstQueries(1)
-		default:
+		} else {
 			stats.FromContext(ctx).AddTimestampFirstQueries(1)
 		}
 	}
 
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, true)
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}

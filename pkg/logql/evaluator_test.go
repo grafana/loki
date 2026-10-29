@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,7 +71,7 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 		step:        time.Minute,
 		hintRanges:  hintRanges,
 	}
-	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, true)
+	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams)
 	require.NoError(t, err)
 	require.NoError(t, stepEvaluator.Close())
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
@@ -97,7 +99,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 			options := &logproto.DataObjOptions{Eligible: true}
 			params := newParams(t, query).WithDataObjOptions(options)
 
-			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params)
 			require.NoError(t, err)
 			require.NoError(t, stepEvaluator.Close())
 
@@ -110,7 +112,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
 		params := newParams(t, queries["a sum of a range aggregation"])
 
-		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params)
 		require.NoError(t, err)
 		require.NoError(t, stepEvaluator.Close())
 
@@ -679,7 +681,7 @@ func TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace(t *testing.T) {
 		Grouping:  &syntax.Grouping{Groups: []string{"b", "a"}},
 	}
 
-	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ bool) (StepEvaluator, error) {
+	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 		return &emptyEvaluator{}, nil
 	})
 
@@ -789,18 +791,9 @@ func (it *countingSampleIterator) Next() bool {
 	return true
 }
 
-func TestSampleOrderFor(t *testing.T) {
+func TestSampleOrderForExpr(t *testing.T) {
 	limits := tenantStreamFirstLimits{enabled: map[string]bool{"a": true, "b": true}}
-
-	fullExpr := func(query string) syntax.SampleExpr {
-		return syntax.MustParseExpr(query).(syntax.SampleExpr)
-	}
-
-	tenantContext := func(tenantID string) context.Context {
-		return user.InjectOrgID(context.Background(), tenantID)
-	}
-
-	count := fullExpr(`sum by (app) (count_over_time({app="foo"}[1m]))`)
+	count := mustParseSampleExpr(`sum by (app) (count_over_time({app="foo"}[1m]))`)
 
 	t.Run("returns stream-first for every supported query when the tenant enables it", func(t *testing.T) {
 		streamFirstQueries := []string{
@@ -809,7 +802,7 @@ func TestSampleOrderFor(t *testing.T) {
 		}
 
 		for _, query := range streamFirstQueries {
-			got := sampleOrderFor(tenantContext("a"), fullExpr(query), limits, true)
+			got := sampleOrderForExpr(contextForTenant(t, "a"), mustParseSampleExpr(query), limits)
 			require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got, query)
 		}
 	})
@@ -823,33 +816,89 @@ func TestSampleOrderFor(t *testing.T) {
 		}
 
 		for _, query := range timestampFirstQueries {
-			got := sampleOrderFor(tenantContext("a"), fullExpr(query), limits, true)
+			got := sampleOrderForExpr(contextForTenant(t, "a"), mustParseSampleExpr(query), limits)
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got, query)
+		}
+	})
+
+	t.Run("returns timestamp-first for an expression that wraps a supported query", func(t *testing.T) {
+		got := sampleOrderForExpr(contextForTenant(t, "a"), mustParseSampleExpr(`topk(1, sum by (app) (count_over_time({app="foo"}[1m])))`), limits)
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
+	})
+
+	t.Run("returns timestamp-first when the tenant does not enable it", func(t *testing.T) {
+		got := sampleOrderForExpr(contextForTenant(t, "other"), count, limits)
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
+	})
+
+	t.Run("returns stream-first for a multi-tenant query when every tenant enables it", func(t *testing.T) {
+		got := sampleOrderForExpr(contextForTenant(t, "a|b"), count, limits)
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got)
+	})
+
+	t.Run("returns timestamp-first for a multi-tenant query when one tenant does not enable it", func(t *testing.T) {
+		got := sampleOrderForExpr(contextForTenant(t, "a|other"), count, limits)
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
+	})
+
+	t.Run("returns timestamp-first when the context has no tenant", func(t *testing.T) {
+		got := sampleOrderForExpr(t.Context(), count, limits)
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
+	})
+}
+
+func TestSampleOrderForQuery(t *testing.T) {
+	limits := tenantStreamFirstLimits{enabled: map[string]bool{"a": true, "b": true}}
+	nested := mustParseSampleExpr(`max(sum by (app) (count_over_time({app="foo"}[1m])))`)
+
+	t.Run("returns stream-first for every query with a supported part when the tenant enables it", func(t *testing.T) {
+		streamFirstQueries := []string{
+			`sum by (app) (count_over_time({app="foo"}[1m]))`,
+			`max(sum by (app) (count_over_time({app="foo"}[1m])))`,
+			`topk(1, sum by (app) (count_over_time({app="foo"}[1m])))`,
+			`label_replace(sum by (app) (count_over_time({app="foo"}[1m])), "region", "$1", "app", "(.*)")`,
+			`(sum(count_over_time({app="foo"}[1m])) or vector(0)) > bool 0`,
+			`sum(count_over_time({app="foo"}[1m])) + sum(rate({app="foo"}[1m]))`,
+		}
+
+		for _, query := range streamFirstQueries {
+			got := sampleOrderForQuery(contextForTenant(t, "a"), mustParseSampleExpr(query), limits)
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got, query)
+		}
+	})
+
+	t.Run("returns timestamp-first for every query without a supported part when the tenant enables it", func(t *testing.T) {
+		timestampFirstQueries := []string{
+			`sum(rate({app="foo"}[1m]))`,
+			`count_over_time({app="foo"}[1m])`,
+			`max(sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
+			`max(sum(rate({app="foo"}[1m])))`,
+			`vector(1)`,
+		}
+
+		for _, query := range timestampFirstQueries {
+			got := sampleOrderForQuery(contextForTenant(t, "a"), mustParseSampleExpr(query), limits)
 			require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got, query)
 		}
 	})
 
 	t.Run("returns timestamp-first when the tenant does not enable it", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("other"), count, limits, true)
+		got := sampleOrderForQuery(contextForTenant(t, "other"), nested, limits)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns stream-first for a multi-tenant query when every tenant enables it", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a|b"), count, limits, true)
+		got := sampleOrderForQuery(contextForTenant(t, "a|b"), nested, limits)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got)
 	})
 
 	t.Run("returns timestamp-first for a multi-tenant query when one tenant does not enable it", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a|other"), count, limits, true)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
-	})
-
-	t.Run("returns timestamp-first for an expression that is not the root", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a"), count, limits, false)
+		got := sampleOrderForQuery(contextForTenant(t, "a|other"), nested, limits)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns timestamp-first when the context has no tenant", func(t *testing.T) {
-		got := sampleOrderFor(context.Background(), count, limits, true)
+		got := sampleOrderForQuery(t.Context(), nested, limits)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 }
@@ -896,7 +945,7 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		return out
 	}
 
-	t.Run("requests stream-first order for a root sum of count_over_time", func(t *testing.T) {
+	t.Run("requests stream-first order for a sum of count_over_time", func(t *testing.T) {
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, requestedOrder(t, `sum by (app) (count_over_time({app="foo"}[1m]))`))
 	})
 
@@ -915,8 +964,48 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, requestedOrder(t, `sum(rate({app="foo"}[1m]))`))
 	})
 
-	t.Run("requests timestamp-first order for a sum of count_over_time nested in another aggregation", func(t *testing.T) {
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, requestedOrder(t, `topk(1, sum by (app) (count_over_time({app="foo"}[1m])))`))
+	t.Run("requests stream-first order for a sum of count_over_time nested in another aggregation", func(t *testing.T) {
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, requestedOrder(t, `topk(1, sum by (app) (count_over_time({app="foo"}[1m])))`))
+	})
+
+	t.Run("requests stream-first order for a sum of sum_over_time nested in label_replace", func(t *testing.T) {
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, requestedOrder(t, `label_replace(sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [1m])), "new", "x", "app", ".+")`))
+	})
+
+	t.Run("requests stream-first order for a sum nested in a binary operator with a literal and a vector", func(t *testing.T) {
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, requestedOrder(t, `(sum(count_over_time({app="foo"}[1m])) or vector(0)) > bool 0`))
+	})
+
+	t.Run("requests stream-first order for both legs of a binary operator", func(t *testing.T) {
+		const (
+			left  = `sum by (app) (count_over_time({app="foo"}[1m]))`
+			right = `sum by (app) (sum_over_time({app="bar"} | logfmt | unwrap n [1m]))`
+		)
+		recorder := &sampleRequestRecorder{}
+
+		_, err := execute(t, limitsWithMaxSeries(100), recorder, left+" / "+right, time.Minute)
+
+		require.NoError(t, err)
+		require.Equal(t, map[string]logproto.SampleOrder{
+			syntax.MustParseExpr(left).String():  logproto.SAMPLE_ORDER_BY_STREAM,
+			syntax.MustParseExpr(right).String(): logproto.SAMPLE_ORDER_BY_STREAM,
+		}, recorder.orders())
+	})
+
+	t.Run("requests stream-first order only for the leg of a binary operator that supports it", func(t *testing.T) {
+		const (
+			supported   = `sum(count_over_time({app="foo"}[1m]))`
+			unsupported = `sum(rate({app="foo"}[1m]))`
+		)
+		recorder := &sampleRequestRecorder{}
+
+		_, err := execute(t, limitsWithMaxSeries(100), recorder, supported+" + "+unsupported, time.Minute)
+
+		require.NoError(t, err)
+		require.Equal(t, map[string]logproto.SampleOrder{
+			syntax.MustParseExpr(supported).String():   logproto.SAMPLE_ORDER_BY_STREAM,
+			syntax.MustParseExpr(unsupported).String(): logproto.SAMPLE_ORDER_BY_TIMESTAMP,
+		}, recorder.orders())
 	})
 
 	t.Run("counts every sample of streams returned one after the other", func(t *testing.T) {
@@ -932,6 +1021,32 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 			},
 		}}
 		require.Equal(t, want, got)
+	})
+
+	t.Run("counts the samples of a sum nested under a reducing aggregation", func(t *testing.T) {
+		series := append(streamFirstSeries("foo"), streamFirstSeries("bar")[:1]...)
+		querier := &seriesQuerier{series: series}
+
+		got, err := execute(t, limitsWithMaxSeries(100), querier, `min(sum by (app) (count_over_time({app=~"foo|bar"}[1m])))`, time.Minute)
+		require.NoError(t, err)
+
+		want := promql.Matrix{{
+			Metric: labels.EmptyLabels(),
+			Floats: []promql.FPoint{
+				{T: start.Add(time.Minute).UnixMilli(), F: 1},
+				{T: start.Add(2 * time.Minute).UnixMilli(), F: 2},
+			},
+		}}
+		require.Equal(t, want, got)
+	})
+
+	t.Run("fails with the series limit when a sum nested under a reducing aggregation emits more series than the limit", func(t *testing.T) {
+		const maxSeries = 1
+		querier := &seriesQuerier{series: streamFirstSeries("foo", "bar")}
+
+		_, err := execute(t, limitsWithMaxSeries(maxSeries), querier, `max(sum by (app) (count_over_time({app=~"foo|bar"}[1m])))`, time.Minute)
+
+		require.EqualError(t, err, logqlerr.NewSeriesLimitError(maxSeries).Error())
 	})
 
 	t.Run("sum_over_time() sums every sample value of streams returned one after the other", func(t *testing.T) {
@@ -1043,7 +1158,7 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 			Operation: op,
 			Grouping:  grouping,
 		}
-		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
 			return next, nil
 		})
 		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0)
@@ -1136,4 +1251,41 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 			require.Equal(t, 2.0, got["steady"])
 		})
 	})
+}
+
+// sampleRequestRecorder is a Querier that records the sample order of every sample request, keyed
+// by the expression string of the request. Its mutex is needed because a binary operator builds its
+// legs in parallel.
+type sampleRequestRecorder struct {
+	mu     sync.Mutex
+	byExpr map[string]logproto.SampleOrder
+}
+
+func (r *sampleRequestRecorder) SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error) {
+	return iter.NoopEntryIterator, nil
+}
+
+func (r *sampleRequestRecorder) SelectSamples(_ context.Context, params SelectSampleParams) (iter.SampleIterator, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.byExpr == nil {
+		r.byExpr = map[string]logproto.SampleOrder{}
+	}
+	r.byExpr[params.Selector] = params.Order
+	return iter.NoopSampleIterator, nil
+}
+
+func (r *sampleRequestRecorder) orders() map[string]logproto.SampleOrder {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return maps.Clone(r.byExpr)
+}
+
+func mustParseSampleExpr(query string) syntax.SampleExpr {
+	return syntax.MustParseExpr(query).(syntax.SampleExpr)
+}
+
+func contextForTenant(t *testing.T, tenantID string) context.Context {
+	t.Helper()
+	return user.InjectOrgID(t.Context(), tenantID)
 }

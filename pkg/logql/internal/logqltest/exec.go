@@ -96,7 +96,7 @@ func newChunkQuerier(t *testing.T, stores *scriptStores) logql.Querier {
 }
 
 // newDataObjQuerierFunc returns a newScriptQuerierFunc whose querier reads the streams of
-// stream-first queries from data objects, from dataObjQueryStart on. It does so only for queries
+// stream-first requests from data objects, from dataObjQueryStart on. It does so only for requests
 // that the caller marked eligible.
 func newDataObjQuerierFunc(dataObjQueryStart time.Time) newScriptQuerierFunc {
 	return func(t *testing.T, stores *scriptStores) logql.Querier {
@@ -126,20 +126,33 @@ func (l execLimits) StreamFirstExecutionEnabled(string) bool {
 // but the query read no data-object row. It catches a routing bug that reads every sample from
 // chunks, which the results alone cannot show, because chunks hold every stream too.
 //
-// Only a stream-first query reads data objects. A sample comes only from data objects when its
-// whole range window is at or after dataObjQueryStart. A zero-value dataObjQueryStart disables the check.
+// Only the stream-first parts of a query read data objects. A sample comes only from data objects
+// when every such part has its whole range window at or after dataObjQueryStart.
+//
+// The check skips a query in two cases. The first is a zero dataObjQueryStart. The second is another
+// source of samples: a vector() expression, or a range aggregation that does not run in stream-first
+// order. The row count is one total for the query, so it cannot tell which part read data objects.
 func checkDataObjReads(query string, res logqlmodel.Result, dataObjQueryStart time.Time) error {
 	if dataObjQueryStart.IsZero() {
 		return nil
 	}
-	rangeAgg, ok := logql.StreamFirstRangeAggregation(query)
-	if !ok {
+	expr, err := syntax.ParseExpr(query)
+	if err != nil {
+		return fmt.Errorf("parsing query %q: %w", query, err)
+	}
+	rangeAggs := logql.StreamFirstRangeAggregations(expr)
+	if len(rangeAggs) == 0 || hasOtherSampleSource(expr) {
 		return nil
 	}
 
-	// The window of the sample at t is (t - offset - interval, t - offset].
+	// The window of the sample at t is (t - offset - interval, t - offset]. The part with the
+	// largest offset plus interval has the earliest window start. Its window decides the check.
+	var reach time.Duration
+	for _, rangeAgg := range rangeAggs {
+		reach = max(reach, rangeAgg.Left.Offset+rangeAgg.Left.Interval)
+	}
 	windowStart := func(t int64) time.Time {
-		return time.UnixMilli(t).Add(-rangeAgg.Left.Offset - rangeAgg.Left.Interval)
+		return time.UnixMilli(t).Add(-reach)
 	}
 	needsDataObj := false
 	switch data := res.Data.(type) {
@@ -159,4 +172,23 @@ func checkDataObjReads(query string, res logqlmodel.Result, dataObjQueryStart ti
 		return fmt.Errorf("query %q returned samples after the data-object start time, but read no data-object rows", query)
 	}
 	return nil
+}
+
+// hasOtherSampleSource reports whether expr can yield a sample from something other than its
+// stream-first parts: a vector() expression, or a log range that no stream-first part holds.
+func hasOtherSampleSource(expr syntax.Expr) bool {
+	var (
+		hasVector bool
+		logRanges int
+	)
+	expr.Walk(func(e syntax.Expr) bool {
+		switch e.(type) {
+		case *syntax.VectorExpr:
+			hasVector = true
+		case *syntax.LogRangeExpr:
+			logRanges++
+		}
+		return true
+	})
+	return hasVector || logRanges > len(logql.StreamFirstRangeAggregations(expr))
 }

@@ -20,14 +20,16 @@ allowed it and its own checks pass.
 The query-frontend calls a request eligible for data objects when all of these hold:
 
 1. The query-frontend has data objects turned on.
-2. The query is a metric query supported by stream-first ordering in the query engine.
+2. The query is a metric query, and the query engine can run at least one part of it in stream-first
+   order. The part can sit at any depth, for example under `label_replace` or inside a binary
+   expression.
 3. Every tenant of the request has stream-first execution turned on and a data-object query start time.
-4. The data that the query reads overlaps the time range that data objects hold. That range starts
-   at the latest start time among the tenants. It ends at the current time minus the storage lag,
-   because the newest data is not in data objects yet.
+4. The data that at least one stream-first part reads overlaps the time range that data objects
+   hold. That range starts at the latest start time among the tenants. It ends at the current time
+   minus the storage lag, because the newest data is not in data objects yet.
 
-The data that a query reads is wider than the time range of the request. It also covers the range
-vector of the query, and it moves back by the `offset` of the query.
+The data that a part reads is wider than the time range of the request. It also covers the range
+vector of the part, and it moves back by the `offset` of the part.
 
 ## Where the decision is made
 
@@ -45,20 +47,21 @@ The querier reads data objects for a request only when all of these hold:
 
 - the query-frontend marked the request eligible;
 - the querier has data objects turned on;
-- the querier evaluates the query in stream-first order, which needs stream-first execution for
-  the tenant;
+- the querier evaluates a part of the query in stream-first order, which needs stream-first
+  execution for the tenant;
 - the tenant has a data-object start time, and the request overlaps the time range that data
   objects hold.
 
-The querier reads the part of the request outside that time range from chunks. A request that did
-not pass through a query-frontend is never marked, so it reads chunks.
+The querier reads the time range of the request outside that range from chunks. It also reads from
+chunks any part of the query that does not run in stream-first order. A request that did not pass
+through a query-frontend is never marked, so it reads chunks.
 
 ## Which queries prefer data objects
 
 Eligibility decides whether a querier may read data objects. A second rule decides whether the
 query-frontend changes how it splits and shards the query. A query prefers data objects when it is
-eligible and data objects hold more than half of the time range that it reads. The query-frontend
-applies this rule to the piece it is working on:
+eligible and data objects hold more than half of the read window of at least one of its stream-first
+parts. The query-frontend applies this rule to the piece it is working on:
 
 - to the whole query when it splits it in time;
 - to each time split when it shards it, so a recent split that no data object covers keeps the
