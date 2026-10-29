@@ -10,8 +10,8 @@ import (
 	"github.com/thanos-io/objstore/providers/azure"
 )
 
-func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
-	bucket, err := newBucketClient(cfg, name, logger, wrapRT, azure.NewBucketWithConfig)
+func NewBucketClient(cfg Config, name string, connectionPoolSize int, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
+	bucket, err := newBucketClient(cfg, name, connectionPoolSize, logger, wrapRT, azure.NewBucketWithConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -21,7 +21,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(htt
 	}, nil
 }
 
-func newBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper, factory func(log.Logger, azure.Config, string, func(http.RoundTripper) http.RoundTripper) (*azure.Bucket, error)) (objstore.Bucket, error) {
+func newBucketClient(cfg Config, name string, connectionPoolSize int, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper, factory func(log.Logger, azure.Config, string, func(http.RoundTripper) http.RoundTripper) (*azure.Bucket, error)) (objstore.Bucket, error) {
 	// Start with default config to make sure that all parameters are set to sensible values, especially
 	// HTTP Config field.
 	bucketConfig := azure.DefaultConfig
@@ -38,7 +38,11 @@ func newBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(htt
 	bucketConfig.HTTPConfig.TLSHandshakeTimeout = model.Duration(cfg.HTTP.TLSHandshakeTimeout)
 	bucketConfig.HTTPConfig.ExpectContinueTimeout = model.Duration(cfg.HTTP.ExpectContinueTimeout)
 	bucketConfig.HTTPConfig.MaxIdleConns = cfg.HTTP.MaxIdleConns
-	bucketConfig.HTTPConfig.MaxIdleConnsPerHost = cfg.HTTP.MaxIdleConnsPerHost
+	maxIdleConnsPerHost := cfg.HTTP.MaxIdleConnsPerHost
+	if maxIdleConnsPerHost == 0 {
+		maxIdleConnsPerHost = connectionPoolSize
+	}
+	bucketConfig.HTTPConfig.MaxIdleConnsPerHost = maxIdleConnsPerHost
 	bucketConfig.HTTPConfig.MaxConnsPerHost = cfg.HTTP.MaxConnsPerHost
 	bucketConfig.HTTPConfig.TLSConfig = exthttp.TLSConfig{
 		CAFile:     cfg.HTTP.TLSConfig.CAPath,
