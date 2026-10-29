@@ -494,14 +494,18 @@ func (m *memIndexSet) names() []string {
 
 type shardedOutputIndex struct {
 	CompactedIndex
-	dir string
+	dir         string
+	shardFactor *int
 }
 
 func (s shardedOutputIndex) ToIndexFiles() ([]index.Index, error) {
 	return s.files("compacted")
 }
 
-func (s shardedOutputIndex) ToShardedIndexFiles() ([]index.Index, error) {
+func (s shardedOutputIndex) ToShardedIndexFiles(shardFactor int) ([]index.Index, error) {
+	if s.shardFactor != nil {
+		*s.shardFactor = shardFactor
+	}
 	return s.files("shard-0", "shard-1")
 }
 
@@ -541,6 +545,17 @@ func TestIndexSetDone_WritesShardedCopy(t *testing.T) {
 
 	require.Equal(t, []string{"compacted.gz"}, base.names())
 	require.Equal(t, []string{"shard-0.gz", "shard-1.gz"}, sharded.names())
+}
+
+func TestIndexSetDone_ShardedCopyUsesShardFactor(t *testing.T) {
+	var got int
+	is := newShardedCopyIndexSet(t, newMemIndexSet("source.gz"), newMemIndexSet())
+	is.shardFactor = 8
+	is.compactedIndex = shardedOutputIndex{dir: t.TempDir(), shardFactor: &got}
+
+	require.NoError(t, is.done())
+
+	require.Equal(t, 8, got)
 }
 
 func TestIndexSetDone_ReplacesPreviousShardedCopy(t *testing.T) {

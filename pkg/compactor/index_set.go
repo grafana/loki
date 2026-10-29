@@ -65,9 +65,10 @@ type CompactedIndex interface {
 }
 
 // ShardedCompactedIndex is optionally implemented by a CompactedIndex that can
-// also be written as fingerprint-range shard files, for the sharded index copy.
+// also be written as shardFactor fingerprint-range shard files, for the sharded
+// index copy.
 type ShardedCompactedIndex interface {
-	ToShardedIndexFiles() ([]index.Index, error)
+	ToShardedIndexFiles(shardFactor int) ([]index.Index, error)
 }
 
 // indexSet helps with doing operations on a set of index files belonging to a single user or common index files shared by users.
@@ -77,6 +78,7 @@ type indexSet struct {
 	workingDir        string
 	baseIndexSet      storage.IndexSet
 	shardedIndexSet   storage.IndexSet
+	shardFactor       int
 
 	uploadCompactedDB   bool
 	removeSourceObjects bool
@@ -463,7 +465,7 @@ func (is *indexSet) updateShardedCopy() error {
 			return nil
 		}
 		var err error
-		idxs, err = sharded.ToShardedIndexFiles()
+		idxs, err = sharded.ToShardedIndexFiles(is.shardFactor)
 		if err != nil {
 			return err
 		}
