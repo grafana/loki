@@ -223,9 +223,9 @@ func TestOpenObject_ShardBucketRange(t *testing.T) {
 		name  string
 		shard *QueryShard
 	}{
-		{name: "returns no range without reading the layout for an unsharded query", shard: nil},
-		{name: "returns no range without reading the layout for a shard count of one", shard: NewQueryShard(powerOfTwoShard(0, 1))},
-		{name: "returns no range without reading the layout for a bounded shard of the whole fingerprint space", shard: NewQueryShard(boundedShard(0, math.MaxUint64))},
+		{name: "returns no range and does not read the layout for an unsharded query", shard: nil},
+		{name: "returns no range and does not read the layout for a shard count of one", shard: NewQueryShard(powerOfTwoShard(0, 1))},
+		{name: "returns no range and does not read the layout for a bounded shard of the whole fingerprint space", shard: NewQueryShard(boundedShard(0, math.MaxUint64))},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			object, _ := createAndOpenTestStoredObject(t, fixtureTenant, &defaultStoredLayout, fixtureStreams...)

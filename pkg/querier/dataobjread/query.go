@@ -139,9 +139,10 @@ func shardBucketRangeFor(shard *logql.Shard, layout streams.ShardLayout) (bucket
 	var exact bool
 	if shard.Variant() == logql.PowerOfTwoVersion {
 		// A shard count that is not a power of two makes the annotation's own arithmetic
-		// overflow, so its last shard reports the whole fingerprint space while matching
-		// nothing. Calling that exact would skip the stream-hash check and hand every stream to
-		// every shard. Nothing on this path validates the count, so check it here.
+		// overflow. Its last shard then reports a range, up to the whole fingerprint space,
+		// while matching nothing. Calling that exact would skip the stream-hash check and hand
+		// every stream in the range to that shard. Nothing on this path validates the count, so
+		// check it here.
 		powerOfTwo := shard.PowerOfTwo.Of&(shard.PowerOfTwo.Of-1) == 0
 		exact = powerOfTwo && shard.PowerOfTwo.Of <= layout.Buckets()
 	}

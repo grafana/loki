@@ -66,12 +66,12 @@ func TestShardBucketRangeFor(t *testing.T) {
 			wantTo:    1,
 			wantExact: false,
 		},
-		"a shard count that is not a power of two can cover every bucket, so nothing is pushed down": {
+		"the last of three shards wraps to the whole fingerprint space because three is not a power of two, so nothing is pushed down": {
 			shard:  powerOfTwoShard(2, 3),
 			layout: defaultLayout,
 			wantOK: false,
 		},
-		"a shard count that is not a power of two is inexact because the annotation's arithmetic overflows": {
+		"the last of six shards wraps to a partial fingerprint range because six is not a power of two, so the range is inexact": {
 			shard:     powerOfTwoShard(5, 6),
 			layout:    defaultLayout,
 			wantOK:    true,

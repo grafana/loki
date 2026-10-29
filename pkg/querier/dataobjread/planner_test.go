@@ -134,7 +134,7 @@ func TestPlanner_Plan(t *testing.T) {
 			want:  nil,
 		},
 		{
-			name:  "a shard of many shards asks the metastore for the hashes of that shard",
+			name:  "one of many shards asks the metastore for the hashes of that shard",
 			shard: NewQueryShard(powerOfTwoShard(5, 128)),
 			want:  &streams.HashRange{From: 5 << 57, To: 6<<57 - 1},
 		},
