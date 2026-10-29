@@ -1305,7 +1305,7 @@ func TestNodeContext(t *testing.T) {
 		"quantile sketch eval": func(t *testing.T) syntax.SampleExpr {
 			return &QuantileSketchEvalExpr{SampleExpr: parse(t, rate)}
 		},
-		"count distinct sketch eval": func(t *testing.T) syntax.SampleExpr {
+		"count distinct sketch eval": func(_ *testing.T) syntax.SampleExpr {
 			return &CountDistinctSketchEvalExpr{}
 		},
 		"sketch in the left leg of a binary operation": func(t *testing.T) syntax.SampleExpr {
