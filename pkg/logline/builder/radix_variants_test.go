@@ -347,3 +347,32 @@ func TestBlocksSorterSmallBlocks(t *testing.T) {
 		})
 	}
 }
+
+// TestMSDLSDSorterSmallBudget shrinks the cache budget so property-test sizes
+// reach the second MSD level and the copy-back of buckets that finish in
+// scratch.
+func TestMSDLSDSorterSmallBudget(t *testing.T) {
+	inputs := sorterInputs()
+	for _, budget := range []int{40, 300} {
+		t.Run(fmt.Sprintf("budget=%d", budget), func(t *testing.T) {
+			s := newMSDLSDSorter(budget)().(*msdLSDSorter)
+			for _, in := range inputs {
+				for _, n := range []int{2, 33, 100, 5000, 65537} {
+					rng := rand.New(rand.NewSource(int64(n)*13 + int64(len(in.name))))
+					keys, docs := in.gen(rng, n)
+					rk, rd := referenceSort(keys, docs)
+					want := canonicalPairs(rk, rd)
+					m := sortAndDedupeGroups(rk, rd)
+					wantDedup := joinSoA(rk[:m], rd[:m])
+					t.Run(fmt.Sprintf("%s/n=%d", in.name, n), func(t *testing.T) {
+						checkSorter(t, s, keys, docs, want, wantDedup)
+					})
+				}
+			}
+			t.Log(s.stats())
+			require.Greater(t, s.msdScatters, 0)
+			require.Greater(t, s.copyBacks, 0)
+			require.Greater(t, s.insertionBuckets, 0)
+		})
+	}
+}

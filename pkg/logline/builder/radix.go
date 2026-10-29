@@ -51,6 +51,8 @@ var ngramSortVariants = []ngramSortVariant{
 	{name: "blocks-w16-b16", newSorter: newBlocksSorter(16, 16)},
 	{name: "blocks-w16-b64", newSorter: newBlocksSorter(16, 64)},
 	{name: "fused-hist", newSorter: newFusedHistSorter},
+	{name: "msd-lsd-64k", newSorter: newMSDLSDSorter(64 << 10)},
+	{name: "msd-lsd-128k", newSorter: newMSDLSDSorter(128 << 10)},
 	{name: "width-8", newSorter: newLSDSorter(8)},
 	{name: "width-10", newSorter: newLSDSorter(10)},
 	{name: "width-12", newSorter: newLSDSorter(12)},
