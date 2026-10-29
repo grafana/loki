@@ -85,7 +85,7 @@ local weeklyImageJobs = {
   ),
   'major-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      branches=['release-*.0.0'],
+      branches=['release-[0-9]+.0.0'],
       buildImage=buildImage,
       checkTemplate=checkTemplate,
       distRunsOn='ubuntu-x64',
