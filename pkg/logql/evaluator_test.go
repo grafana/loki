@@ -70,7 +70,7 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 		step:        time.Minute,
 		hintRanges:  hintRanges,
 	}
-	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, true, true)
+	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, RootContext())
 	require.NoError(t, err)
 	require.NoError(t, stepEvaluator.Close())
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
@@ -98,7 +98,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 			options := &logproto.DataObjOptions{Eligible: true}
 			params := newParams(t, query).WithDataObjOptions(options)
 
-			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true, true)
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext())
 			require.NoError(t, err)
 			require.NoError(t, stepEvaluator.Close())
 
@@ -111,7 +111,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
 		params := newParams(t, queries["a sum of a range aggregation"])
 
-		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true, true)
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext())
 		require.NoError(t, err)
 		require.NoError(t, stepEvaluator.Close())
 
@@ -680,11 +680,11 @@ func TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace(t *testing.T) {
 		Grouping:  &syntax.Grouping{Groups: []string{"b", "a"}},
 	}
 
-	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _, _ bool) (StepEvaluator, error) {
+	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ NodeContext) (StepEvaluator, error) {
 		return &emptyEvaluator{}, nil
 	})
 
-	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0, false)
+	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0, NodeContext{})
 	require.NoError(t, err)
 	require.Equal(t, []string{"b", "a"}, expr.Grouping.Groups)
 }
@@ -1088,17 +1088,17 @@ func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
 			got := map[string]bool{}
 			ev := NewDefaultEvaluator(nil, 0, 0, NoLimits)
 			var factory SampleEvaluatorFunc
-			factory = func(ctx context.Context, _ SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr, outputPreserving bool) (StepEvaluator, error) {
+			factory = func(ctx context.Context, _ SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, nc NodeContext) (StepEvaluator, error) {
 				if e, ok := expr.(*syntax.RangeAggregationExpr); ok {
 					mu.Lock()
 					defer mu.Unlock()
-					got[e.Left.Left.String()] = outputPreserving
+					got[e.Left.Left.String()] = nc.OutputPreserving()
 					return newReturnVectorEvaluator(nil), nil
 				}
-				return ev.NewStepEvaluator(ctx, factory, expr, p, isRootExpr, outputPreserving)
+				return ev.NewStepEvaluator(ctx, factory, expr, p, nc)
 			}
 
-			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, true, true)
+			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, RootContext())
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 		})
@@ -1118,10 +1118,10 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 			Operation: op,
 			Grouping:  grouping,
 		}
-		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool, bool) (StepEvaluator, error) {
+		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
 			return next, nil
 		})
-		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0, false)
+		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0, NodeContext{})
 		require.NoError(t, err)
 		return ev
 	}

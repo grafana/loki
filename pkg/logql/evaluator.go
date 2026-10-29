@@ -275,23 +275,59 @@ type EvaluatorFactory interface {
 	EntryEvaluatorFactory
 }
 
+type nodePosition int
+
+const (
+	// positionReducing is the zero value so that a NodeContext nobody filled in never claims
+	// the series count is preserved.
+	positionReducing nodePosition = iota
+	positionPreserving
+	positionRoot
+)
+
+// NodeContext describes where an expression sits relative to the query's output. It is worked
+// out from the parent down while evaluators are built. The zero value is the conservative one:
+// an expression whose series count may differ from the query's output.
+type NodeContext struct {
+	position nodePosition
+}
+
+// RootContext returns the NodeContext of the root expression of a query.
+func RootContext() NodeContext {
+	return NodeContext{position: positionRoot}
+}
+
+// IsRoot is true only for the root expression of the query, whose output is the query result.
+func (c NodeContext) IsRoot() bool {
+	return c.position == positionRoot
+}
+
+// OutputPreserving is true when every operator between the expression and the root keeps the
+// series count unchanged, so the expression holds at least as many series as the query returns.
+// It is always true for the root expression.
+func (c NodeContext) OutputPreserving() bool {
+	return c.position != positionReducing
+}
+
+// child returns the NodeContext of an operand of an operator that keeps the series count
+// unchanged when opPreserves is true.
+func (c NodeContext) child(opPreserves bool) NodeContext {
+	if c.OutputPreserving() && opPreserves {
+		return NodeContext{position: positionPreserving}
+	}
+	return NodeContext{}
+}
+
 type SampleEvaluatorFactory interface {
 	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr. It's explicitly passed another NewStepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// NewStepEvaluator implementations which can be composed.
-	//
-	// isRootExpr is true only for the root expression of the query, whose output is the query
-	// result.
-	//
-	// outputPreserving is true when every operator between expr and the root keeps the series
-	// count unchanged, so expr holds at least as many series as the query returns. It is always
-	// true for the root expression.
-	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr, outputPreserving bool) (StepEvaluator, error)
+	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, nc NodeContext) (StepEvaluator, error)
 }
 
-type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr, outputPreserving bool) (StepEvaluator, error)
+type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, nc NodeContext) (StepEvaluator, error)
 
-func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr, outputPreserving bool) (StepEvaluator, error) {
-	return s(ctx, nextEvaluatorFactory, expr, p, isRootExpr, outputPreserving)
+func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, nc NodeContext) (StepEvaluator, error) {
+	return s(ctx, nextEvaluatorFactory, expr, p, nc)
 }
 
 type EntryEvaluatorFactory interface {
@@ -352,16 +388,16 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	q Params,
-	isRootExpr, outputPreserving bool,
+	nc NodeContext,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
-			sampleOrder := sampleOrderFor(ctx, e, ev.limits, isRootExpr)
+			sampleOrder := sampleOrderFor(ctx, e, ev.limits, nc.IsRoot())
 
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _, _ bool) (StepEvaluator, error) {
+			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ NodeContext) (StepEvaluator, error) {
 				keepsErroredLines, err := syntax.KeepsErroredLines(rangExpr.Left)
 				if err != nil {
 					return nil, err
@@ -382,7 +418,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				}
 			})
 		}
-		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize, outputPreserving)
+		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize, nc)
 	case *CountMinSketchEvalExpr:
 		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
@@ -401,7 +437,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *syntax.CountDistinctSketchExpr:
 		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, true)
 	case *syntax.BinOpExpr:
-		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q, outputPreserving)
+		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q, nc)
 	case *syntax.LabelReplaceExpr:
 		return newLabelReplaceEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.VectorExpr:
@@ -501,13 +537,12 @@ func newVectorAggEvaluator(
 	expr *syntax.VectorAggregationExpr,
 	q Params,
 	maxCountMinSketchHeapSize int,
-	outputPreserving bool,
+	nc NodeContext,
 ) (StepEvaluator, error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	leftPreserving := outputPreserving && vectorAggPreservesSeries(expr.Operation)
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false, leftPreserving)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, nc.child(vectorAggPreservesSeries(expr.Operation)))
 	if err != nil {
 		return nil, err
 	}
@@ -984,9 +1019,9 @@ func newBinOpStepEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.BinOpExpr,
 	q Params,
-	outputPreserving bool,
+	nc NodeContext,
 ) (StepEvaluator, error) {
-	legsPreserving := outputPreserving && binOpPreservesSeries(expr)
+	legNC := nc.child(binOpPreservesSeries(expr))
 
 	// first check if either side is a literal
 	leftLit, lOk := expr.SampleExpr.(*syntax.LiteralExpr)
@@ -994,7 +1029,7 @@ func newBinOpStepEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false, legsPreserving)
+		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, legNC)
 		if err != nil {
 			return nil, err
 		}
@@ -1007,7 +1042,7 @@ func newBinOpStepEvaluator(
 		)
 	}
 	if rOk {
-		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false, legsPreserving)
+		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, legNC)
 		if err != nil {
 			return nil, err
 		}
@@ -1029,7 +1064,7 @@ func newBinOpStepEvaluator(
 	// load them in parallel
 	g.Go(func() error {
 		var err error
-		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false, legsPreserving)
+		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, legNC)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
@@ -1037,7 +1072,7 @@ func newBinOpStepEvaluator(
 	})
 	g.Go(func() error {
 		var err error
-		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false, legsPreserving)
+		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, legNC)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
@@ -1462,7 +1497,7 @@ func newLabelReplaceEvaluator(
 	expr *syntax.LabelReplaceExpr,
 	q Params,
 ) (*LabelReplaceEvaluator, error) {
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false, false)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, NodeContext{})
 	if err != nil {
 		return nil, err
 	}
