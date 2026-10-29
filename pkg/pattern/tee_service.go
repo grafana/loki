@@ -502,6 +502,9 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		return
 	}
 
+	// Streams are collected first so detachWrappers can allocate wrapper
+	// storage once per request instead of once per stream.
+	toBuffer := make([]teedStream, 0, len(streams))
 	for _, stream := range streams {
 		// Skip streams with no entries.
 		if stream.Stream.EntryCount() == 0 {
@@ -534,9 +537,47 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 			teed = cloneEntries(teed)
 		}
 
-		ts.bufMtx.Lock()
-		ts.buf[tenant] = append(ts.buf[tenant], teedStream{hashKey: stream.HashKey, stream: teed, size: size})
-		ts.bufMtx.Unlock()
+		toBuffer = append(toBuffer, teedStream{hashKey: stream.HashKey, stream: teed, size: size})
+	}
+	if len(toBuffer) == 0 {
+		return
+	}
+
+	detachWrappers(toBuffer)
+
+	ts.bufMtx.Lock()
+	ts.buf[tenant] = append(ts.buf[tenant], toBuffer...)
+	ts.bufMtx.Unlock()
+}
+
+// detachWrappers copies the resource and scope wrappers of the kept streams
+// into new arrays shared only among them. Otherwise a buffered stream would
+// pin the per-request wrapper arrays, and with them the entries of streams the
+// tee skipped or dropped. Entries stay shared with the request.
+func detachWrappers(toBuffer []teedStream) {
+	var nResources, nScopes int
+	for i := range toBuffer {
+		for _, resource := range toBuffer[i].stream.ResourceLogs {
+			nResources++
+			nScopes += len(resource.ScopeLogs)
+		}
+	}
+	// Sized up front so appends never reallocate and earlier sub-slices stay valid.
+	resources := make([]logproto.ResourceLogs, 0, nResources)
+	scopes := make([]logproto.ScopeLogs, 0, nScopes)
+
+	for i := range toBuffer {
+		stream := &toBuffer[i].stream
+		resourcesStart := len(resources)
+		for _, resource := range stream.ResourceLogs {
+			scopesStart := len(scopes)
+			scopes = append(scopes, resource.ScopeLogs...)
+			// Cap the slice so an append to it reallocates instead of overwriting
+			// the next resource's scopes.
+			resource.ScopeLogs = scopes[scopesStart:len(scopes):len(scopes)]
+			resources = append(resources, resource)
+		}
+		stream.ResourceLogs = resources[resourcesStart:len(resources):len(resources)]
 	}
 }
 

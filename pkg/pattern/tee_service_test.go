@@ -483,8 +483,9 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 func TestPatternTee_UnbufferedStreamsAreNotRetained(t *testing.T) {
 	// A buffered stream must not keep the other streams of its request alive:
 	// their entries are not counted against MaxBufferedBytes, yet they would
-	// stay live until the tee flushes. That happens if FromPushRequest backs
-	// the streams' resources and scopes with shared per-request arrays.
+	// stay live until the tee flushes. FromPushRequest backs the streams'
+	// resources and scopes with shared per-request arrays, so the tee must
+	// detach the streams it buffers from them.
 	for _, tc := range []struct {
 		name string
 		// dropOther passes both streams to Duplicate and sets the limit so
