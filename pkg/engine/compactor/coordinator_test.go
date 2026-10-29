@@ -1169,7 +1169,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 	t.Run("index", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := overlappingIndexesBucket(ctx, t, window, "acme",
-			"indexes/aa/src-0", "indexes/bb/src-1", "indexes/cc/src-2")
+			"indexes/aa/src-0", "indexes/bb/src-1", "indexes/cc/src-2", "indexes/dd/src-3")
 
 		runner := &fakeRunner{}
 		defer runner.assertUniqueObjects(t)
@@ -1180,12 +1180,38 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 		require.NoError(t, err)
 		stats, err := c.compactTenantIndexes(ctx, "acme", window, indexes)
 		require.NoError(t, err)
-		require.Equal(t, 2, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks")
+		require.Equal(t, 2, stats.dispatched, "4 overlapping runs with K=2 must split into 2 tasks")
 		require.Equal(t, 2, stats.added)
 
 		dispatches := runner.snapshot()
 		require.Len(t, dispatches, 2)
-		require.Equal(t, 3, countPlannedObjects(t, dispatches))
+		require.Equal(t, 4, countPlannedObjects(t, dispatches))
+	})
+
+	t.Run("index leaves an index alone in its task in the ToC without merging it", func(t *testing.T) {
+		ctx := context.Background()
+		sources := []string{"indexes/aa/src-0", "indexes/bb/src-1", "indexes/cc/src-2"}
+		bucket := overlappingIndexesBucket(ctx, t, window, "acme", sources...)
+
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
+		require.NoError(t, err)
+		stats, err := c.compactTenantIndexes(ctx, "acme", window, indexes)
+		require.NoError(t, err)
+		require.Equal(t, compactionStats{removed: 2, added: 1, dispatched: 1}, stats)
+
+		dispatches := runner.snapshot()
+		require.Len(t, dispatches, 1)
+		merged := planObjectPaths(t, dispatches[0].plan)
+		require.Len(t, merged, 2)
+
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		require.ElementsMatch(t, merged, swaps[0].oldPaths)
+		requireEntriesMatchCalls(t, dispatches, swaps[0].newEntries)
 	})
 }
 
@@ -1325,7 +1351,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 	}
 
 	indexMerge := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		bucket := overlappingIndexesBucket(ctx, t, window, "acme", "indexes/a", "indexes/b", "indexes/c")
+		bucket := overlappingIndexesBucket(ctx, t, window, "acme", "indexes/a", "indexes/b", "indexes/c", "indexes/d")
 		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
 		require.NoError(t, err)
 		return bucket, func(c *coordinator) (compactionStats, error) {

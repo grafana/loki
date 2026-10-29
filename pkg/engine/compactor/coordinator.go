@@ -392,11 +392,7 @@ func (c *coordinator) mergeLogOutputIndexes(
 		if err != nil {
 			return nil, 0, fmt.Errorf("discover index section bounds: %w", err)
 		}
-		// A task that reads one index would copy it unchanged, so its index
-		// passes to the next round unchanged.
-		tasks := slices.DeleteFunc(v2.Plan(v2.CalculateRuns(sections, compareIndexSortKey), tenant, c.cfg.MaxRunsPerTask), func(task *compactionv2pb.TaskSpec) bool {
-			return len(taskObjectPaths([]*compactionv2pb.TaskSpec{task})) < 2
-		})
+		tasks := c.planIndexMerges(v2.CalculateRuns(sections, compareIndexSortKey), tenant)
 		if len(tasks) == 0 {
 			break
 		}
@@ -425,6 +421,15 @@ func (c *coordinator) mergeLogOutputIndexes(
 		result[i] = metastore.TableOfContentsEntry{Path: index.Path, StartTime: index.Start.UTC(), EndTime: index.End.UTC()}
 	}
 	return result, dispatched, nil
+}
+
+// planIndexMerges groups runs into IndexMerge tasks of at most MaxRunsPerTask
+// runs. It drops each task that reads only one index, because the task would
+// copy that index unchanged. The dropped index stays where it is.
+func (c *coordinator) planIndexMerges(runs []v2.Run, tenant string) []*compactionv2pb.TaskSpec {
+	return slices.DeleteFunc(v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask), func(task *compactionv2pb.TaskSpec) bool {
+		return len(taskObjectPaths([]*compactionv2pb.TaskSpec{task})) < 2
+	})
 }
 
 // runIndexMerges dispatches one IndexMerge task for each of tasks and returns
@@ -578,7 +583,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		return compactionStats{}, nil
 	}
 
-	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask)
+	tasks := c.planIndexMerges(runs, tenant)
 	if len(tasks) == 0 {
 		return compactionStats{}, fmt.Errorf("no index merge tasks to execute")
 	}
