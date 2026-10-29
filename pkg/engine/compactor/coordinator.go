@@ -197,7 +197,8 @@ func newLayoutKey(layout streams.Layout) layoutKey {
 	}
 }
 
-// replaceLogIndex swaps sourceIndex for newEntries.
+// replaceLogIndex swaps sourceIndex for newEntries, which hold one entry per
+// dispatched task.
 func (c *coordinator) replaceLogIndex(
 	ctx context.Context,
 	tenant string,
@@ -348,10 +349,6 @@ func (c *coordinator) executeLogCompaction(
 	if err := assignArtifactPaths(entries, artifacts); err != nil {
 		return compactionStats{}, fmt.Errorf("build log ToC entries: %w", err)
 	}
-	entries, indexMerges, err := c.mergeLogOutputIndexes(ctx, tenant, plan.window, entries)
-	if err != nil {
-		return compactionStats{}, fmt.Errorf("merge log compaction output indexes: %w", err)
-	}
 
 	stats, err := c.replaceLogIndex(ctx, tenant, plan.window, plan.sourceIndex, entries)
 	if err != nil {
@@ -360,78 +357,9 @@ func (c *coordinator) executeLogCompaction(
 	if stats.removed == 0 {
 		level.Debug(c.logger).Log("msg", "log-compaction step for index was a no-op", "tenant", tenant, "entry", plan.sourceIndex.Path)
 	} else {
-		stats.dispatched = len(plan.tasks) + indexMerges
 		level.Debug(c.logger).Log("msg", "log-compaction step completed for index", "tenant", tenant, "entry", plan.sourceIndex.Path, "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	}
 	return stats, nil
-}
-
-// mergeLogOutputIndexes merges the output indexes of one log compaction into
-// one index, so the ToC swap adds a single entry. The intermediate indexes
-// never reach the ToC and stay in storage as orphans.
-//
-// Each round merges at most MaxRunsPerTask runs per IndexMerge task, and
-// repeats until one index is left. This bounds the memory of each task. An
-// index that is alone in its task, or has no postings sections for tenant,
-// skips the round and stays in the result.
-//
-// mergeLogOutputIndexes also returns the number of IndexMerge tasks it ran.
-func (c *coordinator) mergeLogOutputIndexes(
-	ctx context.Context,
-	tenant string,
-	window time.Time,
-	entries []metastore.TableOfContentsEntry,
-) ([]metastore.TableOfContentsEntry, int, error) {
-	var dispatched int
-	for len(entries) > 1 {
-		inputs := make([]indexEntry, len(entries))
-		inputsByPath := make(map[string]indexEntry, len(entries))
-		for i, entry := range entries {
-			inputs[i] = indexEntry{Path: entry.Path, Start: entry.StartTime, End: entry.EndTime}
-			inputsByPath[entry.Path] = inputs[i]
-		}
-
-		sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, inputs)
-		if err != nil {
-			return nil, 0, fmt.Errorf("discover index section bounds: %w", err)
-		}
-		// A task that reads one index would only rewrite it, so its index
-		// passes to the next round unchanged.
-		tasks := slices.DeleteFunc(v2.Plan(v2.CalculateRuns(sections, compareIndexSortKey), tenant, c.cfg.MaxRunsPerTask), func(task *compactionv2pb.TaskSpec) bool {
-			return len(taskObjectPaths([]*compactionv2pb.TaskSpec{task})) < 2
-		})
-		if len(tasks) == 0 {
-			return entries, dispatched, nil
-		}
-		mergedPaths := taskObjectPaths(tasks)
-
-		plans := make([]*physical.Plan, len(tasks))
-		merged := make([]metastore.TableOfContentsEntry, len(tasks))
-		for i, task := range tasks {
-			start, end, err := indexTaskBounds(task, inputsByPath)
-			if err != nil {
-				return nil, 0, fmt.Errorf("task %d: %w", i, err)
-			}
-			plans[i] = buildIndexMergePlan(tenant, window, task)
-			merged[i] = metastore.TableOfContentsEntry{StartTime: start.UTC(), EndTime: end.UTC()}
-		}
-		artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
-		if err != nil {
-			return nil, 0, fmt.Errorf("execute index merge tasks: %w", err)
-		}
-		dispatched += len(tasks)
-		if err := assignArtifactPaths(merged, artifacts); err != nil {
-			return nil, 0, err
-		}
-
-		for _, entry := range entries {
-			if _, ok := slices.BinarySearch(mergedPaths, entry.Path); !ok {
-				merged = append(merged, entry)
-			}
-		}
-		entries = merged
-	}
-	return entries, dispatched, nil
 }
 
 // existsInToC reports whether the latest ToC of the tenant's window lists
