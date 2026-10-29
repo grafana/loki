@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/verification"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -171,6 +172,34 @@ func TestHandleDebug_JSONLabelFilter(t *testing.T) {
 	require.Equal(t, "dashboardUID", resp.Label)
 	require.Equal(t, needle, resp.Needle)
 	require.True(t, resp.Summary.Correct)
+}
+
+func TestBuildDebugSamples_UsesSampleLookback(t *testing.T) {
+	hq, err := buildDebugHintQuery(debugRequest{
+		selector:  `{job="api"}`,
+		needle:    "9fA81cD2Ef0077aa",
+		queryType: hintQueryTypeMetricRange,
+	})
+	require.NoError(t, err)
+
+	step := time.Date(2026, 2, 26, 2, 5, 0, 0, time.UTC)
+	hints := []hintprovider.HintTimeRange{{
+		Start: step.Add(-10 * time.Minute),
+		End:   step.Add(-5 * time.Minute),
+	}}
+	samples := []verification.MetricSample{
+		{Time: step.Add(-5 * time.Minute), Value: 1},
+		{Time: step, Value: 1},
+		{Time: step.Add(-5 * time.Minute), Value: 0},
+	}
+
+	got := buildDebugSamples(hq.expr, samples, hints)
+	require.True(t, got[0].Covered)
+	require.False(t, got[1].Covered)
+	require.False(t, got[2].Covered)
+
+	ranges := buildDebugMetricHintRanges(hq.expr, samples, hints)
+	require.Equal(t, 1, ranges[0].EntryCount)
 }
 
 func TestBuildDebugHintQuery_MetricRange(t *testing.T) {

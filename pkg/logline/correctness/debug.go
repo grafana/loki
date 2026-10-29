@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/querybounds"
@@ -27,9 +28,16 @@ type debugResponse struct {
 	Needle             string           `json:"needle"`
 	OverlappingIndexes int              `json:"overlapping_indexes"`
 	HintDuration       string           `json:"hint_duration"`
-	Entries            []debugEntry     `json:"entries"`
+	Entries            []debugEntry     `json:"entries,omitempty"`
+	Samples            []debugSample    `json:"samples,omitempty"`
 	HintRanges         []debugHintRange `json:"hint_ranges"`
 	Summary            debugSummary     `json:"summary"`
+}
+
+type debugSample struct {
+	Time    time.Time `json:"time"`
+	Value   float64   `json:"value"`
+	Covered bool      `json:"covered"`
 }
 
 type debugEntry struct {
@@ -129,8 +137,13 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		Needle:             req.needle,
 		OverlappingIndexes: len(overlapping),
 		HintDuration:       hintDuration.String(),
-		Entries:            buildDebugEntries(res.entries, hintRanges),
-		HintRanges:         buildDebugHintRanges(res.entries, hintRanges),
+	}
+	if hq.queryType == hintQueryTypeMetricRange {
+		resp.Samples = buildDebugSamples(hq.expr, res.samples, hintRanges)
+		resp.HintRanges = buildDebugMetricHintRanges(hq.expr, res.samples, hintRanges)
+	} else {
+		resp.Entries = buildDebugEntries(res.entries, hintRanges)
+		resp.HintRanges = buildDebugHintRanges(res.entries, hintRanges)
 	}
 
 	vr := res.verify(hintRanges)
@@ -265,6 +278,34 @@ func buildDebugHintRanges(entries []logproto.Entry, hintRanges []hintprovider.Hi
 			End:        hintRange.End,
 			Source:     hintRange.Source,
 			EntryCount: entryCount,
+		})
+	}
+	return respRanges
+}
+
+func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugSample {
+	out := make([]debugSample, 0, len(samples))
+	for _, sample := range samples {
+		report := verification.VerifySamples(expr, hintRanges, []verification.MetricSample{sample}, time.Time{})
+		out = append(out, debugSample{
+			Time:    sample.Time,
+			Value:   sample.Value,
+			Covered: report.CoveredEntries == 1,
+		})
+	}
+	return out
+}
+
+func buildDebugMetricHintRanges(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange) []debugHintRange {
+	respRanges := make([]debugHintRange, 0, len(hintRanges))
+	for i, hintRange := range hintRanges {
+		report := verification.VerifySamples(expr, []hintprovider.HintTimeRange{hintRange}, samples, time.Time{})
+		respRanges = append(respRanges, debugHintRange{
+			Index:      i,
+			Start:      hintRange.Start,
+			End:        hintRange.End,
+			Source:     hintRange.Source,
+			EntryCount: report.CoveredEntries,
 		})
 	}
 	return respRanges
