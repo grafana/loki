@@ -614,6 +614,7 @@ type LogfmtExpressionParser struct {
 	dec         *logfmt.Decoder
 	keys        internedStringSet
 	strict      bool
+	renames     stageRenames
 
 	// origKeys maps the identifier of each expression to the key that it reads from the line.
 	origKeys map[string]string
@@ -651,17 +652,14 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 	}, nil
 }
 
-// wantsOtherName reports whether a name of an expression other than current may still be wanted: the
-// name, or its renamed form when a stream label or structured metadata holds it, passes the hints. A
-// renamed name that something extracted, or that a label holds, is done, because a renamed key never
-// overwrites a value. Any other name stays wanted, because a key of this line overwrites its value.
-// The parser stops reading a line when this is false.
+// wantsOtherName reports whether a name of an expression other than current may still be written: the
+// name, or its renamed form when a stream label or structured metadata holds it, passes the hints and
+// the first-writer rule. The parser stops reading a line when this is false.
 func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current string) bool {
 	// The common query has one expression, so there is no other name.
 	if len(l.expressions) == 1 {
 		return false
 	}
-	hints := lbs.ParserLabelHints()
 	for id := range l.expressions {
 		if id == current {
 			continue
@@ -671,10 +669,7 @@ func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current stri
 		if renamed {
 			name = id + DuplicateSuffix
 		}
-		if renamed && (hints.Extracted(name) || lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel)) {
-			continue
-		}
-		if hints.ShouldExtract(name) {
+		if lbs.ParserLabelHints().ShouldExtract(name) && l.renames.shouldSet(lbs, name, renamed) {
 			return true
 		}
 	}
@@ -691,6 +686,8 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
+
+	l.renames.reset()
 
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
@@ -725,7 +722,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			}
 			return sanitized, true
 		})
-		if !ok || (!alwaysExtract(key) && lbs.ParserLabelHints().Extracted(key)) {
+		if !ok {
 			continue
 		}
 
@@ -742,21 +739,32 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 
 		if _, ok := l.expressions[key]; ok {
+			id := key
+			renamed := false
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-				id := key
 				key = key + DuplicateSuffix
-				if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) || lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
-					// A label has the final name, or another key of this line or an earlier stage
-					// wrote it, or the query does not need it. The next key of the line may still be
-					// needed, so stop only when no other name is left to read.
+				renamed = true
+				if !lbs.ParserLabelHints().ShouldExtract(key) {
+					// The query does not need the renamed name. The next key of the line may still
+					// be needed, so stop only when no other name is left to read.
 					if !l.wantsOtherName(lbs, id) {
 						break
 					}
 					continue
 				}
 			}
+			// Like the other parsers, the first writer of a name wins: a key that a label, an
+			// earlier stage, or an earlier key of this line already holds is skipped. The next key
+			// of the line may still be needed.
+			if !l.renames.shouldSet(lbs, key, renamed) {
+				if renamed && !l.wantsOtherName(lbs, id) {
+					break
+				}
+				continue
+			}
 
 			lbs.Set(ParsedLabel, key, string(val))
+			l.renames.record(key, renamed)
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
@@ -794,9 +802,10 @@ func (l *LogfmtExpressionParser) Hints() StageHints {
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
-	ids   []string
-	paths [][]string
-	keys  internedStringSet
+	ids     []string
+	paths   [][]string
+	keys    internedStringSet
+	renames stageRenames
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
@@ -849,6 +858,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		return line, true
 	}
 
+	j.renames.reset()
 	var matches int
 	jsonparser.EachKey(line, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
 		if err != nil {
@@ -861,14 +871,18 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return identifier, true
 		})
 
+		renamed := false
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 			key = key + DuplicateSuffix
-			// A renamed key must not overwrite a label that has the final name, or a value that
-			// is already extracted under it, e.g. by another expression that asks for the literal
-			// key (mirrors LogfmtExpressionParser).
-			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) || lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
+			renamed = true
+			if !lbs.ParserLabelHints().ShouldExtract(key) {
 				return
 			}
+		}
+		// Like the other parsers, the first writer of a name wins (mirrors
+		// LogfmtExpressionParser).
+		if !j.renames.shouldSet(lbs, key, renamed) {
+			return
 		}
 
 		switch typ {
@@ -879,6 +893,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		default:
 			lbs.Set(ParsedLabel, key, unescapeJSONString(data))
 		}
+		j.renames.record(key, renamed)
 
 		matches++
 	}, j.paths...)

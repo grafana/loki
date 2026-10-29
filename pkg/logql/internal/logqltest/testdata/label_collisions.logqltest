@@ -63,6 +63,22 @@ eval select from 0 to 30s forward {app="d5"} | json p="foo"
 eval select from 0 to 30s forward {app="d5"} | json | drop foo
   {app="d5"} `{"foo":"p"}` @ 10s [metadata foo_extracted="m"]
 
+# Two parsers in a row, where the second stage is an expression form. `line_format` swaps the line
+# between the two stages. The first stage to write a name keeps it, so the second stage does not
+# overwrite `foo=j1`.
+clear
+load
+  {app="e7"}             `{"foo":"j1","next":"foo=f2"}`  @ 10s # the second stage is `logfmt foo`
+  {app="e8"}             `{"foo":"j1"}`                  @ 10s # the second stage is `json foo`
+  {app="noise", foo="l"} `{"foo":"noise","next":"foo=noise"}` @ 10s
+
+# `logfmt foo` as the second stage does not overwrite the value of the first stage either.
+eval select from 0 to 30s forward {app="e7"} | json | line_format "{{.next}}" | logfmt foo
+  {app="e7"} "foo=f2" @ 10s [parsed foo="j1" next="foo=f2"]
+# `json foo` as the second stage does not overwrite it either.
+eval select from 0 to 30s forward {app="e8"} | json | line_format "{\"foo\":\"j2\"}" | json foo
+  {app="e8"} `{"foo":"j2"}` @ 10s [parsed foo="j1"]
+
 # A line has the key `foo` and a literal `foo_extracted` key, and the stream has the label `foo`.
 # Both keys target `foo_extracted`. The literal key wins, and the key order in the line does not
 # matter. JSON does not define a key order.
@@ -172,3 +188,17 @@ eval instant at 60s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m
   {a="1", b="2"} 1
 eval range from 40s to 60s step 20s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m])) # overlapping
   {a="1", b="2"} 1 1
+
+# A duplicate key in one line, in the expression forms. The first value wins.
+clear
+load
+  {app="h3"}    "foo=a foo=b"           @ 10s # the expression form `logfmt foo`
+  {app="h4"}    `{"foo":"a","foo":"b"}` @ 10s # the expression form `json foo`
+  {app="noise"} `{"foo":"x"}`           @ 10s
+
+# The expression form of logfmt keeps the first value.
+eval select from 0 to 30s forward {app="h3"} | logfmt foo
+  {app="h3"} "foo=a foo=b" @ 10s [parsed foo="a"]
+# The expression form of JSON keeps the first value.
+eval select from 0 to 30s forward {app="h4"} | json foo
+  {app="h4"} `{"foo":"a","foo":"b"}` @ 10s [parsed foo="a"]

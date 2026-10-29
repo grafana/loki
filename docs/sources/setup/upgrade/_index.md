@@ -42,6 +42,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 Loki renames a parsed key to `<name>_extracted` when a stream label or a structured metadata key already has its name. Loki now applies this rule in the same way in all parsers, and some queries return different labels:
 
 - A parsed key that is renamed to `<name>_extracted` no longer replaces a stream label or a structured metadata value that already has that name. Loki drops the parsed value. If a stream label, a structured metadata key, and a parsed key all have the same name, `<name>_extracted` now holds the structured metadata value instead of the parsed value. To keep the parsed value, use `| drop <name>` or `| drop <name>_extracted` before the parser, or give the extracted label another name, for example `| logfmt p="foo"`.
+- The `json` and `logfmt` parsers with label extraction expressions, for example `| logfmt foo, bar`, now keep the first value of a name, like the other parsers. They no longer overwrite a value that an earlier parser stage extracted with the value of the same key in the log line. For a key that is repeated in one log line, `logfmt` with expressions keeps the first value instead of the last.
 
 For the rules, refer to [Label name collisions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#label-name-collisions).
 
