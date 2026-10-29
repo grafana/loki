@@ -376,3 +376,79 @@ func TestMSDLSDSorterSmallBudget(t *testing.T) {
 		})
 	}
 }
+
+// pext is a bit-by-bit reference for PEXT: the bits of u selected by mask,
+// packed towards bit 0 in order.
+func pext(u, mask uint64) uint64 {
+	var out uint64
+	o := 0
+	for b := range 64 {
+		if mask>>b&1 == 1 {
+			out |= (u >> b & 1) << o
+			o++
+		}
+	}
+	return out
+}
+
+func TestVarmaskPlanDigits(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	for _, tc := range []struct {
+		name       string
+		vary       uint64
+		ok         bool
+		wantWidths []uint
+	}{
+		{"uppercase_text", 0x7f7f7f7f7f7f << 16, true, []uint{14, 14, 14}},
+		{"full_48bit", 0xffffffffffff << 16, true, []uint{16, 16, 16}},
+		{"one_bit", 1 << 40, true, []uint{1}},
+		{"seventeen_bits", 0x1ffff << 20, true, []uint{8, 9}},
+		{"two_bits_per_byte", 0x030303030303 << 16, false, nil},
+		{"low_bytes_only", 0x00000000ff7f << 16, true, []uint{15}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newVarmaskSorter(16)().(*varmaskSorter)
+			digits, ok := s.planDigits(tc.vary)
+			require.Equal(t, tc.ok, ok)
+			if !ok {
+				return
+			}
+			var widths []uint
+			for _, d := range digits {
+				widths = append(widths, d.width)
+				require.LessOrEqual(t, d.runs, varmaskMaxRuns)
+			}
+			require.Equal(t, tc.wantWidths, widths)
+			for range 1000 {
+				u := rng.Uint64() &^ 0xffff
+				var got uint64
+				off := uint(0)
+				for i := range digits {
+					got |= digits[i].extract4(u) << off
+					if digits[i].runs <= 2 {
+						require.Equal(t, digits[i].extract4(u), digits[i].extract2(u))
+					}
+					off += digits[i].width
+				}
+				require.Equal(t, pext(u, tc.vary), got)
+			}
+		})
+	}
+}
+
+// TestVarmaskSorterPaths checks that the property inputs reach both the
+// varying-bit plan and the fallback for masks with too many runs.
+func TestVarmaskSorterPaths(t *testing.T) {
+	s := newVarmaskSorter(16)().(*varmaskSorter)
+	for _, in := range sorterInputs() {
+		rng := rand.New(rand.NewSource(3))
+		keys, docs := in.gen(rng, 5000)
+		rk, rd := referenceSort(keys, docs)
+		want := canonicalPairs(rk, rd)
+		m := sortAndDedupeGroups(rk, rd)
+		checkSorter(t, s, keys, docs, want, joinSoA(rk[:m], rd[:m]))
+	}
+	t.Log(s.stats())
+	require.Greater(t, s.fallbacks, 0)
+	require.Greater(t, s.passes, 0)
+}
