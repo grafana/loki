@@ -97,6 +97,30 @@ overrides:
 	require.Equal(t, "invalid override for tenant 29: retention period must be >= 24h was 5h", err.Error())
 }
 
+func Test_EmptyOverridesRemoved(t *testing.T) {
+	flagset := flag.NewFlagSet("", flag.PanicOnError)
+	var defaults validation.Limits
+	defaults.RegisterFlags(flagset)
+	require.NoError(t, flagset.Parse(nil))
+	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
+
+	cfg, err := loadRuntimeConfig(strings.NewReader(`
+overrides:
+    "queries":
+    "29":
+        ingestion_rate_mb: 120
+`))
+	require.NoError(t, err)
+
+	values, ok := cfg.(*runtimeConfigValues)
+	require.True(t, ok)
+
+	// An empty override must not survive loading: it crashes components that iterate tenant limits.
+	require.NotContains(t, values.TenantLimits, "queries")
+	require.NotNil(t, values.TenantLimits["29"])
+	require.Equal(t, 120.0, values.TenantLimits["29"].IngestionRateMB)
+}
+
 func Test_DefaultConfig(t *testing.T) {
 	runtimeGetter := newTestRuntimeconfig(t,
 		`
