@@ -22,7 +22,7 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
-	github.com/aliyun/credentials-go v1.4.13
+	github.com/aliyun/credentials-go v1.4.14
 	github.com/apache/arrow-go/v18 v18.7.0
 	github.com/aws/aws-sdk-go-v2 v1.47.4
 	github.com/aws/aws-sdk-go-v2/config v1.33.10
