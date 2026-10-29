@@ -36,10 +36,14 @@ import (
 )
 
 // sortSchemaOverrides is a logsobj.TenantOverrides stub returning a fixed sort
-// schema (ordered FQN sort keys) for every tenant.
+// schema (ordered FQN sort keys) and the default shard layout for every tenant.
 type sortSchemaOverrides []string
 
 func (s sortSchemaOverrides) SortSchemaLabels(_ string) []string { return s }
+
+func (s sortSchemaOverrides) DataObjShardLayout(_ string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
+}
 
 // testStream is a labeled set of entries appended to a source log object.
 type testStream struct {
@@ -1817,6 +1821,37 @@ func TestDoLogObjectMerge_LegacySources(t *testing.T) {
 		arts, err := merge(t, dataBucket, "legacy-cluster-a", "legacy-app")
 		require.ErrorContains(t, err, "different stream layout")
 		require.Nil(t, arts)
+	})
+}
+
+func TestLogObjectWriter_StartNewObject(t *testing.T) {
+	t.Run("builds objects with the layout of the sources, including a non-default shard layout", func(t *testing.T) {
+		fourBuckets, err := streams.ShardLayoutFromBuckets(4)
+		require.NoError(t, err)
+		layout := streams.NewLayout(fourBuckets, []string{"label:cluster"})
+
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		w := &logObjectWriter{c: c, layout: layout, builderMetrics: c.builderMetrics}
+		require.NoError(t, w.startNewObject())
+
+		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		require.NoError(t, w.logsBuilder.Append("T", logproto.Stream{
+			Labels:  `{cluster="c1"}`,
+			Entries: []push.Entry{{Timestamp: now, Line: "line"}},
+		}, now))
+		obj, closer, err := w.logsBuilder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			opened, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			got, ok, err := opened.Layout()
+			require.NoError(t, err)
+			require.True(t, ok, "the streams section must record a layout")
+			require.Equal(t, layout, got)
+		}
 	})
 }
 

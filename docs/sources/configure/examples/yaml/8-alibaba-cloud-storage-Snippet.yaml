@@ -13,6 +13,7 @@ schema_config:
         period: 24h
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
