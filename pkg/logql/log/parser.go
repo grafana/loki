@@ -612,8 +612,6 @@ type LogfmtExpressionParser struct {
 
 	// origKeys maps the identifier of each expression to the key that it reads from the line.
 	origKeys map[string]string
-	// written holds the label names that the current line wrote.
-	written map[string]struct{}
 }
 
 func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (*LogfmtExpressionParser, error) {
@@ -645,12 +643,11 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
 		strict:      strict,
-		written:     make(map[string]struct{}, len(paths)),
 	}, nil
 }
 
-// wantsOtherName reports whether a name of an expression other than current that the line has not
-// written yet may still be wanted: the name, or its renamed form when a stream label or structured
+// wantsOtherName reports whether a name of an expression other than current that nothing has
+// extracted yet may still be wanted: the name, or its renamed form when a stream label or structured
 // metadata holds it, passes the hints. The parser stops reading a line when this is false.
 func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current string) bool {
 	// The common query has one expression, so there is no other name.
@@ -667,10 +664,7 @@ func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current stri
 		if renamed {
 			name = id + DuplicateSuffix
 		}
-		if _, ok := l.written[name]; ok {
-			continue
-		}
-		if renamed && hints.Extracted(name) {
+		if hints.Extracted(name) {
 			continue
 		}
 		if hints.ShouldExtract(name) {
@@ -690,8 +684,6 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
-
-	clear(l.written)
 
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
@@ -757,7 +749,6 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			}
 
 			lbs.Set(ParsedLabel, key, string(val))
-			l.written[key] = struct{}{}
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
@@ -768,9 +759,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// Every name of an expression gets a label, empty when the line has no such key. This happens
 	// after the loop: an empty label that the loop had set in advance would count as extracted, so
 	// it would block a renamed key and make AllRequiredExtracted stop the loop too early. A name
-	// that a stream label or structured metadata holds gets no label.
+	// that a stream label or structured metadata holds, or that a parser stage already extracted,
+	// gets no label.
 	for id := range l.expressions {
-		if _, ok := l.written[id]; ok {
+		if lbs.ParserLabelHints().Extracted(id) {
 			continue
 		}
 		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
