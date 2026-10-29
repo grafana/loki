@@ -32,7 +32,7 @@ func (f *Float64) Add(delta float64) float64 {
 	for {
 		old := f.Load()
 		new := old + delta
-		if f.CAS(old, new) {
+		if f.CompareAndSwap(old, new) {
 			return new
 		}
 	}

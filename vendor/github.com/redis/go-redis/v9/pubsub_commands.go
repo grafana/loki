@@ -20,8 +20,15 @@ type PubSubCmdable interface {
 func (c cmdable) Publish(ctx context.Context, channel string, message interface{}) *IntCmd {
 	cmd := NewIntCmd(ctx, "publish", channel, message)
 	_ = c(ctx, cmd)
-	// Record PubSub message sent (if command succeeded)
-	if cmd.Err() == nil {
+	// Record PubSub message sent (if command succeeded). Gated on the result
+	// being readable WITHOUT blocking: on the deferred autopipeline face the
+	// call above only enqueues, so reading the outcome here would await the
+	// batch and turn a fire-and-forget publish into a blocking call — i.e.
+	// enabling telemetry would change the async call shape (review finding by
+	// codex on #3942). The metric is therefore skipped for a submission that
+	// has not executed yet; recording it from the execution path instead is a
+	// follow-up in the OTel wiring, not something the command wrapper can do.
+	if otel.Enabled() && cmd.resultReady() && cmd.rawErr() == nil {
 		otel.RecordPubSubMessage(ctx, nil, "sent", channel, false)
 	}
 	return cmd
@@ -30,8 +37,9 @@ func (c cmdable) Publish(ctx context.Context, channel string, message interface{
 func (c cmdable) SPublish(ctx context.Context, channel string, message interface{}) *IntCmd {
 	cmd := NewIntCmd(ctx, "spublish", channel, message)
 	_ = c(ctx, cmd)
-	// Record PubSub message sent (if command succeeded)
-	if cmd.Err() == nil {
+	// Record PubSub message sent (if command succeeded). See Publish for why
+	// this is gated on the result being readable without blocking.
+	if otel.Enabled() && cmd.resultReady() && cmd.rawErr() == nil {
 		otel.RecordPubSubMessage(ctx, nil, "sent", channel, true)
 	}
 	return cmd
