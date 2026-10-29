@@ -651,10 +651,11 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 	}, nil
 }
 
-// wantsOtherName reports whether a name of an expression other than current that nothing has
-// extracted yet may still be wanted: the name, or its renamed form when a stream label or structured
-// metadata holds it, passes the hints and no label has the renamed name. The parser stops reading a
-// line when this is false.
+// wantsOtherName reports whether a name of an expression other than current may still be wanted: the
+// name, or its renamed form when a stream label or structured metadata holds it, passes the hints. A
+// renamed name that something extracted, or that a label holds, is done, because a renamed key never
+// overwrites a value. Any other name stays wanted, because a key of this line overwrites its value.
+// The parser stops reading a line when this is false.
 func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current string) bool {
 	// The common query has one expression, so there is no other name.
 	if len(l.expressions) == 1 {
@@ -670,7 +671,7 @@ func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current stri
 		if renamed {
 			name = id + DuplicateSuffix
 		}
-		if hints.Extracted(name) || (renamed && (lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel))) {
+		if renamed && (hints.Extracted(name) || lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel)) {
 			continue
 		}
 		if hints.ShouldExtract(name) {
