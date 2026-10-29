@@ -670,7 +670,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
-		req.SectionsRequest.ShardBucketRange,
+		req.SectionsRequest.StreamHashRange,
 	)
 	return IndexSectionsReaderResponse{Reader: &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics}}, nil
 }

@@ -337,8 +337,8 @@ func dropStreamsOutsideRange(byID map[int64]streams.Stream, layout streams.Layou
 // error if two sources have different layouts, because their stream IDs and
 // row orders are not comparable.
 //
-// sourcesLayout also returns an error for a non-default shard layout, because
-// readers assume the default shard layout for every object.
+// sourcesLayout also returns an error if the shared shard layout is not the
+// default one.
 func sourcesLayout(sources []*logSource) (streams.Layout, error) {
 	layout := sources[0].layout
 	for _, src := range sources[1:] {

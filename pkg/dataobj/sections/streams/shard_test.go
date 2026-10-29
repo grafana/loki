@@ -1,6 +1,7 @@
 package streams
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -42,6 +43,74 @@ func TestShardLayout(t *testing.T) {
 		require.Equal(t, "fake-schema-key", key.SchemaKey)
 		require.Equal(t, hash, key.Hash)
 		require.Equal(t, ls, key.Labels)
+	})
+}
+
+func TestShardLayout_BucketRange(t *testing.T) {
+	for _, buckets := range []uint32{1, 2, 8, 32, 64, 1 << maxShardBits} {
+		t.Run(fmt.Sprintf("maps the whole hash space to every bucket of a layout of %d buckets", buckets), func(t *testing.T) {
+			layout, err := ShardLayoutFromBuckets(buckets)
+			require.NoError(t, err)
+
+			from, to := layout.BucketRange(HashRange{From: 0, To: math.MaxUint64})
+			require.Equal(t, uint32(0), from)
+			require.Equal(t, buckets-1, to)
+		})
+	}
+
+	t.Run("maps a range inside one bucket to that bucket", func(t *testing.T) {
+		from, to := DefaultShardLayout().BucketRange(HashRange{From: 1<<59 + 5, To: 1<<59 + 100})
+		require.Equal(t, uint32(1), from)
+		require.Equal(t, uint32(1), to)
+	})
+
+	t.Run("maps a range that ends on the first hash of the next bucket to both buckets", func(t *testing.T) {
+		from, to := DefaultShardLayout().BucketRange(HashRange{From: 1 << 59, To: 2 << 59})
+		require.Equal(t, uint32(1), from)
+		require.Equal(t, uint32(2), to)
+	})
+
+	t.Run("maps a range that ends on the last hash of a bucket to that bucket", func(t *testing.T) {
+		from, to := DefaultShardLayout().BucketRange(HashRange{From: 1 << 59, To: 2<<59 - 1})
+		require.Equal(t, uint32(1), from)
+		require.Equal(t, uint32(1), to)
+	})
+
+	t.Run("maps the hashes of shard 3 of 64 to buckets 6 and 7 of a layout of 128 buckets", func(t *testing.T) {
+		layout, err := ShardLayoutFromBuckets(128)
+		require.NoError(t, err)
+
+		from, to := layout.BucketRange(HashRange{From: 3 << 58, To: 4<<58 - 1})
+		require.Equal(t, uint32(6), from)
+		require.Equal(t, uint32(7), to)
+	})
+
+	t.Run("maps a range to one bucket in the zero layout", func(t *testing.T) {
+		from, to := ShardLayout{}.BucketRange(HashRange{From: 3 << 58, To: 4<<58 - 1})
+		require.Equal(t, uint32(0), from)
+		require.Equal(t, uint32(0), to)
+	})
+}
+
+func TestShardLayout_CoversAllShardBuckets(t *testing.T) {
+	for _, buckets := range []uint32{1, 2, 32, 1 << maxShardBits} {
+		layout := MustShardLayoutFromBuckets(buckets)
+
+		t.Run(fmt.Sprintf("is true for the range from the first to the last bucket of a layout of %d buckets", buckets), func(t *testing.T) {
+			require.True(t, layout.CoversAllShardBuckets(0, buckets-1))
+		})
+	}
+
+	t.Run("is false when the range starts after the first bucket", func(t *testing.T) {
+		require.False(t, DefaultShardLayout().CoversAllShardBuckets(1, DefaultShardLayout().Buckets()-1))
+	})
+
+	t.Run("is false when the range ends before the last bucket", func(t *testing.T) {
+		require.False(t, DefaultShardLayout().CoversAllShardBuckets(0, DefaultShardLayout().Buckets()-2))
+	})
+
+	t.Run("is false when the range ends past the last bucket", func(t *testing.T) {
+		require.False(t, DefaultShardLayout().CoversAllShardBuckets(0, DefaultShardLayout().Buckets()))
 	})
 }
 
