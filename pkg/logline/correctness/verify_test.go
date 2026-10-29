@@ -92,7 +92,7 @@ func TestVerifyHints_EmptyHints(t *testing.T) {
 }
 
 func TestVerifyMetricHints_EmptyResults(t *testing.T) {
-	report := verifyMetricHints(metricTestExpr(t), nil, nil)
+	report := verifyMetricHints(metricTestExpr(t), nil, nil, time.Time{})
 	require.Equal(t, 0, report.TotalResults)
 	require.Equal(t, 0, report.FalseNegatives)
 	require.Equal(t, 0, report.FalsePositives)
@@ -107,7 +107,7 @@ func TestVerifyMetricHints_CoveredSample(t *testing.T) {
 		{Start: step.Add(-2 * time.Minute), End: step.Add(-1 * time.Minute)},
 	}
 
-	report := verifyMetricHints(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}})
+	report := verifyMetricHints(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
 	require.Equal(t, 1, report.TotalResults)
 	require.Equal(t, 1, report.CoveredResults)
 	require.Equal(t, 0, report.FalseNegatives)
@@ -122,7 +122,7 @@ func TestVerifyMetricHints_MissCopiesLookback(t *testing.T) {
 		{Start: step.Add(-30 * time.Minute), End: step.Add(-20 * time.Minute)},
 	}
 
-	report := verifyMetricHints(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}})
+	report := verifyMetricHints(metricTestExpr(t), hints, []verification.MetricSample{{Time: step, Value: 1}}, time.Time{})
 	require.Equal(t, 1, report.FalseNegatives)
 	require.Equal(t, []hintprovider.HintTimeRange{{
 		Start: step.Add(-5 * time.Minute),
@@ -131,6 +131,24 @@ func TestVerifyMetricHints_MissCopiesLookback(t *testing.T) {
 	require.Empty(t, report.FalseNegativeTimestamps)
 	require.Equal(t, 0, report.FalsePositives)
 	require.False(t, report.Correct)
+}
+
+func TestVerifyMetricHints_SkipsLookbackAfterEligibleEnd(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	later := step.Add(time.Minute)
+	hints := []hintprovider.HintTimeRange{
+		{Start: step.Add(-5 * time.Minute), End: later},
+	}
+
+	report := verifyMetricHints(metricTestExpr(t), hints, []verification.MetricSample{
+		{Time: step, Value: 1},
+		{Time: later, Value: 1},
+	}, step)
+	require.Equal(t, 1, report.TotalResults)
+	require.Equal(t, 1, report.CoveredResults)
+	require.Equal(t, 0, report.FalseNegatives)
+	require.Empty(t, report.FalseNegativeRanges)
+	require.True(t, report.Correct)
 }
 
 func metricTestExpr(t *testing.T) syntax.Expr {

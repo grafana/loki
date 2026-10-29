@@ -341,7 +341,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	report.OverlappingIndexIDs = ids
 	// Pass requested start/end values to Loki, as Loki pipelines will perform same adjustment
 	// to query bounds within the QF middlewares
-	res, err := s.fetchNeedleResults(ctx, hq, qb.RequestedStart, qb.RequestedEnd)
+	res, err := s.fetchNeedleResults(ctx, hq, qb.RequestedStart, qb.RequestedEnd, now.Add(-s.cfg.QueryIngestersWithin))
 
 	if err != nil {
 		return report, err
@@ -511,7 +511,7 @@ func (q hintQuery) step() time.Duration {
 	return 0
 }
 
-func (s *Service) fetchNeedleResults(ctx context.Context, hq hintQuery, start, end time.Time) (needleResults, error) {
+func (s *Service) fetchNeedleResults(ctx context.Context, hq hintQuery, start, end, eligibleEnd time.Time) (needleResults, error) {
 	if hq.queryType == hintQueryTypeMetricRange {
 		samples, _, truncated, err := s.queryMetrics(ctx, hq, start, end)
 		if err != nil {
@@ -522,7 +522,7 @@ func (s *Service) fetchNeedleResults(ctx context.Context, hq hintQuery, start, e
 			truncated: truncated,
 			samples:   samples,
 			verify: func(r []hintprovider.HintTimeRange) *verificationReport {
-				return verifyMetricHints(hq.expr, r, samples)
+				return verifyMetricHints(hq.expr, r, samples, eligibleEnd)
 			},
 		}, nil
 	}
