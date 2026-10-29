@@ -173,6 +173,18 @@ func TestHandleDebug_JSONLabelFilter(t *testing.T) {
 	require.True(t, resp.Summary.Correct)
 }
 
+func TestBuildDebugHintQuery_MetricRange(t *testing.T) {
+	hq, err := buildDebugHintQuery(debugRequest{
+		selector:  `{job="api"}`,
+		needle:    "9fA81cD2Ef0077aa",
+		queryType: hintQueryTypeMetricRange,
+	})
+	require.NoError(t, err)
+	require.Equal(t, hintQueryTypeMetricRange, hq.queryType)
+	require.Equal(t, "9fA81cD2Ef0077aa", hq.needle)
+	require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, hq.query)
+}
+
 func TestParseDebugRequest_MetricRange(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/correctness/debug?start=2026-02-26T10:00:00Z&end=2026-02-26T10:02:00Z&selector=%7Bjob%3D%22api%22%7D&needle=9fA81cD2Ef0077aa&query_type=metric_range", nil)
 

@@ -208,13 +208,20 @@ func parseDebugRequest(r *http.Request) (debugRequest, error) {
 	}, nil
 }
 
-// buildDebugHintQuery uses the same builders + newHintQuery as runVerificationCycle.
+// buildDebugHintQuery uses the same builders as runVerificationCycle.
+// A metric range wraps the line-filter needle with buildMetricQuery.
 func buildDebugHintQuery(req debugRequest) (hintQuery, error) {
 	switch req.queryType {
 	case hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter:
 		return newHintQuery(req.queryType, req.needle, buildLabelFilterHintQuery(req.selector, req.label, req.needle))
 	case hintQueryTypeJSONLabelFilter:
 		return newHintQuery(req.queryType, req.needle, buildJSONLabelFilterHintQuery(req.selector, req.label, req.needle))
+	case hintQueryTypeMetricRange:
+		line, err := newHintQuery(hintQueryTypeLineFilter, req.needle, buildLineFilterHintQuery(req.selector, req.needle))
+		if err != nil {
+			return hintQuery{}, err
+		}
+		return buildMetricQuery(hintQueryTypeMetricRange, line)
 	default:
 		return newHintQuery(hintQueryTypeLineFilter, req.needle, buildLineFilterHintQuery(req.selector, req.needle))
 	}
