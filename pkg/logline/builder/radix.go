@@ -58,6 +58,7 @@ var ngramSortVariants = []ngramSortVariant{
 	{name: "width-12", newSorter: newLSDSorter(12)},
 	{name: "varmask", newSorter: newVarmaskSorter(16)},
 	{name: "varmask-w21", newSorter: newVarmaskSorter(21)},
+	{name: "packed64", newSorter: newPackedSorter},
 	{name: "hist2", newSorter: newTweakedSorter(true, false, 0)},
 	{name: "unroll-bce", newSorter: newTweakedSorter(false, true, 0)},
 	{name: "unrolled", newSorter: newTweakedSorter(true, true, 0)},

@@ -452,3 +452,23 @@ func TestVarmaskSorterPaths(t *testing.T) {
 	require.Greater(t, s.fallbacks, 0)
 	require.Greater(t, s.passes, 0)
 }
+
+// TestPackedSorterPaths checks that the property inputs reach both the packed
+// path and the fallback for batches whose rank key and doc range overflow 64
+// bits.
+func TestPackedSorterPaths(t *testing.T) {
+	s := newPackedSorter().(*packedSorter)
+	for _, in := range sorterInputs() {
+		for _, n := range []int{3, 5000} {
+			rng := rand.New(rand.NewSource(int64(n)))
+			keys, docs := in.gen(rng, n)
+			rk, rd := referenceSort(keys, docs)
+			want := canonicalPairs(rk, rd)
+			m := sortAndDedupeGroups(rk, rd)
+			checkSorter(t, s, keys, docs, want, joinSoA(rk[:m], rd[:m]))
+		}
+	}
+	t.Log(s.stats())
+	require.Greater(t, s.packed, 0)
+	require.Greater(t, s.fallbacks, 0)
+}
