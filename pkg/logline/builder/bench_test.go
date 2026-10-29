@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/zeebo/xxh3"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logline"
@@ -553,7 +556,19 @@ func (s *e2ePeakSampler) stopPeak() uint64 {
 //	                      prepareIndexes, so extraction time still in flight at
 //	                      the end of the feed loop is attributed to prepare —
 //	                      compare runs on total/throughput, not ingest alone.
+//	BENCH_RADIX           comma list of ngramSortVariants names (default
+//	                      "baseline"); variants run interleaved within a repeat
+//	BENCH_BUFFER_PAIRS    comma list of postings_buffer_pairs values (default
+//	                      DefaultPostingsBufferPairs)
+//	BENCH_REPEAT          repeats of the whole shard × buffer × variant matrix
+//	                      (default 1)
 //	BENCH_PROFILE_DIR     if set, write <data>_s<shard>.{cpu,heap}.pprof per run
+//
+// Besides the human-readable line, every run logs one machine-readable RESULT
+// line: extract is the decode+processStream loop (including the in-loop
+// sorts, merges and spills on buffer fills), prepare is the forced flush
+// (prepareIndexes), and hash covers the bytes of every produced .lidx file so
+// runs of different sorters can be checked for identical output.
 //
 //	BENCH_E2E=1 BENCH_DATA=testdata/kafka_records_p0.bin go test ./pkg/logline/builder/ -run TestBuilderE2E -count=1 -v -timeout 60m
 func TestBuilderE2E(t *testing.T) {
@@ -562,6 +577,14 @@ func TestBuilderE2E(t *testing.T) {
 	}
 	dataFile := envOr("BENCH_DATA", "testdata/kafka_records_p0.bin")
 	shardCounts := parseShards(envOr("BENCH_SHARDS", "1,10"))
+	bufferPairs := parseShards(envOr("BENCH_BUFFER_PAIRS", strconv.Itoa(DefaultPostingsBufferPairs)))
+	repeat := envInt("BENCH_REPEAT", 1)
+	var variants []ngramSortVariant
+	for _, name := range strings.Split(envOr("BENCH_RADIX", "baseline"), ",") {
+		v, ok := lookupNgramSortVariant(strings.TrimSpace(name))
+		require.True(t, ok, "unknown BENCH_RADIX variant %q", name)
+		variants = append(variants, v)
+	}
 
 	records, err := loadCapturedRecords(dataFile)
 	if err != nil {
@@ -585,18 +608,72 @@ func TestBuilderE2E(t *testing.T) {
 	}
 	t.Logf("data=%s records=%d text=%.2f GiB", dataFile, len(records), float64(totalText)/(1<<30))
 
-	for _, shardCount := range shardCounts {
-		runBuilderE2E(t, records, decoder, shardCount, totalText)
+	for rep := range repeat {
+		for _, shardCount := range shardCounts {
+			for _, pairs := range bufferPairs {
+				for _, v := range variants {
+					runBuilderE2E(t, e2eRun{
+						records: records, decoder: decoder, totalText: totalText,
+						shardCount: shardCount, bufferPairs: pairs, variant: v, rep: rep,
+					})
+				}
+			}
+		}
 	}
 }
 
-func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decoder, shardCount int, totalText int64) {
+type e2eRun struct {
+	records     []capturedRecord
+	decoder     *kafka.Decoder
+	totalText   int64
+	shardCount  int
+	bufferPairs int
+	variant     ngramSortVariant
+	rep         int
+}
+
+// countingSorter times and counts every sort call of the sorter it wraps.
+type countingSorter struct {
+	inner ngramSorter
+	calls int
+	pairs int64
+	dur   time.Duration
+}
+
+func (c *countingSorter) sort(keys [][8]byte, docs []uint32, kb [][8]byte, db []uint32) ([][8]byte, []uint32) {
+	start := time.Now()
+	k, d := c.inner.sort(keys, docs, kb, db)
+	c.dur += time.Since(start)
+	c.calls++
+	c.pairs += int64(len(keys))
+	return k, d
+}
+
+type sortTotals struct {
+	calls int
+	pairs int64
+	dur   time.Duration
+}
+
+func sumSorters(sorters []*countingSorter) sortTotals {
+	var s sortTotals
+	for _, c := range sorters {
+		s.calls += c.calls
+		s.pairs += c.pairs
+		s.dur += c.dur
+	}
+	return s
+}
+
+func runBuilderE2E(t *testing.T, run e2eRun) {
+	shardCount := run.shardCount
 	extractThreads := 1
 	if v := os.Getenv("BENCH_EXTRACT_THREADS"); v != "" {
 		n, err := strconv.Atoi(v)
 		require.NoError(t, err, "BENCH_EXTRACT_THREADS must be an integer")
 		extractThreads = n
 	}
+	var sorters []*countingSorter
 	cfg := Config{
 		Index: logline.IndexConfig{
 			Version:          "v3",
@@ -606,14 +683,27 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 		},
 		FlushOnIdle:            1 * time.Hour,
 		FlushOnMaxAge:          1 * time.Hour,
-		PostingsBufferPairs:    DefaultPostingsBufferPairs,
+		PostingsBufferPairs:    run.bufferPairs,
 		PostingsSpillWatermark: DefaultPostingsSpillWatermark,
 		ExtractThreads:         extractThreads,
 		ScratchDir:             t.TempDir(),
+		newNgramSorter: func() ngramSorter {
+			c := &countingSorter{inner: run.variant.newSorter()}
+			sorters = append(sorters, c)
+			return c
+		},
+		hugePageSortBuffers: run.variant.hugePages,
 	}
 	if shardCount > 1 {
 		cfg.Index.ShardAlgorithm = "murmur3_mix"
 	}
+
+	// Start every run from the same heap state: released memory makes the
+	// sort buffers fresh page faults, which is also what lets the hugepages
+	// variant get huge pages at fault time.
+	runtime.GC()
+	debug.FreeOSMemory()
+
 	builder, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	if err != nil {
 		t.Fatal(err)
@@ -624,19 +714,18 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 	var cpuFile *os.File
 	if profDir != "" {
 		require.NoError(t, os.MkdirAll(profDir, 0o755))
-		cpuFile, err = os.Create(filepath.Join(profDir, fmt.Sprintf("%s_s%d.cpu.pprof", profTag(), shardCount)))
+		cpuFile, err = os.Create(filepath.Join(profDir, fmt.Sprintf("%s_%s_b%d_s%d.cpu.pprof", profTag(), run.variant.name, run.bufferPairs, shardCount)))
 		require.NoError(t, err)
 		require.NoError(t, pprof.StartCPUProfile(cpuFile))
 	}
 
-	runtime.GC()
 	var m0 runtime.MemStats
 	runtime.ReadMemStats(&m0)
 	sampler := startE2EPeakSampler()
 
 	istart := time.Now()
-	for _, rec := range records {
-		stream, parsedLabels, derr := decoder.Decode(rec.value)
+	for _, rec := range run.records {
+		stream, parsedLabels, derr := run.decoder.Decode(rec.value)
 		if derr != nil {
 			continue
 		}
@@ -645,6 +734,12 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 		}
 	}
 	ingestSec := time.Since(istart).Seconds()
+	thpMiB := anonHugePagesMiB()
+	extractSort := sumSorters(sorters)
+	var extractSpills int
+	for _, w := range builder.ingesters() {
+		extractSpills += w.postings.runSeq
+	}
 
 	pstart := time.Now()
 	files, err := builder.prepareIndexes()
@@ -652,6 +747,11 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 		t.Fatalf("prepareIndexes: %v", err)
 	}
 	prepareSec := time.Since(pstart).Seconds()
+	totalSort := sumSorters(sorters)
+	var totalSpills int
+	for _, w := range builder.ingesters() {
+		totalSpills += w.postings.runSeq
+	}
 
 	peak := sampler.stopPeak()
 	var m1 runtime.MemStats
@@ -660,21 +760,72 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 	if cpuFile != nil {
 		pprof.StopCPUProfile()
 		cpuFile.Close()
-		hf, err := os.Create(filepath.Join(profDir, fmt.Sprintf("%s_s%d.heap.pprof", profTag(), shardCount)))
+		hf, err := os.Create(filepath.Join(profDir, fmt.Sprintf("%s_%s_b%d_s%d.heap.pprof", profTag(), run.variant.name, run.bufferPairs, shardCount)))
 		require.NoError(t, err)
 		runtime.GC()
 		require.NoError(t, pprof.WriteHeapProfile(hf))
 		hf.Close()
 	}
 
+	hash := hashIndexFiles(t, files)
 	totalSec := ingestSec + prepareSec
-	t.Logf("SHARD=%d WORKERS=%d files=%d | ingest=%.1fs prepare=%.1fs total=%.1fs | throughput=%.1f MB/s | alloc=%.2f GiB | peak_heap=%.0f MiB",
-		shardCount, extractThreads, len(files), ingestSec, prepareSec, totalSec,
-		float64(totalText)/(1<<20)/totalSec,
+	textMiB := float64(run.totalText) / (1 << 20)
+	t.Logf("SHARD=%d WORKERS=%d SORTER=%s BUFFER=%d files=%d | ingest=%.2fs prepare=%.2fs total=%.2fs | throughput=%.1f MB/s | alloc=%.2f GiB | peak_heap=%.0f MiB",
+		shardCount, extractThreads, run.variant.name, run.bufferPairs, len(files), ingestSec, prepareSec, totalSec,
+		textMiB/totalSec,
 		float64(m1.TotalAlloc-m0.TotalAlloc)/(1<<30),
 		float64(peak)/(1<<20))
+	t.Logf("RESULT dataset=%s variant=%s buffer_pairs=%d shards=%d workers=%d rep=%d extract_s=%.4f prepare_s=%.4f extract_mbps=%.2f e2e_mbps=%.2f sort_extract_ms=%.2f sort_flush_ms=%.2f fills_extract=%d fills_flush=%d sorted_pairs=%d spills_extract=%d spills=%d flushes=1 files=%d hash=%s thp_mib=%d",
+		profTag(), run.variant.name, run.bufferPairs, shardCount, extractThreads, run.rep,
+		ingestSec, prepareSec, textMiB/ingestSec, textMiB/totalSec,
+		float64(extractSort.dur.Microseconds())/1000, float64((totalSort.dur-extractSort.dur).Microseconds())/1000,
+		extractSort.calls, totalSort.calls-extractSort.calls, totalSort.pairs,
+		extractSpills, totalSpills, len(files), hash, thpMiB)
 
 	builder.clear()
+}
+
+// hashIndexFiles returns an xxh3 digest over every .lidx file's (date, shard)
+// and bytes, in (date, shard) order, rewinding each file afterwards.
+func hashIndexFiles(t *testing.T, files []fileInfo) string {
+	t.Helper()
+	sorted := slices.Clone(files)
+	slices.SortFunc(sorted, func(a, b fileInfo) int {
+		if c := strings.Compare(a.date, b.date); c != 0 {
+			return c
+		}
+		return a.shardValue - b.shardValue
+	})
+	h := xxh3.New()
+	for _, f := range sorted {
+		_, _ = fmt.Fprintf(h, "%s/%d\n", f.date, f.shardValue)
+		_, err := f.file.Seek(0, io.SeekStart)
+		require.NoError(t, err)
+		_, err = io.Copy(h, f.file)
+		require.NoError(t, err)
+		_, err = f.file.Seek(0, io.SeekStart)
+		require.NoError(t, err)
+	}
+	return fmt.Sprintf("%016x", h.Sum64())
+}
+
+// anonHugePagesMiB reports the process's transparent-huge-page-backed anonymous
+// memory, or -1 where /proc/self/smaps_rollup is unavailable.
+func anonHugePagesMiB() int {
+	data, err := os.ReadFile("/proc/self/smaps_rollup")
+	if err != nil {
+		return -1
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		if rest, ok := strings.CutPrefix(line, "AnonHugePages:"); ok {
+			kb, err := strconv.Atoi(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rest), "kB")))
+			if err != nil {
+				return -1
+			}
+			return kb >> 10
+		}
+	}
+	return -1
 }
 
 // TestBuilderE2EFloor reports the resident heap floor held by the harness

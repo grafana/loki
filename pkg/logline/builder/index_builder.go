@@ -202,6 +202,8 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 		shardFn:           shardFn,
 		scratchDir:        runDir,
 		mergeThreads:      cfg.MergeThreads,
+		newSorter:         cfg.newNgramSorter,
+		hugePages:         cfg.hugePageSortBuffers,
 	}
 
 	newIngester := func(runPrefix string) *streamIngester {

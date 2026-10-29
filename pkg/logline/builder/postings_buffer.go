@@ -74,8 +74,7 @@ type postingsBuffer struct {
 	docs         []uint32
 	keyBuf       [][8]byte
 	docBuf       []uint32
-	hist         [3][1 << 16]int32 // one plane per data-bearing radix digit
-	posArr       [1 << 16]int32
+	sorter       ngramSorter
 	shardScratch []uint8
 	sortedHead   int // len of the sorted+deduped ngram-ordered prefix of keys/docs
 
@@ -140,6 +139,11 @@ type postingsBufferConfig struct {
 	scratchDir        string
 	runPrefix         string
 	mergeThreads      int
+	// newSorter builds this buffer's ngram sorter; nil selects the production
+	// baseline. hugePages backs the sort buffers with transparent huge pages.
+	// Both exist for the radix experiments (Config.newNgramSorter).
+	newSorter func() ngramSorter
+	hugePages bool
 }
 
 func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
@@ -147,7 +151,11 @@ func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
 	if prefix == "" {
 		prefix = "run_"
 	}
-	return &postingsBuffer{
+	newSorter := cfg.newSorter
+	if newSorter == nil {
+		newSorter = newBaselineSorter
+	}
+	b := &postingsBuffer{
 		bufferPairs:       cfg.bufferPairs,
 		spillWatermark:    cfg.spillWatermark,
 		intervalNanos:     cfg.intervalNanos,
@@ -163,9 +171,14 @@ func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
 		docs:              make([]uint32, 0, cfg.bufferPairs),
 		keyBuf:            make([][8]byte, cfg.bufferPairs),
 		docBuf:            make([]uint32, cfg.bufferPairs),
+		sorter:            newSorter(),
 		sortBufBytes:      sortBufferFloorBytes(cfg.bufferPairs),
 		refTicks:          make(map[refKey][]uint64),
 	}
+	if cfg.hugePages {
+		adviseHugePages(b.keys[:cap(b.keys)], b.docs[:cap(b.docs)], b.keyBuf, b.docBuf)
+	}
+	return b
 }
 
 // absCell returns the absolute document cell (from 1970) of a timestamp in
@@ -223,7 +236,7 @@ func (b *postingsBuffer) integrateTail() {
 		return
 	}
 
-	tk, td := radixSortByNgram(b.keys[h:n], b.docs[h:n], b.keyBuf[h:n], b.docBuf[h:n], &b.hist, &b.posArr)
+	tk, td := b.sorter.sort(b.keys[h:n], b.docs[h:n], b.keyBuf[h:n], b.docBuf[h:n])
 	m := sortAndDedupeGroups(tk, td)
 	// Ensure the sorted tail lives in keys-side [h:h+m] so keyBuf/docBuf are
 	// free to receive the merge output.

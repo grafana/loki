@@ -259,6 +259,12 @@ type Config struct {
 	// unit tests) rejects every JoinGroup that carries an InstanceID with
 	// INVALID_GROUP_ID. Tests set this to true; production code must not.
 	disableStaticMembership bool `yaml:"-"`
+
+	// newNgramSorter and hugePageSortBuffers select an experimental ngram
+	// sorter and huge-page-backed sort buffers for the radix benchmarks
+	// (ngramSortVariants). Nil and false are the production defaults.
+	newNgramSorter      func() ngramSorter `yaml:"-"`
+	hugePageSortBuffers bool               `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix registers the builder flags under prefix.

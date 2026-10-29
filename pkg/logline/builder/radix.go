@@ -9,6 +9,53 @@ import (
 // critical path (every appended pair passes through them once per fill), so
 // they are radix- and merge-based — never comparison sorts over the full batch.
 
+// ngramSorter orders an SoA batch by ngram (key bytes 0-5; bytes 6-7 are
+// zero) with docIDs carried in tandem and unordered within an ngram group.
+// kb/db are scratch of the same length as keys/docs. The result is returned
+// as exactly keys/docs or kb/db (never a sub-slice or another buffer), because
+// integrateTail tells the two apart by their first element. Implementations
+// own their scratch and are used by a single goroutine.
+type ngramSorter interface {
+	sort(keys [][8]byte, docs []uint32, kb [][8]byte, db []uint32) ([][8]byte, []uint32)
+}
+
+// ngramSortVariant is a named sorter configuration under evaluation. hugePages
+// asks the postings buffer to back its sort buffers with transparent huge
+// pages; it changes allocation only, not the sort.
+type ngramSortVariant struct {
+	name      string
+	newSorter func() ngramSorter
+	hugePages bool
+}
+
+// ngramSortVariants lists every sorter the radix experiments compare. The first
+// entry is the production default.
+var ngramSortVariants = []ngramSortVariant{
+	{name: "baseline", newSorter: newBaselineSorter},
+}
+
+func lookupNgramSortVariant(name string) (ngramSortVariant, bool) {
+	for _, v := range ngramSortVariants {
+		if v.name == name {
+			return v, true
+		}
+	}
+	return ngramSortVariant{}, false
+}
+
+// baselineSorter is the production sorter: radixSortByNgram with its
+// histogram and position tables.
+type baselineSorter struct {
+	hist [3][1 << 16]int32
+	pos  [1 << 16]int32
+}
+
+func newBaselineSorter() ngramSorter { return &baselineSorter{} }
+
+func (s *baselineSorter) sort(keys [][8]byte, docs []uint32, kb [][8]byte, db []uint32) ([][8]byte, []uint32) {
+	return radixSortByNgram(keys, docs, kb, db, &s.hist, &s.pos)
+}
+
 // radixSortByNgram sorts keys/docs (tandem) by ngram only, using the 3
 // data-bearing 16-bit ngram digits. Only key bytes 0-5 participate — bytes 6-7
 // are assumed zero, which is why Validate caps ngram_length at 6: a 7- or
