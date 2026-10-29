@@ -1144,7 +1144,7 @@ dataobj:
     [window_lookback: <int> | default = 1]
 
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
-    # with K.
+    # with K. Must be at least 2.
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
