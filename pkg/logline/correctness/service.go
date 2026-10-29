@@ -567,21 +567,29 @@ func metaCoversAnyTimestamp(m store.Meta, timestamps []time.Time) bool {
 }
 
 func (s *Service) pickRandomRange(now time.Time) (time.Time, time.Time, string) {
-	eligibleEnd := now.Add(-s.cfg.QueryIngestersWithin)
+	eligibleEnd := now.Add(-s.cfg.QueryIngestersWithin).Truncate(time.Minute)
 	// earliest = max(startedAt, now-maxLookback): started_at is the farthest
 	// allowed lookback, but never sample beyond max_lookback (retention safety).
 	earliest := s.startedAt
 	if lookbackStart := now.Add(-s.cfg.MaxLookback); lookbackStart.After(earliest) {
 		earliest = lookbackStart
 	}
+	earliest = ceilToMinute(earliest)
 	if !eligibleEnd.After(earliest) {
 		return time.Time{}, time.Time{}, skipIngesterWindow
 	}
 
-	rangeDuration := s.cfg.QueryRangeMin
-	if s.cfg.QueryRangeMax > s.cfg.QueryRangeMin {
-		delta := s.cfg.QueryRangeMax - s.cfg.QueryRangeMin
-		rangeDuration += time.Duration(s.randInt63n(int64(delta) + 1))
+	// Whole minutes keep start and end on a minute. Round the minimum up so the
+	// window still meets QueryRangeMin, and the maximum down so it does not exceed it.
+	minDuration := (s.cfg.QueryRangeMin + time.Minute - 1).Truncate(time.Minute)
+	maxDuration := s.cfg.QueryRangeMax.Truncate(time.Minute)
+	if minDuration < time.Minute || maxDuration < minDuration {
+		return time.Time{}, time.Time{}, skipIngesterWindow
+	}
+	rangeDuration := minDuration
+	if maxDuration > minDuration {
+		steps := int64((maxDuration-minDuration)/time.Minute) + 1
+		rangeDuration = minDuration + time.Duration(s.randInt63n(steps))*time.Minute
 	}
 
 	maxStart := eligibleEnd.Add(-rangeDuration)
@@ -591,12 +599,14 @@ func (s *Service) pickRandomRange(now time.Time) (time.Time, time.Time, string) 
 
 	start := earliest
 	if maxStart.After(earliest) {
-		randomOffset := time.Duration(s.randInt63n(int64(maxStart.Sub(earliest)) + 1))
-		start = earliest.Add(randomOffset)
+		steps := int64(maxStart.Sub(earliest)/time.Minute) + 1
+		start = earliest.Add(time.Duration(s.randInt63n(steps)) * time.Minute)
 	}
-	// The query-frontend rounds a mid-minute end onto the minute.
-	end := start.Add(rangeDuration).Truncate(time.Minute)
-	return start, end, ""
+	return start, start.Add(rangeDuration), ""
+}
+
+func ceilToMinute(t time.Time) time.Time {
+	return t.Add(time.Minute - 1).Truncate(time.Minute)
 }
 
 func (s *Service) pickRandomLabelValue(ctx context.Context, start, end time.Time) (string, string, error) {
