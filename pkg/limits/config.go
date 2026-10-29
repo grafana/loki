@@ -99,7 +99,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		&cfg.IdleEvictionInterval,
 		"ingest-limits.idle-eviction-interval",
 		DefaultIdleEvictInterval,
-		"The interval at which streams of ingestion policies with a stream idle expiry are evicted once they have been idle for longer than it.",
+		"How often to evict the streams of ingestion policies with a stream_idle_expiry that have been idle for longer than that expiry.",
 	)
 	f.BoolVar(
 		&cfg.StreamShardingDurabilityEnabled,

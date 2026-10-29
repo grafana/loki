@@ -28,13 +28,12 @@ const (
 	HTTPHeaderIngestionPolicyKey   = "X-Loki-Ingestion-Policy"
 	lowerIngestionPolicyHeaderName = "x-loki-ingestion-policy"
 
-	// MinStreamIdleExpiry is the shortest stream_idle_expiry allowed. A limits
-	// service instance only learns that a stream pushed through another zone
-	// is still live from that zone's metadata records, produced at most once
-	// a minute per stream, and the limits frontend can skip the backend for a
-	// minute for streams it has recently accepted. A shorter expiry could
-	// expire streams that are still live and let the tenant exceed its limit.
-	MinStreamIdleExpiry = 2 * time.Minute
+	// MinStreamIdleExpiry is the shortest stream_idle_expiry allowed. Limits
+	// service instances can see a live stream's last push minutes late: the
+	// frontend caches accepted streams, and other zones only see the stream
+	// through metadata records for past rate buckets. A shorter expiry could
+	// evict streams that are still live.
+	MinStreamIdleExpiry = 5 * time.Minute
 )
 
 type PriorityStream struct {
@@ -403,18 +402,10 @@ type PolicyOverridableLimits struct {
 	PerStreamRateLimitBurst *flagext.ByteSize        `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"hidden"`
 	ShardStreams            *PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"hidden"`
 
-	// StreamIdleExpiry makes the limits service evict streams of the policy
-	// that have not been seen for this long, instead of waiting for the
-	// whole active window, so that short-lived streams, such as those of a
-	// backfill, stop counting against the stream limits sooner. Streams are
-	// evicted periodically, every -ingest-limits.idle-eviction-interval.
-	//
-	// It applies to the policy's own stream bucket in the limits service, so
-	// it requires max_global_streams_per_user or inherit_limits to be set:
-	// without either, the policy's streams share the tenant's bucket. Zero or
-	// nil disables it, and so does a value at least as long as the active
-	// window. Otherwise it must be at least MinStreamIdleExpiry. It is not
-	// affected by inherit_limits as there is no tenant-level equivalent.
+	// StreamIdleExpiry makes the limits service evict the policy's streams
+	// once idle for this long. 0 disables it; otherwise it must be at least
+	// MinStreamIdleExpiry. Requires max_global_streams_per_user or
+	// inherit_limits.
 	StreamIdleExpiry *model.Duration `yaml:"stream_idle_expiry" json:"stream_idle_expiry" doc:"hidden"`
 
 	// RejectPartialWrites is for rejecting the whole push with a 429 if
@@ -431,8 +422,10 @@ type PolicyOverridableLimits struct {
 	InheritLimits bool `yaml:"inherit_limits" json:"inherit_limits" doc:"hidden"`
 }
 
-// Validate checks that the overridden values are non-negative. Returned errors are field-scoped;
-// callers add the policy context.
+// Validate checks that the overridden values are non-negative, and that
+// stream_idle_expiry is either 0 or a valid expiry for a policy with its own
+// stream bucket. Returned errors are field-scoped; callers add the policy
+// context.
 func (p PolicyOverridableLimits) Validate() error {
 	if p.StreamIdleExpiry != nil && *p.StreamIdleExpiry != 0 {
 		if time.Duration(*p.StreamIdleExpiry) < MinStreamIdleExpiry {

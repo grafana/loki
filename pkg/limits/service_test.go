@@ -30,7 +30,12 @@ func newTestService(t *testing.T, limits Limits, numPartitions int) (*Service, *
 	streamShards.clock = clock
 	logger := log.NewNopLogger()
 	return &Service{
-		cfg:              Config{NumPartitions: numPartitions, ActiveWindow: activeWindow},
+		cfg: Config{
+			NumPartitions:        numPartitions,
+			ActiveWindow:         activeWindow,
+			EvictionInterval:     DefaultEvictInterval,
+			IdleEvictionInterval: DefaultIdleEvictInterval,
+		},
 		limits:           limits,
 		partitionManager: partitionManager,
 		usage:            usage,
@@ -271,6 +276,7 @@ func TestService_EvictOldStreams(t *testing.T) {
 	s, clock := newTestService(t, limits, 1)
 	s.partitionManager.Assign([]int32{0})
 	s.cfg.EvictionInterval = 10 * time.Millisecond
+	s.cfg.IdleEvictionInterval = time.Hour
 
 	_, err := s.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
 		Tenant:  "test",
@@ -287,8 +293,8 @@ func TestService_EvictOldStreams(t *testing.T) {
 	go s.evictOldStreamsPeriodic(ctx)
 
 	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(s.metrics.streamShardEvictionsTotal.WithLabelValues("test")) == 1 &&
-			testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test")) == 1
+		return testutil.ToFloat64(s.metrics.streamShardEvictionsTotal.WithLabelValues("test", evictionReasonOld)) == 1 &&
+			testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonOld)) == 1
 	}, time.Second, 10*time.Millisecond)
 }
 

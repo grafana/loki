@@ -58,7 +58,6 @@ func TestResolveIdleExpiry(t *testing.T) {
 		"short":    time.Minute,
 		"zero":     0,
 		"negative": -time.Minute,
-		"long":     time.Hour,
 		noPolicy:   time.Minute,
 	}}
 	for _, tc := range []struct {
@@ -69,15 +68,13 @@ func TestResolveIdleExpiry(t *testing.T) {
 		{name: "short", policy: "short", expected: time.Minute},
 		{name: "zero", policy: "zero"},
 		{name: "negative", policy: "negative"},
-		// An expiry at least as long as the active window has no effect.
-		{name: "long", policy: "long"},
 		{name: "unknown", policy: "unknown"},
 		// The shared bucket holds streams of every policy without a bucket of
 		// its own, so it never has an idle expiry.
 		{name: "shared bucket", policy: noPolicy},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, resolveIdleExpiry(limits, 15*time.Minute, "tenant", tc.policy))
+			require.Equal(t, tc.expected, resolveIdleExpiry(limits, "tenant", tc.policy))
 		})
 	}
 }
@@ -149,6 +146,7 @@ func TestService_EvictIdleStreams(t *testing.T) {
 	limits := newIdleExpiryLimits(t)
 	s, clock := newTestService(t, limits, 1)
 	s.partitionManager.Assign([]int32{0})
+	s.cfg.EvictionInterval = time.Hour
 	s.cfg.IdleEvictionInterval = 10 * time.Millisecond
 
 	metadata := &proto.StreamMetadata{StreamHash: 0x1, TotalSize: 100, IngestionPolicy: backfillPolicy}
@@ -163,10 +161,11 @@ func TestService_EvictIdleStreams(t *testing.T) {
 	clock.Advance(testIdleExpiry + time.Second)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	go s.evictIdleStreamsPeriodic(ctx)
+	go s.evictOldStreamsPeriodic(ctx)
 
 	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(s.metrics.streamShardEvictionsTotal.WithLabelValues("test")) == 1 &&
-			testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test")) == 1
+		return testutil.ToFloat64(s.metrics.streamShardEvictionsTotal.WithLabelValues("test", evictionReasonPerPolicyOld)) == 1 &&
+			testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonPerPolicyOld)) == 1
 	}, time.Second, 10*time.Millisecond)
+	require.Zero(t, testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonOld)))
 }

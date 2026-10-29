@@ -55,18 +55,17 @@ func getPolicyBucketAndStreamsLimit(limits Limits, numPartitions int, tenant, po
 
 // resolveIdleExpiry returns how long a stream in the policy bucket may go
 // unseen before it is evicted by EvictIdle, or 0 if the bucket has no idle
-// expiry or it is not shorter than the active window. The shared noPolicy
-// bucket never has one, as it holds the streams of every policy that does
-// not override the stream limits.
+// expiry. The shared noPolicy bucket never has one, as it holds the streams
+// of every policy that does not override the stream limits.
 //
 // It is shared by usageStore and streamShardStore so both evict the same
 // streams.
-func resolveIdleExpiry(limits Limits, activeWindow time.Duration, tenant, policyBucket string) time.Duration {
+func resolveIdleExpiry(limits Limits, tenant, policyBucket string) time.Duration {
 	if policyBucket == noPolicy {
 		return 0
 	}
 	expiry, ok := limits.PolicyStreamIdleExpiry(tenant, policyBucket)
-	if !ok || expiry <= 0 || expiry >= activeWindow {
+	if !ok || expiry <= 0 {
 		return 0
 	}
 	return expiry
@@ -349,9 +348,16 @@ func (s *usageStore) EvictIdle() map[string]int {
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
+			// Resolve each policy's expiry once per tenant rather than once
+			// per partition.
+			expiries := make(map[string]time.Duration)
 			for _, policies := range partitions {
 				for policy, streams := range policies {
-					expiry := resolveIdleExpiry(s.limits, s.activeWindow, tenant, policy)
+					expiry, ok := expiries[policy]
+					if !ok {
+						expiry = resolveIdleExpiry(s.limits, tenant, policy)
+						expiries[policy] = expiry
+					}
 					if expiry == 0 {
 						continue
 					}

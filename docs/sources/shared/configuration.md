@@ -1328,8 +1328,8 @@ ingest_limits:
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
 
-  # The interval at which streams of ingestion policies with a stream idle
-  # expiry are evicted once they have been idle for longer than it.
+  # How often to evict the streams of ingestion policies with a
+  # stream_idle_expiry that have been idle for longer than that expiry.
   # CLI flag: -ingest-limits.idle-eviction-interval
   [idle_eviction_interval: <duration> | default = 1m]
 
