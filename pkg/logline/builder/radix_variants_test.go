@@ -315,3 +315,35 @@ func TestNgramSortVariantRegistry(t *testing.T) {
 	_, ok := lookupNgramSortVariant("no-such-variant")
 	require.False(t, ok)
 }
+
+// TestBlocksSorterSmallBlocks runs the block-recycling sorter with tiny digits
+// and blocks, so block mode, multi-pass chains and compaction evictions all
+// happen at sizes the registered configurations would hand to their fallback.
+func TestBlocksSorterSmallBlocks(t *testing.T) {
+	inputs := sorterInputs()
+	for _, cfg := range []struct {
+		width uint
+		bs    int32
+	}{{4, 1}, {4, 4}, {6, 3}, {8, 16}} {
+		t.Run(fmt.Sprintf("w%d-b%d", cfg.width, cfg.bs), func(t *testing.T) {
+			s := newBlocksSorter(cfg.width, cfg.bs)().(*blocksSorter)
+			for _, in := range inputs {
+				for _, n := range []int{2, 7, 100, 5000, 65537} {
+					rng := rand.New(rand.NewSource(int64(n)*7 + int64(len(in.name))))
+					keys, docs := in.gen(rng, n)
+					rk, rd := referenceSort(keys, docs)
+					want := canonicalPairs(rk, rd)
+					m := sortAndDedupeGroups(rk, rd)
+					wantDedup := joinSoA(rk[:m], rd[:m])
+					t.Run(fmt.Sprintf("%s/n=%d", in.name, n), func(t *testing.T) {
+						checkSorterAt(t, s, keys, docs, want, wantDedup, [4]int{0, 0, 3, 1})
+					})
+				}
+			}
+			t.Log(s.stats())
+			require.Greater(t, s.passes, 0)
+			require.Greater(t, s.evictions, 0)
+			require.Less(t, s.fallbacks, s.sorts)
+		})
+	}
+}
