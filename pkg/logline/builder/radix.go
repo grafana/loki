@@ -19,6 +19,12 @@ type ngramSorter interface {
 	sort(keys [][8]byte, docs []uint32, kb [][8]byte, db []uint32) ([][8]byte, []uint32)
 }
 
+// ngramSorterStats is implemented by sorters that count how often each of
+// their code paths ran, for benchmark reports.
+type ngramSorterStats interface {
+	stats() string
+}
+
 // ngramSortVariant is a named sorter configuration under evaluation. hugePages
 // asks the postings buffer to back its sort buffers with transparent huge
 // pages; it changes allocation only, not the sort.
@@ -38,6 +44,12 @@ var ngramSortVariants = []ngramSortVariant{
 	{name: "swwc-nt-w8", newSorter: newSWWCSorter(8, true)},
 	{name: "swwc-nt-w12", newSorter: newSWWCSorter(12, true)},
 	{name: "swwc-nt-w16", newSorter: newSWWCSorter(16, true)},
+	{name: "blocks-w8-b256", newSorter: newBlocksSorter(8, 256)},
+	{name: "blocks-w8-b1024", newSorter: newBlocksSorter(8, 1024)},
+	{name: "blocks-w8-b4096", newSorter: newBlocksSorter(8, 4096)},
+	{name: "blocks-w16-b8", newSorter: newBlocksSorter(16, 8)},
+	{name: "blocks-w16-b16", newSorter: newBlocksSorter(16, 16)},
+	{name: "blocks-w16-b64", newSorter: newBlocksSorter(16, 64)},
 	{name: "fused-hist", newSorter: newFusedHistSorter},
 	{name: "width-8", newSorter: newLSDSorter(8)},
 	{name: "width-10", newSorter: newLSDSorter(10)},

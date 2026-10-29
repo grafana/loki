@@ -173,6 +173,9 @@ func BenchmarkNgramSort(b *testing.B) {
 						s.sort(keys, docs, kb, db)
 					}
 					b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(n), "ns/pair")
+					if st, ok := s.(ngramSorterStats); ok {
+						b.Log(st.stats())
+					}
 				})
 			}
 		}

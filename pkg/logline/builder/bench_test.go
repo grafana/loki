@@ -665,6 +665,21 @@ func sumSorters(sorters []*countingSorter) sortTotals {
 	return s
 }
 
+// sorterStats joins the path counters of every wrapped sorter that keeps them,
+// or returns "-".
+func sorterStats(sorters []*countingSorter) string {
+	var parts []string
+	for _, c := range sorters {
+		if st, ok := c.inner.(ngramSorterStats); ok {
+			parts = append(parts, st.stats())
+		}
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, "|")
+}
+
 func runBuilderE2E(t *testing.T, run e2eRun) {
 	shardCount := run.shardCount
 	extractThreads := 1
@@ -777,12 +792,12 @@ func runBuilderE2E(t *testing.T, run e2eRun) {
 		textMiB/totalSec,
 		float64(m1.TotalAlloc-m0.TotalAlloc)/(1<<30),
 		float64(peak)/(1<<20))
-	t.Logf("RESULT dataset=%s variant=%s buffer_pairs=%d shards=%d workers=%d rep=%d setup_s=%.4f extract_s=%.4f prepare_s=%.4f extract_mbps=%.2f e2e_mbps=%.2f sort_extract_ms=%.2f sort_flush_ms=%.2f fills_extract=%d fills_flush=%d sorted_pairs=%d spills_extract=%d spills=%d flushes=1 files=%d hash=%s thp_mib=%d",
+	t.Logf("RESULT dataset=%s variant=%s buffer_pairs=%d shards=%d workers=%d rep=%d setup_s=%.4f extract_s=%.4f prepare_s=%.4f extract_mbps=%.2f e2e_mbps=%.2f sort_extract_ms=%.2f sort_flush_ms=%.2f fills_extract=%d fills_flush=%d sorted_pairs=%d spills_extract=%d spills=%d flushes=1 files=%d hash=%s thp_mib=%d sorter_stats=%s",
 		profTag(), run.variant.name, run.bufferPairs, shardCount, extractThreads, run.rep,
 		setupSec, ingestSec, prepareSec, textMiB/ingestSec, textMiB/totalSec,
 		float64(extractSort.dur.Microseconds())/1000, float64((totalSort.dur-extractSort.dur).Microseconds())/1000,
 		extractSort.calls, totalSort.calls-extractSort.calls, totalSort.pairs,
-		extractSpills, totalSpills, len(files), hash, thpMiB)
+		extractSpills, totalSpills, len(files), hash, thpMiB, sorterStats(sorters))
 
 	builder.clear()
 }
