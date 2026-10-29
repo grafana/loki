@@ -1275,16 +1275,46 @@ eval instant at 60s count_over_time({app="a"} | logfmt | tri="m" [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt | tri_extracted="m" [1m])
   expect empty
 
-# label conflicts: duplicated structured metadata keys.
-#
-# When a duplicate structured metadata key is encountered, only the last key is preserved.
+# label conflicts: duplicated keys.
+# - A duplicated structured metadata key keeps the last value.
+# - A duplicated logfmt key keeps the first value.
+# - A name duplicated in both keeps the last metadata value, and the first logfmt value goes to dup_extracted.
 clear
 load
-  {app="a"} "msg" @ 20s [repeat every 20s for 3] [metadata dup="first" dup="second"]
+  {app="a"} "msg"                  @ 20s [repeat every 20s for 3] [metadata dup="first" dup="second"]
+  {app="a"} "msg"                  @ 30s [repeat every 20s for 3] [metadata dup="other"]          # noise
+  {app="b"} `dup=first dup=second` @ 20s [repeat every 20s for 3]
+  {app="b"} `dup=other`            @ 30s [repeat every 20s for 3]                                  # noise
+  {app="c"} `dup=p1 dup=p2`        @ 20s [repeat every 20s for 3] [metadata dup="m1" dup="m2"]
+  {app="c"} `dup=p3`               @ 30s [repeat every 20s for 3] [metadata dup="m3"]             # noise
 
 eval instant at 60s count_over_time({app="a"} | dup="second" [1m])
   {app="a", dup="second"} 3
 eval instant at 60s count_over_time({app="a"} | dup="first" [1m])
+  expect empty
+eval instant at 60s sum(count_over_time({app="a"} | dup="second" [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | dup="second" [1m]))  # overlapping
+  {} 2 3
+eval instant at 60s sum(count_over_time({app="a"} | dup="first" [1m]))
+  expect empty
+
+eval instant at 60s sum by (dup) (count_over_time({app="b"} | logfmt [1m]))
+  {dup="first"} 3
+  {dup="other"} 2
+eval range from 40s to 60s step 20s sum by (dup) (count_over_time({app="b"} | logfmt [1m]))  # overlapping
+  {dup="first"} 2 3
+  {dup="other"} 1 2
+eval instant at 60s sum(count_over_time({app="b"} | logfmt | dup="second" [1m]))
+  expect empty
+
+eval instant at 60s sum by (dup, dup_extracted) (count_over_time({app="c"} | logfmt [1m]))
+  {dup="m2", dup_extracted="p1"} 3
+  {dup="m3", dup_extracted="p3"} 2
+eval range from 40s to 60s step 20s sum by (dup, dup_extracted) (count_over_time({app="c"} | logfmt [1m]))  # overlapping
+  {dup="m2", dup_extracted="p1"} 2 3
+  {dup="m3", dup_extracted="p3"} 1 2
+eval instant at 60s sum(count_over_time({app="c"} | logfmt | dup_extracted="p2" [1m]))
   expect empty
 
 # label conflicts without a parser: each stream decides where a metadata value goes.
