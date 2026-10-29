@@ -130,7 +130,9 @@ func TestNgramSortVariantsRealData(t *testing.T) {
 //
 //	go test ./pkg/logline/builder/ -run '^$' -bench BenchmarkNgramSort -count 8 -timeout 2h
 //
-// BENCH_RADIX (comma list) restricts the variants.
+// BENCH_RADIX (comma list) restricts the variants. Run the hugepages variant
+// in its own process: its MADV_HUGEPAGE advice outlives its buffers and gives
+// huge pages to later sub-benchmarks that reuse the same heap ranges.
 func BenchmarkNgramSort(b *testing.B) {
 	variants := ngramSortVariants
 	if names := os.Getenv("BENCH_RADIX"); names != "" {

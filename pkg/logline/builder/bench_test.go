@@ -557,7 +557,11 @@ func (s *e2ePeakSampler) stopPeak() uint64 {
 //	                      the end of the feed loop is attributed to prepare —
 //	                      compare runs on total/throughput, not ingest alone.
 //	BENCH_RADIX           comma list of ngramSortVariants names (default
-//	                      "baseline"); variants run interleaved within a repeat
+//	                      "baseline"); variants run interleaved within a repeat.
+//	                      The hugepages variant leaves MADV_HUGEPAGE on the heap
+//	                      ranges it touched, and later runs in the same process
+//	                      that reuse them get huge pages too: compare it against
+//	                      other variants from separate processes.
 //	BENCH_BUFFER_PAIRS    comma list of postings_buffer_pairs values (default
 //	                      DefaultPostingsBufferPairs)
 //	BENCH_REPEAT          repeats of the whole shard × buffer × variant matrix
