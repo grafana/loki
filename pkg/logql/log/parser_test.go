@@ -2388,6 +2388,14 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			wantFillers: true,
 		},
 		{
+			// The first-writer rule makes `b` final once the line wrote it, so the parser stops.
+			name:     "the other name comes before the renamed key",
+			names:    []string{"app", "b"},
+			required: []string{"app", "b"},
+			line:     "b=1 app=y" + fillers.String(),
+			want:     labels.FromStrings("app", "x", "b", "1"),
+		},
+		{
 			name:        "another name is needed and comes later",
 			names:       []string{"app", "b"},
 			required:    []string{"app", "b"},
