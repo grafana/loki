@@ -13,11 +13,13 @@ To create a major release workflow, follow the steps below.
 1. Add a new workflow for the major release. For example, the 3.0 release looked like the following:
 
 ```jsonnet
-  'three-zero-release.yml': std.manifestYamlDoc(
+  'major-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
       branches=['release-3.0.0'],
       buildImage=buildImage,
       checkTemplate=checkTemplate,
+      distRunsOn='ubuntu-x64',
+      distOptionalTargets=['dist/loki-linux-riscv64'],
       golangCiLintVersion=golangCiLintVersion,
       imageBuildTimeoutMin=imageBuildTimeoutMin,
       imageJobs=imageJobs,
@@ -26,7 +28,6 @@ To create a major release workflow, follow the steps below.
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
-      useGitHubAppToken=true,
       releaseAs='3.0.0',
     ) + {
       name: 'Prepare Loki 3.0 release',
