@@ -70,13 +70,13 @@ func ParseExpr(input string) (Expr, error) {
 	return expr, nil
 }
 
-// parseExprWithoutValidation parses a string and returns an Expr, skipping the
+// ParseExprWithoutValidation parses a string and returns an Expr, skipping the
 // semantic validation done by ParseExpr.
 //
 // The parse itself is inlined here rather than living on the parser type: parts
 // of LogQL parsing panic deliberately and rely on the recover below, so there
 // must be no way to invoke them without it.
-func parseExprWithoutValidation(input string) (expr Expr, err error) {
+func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
 		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
