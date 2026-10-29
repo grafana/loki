@@ -1500,6 +1500,68 @@ func TestRunIndexMergePhase(t *testing.T) {
 
 		require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
 		require.Len(t, replacer.snapshot(), 1)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")))
+	})
+
+	t.Run("starts no other layout group and records the finished swap as compacted when cancelled during a group's task", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		window := imWindow()
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/stats-a", "indexes/stats-b"})
+		buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/plain-a")
+		buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/plain-b")
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+			"acme": {
+				{path: "indexes/stats-a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+				{path: "indexes/stats-b", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+				{path: "indexes/plain-a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+				{path: "indexes/plain-b", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			},
+		})
+		runner := &fakeRunner{}
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return &v2.ResultArtifact{Path: "indexes/merged"}, nil
+		}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window))
+		require.Len(t, runner.snapshot(), 1)
+		require.Len(t, replacer.snapshot(), 1)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")))
+		require.Zero(t, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
+	})
+
+	t.Run("records a failed cycle when the swap fails after a cancel", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		window := imWindow()
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+		runner := &fakeRunner{}
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return &v2.ResultArtifact{Path: "indexes/merged"}, nil
+		}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{err: errors.New("swap failed")}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
+	})
+
+	t.Run("records no cycle when the task returns a cancellation after a cancel", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		window := imWindow()
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+		runner := &fakeRunner{}
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return nil, context.Canceled
+		}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window))
+		require.Empty(t, replacer.snapshot())
+		require.Zero(t, testutil.CollectAndCount(c.metrics.tenantCyclesTotal))
 	})
 }
 
@@ -1782,7 +1844,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(ctx, "acme"))
+		require.Equal(t, phaseOutcomeInterrupted, c.runLogMergePhase(ctx, "acme"))
 		require.Empty(t, replacer.snapshot())
 	})
 
@@ -1799,11 +1861,44 @@ func TestRunLogMergePhase(t *testing.T) {
 			return &v2.ResultArtifact{Path: "artifact"}, nil
 		}
 
-		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(ctx, "acme"))
+		require.Equal(t, phaseOutcomeInterrupted, c.runLogMergePhase(ctx, "acme"))
 		require.Len(t, runner.snapshot(), 1)
 		swaps := replacer.snapshot()
 		require.Len(t, swaps, 1)
 		require.Equal(t, []string{"indexes/current/a"}, swaps[0].oldPaths)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("compacted", "acme")))
+		require.Equal(t, 200.0, pendingBytes(c), "only the index that never ran keeps its bytes")
+	})
+
+	t.Run("records an index failure and starts no other index when the swap fails after a cancel", func(t *testing.T) {
+		runner := &fakeRunner{}
+		c := newTwoWindowCoordinator(t, runner, &fakeReplacer{err: errors.New("swap failed")})
+		ctx, cancel := context.WithCancel(t.Context())
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return &v2.ResultArtifact{Path: "artifact"}, nil
+		}
+
+		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(ctx, "acme"))
+		require.Len(t, runner.snapshot(), 1)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonExecute)))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("failed", "acme")))
+	})
+
+	t.Run("records no failure when the task returns a cancellation after a cancel", func(t *testing.T) {
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTwoWindowCoordinator(t, runner, replacer)
+		ctx, cancel := context.WithCancel(t.Context())
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return nil, context.Canceled
+		}
+
+		require.Equal(t, phaseOutcomeInterrupted, c.runLogMergePhase(ctx, "acme"))
+		require.Empty(t, replacer.snapshot())
+		require.Zero(t, testutil.CollectAndCount(c.metrics.logMergeFailedIndexesTotal))
+		require.Zero(t, testutil.CollectAndCount(c.metrics.tenantLogCyclesTotal))
 	})
 }
 
@@ -1830,6 +1925,34 @@ func TestRunPhase(t *testing.T) {
 
 		c.runPhase(t.Context(), "acme", phaseIndexMerge)
 		require.Equal(t, 2.0, totalCycles(c))
+	})
+
+	t.Run("records no cycle for a LogMerge phase that shutdown interrupts", func(t *testing.T) {
+		runner := &fakeRunner{}
+		c := newTwoWindowCoordinator(t, runner, &fakeReplacer{swapped: true})
+		ctx, cancel := context.WithCancel(t.Context())
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return &v2.ResultArtifact{Path: "artifact"}, nil
+		}
+
+		require.Equal(t, phaseOutcomeInterrupted, c.runPhase(ctx, "acme", phaseLogMerge))
+		require.Zero(t, totalCycles(c))
+	})
+
+	t.Run("records no cycle for an IndexMerge window that shutdown interrupts", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		window := imWindow()
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+		runner := &fakeRunner{}
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return nil, context.Canceled
+		}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		require.Equal(t, phaseOutcomeInterrupted, c.runPhase(ctx, "acme", phaseIndexMerge))
+		require.Zero(t, totalCycles(c))
 	})
 }
 
@@ -1930,7 +2053,7 @@ func TestRun_StartsOneWorkerPerTenant(t *testing.T) {
 		starts[opts.Tenant]++
 		mu.Unlock()
 		<-release
-		return nil, errors.New("released")
+		return nil, context.Canceled
 	}
 
 	done := make(chan error, 1)
@@ -2104,6 +2227,8 @@ func TestWindows_LookbackCountsBackFromCurrent(t *testing.T) {
 func TestWorseOutcome(t *testing.T) {
 	require.Equal(t, phaseOutcomeError, worstOutcome(phaseOutcomeNoWork, phaseOutcomeError))
 	require.Equal(t, phaseOutcomeError, worstOutcome(phaseOutcomeSwapped, phaseOutcomeError))
+	require.Equal(t, phaseOutcomeError, worstOutcome(phaseOutcomeInterrupted, phaseOutcomeError))
+	require.Equal(t, phaseOutcomeInterrupted, worstOutcome(phaseOutcomeSwapped, phaseOutcomeInterrupted))
 	require.Equal(t, phaseOutcomeSwapped, worstOutcome(phaseOutcomeNoWork, phaseOutcomeSwapped))
 	require.Equal(t, phaseOutcomeNoWork, worstOutcome(phaseOutcomeNoWork, phaseOutcomeNoWork))
 }

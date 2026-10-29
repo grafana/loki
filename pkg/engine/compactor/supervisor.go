@@ -140,6 +140,7 @@ func (s *tenantsSupervisor) stop(tenant string) {
 
 func (s *tenantsSupervisor) stopAll() {
 	s.workersMu.Lock()
+	level.Info(s.logger).Log("msg", "stopping tenant workers and waiting for them to exit", "workers", len(s.runningWorkers))
 	for _, cancel := range s.runningWorkers {
 		cancel()
 	}
