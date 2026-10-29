@@ -33,6 +33,7 @@ func TestIsInternalLabel(t *testing.T) {
 		{name: AggregatedMetricLabel, expected: true},
 		{name: PatternLabel, expected: true},
 		{name: TimeShardLabel, expected: true},
+		{name: StreamShardLabel, expected: true},
 	} {
 		require.Equal(t, tc.expected, IsInternalLabel(tc.name), "label %s", tc.name)
 	}
