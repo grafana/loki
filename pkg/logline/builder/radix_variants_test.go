@@ -146,32 +146,52 @@ var (
 )
 
 // guarded returns n-element windows into larger arrays whose surroundings hold
-// sentinels, so writes outside [0, n) are detectable.
-func guarded(n int) ([][8]byte, []uint32, func(t *testing.T)) {
-	kAll := make([][8]byte, n+2*sorterGuard)
-	dAll := make([]uint32, n+2*sorterGuard)
+// sentinels, so writes outside [0, n) are detectable. The key and doc windows
+// start kShift and dShift elements past the guard, to test sorters at
+// arbitrary alignments.
+func guarded(n, kShift, dShift int) ([][8]byte, []uint32, func(t *testing.T)) {
+	kLead, dLead := sorterGuard+kShift, sorterGuard+dShift
+	kAll := make([][8]byte, kLead+n+sorterGuard)
+	dAll := make([]uint32, dLead+n+sorterGuard)
+	for i := range kLead {
+		kAll[i] = guardKey
+	}
+	for i := range dLead {
+		dAll[i] = guardDoc
+	}
 	for i := range sorterGuard {
-		kAll[i], kAll[n+sorterGuard+i] = guardKey, guardKey
-		dAll[i], dAll[n+sorterGuard+i] = guardDoc, guardDoc
+		kAll[kLead+n+i] = guardKey
+		dAll[dLead+n+i] = guardDoc
 	}
 	check := func(t *testing.T) {
 		t.Helper()
-		for i := range sorterGuard {
+		for i := range kLead {
 			require.Equal(t, guardKey, kAll[i], "write before key window")
-			require.Equal(t, guardKey, kAll[n+sorterGuard+i], "write after key window")
+		}
+		for i := range dLead {
 			require.Equal(t, guardDoc, dAll[i], "write before doc window")
-			require.Equal(t, guardDoc, dAll[n+sorterGuard+i], "write after doc window")
+		}
+		for i := range sorterGuard {
+			require.Equal(t, guardKey, kAll[kLead+n+i], "write after key window")
+			require.Equal(t, guardDoc, dAll[dLead+n+i], "write after doc window")
 		}
 	}
-	return kAll[sorterGuard : sorterGuard+n : sorterGuard+n], dAll[sorterGuard : sorterGuard+n : sorterGuard+n], check
+	return kAll[kLead : kLead+n : kLead+n], dAll[dLead : dLead+n : dLead+n], check
 }
 
 // checkSorter sorts one batch with s and verifies every ngramSorter contract.
 func checkSorter(t *testing.T, s ngramSorter, inKeys [][8]byte, inDocs []uint32, wantPairs, wantDedup []pair) {
 	t.Helper()
+	checkSorterAt(t, s, inKeys, inDocs, wantPairs, wantDedup, [4]int{})
+}
+
+// checkSorterAt is checkSorter with the keys, docs, key scratch and doc
+// scratch windows shifted by the given element counts.
+func checkSorterAt(t *testing.T, s ngramSorter, inKeys [][8]byte, inDocs []uint32, wantPairs, wantDedup []pair, shifts [4]int) {
+	t.Helper()
 	n := len(inKeys)
-	keys, docs, checkA := guarded(n)
-	kb, db, checkB := guarded(n)
+	keys, docs, checkA := guarded(n, shifts[0], shifts[1])
+	kb, db, checkB := guarded(n, shifts[2], shifts[3])
 	copy(keys, inKeys)
 	copy(docs, inDocs)
 
@@ -247,6 +267,36 @@ func TestNgramSortVariantsReuse(t *testing.T) {
 				want := canonicalPairs(rk, rd)
 				m := sortAndDedupeGroups(rk, rd)
 				checkSorter(t, s, keys, docs, want, joinSoA(rk[:m], rd[:m]))
+			}
+		})
+	}
+}
+
+// TestNgramSortVariantsMisaligned sorts windows that start at different
+// offsets within a cache line in each of the four arrays, so sorters that
+// stage or copy whole lines must handle partial lines at every edge.
+func TestNgramSortVariantsMisaligned(t *testing.T) {
+	inputs := sorterInputs()
+	shifts := [][4]int{{1, 1, 1, 1}, {3, 7, 5, 1}, {15, 2, 9, 14}, {0, 13, 8, 3}}
+	for _, v := range ngramSortVariants {
+		t.Run(v.name, func(t *testing.T) {
+			s := v.newSorter()
+			for _, name := range []string{"full_48bit", "zipf", "ascii_text"} {
+				idx := slices.IndexFunc(inputs, func(in sorterInput) bool { return in.name == name })
+				require.GreaterOrEqual(t, idx, 0)
+				for _, n := range []int{37, 5000, 70001} {
+					rng := rand.New(rand.NewSource(int64(n)))
+					keys, docs := inputs[idx].gen(rng, n)
+					rk, rd := referenceSort(keys, docs)
+					want := canonicalPairs(rk, rd)
+					m := sortAndDedupeGroups(rk, rd)
+					wantDedup := joinSoA(rk[:m], rd[:m])
+					for _, sh := range shifts {
+						t.Run(fmt.Sprintf("%s/n=%d/shift=%v", name, n, sh), func(t *testing.T) {
+							checkSorterAt(t, s, keys, docs, want, wantDedup, sh)
+						})
+					}
+				}
 			}
 		})
 	}

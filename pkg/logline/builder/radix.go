@@ -32,6 +32,12 @@ type ngramSortVariant struct {
 // entry is the production default.
 var ngramSortVariants = []ngramSortVariant{
 	{name: "baseline", newSorter: newBaselineSorter},
+	{name: "swwc-w8", newSorter: newSWWCSorter(8, false)},
+	{name: "swwc-w12", newSorter: newSWWCSorter(12, false)},
+	{name: "swwc-w16", newSorter: newSWWCSorter(16, false)},
+	{name: "swwc-nt-w8", newSorter: newSWWCSorter(8, true)},
+	{name: "swwc-nt-w12", newSorter: newSWWCSorter(12, true)},
+	{name: "swwc-nt-w16", newSorter: newSWWCSorter(16, true)},
 	{name: "fused-hist", newSorter: newFusedHistSorter},
 	{name: "width-8", newSorter: newLSDSorter(8)},
 	{name: "width-10", newSorter: newLSDSorter(10)},
