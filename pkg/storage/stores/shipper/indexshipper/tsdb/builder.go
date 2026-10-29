@@ -158,7 +158,13 @@ func (b *Builder) dropEmptyStreams() {
 // FinalizeChunks sorts and dedupes the chunks of every stream. It must be called before the chunks are modified.
 func (b *Builder) FinalizeChunks() {
 	for s := range b.allStreams() {
-		s.chunks = s.chunks.Finalize()
+		chks := s.chunks.Finalize()
+		// The chunks are held until Build, if we are holding a large buffer unnecessarily
+		// then release and copy to a new slice to reduce heap pressure.
+		if cap(chks)-len(chks) > len(chks)/4 { // 4 has been tested in real world compactions but is large untuned.
+			chks = slices.Clone(chks)
+		}
+		s.chunks = chks
 	}
 	b.chunksFinalized = true
 }

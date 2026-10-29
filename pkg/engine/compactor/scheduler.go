@@ -19,7 +19,6 @@ import (
 type Scheduler struct {
 	inner    *scheduler.Scheduler
 	endpoint string
-	listener wire.Listener
 	handler  http.Handler
 }
 
@@ -52,7 +51,6 @@ func newScheduler(cfg SchedulerConfig, logger log.Logger) (*Scheduler, error) {
 	return &Scheduler{
 		inner:    inner,
 		endpoint: cfg.Endpoint,
-		listener: listener,
 		handler:  handler,
 	}, nil
 }

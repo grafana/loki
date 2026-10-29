@@ -91,6 +91,22 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	require.Nil(t, data.statistics)
 }
 
+func TestStatsCollectorMiddleware_DetectedFieldsUsage(t *testing.T) {
+	data := &queryData{}
+	ctx := context.WithValue(context.Background(), ctxKey, data)
+	usage := logResponseWithScanUsage(1024).Statistics
+	response := &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{}, Statistics: usage}
+	handler := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		return response, nil
+	}))
+
+	_, err := handler.Do(ctx, &DetectedFieldsRequest{DetectedFieldsRequest: logproto.DetectedFieldsRequest{Query: `{app="test"}`}})
+	require.NoError(t, err)
+	require.True(t, data.recorded)
+	require.Same(t, &response.Statistics, data.statistics)
+	require.Equal(t, int64(1024), data.statistics.Summary.TotalBytesProcessed)
+}
+
 func Test_StatsHTTP(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -791,6 +807,7 @@ func TestQueryUsageHTTPFlow(t *testing.T) {
 					}
 					require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 					require.Equal(t, tc.wantBytes, body.Data.Stats.Summary.TotalBytesProcessed)
+					require.Equal(t, strconv.FormatInt(tc.wantBytes, 10), response.Header().Get(httpreq.LokiQueryBytesProcessedHeader))
 
 					require.Equal(t, tc.wantSplits, body.Data.Stats.Summary.Splits,
 						"each completed interval counts once, including discarded responses")
@@ -803,6 +820,7 @@ func TestQueryUsageHTTPFlow(t *testing.T) {
 					require.Equal(t, tc.wantEntries, entries)
 				} else {
 					require.Empty(t, successfulUsage, "failures must not emit a successful usage record")
+					require.Empty(t, response.Header().Get(httpreq.LokiQueryBytesProcessedHeader))
 
 					line := failedUsage.only(t)
 					requireFailedQueryUsageShape(t, line)

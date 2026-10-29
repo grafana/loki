@@ -36,9 +36,6 @@ const (
 	ModeReadOnly = Mode("RO")
 	// ModeWriteOnly is to allow only write operations
 	ModeWriteOnly = Mode("WO")
-	// ModeDisabled is a no-op implementation which does nothing & does not error.
-	// It's used by the blockbuilder which handles index operations independently.
-	ModeDisabled = Mode("NO")
 
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
@@ -213,11 +210,7 @@ type indexShipper struct {
 // This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
 func NewIndexShipper(prefix string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
 	tenantFilter downloads.TenantFilter, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
-	switch cfg.Mode {
-	case ModeDisabled:
-		return Noop{}, nil
-	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
-	default:
+	if cfg.Mode != ModeReadOnly && cfg.Mode != ModeWriteOnly && cfg.Mode != ModeReadWrite {
 		return nil, fmt.Errorf("invalid mode: %v", cfg.Mode)
 	}
 	shipper := indexShipper{

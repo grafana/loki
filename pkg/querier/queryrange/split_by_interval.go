@@ -43,6 +43,8 @@ func statisticsFromResponse(resp queryrangebase.Response) (stats.Result, bool) {
 		return r.Statistics, true
 	case *LokiLabelNamesResponse:
 		return r.Statistics, true
+	case *DetectedFieldsResponse:
+		return r.Statistics, true
 	default:
 		return stats.Result{}, false
 	}

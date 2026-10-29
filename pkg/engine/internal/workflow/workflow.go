@@ -42,11 +42,6 @@ type Workflow struct {
 	resultsPipeline *streamPipe
 	manifest        *Manifest
 
-	captureMut sync.Mutex
-	// used to merge and link task regions
-	capture      *xcap.Capture
-	parentRegion *xcap.Region
-
 	span trace.Span
 
 	tasksMut    sync.RWMutex
@@ -86,8 +81,7 @@ func newWorkflow(ctx context.Context, opts Options, logger log.Logger, runner Ru
 		taskResults: make(map[*Task]pendingSummary),
 	}
 	// Cancelling the caller's context must not abort the manifest registration,
-	// so detach ctx from cancellation. It keeps its values, including the xcap
-	// region that records observations.
+	// so detach ctx from cancellation. It keeps its values.
 	if err := wf.init(context.WithoutCancel(ctx)); err != nil {
 		wf.Close()
 		return nil, err
@@ -174,9 +168,6 @@ func (wf *Workflow) Close() {
 // The returned pipeline must be closed when the workflow is complete to release
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
-	wf.capture = xcap.CaptureFromContext(ctx)
-	wf.parentRegion = xcap.RegionFromContext(ctx)
-
 	// wf.Run tracks the lifetime of the workflow execution.
 	ctx, wf.span = tracer.Start(ctx, "wf.Run")
 
@@ -300,10 +291,6 @@ func (wf *Workflow) onTaskResult(ctx context.Context, task *Task, result TaskRes
 		wf.resultsPipeline.SetError(result.Error)
 	}
 
-	if result.Capture != nil {
-		wf.mergeCapture(result.Capture)
-	}
-
 	// The task has finished. Detect whether its immediate children should be
 	// cancelled. We only look at immediate unfinished children, since
 	// cancelling them will invoke onTaskResult to process indirect children.
@@ -359,11 +346,4 @@ func (wf *Workflow) cancelTasks(ctx context.Context, tasks []*Task) {
 	if err := wf.runner.Cancel(ctx, tasks...); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to cancel tasks", "err", err)
 	}
-}
-
-func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
-	wf.captureMut.Lock()
-	defer wf.captureMut.Unlock()
-
-	wf.capture.Merge(wf.parentRegion, capture)
 }

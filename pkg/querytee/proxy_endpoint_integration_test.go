@@ -86,8 +86,6 @@ func TestProxyEndpoint_SecondaryBackendContinuesAfterPrimaryCompletes(t *testing
 		"test-route",
 		NewProxyMetrics(nil),
 		log.NewNopLogger(),
-		nil,
-		false,
 	)
 
 	// Create a parent span to simulate incoming request with tracing

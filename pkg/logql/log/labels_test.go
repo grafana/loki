@@ -660,6 +660,71 @@ func TestLabelsBuilder_PreserveErrorIsAnOrdinaryLabel(t *testing.T) {
 	})
 }
 
+func TestParserFieldCache(t *testing.T) {
+	t.Run("lookup resolves a key once while the cache has room", func(t *testing.T) {
+		cache := parserFieldCache{}
+		calls := 0
+		resolve := func() (string, bool) {
+			calls++
+			return "name", true
+		}
+
+		for range 2 {
+			labelName, extract := cache.lookup([]byte("key"), resolve)
+			require.Equal(t, "name", labelName)
+			require.True(t, extract)
+		}
+		require.Equal(t, 1, calls)
+	})
+
+	t.Run("lookup stores at most MaxParserFieldCacheSize keys and resolves the other keys on every call", func(t *testing.T) {
+		cache := parserFieldCache{}
+		calls := 0
+		resolve := func() (string, bool) {
+			calls++
+			return "name", true
+		}
+		for i := range MaxParserFieldCacheSize {
+			cache.lookup(fmt.Appendf(nil, "key%d", i), resolve)
+		}
+		require.Len(t, cache, MaxParserFieldCacheSize)
+
+		calls = 0
+		cache.lookup([]byte("key0"), resolve)
+		require.Equal(t, 0, calls)
+
+		for range 2 {
+			cache.lookup([]byte("late"), resolve)
+		}
+		require.Equal(t, 2, calls)
+		require.Len(t, cache, MaxParserFieldCacheSize)
+	})
+
+	t.Run("get keeps the first answer when a later call passes other hints", func(t *testing.T) {
+		cache := parserFieldCache{}
+		sanitize := func() (string, bool) { return "other", true }
+		rejecting := NewParserHint(nil, []string{"wanted"}, false, false, "")
+
+		_, extract := cache.get([]byte("other"), rejecting, sanitize)
+		require.False(t, extract)
+
+		_, extract = cache.get([]byte("other"), NoParserHints(), sanitize)
+		require.False(t, extract)
+	})
+
+	t.Run("get extracts a key when the hints require only its name with the duplicate suffix", func(t *testing.T) {
+		cache := parserFieldCache{}
+		hints := NewParserHint(nil, []string{"foo_extracted_extracted"}, false, false, "")
+
+		labelName, extract := cache.get([]byte("foo"), hints, func() (string, bool) { return "foo", true })
+		require.Equal(t, "foo", labelName)
+		require.True(t, extract)
+
+		_, extract = cache.get([]byte("bar"), hints, func() (string, bool) { return "bar", true })
+		require.False(t, extract)
+	})
+}
+
 func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 	t.Helper()
 	require.Equal(

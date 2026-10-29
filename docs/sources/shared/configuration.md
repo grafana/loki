@@ -1161,6 +1161,14 @@ dataobj:
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
 
+    # Experimental: Maximum uncompressed input size of one LogMerge task. The
+    # planner splits a larger merge into tasks by stream sort prefix and never
+    # splits one sort prefix. A task exceeds the maximum in two cases: a sort
+    # prefix above it gets a task of its own, and the last task of a merge can
+    # take in a leftover of up to 10% of it. 0 disables the split.
+    # CLI flag: -dataobj.compaction.logs.max-task-size
+    [logs_max_task_size: <int> | default = 0B]
+
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout
@@ -4080,11 +4088,15 @@ discover_generic_fields:
 # CLI flag: -validation.discover-service-name
 [discover_service_name: <list of strings> | default = [service app application app_name name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
 
-# Discover and add log levels during ingestion, if not present already. Levels
-# would be added to Structured Metadata with name
-# level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and
-# one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical',
-# 'fatal' (case insensitive).
+# Discover the log level of each entry during ingestion and add it to Structured
+# Metadata as detected_level, unless it is already present. The level is read
+# from the first stream label or Structured Metadata field whose name is in
+# log_level_fields (default: level, LEVEL, Level, log.level, severity, SEVERITY,
+# Severity, SeverityText, lvl, LVL, Lvl, severity_text, Severity_Text,
+# SEVERITY_TEXT). Otherwise it is derived from the OTLP severity number, or from
+# the log line: a JSON or logfmt field named in log_level_fields, then keywords.
+# Recognized values (case insensitive) are normalized to 'trace', 'debug',
+# 'info', 'warn', 'error', 'critical' or 'fatal'.
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
@@ -4317,11 +4329,6 @@ discover_generic_fields:
 # is enabled.
 # CLI flag: -querier.split-instant-metric-queries-by-interval
 [split_instant_metric_queries_by_interval: <duration> | default = 1h]
-
-# Time bucket interval used for cache key generation in the Thor (V2) query
-# engine. Queries starting within the same bucket share the same cache key.
-# CLI flag: -querier.engine-results-cache-time-bucket-interval
-[engine_results_cache_time_bucket_interval: <duration> | default = 1d]
 
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
@@ -4705,15 +4712,6 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# Experimental: Toggles verbose debug logging of tasks in the new query engine.
-# CLI flag: -limits.debug-engine-tasks
-[debug_engine_tasks: <boolean> | default = false]
-
-# Experimental: Toggles verbose debug logging of data streams in the new query
-# engine.
-# CLI flag: -limits.debug-engine-streams
-[debug_engine_streams: <boolean> | default = false]
 ```
 
 ### local_storage_config
@@ -4913,6 +4911,13 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # if cas-retry-min-backoff is also set.
 # CLI flag: -memberlist.cas-retry-max-backoff
 [cas_retry_max_backoff: <duration> | default = 10s]
+
+# Cache the serialized form of each key, so that push/pull sync doesn't
+# re-encode entries that haven't changed since the last sync. Reduces CPU and
+# lock contention in large clusters, at the cost of memory proportional to the
+# size of the KV store.
+# CLI flag: -memberlist.local-state-cache-enabled
+[local_state_cache_enabled: <boolean> | default = false]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
@@ -5993,6 +5998,13 @@ Configures the `server` of the launched module(s).
 # VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
 # CLI flag: -server.tls-min-version
 [tls_min_version: <string> | default = ""]
+
+# Comma-separated list of TLS curve/group preferences for key exchange. Allowed
+# values: CurveP256, CurveP384, CurveP521, X25519, X25519MLKEM768,
+# SecP256r1MLKEM768, SecP384r1MLKEM1024. If blank, the default Go curve
+# preferences are used.
+# CLI flag: -server.tls-curve-preferences
+[tls_curve_preferences: <string> | default = ""]
 
 http_tls_config:
   # Server TLS certificate. This configuration parameter is YAML only.

@@ -74,30 +74,37 @@ func (l Layout) Equal(other Layout) bool {
 		slices.Equal(l.schemaLabels, other.schemaLabels)
 }
 
-func (l Layout) sortInfo() *datasetmd.SortInfo {
+// NewSortInfo returns the sort info of a section whose rows follow
+// columnSorts and that records layout. A nil columnSorts records only the
+// layout.
+func NewSortInfo(layout Layout, columnSorts []*datasetmd.SortInfo_ColumnSort) *datasetmd.SortInfo {
 	return &datasetmd.SortInfo{
-		SchemaLabels: slices.Clone(l.schemaLabels),
-		StreamOrder:  streamOrderProto(l.streamOrder),
-		ShardCount:   l.shardLayout.Buckets(),
+		ColumnSorts:  columnSorts,
+		SchemaLabels: slices.Clone(layout.schemaLabels),
+		StreamOrder:  streamOrderProto(layout.streamOrder),
+		ShardCount:   layout.shardLayout.Buckets(),
 	}
 }
 
-// layoutFromSortInfo decodes the layout that si records. It returns an error
-// for any state that [NewLayout] cannot produce: a shard count that is not a
-// valid shard layout, a stream order other than [StreamOrderStableHashV1], or
-// column sorts.
-func layoutFromSortInfo(si *datasetmd.SortInfo) (Layout, error) {
-	if si.StreamOrder != datasetmd.STREAM_ORDER_STABLE_HASH_V1 {
-		return Layout{}, fmt.Errorf("unsupported stream order %s", si.StreamOrder)
+// LayoutFromSortInfo returns the layout that [NewSortInfo] recorded in si,
+// and ignores the column sorts of si. ok is false if si is nil or sets none of
+// the stream order, the shard count, and the schema labels.
+//
+// LayoutFromSortInfo returns an error for any other state that [NewLayout]
+// cannot produce: a shard count that is not a valid shard layout, or a stream
+// order other than [StreamOrderStableHashV1].
+func LayoutFromSortInfo(si *datasetmd.SortInfo) (layout Layout, ok bool, err error) {
+	if si == nil || (si.StreamOrder == datasetmd.STREAM_ORDER_UNSPECIFIED && si.ShardCount == 0 && len(si.SchemaLabels) == 0) {
+		return Layout{}, false, nil
 	}
-	if len(si.ColumnSorts) > 0 {
-		return Layout{}, fmt.Errorf("streams section has %d column sorts, want none", len(si.ColumnSorts))
+	if si.StreamOrder != datasetmd.STREAM_ORDER_STABLE_HASH_V1 {
+		return Layout{}, false, fmt.Errorf("unsupported stream order %s", si.StreamOrder)
 	}
 	shardLayout, err := ShardLayoutFromBuckets(si.ShardCount)
 	if err != nil {
-		return Layout{}, fmt.Errorf("decoding shard layout: %w", err)
+		return Layout{}, false, fmt.Errorf("decoding shard layout: %w", err)
 	}
-	return NewLayout(shardLayout, si.SchemaLabels), nil
+	return NewLayout(shardLayout, si.SchemaLabels), true, nil
 }
 
 func streamOrderProto(order StreamOrder) datasetmd.StreamOrder {

@@ -324,7 +324,7 @@ func (f *testBuilderFactory) NewBuilder() (*logsobj.Builder, error) {
 		return nil, errors.New("boom")
 	}
 	f.created++
-	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), nil)
+	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), logsobj.NoTenantOverrides{})
 }
 
 // mockMultiBuilder wraps the production [MultiObjectBuilder] so processor

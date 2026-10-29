@@ -77,6 +77,8 @@ func (n *LogMerge) UnmarshalPhysical(from physical.Node) error {
 		Tenant:                  logMerge.Tenant,
 		TocWindowStartUnixNanos: logMerge.ToCWindowStart,
 		Runs:                    copyRunRefs(logMerge.Runs),
+		KeyRange:                copyKeyRange(logMerge.KeyRange),
+		InputBytes:              logMerge.InputBytes,
 	}
 	return nil
 }

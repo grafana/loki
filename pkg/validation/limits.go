@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -159,18 +160,17 @@ type Limits struct {
 	DataObjMaxBytesPerShard     flagext.ByteSize   `yaml:"dataobj_max_bytes_per_shard" json:"dataobj_max_bytes_per_shard" category:"experimental"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration                   model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MetadataQuerySplitDuration           model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
-	RecentMetadataQuerySplitDuration     model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
-	RecentMetadataQueryWindow            model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
-	InstantMetricQuerySplitDuration      model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
-	EngineResultsCacheTimeBucketInterval model.Duration   `yaml:"engine_results_cache_time_bucket_interval" json:"engine_results_cache_time_bucket_interval"`
-	IngesterQuerySplitDuration           model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
-	MinShardingLookback                  model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
-	MaxQueryBytesRead                    flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
-	MaxQuerierBytesRead                  flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
-	VolumeEnabled                        bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
-	VolumeMaxSeries                      int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	QuerySplitDuration               model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MetadataQuerySplitDuration       model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	RecentMetadataQuerySplitDuration model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
+	RecentMetadataQueryWindow        model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
+	InstantMetricQuerySplitDuration  model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
+	IngesterQuerySplitDuration       model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
+	MinShardingLookback              model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead                flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead              flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled                    bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries                  int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
 	RulerMaxRulesPerRuleGroup   int                             `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
@@ -268,11 +268,6 @@ type Limits struct {
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
-
-	// Per tenant limits for the v2 execution engine
-
-	DebugEngineTasks   bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
-	DebugEngineStreams bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
 
 	// Data-objects sort schema
 	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
@@ -445,7 +440,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"k8s_job_name",
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
-	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
+	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, fmt.Sprintf("Discover the log level of each entry during ingestion and add it to Structured Metadata as %s, unless it is already present. The level is read from the first stream label or Structured Metadata field whose name is in log_level_fields (default: %s). Otherwise it is derived from the OTLP severity number, or from the log line: a JSON or logfmt field named in log_level_fields, then keywords. Recognized values (case insensitive) are normalized to 'trace', 'debug', 'info', 'warn', 'error', 'critical' or 'fatal'.", constants.LevelLabel, strings.Join(DefaultAllowedLevelFields, ", ")))
 	l.LogLevelFields = make([]string, len(DefaultAllowedLevelFields))
 	copy(l.LogLevelFields, DefaultAllowedLevelFields)
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
@@ -533,8 +528,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
 	_ = l.InstantMetricQuerySplitDuration.Set("1h")
 	f.Var(&l.InstantMetricQuerySplitDuration, "querier.split-instant-metric-queries-by-interval", "Split instant metric queries by a time interval and execute in parallel. The value 0 disables splitting instant metric queries by time. This also determines how cache keys are chosen when instant metric query result caching is enabled.")
-	_ = l.EngineResultsCacheTimeBucketInterval.Set("24h")
-	f.Var(&l.EngineResultsCacheTimeBucketInterval, "querier.engine-results-cache-time-bucket-interval", "Time bucket interval used for cache key generation in the Thor (V2) query engine. Queries starting within the same bucket share the same cache key.")
 
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
@@ -631,9 +624,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
-
-	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
-	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 
 	l.SortSchema = DefaultSortSchema
 	l.DataObjShardFactor = streams.DefaultShardBuckets
@@ -772,11 +762,6 @@ func (l *Limits) Validate() error {
 
 	if l.DataObjMaxBytesPerShard <= 0 {
 		return errors.New("querier.dataobj-max-bytes-per-shard must be greater than 0")
-	}
-
-	if time.Duration(l.EngineResultsCacheTimeBucketInterval) < time.Minute {
-		return fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got %s",
-			l.EngineResultsCacheTimeBucketInterval)
 	}
 
 	if err := l.SortSchema.Validate(); err != nil {
@@ -997,11 +982,6 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 // InstantMetricQuerySplitDuration returns the tenant specific instant metric queries splitby interval applied in the query frontend.
 func (o *Overrides) InstantMetricQuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).InstantMetricQuerySplitDuration)
-}
-
-// EngineResultsCacheTimeBucketInterval returns the time bucket interval used for cache key generation in the Thor (V2) query engine.
-func (o *Overrides) EngineResultsCacheTimeBucketInterval(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).EngineResultsCacheTimeBucketInterval)
 }
 
 // MetadataQuerySplitDuration returns the tenant specific metadata splitby interval applied in the query frontend.
@@ -1446,14 +1426,6 @@ func (o *Overrides) StreamFirstExecutionEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).StreamFirstExecutionEnabled
 }
 
-func (o *Overrides) DebugEngineTasks(userID string) bool {
-	return o.getOverridesForUser(userID).DebugEngineTasks
-}
-
-func (o *Overrides) DebugEngineStreams(userID string) bool {
-	return o.getOverridesForUser(userID).DebugEngineStreams
-}
-
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.TenantLimits(userID)
@@ -1530,8 +1502,7 @@ func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
 	layout, err := o.getOverridesForUser(userID).DataObjShardFactor.Layout()
 	if err != nil {
 		// Limits.Validate rejects invalid factors, so only unvalidated limits
-		// reach this branch. It does not log, because writers call
-		// ShardLayout once per record.
+		// reach this branch.
 		return streams.DefaultShardLayout()
 	}
 	return layout

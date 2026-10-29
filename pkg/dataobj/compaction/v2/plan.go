@@ -13,6 +13,10 @@ type CompareFunc[K any] func(a, b K) int
 type Section[K any] struct {
 	Ref      *compactionv2pb.SectionRef
 	Min, Max K
+
+	// Keys holds the size of each key in the section, in any order. An empty
+	// Keys means the sizes are unknown, not that the section holds no key.
+	Keys []KeySize[K]
 }
 
 // Run is one strictly ordered sequence of sections.

@@ -15,14 +15,14 @@ Read more about why we recommend migrating to [Grafana Alloy](https://grafana.co
 
 This section provides links to documentation for how to migrate to Alloy.
 
-- [Migrate from Grafana Agent Static](https://grafana.com/docs/alloy/latest/tasks/migrate/from-static/)
+- [Migrate from Grafana Agent Static](https://grafana.com/docs/alloy/latest/set-up/migrate/from-static/)
 
-- [Migrate from Grafana Agent Flow](https://grafana.com/docs/alloy/latest/tasks/migrate/from-flow/)
+- [Migrate from Grafana Agent Flow](https://grafana.com/docs/alloy/latest/set-up/migrate/from-flow/)
 
-- [Migrate from Grafana Agent Operator](https://grafana.com/docs/alloy/latest/tasks/migrate/from-operator/)
+- [Migrate from Grafana Agent Operator](https://grafana.com/docs/alloy/latest/set-up/migrate/from-operator/)
 
-- [Migrate from OpenTelemetry Collector](https://grafana.com/docs/alloy/latest/tasks/migrate/from-otelcol/)
+- [Migrate from OpenTelemetry Collector](https://grafana.com/docs/alloy/latest/set-up/migrate/from-otelcol/)
 
-- [Migrate from Prometheus](https://grafana.com/docs/alloy/latest/tasks/migrate/from-prometheus/)
+- [Migrate from Prometheus](https://grafana.com/docs/alloy/latest/set-up/migrate/from-prometheus/)
 
-- [Migrate from Promtail](https://grafana.com/docs/alloy/latest/tasks/migrate/from-promtail/)
+- [Migrate from Promtail](https://grafana.com/docs/alloy/latest/set-up/migrate/from-promtail/)

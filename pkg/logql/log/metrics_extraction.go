@@ -77,7 +77,7 @@ type cachedStreamSampleExtractor struct {
 // Multiple log stages are run before converting the log line.
 func NewLineSampleExtractor(ex LineExtractor, stages Stages, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	s := ReduceStages(stages)
-	hints := NewParserHint(stages.RequiredLabelNames(), groups, without, noLabels, "")
+	hints := NewParserHint(stages, groups, without, noLabels, "")
 	baseBuilder := NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels).
 		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &lineSampleExtractor{
@@ -331,7 +331,7 @@ func LabelExtractorWithStages(
 	}
 	stages := make(Stages, 0, len(preStages)+1)
 	stages = append(append(stages, preStages...), postFilter)
-	hints := NewParserHint(stages.RequiredLabelNames(), groups, without, noLabels, labelName)
+	hints := NewParserHint(stages, groups, without, noLabels, labelName)
 	baseBuilder := NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels).
 		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &labelSampleExtractor{
@@ -412,7 +412,7 @@ func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builde
 // (used when grouping is omitted, to keep stream labels minus the counted
 // field); noLabels=true is by () and emits one unlabeled series; otherwise
 // output labels are restricted to groups.
-func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
+func NewDistinctValueSampleExtractor(labelName string, stages Stages, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	if labelName == "" {
 		return nil, errors.New("distinct value extractor requires a non-empty label name")
 	}
@@ -420,7 +420,7 @@ func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []
 	copy(sortedGroups, groups)
 	sort.Strings(sortedGroups)
 	preStage := ReduceStages(stages)
-	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, without, noLabels, labelName)
+	hints := NewParserHint(stages, sortedGroups, without, noLabels, labelName)
 	baseBuilder := NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, without, noLabels).
 		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &distinctValueSampleExtractor{

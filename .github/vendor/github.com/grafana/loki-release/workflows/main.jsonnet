@@ -17,7 +17,7 @@
     distOptionalTargets=[],
     distRunsOn='ubuntu-x64',
     dryRun=false,
-    golangCiLintVersion='v2.13.2',
+    golangCiLintVersion='v2.14.0',
     imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
@@ -175,7 +175,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v2.13.2',
+            default: 'v2.14.0',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
@@ -224,7 +224,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v2.13.2',
+            default: 'v2.14.0',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',

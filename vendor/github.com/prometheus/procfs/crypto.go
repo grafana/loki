@@ -58,7 +58,6 @@ func (fs FS) Crypto() ([]Crypto, error) {
 	b, err := parsers.ReadFileNoStat(path)
 	if err != nil {
 		return nil, fmt.Errorf("%w: Cannot read file %v: %w", ErrFileRead, b, err)
-
 	}
 
 	crypto, err := parseCrypto(bytes.NewReader(b))

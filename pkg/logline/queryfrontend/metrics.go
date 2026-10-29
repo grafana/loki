@@ -10,23 +10,31 @@ import (
 // Metrics holds all Prometheus metrics for the logline query frontend.
 type Metrics struct {
 	// hintProviderDuration measures time spent in ProvideHints per query.
+	// Lookups canceled before they finish are counted in hintLookupsCanceled
+	// instead, so their truncated durations don't skew it.
 	hintProviderDuration prometheus.Histogram
-	// hintWaitDuration measures, once per live query that starts a hint lookup,
+	// hintLookupsCanceled counts live hint lookups canceled before they
+	// finished, usually because the query was answered first.
+	hintLookupsCanceled prometheus.Counter
+	// hintWaitDuration measures, once per live query that reaches the hint lookup,
 	// the wall time during which at least one sub-request was held at the filter
 	// waiting for hints.
 	// Labels: status — the logline hintStatus when the query returns.
 	hintWaitDuration *prometheus.HistogramVec
 	// hintRangesReturned measures the number of time ranges returned per query.
 	hintRangesReturned prometheus.Histogram
-	// hintPassthrough counts queries bypassed without hint narrowing.
+	// hintPassthrough counts sub-requests that waited for the hint lookup and
+	// then passed through without hint narrowing. Ingester-window and
+	// pre-min-date sub-requests don't wait, so they are counted in
+	// passthroughSubRequests whatever the lookup returns.
 	// Labels: reason — "timeout", "unsupported", "error".
 	hintPassthrough *prometheus.CounterVec
 	// hintSubRequests counts sub-requests dispatched for hint-narrowed queries.
 	// Labels: status — "narrowed", "skipped".
 	hintSubRequests *prometheus.CounterVec
-	// passthroughSubRequests counts sub-requests dispatched for ingester-window
-	// time ranges that bypass the logline index entirely.
-	// Labels: reason — "ingester_window".
+	// passthroughSubRequests counts sub-requests dispatched for time ranges the
+	// logline index doesn't cover, without waiting for the hint lookup.
+	// Labels: reason — "ingester_window", "pre_min_date".
 	passthroughSubRequests *prometheus.CounterVec
 	// hintSkippedSmallQuery counts requests that skip hint prefetch because
 	// query index-stats bytes are below the configured threshold.
@@ -51,6 +59,10 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name:    "logline_query_frontend_hint_provider_duration_seconds",
 			Help:    "Time spent in ProvideHints per query in seconds",
 			Buckets: prometheus.DefBuckets,
+		}),
+		hintLookupsCanceled: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "logline_query_frontend_hint_lookups_canceled_total",
+			Help: "Total live hint lookups canceled before they finished, usually because the query was answered first",
 		}),
 		hintWaitDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name: "logline_query_frontend_hint_wait_seconds",
@@ -77,7 +89,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, []string{"status"}),
 		passthroughSubRequests: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "logline_query_frontend_passthrough_sub_requests_total",
-			Help: "Total sub-requests dispatched for ingester-window time ranges",
+			Help: "Total sub-requests dispatched without hints for ingester-window or pre-min-date time ranges",
 		}, []string{"reason"}),
 		hintSkippedSmallQuery: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "logline_query_frontend_hint_skipped_small_query_total",

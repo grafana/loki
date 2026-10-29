@@ -358,7 +358,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &r.Response.Statistics
 					queryType = queryTypeShards
 				case *DetectedFieldsResponse:
-					responseStats = &stats.Result{} // TODO: support stats in detected fields
+					responseStats = &r.Statistics
 					totalEntries = 1
 					queryType = queryTypeDetectedFields
 				case *QueryPatternsResponse:

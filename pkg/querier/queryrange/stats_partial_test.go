@@ -347,20 +347,21 @@ func TestStatisticsFromResponse(t *testing.T) {
 	s := stats.Result{Ingester: stats.Ingester{TotalReached: 7}}
 
 	for _, tc := range []struct {
-		name   string
-		resp   queryrangebase.Response
-		wantOK bool
+		name      string
+		resp      queryrangebase.Response
+		wantOK    bool
+		wantStats stats.Result
 	}{
-		{"log", &LokiResponse{Statistics: s}, true},
-		{"metric", &LokiPromResponse{Statistics: s}, true},
-		{"index_stats", &IndexStatsResponse{}, false},
+		{"log", &LokiResponse{Statistics: s}, true, s},
+		{"metric", &LokiPromResponse{Statistics: s}, true, s},
+		{"detected fields", &DetectedFieldsResponse{Statistics: s}, true, s},
+		{"detected fields with zero usage", &DetectedFieldsResponse{}, true, stats.Result{}},
+		{"index_stats", &IndexStatsResponse{}, false, stats.Result{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := statisticsFromResponse(tc.resp)
 			require.Equal(t, tc.wantOK, ok)
-			if tc.wantOK {
-				require.Equal(t, int32(7), got.Ingester.TotalReached)
-			}
+			require.Equal(t, tc.wantStats, got)
 		})
 	}
 }

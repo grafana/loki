@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -147,7 +148,7 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 	}
-	builder, err := indexobj.NewMergeBuilder(cfg, nil)
+	builder, err := indexobj.NewMergeBuilder(cfg, nil, object.tenant, layoutOfStats(object.stats))
 	require.NoError(t, err)
 	for _, stat := range object.stats {
 		require.NoError(t, builder.AppendStat(object.tenant, stat))
@@ -173,6 +174,16 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 	objBytes, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	require.NoError(t, bucket.Upload(ctx, object.path, io.NopCloser(bytes.NewReader(objBytes))))
+}
+
+// layoutOfStats returns the layout with the default shard layout and the
+// sort schema of the first of rows as schema labels.
+func layoutOfStats(rows []stats.Stat) streams.Layout {
+	var schemaLabels []string
+	if len(rows) > 0 && rows[0].SortSchema != "" {
+		schemaLabels = strings.Split(rows[0].SortSchema, ",")
+	}
+	return streams.NewLayout(streams.DefaultShardLayout(), schemaLabels)
 }
 
 func buildIndexWithPostingsSections(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, sections ...[]postings.Row) {
@@ -211,9 +222,8 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
-	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
-	require.Equal(t, []string{"label:service_name"}, schema)
 	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
 			Ref: &compactionv2pb.SectionRef{
@@ -227,6 +237,10 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			},
 			Min: newLogSortPrefix(0, []string{"auth"}),
 			Max: newLogSortPrefix(0, []string{"billing"}),
+			Keys: []v2.KeySize[logSortPrefix]{
+				{Key: newLogSortPrefix(0, []string{"auth"}), UncompressedSize: 300},
+				{Key: newLogSortPrefix(0, []string{"billing"}), UncompressedSize: 200},
+			},
 		},
 	}, refs)
 }
@@ -245,7 +259,7 @@ func TestLogSectionRefsFor_OrdersPhysicalSections(t *testing.T) {
 			Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
 	})
 
-	sections, _, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	sections, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Len(t, sections, 3)
 	require.Equal(t, []string{"logs/log-a", "logs/log-b", "logs/log-b"}, []string{
@@ -270,9 +284,8 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
-	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
 	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
 			Ref: &compactionv2pb.SectionRef{
@@ -283,8 +296,9 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: newLogSortPrefix(0, []string{"auth", "eu"}),
-			Max: newLogSortPrefix(0, []string{"auth", "eu"}),
+			Min:  newLogSortPrefix(0, []string{"auth", "eu"}),
+			Max:  newLogSortPrefix(0, []string{"auth", "eu"}),
+			Keys: []v2.KeySize[logSortPrefix]{{Key: newLogSortPrefix(0, []string{"auth", "eu"}), UncompressedSize: 100}},
 		},
 	}, refs)
 }
@@ -299,9 +313,8 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
-	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
 	require.Len(t, refs, 1)
 	require.Equal(t, logSortPrefix{}, refs[0].Min)
 	require.Equal(t, logSortPrefix{}, refs[0].Max)
@@ -311,79 +324,56 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
 }
 
-func TestLogSectionRefsFor_RejectsMixedSchemas(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	path := "indexes/aa/mixed"
-
-	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "api"}, MinTimestamp: 10, MaxTimestamp: 20},
-		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:namespace",
-			Labels: map[string]string{"namespace": "prod"}, MinTimestamp: 10, MaxTimestamp: 20},
-	})
-
-	_, _, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
-	require.ErrorContains(t, err, `contains log sort schemas "label:service_name" and "label:namespace"`)
-}
-
-func TestLogSectionRefsFor_ReadsAndValidatesShardCount(t *testing.T) {
+func TestIndexLayout(t *testing.T) {
 	ctx := context.Background()
 	const tenant = "acme"
 
-	t.Run("current index", func(t *testing.T) {
+	t.Run("returns the layout that the stats sections record", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		path := "indexes/current"
-		buildIndex(ctx, t, bucket, testIndexObject{
-			tenant:      tenant,
-			path:        path,
-			sectionSize: 1 << 20,
-			stats: []stats.Stat{{
-				ObjectPath: "logs/current", SortSchema: "label:service_name",
-			}},
-			postings: []postings.Row{{
-				Kind: postings.KindLabel, ObjectPath: "logs/current",
-				ColumnName: "service_name", LabelValue: "api",
-				ShardBuckets: int64(streams.DefaultShardLayout().Buckets()),
-			}},
-		})
-
-		_, _, shardCount, err := logSectionRefsFor(ctx, bucket, tenant, path)
-		require.NoError(t, err)
-		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), shardCount)
-	})
-
-	t.Run("legacy index has no shard count", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		path := "indexes/legacy"
 		buildIndexWithStats(ctx, t, bucket, tenant, path, []stats.Stat{{
-			ObjectPath: "logs/legacy", SortSchema: "label:service_name",
+			ObjectPath: "logs/current", SortSchema: "label:service_name",
 		}})
 
-		_, _, shardCount, err := logSectionRefsFor(ctx, bucket, tenant, path)
+		layout, ok, err := indexLayoutAt(ctx, bucket, tenant, path)
 		require.NoError(t, err)
-		require.Zero(t, shardCount)
+		require.True(t, ok)
+		require.Equal(t, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}), layout)
 	})
 
-	t.Run("mixed shard counts are invalid", func(t *testing.T) {
+	t.Run("returns a corrupt index error when stats sections record different layouts", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		path := "indexes/mixed-shards"
-		buildIndex(ctx, t, bucket, testIndexObject{
-			tenant:      tenant,
-			path:        path,
-			sectionSize: 1 << 20,
-			stats: []stats.Stat{{
-				ObjectPath: "logs/mixed", SortSchema: "label:service_name",
-			}},
-			postings: []postings.Row{
-				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "api", ShardBuckets: int64(streams.DefaultShardLayout().Buckets())},
-				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "worker"},
-			},
-		})
+		path := "indexes/mixed"
+		builder := dataobj.NewBuilder(nil)
+		for _, schema := range []string{"label:service_name", "label:namespace"} {
+			statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000), streams.NewLayout(streams.DefaultShardLayout(), []string{schema}))
+			statsBuilder.SetTenant(tenant)
+			statsBuilder.Append(stats.Stat{ObjectPath: "logs/" + schema, SortSchema: schema})
+			require.NoError(t, builder.Append(statsBuilder))
+		}
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
-		_, _, _, err := logSectionRefsFor(ctx, bucket, tenant, path)
-		require.ErrorContains(t, err, "detected multiple shard counts within index file")
+		_, _, err = indexLayout(ctx, obj, tenant, path)
+		require.ErrorIs(t, err, errCorruptIndex)
+		require.ErrorIs(t, err, indexobj.ErrMixedLayouts)
+
+		uploadObject(ctx, t, bucket, path, obj)
+		_, err = logSectionRefsFor(ctx, bucket, tenant, path)
+		require.ErrorIs(t, err, errCorruptIndex)
 	})
+}
+
+// uploadObject uploads obj to bucket at path.
+func uploadObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, obj *dataobj.Object) {
+	t.Helper()
+	reader, err := obj.Reader(ctx)
+	require.NoError(t, err)
+	defer reader.Close()
+	objBytes, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, bucket.Upload(ctx, path, io.NopCloser(bytes.NewReader(objBytes))))
 }
 
 func TestCompareIndexSortKey(t *testing.T) {

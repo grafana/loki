@@ -518,7 +518,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		}
 
 		// Skip streams that are already aggregated metrics or patterns to avoid loops
-		if lbls.Has(constants.AggregatedMetricLabel) || lbls.Has(constants.PatternLabel) {
+		if constants.IsPatternIngesterStream(lbls.Has) {
 			continue
 		}
 

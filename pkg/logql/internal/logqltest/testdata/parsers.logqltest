@@ -46,6 +46,19 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
 # logfmt() label-expression form resolves the same clashes the same way.
 eval instant at 60s count_over_time({app="a"} | logfmt sl, md, sm, tri [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+# A filter before the parser sees only the stream labels and the stored metadata.
+eval instant at 60s sum(count_over_time({app="a"} | md="m" | logfmt [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | md="m" | logfmt [1m])) # overlapping
+  {} 2 3
+eval instant at 60s sum(count_over_time({app="a"} | sl="s" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | sm_extracted="m" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | md_extracted="p" | logfmt [1m]))
+  expect empty
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | md_extracted="p" [1m]))
+  {} 3
 
 # logfmt() after `drop`: a dropped stream label does not clash with parsed keys.
 clear
@@ -189,6 +202,14 @@ eval instant at 40s count_over_time({app="a"} | json [20s])
   expect fail msg: JSONParserErr
 eval select from 0 to 60s forward {app="a"} | json | __error__!=""
   {app="a"} `broken` @ 40s [parsed __error__="JSONParserErr" __error_details__="Value looks like object, but can't find closing '}' symbol"]
+# A sum that keeps no label makes the parser skip extraction, so the malformed line at 40s raises no
+# error. A label filter before the parser must not change that.
+eval instant at 60s sum(count_over_time({app="a"} | json [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | app="a" | json [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | app="a" | json [1m])) # overlapping
+  {} 2 3
 
 # json() parsing error, that an __error__ filter, keeps in the result the series with the grouped labels
 # plus the labels that report the error.
@@ -325,10 +346,21 @@ load
 
 eval instant at 60s count_over_time({app="a"} | regexp `(?P<num>\d+)` [1m])
   {app="a", method="stream"} 3
+eval instant at 60s sum(count_over_time({app="a"} | regexp `(?P<num>\d+)` [1m]))
+  {} 3
 eval instant at 60s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+)` [1m])
   {app="a", method="stream", method_extracted="PUT", path="/x"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+)` [1m])  # overlapping
   {app="a", method="stream", method_extracted="PUT", path="/x"} 2 3
+eval instant at 60s sum(count_over_time({app="a"} | method="stream" | regexp `(?P<num>\d+)` [1m]))
+  {} 3
+eval instant at 60s sum by (path) (count_over_time({app="a"} | method="stream" | regexp `(?P<method>\w+) (?P<path>\S+)` [1m]))
+  {path="/x"} 3
+# A label filter after the regexp reads the captured label.
+eval instant at 60s sum(count_over_time({app="a"} | method="stream" | regexp `(?P<method>\w+) (?P<path>\S+)` | path="/x" [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | method="stream" | regexp `(?P<method>\w+) (?P<path>\S+)` | path="/nope" [1m]))
+  expect empty
 eval instant at 60s count_over_time({app="a"} | regexp `nocapture` [1m])
   expect fail msg: at least one named capture must be supplied
 eval instant at 60s count_over_time({app="a"} | regexp `(?P<x>.)(?P<x>.)` [1m])

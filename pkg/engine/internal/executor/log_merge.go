@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -26,7 +27,7 @@ import (
 var errNoSourceObjects = errors.New("no source objects found")
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
-	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifact, err := c.doLogObjectMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
@@ -39,7 +40,7 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 			return errorPipeline(ctx, err)
 		}
 		return NewBufferedPipeline(rec)
-	}, nil)
+	})
 }
 
 // dataObjectBucket returns the bucket for reading source log objects and writing
@@ -84,7 +85,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	var (
 		inputBytesTotal int64
-		dups            duplicateCounter
+		dups            logs.DuplicateTracker
 		inputBytesBatch int64
 		count           int
 	)
@@ -109,13 +110,20 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 			inputBytesBatch = 0
 			count = 0
 		}
-		dups.observe(rec)
+		_ = dups.IsDuplicate(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
 	}
 	// Count any remaining records that haven't been added to the metric yet
 	observeBatch()
+	// The index stats record the same UncompressedSize per record, so a
+	// difference means the planner and this merge disagree on which records
+	// the key range holds. Fail before the index is written, so the source
+	// index stays and no record is lost.
+	if node.InputBytes > 0 && inputBytesTotal != node.InputBytes {
+		return nil, fmt.Errorf("LogMerge: read %d input bytes, but the index stats hold %d bytes for the key range", inputBytesTotal, node.InputBytes)
+	}
 	stats, err := w.finish(ctx)
 	if err != nil {
 		return nil, err
@@ -136,7 +144,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		stats.InputSections += len(run)
 	}
 	stats.InputBytes = inputBytesTotal
-	stats.DuplicateRecords = dups.duplicates
+	stats.DuplicateRecords = dups.Duplicates()
 
 	duration := time.Since(start)
 	var inputBytesPerSecond int64
@@ -192,6 +200,10 @@ type logSource struct {
 	streams            map[int64]streams.Stream
 	layout             streams.Layout
 	remap              map[int64]int64
+
+	// droppedStreamIDs holds the IDs of the streams outside the key range of
+	// the merge. Reads of the object skip their records.
+	droppedStreamIDs []int64
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
@@ -217,6 +229,10 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		}
 	}
 	srcBucket := c.dataObjectBucket()
+	keyRange, err := sortPrefixRange(node.KeyRange)
+	if err != nil {
+		return nil, fmt.Errorf("invalid LogMerge task: %w", err)
+	}
 
 	// Gather the assigned log sections and the tenant's streams section.
 	sources := make([]*logSource, 0, len(paths))
@@ -266,24 +282,63 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		if err != nil {
 			return nil, fmt.Errorf("resolving streams for object %q: %w", path, err)
 		}
+		dropped, err := dropStreamsOutsideRange(srcStreams, layout, keyRange)
+		if err != nil {
+			return nil, fmt.Errorf("filtering streams for object %q: %w", path, err)
+		}
 
 		sources = append(sources, &logSource{
 			path:               path,
 			streams:            srcStreams,
 			layout:             layout,
 			logSectionsByIndex: logSections,
+			droppedStreamIDs:   dropped,
 		})
 	}
 
 	return sources, nil
 }
 
+// sortPrefixRange returns the stream sort prefixes in r. It returns an error
+// if r misses a bound, if its start is not below its end, or if its end is
+// above [streams.SortPrefixLimit]. A nil r holds every prefix.
+func sortPrefixRange(r *compactionv2pb.KeyRange) (v2.KeyRange[streams.SortPrefix], error) {
+	if r == nil {
+		r = v2.FullKeyRangeProto()
+	}
+	if r.Start == nil || r.End == nil {
+		return v2.KeyRange[streams.SortPrefix]{}, errors.New("key range must have a start and an end")
+	}
+	end := streams.NewSortPrefix(r.End.ShardBucket, r.End.SchemaValues)
+	if end.Compare(streams.SortPrefixLimit()) > 0 {
+		return v2.KeyRange[streams.SortPrefix]{}, fmt.Errorf("key range end %v is above the sort prefix limit", end)
+	}
+	return v2.NewKeyRange(streams.NewSortPrefix(r.Start.ShardBucket, r.Start.SchemaValues), end, streams.SortPrefix.Compare)
+}
+
+// dropStreamsOutsideRange deletes the streams outside keyRange from byID and
+// returns their IDs.
+func dropStreamsOutsideRange(byID map[int64]streams.Stream, layout streams.Layout, keyRange v2.KeyRange[streams.SortPrefix]) ([]int64, error) {
+	var dropped []int64
+	for id, stream := range byID {
+		prefix, err := logsobj.StreamSortPrefix(stream.Labels, layout)
+		if err != nil {
+			return nil, err
+		}
+		if !keyRange.Contains(prefix) {
+			dropped = append(dropped, id)
+			delete(byID, id)
+		}
+	}
+	return dropped, nil
+}
+
 // sourcesLayout returns the layout that every source shares. It returns an
 // error if two sources have different layouts, because their stream IDs and
 // row orders are not comparable.
 //
-// The output builder writes only the default shard layout, so sourcesLayout
-// also returns an error for any other shard layout.
+// sourcesLayout also returns an error for a non-default shard layout, because
+// readers assume the default shard layout for every object.
 func sourcesLayout(sources []*logSource) (streams.Layout, error) {
 	layout := sources[0].layout
 	for _, src := range sources[1:] {
@@ -393,7 +448,18 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 			}
 			sec := source.logSectionsByIndex[id.index]
 			seen[id] = struct{}{}
-			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap})
+
+			// Skip the sections of an object whose streams the key range all
+			// dropped, so the task downloads none of their pages.
+			//
+			// A record of a stream that the streams section does not hold still
+			// fails a merge. The task whose range holds the object's streams
+			// reads the section. An object whose streams section holds no
+			// stream is read here, so its records fail at the remap.
+			if len(source.streams) == 0 && len(source.droppedStreamIDs) > 0 {
+				continue
+			}
+			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, DropStreamIDs: source.droppedStreamIDs})
 		}
 		if len(run) > 0 {
 			inputs.runs = append(inputs.runs, run)
@@ -422,12 +488,13 @@ type logObjectWriter struct {
 	stats logMergeStats
 }
 
-// fixedSortSchema gives every tenant the same sort schema, so the output
-// builder writes the schema labels of the source layout instead of the tenant
-// overrides.
-type fixedSortSchema []string
+// fixedLayout gives every tenant the same layout, so the output builder
+// writes the layout of the source objects instead of the tenant overrides.
+type fixedLayout struct{ layout streams.Layout }
 
-func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
+func (l fixedLayout) SortSchemaLabels(string) []string { return l.layout.SchemaLabels() }
+
+func (l fixedLayout) DataObjShardLayout(string) streams.ShardLayout { return l.layout.ShardLayout() }
 
 func (c *Context) newLogObjectWriter(node *physical.LogMerge, layout streams.Layout, table *logsobj.MultiSourceRankedStreams, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
 	// Merging an object should not modify an object by dropping duplicates
@@ -450,7 +517,7 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, layout streams.Lay
 
 func (w *logObjectWriter) startNewObject() error {
 	cfg := w.c.logsobjCfg
-	overrides := fixedSortSchema(w.layout.SchemaLabels())
+	overrides := fixedLayout{layout: w.layout}
 
 	var err error
 	w.logsBuilder, err = logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides)

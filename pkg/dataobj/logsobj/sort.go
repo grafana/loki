@@ -3,7 +3,6 @@ package logsobj
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -33,23 +32,6 @@ func emptyRankedSortKey(ls labels.Labels, schemaLabels []string, shardLayout str
 	return rankedSortKey{
 		SortKey: shardLayout.NewSortKey(ls, schemaKey),
 	}, nil
-}
-
-// TargetSortLayout returns the physical logs layout produced for schemaLabels
-// and shardLayout.
-func TargetSortLayout(schemaLabels []string, shardLayout streams.ShardLayout) logs.SortLayout {
-	return logs.SortLayout{
-		SchemaLabels: slices.Clone(schemaLabels),
-		StreamOrder:  logs.StreamOrderStableHashV1,
-		ShardCount:   shardLayout.Buckets(),
-	}
-}
-
-// EqualSortLayout reports whether two physical logs layouts are identical.
-func EqualSortLayout(a, b logs.SortLayout) bool {
-	return slices.Equal(a.SchemaLabels, b.SchemaLabels) &&
-		a.StreamOrder == b.StreamOrder &&
-		a.ShardCount == b.ShardCount
 }
 
 // sortKeys extracts the sort-tuple column for the k-way merge comparator.

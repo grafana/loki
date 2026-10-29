@@ -16,6 +16,7 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -177,9 +178,20 @@ func (s compactionStats) Merge(other compactionStats) compactionStats {
 	}
 }
 
-type indexedLogLayout struct {
-	sortSchema string
-	shardCount int64
+// layoutKey identifies a stream layout as a map key. Two layouts have equal
+// keys if and only if they are equal.
+type layoutKey struct {
+	schemaLabels string
+	shardBuckets uint32
+	streamOrder  streams.StreamOrder
+}
+
+func newLayoutKey(layout streams.Layout) layoutKey {
+	return layoutKey{
+		schemaLabels: strings.Join(layout.SchemaLabels(), ","),
+		shardBuckets: layout.ShardLayout().Buckets(),
+		streamOrder:  layout.StreamOrder(),
+	}
 }
 
 // replaceLogIndex swaps sourceIndex for newEntries, which hold one entry per
@@ -239,7 +251,7 @@ func (c *coordinator) planLogCompaction(
 	window time.Time,
 	sourceIndex indexEntry,
 ) (logCompactionPlan, error) {
-	sections, _, _, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
+	sections, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
 	if err != nil {
 		return logCompactionPlan{}, fmt.Errorf("reading log section refs: %w", err)
 	}
@@ -265,12 +277,22 @@ func (c *coordinator) planLogMerge(
 		return logCompactionPlan{}, nil
 	}
 
-	specs, unmerged := c.logMergePlanningStrategy.Plan(runs, tenant)
-	if len(specs) == 0 {
+	merges, unmerged := c.logMergePlanningStrategy.Plan(runs, tenant)
+	if len(merges) == 0 {
 		return logCompactionPlan{}, fmt.Errorf("no log merge tasks to execute for source index %q: %d runs, %d unmerged", sourceIndex.Path, len(runs), len(unmerged))
 	}
 
-	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "tasks", len(specs), "unmerged_runs", len(unmerged))
+	keys := newSectionKeySizes(sections)
+	var splitter logTaskSplitter = newNoopLogTaskSplitter(keys)
+	if c.cfg.LogMaxTaskSize > 0 {
+		splitter = newSizeLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), keys)
+	}
+	var specs []*compactionv2pb.TaskSpec
+	for _, merge := range merges {
+		specs = append(specs, splitter.split(merge)...)
+	}
+
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmerged))
 	logMergeTaskDetails(entryLogger, specs)
 
 	plan := logCompactionPlan{
@@ -391,18 +413,25 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 }
 
 // compactTenantIndexes performs one index-compaction pass for a tenant and window.
-// Indexes are grouped by sort schema and shard count, so indexes in different
-// groups never merge.
+// Indexes are grouped by stream layout, so indexes in different groups never
+// merge. It skips corrupt indexes, so they do not block the other indexes of
+// the tenant.
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
-	groups := make(map[indexedLogLayout][]indexEntry)
+	groups := make(map[layoutKey][]indexEntry)
 	for _, entry := range entries {
-		_, schemaLabels, shardCount, err := logSectionRefsFor(ctx, c.bucket, tenant, entry.Path)
-		if err != nil {
-			return compactionStats{}, fmt.Errorf("discover index section bounds: read index sort schema %s: %w", entry.Path, err)
+		layout, ok, err := indexLayoutAt(ctx, c.bucket, tenant, entry.Path)
+		if errors.Is(err, errCorruptIndex) {
+			c.skipCorruptIndex(tenant, window, entry.Path, phaseLabelIndexMerge, err)
+			continue
 		}
-		key := indexedLogLayout{
-			sortSchema: strings.Join(schemaLabels, ","),
-			shardCount: shardCount,
+		if err != nil {
+			return compactionStats{}, fmt.Errorf("group indexes by layout: %w", err)
+		}
+		// An index without stats sections for tenant has no layout. Such
+		// indexes share the zero key, so they merge only with each other.
+		var key layoutKey
+		if ok {
+			key = newLayoutKey(layout)
 		}
 		groups[key] = append(groups[key], entry)
 	}
@@ -416,6 +445,13 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		total = total.Merge(stats)
 	}
 	return total, nil
+}
+
+// skipCorruptIndex records that phase skipped the corrupt index at path.
+func (c *coordinator) skipCorruptIndex(tenant string, window time.Time, path, phase string, err error) {
+	level.Error(c.logger).Log("msg", "skipping corrupt index",
+		"tenant", tenant, "window", window, "index", path, "phase", phase, "err", err)
+	c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phase).Inc()
 }
 
 func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
@@ -750,7 +786,8 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 //
 // anyError reports whether a ToC or an index failed to load or plan, or ctx
 // was done. The plans for the other indexes are still returned, so one bad
-// index does not block the rest.
+// index does not block the rest. A corrupt index does not set anyError,
+// because no retry can fix it. corruptIndexesTotal records it instead.
 func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (plans []logCompactionPlan, anyError bool) {
 	for _, window := range c.windows() {
 		entries, ok := c.tenantEntries(ctx, tenant, window)
@@ -763,6 +800,10 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 				return plans, true
 			}
 			plan, err := c.planLogCompaction(ctx, tenant, window, entry)
+			if errors.Is(err, errCorruptIndex) {
+				c.skipCorruptIndex(tenant, window, entry.Path, phaseLabelLogMerge, err)
+				continue
+			}
 			if err != nil {
 				if ctx.Err() != nil {
 					return plans, true

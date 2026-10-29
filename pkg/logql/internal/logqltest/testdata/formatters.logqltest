@@ -78,6 +78,14 @@ eval instant at 60s count_over_time({app="a"} | label_format route="{{.method}}-
 eval instant at 60s count_over_time({app="a"} | label_format method="{{.method}}!" [1m])
   {app="a", method="get!"} 3
   {app="a", method="post!"} 2
+# A label filter before label_format() sees the stored value.
+eval instant at 60s sum by (verb) (count_over_time({app="a"} | method="post" | label_format verb=method [1m]))
+  {verb="post"} 2
+eval instant at 60s sum by (method) (count_over_time({app="a"} | method="get" | label_format method="{{.method}}!" [1m]))
+  {method="get!"} 3
+# A label filter after label_format() reads the label that the stage creates.
+eval instant at 60s sum by (verb) (count_over_time({app="a"} | label_format verb=method | verb="post" [1m]))
+  {verb="post"} 2
 # An invalid template fails at parse time.
 eval instant at 60s count_over_time({app="a"} | label_format x="{{" [1m])
   expect fail msg: unclosed action
@@ -119,6 +127,24 @@ eval instant at 60s count_over_time({app="a"} | label_format env=env_extracted [
   {app="a", env="canary"} 3
 eval instant at 60s count_over_time({app="a"} | label_format env_extracted=env [1m])
   {app="a", env_extracted="prod"} 3
+
+# line_format and label_format read a parsed field as $.field, the same as .field.
+# A metric query extracts only the fields that the pipeline uses, so the parser must extract $.field too.
+clear
+load
+  {app="a"} "user=alice" @ 20s [repeat every 20s for 3]
+  {app="a"} "user=bob"   @ 30s                          # noise the filter drops
+
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | line_format "{{ $.user }}" |= "alice" [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | logfmt | line_format "{{ $.user }}" |= "alice" [1m]))   # overlapping
+  {} 2 3
+eval instant at 60s sum by (who) (count_over_time({app="a"} | logfmt | label_format who="{{ $.user }}" [1m]))
+  {who="alice"} 3
+  {who="bob"} 1
+eval range from 40s to 60s step 20s sum by (who) (count_over_time({app="a"} | logfmt | label_format who="{{ $.user }}" [1m]))   # overlapping
+  {who="alice"} 2 3
+  {who="bob"} 1 1
 
 # decolorize removes ANSI color codes from the line.
 #
@@ -170,6 +196,11 @@ eval instant at 60s count_over_time({app="a"} | drop code="500" [1m])
   {app="a", zone="eu"} 3
   {app="a", code="200", zone="eu"} 2
   {app="a", code="300", zone="eu"} 2
+# A label filter before drop() sees the stored value.
+eval instant at 60s sum by (code) (count_over_time({app="a"} | code="300" | drop zone [1m]))
+  {code="300"} 2
+eval instant at 60s sum by (zone) (count_over_time({app="a"} | code="500" | drop code [1m]))
+  {zone="eu"} 3
 # drop needs at least one label name; a bare drop is a parse error.
 eval instant at 60s count_over_time({app="a"} | drop [1m])
   expect fail msg: expecting IDENTIFIER

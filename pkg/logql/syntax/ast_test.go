@@ -1432,6 +1432,263 @@ func TestWithoutPushableLineFilters(t *testing.T) {
 	})
 }
 
+func TestMultiStageExpr_PushableLabelFilters(t *testing.T) {
+	tests := map[string]struct {
+		query string
+
+		// want are the filters PushableLabelFilters returns, as they print, in query order.
+		want []string
+	}{
+		"a json stage stops the walk": {
+			query: `{app="x"} | level="a" | json | pod="b"`,
+			want:  []string{`level="a"`},
+		},
+		"a logfmt stage stops the walk": {
+			query: `{app="x"} | level="a" | logfmt | pod="b"`,
+			want:  []string{`level="a"`},
+		},
+		"a regexp stage stops the walk": {
+			query: `{app="x"} | level="a" | regexp "(?P<pod>.+)" | pod="b"`,
+			want:  []string{`level="a"`},
+		},
+		"a pattern stage stops the walk": {
+			query: `{app="x"} | level="a" | pattern "<pod>" | pod="b"`,
+			want:  []string{`level="a"`},
+		},
+		"an unpack stage stops the walk": {
+			query: `{app="x"} | level="a" | unpack | pod="b"`,
+			want:  []string{`level="a"`},
+		},
+		"a json stage with label expressions stops the walk": {
+			query: `{app="x"} | level="a" | json pod="pod" | pod="b"`,
+			want:  []string{`level="a"`},
+		},
+		"a logfmt stage with label expressions stops the walk": {
+			query: `{app="x"} | level="a" | logfmt pod="pod" | pod="b"`,
+			want:  []string{`level="a"`},
+		},
+		"a label_format stage stops the walk": {
+			query: `{app="x"} | level="a" | label_format pod=level | pod="a"`,
+			want:  []string{`level="a"`},
+		},
+		"a keep stage stops the walk": {
+			query: `{app="x"} | level="a" | keep level | pod=""`,
+			want:  []string{`level="a"`},
+		},
+		"a drop stage stops the walk": {
+			query: `{app="x"} | level="a" | drop pod | pod=""`,
+			want:  []string{`level="a"`},
+		},
+		"a line_format stage stops the walk": {
+			query: `{app="x"} | level="a" | line_format "{{.app}}" | pod="b"`,
+			want:  []string{`level="a"`},
+		},
+		"a filter right after a parser is not returned": {
+			query: `{app="x"} | json | level="a"`,
+		},
+		"a pipeline whose first stage is a parser returns nothing": {
+			query: `{app="x"} | logfmt | level="a" | pod="b"`,
+		},
+		"a pipeline with no label filter returns nothing": {
+			query: `{app="x"} |= "a" | json`,
+		},
+		"a selector with no stage returns nothing": {
+			query: `{app="x"}`,
+		},
+		"every filter before the first parser is returned in query order": {
+			query: `{app="x"} | level="a" | pod="b" | env!="c" | json | zone="d"`,
+			want:  []string{`level="a"`, `pod="b"`, `env!="c"`},
+		},
+		"line filters around the label filters do not stop the walk": {
+			query: `{app="x"} |= "a" | level="a" != "b" | pod="b" |~ "c" | json |= "d" | zone="d"`,
+			want:  []string{`level="a"`, `pod="b"`},
+		},
+		"a decolorize stage does not stop the walk": {
+			query: `{app="x"} | level="a" | decolorize | pod="b" | json`,
+			want:  []string{`level="a"`, `pod="b"`},
+		},
+		"an ip filter does not stop the walk and is returned": {
+			query: `{app="x"} | addr=ip("10.0.0.0/8") | pod="b" | json`,
+			want:  []string{`addr=ip("10.0.0.0/8")`, `pod="b"`},
+		},
+		"an ip filter after a numeric filter is returned": {
+			query: `{app="x"} | level="a" | status > 400 | addr=ip("10.0.0.0/8") | pod="b" | json`,
+			want:  []string{`level="a"`, `addr=ip("10.0.0.0/8")`, `pod="b"`},
+		},
+		"an and with an ip filter is returned whole": {
+			query: `{app="x"} | level="a" and addr=ip("10.0.0.0/8") | json`,
+			want:  []string{`( level="a" , addr=ip("10.0.0.0/8") )`},
+		},
+		"an or with an ip filter is returned whole": {
+			query: `{app="x"} | level="a" or addr=ip("10.0.0.0/8") | pod="b" | json`,
+			want:  []string{`( level="a" or addr=ip("10.0.0.0/8") )`, `pod="b"`},
+		},
+		"a numeric filter is not returned and does not stop the walk": {
+			query: `{app="x"} | level="a" | status > 400 | pod="b" | json`,
+			want:  []string{`level="a"`, `pod="b"`},
+		},
+		"a duration filter is not returned and does not stop the walk": {
+			query: `{app="x"} | level="a" | took > 1s | pod="b" | json`,
+			want:  []string{`level="a"`, `pod="b"`},
+		},
+		"a bytes filter is not returned and does not stop the walk": {
+			query: `{app="x"} | level="a" | size > 1MB | pod="b" | json`,
+			want:  []string{`level="a"`, `pod="b"`},
+		},
+		"an and with a numeric filter returns the other side and does not stop the walk": {
+			query: `{app="x"} | level="a" | pod="b" and status > 400 | env="c" | json`,
+			want:  []string{`level="a"`, `pod="b"`, `env="c"`},
+		},
+		"an or with a numeric filter is not returned": {
+			query: `{app="x"} | level="a" or status > 400 | pod="b" | json`,
+			want:  []string{`pod="b"`},
+		},
+		"a numeric filter first is not returned and does not hide the filters after it": {
+			query: `{app="x"} | status > 400 | level="a" | json`,
+			want:  []string{`level="a"`},
+		},
+		"a filter on the error label is not returned": {
+			query: `{app="x"} | __error__="" | level="a" | json`,
+			want:  []string{`level="a"`},
+		},
+		"a filter on the error label after a numeric filter is not returned": {
+			query: `{app="x"} | level="a" | status > 400 | __error__!="" | pod="b" | json`,
+			want:  []string{`level="a"`, `pod="b"`},
+		},
+		"a filter on the error details label is not returned": {
+			query: `{app="x"} | level="a" | __error_details__="" | pod="b" | json`,
+			want:  []string{`level="a"`, `pod="b"`},
+		},
+		"an and returns the side that does not read the error label": {
+			query: `{app="x"} | level="a" and __error__="" | json`,
+			want:  []string{`level="a"`},
+		},
+		"an and returns the right side when the left side sets the error label": {
+			query: `{app="x"} | status > 400 and level="a" | json`,
+			want:  []string{`level="a"`},
+		},
+		"an and of a numeric filter and a filter on the error label returns nothing": {
+			query: `{app="x"} | status > 400 and __error__="" | json`,
+			want:  nil,
+		},
+		"a nested and returns every side that does not read the error label": {
+			query: `{app="x"} | (level="a" and __error__="") and pod="b" | json`,
+			want:  []string{`( level="a" , pod="b" )`},
+		},
+		"an or with a side that reads the error label is not returned": {
+			query: `{app="x"} | level="a" or __error__!="" | pod="b" | json`,
+			want:  []string{`pod="b"`},
+		},
+		"an and of two filters is returned as one filter": {
+			query: `{app="x"} | level="a" and pod="b" | json`,
+			want:  []string{`( level="a" , pod="b" )`},
+		},
+		"an or of two filters is returned as one filter": {
+			query: `{app="x"} | level="a" or pod="b" | json`,
+			want:  []string{`( level="a" or pod="b" )`},
+		},
+	}
+
+	var (
+		// contractLines, contractMetadata and contractStreams are the rows that the whole
+		// pipeline and the pushable filters run on. Some lines hold a key that the stored
+		// metadata lacks. One stream has a label with the name of a metadata key.
+		contractLines    = []string{"", "x", "b", "level=a", `{"level":"a"}`, "lvl=a pod=b", `{"pod":"b","level":"a"}`, `{"pod":"b","_entry":"x"}`}
+		contractMetadata = []labels.Labels{
+			labels.EmptyLabels(),
+			labels.FromStrings("level", "a"),
+			labels.FromStrings("level", "b", "pod", "b"),
+			labels.FromStrings("level", "a", "pod", "b"),
+			labels.FromStrings("pod", "b"),
+			labels.FromStrings("level", "a", "status", "500"),
+			labels.FromStrings("level", "a", "status", "abc"),
+			labels.FromStrings("level", "b", "status", "abc"),
+			labels.FromStrings("level", "a", "pod", "b", "status", "abc"),
+			labels.FromStrings("level", "a", "__error__", "StoredErr"),
+			labels.FromStrings("level", "b", "__error__", "StoredErr"),
+			labels.FromStrings("level", "b", "pod", "b", "__error__", "StoredErr"),
+		}
+		contractStreams = []labels.Labels{
+			labels.FromStrings("app", "x"),
+			labels.FromStrings("app", "x", "level", "a"),
+		}
+	)
+
+	parseStages := func(t *testing.T, query string) MultiStageExpr {
+		t.Helper()
+		expr, err := ParseLogSelector(query, true)
+		require.NoError(t, err)
+		if pipeline, ok := expr.(*PipelineExpr); ok {
+			return pipeline.MultiStages
+		}
+		return nil
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			for _, rewritten := range []bool{false, true} {
+				stages := parseStages(t, test.query)
+				if rewritten {
+					_, err := stages.Pipeline()
+					require.NoError(t, err)
+				}
+
+				filters, err := stages.PushableLabelFilters()
+				require.NoError(t, err)
+				if test.want == nil {
+					require.Nil(t, filters, "AST rewritten by Pipeline: %v", rewritten)
+				}
+				var got []string
+				for _, filter := range filters {
+					got = append(got, filter.String())
+				}
+				require.Equal(t, test.want, got, "AST rewritten by Pipeline: %v", rewritten)
+
+				// Each filter runs alone, as a read runs it. A row that it rejects must also fail
+				// the whole pipeline.
+				pushable := make([]log.Pipeline, 0, len(filters))
+				for _, filter := range filters {
+					pipeline, err := MultiStageExpr{&LabelFilterExpr{LabelFilterer: filter}}.Pipeline()
+					require.NoError(t, err)
+					pushable = append(pushable, pipeline)
+				}
+				wholePipeline, err := parseStages(t, test.query).Pipeline()
+				require.NoError(t, err)
+
+				for _, streamLabels := range contractStreams {
+					wholeStream := wholePipeline.ForStream(streamLabels)
+					pushableStreams := make([]log.StreamPipeline, 0, len(pushable))
+					for _, pipeline := range pushable {
+						pushableStreams = append(pushableStreams, pipeline.ForStream(streamLabels))
+					}
+					for _, line := range contractLines {
+						for _, metadata := range contractMetadata {
+							_, _, wholeOK := wholeStream.Process(0, []byte(line), metadata)
+							for i, pushableStream := range pushableStreams {
+								_, _, pushableOK := pushableStream.Process(0, []byte(line), metadata)
+								if !pushableOK {
+									require.False(t, wholeOK, "filter %s, stream %s, line %q, metadata %s, AST rewritten by Pipeline: %v", filters[i], streamLabels, line, metadata, rewritten)
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("returns an error for a stage that cannot be built", func(t *testing.T) {
+		stages := MultiStageExpr{
+			&LineFmtExpr{Value: "{{"},
+			&LabelFilterExpr{LabelFilterer: log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "level", "a"))},
+		}
+
+		filters, err := stages.PushableLabelFilters()
+		require.EqualError(t, err, `parse error : stage '| line_format "{{"' : invalid line template: template: line:1: unclosed action`)
+		require.Nil(t, filters)
+	})
+}
+
 var result bool
 
 func BenchmarkReorderedPipeline(b *testing.B) {
@@ -1484,6 +1741,20 @@ func TestLogSelectorExprHasFilter(t *testing.T) {
 		`{foo="bar"} |= "" or "notempty" |= ""`:      true,
 		`{foo="bar"} |= "" |= "" or "notempty"`:      true,
 		`{foo="bar"} |= "" or ip("127.0.0.1") |= ""`: true,
+
+		`{foo="bar"} |~ ".*"`:                  false,
+		`{foo="bar"} |~ "(.*)"`:                false,
+		`{foo="bar"} |~ "(?:)"`:                false,
+		`{foo="bar"} |~ "(?i)"`:                false,
+		`{foo="bar"} |= "" |~ ".*" or "(?i)"`:  false,
+		`{foo="bar"} |~ ".*" | json`:           false,
+		`{foo="bar"} |~ ".*" |= "notempty"`:    true,
+		`{foo="bar"} |~ ".*" or "notempty"`:    true,
+		`{foo="bar"} |~ "(?i)notempty"`:        true,
+		`{foo="bar"} |~ ".+"`:                  true,
+		`{foo="bar"} !~ ".*"`:                  true,
+		`{foo="bar"} |= ".*"`:                  true,
+		`{foo="bar"} |= ip("127.0.0.1") or ""`: true,
 	} {
 		expr, err := ParseExpr(query)
 		require.NoError(t, err)

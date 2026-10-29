@@ -42,7 +42,7 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 			return nil, fmt.Errorf("failed to open logs section: %w", err)
 		}
 
-		seq, err := openSectionSequence(ctx, sec, bufferSize)
+		seq, err := openSectionSequence(ctx, sec, bufferSize, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +83,9 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 		}), nil
 }
 
-func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int) (*sectionSequence, error) {
+// openSectionSequence opens a cursor over the rows of sec. It skips the rows
+// of dropStreamIDs, as [RemappedSection.DropStreamIDs] does.
+func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int, dropStreamIDs []int64) (*sectionSequence, error) {
 	ds, err := logs.MakeColumnarDataset(sec)
 	if err != nil {
 		return nil, fmt.Errorf("creating columnar dataset: %w", err)
@@ -92,12 +94,41 @@ func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int)
 	if err != nil {
 		return nil, err
 	}
-	r := dataset.NewRowReader(dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, PrefetchAllOnOpen: false})
+	opts := dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, PrefetchAllOnOpen: false}
+	if len(dropStreamIDs) > 0 {
+		predicate, err := dropStreamsPredicate(sec, columns, dropStreamIDs)
+		if err != nil {
+			return nil, err
+		}
+		opts.Predicates = []dataset.Predicate{predicate}
+	}
+	r := dataset.NewRowReader(opts)
 	if err := r.Open(ctx); err != nil {
 		_ = r.Close()
 		return nil, fmt.Errorf("opening dataset row reader: %w", err)
 	}
 	return &sectionSequence{section: sec, DatasetSequence: logs.NewDatasetSequence(r, bufferSize)}, nil
+}
+
+// dropStreamsPredicate returns a predicate that skips the rows of streamIDs.
+// columns must be the dataset columns of sec, in the order of sec.Columns().
+//
+// It excludes the dropped streams instead of listing the kept ones. A row of a
+// stream that the streams section does not hold then still reaches the remap
+// and fails the merge, as it does without a filter.
+func dropStreamsPredicate(sec *logs.Section, columns []dataset.Column, streamIDs []int64) (dataset.Predicate, error) {
+	for i, column := range sec.Columns() {
+		if column.Type == logs.ColumnTypeStreamID {
+			// Rows of one stream are adjacent, so the memoized set skips most
+			// map lookups. The set is not safe for concurrent use, and only
+			// this sequence's reader uses it.
+			return dataset.NotPredicate{Inner: dataset.InPredicate{
+				Column: columns[i],
+				Values: dataset.NewMemoizedInt64ValueSetOf(streamIDs...),
+			}}, nil
+		}
+	}
+	return nil, fmt.Errorf("logs section has no stream ID column")
 }
 
 // sectionSequence wraps a section cursor. When remap is non-nil it rewrites the

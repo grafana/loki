@@ -47,7 +47,12 @@ It never falls back to another backend. The proxy collects the responses of the 
 
 The `dataobj` strategy applies the eligibility check of the query-frontend with the limits of the secondary backend's Loki cluster.
 Set `-config.file=<path>` to the Loki config file of that cluster, and `-runtime-config.file=<path>` for per-tenant limits.
-When the Loki config file sets `dataobj.enabled` to `false`, the strategy selects no read.
+The proxy reads only the `limits_config` block of the config file.
+Set `-dataobj.enabled` and `-dataobj.storage-lag` to the values of that cluster. They have the same names and defaults as the Loki flags.
+When `-dataobj.enabled` is `false`, the strategy selects no read.
+Set `-querier.stream-first-execution-enabled` to the value of that cluster. It has the same name and default as the Loki flag.
+The flag follows the precedence of Loki: a flag that you set takes precedence over the `stream_first_execution_enabled` value of the `limits_config` block, and the `limits_config` value takes precedence over the default of the flag.
+A value in a tenant override takes precedence over both.
 The strategy selects a query when the query-frontend marks it eligible for data objects, whatever share of the time range data objects hold.
 
 The `loki_querytee_secondary_backend_decisions_total` metric counts the reads by the decision to send them to the secondary backend, or the reason not to.
@@ -67,7 +72,7 @@ The proxy compares only the following routes:
 
 The proxy compares in the background after the backends have answered, so the comparison adds no latency for the client.
 
-The `loki_querytee_responses_compared_total` metric counts the comparisons by `result`:
+The `loki_querytee_responses_compared_total` metric counts the comparisons by `result` and `cause`:
 
 | Result     | Meaning                                                                                                                     |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -76,9 +81,76 @@ The `loki_querytee_responses_compared_total` metric counts the comparisons by `r
 | `fail`     | The secondary request failed, the secondary did not answer with status 200, or the comparator could not compare the bodies. |
 | `skipped`  | The primary failed or did not answer with status 200, or no samples remain after the proxy skips samples.                   |
 
+The `cause` label says how the bodies differ for a `mismatch`.
+For a `fail` or a `skipped` pair, it says why the proxy could not compare the bodies.
+When a backend failed, the cause describes the secondary for a `fail`, and the primary for a `skipped` pair:
+
+| Cause                                | Result            | Meaning                                                                                         |
+| ------------------------------------ | ----------------- | ----------------------------------------------------------------------------------------------- |
+| `timeout`                            | `fail`, `skipped` | The backend did not answer before its timeout.                                                  |
+| `transport`                          | `fail`, `skipped` | The request to the backend failed before a response arrived, for a reason other than a timeout. |
+| `http_4xx`                           | `fail`, `skipped` | The backend answered with a 4xx status.                                                         |
+| `http_5xx`                           | `fail`, `skipped` | The backend answered with a 5xx status.                                                         |
+| `http_other`                         | `fail`, `skipped` | The backend answered with another status that is not 200.                                       |
+| `compare_error`                      | `fail`            | The comparator could not compare the bodies.                                                    |
+| `status_mismatch`                    | `mismatch`        | The `status` fields of the response bodies differ, for example `success` and `error`.           |
+| `result_type_mismatch`               | `mismatch`        | The `resultType` fields of the response bodies differ.                                          |
+| `metric_count_mismatch`              | `mismatch`        | The responses have a different number of series.                                                |
+| `metric_missing`                     | `mismatch`        | A series of the primary's response is missing from the secondary's response.                    |
+| `sample_count_mismatch`              | `mismatch`        | A series has a different number of samples.                                                     |
+| `sample_value_mismatch`              | `mismatch`        | A sample has a different value.                                                                 |
+| `sample_timestamp_mismatch`          | `mismatch`        | A sample has a different timestamp.                                                             |
+| `stream_count_mismatch`              | `mismatch`        | The responses have a different number of streams.                                               |
+| `stream_missing`                     | `mismatch`        | A stream of the primary's response is missing from the secondary's response.                    |
+| `stream_entry_count_mismatch`        | `mismatch`        | A stream has a different number of entries.                                                     |
+| `stream_timestamp_mismatch`          | `mismatch`        | An entry has a different timestamp.                                                             |
+| `stream_line_mismatch`               | `mismatch`        | An entry has a different line.                                                                  |
+| `structured_metadata_count_mismatch` | `mismatch`        | An entry has a different number of structured metadata pairs.                                   |
+| `structured_metadata_mismatch`       | `mismatch`        | An entry has different structured metadata.                                                     |
+| `parsed_labels_count_mismatch`       | `mismatch`        | An entry has a different number of parsed label pairs.                                          |
+| `parsed_labels_mismatch`             | `mismatch`        | An entry has different parsed labels.                                                           |
+
+The `cause` is empty for a `match`, and for a `skipped` pair when no samples remain.
+
 The proxy skips the samples from the last `-proxy.compare-skip-recent-samples` (default 60s) and the samples before `-proxy.compare-skip-samples-before`.
 
-When several rows apply, the proxy checks the cases in this order and uses the first that matches: the primary request failed, the secondary request failed, the primary status is not 200, the secondary status is not 200.
+When several `result` rows apply, the proxy checks the cases in this order and uses the first that matches: the primary request failed, the secondary request failed, the primary status is not 200, the secondary status is not 200.
+
+The `loki_querytee_secondary_backend_stats_ratio` metric observes the ratio of a query stat of the secondary over the same stat of the primary.
+The proxy observes it for each compared pair when both backends return a decoded response.
+It skips a stat when the primary value is zero.
+
+| Label                  | Values                                                                 |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `route`                | The route of the compared request.                                     |
+| `stat`                 | `bytes_processed`, `exec_time`                                         |
+| `primary_bucket`       | The bucket of the primary value of the stat, listed in the next table. |
+| `queriers_load_status` | `both_idle`, `primary_busy`, `secondary_busy`, `both_busy`             |
+| `result_cache_status`  | `both_miss`, `primary_hit`, `secondary_hit`, `both_hit`                |
+
+The `primary_bucket` label has a different set of values for each stat.
+Each bucket holds the values above the previous bucket, up to and including its upper bound.
+So a `less_than_` bucket also holds a value equal to its bound.
+The sizes are decimal: 1 GB is 10^9 bytes.
+
+| `stat`            | `primary_bucket`  | Primary value              |
+| ----------------- | ----------------- | -------------------------- |
+| `bytes_processed` | `less_than_1gb`   | At most 1 GB               |
+| `bytes_processed` | `1gb_to_10gb`     | Above 1 GB, up to 10 GB    |
+| `bytes_processed` | `10gb_to_100gb`   | Above 10 GB, up to 100 GB  |
+| `bytes_processed` | `100gb_to_1tb`    | Above 100 GB, up to 1 TB   |
+| `bytes_processed` | `more_than_1tb`   | Above 1 TB                 |
+| `exec_time`       | `less_than_100ms` | At most 100 ms             |
+| `exec_time`       | `100ms_to_500ms`  | Above 100 ms, up to 500 ms |
+| `exec_time`       | `500ms_to_1s`     | Above 500 ms, up to 1 s    |
+| `exec_time`       | `1s_to_5s`        | Above 1 s, up to 5 s       |
+| `exec_time`       | `5s_to_10s`       | Above 5 s, up to 10 s      |
+| `exec_time`       | `10s_to_30s`      | Above 10 s, up to 30 s     |
+| `exec_time`       | `30s_to_60s`      | Above 30 s, up to 60 s     |
+| `exec_time`       | `more_than_60s`   | Above 60 s                 |
+
+A backend is busy when its query waited more than 100ms in the queue.
+A backend hits the cache when the range query, instant metric or log results cache of its query-frontend found at least one entry.
 
 To also report the number of missing series in the `loki_querytee_missing_metrics_series` metric, set `-proxy.compare-report-missing-series=true`.
 This flag requires `-proxy.compare-responses=true`.

@@ -54,6 +54,19 @@ func ShardLayoutFromBuckets(buckets uint32) (ShardLayout, error) {
 	return ShardLayout{bits: uint8(n)}, nil
 }
 
+// MustShardLayoutFromBuckets is like [ShardLayoutFromBuckets], but it panics
+// if buckets is not a power of two from 1 to 65536.
+//
+// Use it for constants, such as in tests. Use [ShardLayoutFromBuckets] for a
+// count that comes from configuration or input.
+func MustShardLayoutFromBuckets(buckets uint32) ShardLayout {
+	layout, err := ShardLayoutFromBuckets(buckets)
+	if err != nil {
+		panic(err)
+	}
+	return layout
+}
+
 // Bits returns the number of high hash bits that select a bucket.
 func (l ShardLayout) Bits() int { return int(l.bits) }
 

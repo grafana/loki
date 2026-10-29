@@ -541,7 +541,7 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 			context.Background(),
 			t.Cfg.SchemaConfig,
 			t.Cfg.StorageConfig.ObjectStore,
-			t.Cfg.Logline.Store,
+			t.loglineStoreConfig(),
 			logger,
 			prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, prometheus.DefaultRegisterer),
 		)
@@ -2405,6 +2405,19 @@ func (dh ignoreSignalHandler) Stop() {
 	close(dh)
 }
 
+// loglineStoreConfig returns the shared logline.store section with the
+// ingester window borrowed from querier.query_ingesters_within. The store has
+// no flag for it, and the query frontend narrows with the same value, so every
+// target that builds a store must go through here to classify indexes alike.
+func (t *Loki) loglineStoreConfig() loglinestore.Config {
+	cfg := t.Cfg.Logline.Store
+	cfg.QueryIngestersWithin = t.Cfg.Querier.QueryIngestersWithin
+	if cfg.QueryIngestersWithin == 0 {
+		cfg.QueryIngestersWithin = loglinestore.DefaultQueryIngestersWithin
+	}
+	return cfg
+}
+
 func (t *Loki) initLoglineBuilderPartitionRing() (services.Service, error) {
 	logger := log.With(util_log.Logger, "module", LoglineIndexBuilder)
 
@@ -2438,7 +2451,7 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 	wrapped, storeService, cleanup, err := loglinequeryfrontend.WrapMiddleware(
 		cfg,
 		loglinequeryfrontend.Deps{
-			Store:                t.Cfg.Logline.Store,
+			Store:                t.loglineStoreConfig(),
 			SchemaConfig:         t.Cfg.SchemaConfig,
 			ObjectStore:          t.Cfg.StorageConfig.ObjectStore,
 			ResultsCache:         t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig,
@@ -2470,7 +2483,7 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		t.Cfg.Logline.Store,
+		t.loglineStoreConfig(),
 		logger,
 		prometheus.WrapRegistererWith(prometheus.Labels{"component": "index-builder"}, prometheus.DefaultRegisterer),
 	)
@@ -2497,13 +2510,11 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 	logger := log.With(util_log.Logger, "module", LoglineCorrectness)
 
-	// Borrowed fields with no correctness flags. QueryIngestersWithin is the
-	// same querier window the query frontend uses so IndexesForRange and
-	// IndexesExcludedByIngesterWindow match production narrowing. NgramLength
-	// is owned by logline.index; the index does not record it, so a reader
-	// must use the value the builder did.
-	storeCfg := t.Cfg.Logline.Store
-	storeCfg.QueryIngestersWithin = t.Cfg.Logline.Correctness.QueryIngestersWithin
+	// NgramLength has no correctness flag. It is owned by logline.index, and
+	// the index does not record it, so a reader must use the value the builder
+	// did. The store's ingester window comes from loglineStoreConfig, so
+	// IndexesForRange and IndexesExcludedByIngesterWindow match production
+	// narrowing.
 	cfg := t.Cfg.Logline.Correctness
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
 
@@ -2511,7 +2522,7 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		storeCfg,
+		t.loglineStoreConfig(),
 		logger,
 		prometheus.WrapRegistererWith(prometheus.Labels{"component": "correctness"}, prometheus.DefaultRegisterer),
 	)
@@ -2542,7 +2553,7 @@ func (t *Loki) initLoglineScheduler() (services.Service, error) {
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		t.Cfg.Logline.Store,
+		t.loglineStoreConfig(),
 		logger,
 		prometheus.WrapRegistererWith(prometheus.Labels{"component": "compaction-scheduler"}, prometheus.DefaultRegisterer),
 	)
@@ -2586,7 +2597,7 @@ func (t *Loki) initLoglineCompactor() (services.Service, error) {
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		t.Cfg.Logline.Store,
+		t.loglineStoreConfig(),
 		logger,
 		prometheus.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, prometheus.DefaultRegisterer),
 	)

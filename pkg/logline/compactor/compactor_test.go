@@ -123,9 +123,17 @@ func writeRealIndex(t *testing.T, s *store.Store, date, hash string, now time.Ti
 // newTestCompactor creates a compactor Service with a real store for compaction tests.
 func newTestCompactor(t *testing.T, s *store.Store) *Service {
 	t.Helper()
+	return newTestCompactorWithEncoding(t, s, "")
+}
+
+// newTestCompactorWithEncoding is newTestCompactor with
+// logline.compaction.postings_encoding set to encoding.
+func newTestCompactorWithEncoding(t *testing.T, s *store.Store, encoding string) *Service {
+	t.Helper()
 	cfg := Config{Compaction: logline.CompactionConfig{
 		SchedulerAddress: "http://localhost:9999",
 		CompactorID:      "test-compactor",
+		PostingsEncoding: encoding,
 	}}
 	require.NoError(t, cfg.Validate())
 	svc, err := New(s, cfg, log.NewNopLogger(), prometheus.NewRegistry())
@@ -134,6 +142,65 @@ func newTestCompactor(t *testing.T, s *store.Store) *Service {
 }
 
 // ---- compact() tests ----
+
+// The configured encoding applies to the merged index. Sources are always
+// written with the default, so the elias-fano case also merges across
+// encodings.
+func TestCompact_PostingsEncoding(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		encoding        string
+		wantEncoding    format.PostingsEncoding
+		wantCompression uint32
+	}{
+		{"default", "", format.PostingsEncodingFastDeltaVarIntBlocked, 1},
+		{"delta-varint", logline.PostingsEncodingDeltaVarInt, format.PostingsEncodingFastDeltaVarIntBlocked, 1},
+		{"elias-fano", logline.PostingsEncodingEliasFano, format.PostingsEncodingFastEliasFanoBlocked, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestCompactorStore(t, objstore.NewInMemBucket())
+			svc := newTestCompactorWithEncoding(t, s, tc.encoding)
+
+			now := time.Now().UTC().Truncate(time.Second)
+			meta1 := writeRealIndex(t, s, "2026-02-25", "1111111111111111", now.Add(-2*time.Hour))
+			meta2 := writeRealIndex(t, s, "2026-02-25", "2222222222222222", now.Add(-1*time.Hour))
+
+			job := &schedulerapi.JobResponse{
+				ID:        "testjob1",
+				SourceIDs: []string{meta1.ID(), meta2.ID()},
+				ExpiresAt: time.Now().Add(5 * time.Minute),
+			}
+			require.NoError(t, svc.compact(context.Background(), job))
+
+			require.NoError(t, s.Poll(context.Background()))
+			active := s.Snapshot().Active()
+			require.Len(t, active, 1)
+			merged := active[0]
+
+			require.NotNil(t, merged.IndexHeader)
+			require.Equal(t, tc.wantEncoding, format.PostingsEncoding(merged.IndexHeader.Flags&0x0F))
+			require.Equal(t, tc.wantCompression, merged.IndexHeader.PostingsCompression)
+
+			rc, err := s.GetIndex(context.Background(), merged.ID())
+			require.NoError(t, err)
+			mergedPath := filepath.Join(t.TempDir(), "merged.idx")
+			mf, err := os.Create(mergedPath)
+			require.NoError(t, err)
+			_, err = mf.ReadFrom(rc)
+			require.NoError(t, err)
+			rc.Close()
+			mf.Close()
+
+			reader, _, err := logline.OpenFile(mergedPath)
+			require.NoError(t, err)
+			defer reader.Close()
+
+			docIDs, err := queryReader(reader, "testterm")
+			require.NoError(t, err)
+			require.Len(t, docIDs, 2, "testterm should match both source documents")
+		})
+	}
+}
 
 func TestCompact_HappyPath_TwoSources(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
@@ -889,6 +956,26 @@ func TestVerifyCompactionJob_MismatchInThirdSource(t *testing.T) {
 	err := verifyCompactionJob(metas)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "source 2")
+}
+
+func TestVerifyCompactionJob_MismatchDocumentShardBits(t *testing.T) {
+	metas := []store.Meta{
+		{Version: "v5", DocumentInterval: 16 * time.Second},
+		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
+	}
+	err := verifyCompactionJob(metas)
+	require.ErrorContains(t, err, "document_shard_bits")
+}
+
+func TestBuildMergedMetaSkeleton_CopiesDocumentLayout(t *testing.T) {
+	metas := []store.Meta{
+		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
+		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
+	}
+	m, err := (&Service{}).buildMergedMetaSkeleton("id", []string{"2026-03-20/a", "2026-03-20/b"}, metas)
+	require.NoError(t, err)
+	require.Equal(t, 16*time.Second, m.DocumentInterval)
+	require.Equal(t, 5, m.DocumentShardBits)
 }
 
 func TestVerifyCompactionJob_UnsupportedVersion(t *testing.T) {
