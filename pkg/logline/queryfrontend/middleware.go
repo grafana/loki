@@ -932,10 +932,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			return h.next.Do(ctx, req)
 		}
 		if mode == ModeLive {
-			if _, isRange := req.(*queryrange.LokiRequest); !isRange {
-				return h.next.Do(ctx, req)
-			}
-			// Left unhinted until a later PR. An empty matrix would drop the 1
+			// Left unhinted until a later PR. An empty result would drop the 1
 			// an empty window returns.
 			if isAbsentOverTimeAgg(expr) {
 				return h.next.Do(ctx, req)
@@ -1162,8 +1159,9 @@ type loglineFilterHandler struct {
 }
 
 func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	lokiReq, ok := req.(*queryrange.LokiRequest)
-	if !ok {
+	switch req.(type) {
+	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest:
+	default:
 		return h.next.Do(ctx, req)
 	}
 	logger := util_log.WithContext(ctx, h.logger)
@@ -1173,12 +1171,12 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.next.Do(ctx, req)
 	}
 
-	intervalStart := lokiReq.StartTs.UTC()
-	intervalEnd := lokiReq.EndTs.UTC()
+	intervalStart := req.GetStart().UTC()
+	intervalEnd := req.GetEnd().UTC()
 
 	// A metric split reads before its start. Overlap and clipping use that window
 	// so a lookback match is not treated as a miss. Log queries widen by zero.
-	expr, _ := syntax.ParseExpr(lokiReq.Query)
+	expr, _ := syntax.ParseExpr(req.GetQuery())
 	readStart, readEnd := intervalStart, intervalEnd
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
 		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
@@ -1219,13 +1217,13 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	overlapping := rangesOverlapping(result.ranges, readStart, readEnd)
 	if len(overlapping) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedResponse(lokiReq, expr), nil
+		return skippedResponse(req, expr), nil
 	}
 
 	hints := clipHintRangesForInterval(overlapping, readStart, readEnd)
 	if len(hints) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedResponse(lokiReq, expr), nil
+		return skippedResponse(req, expr), nil
 	}
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
@@ -1236,7 +1234,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	}
 
 	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
-	resp, err := h.next.Do(ctx, withHintRanges(lokiReq, hints))
+	resp, err := h.next.Do(ctx, withHintRanges(req, hints))
 	// The count travels on the sub-request's response, so the split and shard
 	// merges add it up and discarded responses (retries) drop it.
 	if err == nil {
@@ -1250,11 +1248,25 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	return resp, err
 }
 
-func skippedResponse(req *queryrange.LokiRequest, expr syntax.Expr) queryrangebase.Response {
-	if _, ok := expr.(syntax.SampleExpr); ok {
-		return skippedMetricResponse()
+func skippedResponse(req queryrangebase.Request, expr syntax.Expr) queryrangebase.Response {
+	switch r := req.(type) {
+	case *queryrange.LokiInstantRequest:
+		return skippedInstantResponse()
+	case *queryrange.LokiRequest:
+		if _, ok := expr.(syntax.SampleExpr); ok {
+			return skippedMetricResponse()
+		}
+		return skippedLokiResponse(r)
+	default:
+		return nil
 	}
-	return skippedLokiResponse(req)
+}
+
+func skippedInstantResponse() *queryrange.LokiPromResponse {
+	resp := emptyMetricResponse()
+	resp.Response.Data.ResultType = loghttp.ResultTypeVector
+	resp.Statistics.LoglineStats().SkippedRequests = 1
+	return resp
 }
 
 func skippedLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
@@ -1270,11 +1282,21 @@ func skippedMetricResponse() *queryrange.LokiPromResponse {
 }
 
 // withHintRanges clones the request and sets hint ranges. The caller's
-// request, including its bounds, is left unchanged.
-func withHintRanges(req *queryrange.LokiRequest, hints []logproto.HintTimeRange) *queryrange.LokiRequest {
-	clone := *req
-	clone.HintRanges = hints
-	return &clone
+// request, including its bounds, is left unchanged. An instant request keeps
+// TimeTs as the evaluation time.
+func withHintRanges(req queryrangebase.Request, hints []logproto.HintTimeRange) queryrangebase.Request {
+	switch r := req.(type) {
+	case *queryrange.LokiInstantRequest:
+		clone := *r
+		clone.HintRanges = hints
+		return &clone
+	case *queryrange.LokiRequest:
+		clone := *r
+		clone.HintRanges = hints
+		return &clone
+	default:
+		return req
+	}
 }
 
 // clipHintRangesForInterval clips ranges to the half-open interval, converts a
