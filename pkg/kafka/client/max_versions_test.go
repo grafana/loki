@@ -22,14 +22,15 @@ func TestMaxVersions(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, int16(maxAPIVersionsRequestVersion), got)
 
-	// Spot-check that other requests keep franz-go's default (kversion.Stable) maximum versions.
-	stable := kversion.Stable()
-	for _, key := range []kmsg.Key{kmsg.Produce, kmsg.Fetch, kmsg.Metadata, kmsg.ListOffsets, kmsg.JoinGroup, kmsg.OffsetCommit} {
-		want, wantOK := stable.LookupMaxKeyVersion(key.Int16())
-		got, gotOK := versions.LookupMaxKeyVersion(key.Int16())
-		require.Equal(t, wantOK, gotOK, key.Name())
-		require.Equal(t, want, got, key.Name())
-	}
+	// Every other request keeps franz-go's default (kversion.Stable) maximum version.
+	kversion.Stable().EachMaxKeyVersion(func(key, want int16) {
+		if key == kmsg.ApiVersions.Int16() {
+			return
+		}
+		got, ok := versions.LookupMaxKeyVersion(key)
+		require.True(t, ok, kmsg.NameForKey(key))
+		require.Equal(t, want, got, kmsg.NameForKey(key))
+	})
 }
 
 func TestClientsConnectWithoutApiVersionsV5(t *testing.T) {
