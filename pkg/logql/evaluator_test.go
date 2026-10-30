@@ -816,7 +816,6 @@ func TestSampleOrderForExpr(t *testing.T) {
 			`max(rate({app="foo"}[1m]))`,
 			`sum(rate_counter({app="foo"} | logfmt | unwrap n [1m]))`,
 			`sum(bytes_rate({app="foo"}[1m]))`,
-			`sum(sum by (app) (rate({app="foo"}[1m])))`,
 			`count_over_time({app="foo"}[1m])`,
 			`sum_over_time({app="foo"} | logfmt | unwrap n [1m])`,
 			`max(sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,

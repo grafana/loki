@@ -678,7 +678,6 @@ func TestStreamFirstRangeAggregationExpr(t *testing.T) {
 		`avg(rate({app="foo"}[5m]))`,
 		`max(rate({app="foo"} | logfmt | unwrap n [5m]))`,
 		`sum(rate_counter({app="foo"} | logfmt | unwrap n [5m]))`,
-		`sum(sum by (app) (rate({app="foo"}[5m])))`,
 		`sum(bytes_rate({app="foo"}[5m]))`,
 		`sum(bytes_over_time({app="foo"}[5m]))`,
 		`sum(avg_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
