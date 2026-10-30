@@ -5,18 +5,19 @@ package v3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/maphash"
 	"reflect"
 	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Components represents a low-level OpenAPI 3+ Components Object, that is backed by a low-level one.
@@ -41,7 +42,7 @@ type Components struct {
 	RootNode        *yaml.Node
 	index           *index.SpecIndex
 	context         context.Context
-	nodeStore       sync.Map
+	nodeStore       low.NodeLines
 	reference       low.Reference
 	*low.Reference
 	low.NodeMap
@@ -50,6 +51,7 @@ type Components struct {
 type componentBuildResult[T any] struct {
 	key   low.KeyReference[string]
 	value low.ValueReference[T]
+	err   error
 }
 
 type componentInput struct {
@@ -169,11 +171,10 @@ func (co *Components) FindMediaType(mediaType string) *low.ValueReference[*Media
 // Build converts root YAML node containing components to low level model.
 // Process each component in parallel.
 func (co *Components) Build(ctx context.Context, root *yaml.Node, idx *index.SpecIndex) error {
-	root = utils.NodeAlias(root)
-	utils.CheckForMergeNodes(root)
+	root = utils.ResolveMergeNodes(root)
 	co.reference = low.Reference{}
 	co.Reference = &co.reference
-	co.nodeStore = sync.Map{}
+	co.nodeStore = low.NodeLines{}
 	co.Nodes = &co.nodeStore
 	if len(root.Content) > 0 {
 		co.NodeMap.ExtractNodes(root, false)
@@ -302,13 +303,54 @@ func extractComponentValues[T low.Buildable[N], N any](ctx context.Context, labe
 	translateFunc := func(_ int, value componentInput) (componentBuildResult[T], error) {
 		var n T = new(N)
 		currentLabel := value.currentLabel
-		node := value.node
+		node := utils.NodeAlias(value.node)
+		foundIndex := idx
+		foundContext := ctx
+		var localCircErr error
+		var refNode *yaml.Node
+		var referenceValue string
+		_, isSchemaProxy := any(n).(*base.SchemaProxy)
+
+		if h, _, rv := utils.IsNodeRefValue(node); h && rv != "" && !isSchemaProxy && foundIndex != nil {
+			ref, fIdx, err, nCtx := low.LocateRefNodeWithContext(foundContext, node, foundIndex)
+			if ref != nil {
+				refNode = node
+				node = ref
+				referenceValue = rv
+				if fIdx != nil {
+					foundIndex = fIdx
+				}
+				foundContext = nCtx
+				if err != nil {
+					localCircErr = err
+				}
+			} else if errors.Is(err, low.ErrExternalRefSkipped) {
+				low.SetReference(n, rv, node)
+				v := low.ValueReference[T]{
+					Value:     n,
+					ValueNode: node,
+				}
+				v.SetReference(rv, node)
+				return componentBuildResult[T]{
+					key: low.KeyReference[string]{
+						KeyNode: currentLabel,
+						Value:   currentLabel.Value,
+					},
+					value: v,
+				}, nil
+			} else if err != nil {
+				return componentBuildResult[T]{}, fmt.Errorf("component build failed: reference cannot be found: %s", err.Error())
+			}
+		}
 
 		// build.
 		_ = low.BuildModel(node, n)
-		err := n.Build(ctx, currentLabel, node, idx)
+		err := n.Build(foundContext, currentLabel, node, foundIndex)
 		if err != nil {
 			return componentBuildResult[T]{}, err
+		}
+		if referenceValue != "" {
+			low.SetReference(n, referenceValue, refNode)
 		}
 
 		nType := reflect.TypeOf(n)
@@ -333,18 +375,27 @@ func extractComponentValues[T low.Buildable[N], N any](ctx context.Context, labe
 			}
 
 		}
+		valueRef := low.ValueReference[T]{
+			Value:     n,
+			ValueNode: finalValueNode, // use transformed node if available
+		}
+		if referenceValue != "" {
+			valueRef.SetReference(referenceValue, refNode)
+		}
 		return componentBuildResult[T]{
 			key: low.KeyReference[string]{
 				KeyNode: currentLabel,
 				Value:   currentLabel.Value,
 			},
-			value: low.ValueReference[T]{
-				Value:     n,
-				ValueNode: finalValueNode, // use transformed node if available
-			},
+			value: valueRef,
+			err:   localCircErr,
 		}, nil
 	}
+	var circError error
 	err := datamodel.TranslateSliceParallel(inputs, translateFunc, func(result componentBuildResult[T]) error {
+		if result.err != nil {
+			circError = result.err
+		}
 		componentValues.Set(result.key, result.value)
 		return nil
 	})
@@ -356,6 +407,9 @@ func extractComponentValues[T low.Buildable[N], N any](ctx context.Context, labe
 		KeyNode:   nodeLabel,
 		ValueNode: nodeValue,
 		Value:     componentValues,
+	}
+	if circError != nil && (idx == nil || !idx.AllowCircularReferenceResolving()) {
+		return results, circError
 	}
 	return results, nil
 }

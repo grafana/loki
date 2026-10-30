@@ -4,14 +4,12 @@
 package low
 
 import (
-	"sync"
-
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 // MergeRecursiveNodesIfLineAbsent walks a node tree and adds each discovered node to dst
 // unless that line already exists in the destination map.
-func MergeRecursiveNodesIfLineAbsent(dst *sync.Map, node *yaml.Node) {
+func MergeRecursiveNodesIfLineAbsent(dst *NodeLines, node *yaml.Node) {
 	if dst == nil || node == nil {
 		return
 	}

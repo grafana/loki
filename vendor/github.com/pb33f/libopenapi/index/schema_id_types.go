@@ -4,7 +4,7 @@
 package index
 
 import (
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 // SchemaIdEntry represents a schema registered by its JSON Schema 2020-12 $id.

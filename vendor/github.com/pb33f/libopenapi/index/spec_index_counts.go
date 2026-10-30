@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // GetPathCount returns the number of paths defined in the specification. Returns -1 if root is nil.

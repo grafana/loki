@@ -7,11 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/index"
+	"github.com/pb33f/libopenapi/internal/weakcache"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 	"hash/maphash"
 	"math/big"
 	"net/url"
@@ -32,19 +33,19 @@ var stringBuilderPool = sync.Pool{
 	},
 }
 
-// hashCache is a global cache for computed hash values to avoid redundant calculations.
-// Uses sync.Map for thread-safe concurrent access.
-var hashCache sync.Map
+// hashCache memoizes the hashes of non-scalar YAML nodes by node identity. Its keys are weak, so it never keeps
+// a released document alive and never returns a hash for a node that was reclaimed.
+var hashCache weakcache.Cache[yaml.Node, string]
 
 // ErrExternalRefSkipped is returned by LocateRefNodeWithContext when
 // SkipExternalRefResolution is enabled and the reference is external.
 var ErrExternalRefSkipped = errors.New("external reference resolution skipped")
 
-// ClearHashCache clears the global hash cache. This should be called before
-// starting a new document comparison to ensure clean state.
+// ClearHashCache invalidates the global model and YAML node hash caches, so hashes of anything modified in place
+// are recalculated. It is not needed to release memory: cached entries never keep a document alive.
 func ClearHashCache() {
 	hashCache.Clear()
-	indexCollectionCache.Clear()
+	modelHashCache.Clear()
 }
 
 // GetStringBuilder retrieves a strings.Builder from the pool, resets it, and returns it.
@@ -108,30 +109,20 @@ func HashExtensions(ext *orderedmap.Map[KeyReference[string], ValueReference[*ya
 	return f
 }
 
-// indexCollectionCache caches the result of generateIndexCollection per SpecIndex.
-var indexCollectionCache sync.Map
-
-// helper function to generate a list of all the things an index should be searched for.
-// Cached per SpecIndex instance to avoid repeated slice+closure allocations.
-func generateIndexCollection(idx *index.SpecIndex) []func() map[string]*index.Reference {
-	if cached, ok := indexCollectionCache.Load(idx); ok {
-		return cached.([]func() map[string]*index.Reference)
-	}
-	collection := []func() map[string]*index.Reference{
-		idx.GetAllComponentSchemas,
-		idx.GetMappedReferences,
-		idx.GetAllExternalDocuments,
-		idx.GetAllParameters,
-		idx.GetAllHeaders,
-		idx.GetAllCallbacks,
-		idx.GetAllLinks,
-		idx.GetAllExamples,
-		idx.GetAllRequestBodies,
-		idx.GetAllResponses,
-		idx.GetAllSecuritySchemes,
-	}
-	indexCollectionCache.Store(idx, collection)
-	return collection
+// indexCollections lists everything an index should be searched for, in search order. Method expressions
+// take the index as an argument, so the list is shared by every index and allocates nothing per lookup.
+var indexCollections = [...]func(*index.SpecIndex) map[string]*index.Reference{
+	(*index.SpecIndex).GetAllComponentSchemas,
+	(*index.SpecIndex).GetMappedReferences,
+	(*index.SpecIndex).GetAllExternalDocuments,
+	(*index.SpecIndex).GetAllParameters,
+	(*index.SpecIndex).GetAllHeaders,
+	(*index.SpecIndex).GetAllCallbacks,
+	(*index.SpecIndex).GetAllLinks,
+	(*index.SpecIndex).GetAllExamples,
+	(*index.SpecIndex).GetAllRequestBodies,
+	(*index.SpecIndex).GetAllResponses,
+	(*index.SpecIndex).GetAllSecuritySchemes,
 }
 
 func LocateRefNodeWithContext(ctx context.Context, root *yaml.Node, idx *index.SpecIndex) (*yaml.Node, *index.SpecIndex, error, context.Context) {
@@ -160,10 +151,9 @@ func LocateRefNodeWithContext(ctx context.Context, root *yaml.Node, idx *index.S
 
 		// run through everything and return as soon as we find a match.
 		// this operates as fast as possible as ever
-		collections := generateIndexCollection(idx)
 		var found map[string]*index.Reference
-		for _, collection := range collections {
-			found = collection()
+		for _, collection := range indexCollections {
+			found = collection(idx)
 			if found != nil {
 				for _, candidate := range searchRefs {
 					if found[candidate] == nil {
@@ -756,8 +746,7 @@ func ExtractMapNoLookupExtensions[PT Buildable[N], N any](
 ) (*orderedmap.Map[KeyReference[string], ValueReference[PT]], error) {
 	valueMap := orderedmap.New[KeyReference[string], ValueReference[PT]]()
 	var circError error
-	root = utils.NodeAlias(root)
-	utils.CheckForMergeNodes(root)
+	root = utils.ResolveMergeNodes(root)
 	if utils.IsNodeMap(root) {
 		var currentKey *yaml.Node
 		skip := false
@@ -1100,13 +1089,17 @@ func ExtractExtensions(root *yaml.Node) *orderedmap.Map[KeyReference[string], Va
 	if root == nil {
 		return nil
 	}
-	extensions := utils.FindExtensionNodes(root.Content)
 	extensionMap := orderedmap.New[KeyReference[string], ValueReference[*yaml.Node]]()
-	for _, ext := range extensions {
-		extensionMap.Set(KeyReference[string]{
-			Value:   ext.Key.Value,
-			KeyNode: ext.Key,
-		}, ValueReference[*yaml.Node]{Value: ext.Value, ValueNode: ext.Value})
+	content := root.Content
+	for i := 0; i+1 < len(content); i += 2 {
+		key := content[i]
+		if strings.HasPrefix(key.Value, "x-") {
+			value := utils.NodeAlias(content[i+1])
+			extensionMap.Set(KeyReference[string]{
+				Value:   key.Value,
+				KeyNode: key,
+			}, ValueReference[*yaml.Node]{Value: value, ValueNode: value})
+		}
 	}
 	return extensionMap
 }
@@ -1127,48 +1120,55 @@ func AreEqual(l, r Hashable) bool {
 	return l.Hash() == r.Hash()
 }
 
-// GenerateHashString will generate a SHA256 hash of any object passed in. If the object is Hashable
+// modelHashCache memoizes the hashes of Hashable model objects by object identity. Its keys are weak: an entry
+// never keeps its object alive and is dropped once the object is reclaimed, so an object later allocated at the
+// same address can never be handed its predecessor's hash.
+var modelHashCache weakcache.Cache[byte, modelHash]
+
+type modelHash struct {
+	typ  reflect.Type
+	hash string
+}
+
+// hashHashable returns the hash of h as a hex string, memoized for model objects whose hash cannot change once
+// they are built. SchemaProxy and Schema hashes depend on resolution state, so they are always recalculated.
+func hashHashable(h Hashable) string {
+	val := reflect.ValueOf(h)
+	if val.Kind() != reflect.Pointer || val.IsNil() {
+		return strconv.FormatUint(h.Hash(), 16)
+	}
+	typ := val.Type()
+	if name := typ.String(); name == "*base.SchemaProxy" || name == "*base.Schema" {
+		return strconv.FormatUint(h.Hash(), 16)
+	}
+	key := (*byte)(val.UnsafePointer())
+	if cached, ok := modelHashCache.Load(key); ok && cached.typ == typ {
+		return cached.hash
+	}
+	hash := strconv.FormatUint(h.Hash(), 16)
+	modelHashCache.Store(key, modelHash{typ: typ, hash: hash})
+	return hash
+}
+
+// GenerateHashString will generate a hash of any object passed in. If the object is Hashable
 // then the underlying Hash() method will be called. Optimized to avoid excessive allocations and
-// uses caching to eliminate redundant calculations.
+// memoizes model and YAML node hashes by identity, without keeping those objects alive.
 func GenerateHashString(v any) string {
 	if v == nil {
 		return ""
 	}
 
-	// Try cache first using the pointer as key for non-primitives
-	// However, skip caching for types with mutable hash state like SchemaProxy
-	val := reflect.ValueOf(v)
-	shouldCache := true
-	if val.Kind() == reflect.Ptr && !val.IsNil() {
-		// Check if this is a type that has mutable hash state or complex comparison logic
-		typeName := val.Type().String()
-		if typeName == "*base.SchemaProxy" || typeName == "*base.Schema" {
-			shouldCache = false
-		}
-
-		if shouldCache {
-			cacheKey := val.Pointer()
-			if cached, ok := hashCache.Load(cacheKey); ok {
-				return cached.(string)
-			}
-		}
-	}
-
 	var hashStr string
 
 	if h, ok := v.(Hashable); ok {
-		if h != nil {
-			// Format uint64 hash as hex string
-			hash := h.Hash()
-			hashStr = strconv.FormatUint(hash, 16)
-		}
+		hashStr = hashHashable(h)
 	} else if n, ok := v.(*yaml.Node); ok {
 		// Fast path for common YAML node types to avoid marshaling
 		hashStr = hashYamlNodeFast(n)
 	} else {
 		// Primitive types
 		// if we get here, we're a primitive, check if we're a pointer and de-point
-		if val.Kind() == reflect.Ptr {
+		if val := reflect.ValueOf(v); val.Kind() == reflect.Ptr {
 			v = val.Elem().Interface()
 		}
 
@@ -1214,12 +1214,6 @@ func GenerateHashString(v any) string {
 		hashStr = strconv.FormatUint(maphash.String(globalHashSeed, str), 16)
 	}
 
-	// Store in cache if we have a valid pointer and caching is enabled for this type
-	if shouldCache && val.Kind() == reflect.Ptr && !val.IsNil() && hashStr != "" {
-		cacheKey := val.Pointer()
-		hashCache.Store(cacheKey, hashStr)
-	}
-
 	return hashStr
 }
 
@@ -1233,7 +1227,7 @@ func hashYamlNodeFast(n *yaml.Node) string {
 	// Use pointer directly as key - *yaml.Node pointers are stable and comparable
 	if n.Kind != yaml.ScalarNode {
 		if cached, ok := hashCache.Load(n); ok {
-			return cached.(string)
+			return cached
 		}
 	}
 

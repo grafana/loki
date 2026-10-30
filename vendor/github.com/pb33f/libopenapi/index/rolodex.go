@@ -24,7 +24,7 @@ import (
 
 	"context"
 
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 // CanBeIndexed is an interface that allows a file to be indexed.
@@ -904,6 +904,11 @@ func openFile(ctx context.Context, location string, v fs.FS) (fs.File, error) {
 		f, err = fscw.OpenWithContext(ctx, location)
 	} else {
 		f, err = v.Open(location)
+	}
+	// a file system returning neither a file nor an error breaks the fs.FS contract,
+	// reading from the nil file would panic, so treat it as a failed open.
+	if f == nil && err == nil {
+		return nil, fmt.Errorf("file system returned no file and no error when opening '%s'", location)
 	}
 	return f, err
 }

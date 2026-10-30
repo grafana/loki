@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 const (
@@ -122,8 +122,6 @@ type NodeReference[T any] struct {
 
 	// The yaml.Node that is the key, that contains the value.
 	KeyNode *yaml.Node
-
-	Context context.Context
 }
 
 var _ HasValueNodeUntyped = &NodeReference[any]{}

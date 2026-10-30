@@ -3,7 +3,7 @@
 
 package index
 
-import "go.yaml.in/yaml/v4"
+import "github.com/pb33f/go-yaml"
 
 func (resolver *Resolver) visitReferenceShortCircuit(ref *Reference, resolve bool) ([]*yaml.Node, bool) {
 	if ref == nil {
