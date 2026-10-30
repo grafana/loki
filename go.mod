@@ -13,7 +13,7 @@ require (
 	github.com/DataDog/sketches-go v1.4.8
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.25.1
-	github.com/IBM/ibm-cos-sdk-go v1.15.1
+	github.com/IBM/ibm-cos-sdk-go v1.15.2
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/RoaringBitmap/roaring v1.9.4
