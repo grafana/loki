@@ -29,6 +29,7 @@ type GroupMember struct {
 	Owned       []kmsg.ConsumerMemberMetadataOwnedPartition
 	Generation  int32
 	Cooperative bool
+	Rack        string // KIP-881: empty if not set
 }
 
 // Plan is the plan this package came up with (member => topic => partitions).
@@ -67,6 +68,16 @@ type balancer struct {
 	// stealGraph is a graphical representation of members and partitions
 	// they want to steal.
 	stealGraph graph
+
+	// KIP-881: rack-aware assignment. partRacks is indexed by flat
+	// partNum (same as partOwners), memberRacks by memberNum. Rack
+	// indices are 1-based so that zero-initialized slices naturally
+	// mean "no rack" (noRack == 0). When no rack info is available,
+	// both slices are nil. The nRacks field is the count of distinct
+	// racks; rackHeaps in assignRackAware is indexed by rack-1.
+	memberRacks []uint16
+	partRacks   []uint16
+	nRacks      int
 }
 
 type topicInfo struct {
@@ -75,7 +86,7 @@ type topicInfo struct {
 	topic      string
 }
 
-func newBalancer(members []GroupMember, topics map[string]int32) *balancer {
+func newBalancer(members []GroupMember, topics map[string]int32, partitionRacks map[string][]string) *balancer {
 	var (
 		nparts     int
 		topicNums  = make(map[string]uint32, len(topics))
@@ -119,7 +130,72 @@ func newBalancer(members []GroupMember, topics map[string]int32) *balancer {
 		b.plan[num] = planBuf[:0:evenDivvy]
 		planBuf = planBuf[evenDivvy:]
 	}
+
+	b.initRacks(partitionRacks)
 	return b
+}
+
+// initRacks sets up rack-aware fields if any member and any partition
+// have rack info. Both sides must have racks for rack-aware assignment
+// to be useful.
+func (b *balancer) initRacks(partitionRacks map[string][]string) {
+	if len(partitionRacks) == 0 {
+		return
+	}
+
+	// Map rack strings to small 1-based indices (0 = noRack).
+	rackIndex := make(map[string]uint16)
+	rackOf := func(s string) uint16 {
+		if s == "" {
+			return noRack
+		}
+		idx, ok := rackIndex[s]
+		if !ok {
+			idx = uint16(len(rackIndex) + 1)
+			rackIndex[s] = idx
+		}
+		return idx
+	}
+
+	memberRacks := make([]uint16, len(b.members))
+	var anyMemberRack bool
+	for i := range b.members {
+		memberRacks[i] = rackOf(b.members[i].Rack)
+		if memberRacks[i] != noRack {
+			anyMemberRack = true
+		}
+	}
+	if !anyMemberRack {
+		return
+	}
+
+	// Build flat partRacks indexed by partNum. Zero-init is noRack.
+	partRacks := make([]uint16, cap(b.partOwners))
+	var anyPartRack bool
+	for topic, racks := range partitionRacks {
+		topicNum, ok := b.topicNums[topic]
+		if !ok {
+			continue
+		}
+		info := b.topicInfos[topicNum]
+		for i, rack := range racks {
+			if int32(i) >= info.partitions {
+				break
+			}
+			if rack != "" {
+				idx := rackOf(rack)
+				partRacks[info.partNum+int32(i)] = idx
+				anyPartRack = true
+			}
+		}
+	}
+	if !anyPartRack {
+		return
+	}
+
+	b.partRacks = partRacks
+	b.memberRacks = memberRacks
+	b.nRacks = len(rackIndex)
 }
 
 func (b *balancer) into() Plan {
@@ -271,10 +347,19 @@ func (b *balancer) initPlanByNumPartitions() {
 // Balance performs sticky partitioning for the given group members and topics,
 // returning the determined plan.
 func Balance(members []GroupMember, topics map[string]int32) Plan {
+	return BalanceWithRacks(members, topics, nil)
+}
+
+// BalanceWithRacks performs sticky partitioning with rack-aware assignment
+// (KIP-881). partitionRacks maps topic => partition index => rack of the
+// partition leader. When non-nil and members also have racks, unassigned
+// partitions are preferentially placed on rack-matching members before
+// falling back to normal assignment.
+func BalanceWithRacks(members []GroupMember, topics map[string]int32, partitionRacks map[string][]string) Plan {
 	if len(members) == 0 {
 		return make(Plan)
 	}
-	b := newBalancer(members, topics)
+	b := newBalancer(members, topics, partitionRacks)
 	if cap(b.partOwners) == 0 {
 		return b.into()
 	}
@@ -493,6 +578,15 @@ func (b *balancer) assignUnassignedAndInitGraph() {
 		b.sortMemberByLiteralPartNum(memberNum)
 	}
 
+	// KIP-881: rack-aware pre-assignment for the simple path. For
+	// unassigned partitions with rack info, preferentially assign to
+	// rack-matched members via per-rack heaps. Anything left unassigned
+	// falls through to the normal heap below. The complex path handles
+	// rack preference inline via tie-breaking (see below).
+	if b.partRacks != nil && !b.isComplex {
+		b.assignRackAware(partitionConsumers, topicPotentials)
+	}
+
 	if !b.isComplex && len(topicPotentials) > 0 {
 		potentials := topicPotentials[0]
 		(&membersByPartitions{potentials, b.plan}).init()
@@ -514,13 +608,26 @@ func (b *balancer) assignUnassignedAndInitGraph() {
 			if len(potentials) == 0 {
 				continue
 			}
+			// KIP-881: when partition racks are available, break
+			// ties among equally-loaded members by preferring a
+			// rack-matched member. This preserves optimal balance
+			// while improving rack locality without needing a
+			// separate pre-assignment pass.
+			var pRack uint16 // noRack (0) when no rack info
+			if b.partRacks != nil {
+				pRack = b.partRacks[partNum]
+			}
 			leastConsumingPotential := potentials[0]
 			leastConsuming := len(b.plan[leastConsumingPotential])
+			bestRackMatch := pRack != noRack && b.memberRacks[leastConsumingPotential] == pRack
 			for _, potential := range potentials[1:] {
 				potentialConsuming := len(b.plan[potential])
-				if potentialConsuming < leastConsuming {
+				rackMatch := pRack != noRack && b.memberRacks[potential] == pRack
+				if potentialConsuming < leastConsuming ||
+					potentialConsuming == leastConsuming && rackMatch && !bestRackMatch {
 					leastConsumingPotential = potential
 					leastConsuming = potentialConsuming
+					bestRackMatch = rackMatch
 				}
 			}
 			b.plan[leastConsumingPotential].add(int32(partNum))
@@ -541,6 +648,10 @@ func (b *balancer) assignUnassignedAndInitGraph() {
 // unassignedPart is a fake member number that we use to track if a partition
 // is deleted or unassigned.
 const unassignedPart = math.MaxUint16 - 1
+
+// noRack is the sentinel for "no rack info" in memberRacks / partRacks.
+// Rack indices are 1-based so that zero-initialized slices default to noRack.
+const noRack = 0
 
 // tryRestickyStales is a pre-assigning step where, for all stale members,
 // we give partitions back to them if the partition is currently on an
@@ -577,6 +688,78 @@ func (b *balancer) tryRestickyStales(
 			currentOwnerPartitions.remove(staleNum)
 			lastOwnerPartitions.add(staleNum)
 		}
+	}
+}
+
+// assignRackAware pre-assigns unassigned partitions to members whose rack
+// matches the partition's leader rack, without exceeding the balanced
+// quota. Uses per-rack min-heaps for O(log M) per assignment. Only called
+// for the simple (uniform subscription) path; the complex path handles
+// rack preference inline via tie-breaking in the main assignment loop.
+func (b *balancer) assignRackAware(
+	partitionConsumers []partitionConsumer,
+	topicPotentials [][]uint16,
+) {
+	if len(topicPotentials) == 0 {
+		return
+	}
+	maxQuota := (cap(b.partOwners) + len(b.members) - 1) / len(b.members)
+
+	// Build per-rack heaps indexed by rack index. We track which
+	// indices are populated so setup is O(members) not O(nRacks).
+	type rackHeap struct {
+		mbp membersByPartitions
+	}
+	rackHeaps := make([]rackHeap, b.nRacks)
+	rackCount := make([]int, b.nRacks)
+	var populated []uint16
+	// Count members per rack and track which rack indices are populated.
+	for _, m := range topicPotentials[0] {
+		rack := b.memberRacks[m]
+		if rack != noRack {
+			ri := rack - 1
+			if rackCount[ri] == 0 {
+				populated = append(populated, ri)
+			}
+			rackCount[ri]++
+		}
+	}
+	// Preallocate each populated rack's member slice.
+	for _, i := range populated {
+		rackHeaps[i].mbp.members = make([]uint16, 0, rackCount[i])
+	}
+	// Place each member into its rack's heap.
+	for _, m := range topicPotentials[0] {
+		rack := b.memberRacks[m]
+		if rack != noRack {
+			rackHeaps[rack-1].mbp.members = append(rackHeaps[rack-1].mbp.members, m)
+		}
+	}
+	// Initialize each rack's min-heap by partition count.
+	for _, i := range populated {
+		rackHeaps[i].mbp.plan = b.plan
+		rackHeaps[i].mbp.init()
+	}
+	// Assign unassigned partitions to rack-matched members under quota.
+	for partNum, owner := range partitionConsumers {
+		if owner.memberNum != unassignedPart {
+			continue
+		}
+		pRack := b.partRacks[partNum]
+		if pRack == noRack {
+			continue
+		}
+		rh := &rackHeaps[pRack-1]
+		if len(rh.mbp.members) == 0 {
+			continue
+		}
+		candidate := rh.mbp.members[0]
+		if len(b.plan[candidate]) >= maxQuota {
+			continue
+		}
+		b.plan[candidate].add(int32(partNum))
+		rh.mbp.fix0()
+		partitionConsumers[partNum] = partitionConsumer{candidate, candidate}
 	}
 }
 

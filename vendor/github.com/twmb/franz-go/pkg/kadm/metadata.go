@@ -231,7 +231,6 @@ func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) 
 	req := kmsg.NewPtrMetadataRequest()
 
 	req.IncludeClusterAuthorizedOperations = true
-	req.IncludeTopicAuthorizedOperations = ctx.Value(&includeAuthOps) != nil
 	for _, t := range topics {
 		rt := kmsg.NewMetadataRequestTopic()
 		rt.Topic = kmsg.StringPtr(t)
@@ -240,7 +239,17 @@ func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) 
 	if noTopics {
 		req.Topics = []kmsg.MetadataRequestTopic{}
 	}
-	resp, err := req.RequestWith(ctx, cl.cl)
+
+	// When auth ops are requested, bypass the cache and issue a direct
+	// request. The cached path does not populate authorized operations.
+	var resp *kmsg.MetadataResponse
+	var err error
+	if ctx.Value(&includeAuthOps) != nil {
+		req.IncludeTopicAuthorizedOperations = true
+		resp, err = req.RequestWith(ctx, cl.cl)
+	} else {
+		resp, err = cl.cl.RequestCachedMetadata(ctx, req, 0)
+	}
 	if err != nil {
 		return Metadata{}, err
 	}
@@ -274,7 +283,7 @@ func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) 
 				Err: kerr.ErrorForCode(p.ErrorCode),
 			}
 		}
-		tds[*t.Topic] = td
+		tds[td.Topic] = td
 	}
 
 	m := Metadata{
