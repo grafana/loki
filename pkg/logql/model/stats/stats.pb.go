@@ -41,7 +41,7 @@ type Result struct {
 func (m *Result) Reset()      { *m = Result{} }
 func (*Result) ProtoMessage() {}
 func (*Result) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{0}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{0}
 }
 func (m *Result) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -155,7 +155,7 @@ type Logline struct {
 func (m *Logline) Reset()      { *m = Logline{} }
 func (*Logline) ProtoMessage() {}
 func (*Logline) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{1}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{1}
 }
 func (m *Logline) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -298,7 +298,7 @@ type Caches struct {
 func (m *Caches) Reset()      { *m = Caches{} }
 func (*Caches) ProtoMessage() {}
 func (*Caches) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{2}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{2}
 }
 func (m *Caches) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -441,7 +441,7 @@ type Summary struct {
 func (m *Summary) Reset()      { *m = Summary{} }
 func (*Summary) ProtoMessage() {}
 func (*Summary) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{3}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{3}
 }
 func (m *Summary) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -609,7 +609,7 @@ type Index struct {
 func (m *Index) Reset()      { *m = Index{} }
 func (*Index) ProtoMessage() {}
 func (*Index) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{4}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{4}
 }
 func (m *Index) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -712,7 +712,7 @@ type Querier struct {
 func (m *Querier) Reset()      { *m = Querier{} }
 func (*Querier) ProtoMessage() {}
 func (*Querier) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{5}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{5}
 }
 func (m *Querier) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -774,7 +774,7 @@ type Ingester struct {
 func (m *Ingester) Reset()      { *m = Ingester{} }
 func (*Ingester) ProtoMessage() {}
 func (*Ingester) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{6}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{6}
 }
 func (m *Ingester) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -874,7 +874,7 @@ type Store struct {
 func (m *Store) Reset()      { *m = Store{} }
 func (*Store) ProtoMessage() {}
 func (*Store) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{7}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{7}
 }
 func (m *Store) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1017,7 +1017,7 @@ type Dataobj struct {
 func (m *Dataobj) Reset()      { *m = Dataobj{} }
 func (*Dataobj) ProtoMessage() {}
 func (*Dataobj) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{8}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{8}
 }
 func (m *Dataobj) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1175,7 +1175,7 @@ type Chunk struct {
 func (m *Chunk) Reset()      { *m = Chunk{} }
 func (*Chunk) ProtoMessage() {}
 func (*Chunk) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{9}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{9}
 }
 func (m *Chunk) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1281,7 +1281,7 @@ type Cache struct {
 func (m *Cache) Reset()      { *m = Cache{} }
 func (*Cache) ProtoMessage() {}
 func (*Cache) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6cdfe5d2aea33ebb, []int{10}
+	return fileDescriptor_55b7edb0fbd0e16f, []int{10}
 }
 func (m *Cache) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1380,9 +1380,9 @@ func init() {
 	proto.RegisterType((*Cache)(nil), "stats.Cache")
 }
 
-func init() { proto.RegisterFile("pkg/logql/model/stats/stats.proto", fileDescriptor_6cdfe5d2aea33ebb) }
+func init() { proto.RegisterFile("pkg/logql/model/stats/stats.proto", fileDescriptor_55b7edb0fbd0e16f) }
 
-var fileDescriptor_6cdfe5d2aea33ebb = []byte{
+var fileDescriptor_55b7edb0fbd0e16f = []byte{
 	// 2259 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x59, 0xcd, 0x6f, 0xdc, 0xc6,
 	0x15, 0xd7, 0x4a, 0xda, 0x0f, 0x8d, 0x3e, 0x3d, 0x72, 0x12, 0x3a, 0xb1, 0x97, 0xf6, 0x26, 0x46,
