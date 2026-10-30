@@ -799,6 +799,9 @@ func TestSampleOrderForExpr(t *testing.T) {
 		streamFirstQueries := []string{
 			`sum by (app) (count_over_time({app="foo"}[1m]))`,
 			`sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
+			`sum(rate({app="foo"}[1m]))`,
+			`sum without (pod) (rate({app="foo"} |= "error" [1m] offset 5m))`,
+			`sum by (app) (rate({app="foo"} | logfmt | unwrap n [1m]))`,
 		}
 
 		for _, query := range streamFirstQueries {
@@ -809,7 +812,10 @@ func TestSampleOrderForExpr(t *testing.T) {
 
 	t.Run("returns timestamp-first for every unsupported query when the tenant enables it", func(t *testing.T) {
 		timestampFirstQueries := []string{
-			`sum(rate({app="foo"}[1m]))`,
+			`rate({app="foo"}[1m])`,
+			`max(rate({app="foo"}[1m]))`,
+			`sum(rate_counter({app="foo"} | logfmt | unwrap n [1m]))`,
+			`sum(bytes_rate({app="foo"}[1m]))`,
 			`count_over_time({app="foo"}[1m])`,
 			`sum_over_time({app="foo"} | logfmt | unwrap n [1m])`,
 			`max(sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
@@ -858,7 +864,7 @@ func TestSampleOrderForQuery(t *testing.T) {
 			`topk(1, sum by (app) (count_over_time({app="foo"}[1m])))`,
 			`label_replace(sum by (app) (count_over_time({app="foo"}[1m])), "region", "$1", "app", "(.*)")`,
 			`(sum(count_over_time({app="foo"}[1m])) or vector(0)) > bool 0`,
-			`sum(count_over_time({app="foo"}[1m])) + sum(rate({app="foo"}[1m]))`,
+			`sum(count_over_time({app="foo"}[1m])) + sum(avg_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
 		}
 
 		for _, query := range streamFirstQueries {
@@ -869,10 +875,10 @@ func TestSampleOrderForQuery(t *testing.T) {
 
 	t.Run("returns timestamp-first for every query without a supported part when the tenant enables it", func(t *testing.T) {
 		timestampFirstQueries := []string{
-			`sum(rate({app="foo"}[1m]))`,
+			`sum(avg_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
 			`count_over_time({app="foo"}[1m])`,
 			`max(sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
-			`max(sum(rate({app="foo"}[1m])))`,
+			`max(sum(avg_over_time({app="foo"} | logfmt | unwrap n [1m])))`,
 			`vector(1)`,
 		}
 
@@ -945,8 +951,29 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		return out
 	}
 
-	t.Run("requests stream-first order for a sum of count_over_time", func(t *testing.T) {
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, requestedOrder(t, `sum by (app) (count_over_time({app="foo"}[1m]))`))
+	t.Run("requests stream-first order for every supported query", func(t *testing.T) {
+		streamFirstQueries := []string{
+			`sum by (app) (count_over_time({app="foo"}[1m]))`,
+			`sum(rate({app="foo"}[1m]))`,
+			`sum by (app) (rate({app="foo"} | logfmt | unwrap n [1m]))`,
+		}
+
+		for _, query := range streamFirstQueries {
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, requestedOrder(t, query), query)
+		}
+	})
+
+	t.Run("requests timestamp-first order for every query not supported by stream-first", func(t *testing.T) {
+		timestampFirstQueries := []string{
+			`count_over_time({app="foo"}[1m])`,
+			`rate({app="foo"}[1m])`,
+			`sum(rate_counter({app="foo"} | logfmt | unwrap n [1m]))`,
+			`sum(bytes_rate({app="foo"}[1m]))`,
+		}
+
+		for _, query := range timestampFirstQueries {
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, requestedOrder(t, query), query)
+		}
 	})
 
 	t.Run("requests stream-first order for a tenant without a series limit", func(t *testing.T) {
@@ -954,14 +981,6 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		_, err := execute(t, limitsWithMaxSeries(0), querier, `sum by (app) (count_over_time({app="foo"}[1m]))`, time.Minute)
 		require.NoError(t, err)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, querier.sampleParams.Order)
-	})
-
-	t.Run("requests timestamp-first order for count_over_time without a sum", func(t *testing.T) {
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, requestedOrder(t, `count_over_time({app="foo"}[1m])`))
-	})
-
-	t.Run("requests timestamp-first order for sum of rate", func(t *testing.T) {
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, requestedOrder(t, `sum(rate({app="foo"}[1m]))`))
 	})
 
 	t.Run("requests stream-first order for a sum of count_over_time nested in another aggregation", func(t *testing.T) {
@@ -995,7 +1014,7 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 	t.Run("requests stream-first order only for the leg of a binary operator that supports it", func(t *testing.T) {
 		const (
 			supported   = `sum(count_over_time({app="foo"}[1m]))`
-			unsupported = `sum(rate({app="foo"}[1m]))`
+			unsupported = `sum(avg_over_time({app="foo"} | logfmt | unwrap n [1m]))`
 		)
 		recorder := &sampleRequestRecorder{}
 

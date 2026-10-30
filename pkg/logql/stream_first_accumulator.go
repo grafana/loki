@@ -23,12 +23,16 @@ type newStepAccumulatorFunc func(steps int) stepAccumulator
 
 // newStepAccumulatorFuncFor returns the accumulator constructor of a range aggregation, and false
 // if stream-first order does not support the aggregation.
+//
+// The constructor can depend on expr, so use it only for expr.
 func newStepAccumulatorFuncFor(expr *syntax.RangeAggregationExpr) (newStepAccumulatorFunc, bool) {
 	switch expr.Operation {
 	case syntax.OpRangeTypeCount:
 		return newCountAccumulator, true
 	case syntax.OpRangeTypeSum:
 		return newSumAccumulator, true
+	case syntax.OpRangeTypeRate:
+		return newRateAccumulatorFunc(expr), true
 	default:
 		return nil, false
 	}
@@ -166,4 +170,55 @@ func (a *sumAccumulator) value(k int) (float64, bool) {
 		c = a.compensations[k]
 	}
 	return kahanResult(a.sums[k], c), true
+}
+
+// newRateAccumulatorFunc returns the constructor of rate accumulators for expr, which must be a
+// rate aggregation.
+func newRateAccumulatorFunc(expr *syntax.RangeAggregationExpr) newStepAccumulatorFunc {
+	newTotals := newCountAccumulator
+	if expr.Left.Unwrap != nil {
+		newTotals = newSumAccumulator
+	}
+	seconds := expr.Left.Interval.Seconds()
+
+	return func(steps int) stepAccumulator {
+		return &rateAccumulator{totals: newTotals(steps), seconds: seconds}
+	}
+}
+
+// rateAccumulator turns the total of each step into a per-second rate.
+//
+// The total is the sample count, or the sum of the sample values when the query has an unwrap. The
+// value of a step is its total divided by the range vector duration in seconds, as in the
+// timestamp-first rate.
+//
+// With an unwrap, the rate can differ from the timestamp-first rate in the last digits. This
+// happens when the samples arrive out of timestamp order. It needs non-integer values, or a
+// partial sum of 2^53 or more.
+//
+// The rate does not extrapolate to the window edges, unlike rate_counter().
+type rateAccumulator struct {
+	totals  stepAccumulator
+	seconds float64
+}
+
+func (a *rateAccumulator) add(lo, hi int, v float64) {
+	a.totals.add(lo, hi, v)
+}
+
+func (a *rateAccumulator) finish() {
+	a.totals.finish()
+}
+
+// value panics when finish has not run, because the wrapped totals panic.
+func (a *rateAccumulator) value(k int) (float64, bool) {
+	total, ok := a.totals.value(k)
+	if !ok {
+		return 0, false
+	}
+
+	// A range vector duration of zero adds no sample, so the check above returns before a division
+	// by zero. Divide, do not multiply by 1/seconds. The timestamp-first rate divides, and the
+	// product can differ in the last bit.
+	return total / a.seconds, true
 }

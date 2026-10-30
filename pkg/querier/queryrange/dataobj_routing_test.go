@@ -76,7 +76,7 @@ func TestDataObjResolve(t *testing.T) {
 	})
 
 	t.Run("rejects a sum of an aggregation that stream-first order does not support", func(t *testing.T) {
-		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `sum(rate({app="a"}[1m]))`, insideStart, insideEnd)
+		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `sum(avg_over_time({app="a"} | logfmt | unwrap n [1m]))`, insideStart, insideEnd)
 
 		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
 	})
@@ -86,7 +86,7 @@ func TestDataObjResolve(t *testing.T) {
 			`label_replace(sum by (app) (count_over_time({app="a"}[1m])), "b", "c", "app", ".+")`,
 			`max by (node) (sum by (node, pod) (count_over_time({app="a"}[1m])))`,
 			`(sum(count_over_time({app="a"}[1m])) or vector(0)) > bool 0`,
-			`sum(count_over_time({app="a"}[1m])) + sum(rate({app="a"}[1m]))`,
+			`sum(count_over_time({app="a"}[1m])) + sum(avg_over_time({app="a"} | logfmt | unwrap n [1m]))`,
 		} {
 			t.Run(query, func(t *testing.T) {
 				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
@@ -97,7 +97,7 @@ func TestDataObjResolve(t *testing.T) {
 	})
 
 	t.Run("rejects an expression with no stream-first part", func(t *testing.T) {
-		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `max(sum(rate({app="a"}[1m])))`, insideStart, insideEnd)
+		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `max(sum(avg_over_time({app="a"} | logfmt | unwrap n [1m])))`, insideStart, insideEnd)
 
 		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
 	})

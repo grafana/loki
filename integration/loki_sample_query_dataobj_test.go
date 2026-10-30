@@ -170,6 +170,19 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		labels.FromMap(streamLabels("b")).String(): 3,
 	}
 
+	// Each expected rate is the matching count or sum above, divided by the 3600 seconds in [1h].
+	const rateQuery = `sum by (job, app) (rate({job="dataobjit"}[1h]))`
+	expectedRates := map[string]float64{
+		labels.FromMap(streamLabels("a")).String(): 3.0 / 3600,
+		labels.FromMap(streamLabels("b")).String(): 2.0 / 3600,
+	}
+
+	const rateUnwrapQuery = `sum by (job, app) (rate({job="dataobjit"} | logfmt | unwrap n [1h]))`
+	expectedUnwrapRates := map[string]float64{
+		labels.FromMap(streamLabels("a")).String(): 60.0 / 3600,
+		labels.FromMap(streamLabels("b")).String(): 3.0 / 3600,
+	}
+
 	// runCountQuery and valuesOf return plain errors, not require, so the Eventually loops below can
 	// call them from their own goroutine.
 	runCountQuery := func() (*client.Response, error) {
@@ -248,6 +261,26 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
 	})
 
+	t.Run("a rate query served by the chunk store returns the expected rates and reads chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, rateQuery)
+		require.NoError(t, err)
+
+		rates, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.InDeltaMapValues(t, expectedRates, rates, 1e-12)
+		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
+	})
+
+	t.Run("a rate query with an unwrap served by the chunk store returns the expected rates and reads chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, rateUnwrapQuery)
+		require.NoError(t, err)
+
+		rates, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.InDeltaMapValues(t, expectedUnwrapRates, rates, 1e-12)
+		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
+	})
+
 	tQuerier.AddFlags(
 		"-dataobj.enabled=true",
 		"-querier.dataobj-query-start-time="+dataObjQueryStart,
@@ -305,6 +338,32 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		sums, err := valuesOf(resp)
 		require.NoError(t, err)
 		require.Equal(t, expectedSums, sums)
+
+		store := resp.Data.Statistics.Querier.Store
+		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
+		require.Zero(t, store.Chunk.DecompressedLines)
+	})
+
+	t.Run("a rate query served by data objects returns the same rates as the chunk store and reads no chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, rateQuery)
+		require.NoError(t, err)
+
+		rates, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.InDeltaMapValues(t, expectedRates, rates, 1e-12)
+
+		store := resp.Data.Statistics.Querier.Store
+		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
+		require.Zero(t, store.Chunk.DecompressedLines)
+	})
+
+	t.Run("a rate query with an unwrap served by data objects returns the same rates as the chunk store and reads no chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, rateUnwrapQuery)
+		require.NoError(t, err)
+
+		rates, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.InDeltaMapValues(t, expectedUnwrapRates, rates, 1e-12)
 
 		store := resp.Data.Statistics.Querier.Store
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)

@@ -393,7 +393,7 @@ func TestEngine_Stats(t *testing.T) {
 		for _, query := range []string{
 			`max(sum by (foo) (count_over_time({foo="bar"}[1m])))`,
 			`sum(count_over_time({foo="bar"}[1m])) / sum(count_over_time({foo="baz"}[1m]))`,
-			`sum(count_over_time({foo="bar"}[1m])) + sum(rate({foo="baz"}[1m]))`,
+			`sum(count_over_time({foo="bar"}[1m])) + sum(avg_over_time({foo="baz"} | logfmt | unwrap n [1m]))`,
 		} {
 			t.Run(query, func(t *testing.T) {
 				params, err := NewLiteralParams(query, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
@@ -410,7 +410,7 @@ func TestEngine_Stats(t *testing.T) {
 
 	t.Run("records a timestamp-first query when no part of the query is supported", func(t *testing.T) {
 		limits := tenantStreamFirstLimits{fakeLimits: fakeLimits{maxSeries: NoLimits.maxSeries, timeout: NoLimits.timeout}, enabled: map[string]bool{"a": true}}
-		params, err := NewLiteralParams(`max(sum(rate({foo="bar"}[1m])))`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+		params, err := NewLiteralParams(`max(sum(avg_over_time({foo="bar"} | logfmt | unwrap n [1m])))`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
 		require.NoError(t, err)
 
 		r, err := NewEngine(EngineOpts{}, &statsQuerier{}, limits, log.NewNopLogger()).Query(params).Exec(user.InjectOrgID(t.Context(), "a"))
