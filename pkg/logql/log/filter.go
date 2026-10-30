@@ -298,6 +298,9 @@ type orFilter struct {
 }
 
 // newOrFilter creates a new filter which matches only if left or right matches.
+// A TrueFilter side is dropped rather than making the result match every line,
+// so `|= "" or "foo"` keeps the same lines as `|= "foo"`. Existing line filter
+// queries rely on this.
 func newOrFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
 	if left == nil || isTrueFilter(left) {
 		return right
