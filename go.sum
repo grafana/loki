@@ -143,8 +143,8 @@ github.com/HdrHistogram/hdrhistogram-go v1.3.0 h1:NBGs5RJ6Q7lDFhszi5AHovwDrSzJAF
 github.com/HdrHistogram/hdrhistogram-go v1.3.0/go.mod h1:CiIeGiHSd06zjX+FypuEJ5EQ07KKtxZ+8J6hszwVQig=
 github.com/IBM/go-sdk-core/v5 v5.25.1 h1:vLQ5/fjn7+Fc4tWmyALqLytMM4Lrh4XHLUogaZWZ2w8=
 github.com/IBM/go-sdk-core/v5 v5.25.1/go.mod h1:mhCkszCCPNBJiXo+CeDvABZMTs6A+GfmIgeVV95UfaI=
-github.com/IBM/ibm-cos-sdk-go v1.14.1 h1:Qz122nd7m9F0GixhSNdL4OPSwhJKHR4NN/dmBPemflI=
-github.com/IBM/ibm-cos-sdk-go v1.14.1/go.mod h1:h2G89PVcjfG5Bae1Q6Sr60MrPSGjD7x9ivF6crkJivM=
+github.com/IBM/ibm-cos-sdk-go v1.15.2 h1:5SXCSNgFKAiPINaRtZ+t/eRAD5RLjuDi/apTCl79Z40=
+github.com/IBM/ibm-cos-sdk-go v1.15.2/go.mod h1:+06KEpXznSyE8u3G4Ufgtor1Mnop0odPDvQaZpd9NjY=
 github.com/IBM/sarama v1.47.0 h1:GcQFEd12+KzfPYeLgN69Fh7vLCtYRhVIx0rO4TZO318=
 github.com/IBM/sarama v1.47.0/go.mod h1:7gLLIU97nznOmA6TX++Qds+DRxH89P2XICY2KAQUzAY=
 github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573 h1:DCPjdUAi+jcGnL7iN+A7uNY8xG584oMRuisYh/VE21E=
@@ -466,8 +466,8 @@ github.com/go-openapi/loads v0.25.2 h1:+uNsDlRQfYtZTrh+3pdwampcAqZVPuBJW0IA82aZH
 github.com/go-openapi/loads v0.25.2/go.mod h1:RXsfJEQGGNv4uw8u/KdmF8Vh8OR4fTfs9ZO4QrzNohA=
 github.com/go-openapi/spec v1.0.0 h1:JtB/GHOj+eetjse6YvxqLze88oEekl/4uPBethvzRrA=
 github.com/go-openapi/spec v1.0.0/go.mod h1:boj1PRhqS0x5jylgcNp9BRWxenphrh7vVNYZ90IRCoo=
-github.com/go-openapi/strfmt v0.27.3 h1:cyf4J5Wjpd6bFpAs44MF8PsbWF/mWXhn82Ck/hgQZgw=
-github.com/go-openapi/strfmt v0.27.3/go.mod h1:Bl+xadPLa3nhBiaCAxNND1vrQfzyEjF0vBrLx96n/4E=
+github.com/go-openapi/strfmt v0.27.4 h1:E1xsvHb8R9vsuYru4TP2PVVTv9AIgSFAUACUZrFQfCI=
+github.com/go-openapi/strfmt v0.27.4/go.mod h1:SCOff81PPhU26acBiW96jHaFycEbT2nkQRvojM+V2z0=
 github.com/go-openapi/swag v0.29.2 h1:9n8frkcsuQRA0INU31VbxNxt1zBaHxrHYGEf5BUjFi4=
 github.com/go-openapi/swag v0.29.2/go.mod h1:RkCiX1gCVXWgLOavDXE3ALJrQ/VO2ziiIzOUs3z10xo=
 github.com/go-openapi/swag/cmdutils v0.29.2 h1:cXEzX/nWCODon251f+1HgL75/R4XXML5IZxgLCWMoro=
