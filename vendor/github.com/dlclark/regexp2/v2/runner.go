@@ -86,11 +86,23 @@ type Runner struct {
 	landmarks *requiredLandmarkState
 }
 
+// scanMode controls capture elision and ownership independently of text metadata.
+type scanMode uint8
+
+const (
+	// scanBounds may elide unobserved captures and keeps the match in the runner.
+	scanBounds scanMode = iota
+	// scanCaptures records all captures and keeps the match in the runner.
+	scanCaptures
+	// scanFullMatch records all captures and returns an independently owned match.
+	scanFullMatch
+)
+
 // run starts a search on rune input.
 //
-// quick keeps the match in the runner for boolean-only callers.
+// mode selects bounds-only, borrowed-capture, or independently owned results.
 // textstart is -1 to start at the "beginning" (depending on Right-To-Left), otherwise an index in input.
-func (re *Regexp) run(quick bool, textstart int, input []rune) (*Match, error) {
+func (re *Regexp) run(mode scanMode, textstart int, input []rune) (*Match, error) {
 
 	// get a cached runner
 	runner := re.getRunner()
@@ -103,17 +115,17 @@ func (re *Regexp) run(quick bool, textstart int, input []rune) (*Match, error) {
 			textstart = 0
 		}
 	}
-	if quick && re.quickCode != nil {
+	if mode == scanBounds && re.quickCode != nil {
 		runner.code = re.quickCode
 	}
 
-	return runner.scan(input, nil, textstart, textstart, -1, quick, re.MatchTimeout)
+	return runner.scan(input, nil, textstart, textstart, -1, mode, re.MatchTimeout)
 }
 
 // scan starts at candidate while preserving textstart for \G. Both are rune
 // indexes in rt. A nil textInfo defers rune input metadata until a match is returned
-// and allows quick scans to omit it entirely.
-func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, previousMatchLength int, quick bool, timeout time.Duration) (*Match, error) {
+// and allows borrowed scans to omit it entirely.
+func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, previousMatchLength int, mode scanMode, timeout time.Duration) (*Match, error) {
 	r.timeout = timeout
 	r.ignoreTimeout = (time.Duration(math.MaxInt64) == timeout)
 	r.debug = r.re.Debug()
@@ -125,9 +137,6 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, prev
 	}
 	r.Runtext = rt
 	r.Runtextend = len(rt)
-	// Some internal callers use quick match tidying while still consuming
-	// capture data (notably replacement). Capture elision is only safe when no
-	// match text metadata was requested.
 
 	stoppos := r.Runtextend
 	bump := 1
@@ -143,7 +152,7 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, prev
 	// setup our scanner functions
 	findFirstChar := r.re.findFirstChar
 	execute := r.re.execute
-	if quick && textInfo == nil && r.re.executeQuick != nil {
+	if mode == scanBounds && r.re.executeQuick != nil {
 		execute = r.re.executeQuick
 	}
 	if findFirstChar == nil {
@@ -164,7 +173,7 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, prev
 	// the previous match position for \G, but move the candidate scan position.
 	if previousMatchLength == 0 {
 		if r.Runtextpos == stoppos {
-			r.tidyMatch(true)
+			r.tidyMatch(scanBounds)
 			return nil, nil
 		}
 		r.Runtextpos += bump
@@ -175,11 +184,11 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, prev
 		if minRequiredLength > 0 {
 			if r.code.RightToLeft {
 				if r.Runtextpos < minRequiredLength {
-					r.tidyMatch(true)
+					r.tidyMatch(scanBounds)
 					return nil, nil
 				}
 			} else if r.Runtextend-r.Runtextpos < minRequiredLength {
-				r.tidyMatch(true)
+				r.tidyMatch(scanBounds)
 				return nil, nil
 			}
 		}
@@ -207,7 +216,7 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, prev
 
 			if r.runmatch.matchcount[0] > 0 {
 				// We'll return a match even if it touches a previous empty match
-				return r.tidyMatch(quick), nil
+				return r.tidyMatch(mode), nil
 			}
 
 			// reset state for another go
@@ -219,7 +228,7 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, prev
 		// failure!
 
 		if r.Runtextpos == stoppos {
-			r.tidyMatch(true)
+			r.tidyMatch(scanBounds)
 			return nil, nil
 		}
 
@@ -640,14 +649,14 @@ func executeDefault(r *Runner) error {
 			}
 
 		case syntax.Bol:
-			if r.leftchars() > 0 && r.charAt(r.textPos()-1) != '\n' {
+			if r.leftchars() > 0 && !r.isLineBreak(r.charAt(r.textPos()-1)) {
 				break
 			}
 			r.advance(0)
 			continue
 
 		case syntax.Eol:
-			if r.rightchars() > 0 && r.charAt(r.textPos()) != '\n' {
+			if r.rightchars() > 0 && !r.isLineBreak(r.charAt(r.textPos())) {
 				break
 			}
 			r.advance(0)
@@ -668,14 +677,14 @@ func executeDefault(r *Runner) error {
 			continue
 
 		case syntax.ECMABoundary:
-			if !r.IsECMABoundary(r.textPos()) {
+			if !r.IsECMABoundaryWithOptions(r.textPos(), r.ecmaBoundaryOptions()) {
 				break
 			}
 			r.advance(0)
 			continue
 
 		case syntax.NonECMABoundary:
-			if r.IsECMABoundary(r.textPos()) {
+			if r.IsECMABoundaryWithOptions(r.textPos(), r.ecmaBoundaryOptions()) {
 				break
 			}
 			r.advance(0)
@@ -1462,7 +1471,7 @@ func (r *Runner) refmatch(index, len int) bool {
 			cmpos--
 			pos--
 
-			if unicode.ToLower(r.Runtext[cmpos]) != unicode.ToLower(r.Runtext[pos]) {
+			if !syntax.IsCaseEquivalent(r.Runtext[cmpos], r.Runtext[pos], syntax.RegexOptions(r.re.options)) {
 				return false
 			}
 		}
@@ -2312,17 +2321,19 @@ func requiredLandmarkAnchorsHold(r *Runner, anchors []syntax.NodeType, pos int) 
 		ok := true
 		switch anchor {
 		case syntax.NtBol:
-			ok = pos == 0 || r.Runtext[pos-1] == '\n'
+			ok = pos == 0 || r.isLineBreak(r.Runtext[pos-1])
 		case syntax.NtEol:
-			ok = pos == r.Runtextend || r.Runtext[pos] == '\n'
+			ok = pos == r.Runtextend || r.isLineBreak(r.Runtext[pos])
 		case syntax.NtBoundary:
 			ok = r.IsBoundary(pos)
 		case syntax.NtNonboundary:
 			ok = !r.IsBoundary(pos)
+		// Boundaries with the IgnoreCase|Unicode word characters are not
+		// landmark anchors (see findRequiredLandmarkChain).
 		case syntax.NtECMABoundary:
-			ok = r.IsECMABoundary(pos)
+			ok = r.IsECMABoundaryWithOptions(pos, None)
 		case syntax.NtNonECMABoundary:
-			ok = !r.IsECMABoundary(pos)
+			ok = !r.IsECMABoundaryWithOptions(pos, None)
 		case syntax.NtBeginning:
 			ok = pos == 0
 		case syntax.NtStart:
@@ -2513,8 +2524,8 @@ func (r *Runner) initMatch(textInfo *matchText) {
 	r.runcrawlpos = 32
 }
 
-func (r *Runner) tidyMatch(quick bool) *Match {
-	if !quick {
+func (r *Runner) tidyMatch(mode scanMode) *Match {
+	if mode == scanFullMatch {
 		match := r.runmatch
 
 		r.runmatch = nil
@@ -2526,8 +2537,9 @@ func (r *Runner) tidyMatch(quick bool) *Match {
 		match.tidy(r.Runtextpos)
 		return match
 	} else {
-		// send back our match -- it's not leaving the package, so it's safe to not clean it up
-		// this reduces allocs for frequent calls to the "IsMatch" bool-only functions
+		// Borrowed results need only the whole-match bounds and continuation
+		// position. MatchView reads capture ranges directly from the engine's
+		// bookkeeping, including unresolved balancing references.
 		m := r.runmatch
 		if m == nil {
 			return nil
@@ -2689,9 +2701,40 @@ func (r *Runner) IsBoundary(index int) bool {
 		(index < r.Runtextend && syntax.IsWordChar(r.Runtext[index]))
 }
 
+// isLineBreak reports whether ch ends a line for the multiline ^ and $ anchors.
+func (r *Runner) isLineBreak(ch rune) bool {
+	return ch == '\n' || r.re.options&ECMAScript != 0 && syntax.IsECMALineTerminator(ch)
+}
+
+// IsECMABoundary reports whether index is between a letter, nonspacing mark,
+// decimal digit or connector punctuation and something else.
+//
+// Deprecated: IsECMABoundary is kept so that existing generated engines keep
+// their behavior. It does not use the ECMAScript word characters; use
+// IsECMABoundaryWithOptions.
 func (r *Runner) IsECMABoundary(index int) bool {
 	return (index > 0 && syntax.IsECMAWordChar(r.Runtext[index-1])) !=
 		(index < r.Runtextend && syntax.IsECMAWordChar(r.Runtext[index]))
+}
+
+// IsECMABoundaryWithOptions reports whether index is an ECMAScript word
+// boundary for a \b or \B with the given options: whether exactly one of the
+// characters before and after index is in the WordCharacters, which are
+// [A-Za-z0-9_], plus U+017F and U+212A with both IgnoreCase and Unicode.
+func (r *Runner) IsECMABoundaryWithOptions(index int, options RegexOptions) bool {
+	opts := syntax.RegexOptions(options)
+	return (index > 0 && syntax.IsECMAWordCharWithOptions(opts, r.Runtext[index-1])) !=
+		(index < r.Runtextend && syntax.IsECMAWordCharWithOptions(opts, r.Runtext[index]))
+}
+
+// ecmaBoundaryOptions returns the options of the current \b or \B operator
+// that choose its word characters. The writer sets Ci on it only when its
+// scoped options have both IgnoreCase and Unicode (see RegexNode.reduce).
+func (r *Runner) ecmaBoundaryOptions() RegexOptions {
+	if r.caseInsensitive {
+		return IgnoreCase | Unicode
+	}
+	return None
 }
 
 func (r *Runner) startTimeoutWatch() {
