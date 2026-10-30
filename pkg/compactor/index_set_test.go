@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -589,4 +590,46 @@ func TestIndexSetDone_UnchangedIndexLeavesShardedCopy(t *testing.T) {
 	require.NoError(t, is.done())
 
 	require.Equal(t, []string{"old.gz"}, sharded.names())
+}
+
+func TestIndexSetDone_ShardedCopyRequiresShardedCompactedIndex(t *testing.T) {
+	base, sharded := newMemIndexSet("source.gz"), newMemIndexSet("old.gz")
+	is := newShardedCopyIndexSet(t, base, sharded)
+	path := filepath.Join(t.TempDir(), "compacted")
+	require.NoError(t, os.WriteFile(path, []byte("compacted"), 0600))
+	is.compactedIndex = multiOutputIndex{files: []index.Index{&outputFile{path: path}}}
+
+	err := is.done()
+
+	require.ErrorIs(t, err, errShardedIndexCopy)
+	require.Equal(t, []string{"old.gz"}, sharded.names())
+}
+
+func TestIndexSetDone_ShardedCopyReplacementIgnoresStaleListingCache(t *testing.T) {
+	dir := t.TempDir()
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
+	require.NoError(t, err)
+	sharded := storage.NewIndexSet(storage.NewIndexStorageClient(objectClient, "sharded/"), true)
+
+	userDir := filepath.Join(dir, "sharded", "table", "user")
+	require.NoError(t, os.MkdirAll(userDir, 0750))
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "old.gz"), []byte("old"), 0600))
+
+	// populate the listing cache, then add a file the cache does not know about,
+	// like one uploaded by a previous run within the cache's staleness window.
+	_, err = sharded.ListFiles(context.Background(), "table", "user", false)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "uncached.gz"), []byte("uncached"), 0600))
+
+	is := newShardedCopyIndexSet(t, newMemIndexSet("source.gz"), nil)
+	is.shardedIndexSet = sharded
+	require.NoError(t, is.done())
+
+	files, err := sharded.ListFiles(context.Background(), "table", "user", true)
+	require.NoError(t, err)
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	require.ElementsMatch(t, []string{"shard-0.gz", "shard-1.gz"}, names)
 }

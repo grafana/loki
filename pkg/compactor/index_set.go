@@ -460,7 +460,7 @@ func (is *indexSet) updateShardedCopy() error {
 	if is.uploadCompactedDB {
 		sharded, ok := is.compactedIndex.(ShardedCompactedIndex)
 		if !ok {
-			return nil
+			return fmt.Errorf("compacted index %T cannot produce sharded index files", is.compactedIndex)
 		}
 		var err error
 		idxs, err = sharded.ToShardedIndexFiles()
@@ -470,7 +470,9 @@ func (is *indexSet) updateShardedCopy() error {
 		defer is.closeAndRemove(idxs)
 	}
 
-	previous, err := is.shardedIndexSet.ListFiles(is.ctx, is.tableName, is.userID, false)
+	// bypass the listing cache, which can hide files written by a previous run
+	// and leave them behind.
+	previous, err := is.shardedIndexSet.ListFiles(is.ctx, is.tableName, is.userID, true)
 	if err != nil {
 		return err
 	}
