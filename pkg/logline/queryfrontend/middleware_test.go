@@ -3509,6 +3509,85 @@ func TestLive_MetricRange_AttachesLoglineStats(t *testing.T) {
 	})
 }
 
+func TestLive_MetricRange_AbsentOverTimeSkipsHintLookup(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-30 * time.Minute), End: now.Add(-20 * time.Minute)},
+			},
+		},
+	}
+
+	userResp := metricMatrixResponse(1, now)
+	var got *queryrange.LokiRequest
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		got = req.(*queryrange.LokiRequest)
+		return userResp, nil
+	})
+
+	handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+	req := newTestLokiRequest(`sum(absent_over_time({app="api"} |= "timeout" [5m]))`, now.Add(-time.Hour), now)
+	resp, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+	require.Equal(t, 0, hp.Calls())
+	require.Equal(t, 1, nextCalled)
+	require.Empty(t, got.HintRanges)
+}
+
+func TestLive_MetricRange_FiltersByLookback(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-time.Hour)
+	query := `sum(count_over_time({app="api"} |= "timeout" [5m]))`
+	// The filter reads [reqStart-5m, now]. This hint is inside that lookback and outside the request.
+	lookback := hintprovider.HintTimeRange{Start: reqStart.Add(-4 * time.Minute), End: reqStart.Add(-time.Minute)}
+
+	t.Run("covered lookback is narrowed", func(t *testing.T) {
+		hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{lookback}}}
+		userResp := metricMatrixResponse(1, now)
+		var got *queryrange.LokiRequest
+		nextCalled := 0
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			nextCalled++
+			got = req.(*queryrange.LokiRequest)
+			return userResp, nil
+		})
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+
+		resp, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(query, reqStart, now))
+		require.NoError(t, err)
+		require.Same(t, userResp, resp)
+		require.Equal(t, 1, nextCalled)
+		require.Equal(t, reqStart, got.StartTs)
+		require.Equal(t, now, got.EndTs)
+		require.Equal(t, []logproto.HintTimeRange{{Start: lookback.Start, End: lookback.End}}, got.HintRanges)
+	})
+
+	t.Run("no matching hint skips the query", func(t *testing.T) {
+		// Ends before the lookback, so it shares no time with the widened window.
+		miss := hintprovider.HintTimeRange{Start: reqStart.Add(-10 * time.Minute), End: reqStart.Add(-6 * time.Minute)}
+		hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{miss}}}
+		nextCalled := 0
+		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+			nextCalled++
+			return metricMatrixResponse(1, now), nil
+		})
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+
+		resp, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(query, reqStart, now))
+		require.NoError(t, err)
+		require.Equal(t, 0, nextCalled)
+
+		prom := resp.(*queryrange.LokiPromResponse)
+		require.Equal(t, loghttp.ResultTypeMatrix, prom.Response.Data.ResultType)
+		require.Empty(t, prom.Response.Data.Result)
+		require.Equal(t, int64(1), prom.Statistics.Logline.SkippedRequests)
+	})
+}
+
 func TestDryRun_MetricInstant_PositiveSampleOverlapsWidenedHint(t *testing.T) {
 	tests := []struct {
 		name     string
