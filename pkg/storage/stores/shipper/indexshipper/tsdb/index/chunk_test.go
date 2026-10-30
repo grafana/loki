@@ -8,7 +8,7 @@ import (
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v4/pkg/util/encoding"
 )
 
 var allChunkFormats = []int{FormatV2, FormatV3, FormatV4}

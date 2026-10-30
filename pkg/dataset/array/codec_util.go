@@ -3,8 +3,8 @@ package array
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // validateNulls checks whether arr's null configuration is compatible with w,

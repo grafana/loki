@@ -12,8 +12,8 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
+	"github.com/grafana/loki/v4/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/kafka/testkafka"
 )
 
 func TestNewReaderClient(t *testing.T) {

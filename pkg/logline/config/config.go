@@ -5,11 +5,11 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/builder"
-	"github.com/grafana/loki/v3/pkg/logline/correctness"
-	"github.com/grafana/loki/v3/pkg/logline/queryfrontend"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/builder"
+	"github.com/grafana/loki/v4/pkg/logline/correctness"
+	"github.com/grafana/loki/v4/pkg/logline/queryfrontend"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 // Config is the logline section of Loki's config.

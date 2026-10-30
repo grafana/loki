@@ -11,7 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
 )
 
 type mockEval struct{}

@@ -10,8 +10,8 @@ import (
 	"github.com/grafana/dskit/user"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
 )
 
 // RoundTripper that forwards requests to downstream URL.

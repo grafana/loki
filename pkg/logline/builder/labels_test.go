@@ -3,7 +3,7 @@ package builder
 import (
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
 )
 
 // parseLabelsOrNil parses a stream labels string and returns nil on empty/invalid

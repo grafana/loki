@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj"
 )
 
 // Builder aggregates posting observations and builds bitmaps and bloom filters

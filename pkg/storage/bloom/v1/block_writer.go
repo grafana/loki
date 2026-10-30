@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/util"
 )
 
 const (

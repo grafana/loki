@@ -21,9 +21,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	dataobjconfig "github.com/grafana/loki/v4/pkg/dataobj/config"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange"
+	"github.com/grafana/loki/v4/pkg/querytee/comparator"
 )
 
 var errMinBackends = errors.New("at least 1 backend is required")

@@ -13,7 +13,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/zeebo/xxh3"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 // PostingsEncoder serializes term->bitmap postings into a single section payload.

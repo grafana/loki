@@ -9,7 +9,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/limiter"
 
-	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v4/pkg/runtime"
 )
 
 // Cfg shapes the attribute expansion reports for the tenants that have

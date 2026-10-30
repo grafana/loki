@@ -10,7 +10,7 @@ import (
 	gologfmt "github.com/go-logfmt/logfmt"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/v4/pkg/logql/log/logfmt"
 )
 
 type LineTokenizer interface {

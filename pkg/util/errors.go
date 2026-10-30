@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/util/errors"
-	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/util/errors"
+	"github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // LogError logs any error returned by f; useful when deferring Close etc.

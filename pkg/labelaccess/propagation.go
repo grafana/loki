@@ -14,10 +14,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
+	"github.com/grafana/loki/v4/pkg/labelaccess/types"
 
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 const (

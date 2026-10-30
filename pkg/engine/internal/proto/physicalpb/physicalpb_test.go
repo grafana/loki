@@ -6,10 +6,10 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/proto/physicalpb"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/dag"
 )
 
 // Test performs a basic end-to-end test ensuring that we can convert from a

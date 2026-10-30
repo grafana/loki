@@ -3,8 +3,8 @@ package dataset
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/slicegrow"
 )
 
 // copyArrayToRow copies an array to a dst []Row at the provided column index.

@@ -7,11 +7,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/common"
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v4/pkg/bloombuild/common"
+	"github.com/grafana/loki/v4/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
 const (

@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess"
+	"github.com/grafana/loki/v4/pkg/labelaccess"
 )
 
 // TestLBACAuthMiddlewareRegisteredOnce drives both wiring steps that touch

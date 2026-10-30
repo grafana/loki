@@ -16,10 +16,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	yamlv3 "go.yaml.in/yaml/v3"
 
-	"github.com/grafana/loki/v3/pkg/tool/client"
-	"github.com/grafana/loki/v3/pkg/tool/printer"
-	"github.com/grafana/loki/v3/pkg/tool/rules"
-	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/v4/pkg/tool/client"
+	"github.com/grafana/loki/v4/pkg/tool/printer"
+	"github.com/grafana/loki/v4/pkg/tool/rules"
+	"github.com/grafana/loki/v4/pkg/tool/rules/rwrulefmt"
 )
 
 const (

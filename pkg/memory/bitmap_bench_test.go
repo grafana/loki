@@ -3,7 +3,7 @@ package memory_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 func BenchmarkBitmap_PassAsValue(b *testing.B) {

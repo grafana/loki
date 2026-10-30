@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/dag"
 )
 
 // pendingSummary is a terminal task result retained for its deferred summary

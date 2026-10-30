@@ -6,7 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
-	s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	s3 "github.com/grafana/loki/v4/pkg/storage/bucket/s3"
 )
 
 func TestNewSSEParsedConfig(t *testing.T) {

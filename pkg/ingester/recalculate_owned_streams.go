@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	lokiring "github.com/grafana/loki/v4/pkg/util/ring"
 )
 
 type ownershipStrategy interface {

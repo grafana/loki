@@ -3,7 +3,7 @@ package loghttp
 import (
 	"net/http"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 func ParsePatternsQuery(r *http.Request) (*logproto.QueryPatternsRequest, error) {

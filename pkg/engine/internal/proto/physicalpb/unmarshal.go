@@ -1,8 +1,8 @@
 package physicalpb
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid"
 )
 
 // UnmarshalPhysical reads from into p. Returns an error if the conversion fails

@@ -7,7 +7,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 // HTTPHeaderBackfillShardKey is the HTTP header set by a backfill worker to mark a push as backfill

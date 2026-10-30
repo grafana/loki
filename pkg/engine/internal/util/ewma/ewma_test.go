@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/ewma"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/ewma"
 )
 
 func Test(t *testing.T) {

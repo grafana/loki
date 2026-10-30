@@ -1,9 +1,9 @@
 package metastore
 
 import (
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/compute"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/compute"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // unionBitmaps returns a new bitmap holding the bits set in a or b. A nil

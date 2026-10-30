@@ -12,9 +12,9 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v4/pkg/util/arrowtest"
 )
 
 func TestReader_ReadBeforeOpen(t *testing.T) {

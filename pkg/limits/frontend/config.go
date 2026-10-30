@@ -8,8 +8,8 @@ import (
 
 	"github.com/grafana/dskit/ring"
 
-	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	limits_client "github.com/grafana/loki/v4/pkg/limits/client"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // Config contains the config for an ingest-limits-frontend.

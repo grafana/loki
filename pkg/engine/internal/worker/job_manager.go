@@ -8,8 +8,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
 )
 
 // errNoReadyThreads is returned by [jobManager.Send] when there are no ready

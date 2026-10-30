@@ -18,12 +18,12 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/runtime"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/loghttp/push"
+	"github.com/grafana/loki/v4/pkg/logproto"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -32,8 +32,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
-	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
-	"github.com/grafana/loki/v3/pkg/validation"
+	loki_flagext "github.com/grafana/loki/v4/pkg/util/flagext"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 func TestDistributorRingHandler(t *testing.T) {

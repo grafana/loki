@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
 )
 
 // MultiSourceRankedStreams gathers and sorts input streams from multiple sources.

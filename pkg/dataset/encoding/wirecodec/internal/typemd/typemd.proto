@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package grafana.dataset.type.v1;
 
-option go_package = "github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/typemd";
+option go_package = "github.com/grafana/loki/v4/pkg/dataset/encoding/wirecodec/internal/typemd";
 
 // Type represents a logical type in a dataset.
 message Type {

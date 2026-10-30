@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
-	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v4/pkg/ruler/rulestore"
 )
 
 type mockRuleStore struct {

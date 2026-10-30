@@ -3,7 +3,7 @@ package compute_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/columnar"
 )
 
 func reportArrayBenchMetrics(b *testing.B, datums ...columnar.Datum) {

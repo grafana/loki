@@ -7,10 +7,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
-	"github.com/grafana/loki/v3/pkg/util/encoding"
-	"github.com/grafana/loki/v3/pkg/util/mempool"
+	"github.com/grafana/loki/v4/pkg/compression"
+	"github.com/grafana/loki/v4/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v4/pkg/util/encoding"
+	"github.com/grafana/loki/v4/pkg/util/mempool"
 )
 
 // NB(chaudum): Some block pages are way bigger than others (400MiB and

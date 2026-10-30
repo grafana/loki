@@ -16,11 +16,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	lokimem "github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/postings"
+	lokimem "github.com/grafana/loki/v4/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 var (

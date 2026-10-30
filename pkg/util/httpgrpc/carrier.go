@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange"
 )
 
 type Request interface {

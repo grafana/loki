@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
 )
 
 type categorizeLabelsIterator struct {

@@ -13,8 +13,8 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
-	"github.com/grafana/loki/v3/pkg/kafkav2"
+	"github.com/grafana/loki/v4/pkg/kafka/partitionring"
+	"github.com/grafana/loki/v4/pkg/kafkav2"
 )
 
 // requiredReplicasReporter exports the number of builder replicas needed to

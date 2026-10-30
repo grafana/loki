@@ -9,7 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
+	"github.com/grafana/loki/v4/pkg/util/arrowtest"
 )
 
 // scriptedReader is a batchReader that returns a fixed sequence of batches, then

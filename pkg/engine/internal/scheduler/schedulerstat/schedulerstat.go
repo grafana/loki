@@ -2,7 +2,7 @@
 // statistics.
 package schedulerstat
 
-import "github.com/grafana/loki/v3/pkg/xcap"
+import "github.com/grafana/loki/v4/pkg/xcap"
 
 // These stats live in their own package rather than in
 // [pkg/engine/internal/scheduler] to avoid a cyclic dependency between workflow

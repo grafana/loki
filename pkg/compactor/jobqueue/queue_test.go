@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	compactor_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	compactor_grpc "github.com/grafana/loki/v4/pkg/compactor/client/grpc"
 )
 
 const (

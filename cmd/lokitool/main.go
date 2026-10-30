@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/v3/pkg/tool/commands"
+	"github.com/grafana/loki/v4/pkg/tool/commands"
 )
 
 var (

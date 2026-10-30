@@ -3,7 +3,7 @@ package columnar
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar/types"
+	"github.com/grafana/loki/v4/pkg/columnar/types"
 )
 
 // Set represents a unique set of values of a given kind.

@@ -3,9 +3,9 @@ package queryrange
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v4/pkg/logql"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/querier/plan"
 )
 
 // DataObjCoverageThreshold is the share of the read window that data objects must exceed. A query

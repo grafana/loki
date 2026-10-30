@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v4/pkg/runtime"
+	"github.com/grafana/loki/v4/pkg/util/flagext"
 )
 
 func TestWriteFailuresLogging(t *testing.T) {

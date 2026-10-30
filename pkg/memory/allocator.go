@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/memory/internal/memalign"
+	"github.com/grafana/loki/v4/pkg/memory/internal/memalign"
 )
 
 var errConcurrentUse = errors.New("detected concurrent use of allocator")

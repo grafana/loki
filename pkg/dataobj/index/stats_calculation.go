@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/logs"
 )
 
 // created for and scoped to each logs section

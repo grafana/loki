@@ -8,10 +8,10 @@ import (
 	"io"
 	"math/bits"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/columnar/types"
+	"github.com/grafana/loki/v4/pkg/dataset/buffer"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 type unsigned interface{ uint32 | uint64 }

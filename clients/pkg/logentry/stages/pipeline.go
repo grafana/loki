@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/v4/clients/pkg/util"
 )
 
 // PipelineStages contains configuration for each stage within a pipeline

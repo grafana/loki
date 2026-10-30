@@ -12,8 +12,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // tenant must be objtest.Tenant: objtest.Builder.Append always writes for that fixed tenant, so

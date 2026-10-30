@@ -17,13 +17,13 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v4/pkg/distributor"
+	"github.com/grafana/loki/v4/pkg/ingester"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/runtime"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
 )

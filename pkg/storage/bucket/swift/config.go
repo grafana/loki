@@ -6,7 +6,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket/http"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/http"
 )
 
 // Config holds the config options for Swift backend

@@ -10,9 +10,9 @@ import (
 	promconfig "github.com/prometheus/prometheus/config"
 	"go.yaml.in/yaml/v4"
 
-	rulerbase "github.com/grafana/loki/v3/pkg/ruler/base"
-	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
-	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
+	rulerbase "github.com/grafana/loki/v4/pkg/ruler/base"
+	"github.com/grafana/loki/v4/pkg/ruler/storage/cleaner"
+	"github.com/grafana/loki/v4/pkg/ruler/storage/instance"
 )
 
 type Config struct {
