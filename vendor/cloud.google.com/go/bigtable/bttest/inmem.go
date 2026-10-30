@@ -89,6 +89,11 @@ const (
 	// Must match the max value of type TimestampMicros (int64)
 	// truncated to the millis granularity by subtracting a remainder of 1000.
 	maxValidMilliSeconds = math.MaxInt64 - math.MaxInt64%1000
+
+	// Number of microseconds in the smallest representable unit of each
+	// supported table timestamp granularity.
+	microsPerMilli = 1000
+	microsPerMicro = 1
 )
 
 var validLabelTransformer = regexp.MustCompile(`[a-z0-9\-]{1,15}`)
@@ -203,24 +208,27 @@ func (s *Server) Close() {
 func (s *server) CreateTable(ctx context.Context, req *btapb.CreateTableRequest) (*btapb.Table, error) {
 	tbl := req.Parent + "/tables/" + req.TableId
 
+	switch g := req.GetTable().GetGranularity(); g {
+	case btapb.Table_TIMESTAMP_GRANULARITY_UNSPECIFIED, btapb.Table_MILLIS, btapb.Table_MICROS:
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "unknown timestamp granularity %v", g)
+	}
+
 	s.mu.Lock()
 	if _, ok := s.tables[tbl]; ok {
 		s.mu.Unlock()
 		return nil, status.Errorf(codes.AlreadyExists, "table %q already exists", tbl)
 	}
-	s.tables[tbl] = newTable(req)
+	t := newTable(req)
+	s.tables[tbl] = t
 	s.mu.Unlock()
 
-	ct := &btapb.Table{
+	return &btapb.Table{
 		Name:               tbl,
 		ColumnFamilies:     req.GetTable().GetColumnFamilies(),
-		Granularity:        req.GetTable().GetGranularity(),
+		Granularity:        t.granularity,
 		DeletionProtection: req.GetTable().GetDeletionProtection(),
-	}
-	if ct.Granularity == 0 {
-		ct.Granularity = btapb.Table_MILLIS
-	}
-	return ct, nil
+	}, nil
 }
 
 func (s *server) CreateTableFromSnapshot(context.Context, *btapb.CreateTableFromSnapshotRequest) (*longrunning.Operation, error) {
@@ -255,6 +263,7 @@ func (s *server) GetTable(ctx context.Context, req *btapb.GetTableRequest) (*bta
 	return &btapb.Table{
 		Name:               tbl,
 		ColumnFamilies:     toColumnFamilies(tblIns.columnFamilies()),
+		Granularity:        tblIns.granularity,
 		DeletionProtection: tblIns.isProtected,
 	}, nil
 }
@@ -421,7 +430,7 @@ func (s *server) ModifyColumnFamilies(ctx context.Context, req *btapb.ModifyColu
 	return &btapb.Table{
 		Name:           req.Name,
 		ColumnFamilies: toColumnFamilies(tbl.families),
-		Granularity:    btapb.Table_TimestampGranularity(btapb.Table_MILLIS),
+		Granularity:    tbl.granularity,
 	}, nil
 }
 
@@ -1179,6 +1188,7 @@ func applyMutations(tbl *table, r *row, muts []*btpb.Mutation, fs map[string]*co
 	}
 
 	for _, mut := range muts {
+		origin := mut.TimestampOrigin
 		switch mut := mut.Mutation.(type) {
 		default:
 			return fmt.Errorf("can't handle mutation type %T", mut)
@@ -1189,11 +1199,21 @@ func applyMutations(tbl *table, r *row, muts []*btpb.Mutation, fs map[string]*co
 				return fmt.Errorf("unknown family %q", set.FamilyName)
 			}
 			ts := set.TimestampMicros
-			if ts == -1 { // bigtable.ServerTime
-				ts = newTimestamp()
+			switch {
+			case ts == -1: // bigtable.ServerTime
+				// Server-side timestamps are generated, not user-provided, so
+				// they are truncated to the table's granularity instead of
+				// being rejected.
+				ts = tbl.newTimestamp()
+			case origin == btpb.Mutation_CLIENT_AUTO_GENERATED:
+				// The same reasoning, and the contract data.proto states: the
+				// server truncates a client-auto-generated timestamp to the
+				// table's granularity, and rejects only a USER_SPECIFIED one
+				// whose precision does not match it.
+				ts = tbl.truncateTimestamp(ts)
 			}
 			if !tbl.validTimestamp(ts) {
-				return fmt.Errorf("invalid timestamp %d", ts)
+				return tbl.invalidTimestampError(ts)
 			}
 			fam := set.FamilyName
 			col := string(set.ColumnQualifier)
@@ -1210,9 +1230,11 @@ func applyMutations(tbl *table, r *row, muts []*btpb.Mutation, fs map[string]*co
 			if cf.valueType == nil || cf.valueType.GetAggregateType() == nil {
 				return fmt.Errorf("illegal attempt to use AddToCell on non-aggregate cell")
 			}
+			// The timestamp must be non-negative and match the table's
+			// granularity.
 			ts := add.Timestamp.GetRawTimestampMicros()
-			if ts < 0 {
-				return fmt.Errorf("AddToCell must set timestamp >= 0")
+			if !tbl.validTimestamp(ts) {
+				return tbl.invalidTimestampError(ts)
 			}
 
 			fam := add.FamilyName
@@ -1239,9 +1261,11 @@ func applyMutations(tbl *table, r *row, muts []*btpb.Mutation, fs map[string]*co
 			if cf.valueType == nil || cf.valueType.GetAggregateType() == nil {
 				return fmt.Errorf("illegal attempt to use MergeToCell on non-aggregate cell")
 			}
+			// The timestamp must be non-negative and match the table's
+			// granularity.
 			ts := add.Timestamp.GetRawTimestampMicros()
-			if ts < 0 {
-				return fmt.Errorf("MergeToCell must set timestamp >= 0")
+			if !tbl.validTimestamp(ts) {
+				return tbl.invalidTimestampError(ts)
 			}
 
 			fam := add.FamilyName
@@ -1271,13 +1295,13 @@ func applyMutations(tbl *table, r *row, muts []*btpb.Mutation, fs map[string]*co
 				if del.TimeRange != nil {
 					tsr := del.TimeRange
 					if !tbl.validTimestamp(tsr.StartTimestampMicros) {
-						return fmt.Errorf("invalid timestamp %d", tsr.StartTimestampMicros)
+						return tbl.invalidTimestampError(tsr.StartTimestampMicros)
 					}
 					if !tbl.validTimestamp(tsr.EndTimestampMicros) && tsr.EndTimestampMicros != 0 {
-						return fmt.Errorf("invalid timestamp %d", tsr.EndTimestampMicros)
+						return tbl.invalidTimestampError(tsr.EndTimestampMicros)
 					}
 					if tsr.StartTimestampMicros >= tsr.EndTimestampMicros && tsr.EndTimestampMicros != 0 {
-						return fmt.Errorf("inverted or invalid timestamp range [%d, %d]", tsr.StartTimestampMicros, tsr.EndTimestampMicros)
+						return status.Errorf(codes.InvalidArgument, "inverted or invalid timestamp range [%d, %d]", tsr.StartTimestampMicros, tsr.EndTimestampMicros)
 					}
 
 					// Find half-open interval to remove.
@@ -1326,12 +1350,6 @@ func maxTimestamp(x, y int64) int64 {
 		return x
 	}
 	return y
-}
-
-func newTimestamp() int64 {
-	ts := time.Now().UnixNano() / 1e3
-	ts -= ts % 1000 // round to millisecond granularity
-	return ts
 }
 
 func appendOrReplaceCell(cs []cell, newCell cell, cf *columnFamily) []cell {
@@ -1384,7 +1402,7 @@ func (s *server) ReadModifyWriteRow(ctx context.Context, req *btpb.ReadModifyWri
 		cs := f.cells[col]
 		isEmpty = len(cs) == 0
 
-		ts := newTimestamp()
+		ts := tbl.newTimestamp()
 		var newCell, prevCell cell
 		if !isEmpty {
 			cells := r.families[fam].cells[col]
@@ -1501,6 +1519,22 @@ func (s *server) ExecuteQuery(*btpb.ExecuteQueryRequest, btpb.Bigtable_ExecuteQu
 	return status.Errorf(codes.Unimplemented, "the emulator does not currently support ExecuteQuery")
 }
 
+func (s *server) GetClientConfiguration(ctx context.Context, req *btpb.GetClientConfigurationRequest) (*btpb.ClientConfiguration, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support GetClientConfiguration")
+}
+
+func (s *server) OpenTable(stream btpb.Bigtable_OpenTableServer) error {
+	return status.Errorf(codes.Unimplemented, "the emulator does not currently support OpenTable")
+}
+
+func (s *server) OpenAuthorizedView(stream btpb.Bigtable_OpenAuthorizedViewServer) error {
+	return status.Errorf(codes.Unimplemented, "the emulator does not currently support OpenAuthorizedView")
+}
+
+func (s *server) OpenMaterializedView(stream btpb.Bigtable_OpenMaterializedViewServer) error {
+	return status.Errorf(codes.Unimplemented, "the emulator does not currently support OpenMaterializedView")
+}
+
 // needGC is invoked whenever the server needs gcloop running.
 func (s *server) needGC() {
 	s.mu.Lock()
@@ -1541,11 +1575,12 @@ func (s *server) gcloop(done <-chan int) {
 
 type table struct {
 	mu          sync.RWMutex
-	counter     uint64                   // increment by 1 when a new family is created
-	families    map[string]*columnFamily // keyed by plain family name
-	rows        *btree.BTree             // indexed by row key
-	partitions  []*btpb.RowRange         // partitions used in change stream
-	isProtected bool                     // whether this table has deletion protection
+	counter     uint64                           // increment by 1 when a new family is created
+	families    map[string]*columnFamily         // keyed by plain family name
+	rows        *btree.BTree                     // indexed by row key
+	partitions  []*btpb.RowRange                 // partitions used in change stream
+	isProtected bool                             // whether this table has deletion protection
+	granularity btapb.Table_TimestampGranularity // timestamp granularity accepted by this table
 }
 
 const btreeDegree = 16
@@ -1610,16 +1645,67 @@ func newTable(ctr *btapb.CreateTableRequest) *table {
 		rows:        btree.New(btreeDegree),
 		partitions:  rowRanges,
 		isProtected: ctr.GetTable().GetDeletionProtection(),
+		granularity: normalizeGranularity(ctr.GetTable().GetGranularity()),
 	}
 }
 
+// normalizeGranularity resolves an unspecified granularity to the default,
+// millisecond granularity.
+func normalizeGranularity(g btapb.Table_TimestampGranularity) btapb.Table_TimestampGranularity {
+	if g == btapb.Table_TIMESTAMP_GRANULARITY_UNSPECIFIED {
+		return btapb.Table_MILLIS
+	}
+	return g
+}
+
+// timestampUnit returns the size, in microseconds, of the smallest timestamp
+// unit the table accepts. Every timestamp stored in the table must be a
+// multiple of it.
+func (t *table) timestampUnit() int64 {
+	if t.granularity == btapb.Table_MICROS {
+		return microsPerMicro
+	}
+	return microsPerMilli
+}
+
+// maxValidTimestamp is the largest timestamp the table accepts: the max value
+// of TimestampMicros (int64) truncated down to the table's granularity.
+func (t *table) maxValidTimestamp() int64 {
+	unit := t.timestampUnit()
+	return math.MaxInt64 - math.MaxInt64%unit
+}
+
 func (t *table) validTimestamp(ts int64) bool {
-	if ts < minValidMilliSeconds || ts > maxValidMilliSeconds {
+	if ts < minValidMilliSeconds || ts > t.maxValidTimestamp() {
 		return false
 	}
 
-	// Assume millisecond granularity is required.
-	return ts%1000 == 0
+	// A microsecond-granularity table accepts any microsecond timestamp; a
+	// millisecond-granularity one only accepts millisecond-aligned values.
+	return ts%t.timestampUnit() == 0
+}
+
+// invalidTimestampError explains why ts is not acceptable for this table.
+func (t *table) invalidTimestampError(ts int64) error {
+	if unit := t.timestampUnit(); ts%unit != 0 && ts >= minValidMilliSeconds && ts <= t.maxValidTimestamp() {
+		return status.Errorf(codes.InvalidArgument,
+			"Timestamp granularity mismatch: timestamp %d is not a multiple of %d microseconds, as required by the table's %s granularity",
+			ts, unit, normalizeGranularity(t.granularity))
+	}
+	return status.Errorf(codes.InvalidArgument, "invalid timestamp %d", ts)
+}
+
+// newTimestamp returns the current time, truncated to the table's granularity.
+// It is used for server-side (client-unspecified) timestamps, which are
+// truncated rather than rejected.
+func (t *table) newTimestamp() int64 {
+	return t.truncateTimestamp(time.Now().UnixMicro())
+}
+
+// truncateTimestamp rounds ts down to the table's granularity.
+func (t *table) truncateTimestamp(ts int64) int64 {
+	unit := t.timestampUnit()
+	return ts - ts%unit
 }
 
 func (t *table) columnFamilies() map[string]*columnFamily {

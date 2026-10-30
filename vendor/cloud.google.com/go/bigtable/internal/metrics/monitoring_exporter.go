@@ -16,7 +16,7 @@ limitations under the License.
 
 // This is a modified version of https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/blob/exporter/metric/v0.46.0/exporter/metric/metric.go
 
-package bigtable
+package internal
 
 import (
 	"context"
@@ -27,8 +27,6 @@ import (
 	"sync"
 	"time"
 
-	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
-	"cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 	"go.opentelemetry.io/otel/attribute"
 	otelmetric "go.opentelemetry.io/otel/sdk/metric"
 	otelmetricdata "go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -37,6 +35,9 @@ import (
 	googlemetricpb "google.golang.org/genproto/googleapis/api/metric"
 	monitoredrespb "google.golang.org/genproto/googleapis/api/monitoredres"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
+	"cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 )
 
 const (
@@ -49,11 +50,11 @@ const (
 
 var (
 	monitoredResLabelsSet = map[string]bool{
-		monitoredResLabelKeyProject:  true,
-		monitoredResLabelKeyInstance: true,
-		monitoredResLabelKeyCluster:  true,
-		monitoredResLabelKeyTable:    true,
-		monitoredResLabelKeyZone:     true,
+		MetricLabelKeyProject:  true,
+		MetricLabelKeyInstance: true,
+		MetricLabelKeyCluster:  true,
+		MetricLabelKeyTable:    true,
+		MetricLabelKeyZone:     true,
 	}
 
 	errShutdown = fmt.Errorf("exporter is shutdown")
@@ -93,7 +94,7 @@ func wrapMetricsError(err error) error {
 	if err == nil {
 		return err
 	}
-	return fmt.Errorf("%v%w", metricsErrorPrefix, err)
+	return fmt.Errorf("%v%w", MetricsErrorPrefix, err)
 }
 
 // ForceFlush does nothing, the exporter holds no state.
@@ -203,7 +204,7 @@ func (me *monitoringExporter) recordToMetricAndMonitoredResourcePbs(metrics otel
 	}
 	addAttributes(&attributes)
 	return &googlemetricpb.Metric{
-		Type:   fmt.Sprintf("%v%s", builtInMetricsMeterName, metrics.Name),
+		Type:   fmt.Sprintf("%v%s", BuiltInMetricsMeterName, metrics.Name),
 		Labels: labels,
 	}, mr
 }
@@ -214,7 +215,7 @@ func (me *monitoringExporter) recordsToTimeSeriesPbs(rm *otelmetricdata.Resource
 		errs []error
 	)
 	for _, scope := range rm.ScopeMetrics {
-		if scope.Scope.Name != builtInMetricsMeterName {
+		if scope.Scope.Name != BuiltInMetricsMeterName {
 			// Filter out metric data for instruments that are not part of the bigtable builtin metrics
 			continue
 		}

@@ -135,7 +135,7 @@ func (cr *chunkReader) Process(cc *btpb.ReadRowsResponse_CellChunk) (Row, error)
 // in an invalid state, in which case the error should be propagated to the caller.
 func (cr *chunkReader) Close() error {
 	if cr.state != newRow {
-		return fmt.Errorf("invalid state for end of stream %q", cr.state)
+		return fmt.Errorf("invalid state for end of stream %d", cr.state)
 	}
 	return nil
 }

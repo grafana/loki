@@ -18,7 +18,6 @@ package bigtable // import "cloud.google.com/go/bigtable"
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -28,6 +27,7 @@ import (
 	"time"
 
 	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
+	metrics "cloud.google.com/go/bigtable/internal/metrics"
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/apierror"
@@ -42,7 +42,6 @@ const (
 	// UNIVERSE_DOMAIN placeholder is replaced by the UniverseDomain from DialSettings while creating GRPC connection/dial pool.
 	prodAddr                    = "bigtable.UNIVERSE_DOMAIN:443"
 	mtlsProdAddr                = "bigtable.mtls.googleapis.com:443"
-	featureFlagsHeaderKey       = "bigtable-features"
 	methodNameReadRows          = "ReadRows"
 	defaultBigtableConnPoolSize = 10
 
@@ -64,19 +63,22 @@ var (
 		"Received Rst stream",
 		"RST_STREAM closed stream",
 		"Received RST_STREAM",
+
+		// https://github.com/googleapis/google-cloud-go/issues/10207#issuecomment-2604859656
+		// https://github.com/googleapis/google-cloud-go/issues/10909
+		// https://github.com/googleapis/google-cloud-go/pull/11276
+		"unexpected EOF",
 	}
 	defaultBackoff = gax.Backoff{
 		Initial:    100 * time.Millisecond,
 		Max:        2 * time.Second,
 		Multiplier: 1.2,
 	}
-	clientOnlyRetryOption             = newRetryOption(clientOnlyRetry, true)
-	clientOnlyExecuteQueryRetryOption = newRetryOption(clientOnlyExecuteQueryRetry, true)
-	defaultRetryOption                = newRetryOption(clientOnlyRetry, false)
-	defaultExecuteQueryRetryOption    = newRetryOption(clientOnlyExecuteQueryRetry, false)
+	defaultRetryOption             = newRetryOption(clientOnlyRetry)
+	defaultExecuteQueryRetryOption = newRetryOption(clientOnlyExecuteQueryRetry)
 )
 
-func newRetryOption(retryFn func(*gax.Backoff, error) (time.Duration, bool), disableRetryInfo bool) gax.CallOption {
+func newRetryOption(retryFn func(*gax.Backoff, error) (time.Duration, bool)) gax.CallOption {
 	return gax.WithRetry(func() gax.Retryer {
 		// Create a new Backoff instance for each retryer to ensure independent state.
 		newBackoffInstance := gax.Backoff{
@@ -85,9 +87,8 @@ func newRetryOption(retryFn func(*gax.Backoff, error) (time.Duration, bool), dis
 			Multiplier: defaultBackoff.Multiplier,
 		}
 		return &bigtableRetryer{
-			baseRetryFn:      retryFn,
-			backoff:          newBackoffInstance,
-			disableRetryInfo: disableRetryInfo,
+			baseRetryFn: retryFn,
+			backoff:     newBackoffInstance,
 		}
 	})
 }
@@ -108,37 +109,34 @@ func clientOnlyRetry(backoff *gax.Backoff, err error) (time.Duration, bool) {
 	return 0, false
 }
 
-// bigtableRetryer implements the gax.Retryer interface. It manages retry decisions,
-// incorporating server-sent RetryInfo if enabled, and client-side exponential backoff.
-// It specifically handles reseting the client-side backoff to its initial state if
-// RetryInfo was previously used for an operation and then stops being provided.
+// bigtableRetryer implements the gax.Retryer interface. It always
+// consumes server-sent RetryInfo when present and falls back to a
+// per-instance exponential backoff otherwise. If a prior attempt used
+// a RetryInfo-driven delay and the current error carries none, the
+// backoff is reset so we don't reuse a stale multiplier.
 type bigtableRetryer struct {
 	baseRetryFn               func(*gax.Backoff, error) (time.Duration, bool)
 	backoff                   gax.Backoff
-	disableRetryInfo          bool // If true, this retryer will process server-sent RetryInfo.
 	wasLastDelayFromRetryInfo bool // true if the previous retry delay for this operation was from RetryInfo.
-
 }
 
 // Retry determines if an operation should be retried and for how long to wait.
 func (r *bigtableRetryer) Retry(err error) (time.Duration, bool) {
-	if !r.disableRetryInfo {
-		apiErr, ok := apierror.FromError(err)
-		if ok && apiErr != nil && apiErr.Details().RetryInfo != nil {
-			// RetryInfo is present in the current error. Use its delay.
-			r.wasLastDelayFromRetryInfo = true
-			return apiErr.Details().RetryInfo.GetRetryDelay().AsDuration(), true
-		}
-
-		if r.wasLastDelayFromRetryInfo {
-			r.backoff = gax.Backoff{
-				Initial:    r.backoff.Initial,
-				Max:        r.backoff.Max,
-				Multiplier: r.backoff.Multiplier,
-			}
-		}
-		r.wasLastDelayFromRetryInfo = false
+	apiErr, ok := apierror.FromError(err)
+	if ok && apiErr != nil && apiErr.Details().RetryInfo != nil {
+		// RetryInfo is present in the current error. Use its delay.
+		r.wasLastDelayFromRetryInfo = true
+		return apiErr.Details().RetryInfo.GetRetryDelay().AsDuration(), true
 	}
+
+	if r.wasLastDelayFromRetryInfo {
+		r.backoff = gax.Backoff{
+			Initial:    r.backoff.Initial,
+			Max:        r.backoff.Max,
+			Multiplier: r.backoff.Multiplier,
+		}
+	}
+	r.wasLastDelayFromRetryInfo = false
 
 	return r.baseRetryFn(&r.backoff, err)
 }
@@ -158,24 +156,6 @@ func init() {
 	}
 }
 
-// Convert error to grpc status error
-func convertToGrpcStatusErr(err error) (codes.Code, error) {
-	if err == nil {
-		return codes.OK, nil
-	}
-
-	if errStatus, ok := status.FromError(err); ok {
-		return errStatus.Code(), status.Error(errStatus.Code(), errStatus.Message())
-	}
-
-	ctxStatus := status.FromContextError(err)
-	if ctxStatus.Code() != codes.Unknown {
-		return ctxStatus.Code(), status.Error(ctxStatus.Code(), ctxStatus.Message())
-	}
-
-	return codes.Unknown, err
-}
-
 // mergeOutgoingMetadata returns a context populated by the existing outgoing
 // metadata merged with the provided mds.
 func mergeOutgoingMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
@@ -183,29 +163,6 @@ func mergeOutgoingMetadata(ctx context.Context, mds ...metadata.MD) context.Cont
 	// The ordering matters, hence why ctxMD comes first.
 	allMDs := append([]metadata.MD{ctxMD}, mds...)
 	return metadata.NewOutgoingContext(ctx, metadata.Join(allMDs...))
-}
-
-// createFeatureFlagsMD creates the metadata for the `bigtable-features` header.
-// This header is sent on each request and includes all features supported and
-// enabled on the client.
-func createFeatureFlagsMD(clientSideMetricsEnabled, disableRetryInfo, enableDirectAccess bool) metadata.MD {
-	ff := btpb.FeatureFlags{
-		RoutingCookie:            true,
-		ReverseScans:             true,
-		LastScannedRowResponses:  true,
-		ClientSideMetricsEnabled: clientSideMetricsEnabled,
-		RetryInfo:                !disableRetryInfo,
-		TrafficDirectorEnabled:   enableDirectAccess,
-		DirectAccessRequested:    enableDirectAccess,
-	}
-
-	val := ""
-	b, err := proto.Marshal(&ff)
-	if err == nil {
-		val = base64.URLEncoding.EncodeToString(b)
-	}
-
-	return metadata.Pairs(featureFlagsHeaderKey, val)
 }
 
 // TODO(dsymonds): Read method that returns a sequence of ReadItems.
@@ -217,21 +174,38 @@ func createFeatureFlagsMD(clientSideMetricsEnabled, disableRetryInfo, enableDire
 //
 // By default, the yielded rows will contain all values in all cells.
 // Use RowFilter to limit the cells returned.
-func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) (err error) {
+//
+// When t.divertible is set (populated by Open on Clients with a
+// Diverter), the call routes through the shim, which decides whether
+// this request can go over the session data path. Otherwise it runs
+// the classic body directly.
+func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) error {
+	if t.divertible != nil {
+		return t.divertible.ReadRows(ctx, arg, f, opts...)
+	}
+	return t.readRowsClassic(ctx, arg, f, opts...)
+}
+
+// readRowsClassic is the classic streaming reader — called directly
+// by tableImpl.ReadRows (which bypasses the divertible gate) and by
+// the gate in Table.ReadRows when no divertible shim is wired.
+func (t *Table) readRowsClassic(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) (err error) {
 	ctx = mergeOutgoingMetadata(ctx, t.md)
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable.ReadRows")
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer mt.recordOperationCompletion()
+	defer mt.RecordOperationCompletion()
+	ctx = metrics.NewContext(ctx, mt)
 
-	err = t.readRows(ctx, arg, f, mt, opts...)
-	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode)
+	err = t.readRows(ctx, arg, f, opts...)
+	statusCode, statusErr := metrics.ConvertToGrpcStatusErr(err)
+	mt.SetCurrOpStatus(statusCode)
 	return statusErr
 }
 
-func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *builtinMetricsTracer, opts ...ReadOption) (err error) {
+func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) (err error) {
+	mt := metrics.FromContext(ctx)
 	var prevRowKey string
 	attrMap := make(map[string]interface{})
 
@@ -249,7 +223,7 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 	}
 
 	firstResponseRecorded := false
-	err = gaxInvokeWithRecorder(ctx, mt, methodNameReadRows, func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	err = gaxInvokeWithRecorder(ctx, methodNameReadRows, func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		if rowLimitSet && numRowsRead >= intialRowLimit {
 			return nil
 		}
@@ -303,7 +277,7 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 			err := stream.RecvMsg(res)
 			if !firstResponseRecorded && (err == nil || err == io.EOF) {
 				firstResponseRecorded = true
-				mt.currOp.setFirstRespTime(time.Now())
+				mt.SetFirstRespTime(time.Now())
 			}
 			if err == io.EOF {
 				*trailerMD = stream.Trailer()
@@ -345,7 +319,7 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 				appBlockingLatencyStart := time.Now()
 				continueReading := f(row)
 				numRowsRead++
-				mt.incrementAppBlockingLatency(convertToMs(time.Since(appBlockingLatencyStart)))
+				mt.IncrementAppBlockingLatency(metrics.ConvertToMs(time.Since(appBlockingLatencyStart)))
 
 				if !continueReading {
 					// Cancel and drain stream.
@@ -385,11 +359,30 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 
 // ReadRow is a convenience implementation of a single-row reader.
 // A missing row will return nil for both Row and error.
+//
+// When t.divertible is set (populated by Open on Clients with a
+// Diverter), the call routes through the shim so it can be diverted
+// to the session data path. Otherwise it runs the classic
+// ReadRows-with-LimitRows(1) flow.
 func (t *Table) ReadRow(ctx context.Context, row string, opts ...ReadOption) (Row, error) {
+	if t.divertible != nil {
+		return t.divertible.ReadRow(ctx, row, opts...)
+	}
+	return t.readRowClassic(ctx, row, opts...)
+}
+
+// readRowClassic is the classic single-row reader — called directly by
+// tableImpl.ReadRow (which bypasses the divertible gate) and by the
+// gate in Table.ReadRow when no divertible shim is wired.
+func (t *Table) readRowClassic(ctx context.Context, row string, opts ...ReadOption) (Row, error) {
 	var r Row
 
 	opts = append([]ReadOption{LimitRows(1)}, opts...)
-	err := t.ReadRows(ctx, SingleRow(row), func(rr Row) bool {
+	// readRowsClassic, not ReadRows: SingleRow(row) is exactly the shape
+	// TableShim.ReadRows diverts, so the gated entry point would bounce
+	// this classic read back into the shim and on into TableShim.ReadRow,
+	// which re-enters here. Classic has to stay classic all the way down.
+	err := t.readRowsClassic(ctx, SingleRow(row), func(rr Row) bool {
 		r = rr
 		return true
 	}, opts...)
@@ -899,20 +892,36 @@ var maxMutations = 100000
 
 // Apply mutates a row atomically. A mutation must contain at least one
 // operation and at most 100000 operations.
-func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) (err error) {
+//
+// When t.divertible is set (populated by Open on Clients with a
+// Diverter), the call routes through the shim so it can be diverted
+// to the session data path. Otherwise it runs the classic MutateRow
+// (or CheckAndMutateRow for conditional mutations) flow inline.
+func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) error {
+	if t.divertible != nil {
+		return t.divertible.Apply(ctx, row, m, opts...)
+	}
+	return t.applyClassic(ctx, row, m, opts...)
+}
+
+// applyClassic is the classic Apply body — called directly by
+// tableImpl.Apply (which bypasses the divertible gate) and by the
+// gate in Table.Apply when no divertible shim is wired.
+func (t *Table) applyClassic(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) (err error) {
 	ctx = mergeOutgoingMetadata(ctx, t.md)
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/Apply")
 	defer func() { trace.EndSpan(ctx, err) }()
 	mt := t.newBuiltinMetricsTracer(ctx, false)
-	defer mt.recordOperationCompletion()
+	defer mt.RecordOperationCompletion()
+	ctx = metrics.NewContext(ctx, mt)
 
-	err = t.apply(ctx, mt, row, m, opts...)
-	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode)
+	err = t.apply(ctx, row, m, opts...)
+	statusCode, statusErr := metrics.ConvertToGrpcStatusErr(err)
+	mt.SetCurrOpStatus(statusCode)
 	return statusErr
 }
 
-func (t *Table) apply(ctx context.Context, mt *builtinMetricsTracer, row string, m *Mutation, opts ...ApplyOption) (err error) {
+func (t *Table) apply(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) (err error) {
 	after := func(res proto.Message) {
 		for _, o := range opts {
 			o.after(res)
@@ -935,7 +944,7 @@ func (t *Table) apply(ctx context.Context, mt *builtinMetricsTracer, row string,
 			callOptions = append(callOptions, t.c.retryOption)
 		}
 		var res *btpb.MutateRowResponse
-		err := gaxInvokeWithRecorder(ctx, mt, "MutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+		err := gaxInvokeWithRecorder(ctx, "MutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 			var err error
 			res, err = t.c.client.MutateRow(ctx, req, grpc.Header(headerMD), grpc.Trailer(trailerMD))
 			return err
@@ -971,7 +980,7 @@ func (t *Table) apply(ctx context.Context, mt *builtinMetricsTracer, row string,
 		req.FalseMutations = m.mfalse.ops
 	}
 	var cmRes *btpb.CheckAndMutateRowResponse
-	err = gaxInvokeWithRecorder(ctx, mt, "CheckAndMutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	err = gaxInvokeWithRecorder(ctx, "CheckAndMutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		var err error
 		cmRes, err = t.c.client.CheckAndMutateRow(ctx, req, grpc.Header(headerMD), grpc.Trailer(trailerMD))
 		return err
@@ -1134,17 +1143,17 @@ func (ts Timestamp) TruncateToMilliseconds() Timestamp {
 //   - does not return errors seen while recording the metrics
 //
 // - then, calls gax.Invoke with 'callWrapper' as an argument
-func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method string,
+func gaxInvokeWithRecorder(ctx context.Context, method string,
 	f func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error, opts ...gax.CallOption) error {
+	mt := metrics.FromContext(ctx)
 	attemptHeaderMD := metadata.New(nil)
 	attempTrailerMD := metadata.New(nil)
-	mt.setMethod(method)
+	mt.SetMethod(method)
 
 	callWrapper := func(ctx context.Context, callSettings gax.CallSettings) error {
-		op := &mt.currOp
-		// Inject cookie and attempt information
+		// Inject cookie and attempt information from prior attempts.
 		md := metadata.New(nil)
-		for k, v := range op.cookies {
+		for k, v := range mt.Cookies() {
 			md.Append(k, v)
 		}
 
@@ -1152,32 +1161,15 @@ func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method
 		finalMD := metadata.Join(existingMD, md)
 		newCtx := metadata.NewOutgoingContext(ctx, finalMD)
 
-		mt.recordAttemptStart()
-		blockTracker := &blockingLatencyTracker{}
-		mt.currOp.currAttempt.blockingLatencyTracker = blockTracker
-		newCtx = context.WithValue(newCtx, statsContextKey, blockTracker)
-
-		t4t7 := &t4t7Tracker{}
-		mt.currOp.currAttempt.t4t7Tracker = t4t7
-		newCtx = context.WithValue(newCtx, t4t7ContextKey, t4t7)
-		// f makes calls to CBT service
+		// Per-attempt metric setup (RecordAttemptStart, blockingLatencyTracker)
+		// is owned by StatsHandler.TagRPC. f's headerMD / trailerMD are still
+		// needed for routing-cookie extraction below.
 		err := f(newCtx, &attemptHeaderMD, &attempTrailerMD, callSettings)
 
-		// Record attempt specific metrics
-		mt.recordAttemptCompletion(attemptHeaderMD, attempTrailerMD, err)
-
-		extractCookies(attemptHeaderMD, op)
-		extractCookies(attempTrailerMD, op)
+		mt.ExtractCookiesFromMD(attemptHeaderMD, cookiePrefix)
+		mt.ExtractCookiesFromMD(attempTrailerMD, cookiePrefix)
 		return err
 	}
 
 	return gax.Invoke(ctx, callWrapper, opts...)
-}
-
-func extractCookies(md metadata.MD, op *opTracer) {
-	for k, v := range md {
-		if strings.HasPrefix(k, cookiePrefix) {
-			op.cookies[k] = v[len(v)-1]
-		}
-	}
 }

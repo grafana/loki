@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package bigtable
+package internal
 
 import (
 	"context"
@@ -156,9 +156,9 @@ func newBigtableClientMonitoredResource(ctx context.Context, project, appProfile
 
 type otelMetricsContext struct {
 	// client options passed to gRPC channels
-	clientOpts []option.ClientOption
+	ClientOpts []option.ClientOption
 	// instance of metric reader used by gRPC client-side metrics
-	otelMeterProvider *metric.MeterProvider
+	OtelMeterProvider *metric.MeterProvider
 	// clean func to call when closing gRPC client
 	close func()
 }
@@ -170,34 +170,27 @@ type metricsConfig struct {
 	clientName      string // client_name
 	clientUID       string // uuid
 	interval        time.Duration
-	customExporter  *metric.Exporter
 	manualReader    *metric.ManualReader // used by tests
 	disableExporter bool                 // used by tests disables exports
 	resourceOpts    []resource.Option    // used by tests
 }
 
 func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*otelMetricsContext, error) {
-	var exporter metric.Exporter
-	meterOpts := []metric.Option{}
-	if cfg.customExporter == nil {
-		var ropts []resource.Option
-		if cfg.resourceOpts != nil {
-			ropts = cfg.resourceOpts
-		} else {
-			ropts = []resource.Option{resource.WithDetectors(gcp.NewDetector())}
-		}
-		smr, err := newBigtableClientMonitoredResource(ctx, cfg.project, cfg.appProfile, cfg.instance, cfg.clientName, cfg.clientUID, ropts...)
-		if err != nil {
-			return nil, err
-		}
-		exporter, err = smr.exporter()
-		if err != nil {
-			return nil, err
-		}
-		meterOpts = append(meterOpts, metric.WithResource(smr.resource))
+	var ropts []resource.Option
+	if cfg.resourceOpts != nil {
+		ropts = cfg.resourceOpts
 	} else {
-		exporter = *cfg.customExporter
+		ropts = []resource.Option{resource.WithDetectors(gcp.NewDetector())}
 	}
+	smr, err := newBigtableClientMonitoredResource(ctx, cfg.project, cfg.appProfile, cfg.instance, cfg.clientName, cfg.clientUID, ropts...)
+	if err != nil {
+		return nil, err
+	}
+	exporter, err := smr.exporter()
+	if err != nil {
+		return nil, err
+	}
+	meterOpts := []metric.Option{metric.WithResource(smr.resource)}
 	interval := time.Minute
 	if cfg.interval > 0 {
 		interval = cfg.interval
@@ -214,9 +207,9 @@ func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*otelMetrics
 		meterOpts = append(meterOpts, metric.WithReader(
 			metric.NewPeriodicReader(&exporterLogSuppressor{Exporter: exporter}, metric.WithInterval(interval))))
 	}
-	otelMeterProvider := metric.NewMeterProvider(meterOpts...)
+	OtelMeterProvider := metric.NewMeterProvider(meterOpts...)
 	mo := opentelemetry.MetricsOptions{
-		MeterProvider: otelMeterProvider,
+		MeterProvider: OtelMeterProvider,
 		Metrics: stats.NewMetricSet(
 			"grpc.client.attempt.duration",
 			"grpc.lb.rls.default_target_picks",
@@ -238,10 +231,10 @@ func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*otelMetrics
 			grpc.WithDefaultCallOptions(grpc.StaticMethodCallOption{})),
 	}
 	return &otelMetricsContext{
-		clientOpts:        opts,
-		otelMeterProvider: otelMeterProvider,
+		ClientOpts:        opts,
+		OtelMeterProvider: OtelMeterProvider,
 		close: func() {
-			otelMeterProvider.Shutdown(ctx)
+			OtelMeterProvider.Shutdown(ctx)
 		},
 	}, nil
 }
