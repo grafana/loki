@@ -1522,3 +1522,25 @@ func TestEngine_EarlySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
 		require.Equal(t, []string{seriesLimitPartialResultsWarning(maxSeries)}, resOn.Warnings)
 	})
 }
+
+func TestEngine_EarlySeriesCutoff_ShouldNotFailOnStepsThatOrDiscards(t *testing.T) {
+	const maxSeries = 2
+	start := time.Unix(10, 0)
+	end := start.Add(2 * time.Millisecond)
+	streams := make([]logproto.Stream, 0, 3)
+	for i := range 3 {
+		streams = append(streams, logproto.Stream{
+			Labels:  fmt.Sprintf(`{app="a", id="%d"}`, i),
+			Entries: []logproto.Entry{{Timestamp: start.Add(1250 * time.Microsecond), Line: "x"}},
+		})
+	}
+	for _, cutoff := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cut-off %v", cutoff), func(t *testing.T) {
+			eng := NewEngine(EngineOpts{EarlySeriesCutoff: cutoff}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+			params, err := NewLiteralParams(`vector(0) or count_over_time({app="a"}[1ms])`, start, end, 500*time.Microsecond, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+			_, err = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+			require.NoError(t, err)
+		})
+	}
+}

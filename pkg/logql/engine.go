@@ -510,6 +510,12 @@ func (q *query) earlySeriesCutoffLimit(ctx context.Context, maxSeries int) int {
 	if !q.earlySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
 		return 0
 	}
+	// vector() steps in whole milliseconds and the range iterators in nanoseconds, so below a
+	// millisecond a range leg of a binary operation can run steps past the end of a vector() leg.
+	// The binary operation discards those steps, so they are not a lower bound on the output.
+	if step := q.params.Step(); step > 0 && step < time.Millisecond {
+		return 0
+	}
 	return maxSeries
 }
 
