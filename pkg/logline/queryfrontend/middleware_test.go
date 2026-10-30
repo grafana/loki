@@ -2971,7 +2971,7 @@ func TestEmptyLokiResponseMergesSafely(t *testing.T) {
 // Metric range queries are verified in dry-run from the matrix already returned
 // to the user. Hint lookup still uses the request bounds widened by the range
 // interval and offset, matching getQueryBytes. A positive sample is correct
-// when its lookback window overlaps a hint. Live mode and instant queries are unchanged.
+// when its lookback window overlaps a hint. Instant queries stay unhinted.
 func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -3371,7 +3371,7 @@ func TestDryRun_MetricRange_UnsupportedSkipsHintLookup(t *testing.T) {
 	require.Empty(t, got.HintRanges)
 }
 
-func TestDryRun_MetricRange_LiveModeSkipsHintLookup(t *testing.T) {
+func TestLive_MetricRange_LooksUpHints(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
@@ -3391,13 +3391,19 @@ func TestDryRun_MetricRange_LiveModeSkipsHintLookup(t *testing.T) {
 	})
 
 	handler := buildStack(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), next)
-	req := newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, now.Add(-1*time.Hour), now)
+	start := now.Add(-1 * time.Hour)
+	req := newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, start, now)
 	resp, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
 	require.Same(t, userResp, resp)
-	require.Equal(t, 0, hp.Calls())
+	require.Equal(t, 1, hp.Calls())
 	require.Equal(t, 1, nextCalled)
-	require.Empty(t, got.HintRanges)
+	require.NotEmpty(t, got.HintRanges)
+
+	// Step is zero, so the lookup is the request window widened by the [5m] range.
+	from, through := hp.Window()
+	require.Equal(t, model.TimeFromUnixNano(start.Add(-5*time.Minute).UnixNano()), from)
+	require.Equal(t, model.TimeFromUnixNano(now.UnixNano()), through)
 }
 
 func TestDryRun_MetricInstant_PositiveSampleOverlapsWidenedHint(t *testing.T) {

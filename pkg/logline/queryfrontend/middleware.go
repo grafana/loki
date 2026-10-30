@@ -916,12 +916,22 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	if _, isMetric := expr.(syntax.SampleExpr); isMetric {
-		if mode != ModeDryRun || len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
+		if len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
 			return h.next.Do(ctx, req)
 		}
+		if mode == ModeLive {
+			if _, isRange := req.(*queryrange.LokiRequest); !isRange {
+				return h.next.Do(ctx, req)
+			}
+			// Left unhinted until a later PR. An empty matrix would drop the 1
+			// an empty window returns.
+			if isAbsentOverTimeAgg(expr) {
+				return h.next.Do(ctx, req)
+			}
+		}
+	} else if _, isInstant := req.(*queryrange.LokiInstantRequest); isInstant {
 		// A log selector on the instant endpoint is rejected by the querier.
 		// Return it here so this path does not look up hints for that request.
-	} else if _, isInstant := req.(*queryrange.LokiInstantRequest); isInstant {
 		return h.next.Do(ctx, req)
 	}
 
