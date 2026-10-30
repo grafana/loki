@@ -50,7 +50,7 @@ type GettableAlert struct {
 
 	// receivers
 	// Required: true
-	Receivers []*Receiver `json:"receivers"`
+	Receivers []*ReceiverReference `json:"receivers"`
 
 	// starts at
 	// Required: true
@@ -79,7 +79,7 @@ func (m *GettableAlert) UnmarshalJSON(raw []byte) error {
 
 		Fingerprint *string `json:"fingerprint"`
 
-		Receivers []*Receiver `json:"receivers"`
+		Receivers []*ReceiverReference `json:"receivers"`
 
 		StartsAt *strfmt.DateTime `json:"startsAt"`
 
@@ -126,7 +126,7 @@ func (m GettableAlert) MarshalJSON() ([]byte, error) {
 
 		Fingerprint *string `json:"fingerprint"`
 
-		Receivers []*Receiver `json:"receivers"`
+		Receivers []*ReceiverReference `json:"receivers"`
 
 		StartsAt *strfmt.DateTime `json:"startsAt"`
 

@@ -3,6 +3,7 @@ package kfake
 import (
 	"fmt"
 	"io"
+	"time"
 )
 
 // LogLevel designates which level the logger should log at.
@@ -61,5 +62,6 @@ func (b *basicLogger) Logf(level LogLevel, msg string, args ...any) {
 	if b.level < level {
 		return
 	}
-	fmt.Fprintf(b.dst, "[%s] "+msg+"\n", append([]any{level}, args...)...)
+	ts := time.Now().Format("15:04:05.000")
+	fmt.Fprintf(b.dst, "%s [%s] "+msg+"\n", append([]any{ts, level}, args...)...)
 }

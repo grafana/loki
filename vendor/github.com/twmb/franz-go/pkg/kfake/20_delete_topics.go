@@ -5,13 +5,29 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// DeleteTopics: v0-6
+//
+// Behavior:
+// * Must be sent to the controller
+// * Deletes topics by name (v0-5) or by name/ID (v6+)
+// * Wakes any watching fetchers on deletion
+//
+// Version notes:
+// * v1: ThrottleMillis
+// * v4: Flexible versions
+// * v5: ErrorMessage in response
+// * v6: Topics array with TopicID support
+
 func init() { regKey(20, 0, 6) }
 
-func (c *Cluster) handleDeleteTopics(b *broker, kreq kmsg.Request) (kmsg.Response, error) {
-	req := kreq.(*kmsg.DeleteTopicsRequest)
+func (c *Cluster) handleDeleteTopics(creq *clientReq) (kmsg.Response, error) {
+	var (
+		b   = creq.cc.b
+		req = creq.kreq.(*kmsg.DeleteTopicsRequest)
+	)
 	resp := req.ResponseKind().(*kmsg.DeleteTopicsResponse)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
 	}
 
@@ -55,10 +71,22 @@ func (c *Cluster) handleDeleteTopics(b *broker, kreq kmsg.Request) (kmsg.Respons
 	var toDeletes []toDelete
 	defer func() {
 		for _, td := range toDeletes {
+			// Close active segment files before removing partition directories.
+			if t, ok := c.data.tps.gett(td.topic); ok {
+				for p, pd := range t {
+					pd.closeAllFiles(false)
+					pdir := partDir(c.storageDir, td.topic, p)
+					if err := c.fs.RemoveAll(pdir); err != nil {
+						c.cfg.logger.Logf(LogLevelWarn, "delete topic %s partition %d dir: %v", td.topic, p, err)
+					}
+				}
+			}
 			delete(c.data.tps, td.topic)
 			delete(c.data.id2t, td.id)
 			delete(c.data.t2id, td.topic)
-
+			delete(c.data.treplicas, td.topic)
+			delete(c.data.tcfgs, td.topic)
+			delete(c.data.tnorms, normalizeTopicName(td.topic))
 		}
 	}()
 	for _, rt := range req.Topics {
@@ -70,6 +98,15 @@ func (c *Cluster) handleDeleteTopics(b *broker, kreq kmsg.Request) (kmsg.Respons
 		} else {
 			topic = c.data.id2t[rt.TopicID]
 			id = rt.TopicID
+		}
+		// ACL check: DESCRIBE first (to identify topic), then DELETE
+		if !c.allowedACL(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
+			donet(&topic, id, kerr.TopicAuthorizationFailed.Code)
+			continue
+		}
+		if !c.allowedACL(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDelete) {
+			donet(&topic, id, kerr.TopicAuthorizationFailed.Code)
+			continue
 		}
 		t, ok := c.data.tps.gett(topic)
 		if !ok {
@@ -88,6 +125,12 @@ func (c *Cluster) handleDeleteTopics(b *broker, kreq kmsg.Request) (kmsg.Respons
 				watch.deleted()
 			}
 		}
+	}
+
+	if len(toDeletes) > 0 {
+		c.notifyTopicChange()
+		c.refreshCompactTicker()
+		c.persistTopicsState()
 	}
 
 	return resp, nil
