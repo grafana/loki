@@ -89,8 +89,8 @@ func DefaultKeyMap() KeyMap {
 
 		// Quitting.
 		Quit: key.NewBinding(
-			key.WithKeys("q", "esc"),
-			key.WithHelp("q", "quit"),
+			key.WithKeys("v"),
+			key.WithHelp("v", "select"),
 		),
 		ForceQuit: key.NewBinding(key.WithKeys("ctrl+c")),
 	}
