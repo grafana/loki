@@ -994,6 +994,12 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 	return r.iter.Error()
 }
 
+// rangeAggPreservesSeries reports whether the range aggregation op returns one series for each
+// series of its log range. absent_over_time returns at most one series, however many it reads.
+func rangeAggPreservesSeries(op string) bool {
+	return op != syntax.OpRangeTypeAbsent
+}
+
 // vectorAggPreservesSeries reports whether the vector aggregation op returns one series for each
 // series of its input.
 func vectorAggPreservesSeries(op string) bool {
