@@ -1050,6 +1050,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 
 	tests := []struct {
 		name         string
+		k            int
 		rows         []stats.Stat
 		wantMerges   [][]string
 		wantFiltered []string
@@ -1059,10 +1060,12 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 	}{
 		{
 			name: "skips overlapping runs when no size level holds k runs",
+			k:    2,
 			rows: []stats.Stat{stat("logs/small", 0, 10, 30, 100), stat("logs/large", 0, 10, 30, 20<<30)},
 		},
 		{
 			name: "merges the full level and filters the source index for a lone run",
+			k:    2,
 			rows: []stats.Stat{
 				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
 				stat("logs/large", 0, 20, 50, 20<<30),
@@ -1073,6 +1076,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 		},
 		{
 			name: "filters a lone object once and spans all its sections",
+			k:    2,
 			rows: []stats.Stat{
 				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
 				stat("logs/large", 0, 20, 30, 10<<30), stat("logs/large", 1, 25, 60, 10<<30),
@@ -1083,6 +1087,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 		},
 		{
 			name: "keeps the unmerged runs of every level in one index filter",
+			k:    2,
 			rows: []stats.Stat{
 				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
 				stat("logs/small-c", 0, 5, 15, 100), stat("logs/large", 0, 40, 70, 20<<30),
@@ -1090,6 +1095,18 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 			wantMerges:      [][]string{{"logs/small-a", "logs/small-b"}},
 			wantFiltered:    []string{"logs/large", "logs/small-c"},
 			wantFilterRange: [2]int64{5, 70},
+		},
+		{
+			name: "merges only the full level and filters a level with fewer than k runs",
+			k:    3,
+			rows: []stats.Stat{
+				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
+				stat("logs/small-c", 0, 10, 30, 100),
+				stat("logs/large-a", 0, 40, 70, 20<<30), stat("logs/large-b", 0, 45, 80, 20<<30),
+			},
+			wantMerges:      [][]string{{"logs/small-a", "logs/small-b", "logs/small-c"}},
+			wantFiltered:    []string{"logs/large-a", "logs/large-b"},
+			wantFilterRange: [2]int64{40, 80},
 		},
 	}
 	for _, test := range tests {
@@ -1101,6 +1118,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 			defer runner.assertUniqueObjects(t)
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+			c.logMergePlanningStrategy = newTestLogMergePlanningStrategy(t, test.k)
 
 			got, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: sourcePath})
 			require.NoError(t, err)

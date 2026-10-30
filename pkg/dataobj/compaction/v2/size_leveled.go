@@ -28,8 +28,8 @@ const (
 // Level 0 holds runs below base. Level n, for n >= 1, holds runs in
 // [base*ratio^(n-1), base*ratio^n). The top level has no upper size bound.
 //
-// A level is full when it holds k runs, and a merge task holds at most k
-// runs.
+// A level is full when it holds k runs. Each merge task holds exactly k runs
+// from one level.
 type SizeLeveledStrategy struct {
 	base  uint64
 	ratio uint64
@@ -37,7 +37,7 @@ type SizeLeveledStrategy struct {
 }
 
 // NewSizeLeveledStrategy returns a strategy with the given level 0 bound,
-// ratio between levels, and maximum runs per merge task k.
+// ratio between levels, and number of runs per merge task k.
 //
 // base must be greater than 0 and ratio must be at least 2. k must be at
 // least 2, because with k of 1 a single run always needs compaction and
@@ -97,8 +97,8 @@ func (s *SizeLeveledStrategy) RunsPerLevel(runs []Run) []int {
 // NeedsCompaction reports whether any level holds at least k runs.
 //
 // A window where every level holds fewer than k runs counts as converged,
-// even if its runs overlap. Plan merges the k runs of a full level into one
-// run, so each compaction reduces the number of runs and compaction stops.
+// even if its runs overlap. Plan merges each group of k runs in a level into
+// one run, so each compaction reduces the number of runs and compaction stops.
 func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
 	for _, level := range s.groupByLevels(runs) {
 		if len(level) >= s.k {
@@ -108,23 +108,21 @@ func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
 	return false
 }
 
-// Plan splits each level into groups of at most k runs, so no group mixes
-// levels. Each group of two or more runs becomes a merge task.
+// Plan splits the runs of each level into groups of k runs, so no group
+// mixes levels. Each group becomes one merge task.
 //
-// A run alone in its level, or left over after the split, has nothing to
-// merge with. Plan returns it in unmerged instead of a task, so the caller can
-// keep it without rewriting its data. Every run lands in exactly one merge
+// Plan does not merge the runs left over after the split. A merge of fewer
+// than k runs can leave its output in the same level, so a later merge
+// rewrites the same data again.
+//
+// Plan returns the runs it does not merge in unmerged, so the caller can keep
+// them without rewriting their data. Every run lands in exactly one merge
 // task or in unmerged.
 func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string) (merges []*compactionv2pb.TaskSpec, unmerged []Run) {
 	for _, level := range s.groupByLevels(runs) {
-		for start := 0; start < len(level); start += s.k {
-			group := level[start:min(start+s.k, len(level))]
-			if len(group) == 1 {
-				unmerged = append(unmerged, group[0])
-				continue
-			}
-			merges = append(merges, Plan(group, tenant, len(group))...)
-		}
+		full := len(level) - len(level)%s.k
+		merges = append(merges, Plan(level[:full], tenant, s.k)...)
+		unmerged = append(unmerged, level[full:]...)
 	}
 	return merges, unmerged
 }

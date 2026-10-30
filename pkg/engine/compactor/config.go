@@ -60,9 +60,10 @@ type Config struct {
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
-	// LogMaxRunsPerTask (K for log compaction) is the maximum number of runs a
-	// single LogMerge task may consume. A size level must also hold K runs
-	// before log compaction starts. Kept separate from index max runs.
+	// LogMaxRunsPerTask (K for log compaction) is the number of runs each
+	// LogMerge task merges. Log compaction merges only groups of K runs from
+	// one size level, and keeps the other runs unmerged. Kept separate from
+	// index max runs.
 	LogMaxRunsPerTask int `yaml:"logs_max_runs_per_task"`
 
 	// LogMinCompactionSize is the minimum total compactable data (sum of all
@@ -208,7 +209,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
-		"Experimental: Maximum runs per LogMerge task (K for log compaction). Log compaction starts only when a size level holds K runs, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
+		"Experimental: Runs per LogMerge task (K for log compaction). Log compaction merges only groups of K runs from one size level, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")
 	f.Var(&cfg.LogMinCompactionSize, prefix+"logs.min-compaction-size",
 		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Windows below this floor are skipped.")
