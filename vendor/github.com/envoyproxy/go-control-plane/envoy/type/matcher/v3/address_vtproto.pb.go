@@ -49,6 +49,16 @@ func (m *AddressMatcher) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.InvertMatch {
+		i--
+		if m.InvertMatch {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
+	}
 	if len(m.Ranges) > 0 {
 		for iNdEx := len(m.Ranges) - 1; iNdEx >= 0; iNdEx-- {
 			if vtmsg, ok := interface{}(m.Ranges[iNdEx]).(interface {
@@ -93,6 +103,9 @@ func (m *AddressMatcher) SizeVT() (n int) {
 			}
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.InvertMatch {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n

@@ -1242,6 +1242,28 @@ func (m *Cluster_PreconnectPolicy) MarshalToSizedBufferVTStrict(dAtA []byte) (in
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.PreconnectEnabledMetadata != nil {
+		if vtmsg, ok := interface{}(m.PreconnectEnabledMetadata).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.PreconnectEnabledMetadata)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
 	if m.PredictivePreconnectRatio != nil {
 		size, err := (*wrapperspb.DoubleValue)(m.PredictivePreconnectRatio).MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1294,6 +1316,42 @@ func (m *Cluster) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.StatsMatcher != nil {
+		if vtmsg, ok := interface{}(m.StatsMatcher).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.StatsMatcher)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x3
+		i--
+		dAtA[i] = 0xea
+	}
+	if m.PerConnectionBufferHighWatermarkTimeout != nil {
+		size, err := (*durationpb.Duration)(m.PerConnectionBufferHighWatermarkTimeout).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3
+		i--
+		dAtA[i] = 0xe2
 	}
 	if m.TransportSocketMatcher != nil {
 		if vtmsg, ok := interface{}(m.TransportSocketMatcher).(interface {
@@ -2988,6 +3046,16 @@ func (m *Cluster_PreconnectPolicy) SizeVT() (n int) {
 		l = (*wrapperspb.DoubleValue)(m.PredictivePreconnectRatio).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.PreconnectEnabledMetadata != nil {
+		if size, ok := interface{}(m.PreconnectEnabledMetadata).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.PreconnectEnabledMetadata)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -3289,6 +3357,20 @@ func (m *Cluster) SizeVT() (n int) {
 			l = size.SizeVT()
 		} else {
 			l = proto.Size(m.TransportSocketMatcher)
+		}
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.PerConnectionBufferHighWatermarkTimeout != nil {
+		l = (*durationpb.Duration)(m.PerConnectionBufferHighWatermarkTimeout).SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.StatsMatcher != nil {
+		if size, ok := interface{}(m.StatsMatcher).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.StatsMatcher)
 		}
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
