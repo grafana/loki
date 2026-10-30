@@ -877,7 +877,7 @@ func TestPickRandomRange_ClampsToMaxLookback(t *testing.T) {
 		rand:      rand.New(rand.NewSource(1)),
 	}
 
-	earliest := now.Add(-maxLookback)
+	earliest := now.Add(-maxLookback + metricLookback)
 	eligibleEnd := now.Add(-3 * time.Hour)
 
 	for i := 0; i < 50; i++ {
@@ -937,7 +937,7 @@ func TestPickRandomRange_RoundsPartialMinutes(t *testing.T) {
 		rand:      rand.New(rand.NewSource(1)),
 	}
 
-	earliest := ceilToMinute(now.Add(-maxLookback))
+	earliest := ceilToMinute(now.Add(-maxLookback + metricLookback))
 	eligibleEnd := now.Add(-3 * time.Hour).Truncate(time.Minute)
 	roundedMin := 6 * time.Minute
 	roundedMax := 10 * time.Minute
