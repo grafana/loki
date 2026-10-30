@@ -88,21 +88,20 @@ func (m *Miniredis) runLuaScript(c *server.Peer, sha, script string, readOnly bo
 	l.SetGlobal("ARGV", argvTable)
 
 	redisFuncs, redisConstants := mkLua(m.srv, c, sha, readOnly)
-	// Register command handlers
-	l.Push(l.NewFunction(func(l *lua.LState) int {
-		mod := l.RegisterModule("redis", redisFuncs).(*lua.LTable)
-		for k, v := range redisConstants {
-			mod.RawSetString(k, v)
-		}
-		l.Push(mod)
-		return 1
-	}))
+	redisMod := l.CreateTable(0, len(redisFuncs)+len(redisConstants))
+	for fname, fn := range redisFuncs {
+		redisMod.RawSetString(fname, l.NewFunction(fn))
+	}
+	for k, v := range redisConstants {
+		redisMod.RawSetString(k, v)
+	}
+	for _, name := range []string{"redis", "server"} {
+		l.SetGlobal(name, redisMod)
+	}
+
 	l.RegisterModule("os", mkLuaOS())
 
 	_ = doScript(l, protectGlobals)
-
-	l.Push(lua.LString("redis"))
-	l.Call(1, 0)
 
 	// lua can call redis.setresp(...), but it's tmp state.
 	oldresp := c.Resp3

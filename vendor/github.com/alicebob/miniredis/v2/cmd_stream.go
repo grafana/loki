@@ -49,8 +49,8 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 		}
 		if strings.ToLower(args[0]) == "maxlen" {
 			args = args[1:]
-			// we don't treat "~" special
-			if args[0] == "~" {
+			// ignore exact/approximate trimming modifiers
+			if args[0] == "~" || args[0] == "=" {
 				args = args[1:]
 			}
 			n, err := strconv.Atoi(args[0])
@@ -66,8 +66,8 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 			args = args[1:]
 		} else if strings.ToLower(args[0]) == "minid" {
 			args = args[1:]
-			// we don't treat "~" special
-			if args[0] == "~" {
+			// ignore exact/approximate trimming modifiers
+			if args[0] == "~" || args[0] == "=" {
 				args = args[1:]
 			}
 			minID = args[0]
@@ -529,9 +529,11 @@ func (m *Miniredis) cmdXinfoStream(c *server.Peer, args []string) {
 			return
 		}
 
-		c.WriteMapLen(1)
+		c.WriteMapLen(2)
 		c.WriteBulk("length")
 		c.WriteInt(len(s.entries))
+		c.WriteBulk("last-generated-id")
+		c.WriteBulk(s.lastAllocatedID)
 	})
 }
 
