@@ -1523,24 +1523,84 @@ func TestEngine_EarlySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
 	})
 }
 
-func TestEngine_EarlySeriesCutoff_ShouldNotFailOnStepsThatOrDiscards(t *testing.T) {
+func TestEngine_EarlySeriesCutoff_ShouldEndLikeWithoutItWhenOrDiscardsSteps(t *testing.T) {
 	const maxSeries = 2
 	start := time.Unix(10, 0)
-	end := start.Add(2 * time.Millisecond)
-	streams := make([]logproto.Stream, 0, 3)
-	for i := range 3 {
-		streams = append(streams, logproto.Stream{
-			Labels:  fmt.Sprintf(`{app="a", id="%d"}`, i),
-			Entries: []logproto.Entry{{Timestamp: start.Add(1250 * time.Microsecond), Line: "x"}},
-		})
-	}
-	for _, cutoff := range []bool{false, true} {
-		t.Run(fmt.Sprintf("cut-off %v", cutoff), func(t *testing.T) {
-			eng := NewEngine(EngineOpts{EarlySeriesCutoff: cutoff}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
-			params, err := NewLiteralParams(`vector(0) or count_over_time({app="a"}[1ms])`, start, end, 500*time.Microsecond, 0, logproto.FORWARD, 1000, nil, nil)
-			require.NoError(t, err)
-			_, err = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
-			require.NoError(t, err)
+
+	for name, tc := range map[string]struct {
+		query      string
+		start, end time.Time
+		step       time.Duration
+		entriesAt  time.Time
+		wantErr    bool
+	}{
+		"sub-millisecond step": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start, end: start.Add(2 * time.Millisecond), step: 500 * time.Microsecond,
+			entriesAt: start.Add(1250 * time.Microsecond),
+		},
+		"one millisecond step": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start, end: start.Add(2 * time.Millisecond), step: time.Millisecond,
+			entriesAt: start.Add(1250 * time.Microsecond),
+			wantErr:   true,
+		},
+		"fractional millisecond step": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start, end: start.Add(3 * time.Millisecond), step: 1500 * time.Microsecond,
+			entriesAt: start.Add(2750 * time.Microsecond),
+			wantErr:   true,
+		},
+		"start and end off the millisecond": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start.Add(300 * time.Microsecond), end: start.Add(2700 * time.Microsecond), step: time.Millisecond,
+			entriesAt: start.Add(2 * time.Millisecond),
+			wantErr:   true,
+		},
+		"offset": {
+			query: `vector(0) or count_over_time({app="a"}[1ms] offset 1ms)`,
+			start: start, end: start.Add(3 * time.Millisecond), step: time.Millisecond,
+			entriesAt: start.Add(1500 * time.Microsecond),
+			wantErr:   true,
+		},
+		"instant": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start.Add(2 * time.Millisecond), end: start.Add(2 * time.Millisecond),
+			entriesAt: start.Add(1500 * time.Microsecond),
+			wantErr:   true,
+		},
+		"range legs with different ranges": {
+			query: `count_over_time({app="a"}[1ms]) or count_over_time({app="a"}[2ms])`,
+			start: start, end: start.Add(2 * time.Millisecond), step: 500 * time.Microsecond,
+			entriesAt: start.Add(1250 * time.Microsecond),
+			wantErr:   true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			streams := make([]logproto.Stream, 0, maxSeries+1)
+			for i := range maxSeries + 1 {
+				streams = append(streams, logproto.Stream{
+					Labels:  fmt.Sprintf(`{app="a", id="%d"}`, i),
+					Entries: []logproto.Entry{{Timestamp: tc.entriesAt, Line: "x"}},
+				})
+			}
+			run := func(cutoff bool) (logqlmodel.Result, error) {
+				eng := NewEngine(EngineOpts{EarlySeriesCutoff: cutoff}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+				params, err := NewLiteralParams(tc.query, tc.start, tc.end, tc.step, 0, logproto.FORWARD, 1000, nil, nil)
+				require.NoError(t, err)
+				return eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+			}
+
+			resOff, errOff := run(false)
+			resOn, errOn := run(true)
+
+			require.Equal(t, errOff, errOn)
+			require.Equal(t, resOff.Data, resOn.Data)
+			if tc.wantErr {
+				require.Equal(t, logqlmodel.NewSeriesLimitError(maxSeries), errOn)
+				return
+			}
+			require.NoError(t, errOn)
 		})
 	}
 }
