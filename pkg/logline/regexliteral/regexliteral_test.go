@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/regexp/syntax"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline"
 )
 
 func TestRequired(t *testing.T) {

@@ -14,9 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/index"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // newTestFlushBuilder returns a builder holding a single log line, ready to be

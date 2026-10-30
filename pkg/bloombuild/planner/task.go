@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v4/pkg/bloombuild/protos"
 )
 
 type TaskMeta struct {

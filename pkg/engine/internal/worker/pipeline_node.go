@@ -8,8 +8,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // pipelineRegionSuffix is the suffix the executor appends to an operator's type

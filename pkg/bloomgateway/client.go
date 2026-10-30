@@ -19,13 +19,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
-	"github.com/grafana/loki/v3/pkg/queue"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/util/discovery"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/querier/plan"
+	"github.com/grafana/loki/v4/pkg/queue"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v4/pkg/util/discovery"
 )
 
 var (

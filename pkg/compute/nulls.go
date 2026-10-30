@@ -3,8 +3,8 @@ package compute
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // PropagateNulls returns a shallow copy of input whose validity is intersected

@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/bucket"
+	"github.com/grafana/loki/v4/pkg/storage/config"
 )
 
 // DefaultClientName is the object-storage client name reported in metrics when

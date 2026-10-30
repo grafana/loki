@@ -7,7 +7,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v4/pkg/scratch"
 )
 
 // A snapshot represents a complete data object where all sections are stored in

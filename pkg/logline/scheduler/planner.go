@@ -4,8 +4,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 // compactionKey identifies a set of indexes that may be compacted together.

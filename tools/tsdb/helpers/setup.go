@@ -12,14 +12,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 
-	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/util/cfg"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/loki"
+	"github.com/grafana/loki/v4/pkg/storage"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v4/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 func Setup() (loki.Config, services.Service, string, error) {

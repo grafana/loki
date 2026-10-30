@@ -25,10 +25,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
-	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/v3/pkg/util/test"
-	"github.com/grafana/loki/v3/pkg/validation"
+	rulerconfig "github.com/grafana/loki/v4/pkg/ruler/config"
+	"github.com/grafana/loki/v4/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v4/pkg/util/test"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 const enabledRWTenant = "enabled"

@@ -9,13 +9,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/v3/pkg/storage/stores"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/chunk"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v4/pkg/storage/stores"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
 )
 
 // Simple implementation of a BloomGenerator.

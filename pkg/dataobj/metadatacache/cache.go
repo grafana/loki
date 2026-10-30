@@ -11,9 +11,9 @@ import (
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 // keyPrefix namespaces entries and versions the on-wire format. Bump the version to invalidate old

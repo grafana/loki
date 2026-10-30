@@ -4,7 +4,7 @@ package encoding
 import (
 	"context"
 
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
+	"github.com/grafana/loki/v4/pkg/dataset/buffer"
 )
 
 // RangeReader reads ranges of bytes from a resource. It is similar to

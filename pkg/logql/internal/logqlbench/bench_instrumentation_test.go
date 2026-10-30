@@ -13,7 +13,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
-	objectclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	objectclient "github.com/grafana/loki/v4/pkg/storage/chunk/client"
 )
 
 func newTestBucket(t *testing.T, inst *instrumentation) *instrumentedBucket {

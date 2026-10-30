@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
 )
 
 // logAgeOverflowLabel is the age label for data older than the span of the

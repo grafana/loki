@@ -10,8 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/queue"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v4/pkg/queue"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
 )
 
 const (

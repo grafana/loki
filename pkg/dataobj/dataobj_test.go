@@ -12,10 +12,10 @@ import (
 	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/util/test"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v4/pkg/util/test"
 )
 
 var (

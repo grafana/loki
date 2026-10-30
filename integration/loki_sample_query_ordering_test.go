@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/integration/client"
-	"github.com/grafana/loki/v3/integration/cluster"
+	"github.com/grafana/loki/v4/integration/client"
+	"github.com/grafana/loki/v4/integration/cluster"
 )
 
 // TestSampleQueryStreamOrderingEquivalence checks, end to end, that a LogQL metric (sample) query

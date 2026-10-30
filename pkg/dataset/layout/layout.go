@@ -3,8 +3,8 @@
 package layout
 
 import (
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/dataset/array"
+	"github.com/grafana/loki/v4/pkg/columnar/types"
+	"github.com/grafana/loki/v4/pkg/dataset/array"
 )
 
 // Layout describes a hierarchy of [array.Arrays]. Each Layout is a grouping of

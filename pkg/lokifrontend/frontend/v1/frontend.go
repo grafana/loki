@@ -19,12 +19,12 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
-	"github.com/grafana/loki/v3/pkg/querier/stats"
-	"github.com/grafana/loki/v3/pkg/queue"
-	"github.com/grafana/loki/v3/pkg/scheduler/limits"
-	"github.com/grafana/loki/v3/pkg/util"
-	lokigrpc "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	"github.com/grafana/loki/v4/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/v4/pkg/querier/stats"
+	"github.com/grafana/loki/v4/pkg/queue"
+	"github.com/grafana/loki/v4/pkg/scheduler/limits"
+	"github.com/grafana/loki/v4/pkg/util"
+	lokigrpc "github.com/grafana/loki/v4/pkg/util/httpgrpc"
 )
 
 var tracer = otel.Tracer("pkg/lokifrontend/frontend/v1")

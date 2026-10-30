@@ -16,13 +16,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion"
+	"github.com/grafana/loki/v4/pkg/compactor/retention"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/storage"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 const (

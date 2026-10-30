@@ -14,17 +14,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/indexgateway"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/uploads"
+	"github.com/grafana/loki/v4/pkg/indexgateway"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	indexstore "github.com/grafana/loki/v4/pkg/storage/stores/index"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/downloads"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/storage"
+	tsdbindex "github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/uploads"
 )
 
 type Mode string

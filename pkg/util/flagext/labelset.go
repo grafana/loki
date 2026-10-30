@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	yaml "go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/pkg/util/labels"
+	"github.com/grafana/loki/v4/pkg/util/labels"
 )
 
 // LabelSet is a labelSet that can be used as a flag.

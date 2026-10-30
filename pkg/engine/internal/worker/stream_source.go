@@ -7,7 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
 )
 
 // streamSource handles incoming data for a stream, forwarding it to a bound

@@ -20,15 +20,15 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
-	"github.com/grafana/loki/v3/pkg/loghttp/push/otlplabels"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/loghttp/push/otlpattrs"
+	"github.com/grafana/loki/v4/pkg/loghttp/push/otlplabels"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/runtime"
-	loki_util "github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/runtime"
+	loki_util "github.com/grafana/loki/v4/pkg/util"
 )
 
 const (

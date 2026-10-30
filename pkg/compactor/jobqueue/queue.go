@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/compactor/client/grpc"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 var (

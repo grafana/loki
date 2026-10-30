@@ -17,9 +17,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/shard"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/shard"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 type docRange struct{ min, max int64 }

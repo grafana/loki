@@ -5,8 +5,8 @@ import (
 
 	"github.com/grafana/dskit/httpgrpc"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
 )
 
 // GrpcRoundTripper is similar to http.RoundTripper, but works with HTTP requests converted to protobuf messages.

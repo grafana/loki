@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.yaml.in/yaml/v4"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 var testRegexYamlSingleStageWithoutSource = `

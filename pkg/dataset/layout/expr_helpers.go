@@ -1,6 +1,6 @@
 package layout
 
-import "github.com/grafana/loki/v3/pkg/expr"
+import "github.com/grafana/loki/v4/pkg/expr"
 
 // collectColumns returns the set of distinct Column names referenced by e.
 func collectColumns(e expr.Expression) map[string]struct{} {

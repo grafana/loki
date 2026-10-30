@@ -6,11 +6,11 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj/sortmerge"
 )
 
 // rankedSortKey holds the sort key of one stream and its rank, which is its

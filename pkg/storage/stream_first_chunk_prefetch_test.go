@@ -11,7 +11,7 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/goleak"
 
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/config"
 )
 
 func TestStreamFirstPrefetchConcurrency(t *testing.T) {

@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/v4/clients/pkg/util"
 )
 
 // NewClient creates a new client based on the fluentbit configuration.

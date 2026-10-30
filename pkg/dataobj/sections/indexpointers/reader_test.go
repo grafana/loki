@@ -12,9 +12,9 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v4/pkg/util/arrowtest"
 )
 
 // TestReader does a basic end-to-end test over a reader with a predicate applied.

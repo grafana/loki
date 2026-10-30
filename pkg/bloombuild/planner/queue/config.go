@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/queue"
+	"github.com/grafana/loki/v4/pkg/queue"
 )
 
 type Config struct {

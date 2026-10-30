@@ -1,6 +1,6 @@
 package loghttp
 
-import "github.com/grafana/loki/v3/pkg/logproto"
+import "github.com/grafana/loki/v4/pkg/logproto"
 
 // LabelResponse represents the http json response to a label query
 type DetectedFieldsResponse struct {

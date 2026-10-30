@@ -7,9 +7,9 @@ import (
 	"io"
 	"iter"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // basicRowReader is a low-level reader that reads rows from a set of columns.

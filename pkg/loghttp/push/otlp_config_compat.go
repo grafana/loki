@@ -1,7 +1,7 @@
 package push
 
 import (
-	"github.com/grafana/loki/v3/pkg/loghttp/push/otlplabels"
+	"github.com/grafana/loki/v4/pkg/loghttp/push/otlplabels"
 )
 
 // Type aliases for backward compatibility. All definitions live in otlplabels.

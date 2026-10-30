@@ -9,11 +9,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	v2 "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
 )
 
 func TestPlanDispatcherRun(t *testing.T) {

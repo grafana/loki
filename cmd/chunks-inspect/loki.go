@@ -7,7 +7,7 @@ import (
 	"hash/crc32"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v4/pkg/compression"
 )
 
 // The table gets initialized with sync.Once but may still cause a race

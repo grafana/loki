@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // MemoryStore is a simple in-memory [Store] backed by a slice. Buffer IDs are

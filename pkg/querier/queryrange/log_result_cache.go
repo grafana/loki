@@ -17,14 +17,14 @@ import (
 	"github.com/prometheus/common/model"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	"github.com/grafana/loki/v3/pkg/util/validation"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/pkg/util/validation"
 )
 
 // LogResultCacheMetrics is the metrics wrapper used in log result cache.

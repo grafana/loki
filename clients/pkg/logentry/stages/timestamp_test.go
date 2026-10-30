@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	lokiutil "github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiutil "github.com/grafana/loki/v4/pkg/util"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 var testTimestampYaml = `

@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
+	"github.com/grafana/loki/v4/pkg/labelaccess/types"
 )
 
 func TestChunkFiltererShouldFilter(t *testing.T) {

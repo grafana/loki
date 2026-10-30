@@ -10,11 +10,11 @@ import (
 	"github.com/grafana/regexp"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
-	"github.com/grafana/loki/v3/pkg/compute"
-	"github.com/grafana/loki/v3/pkg/compute/internal/computetest"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v4/pkg/compute"
+	"github.com/grafana/loki/v4/pkg/compute/internal/computetest"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 func TestCompute(t *testing.T) {

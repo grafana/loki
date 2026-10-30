@@ -12,7 +12,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/filepool"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/filepool"
 )
 
 // ReaderBufferSize is the size of the buffer used for reading index-header files. This

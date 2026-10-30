@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 
-	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
+	storage_errors "github.com/grafana/loki/v4/pkg/storage/errors"
 )
 
 // LimitError are errors that do not comply with the limits specified.

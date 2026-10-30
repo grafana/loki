@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
-	chunkutil "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
+	chunkutil "github.com/grafana/loki/v4/pkg/storage/chunk/client/util"
+	boltdbcommon "github.com/grafana/loki/v4/pkg/storage/common/boltdb"
 )
 
 func AddRecordsToDB(t testing.TB, path string, start, numRecords int, bucketName []byte) {

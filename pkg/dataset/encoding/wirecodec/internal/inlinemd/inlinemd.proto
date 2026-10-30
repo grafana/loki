@@ -4,7 +4,7 @@ package grafana.dataset.inline.v1;
 
 import "pkg/dataset/encoding/wirecodec/internal/datasetmd/datasetmd.proto";
 
-option go_package = "github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/inlinemd";
+option go_package = "github.com/grafana/loki/v4/pkg/dataset/encoding/wirecodec/internal/inlinemd";
 
 // Inline holds an inlined representation of a dataset, including its metadata
 // and all of its buffers. As an Inline dataset can only be read in full, Inline

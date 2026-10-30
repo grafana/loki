@@ -3,8 +3,8 @@ package compute_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/compute"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/compute"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 var filterSelectivities = map[string]func(*testing.B, *memory.Allocator) memory.Bitmap{

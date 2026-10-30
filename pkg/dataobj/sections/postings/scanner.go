@@ -8,10 +8,10 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/compute"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/compute"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // MatchedStreams is one logs section's result from a name and value scan.

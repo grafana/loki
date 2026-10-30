@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	compactor_client_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	compactor_client_grpc "github.com/grafana/loki/v4/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/loki/v4/pkg/compactor/deletionmode"
 )
 
 func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.CompactorClient, func()) {

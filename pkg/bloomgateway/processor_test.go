@@ -13,12 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/mempool"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/mempool"
 )
 
 var _ bloomshipper.StoreBase = &dummyStore{}

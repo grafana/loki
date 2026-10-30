@@ -3,7 +3,7 @@ package columnar
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // Broadcast returns an Array containing length copies of scalar.

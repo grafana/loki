@@ -9,9 +9,9 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compactor"
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v4/pkg/compactor"
+	"github.com/grafana/loki/v4/pkg/compactor/retention"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client"
 )
 
 var errObjectNotFound = errors.New("object not found")

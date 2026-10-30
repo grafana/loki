@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/kafka"
 )
 
 // The docID space: docID is an epoch tick — absDocBucket - epochBucket, a

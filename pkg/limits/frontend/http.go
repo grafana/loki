@@ -7,8 +7,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/limits/proto"
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 type httpExceedsLimitsRequest struct {

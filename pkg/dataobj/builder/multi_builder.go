@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 type builderFactory interface {

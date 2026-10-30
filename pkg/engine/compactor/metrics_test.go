@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v4/pkg/engine/internal/executor"
 )
 
 func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {

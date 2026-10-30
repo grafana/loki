@@ -6,9 +6,9 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/iter"
-	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v4/pkg/iter"
+	v2iter "github.com/grafana/loki/v4/pkg/iter/v2"
+	"github.com/grafana/loki/v4/pkg/util/encoding"
 
 	"github.com/grafana/loki/pkg/push"
 )

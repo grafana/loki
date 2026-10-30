@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
 // Constant taken from thanos https://github.com/thanos-io/thanos/pull/3557.

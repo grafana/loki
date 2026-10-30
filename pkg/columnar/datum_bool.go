@@ -1,8 +1,8 @@
 package columnar
 
 import (
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar/types"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // BoolScalar is a [Scalar] representing a boolean value.

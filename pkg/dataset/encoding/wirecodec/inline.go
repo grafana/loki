@@ -10,11 +10,11 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/inlinemd"
-	"github.com/grafana/loki/v3/pkg/dataset/layout"
-	"github.com/grafana/loki/v3/pkg/expr"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/dataset/buffer"
+	"github.com/grafana/loki/v4/pkg/dataset/encoding/wirecodec/internal/inlinemd"
+	"github.com/grafana/loki/v4/pkg/dataset/layout"
+	"github.com/grafana/loki/v4/pkg/expr"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // MarshalInline marshals a layout and all of its data into a single byte slice.

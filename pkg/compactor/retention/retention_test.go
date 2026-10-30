@@ -20,17 +20,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
-	"github.com/grafana/loki/v3/pkg/compression"
-	ingesterclient "github.com/grafana/loki/v3/pkg/ingester/client"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/util/filter"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/chunkenc"
+	"github.com/grafana/loki/v4/pkg/compression"
+	ingesterclient "github.com/grafana/loki/v4/pkg/ingester/client"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql/log"
+	"github.com/grafana/loki/v4/pkg/storage/chunk"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v4/pkg/util/filter"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 // newTestChunkRewriter builds a chunkRewriter with the default (strict) handling of chunks missing

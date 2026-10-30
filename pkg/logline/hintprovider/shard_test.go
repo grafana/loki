@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline/shard"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline/shard"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 func TestFilterNgramsForShard_Unsharded(t *testing.T) {

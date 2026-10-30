@@ -14,11 +14,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/compression"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v4/pkg/storage/config"
 )
 
 var supportedCompressions = compression.Codecs()

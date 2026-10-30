@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/canary/reader"
+	"github.com/grafana/loki/v4/pkg/canary/reader"
 )
 
 const (

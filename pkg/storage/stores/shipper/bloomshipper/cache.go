@@ -11,10 +11,10 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/mempool"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/mempool"
 )
 
 type CloseableBlockQuerier struct {

@@ -12,8 +12,8 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/pkg/util/flagext"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/util/flagext"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 type fixedStrategy struct {

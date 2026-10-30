@@ -13,9 +13,9 @@ import (
 	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/labelpool"
+	"github.com/grafana/loki/v4/pkg/compression"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/labelpool"
 )
 
 var errSymbolizerReadOnly = errors.New("writes not allowed when symbolizer is in read-only mode")

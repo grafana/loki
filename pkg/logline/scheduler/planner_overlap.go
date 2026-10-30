@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 // overlapPlanner groups indexes by time-range overlap using a sweep-line algorithm,

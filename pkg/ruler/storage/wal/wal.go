@@ -31,7 +31,7 @@ import (
 	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // ErrWALClosed is an error returned when a WAL operation can't run because the

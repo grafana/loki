@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v4/pkg/logql/log"
 )
 
 const UnsupportedErr = "unsupported range vector aggregation operation: %s"

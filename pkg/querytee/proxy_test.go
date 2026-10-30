@@ -19,9 +19,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
-	"github.com/grafana/loki/v3/pkg/querytee/comparator"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	dataobjconfig "github.com/grafana/loki/v4/pkg/dataobj/config"
+	"github.com/grafana/loki/v4/pkg/querytee/comparator"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 var testReadRoutes = []Route{

@@ -7,8 +7,8 @@ import (
 
 	"github.com/grafana/dskit/middleware"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion/deletionproto"
 )
 
 func (c *Compactor) Handler() (string, http.Handler) {

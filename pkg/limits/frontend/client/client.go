@@ -20,8 +20,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/limits/proto"
-	"github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/util/server"
 )
 
 var (

@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 // Meta holds the identity and metadata for a single index in object storage.

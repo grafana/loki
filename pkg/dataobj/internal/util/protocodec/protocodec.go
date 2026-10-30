@@ -13,8 +13,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/bufpool"
 )
 
 // Size returns the number of bytes that would be required to call [Encode] for

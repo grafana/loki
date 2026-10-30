@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 const (

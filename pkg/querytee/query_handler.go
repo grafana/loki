@@ -9,8 +9,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/util/server"
 )
 
 // QueryHandler decodes a query request, sends it to the downstream handler and writes the response.

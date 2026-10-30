@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 // errFlushNotRunning is returned when a flush is requested while the ingester is not running.

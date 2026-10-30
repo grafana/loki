@@ -21,9 +21,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 func TestNewQueryGate_DisabledAdmitsEverything(t *testing.T) {
