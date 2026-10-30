@@ -11,8 +11,10 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
 )
 
@@ -21,14 +23,23 @@ type debugResponse struct {
 	HintQueryType      string           `json:"hint_query_type"`
 	RangeStart         time.Time        `json:"range_start"`
 	RangeEnd           time.Time        `json:"range_end"`
+	ReadStart          time.Time        `json:"read_start,omitempty"`
+	ReadEnd            time.Time        `json:"read_end,omitempty"`
 	Selector           string           `json:"selector"`
 	Label              string           `json:"label,omitempty"`
 	Needle             string           `json:"needle"`
 	OverlappingIndexes int              `json:"overlapping_indexes"`
 	HintDuration       string           `json:"hint_duration"`
-	Entries            []debugEntry     `json:"entries"`
+	Entries            []debugEntry     `json:"entries,omitempty"`
+	Samples            []debugSample    `json:"samples,omitempty"`
 	HintRanges         []debugHintRange `json:"hint_ranges"`
 	Summary            debugSummary     `json:"summary"`
+}
+
+type debugSample struct {
+	Time    time.Time `json:"time"`
+	Value   float64   `json:"value"`
+	Covered bool      `json:"covered"`
 }
 
 type debugEntry struct {
@@ -76,23 +87,31 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	overlapping := s.indexStore.IndexesForRange(req.start, req.end)
+	qt := querybounds.QueryTypeLog
+	if hq.queryType == hintQueryTypeMetricRange {
+		qt = querybounds.QueryTypeMetricRange
+	}
+	qb := querybounds.GetQueryBounds(req.start, req.end, hq.step().Milliseconds(), hq.expr, qt, s.cfg.AlignQueriesWithStep)
+	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 
-	entries, _, err := s.queryLogs(r.Context(), hq.query, req.start, req.end, s.cfg.LogQueryLimit)
+	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
+	eligibleEnd := s.nowFn().UTC().Add(-s.cfg.QueryIngestersWithin)
+
+	// Pass requested start/end values to Loki, as Loki pipelines will perform the same adjustment.
+	res, err := s.fetchNeedleResults(r.Context(), hq, qb.RequestedStart, qb.RequestedEnd, eligibleEnd)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "correctness debug query failed", "query", hq.query, "err", err)
 		http.Error(w, "failed to query Loki", http.StatusInternalServerError)
 		return
 	}
-	resultEntries := protoEntries(entries)
 
 	hintStart := time.Now()
 	hints, _, err := s.hintProvider.ProvideHints(
 		r.Context(),
 		s.cfg.TenantID,
 		hq.expr,
-		model.TimeFromUnixNano(req.start.UnixNano()),
-		model.TimeFromUnixNano(req.end.UnixNano()),
+		model.TimeFromUnixNano(readStart.UnixNano()),
+		model.TimeFromUnixNano(readEnd.UnixNano()),
 	)
 	hintDuration := time.Since(hintStart)
 	if err != nil {
@@ -116,16 +135,23 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		HintQueryType:      string(req.queryType),
 		RangeStart:         req.start,
 		RangeEnd:           req.end,
+		ReadStart:          qb.ReadStart,
+		ReadEnd:            qb.ReadEnd,
 		Selector:           req.selector,
 		Label:              req.label,
 		Needle:             req.needle,
 		OverlappingIndexes: len(overlapping),
 		HintDuration:       hintDuration.String(),
-		Entries:            buildDebugEntries(resultEntries, hintRanges),
-		HintRanges:         buildDebugHintRanges(resultEntries, hintRanges),
+	}
+	if hq.queryType == hintQueryTypeMetricRange {
+		resp.Samples = buildDebugSamples(hq.expr, res.samples, hintRanges, eligibleEnd)
+		resp.HintRanges = buildDebugMetricHintRanges(hq.expr, res.samples, hintRanges, eligibleEnd)
+	} else {
+		resp.Entries = buildDebugEntries(res.entries, hintRanges)
+		resp.HintRanges = buildDebugHintRanges(res.entries, hintRanges)
 	}
 
-	vr := verifyHints(hintRanges, resultEntries)
+	vr := res.verify(hintRanges)
 	resp.Summary = debugSummary{
 		TotalResults:   vr.TotalResults,
 		CoveredResults: vr.CoveredResults,
@@ -168,16 +194,17 @@ func parseDebugRequest(r *http.Request) (debugRequest, error) {
 		queryType = hintQueryTypeLineFilter
 	}
 	switch queryType {
-	case hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter:
+	case hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter, hintQueryTypeMetricRange:
 	default:
 		return debugRequest{}, fmt.Errorf(
-			"query_type must be %q, %q, %q, or %q",
-			hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter,
+			"query_type must be %q, %q, %q, %q, or %q",
+			hintQueryTypeLineFilter, hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter, hintQueryTypeJSONLabelFilter, hintQueryTypeMetricRange,
 		)
 	}
 
 	label := query.Get("label")
-	if queryType != hintQueryTypeLineFilter && label == "" {
+	// A metric range wraps a line filter, so it does not take a label.
+	if queryType != hintQueryTypeLineFilter && queryType != hintQueryTypeMetricRange && label == "" {
 		return debugRequest{}, fmt.Errorf("label is required for query_type=%q", queryType)
 	}
 
@@ -207,13 +234,20 @@ func parseDebugRequest(r *http.Request) (debugRequest, error) {
 	}, nil
 }
 
-// buildDebugHintQuery uses the same builders + newHintQuery as runVerificationCycle.
+// buildDebugHintQuery uses the same builders as runVerificationCycle.
+// A metric range wraps the line-filter needle with buildMetricQuery.
 func buildDebugHintQuery(req debugRequest) (hintQuery, error) {
 	switch req.queryType {
 	case hintQueryTypeLabelFilter, hintQueryTypeSMLabelFilter:
 		return newHintQuery(req.queryType, req.needle, buildLabelFilterHintQuery(req.selector, req.label, req.needle))
 	case hintQueryTypeJSONLabelFilter:
 		return newHintQuery(req.queryType, req.needle, buildJSONLabelFilterHintQuery(req.selector, req.label, req.needle))
+	case hintQueryTypeMetricRange:
+		line, err := newHintQuery(hintQueryTypeLineFilter, req.needle, buildLineFilterHintQuery(req.selector, req.needle))
+		if err != nil {
+			return hintQuery{}, err
+		}
+		return buildMetricQuery(hintQueryTypeMetricRange, line)
 	default:
 		return newHintQuery(hintQueryTypeLineFilter, req.needle, buildLineFilterHintQuery(req.selector, req.needle))
 	}
@@ -249,6 +283,43 @@ func buildDebugHintRanges(entries []logproto.Entry, hintRanges []hintprovider.Hi
 			End:        hintRange.End,
 			Source:     hintRange.Source,
 			EntryCount: entryCount,
+		})
+	}
+	return respRanges
+}
+
+func buildDebugSamples(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange, eligibleEnd time.Time) []debugSample {
+	out := make([]debugSample, 0, len(samples))
+	for _, sample := range samples {
+		// A zero sample is not scored. Leaving it in the response with covered
+		// false would look like a miss.
+		if sample.Value <= 0 {
+			continue
+		}
+		report := verification.VerifySamples(expr, hintRanges, []verification.MetricSample{sample}, eligibleEnd)
+		// A lookback ending after eligibleEnd is not scored either.
+		if report.TotalEntries == 0 {
+			continue
+		}
+		out = append(out, debugSample{
+			Time:    sample.Time,
+			Value:   sample.Value,
+			Covered: report.CoveredEntries == 1,
+		})
+	}
+	return out
+}
+
+func buildDebugMetricHintRanges(expr syntax.Expr, samples []verification.MetricSample, hintRanges []hintprovider.HintTimeRange, eligibleEnd time.Time) []debugHintRange {
+	respRanges := make([]debugHintRange, 0, len(hintRanges))
+	for i, hintRange := range hintRanges {
+		report := verification.VerifySamples(expr, []hintprovider.HintTimeRange{hintRange}, samples, eligibleEnd)
+		respRanges = append(respRanges, debugHintRange{
+			Index:      i,
+			Start:      hintRange.Start,
+			End:        hintRange.End,
+			Source:     hintRange.Source,
+			EntryCount: report.CoveredEntries,
 		})
 	}
 	return respRanges
