@@ -27,6 +27,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -331,6 +332,57 @@ func TestPushHandlerAllLogsFilteredNilStats(t *testing.T) {
 		d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
 	})
 	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+// TestPushHandlerTrustedLabelsHeader verifies the X-Loki-Labels header is only validated and passed
+// on to the format parsers for tenants that enable it.
+func TestPushHandlerTrustedLabelsHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		enabled      bool
+		header       string
+		wantCode     int
+		wantParsed   bool
+		wantInjected labels.Labels
+	}{
+		{name: "enabled with valid header", enabled: true, header: `{username="userA"}`, wantCode: http.StatusNoContent, wantParsed: true, wantInjected: labels.FromStrings("username", "userA")},
+		{name: "enabled without header", enabled: true, wantCode: http.StatusNoContent, wantParsed: true, wantInjected: labels.EmptyLabels()},
+		{name: "enabled with malformed header", enabled: true, header: "username=userA", wantCode: http.StatusBadRequest},
+		{name: "disabled ignores valid header", header: `{username="userA"}`, wantCode: http.StatusNoContent, wantParsed: true, wantInjected: labels.EmptyLabels()},
+		{name: "disabled ignores malformed header", header: "username=userA", wantCode: http.StatusNoContent, wantParsed: true, wantInjected: labels.EmptyLabels()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.TrustedLabelsHeader = tc.enabled
+			distributors, _ := prepare(t, 1, 3, limits, nil)
+			d := distributors[0]
+
+			parsed := false
+			injected := labels.EmptyLabels()
+			var mockParser push.RequestParser = func(_ string, r *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.InternalPushRequest, *push.Stats, error) {
+				parsed = true
+				injected = push.ExtractTrustedLabelsContext(r.Context())
+				return nil, nil, push.ErrAllLogsFiltered
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", "application/json")
+			if tc.header != "" {
+				req.Header.Set(push.HTTPHeaderTrustedLabelsKey, tc.header)
+			}
+
+			rec := httptest.NewRecorder()
+			d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+
+			require.Equal(t, tc.wantCode, rec.Code, rec.Body.String())
+			require.Equal(t, tc.wantParsed, parsed)
+			if tc.wantParsed {
+				require.Equal(t, tc.wantInjected, injected)
+			}
+		})
+	}
 }
 
 func TestPushHandlerRecordsIngestMetrics(t *testing.T) {

@@ -44,6 +44,7 @@ type Limits interface {
 	BlockIngestionStatusCode(userID string) int
 	BlockIngestionPolicyUntil(userID string, policy string) time.Time
 	EnforcedLabels(userID string) []string
+	TrustedLabelsHeaderEnabled(userID string) bool
 	PolicyEnforcedLabels(userID string, policy string) []string
 	PolicyRejectPartialWrites(userID string, policy string) bool
 

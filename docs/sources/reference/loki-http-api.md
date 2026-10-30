@@ -293,12 +293,42 @@ In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 If [`block_ingestion_until`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) is configured and push requests are blocked, the endpoint will return the status code configured in `block_ingestion_status_code` (`260` by default)
 along with an error message. If the configured status code is `200`, no error message will be returned.
 
+### Trusted labels
+
+{{< admonition type="warning" >}}
+This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
+No SLA is provided.
+{{< /admonition >}}
+
+If [`trusted_labels_header_enabled`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) is enabled for a tenant, an authenticating gateway in front of Loki can force labels onto every stream of a push request with the `X-Loki-Labels` header, without rewriting the request body.
+The header value is a label set, for example `{username="userA", team="payments"}`.
+
+A label from the header overrides a stream label with the same name, or is added if the stream doesn't have it. All other labels are left unchanged.
+The header applies to both `/loki/api/v1/push` and `/otlp/v1/logs`.
+
+Loki rejects the push request with HTTP 400 if the header isn't a valid label set, has an empty label value, or sets a reserved label whose name starts with `__`.
+If `trusted_labels_header_enabled` is disabled, Loki ignores the header.
+
+{{< admonition type="caution" >}}
+Loki trusts the `X-Loki-Labels` header as it is, in the same way as `X-Scope-OrgID`. Your gateway must strip any `X-Loki-Labels` header sent by clients and set its own value. Otherwise, clients can set any labels they want.
+{{< /admonition >}}
+
 ### Examples
 
 The following cURL command pushes a stream with the label "foo=bar2" and a single log line "fizzbuzz" using JSON encoding:
 
 ```bash
 curl -H "Content-Type: application/json" \
+  -s -X POST "http://localhost:3100/loki/api/v1/push" \
+  --data-raw '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
+```
+
+The following cURL command pushes the same stream with the trusted label `username="userA"`, for a tenant that has `trusted_labels_header_enabled` set. The stream is stored with the labels `{foo="bar2", username="userA"}`:
+
+```bash
+curl -H "Content-Type: application/json" \
+  -H "X-Scope-OrgID: tenant-1" \
+  -H 'X-Loki-Labels: {username="userA"}' \
   -s -X POST "http://localhost:3100/loki/api/v1/push" \
   --data-raw '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```

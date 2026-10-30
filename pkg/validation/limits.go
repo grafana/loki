@@ -236,6 +236,7 @@ type Limits struct {
 	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until" category:"experimental"`
 	BlockIngestionStatusCode  int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 	EnforcedLabels            []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	TrustedLabelsHeader       bool                          `yaml:"trusted_labels_header_enabled" json:"trusted_labels_header_enabled" category:"experimental"`
 	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. The policy '*' is the global policy, which is applied to all streams and can be extended by other policies. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4\n  '*':\n    - label5"`
 	PolicyStreamMapping       PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
@@ -591,6 +592,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 	f.Var((*dskit_flagext.StringSlice)(&l.EnforcedLabels), "validation.enforced-labels", "List of labels that must be present in the stream. If any of the labels are missing, the stream will be discarded. This flag configures it globally for all tenants. Experimental.")
 	l.PolicyEnforcedLabels = make(map[string][]string)
+	f.BoolVar(&l.TrustedLabelsHeader, "validation.trusted-labels-header-enabled", false, "Apply the labels set in the X-Loki-Labels header of push requests, for example {username=\"userA\"}, to every stream in the request. A label from the header overrides a stream label with the same name, or is added if the stream doesn't have it. Only enable this when an authenticating gateway in front of Loki sets the header and strips any value sent by clients. When disabled, the header is ignored. Experimental.")
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
@@ -1316,6 +1318,12 @@ func (o *Overrides) BlockIngestionPolicyUntil(userID string, policy string) time
 
 func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
+}
+
+// TrustedLabelsHeaderEnabled returns whether the labels in the X-Loki-Labels header are applied to
+// the user's push requests.
+func (o *Overrides) TrustedLabelsHeaderEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).TrustedLabelsHeader
 }
 
 // PolicyEnforcedLabels returns the labels enforced by the policy for a given user.

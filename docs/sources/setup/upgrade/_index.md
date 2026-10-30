@@ -85,6 +85,12 @@ Enabling this option also changes the Kafka record format. Before enabling it, e
 
 Disabling this option restores expansion during parsing and the previous format for new Kafka writes. Consumers must remain on Loki 4.0 or later for as long as records written while the option was enabled remain in Kafka.
 
+### Optional trusted labels header for push requests
+
+Push requests can carry an `X-Loki-Labels` header, for example `{username="userA"}`, whose labels Loki applies to every stream in the request. This lets an authenticating gateway control the labels a tenant writes without rewriting request bodies.
+
+The header is only honored for tenants with the experimental per-tenant limit `limits_config.trusted_labels_header_enabled` (`-validation.trusted-labels-header-enabled`) set to `true`. The limit defaults to `false`, so existing deployments are unaffected. Before enabling it, make sure your gateway strips any `X-Loki-Labels` header sent by clients.
+
 ### Stricter JSON payload validation
 
 Both `/loki/api/v1/push` and the deprecated legacy `/api/prom/push` endpoint now return HTTP 400 if a JSON push payload contains a field name that the endpoint's schema does not recognize. For example, sending the legacy `labels`/`entries` payload shape to `/loki/api/v1/push`, or the regular `stream`/`values` payload shape to `/api/prom/push`, now fails with an error containing `found unknown field: <field>`.

@@ -294,6 +294,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	// backfill labels added below.
 	backfillShard := ExtractBackfillShardContext(r.Context())
 
+	// If the tenant allows it and the X-Loki-Labels header is set, every stream gets these labels,
+	// overriding labels with the same name.
+	trustedLabels := ExtractTrustedLabelsContext(r.Context())
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 
@@ -311,6 +315,9 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		if lbs.Has(constants.BackfillLabel) || lbs.Has(constants.BackfillShardLabel) {
 			return nil, nil, errReservedBackfillLabels()
 		}
+
+		// Applied before service name discovery, so a trusted service_name label takes precedence.
+		lbs = applyTrustedLabels(lbs, trustedLabels)
 
 		isInternalStream := constants.IsInternalStream(lbs.Has)
 		if isInternalStream {
