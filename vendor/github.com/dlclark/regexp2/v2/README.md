@@ -2,7 +2,7 @@
 Regexp2 is a feature-rich RegExp engine for Go.  It doesn't have constant time guarantees like the built-in `regexp` package, but it allows backtracking and is compatible with Perl5 and .NET.  You'll likely be better off with the RE2 engine from the `regexp` package and should only use this if you need to write very complex patterns or require compatibility with .NET.
 
 ## Basis of the engine
-The engine is ported from the .NET framework's System.Text.RegularExpressions.Regex engine.  That engine was open sourced in 2015 under the MIT license.  There are some fundamental differences between .NET strings and Go strings that required a bit of borrowing from the Go framework regex engine as well.  I cleaned up a couple of the dirtier bits during the port (regexcharclass.cs was terrible), but the parse tree, code emmitted, and therefore patterns matched should be identical.
+The engine is ported from the .NET framework's System.Text.RegularExpressions.Regex engine.  That engine was open sourced in 2015 under the MIT license.  There are some fundamental differences between .NET strings and Go strings that required a bit of borrowing from the Go framework regex engine as well.  The engine retains .NET-style syntax and matching features, with the compatibility priorities described below.
 
 ## New Code Generation
 For extra performance use `regexp2` with [`regexp2cg`](https://github.com/dlclark/regexp2cg). It is a code generation utility for `regexp2` and you can likely improve your regexp runtime performance by 3-10x in hot code paths. As always you should benchmark your specifics to confirm the results. Give it a try!
@@ -78,7 +78,58 @@ func regexp2FindAllString(re *regexp2.Regexp, s string) []string {
 
 `FindNextMatch` is optmized so that it re-uses the underlying string/rune slice.
 
+For capture positions on rune input, `FindRunesMatches` avoids allocating a full
+`Match` and its text metadata for every result:
+
+```go
+input := []rune("first=one second=two")
+re := regexp2.MustCompile(`(\w+)=(\w+)`)
+err := re.FindRunesMatches(input, -1, func(view regexp2.MatchView) bool {
+	index, length, ok := view.GroupRange(2)
+	if ok {
+		fmt.Println(string(input[index : index+length]))
+	}
+	return true // return false to stop successfully
+})
+if err != nil {
+	// Handle a timeout or backtracking-stack limit error.
+	log.Fatal(err)
+}
+```
+
+`MatchView` exposes only `GroupRange` and `GroupCount`. Group 0 is the whole match;
+other groups report their last remaining capture. A participating empty capture
+has `ok == true` and length 0, while an unmatched or fully balanced group has
+`ok == false`. Ranges use rune indexes in the original input, even with a nonzero
+`startAt`. For explicitly numbered groups, use `re.GetGroupNumbers()` to enumerate
+their possibly sparse numbers. ECMAScript capture clearing and duplicate-name
+group numbering follow the same rules as the full matching API.
+
+The view borrows reusable engine storage and is valid only during its callback.
+Save returned indexes and lengths to keep results; copying the view does not
+extend its lifetime. Do not modify the input during iteration. Initial setup and
+buffer growth may allocate, but range lookup does not. Use the full matching API
+when you need capture histories or independently owned matches.
+
 The internals of `regexp2` always operate on `[]rune` so `RuneIndex` and `RuneLength` data in a `Match` always reference a position in `rune`s rather than `byte`s (even if the input was given as a string). `ByteRange()` provides UTF-8 byte offsets, matching the original string input for string APIs. It's advisable to use the provided `String()` methods when you do not need explicit offsets. `ByteRange()` lazily caches byte offsets on the shared match text, so the first call on captures from the same match is not safe to run concurrently with other `ByteRange()` calls on that match.
+
+## Compatibility and Unicode case folding
+
+`regexp2`'s behavior and compatibility goals are different depending on the mode.
+
+| Mode | Compatibility priority |
+| --- | --- |
+| Default | .NET-style syntax and matching features, with Go's Unicode simple case folding preferred over exact .NET casing behavior. |
+| `RE2` | Go's `regexp` semantics where features overlap, while retaining regexp2 extensions. |
+| `ECMAScript` | The ECMAScript specification, including the distinction between legacy case-insensitive matching (`/i`) and Unicode case-insensitive matching (`/iu`). |
+
+Outside ECMAScript mode, `IgnoreCase` targets the locale-independent simple folding used by Go's `regexp` and [`unicode.SimpleFold`](https://pkg.go.dev/unicode#SimpleFold). For example, `(?i)^[a-z]$` matches the Kelvin sign `K` and long s `ſ`, and `(?i)^Σ$` matches final sigma `ς`. Differences from .NET's culture-sensitive or culture-invariant casing are intentional when they follow Go's simple folding. The engine does not select casing rules from the process locale. Simple folding does not perform Unicode normalization or multi-character expansion: `(?i)^ss$` does not match `ß`. Go's folding tables follow the Unicode version supplied by the consumer's Go toolchain.
+
+Case folding and character-class definitions are separate choices. Default mode retains .NET-style Unicode word classes, so `\w` matches `é`; `RE2` mode uses Go's ASCII word-class definition. Adopting Go's folding rules does not replace all default character classes with Go's definitions.
+
+With `ECMAScript|IgnoreCase`, legacy folding prevents non-ASCII characters from folding into ASCII: `^[a-z]$` matches `K` but not `K` or `ſ`. Adding `Unicode` selects ECMAScript `/iu` behavior, which allows those matches and includes `K` and `ſ` in `\w`. `\W` is the complement of that mode's word class. The `Unicode` option selects ECMAScript Unicode behavior when combined with `ECMAScript`; it is not a switch for enabling Unicode folding in default mode.
+
+Case-insensitive backreferences use the same folding policy: in default mode, both `(?i)^ss$` and `(?i)^(s)\1$` match `sſ`. The flags at the backreference determine whether its comparison ignores case, independently of the flags used to capture the text. These priorities are compatibility targets, not a guarantee of complete conformance; inconsistencies within a mode are bugs under this policy.
 
 ## Unicode character classes
 
@@ -215,7 +266,7 @@ For pooled buffer cache options, set `n` to `0` to disable pooling, or `-1` to a
 | conditionals `(?(expr)yes\|no)` | no | yes |
 
 ## RE2 compatibility mode
-The default behavior of `regexp2` is to match the .NET regexp engine, however the `RE2` option is provided to change the parsing to increase compatibility with RE2.  Using the `RE2` option when compiling a regexp will not take away any features, but will change the following behaviors:
+The default mode uses .NET-style syntax and matching features subject to the [compatibility and case-folding policy](#compatibility-and-unicode-case-folding). The `RE2` option increases compatibility with Go's RE2-based `regexp` package. Using the `RE2` option when compiling a regexp will not take away any features, but will change the following behaviors:
 * add support for named ascii character classes (e.g. `[[:foo:]]`)
 * add support for python-style capture groups (e.g. `(?P<name>re)`)
 * add support for python-style named backreferences (e.g. `(?P=name)`)
@@ -314,9 +365,9 @@ In this mode the engine attempts to match the [regex engine](https://tc39.es/ecm
 
 This flag should not be treated as compatibility with C#'s `RegexOptions.ECMAScript`. regexp2's ECMAScript behavior prioritizes ECMAScript specification behavior over matching the C# regex engine's interpretation of that option.
 
-Without `Unicode`, escapes such as `\a`, `\e`, `\A`, `\G`, `\Z`, and `\z` match their literal letters. A control escape `\c` requires an ASCII letter; inside a character class, digits and `_` are also accepted, with character value modulo 32. Otherwise the backslash is literal and `c` and the following syntax are parsed normally: `\c*` matches a backslash followed by zero or more `c` characters, and `[\c]` matches either a backslash or `c`. `Escape` emits `\x07` for BEL so that its output also preserves that character in ECMAScript mode.
+Without `Unicode`, escapes such as `\a`, `\e`, `\A`, `\G`, `\Z`, and `\z` match their literal letters. A control escape `\c` requires an ASCII letter; inside a character class, digits and `_` are also accepted, with character value modulo 32. Otherwise the backslash is literal and `c` and the following syntax are parsed normally: `\c*` matches a backslash followed by zero or more `c` characters, and `[\c]` matches either a backslash or `c`. With `Unicode`, Annex B is not applied, so `\c` must be followed by an ASCII letter and any other character is a compile error. `Escape` emits `\x07` for BEL so that its output also preserves that character in ECMAScript mode.
 
-Additionally a Unicode mode is provided which allows parsing of `\u{CodePoint}` syntax only when both `ECMAScript` and `Unicode` are provided.
+Additionally a Unicode mode is provided which allows parsing of `\u{CodePoint}` syntax only when both `ECMAScript` and `Unicode` are provided. In that mode, adjacent four-hex high/low surrogate escapes, such as `\uD83D\uDE00`, form one code point in atoms, character classes, and ranges. Braced surrogate escapes and isolated surrogates remain separate.
 
 With `ECMAScript|Unicode`, property escapes use the exact names and aliases allowed by [ECMA-262](https://tc39.es/ecma262/multipage/text-processing.html#sec-runtime-semantics-unicodematchproperty-p):
 
