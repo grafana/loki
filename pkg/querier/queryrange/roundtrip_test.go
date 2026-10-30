@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -1921,6 +1922,10 @@ func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 
 func (f fakeLimits) DataObjMaxBytesPerShard(_ string) uint64 {
 	return valid.DefaultDataObjMaxBytesPerShard
+}
+
+func (f fakeLimits) DataObjShardLayout(_ string) dataobjstreams.ShardLayout {
+	return dataobjstreams.DefaultShardLayout()
 }
 
 func (f fakeLimits) TSDBShardingStrategy(ctx context.Context, userID string) string {

@@ -322,6 +322,6 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		return nil, nil, err
 	}
 
-	shards, chunkGroups := r.policy(tenantIDs, expr).boundedShards(casted.Response.Shards, casted.Response.ChunkGroups)
+	shards, chunkGroups := r.policy(tenantIDs, expr).boundedShards(tenantIDs, casted.Response.Shards, casted.Response.ChunkGroups)
 	return shards, chunkGroups, nil
 }
