@@ -8,11 +8,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logcli/client"
-	"github.com/grafana/loki/v3/pkg/logcli/output"
-	"github.com/grafana/loki/v3/pkg/logcli/volume"
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logcli/client"
+	"github.com/grafana/loki/v4/pkg/logcli/output"
+	"github.com/grafana/loki/v4/pkg/logcli/volume"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 type testIndexClient struct {

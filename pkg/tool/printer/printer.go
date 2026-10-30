@@ -13,8 +13,8 @@ import (
 	"github.com/mitchellh/colorstring"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/grafana/loki/v3/pkg/tool/rules"
-	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/v4/pkg/tool/rules"
+	"github.com/grafana/loki/v4/pkg/tool/rules/rwrulefmt"
 )
 
 // Printer is  used for printing formatted output from the lokitool

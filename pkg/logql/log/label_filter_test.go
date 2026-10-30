@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 )
 
 func TestBinary_Filter(t *testing.T) {

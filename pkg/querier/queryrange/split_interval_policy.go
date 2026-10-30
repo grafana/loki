@@ -3,9 +3,9 @@ package queryrange
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util/validation"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/util/validation"
 )
 
 // splitIntervalPolicy holds the parts of time splitting that depend on where a query reads its

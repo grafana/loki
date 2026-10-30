@@ -18,7 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 // LimitsConfig configures how querytee loads the limits of a Loki cluster. The flag names match the

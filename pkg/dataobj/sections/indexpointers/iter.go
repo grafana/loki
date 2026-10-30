@@ -8,12 +8,12 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/internal/columnar"
 )
 
 // Iter iterates over indexpointers in the provided decoder. All indexpointers sections are

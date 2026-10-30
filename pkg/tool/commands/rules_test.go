@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/v4/pkg/tool/rules/rwrulefmt"
 )
 
 func TestCheckDuplicates(t *testing.T) {

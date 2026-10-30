@@ -28,11 +28,11 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/discovery"
-	"github.com/grafana/loki/v3/pkg/util/jumphash"
+	"github.com/grafana/loki/v4/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/discovery"
+	"github.com/grafana/loki/v4/pkg/util/jumphash"
 )
 
 // ClientConfig configures the Index Gateway client used to communicate with

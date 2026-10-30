@@ -14,7 +14,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 func TestRetry(t *testing.T) {

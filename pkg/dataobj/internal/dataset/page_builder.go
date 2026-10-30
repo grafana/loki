@@ -7,8 +7,8 @@ import (
 	"hash/crc32"
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/streamio"
 )
 
 // pageBuilder accumulates sequences of [Value] in memory until reaching a

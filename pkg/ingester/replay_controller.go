@@ -8,7 +8,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/singleflight"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 type replayFlusher struct {

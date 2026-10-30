@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/ingester/wal"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/ingester/wal"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // mockThrottledWAL is a WAL implementation that can be controlled for testing throttling

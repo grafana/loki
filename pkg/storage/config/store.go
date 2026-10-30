@@ -4,7 +4,7 @@ import (
 	"flag"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/cache"
 )
 
 type ChunkStoreConfig struct {

@@ -10,9 +10,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/clients/pkg/util"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/clients/pkg/util"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 func Test_multilineStage_Process(t *testing.T) {

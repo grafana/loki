@@ -11,11 +11,11 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/grafana/loki/v3/pkg/logcli/output"
-	"github.com/grafana/loki/v3/pkg/logcli/util"
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v4/pkg/logcli/output"
+	"github.com/grafana/loki/v4/pkg/logcli/util"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	logqlmodel "github.com/grafana/loki/v4/pkg/logql/model"
+	"github.com/grafana/loki/v4/pkg/logql/model/stats"
 )
 
 type QueryResultPrinter struct {

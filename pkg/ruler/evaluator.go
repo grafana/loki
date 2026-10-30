@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	logqlmodel "github.com/grafana/loki/v4/pkg/logql/model"
 )
 
 // Evaluator is the interface that must be satisfied in order to accept rule evaluations from the Ruler.

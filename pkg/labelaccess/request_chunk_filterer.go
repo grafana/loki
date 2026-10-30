@@ -8,9 +8,9 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/labelaccess/types"
+	"github.com/grafana/loki/v4/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 type RequestChunkFilterer struct{}

@@ -10,13 +10,13 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	loghttp_legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/marshal"
-	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
-	serverutil "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	loghttp_legacy "github.com/grafana/loki/v4/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/util/marshal"
+	marshal_legacy "github.com/grafana/loki/v4/pkg/util/marshal/legacy"
+	serverutil "github.com/grafana/loki/v4/pkg/util/server"
 )
 
 const (

@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj/fixtures"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
 )
 
 // defaultStoredLayout is the layout that a test object records when the test does not depend on it.

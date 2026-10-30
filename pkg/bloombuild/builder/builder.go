@@ -22,16 +22,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
-	"github.com/grafana/loki/v3/pkg/bloomgateway"
-	"github.com/grafana/loki/v3/pkg/compression"
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/storage"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v4/pkg/bloomgateway"
+	"github.com/grafana/loki/v4/pkg/compression"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
+	"github.com/grafana/loki/v4/pkg/storage"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/stores"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
+	utillog "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // TODO(chaudum): Make configurable via (per-tenant?) setting.

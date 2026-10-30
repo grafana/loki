@@ -27,8 +27,8 @@ import (
     "github.com/go-kit/log"
     "github.com/prometheus/common/model"
 
-    "github.com/grafana/loki/v3/pkg/logproto"
-    "github.com/grafana/loki/v3/pkg/logql"
+    "github.com/grafana/loki/v4/pkg/logproto"
+    "github.com/grafana/loki/v4/pkg/logql"
 )
 ```
 
@@ -78,7 +78,7 @@ The linter enforces the following import restrictions:
 |---|---|
 | `github.com/go-kit/kit/log` | `github.com/go-kit/log` |
 | `sync/atomic` | `go.uber.org/atomic` |
-| `github.com/grafana/dskit/spanlogger` | `github.com/grafana/loki/v3/pkg/util/spanlogger` |
+| `github.com/grafana/dskit/spanlogger` | `github.com/grafana/loki/v4/pkg/util/spanlogger` |
 | `github.com/opentracing/opentracing-go` | OpenTelemetry tracing already used in Loki |
 | `github.com/uber/jaeger-client-go` | OpenTelemetry tracing already used in Loki |
 | `github.com/opentracing-contrib/go-stdlib/nethttp` | OpenTelemetry tracing already used in Loki |

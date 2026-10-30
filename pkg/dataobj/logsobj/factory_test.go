@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v4/pkg/scratch"
 )
 
 func newTestBuilderFactory(t *testing.T, reg prometheus.Registerer, overrides TenantOverrides) *BuilderFactory {

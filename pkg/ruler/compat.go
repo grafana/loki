@@ -22,12 +22,12 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
-	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
-	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
-	"github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	ruler "github.com/grafana/loki/v4/pkg/ruler/base"
+	rulerconfig "github.com/grafana/loki/v4/pkg/ruler/config"
+	"github.com/grafana/loki/v4/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v4/pkg/util"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 type RemoteWriteLimits interface {

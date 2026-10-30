@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
+	"github.com/grafana/loki/v4/pkg/dataset/buffer"
 )
 
 func TestMemoryStore(t *testing.T) {

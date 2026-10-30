@@ -9,7 +9,7 @@ package proto;
 
 import "gogoproto/gogo.proto";
 
-option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto";
+option go_package = "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto";
 
 // SectionRef identifies one section in object storage with its sort-key bounds.
 //

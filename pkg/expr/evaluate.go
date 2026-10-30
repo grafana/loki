@@ -3,9 +3,9 @@ package expr
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/compute"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/compute"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // Evaluate processes expr against the provided input datum, producing a datum

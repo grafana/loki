@@ -3,7 +3,7 @@ package logql
 import (
 	"github.com/prometheus/prometheus/util/kahansum"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
 )
 
 // stepAccumulator accumulates the samples of one series in each query step.

@@ -7,7 +7,7 @@ import (
 
 	"github.com/bits-and-blooms/bloom/v3"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // bloomPostingKey is the unique key for a bloom posting aggregation entry.

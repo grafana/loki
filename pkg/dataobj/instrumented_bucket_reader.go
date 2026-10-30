@@ -7,7 +7,7 @@ import (
 
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // NewInstrumentedBucketReader returns bucket wrapped to record its object-store

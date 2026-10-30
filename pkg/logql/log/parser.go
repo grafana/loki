@@ -10,10 +10,10 @@ import (
 
 	"github.com/grafana/jsonparser"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
-	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
-	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
+	"github.com/grafana/loki/v4/pkg/logql/log/jsonexpr"
+	"github.com/grafana/loki/v4/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/v4/pkg/logql/log/pattern"
 
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"

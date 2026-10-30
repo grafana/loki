@@ -10,11 +10,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/util/mempool"
+	"github.com/grafana/loki/v4/pkg/compression"
+	v2 "github.com/grafana/loki/v4/pkg/iter/v2"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v4/pkg/util/mempool"
 )
 
 // splits 100 series across `n` non-overlapping blocks.

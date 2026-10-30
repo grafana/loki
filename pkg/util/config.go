@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/common/version"
 	"go.yaml.in/yaml/v4"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // LogConfig takes a pointer to a config object, marshalls it to YAML and prints each line in REVERSE order

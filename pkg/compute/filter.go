@@ -3,8 +3,8 @@ package compute
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // Filter selects rows from the input datum where the corresponding bit in mask

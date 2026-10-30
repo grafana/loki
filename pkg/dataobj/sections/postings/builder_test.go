@@ -13,11 +13,11 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v4/pkg/util/arrowtest"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 func timeUnix(sec, nsec int64) time.Time { return time.Unix(sec, nsec).UTC() }

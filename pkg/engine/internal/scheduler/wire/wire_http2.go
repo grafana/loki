@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
+	"github.com/grafana/loki/v4/pkg/engine/internal/obslock"
 )
 
 // peerAddressHeader is the header used to advertise the address to connect back

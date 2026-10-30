@@ -15,8 +15,8 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange"
+	"github.com/grafana/loki/v4/pkg/util/server"
 )
 
 // newExecutionContext returns a new execution context (execCtx) that wraps the input workerCtx and

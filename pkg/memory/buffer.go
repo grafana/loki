@@ -3,8 +3,8 @@ package memory
 import (
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/memory/internal/memalign"
-	"github.com/grafana/loki/v3/pkg/memory/internal/unsafecast"
+	"github.com/grafana/loki/v4/pkg/memory/internal/memalign"
+	"github.com/grafana/loki/v4/pkg/memory/internal/unsafecast"
 )
 
 // Buffer is a low-level memory buffer for storing a set of elements

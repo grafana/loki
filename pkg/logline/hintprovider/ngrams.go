@@ -3,7 +3,7 @@ package hintprovider
 import (
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline"
 )
 
 // ExtractQueryNgrams converts query text into sorted unique n-gram terms using

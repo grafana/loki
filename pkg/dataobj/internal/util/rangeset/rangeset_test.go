@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/rangeset"
 )
 
 // TestSet_Add_Start tests for the behaviour of adding a new range which is before any existing ranges.

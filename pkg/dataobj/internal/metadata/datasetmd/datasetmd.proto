@@ -14,11 +14,11 @@ syntax = "proto3";
 
 package dataobj.metadata.dataset.v2;
 
-option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd";
+option go_package = "github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd";
 
 // SectionInfoExtension holds basic information about how to read this section.
 // It is encoded into the extension data field of
-// [github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd.FileMetadata].
+// [github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/filemd.FileMetadata].
 message SectionInfoExtension {
   // Byte offset relative to the start of the section's metadata region where
   // SectionMetadata for this section is stored.

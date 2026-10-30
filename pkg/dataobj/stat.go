@@ -1,6 +1,6 @@
 package dataobj
 
-import "github.com/grafana/loki/v3/pkg/xcap"
+import "github.com/grafana/loki/v4/pkg/xcap"
 
 // These stats are defined alongside the dataobj package so that
 // [pkg/dataobj/internal/dataset] can record them without forcing

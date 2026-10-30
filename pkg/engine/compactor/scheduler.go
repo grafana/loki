@@ -10,8 +10,8 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
 )
 
 // Scheduler is the compactor-side scheduler wrapper. It gives the

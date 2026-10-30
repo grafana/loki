@@ -7,7 +7,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
 )
 
 // connectionType represents the purpose of a worker's connection.
