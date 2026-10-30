@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestNewStreams(t *testing.T) {

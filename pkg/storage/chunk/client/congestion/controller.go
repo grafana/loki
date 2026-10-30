@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 

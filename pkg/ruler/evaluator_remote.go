@@ -34,7 +34,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/util/constants"

@@ -17,8 +17,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 
 	"github.com/grafana/loki/pkg/push"

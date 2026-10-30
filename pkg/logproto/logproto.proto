@@ -5,7 +5,7 @@ package logproto;
 import "gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
-import "pkg/logql/model/stats/stats.proto";
+import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
 import "pkg/storage/chunk/cache/resultscache/types.proto";
 

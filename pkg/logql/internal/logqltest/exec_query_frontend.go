@@ -22,7 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	v2 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"

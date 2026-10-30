@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logcli/output"
 	"github.com/grafana/loki/v3/pkg/logcli/util"
 	"github.com/grafana/loki/v3/pkg/loghttp"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 type QueryResultPrinter struct {

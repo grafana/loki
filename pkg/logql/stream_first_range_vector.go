@@ -10,8 +10,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 

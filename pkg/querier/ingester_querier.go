@@ -31,8 +31,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )

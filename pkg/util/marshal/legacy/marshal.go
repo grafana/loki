@@ -11,7 +11,7 @@ import (
 
 	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // Note that the below methods directly marshal the values passed in.  This is because these objects currently marshal

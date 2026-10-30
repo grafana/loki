@@ -49,7 +49,7 @@ linters:
         sync-atomic:
           files:
             - "!**/pkg/logproto/extensions.go"
-            - "!**/pkg/logql/model/stats/context.go"
+            - "!**/pkg/logqlmodel/stats/context.go"
             - "!**/pkg/querier/stats/stats.go"
           deny:
             - pkg: sync/atomic$

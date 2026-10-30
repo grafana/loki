@@ -2,7 +2,7 @@ package loghttp
 
 import (
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // DetectedFieldsResponse represents the JSON response to a detected-field or field-value query.
