@@ -243,7 +243,7 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		iter := newQuantileSketchIterator(newfakePeekingSampleIterator(samples), selRange, step.Nanoseconds(), start.UnixNano(), end.UnixNano(), offset)
+		iter := newQuantileSketchIterator(newfakePeekingSampleIterator(samples), selRange, step.Nanoseconds(), start.UnixNano(), end.UnixNano(), offset, iteratorLimits{})
 		ev := &QuantileSketchStepEvaluator{
 			iter: iter,
 		}
