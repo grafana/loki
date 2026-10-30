@@ -8,8 +8,8 @@ import (
 	"github.com/aws/smithy-go/ptr"
 )
 
-// Grants permission to exchange client credentials for an OAuth 2.0 access token
-// scoped to a resource that can be used to access AWS services from applications
+// Exchanges client credentials for an OAuth 2.0 access token scoped to a
+// resource, which you can use to access AWS services from applications.
 func (c *Client) CreateOAuth2TokenWithIAM(ctx context.Context, params *CreateOAuth2TokenWithIAMInput, optFns ...func(*Options)) (*CreateOAuth2TokenWithIAMOutput, error) {
 	if params == nil {
 		params = &CreateOAuth2TokenWithIAMInput{}
@@ -28,7 +28,7 @@ func (c *Client) CreateOAuth2TokenWithIAM(ctx context.Context, params *CreateOAu
 // Input structure for CreateOAuth2TokenWithIAM operation
 type CreateOAuth2TokenWithIAMInput struct {
 
-	// OAuth 2.0 grant type. Must be "client_credentials".
+	// The OAuth 2.0 grant type. Must be "client_credentials".
 	//
 	// This member is required.
 	GrantType *string
@@ -49,21 +49,23 @@ func (in *CreateOAuth2TokenWithIAMInput) bindEndpointParams(p *EndpointParameter
 
 // Output structure for CreateOAuth2TokenWithIAM operation
 //
-// Contains the JWT access token, token type, and expiration per RFC 6749 §5.1.
+// Contains the access token, token type, and expiration as defined in RFC 6749
+// §5.1.
 type CreateOAuth2TokenWithIAMOutput struct {
 
-	// JWT access token containing principal identity, resource scope, and session
-	// metadata
+	// Access token containing principal identity, resource scope, and session
+	// metadata.
 	//
 	// This member is required.
 	AccessToken *string
 
-	// Token lifetime in seconds. Value is the minimum of session validity and 1 hour.
+	// Token lifetime in seconds. Value is the minimum of the caller's session
+	// validity and 1 hour (3600 seconds).
 	//
 	// This member is required.
 	ExpiresIn *int32
 
-	// Always "Bearer" per OAuth 2.1 specification
+	// The token type. Always "Bearer" as defined in RFC 6749.
 	//
 	// This member is required.
 	TokenType *string

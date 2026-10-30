@@ -16,7 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 
@@ -51,7 +51,7 @@ func TestInstantQueryHandler(t *testing.T) {
 
 		httpHandler.ServeHTTP(rr, req)
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, logqlmodel.ErrUnsupportedSyntaxForInstantQuery.Error(), rr.Body.String())
+		require.Equal(t, logqlerr.ErrUnsupportedSyntaxForInstantQuery.Error(), rr.Body.String())
 	})
 }
 

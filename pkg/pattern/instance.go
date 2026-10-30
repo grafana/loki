@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	syntaxutil "github.com/grafana/loki/v3/pkg/util/syntax"
 )
 
 var tracer = otel.Tracer("pkg/pattern")
@@ -240,7 +241,7 @@ func (i *instance) forMatchingStreams(
 	matchers []*labels.Matcher,
 	fn func(*stream) error,
 ) error {
-	filters, matchers := util.SplitFiltersAndMatchers(matchers)
+	filters, matchers := syntaxutil.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, nil)
 	if err != nil {
 		return err

@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/tracing"
 
@@ -341,7 +342,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	defer cancel()
 
 	if q.checkBlocked(ctx, tenants) {
-		return nil, logqlmodel.ErrBlocked
+		return nil, logqlerr.ErrBlocked
 	}
 
 	switch e := q.params.GetExpression().(type) {
@@ -514,7 +515,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 			next = false
 			vectorsToSeries(vec, seriesIndex)
 		} else {
-			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+			return nil, logqlerr.NewSeriesLimitError(maxSeries)
 		}
 	}
 
@@ -549,7 +550,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		// maxSeries regardless of request type.
 		if vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries) {
 			if !httpreq.IsLogsDrilldownRequest(ctx) {
-				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+				return nil, logqlerr.NewSeriesLimitError(maxSeries)
 			}
 			// Logs Drilldown returns partial results with a warning instead of failing.
 			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
@@ -578,7 +579,7 @@ func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) 
 		switch e := e.(type) {
 		case *syntax.LogRangeExpr:
 			if e.Interval > limit {
-				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
+				err = fmt.Errorf("%w: [%s] > [%s]", logqlerr.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}
 		}
 		return true

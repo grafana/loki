@@ -128,46 +128,6 @@ func _radToDeg(tls *libc.TLS, x float64) (r float64) {
 	return float64(x * (libc.Float64FromFloat64(180) / libc.Float64FromFloat64(3.141592653589793)))
 }
 
-// C documentation
-//
-//	/*
-//	** Convert an sqlite3_value into an RtreeValue (presumably a float)
-//	** while taking care to round toward negative or positive, respectively.
-//	*/
-func _rtreeValueDown(tls *libc.TLS, v uintptr) (r TRtreeValue) {
-	var d, v1 float64
-	var f float32
-	_, _, _ = d, f, v1
-	d = Xsqlite3_value_double(tls, v)
-	f = float32(d)
-	if float64(f) > d {
-		if d < libc.Float64FromInt32(0) {
-			v1 = libc.Float64FromFloat64(1) + libc.Float64FromFloat64(1)/libc.Float64FromFloat64(8.388608e+06)
-		} else {
-			v1 = libc.Float64FromFloat64(1) - libc.Float64FromFloat64(1)/libc.Float64FromFloat64(8.388608e+06)
-		}
-		f = float32(float64(d * v1))
-	}
-	return f
-}
-
-func _rtreeValueUp(tls *libc.TLS, v uintptr) (r TRtreeValue) {
-	var d, v1 float64
-	var f float32
-	_, _, _ = d, f, v1
-	d = Xsqlite3_value_double(tls, v)
-	f = float32(d)
-	if float64(f) < d {
-		if d < libc.Float64FromInt32(0) {
-			v1 = libc.Float64FromFloat64(1) - libc.Float64FromFloat64(1)/libc.Float64FromFloat64(8.388608e+06)
-		} else {
-			v1 = libc.Float64FromFloat64(1) + libc.Float64FromFloat64(1)/libc.Float64FromFloat64(8.388608e+06)
-		}
-		f = float32(float64(d * v1))
-	}
-	return f
-}
-
 func _sqlite3OsCurrentTimeInt64(tls *libc.TLS, pVfs uintptr, pTimeOut uintptr) (r int32) {
 	bp := tls.Alloc(16)
 	defer tls.Free(16)

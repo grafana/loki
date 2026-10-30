@@ -206,7 +206,7 @@ func Xsqlite3_uri_key(tls *libc.TLS, zFilename uintptr, N int32) (r uintptr) {
 //	**
 //	** See also: [sqlite_version()] and [sqlite_source_id()].
 //	*/
-var Xsqlite3_version = [7]int8{'3', '.', '5', '3', '.', '4'}
+var Xsqlite3_version = [7]int8{'3', '.', '5', '4', '.', '1'}
 
 // C documentation
 //
@@ -237,6 +237,8 @@ func Xsqlite3_vsnprintf(tls *libc.TLS, n int32, zBuf uintptr, zFormat uintptr, a
 }
 
 var _aDigits = [33]int8{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'}
+
+var _aHex = [17]int8{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'}
 
 var _aPrefix = [7]int8{'-', 'x', '0', 0, 'X', '0'}
 
@@ -416,23 +418,15 @@ func _codeApplyAffinity(tls *libc.TLS, pParse uintptr, base int32, n int32, zAff
 //	** date back to the end of the month.
 //	*/
 func _computeFloor(tls *libc.TLS, p uintptr) {
-	if (*TDateTime)(unsafe.Pointer(p)).FD <= int32(28) {
-		(*TDateTime)(unsafe.Pointer(p)).FnFloor = 0
+	var mxD, v1 int32
+	_, _ = mxD, v1 /* Maximum day number for the current month */
+	mxD = _daysOfMonth(tls, (*TDateTime)(unsafe.Pointer(p)).FY, (*TDateTime)(unsafe.Pointer(p)).FM)
+	if (*TDateTime)(unsafe.Pointer(p)).FD > mxD {
+		v1 = (*TDateTime)(unsafe.Pointer(p)).FD - mxD
 	} else {
-		if int32(1)<<(*TDateTime)(unsafe.Pointer(p)).FM&int32(0x15aa) != 0 {
-			(*TDateTime)(unsafe.Pointer(p)).FnFloor = 0
-		} else {
-			if (*TDateTime)(unsafe.Pointer(p)).FM != int32(2) {
-				(*TDateTime)(unsafe.Pointer(p)).FnFloor = libc.BoolInt8((*TDateTime)(unsafe.Pointer(p)).FD == libc.Int32FromInt32(31))
-			} else {
-				if (*TDateTime)(unsafe.Pointer(p)).FY%int32(4) != 0 || (*TDateTime)(unsafe.Pointer(p)).FY%int32(100) == 0 && (*TDateTime)(unsafe.Pointer(p)).FY%int32(400) != 0 {
-					(*TDateTime)(unsafe.Pointer(p)).FnFloor = int8((*TDateTime)(unsafe.Pointer(p)).FD - int32(28))
-				} else {
-					(*TDateTime)(unsafe.Pointer(p)).FnFloor = int8((*TDateTime)(unsafe.Pointer(p)).FD - int32(29))
-				}
-			}
-		}
+		v1 = 0
 	}
+	(*TDateTime)(unsafe.Pointer(p)).FnFloor = int8(v1)
 }
 
 // C documentation
@@ -478,6 +472,10 @@ func _computeJD(tls *libc.TLS, p uintptr) {
 		Y = int32(2000) /* If no YMD specified, assume 2000-Jan-01 */
 		M = int32(1)
 		D = int32(1)
+		if (*TDateTime)(unsafe.Pointer(p)).FvalidHMS != 0 && (*TDateTime)(unsafe.Pointer(p)).Fh == int32(24) {
+			(*TDateTime)(unsafe.Pointer(p)).Fh = 0
+			D = int32(2)
+		}
 	}
 	if Y < -int32(4713) || Y > int32(9999) || int32(uint32(*(*uint8)(unsafe.Pointer(p + 44))&0x1>>0)) != 0 {
 		_datetimeError(tls, p)
@@ -729,130 +727,138 @@ func _findNextHostParameter(tls *libc.TLS, zSql uintptr, pnToken uintptr) (r Ti6
 
 var _first_valueName = [12]int8{'f', 'i', 'r', 's', 't', '_', 'v', 'a', 'l', 'u', 'e'}
 
-var _fmtinfo = [23]Tet_info{
+var _fmtinfo = [25]Tet_info{
 	0: {
-		Ffmttype: int8('s'),
-		Fflags:   uint8(4),
-		Ftype1:   uint8(etSTRING),
-		FiNxt:    int8(1),
-	},
-	1: {
-		Ffmttype: int8('E'),
-		Fflags:   uint8(1),
-		Ftype1:   uint8(etEXP),
-		Fcharset: uint8(14),
-	},
-	2: {
-		Ffmttype: int8('u'),
-		Fbase:    uint8(10),
-		Ftype1:   uint8(etDECIMAL),
-		FiNxt:    int8(3),
-	},
-	3: {
-		Ffmttype: int8('G'),
-		Fflags:   uint8(1),
-		Ftype1:   uint8(etGENERIC),
-		Fcharset: uint8(14),
-	},
-	4: {
-		Ffmttype: int8('w'),
-		Fflags:   uint8(4),
-		Ftype1:   uint8(etESCAPE_w),
-	},
-	5: {
-		Ffmttype: int8('x'),
-		Fbase:    uint8(16),
-		Fcharset: uint8(16),
-		Fprefix:  uint8(1),
-	},
-	6: {
-		Ffmttype: int8('c'),
-		Ftype1:   uint8(etCHARX),
-	},
-	7: {
-		Ffmttype: int8('z'),
-		Fflags:   uint8(4),
-		Ftype1:   uint8(etDYNSTRING),
-		FiNxt:    int8(6),
-	},
-	8: {
 		Ffmttype: int8('d'),
 		Fbase:    uint8(10),
 		Fflags:   uint8(1),
 		Ftype1:   uint8(etDECIMAL),
 	},
-	9: {
+	1: {
 		Ffmttype: int8('e'),
 		Fflags:   uint8(1),
 		Ftype1:   uint8(etEXP),
 		Fcharset: uint8(30),
 	},
-	10: {
+	2: {
 		Ffmttype: int8('f'),
 		Fflags:   uint8(1),
 		Ftype1:   uint8(etFLOAT),
 	},
-	11: {
+	3: {
 		Ffmttype: int8('g'),
 		Fflags:   uint8(1),
 		Ftype1:   uint8(etGENERIC),
 		Fcharset: uint8(30),
 	},
-	12: {
-		Ffmttype: int8('Q'),
-		Fflags:   uint8(4),
-		Ftype1:   uint8(etESCAPE_Q),
+	4: {
+		Ffmttype: int8('j'),
+		Ftype1:   uint8(etESCAPE_j),
 	},
-	13: {
+	5: {
 		Ffmttype: int8('i'),
 		Fbase:    uint8(10),
 		Fflags:   uint8(1),
 		Ftype1:   uint8(etDECIMAL),
 	},
-	14: {
-		Ffmttype: int8('%'),
-		Ftype1:   uint8(etPERCENT),
-		FiNxt:    int8(16),
+	6: {
+		Ffmttype: int8('Q'),
+		Fflags:   uint8(4),
+		Ftype1:   uint8(etESCAPE_Q),
+		FiNxt:    int8(4),
 	},
-	15: {
-		Ffmttype: int8('T'),
-		Ftype1:   uint8(etTOKEN),
-	},
-	16: {
-		Ffmttype: int8('S'),
-		Ftype1:   uint8(etSRCITEM),
-	},
-	17: {
-		Ffmttype: int8('X'),
-		Fbase:    uint8(16),
-		Fprefix:  uint8(4),
-	},
-	18: {
-		Ffmttype: int8('n'),
-		Ftype1:   uint8(etSIZE),
-	},
-	19: {
-		Ffmttype: int8('o'),
-		Fbase:    uint8(8),
-		Fprefix:  uint8(2),
-		FiNxt:    int8(17),
-	},
-	20: {
+	7: {
 		Ffmttype: int8('p'),
 		Fbase:    uint8(16),
 		Ftype1:   uint8(etPOINTER),
 		Fprefix:  uint8(1),
 	},
-	21: {
+	8: {
+		Ffmttype: int8('S'),
+		Ftype1:   uint8(etSRCITEM),
+	},
+	9: {
+		Ffmttype: int8('T'),
+		Ftype1:   uint8(etTOKEN),
+	},
+	10: {
+		Ffmttype: int8('n'),
+		Ftype1:   uint8(etSIZE),
+	},
+	11: {
+		Ffmttype: int8('o'),
+		Fbase:    uint8(8),
+		Fprefix:  uint8(2),
+	},
+	12: {
+		Ffmttype: int8('%'),
+		Ftype1:   uint8(etPERCENT),
+		FiNxt:    int8(7),
+	},
+	13: {
 		Ffmttype: int8('q'),
 		Fflags:   uint8(4),
 		Ftype1:   uint8(etESCAPE_q),
+		FiNxt:    int8(16),
 	},
-	22: {
+	14: {
 		Ffmttype: int8('r'),
 		Fbase:    uint8(10),
 		Fflags:   uint8(1),
 		Ftype1:   uint8(etORDINAL),
+	},
+	15: {
+		Ffmttype: int8('s'),
+		Fflags:   uint8(4),
+		Ftype1:   uint8(etSTRING),
+	},
+	16: {
+		Ffmttype: int8('X'),
+		Fbase:    uint8(16),
+		Fprefix:  uint8(4),
+	},
+	17: {
+		Ffmttype: int8('u'),
+		Fbase:    uint8(10),
+		Ftype1:   uint8(etDECIMAL),
+	},
+	18: {
+		Ffmttype: int8('w'),
+		Fflags:   uint8(4),
+		Ftype1:   uint8(etESCAPE_w),
+	},
+	19: {
+		Ffmttype: int8('E'),
+		Fflags:   uint8(1),
+		Ftype1:   uint8(etEXP),
+		Fcharset: uint8(14),
+		FiNxt:    int8(18),
+	},
+	20: {
+		Ffmttype: int8('x'),
+		Fbase:    uint8(16),
+		Fcharset: uint8(16),
+		Fprefix:  uint8(1),
+	},
+	21: {
+		Ffmttype: int8('G'),
+		Fflags:   uint8(1),
+		Ftype1:   uint8(etGENERIC),
+		Fcharset: uint8(14),
+	},
+	22: {
+		Ffmttype: int8('z'),
+		Fflags:   uint8(4),
+		Ftype1:   uint8(etDYNSTRING),
+	},
+	23: {
+		Ffmttype: int8('J'),
+		Ftype1:   uint8(etESCAPE_J),
+	},
+	24: {
+		Ffmttype: int8('c'),
+		Ftype1:   uint8(etCHARX),
+		FiNxt:    int8(23),
 	},
 }
 
@@ -1098,13 +1104,13 @@ func _fts5Porter_Ostar(tls *libc.TLS, zStem uintptr, nStem int32) (r int32) {
 				break
 			}
 			bCons = libc.BoolInt32(!(_fts5PorterIsVowel(tls, **(**int8)(__ccgo_up(zStem + uintptr(i))), bCons) != 0))
-			mask = mask<<int32(1) + bCons
+			mask = (mask<<int32(1) + bCons) & int32(0x0007)
 			goto _1
 		_1:
 			;
 			i = i + 1
 		}
-		return libc.BoolInt32(mask&int32(0x0007) == int32(0x0005))
+		return libc.BoolInt32(mask == int32(0x0005))
 	}
 	return r
 }

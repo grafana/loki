@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/v3/pkg/iter"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
@@ -252,15 +252,15 @@ func (r *streamFirstRangeVectorIterator) accumulatedSeriesFor(lbs string) (*accu
 	//
 	// The series limit counts output series, so it does not bound such series that share one.
 	// Without this check, every one of them keeps an accumulator until load ends.
-	if !r.keepsErroredLines && metric.Has(logqlmodel.ErrorLabel) {
-		return nil, logqlmodel.NewPipelineErr(metric)
+	if !r.keepsErroredLines && metric.Has(logqlerr.ErrorLabel) {
+		return nil, logqlerr.NewPipelineErr(metric)
 	}
 
 	output := r.groupingKey(metric)
 	if _, ok := r.outputs[output]; !ok {
 		if r.maxSeries > 0 && len(r.outputs) >= r.maxSeries {
 			if !r.partialResultsAllowed {
-				return nil, logqlmodel.NewSeriesLimitError(r.maxSeries)
+				return nil, logqlerr.NewSeriesLimitError(r.maxSeries)
 			}
 			r.metadata.AddWarning(seriesLimitPartialResultsWarning(r.maxSeries))
 			return nil, nil

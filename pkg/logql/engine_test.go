@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
@@ -572,7 +573,7 @@ func TestEngine_MaxSeries(t *testing.T) {
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if test.expectLimitErr {
 				require.NotNil(t, err)
-				require.True(t, errors.Is(err, logqlmodel.ErrLimit))
+				require.True(t, errors.Is(err, logqlerr.ErrLimit))
 			} else {
 				require.Nil(t, err)
 			}
@@ -600,7 +601,7 @@ func TestEngine_MaxRangeInterval(t *testing.T) {
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if test.expectLimitErr {
 				require.Error(t, err)
-				require.ErrorIs(t, err, logqlmodel.ErrIntervalLimit)
+				require.ErrorIs(t, err, logqlerr.ErrIntervalLimit)
 			} else {
 				require.NoError(t, err)
 			}
@@ -1213,7 +1214,7 @@ func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 
 			if test.expectError {
 				require.Error(t, err)
-				require.True(t, errors.Is(err, logqlmodel.ErrLimit))
+				require.True(t, errors.Is(err, logqlerr.ErrLimit))
 				require.Nil(t, result)
 			} else {
 				require.NoError(t, err)

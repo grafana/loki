@@ -15,8 +15,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
@@ -221,8 +221,8 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.ErrorIs(t, it.Error(), logqlmodel.ErrLimit)
-		require.EqualError(t, it.Error(), logqlmodel.NewSeriesLimitError(1).Error())
+		require.ErrorIs(t, it.Error(), logqlerr.ErrLimit)
+		require.EqualError(t, it.Error(), logqlerr.NewSeriesLimitError(1).Error())
 	})
 
 	t.Run("ignores a series without samples in any window when enforcing the series limit", func(t *testing.T) {
@@ -253,7 +253,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		var pipelineErr *logqlmodel.PipelineError
+		var pipelineErr *logqlerr.PipelineError
 		require.ErrorAs(t, it.Error(), &pipelineErr)
 		require.Empty(t, md.Warnings())
 	})
@@ -270,7 +270,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(errored).Error())
 	})
 
 	t.Run("fails with the pipeline error and not the limit error when a series over the limit carries an error label", func(t *testing.T) {
@@ -285,7 +285,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(errored).Error())
 	})
 
 	t.Run("fails with the pipeline error when the query has no series limit and the series that carries an error label falls in an existing output series", func(t *testing.T) {
@@ -300,7 +300,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(errored).Error())
 	})
 
 	t.Run("stops reading at the first of many series that carry an error label and fall in one output series", func(t *testing.T) {
@@ -317,7 +317,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 		require.False(t, it.Next())
 		firstErrored := labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo", "n", "0")
-		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(firstErrored).Error())
+		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(firstErrored).Error())
 		require.Less(t, read, 10)
 	})
 
@@ -380,7 +380,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.ErrorIs(t, it.Error(), logqlmodel.ErrLimit)
+		require.ErrorIs(t, it.Error(), logqlerr.ErrLimit)
 	})
 
 	t.Run("keeps a series of an output series it already has when a Logs Drilldown request reached the series limit", func(t *testing.T) {

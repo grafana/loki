@@ -10,6 +10,7 @@
         "api_client_test.go",
         "api_op_CreateOAuth2Token.go",
         "api_op_CreateOAuth2TokenWithIAM.go",
+        "api_op_CreateOAuth2TokenWithTokenExchange.go",
         "api_op_DeleteConsoleAuthorizationConfiguration.go",
         "api_op_DeleteResourcePermissionStatement.go",
         "api_op_GetConsoleAuthorizationConfiguration.go",
