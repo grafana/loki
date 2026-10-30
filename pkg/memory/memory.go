@@ -8,11 +8,11 @@
 //
 // Utility packages are provided to make it easier to work with memory regions:
 //
-//   - [github.com/grafana/loki/v3/pkg/memory/buffer] for resizable typed buffers.
-//   - [github.com/grafana/loki/v3/pkg/memory/bitmap] for bitmaps.
+//   - [github.com/grafana/loki/v4/pkg/memory/buffer] for resizable typed buffers.
+//   - [github.com/grafana/loki/v4/pkg/memory/bitmap] for bitmaps.
 //
 // Memory is EXPERIMENTAL and is currently only intended for use by
-// [github.com/grafana/loki/v3/pkg/dataobj].
+// [github.com/grafana/loki/v4/pkg/dataobj].
 package memory
 
 // Region is a contiguous region of memory owned by an [Allocator].

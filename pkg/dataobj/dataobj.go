@@ -19,7 +19,7 @@
 //
 // Section implementations are stored in their own packages and provide
 // higher-level utilities for writing and reading those sections. See
-// [github.com/grafana/loki/v3/pkg/dataobj/sections/logs] for an example.
+// [github.com/grafana/loki/v4/pkg/dataobj/sections/logs] for an example.
 //
 // # Creating a new section implementation
 //
