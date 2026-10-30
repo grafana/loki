@@ -11,11 +11,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/twmb/franz-go/pkg/kmsg"
-	"golang.org/x/crypto/pbkdf2"
-)
+	"crypto/pbkdf2"
 
-// TODO server-error-value in serverFinal
+	"github.com/twmb/franz-go/pkg/kmsg"
+)
 
 const (
 	saslPlain       = "PLAIN"
@@ -47,7 +46,7 @@ const (
 	saslStageComplete
 )
 
-func (c *Cluster) handleSASL(creq *clientReq) (allow bool) {
+func (*Cluster) handleSASL(creq *clientReq) (allow bool) {
 	switch creq.cc.saslStage {
 	case saslStageBegin:
 		switch creq.kreq.(type) {
@@ -96,12 +95,12 @@ func saslSplitPlain(auth []byte) (user, pass string, err error) {
 
 func newScramAuth(mechanism, pass string) scramAuth {
 	var saltedPass []byte
-	salt := randBytes(10)
+	salt := randBytes(16)
 	switch mechanism {
 	case saslScram256:
-		saltedPass = pbkdf2.Key([]byte(pass), salt, scramIterations, sha256.Size, sha256.New)
+		saltedPass, _ = pbkdf2.Key(sha256.New, pass, salt, scramIterations, sha256.Size) // cannot fail: salt >= 16 B, keyLen = 32 B
 	case saslScram512:
-		saltedPass = pbkdf2.Key([]byte(pass), salt, scramIterations, sha512.Size, sha512.New)
+		saltedPass, _ = pbkdf2.Key(sha512.New, pass, salt, scramIterations, sha512.Size) // cannot fail: salt >= 16 B, keyLen = 64 B
 	default:
 		panic("unreachable")
 	}

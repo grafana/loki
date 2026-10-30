@@ -9,10 +9,6 @@ import (
 	"sync"
 )
 
-func randFill(slice []byte) {
-	randPoolFill(slice)
-}
-
 func randBytes(n int) []byte {
 	r := make([]byte, n)
 	randPoolFill(r)

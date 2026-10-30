@@ -7,16 +7,45 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// AlterUserSCRAMCredentials: v0
+//
+// Behavior:
+// * Must be sent to the controller
+// * Creates, updates, or deletes SCRAM credentials for users
+// * Supports SCRAM-SHA-256 (mechanism 1) and SCRAM-SHA-512 (mechanism 2)
+// * Iterations must be between 4096 and 16384
+
 func init() { regKey(51, 0, 0) }
 
-func (c *Cluster) handleAlterUserSCRAMCredentials(b *broker, kreq kmsg.Request) (kmsg.Response, error) {
+func (c *Cluster) handleAlterUserSCRAMCredentials(creq *clientReq) (kmsg.Response, error) {
 	var (
-		req  = kreq.(*kmsg.AlterUserSCRAMCredentialsRequest)
+		b    = creq.cc.b
+		req  = creq.kreq.(*kmsg.AlterUserSCRAMCredentialsRequest)
 		resp = req.ResponseKind().(*kmsg.AlterUserSCRAMCredentialsResponse)
 	)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
+	}
+
+	// Faults fire only on the controller; elsewhere we answer
+	// NOT_CONTROLLER below. A timed-out change still changes the
+	// credentials, and every user is answered with the fault.
+	clusterFault := c.denyCluster(creq, kmsg.ACLOperationAlter, faultKey{misrouted: b != c.controller})
+	if e := clusterFault; e != nil && creq.skipsWork(e) {
+		for _, d := range req.Deletions {
+			sr := kmsg.NewAlterUserSCRAMCredentialsResponseResult()
+			sr.User = d.Name
+			sr.ErrorCode = e.Code
+			resp.Results = append(resp.Results, sr)
+		}
+		for _, u := range req.Upsertions {
+			sr := kmsg.NewAlterUserSCRAMCredentialsResponseResult()
+			sr.User = u.Name
+			sr.ErrorCode = e.Code
+			resp.Results = append(resp.Results, sr)
+		}
+		return resp, nil
 	}
 
 	addr := func(u string) *kmsg.AlterUserSCRAMCredentialsResponseResult {
@@ -25,10 +54,15 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(b *broker, kreq kmsg.Request) 
 		resp.Results = append(resp.Results, sr)
 		return &resp.Results[len(resp.Results)-1]
 	}
-	doneu := func(u string, code int16) *kmsg.AlterUserSCRAMCredentialsResponseResult {
+	// A fault can answer a user before the work runs. The work's own answer
+	// for that user must not add an entry or replace the code.
+	answered := make(map[string]bool)
+	doneu := func(u string, code int16) {
+		if answered[u] {
+			return
+		}
 		sr := addr(u)
 		sr.ErrorCode = code
-		return sr
 	}
 
 	users := make(map[string]int16)
@@ -67,6 +101,23 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(b *broker, kreq kmsg.Request) 
 			doneu(u, kerr.NotController.Code)
 		}
 		return resp, nil
+	}
+
+	// A timed-out change still changes the credential, and its user is
+	// answered with the fault.
+	fault := func(u string, e *kerr.Error) {
+		doneu(u, e.Code)
+		answered[u] = true
+		if creq.skipsWork(e) {
+			users[u] = e.Code
+		}
+	}
+	for u := range users {
+		if clusterFault != nil {
+			fault(u, clusterFault)
+		} else if e := creq.faults.check(faultKey{resource: u}); e != nil {
+			fault(u, e)
+		}
 	}
 
 	// Add anything that failed validation.
@@ -120,5 +171,6 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(b *broker, kreq kmsg.Request) 
 		doneu(u.Name, 0)
 	}
 
+	c.persistSASLState()
 	return resp, nil
 }
