@@ -5,7 +5,7 @@
 // Reach for objtest when a test needs section resolution to work, because the metastore, the
 // section indexes and the stream IDs are all real.
 //
-// Reach for [github.com/grafana/loki/v3/pkg/dataobj/fixtures] instead when a test only needs one
+// Reach for [github.com/grafana/loki/v4/pkg/dataobj/fixtures] instead when a test only needs one
 // object with a hand-laid section and no bucket. That is cheaper and lets the test state every
 // row.
 package objtest

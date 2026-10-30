@@ -2,7 +2,7 @@
 // [columnar.Datum] values with a selection vector.
 //
 // Package expr is EXPERIMENTAL and currently only intended to be used by
-// [github.com/grafana/loki/v3/pkg/dataobj].
+// [github.com/grafana/loki/v4/pkg/dataobj].
 package expr
 
 import (
