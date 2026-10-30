@@ -568,6 +568,51 @@ func TestEncodeIngestedAtDayDelta(t *testing.T) {
 	}
 }
 
+func TestRoundIngestedAtUpToDay(t *testing.T) {
+	baseDay := 20_000 * ingestedAtDayMilliseconds
+	maxTime := baseDay + 200
+
+	for _, tc := range []struct {
+		desc       string
+		ingestedAt int64
+	}{
+		{desc: "zero", ingestedAt: 0},
+		{desc: "exactly on a day boundary", ingestedAt: baseDay},
+		{desc: "just after a day boundary", ingestedAt: baseDay + 1},
+		{desc: "late in the day", ingestedAt: baseDay + ingestedAtDayMilliseconds - 1},
+		{desc: "days after maxtime", ingestedAt: baseDay + 3*ingestedAtDayMilliseconds + 5200},
+		{desc: "day before maxtime", ingestedAt: baseDay - ingestedAtDayMilliseconds + 5200},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			rounded := RoundIngestedAtUpToDay(tc.ingestedAt, maxTime)
+
+			// The rounded value is what the index reads back for the same chunk.
+			var w Creator
+			w.Version = FormatV4
+			primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			w.addChunks([]ChunkMeta{{MinTime: baseDay, MaxTime: maxTime, IngestedAt: tc.ingestedAt, KB: 1, Entries: 1, Checksum: 1}}, &primary, &scratch, ChunkPageSize)
+
+			decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+			dec := newDecoder(nil, 0)
+			dst := []ChunkMeta{}
+			require.Nil(t, dec.readChunks(FormatV4, &decbuf, 0, 0, math.MaxInt64, &dst))
+			require.Len(t, dst, 1)
+			require.Equal(t, dst[0].IngestedAt, rounded)
+
+			// Rounding is stable, so indexing an already rounded chunk changes nothing.
+			require.Equal(t, rounded, RoundIngestedAtUpToDay(rounded, maxTime))
+		})
+	}
+
+	t.Run("same day values round to the same value", func(t *testing.T) {
+		require.Equal(t,
+			RoundIngestedAtUpToDay(baseDay+ingestedAtDayMilliseconds+1000, maxTime),
+			RoundIngestedAtUpToDay(baseDay+ingestedAtDayMilliseconds+9000, maxTime),
+		)
+	})
+}
+
 func TestSearchWithPageMarkers(t *testing.T) {
 	for _, pageSize := range []int{
 		2,

@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -671,7 +672,15 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time) {
 
 	// Stamp the flush time. Backfilled chunks are flushed shortly after they are
 	// ingested, so at the day precision used by the index this matches ingestion.
-	ch.IngestedAt = model.Now()
+	// The value is rounded up to the day the way the index stores it so it is also identical
+	// across replicas flushing the same chunk within the same day. IngestedAt is
+	// part of the encoded chunk, so a millisecond-precision value would give each
+	// replica a different checksum and chunk key and prevent deduplication.
+	//
+	// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
+	// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
+	// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
+	ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(ch.Through)))
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
