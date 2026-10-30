@@ -331,7 +331,7 @@ func (c *Config) Validate() error {
 		if err := c.IngestLimits.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits config"))
 		}
-		if err := c.IngestLimitsFrontend.Validate(); err != nil {
+		if err := c.IngestLimitsFrontend.Validate(c.IngestLimits); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend config"))
 		}
 	}
