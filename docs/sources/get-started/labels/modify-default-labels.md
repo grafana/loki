@@ -112,34 +112,27 @@ loki.process "pod_logs" {
 
 ## Kubernetes Monitoring Helm chart configuration example
 
-If you are using the [Kubernetes Monitoring Helm chart](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/) to collect Kubernetes logs to send to Loki, the following example shows how to update the `values.yaml` file for your Helm chart to demote `k8s.pod.name` and `service.instance.id` from index labels to structured metadata.
+If you are using the [Kubernetes Monitoring Helm chart](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/) to collect Kubernetes logs to send to Loki, the following example shows how to update the `values.yaml` file for your Helm chart to demote `k8s.pod.name` and `service.instance.id` from index labels to structured metadata when gathering Pod logs via the Kubernetes API (the `podLogsViaKubernetesApi` feature).
 
 ```yaml
-# Enable pod log collection for the cluster. Will collect logs from all pods in both the meta and loki namespace. 
-
-podLogs:
+# Enable Pod log collection for the cluster. Collects logs from all Pods in both the meta and loki namespaces.
+podLogsViaKubernetesApi:
   enabled: true
+  # collector must match a name defined under your own top-level collectors: map.
   collector: alloy-singleton
-  #List of attributes to use as index labels in loki
-  labelsToKeep:
-    - app
-    - app_kubernetes_io_name
-    - component
-    - container
-    - job
-    - level
-    - namespace
-    - service_name
-    - cluster
-  gatherMethod: kubernetesApi
   namespaces:
     - meta
     - loki
-  #This is the section that specifies to send k8s.pod.name and service.instance.id to structured metadata
+  # This is the section that specifies to send k8s.pod.name and service.instance.id to structured metadata
+  # instead of promoting them to indexed labels. Format is <key>: <extracted_key>.
   structuredMetadata:
-    instance_id:
-    pod:
-  ```
+    k8s.pod.name: k8s.pod.name
+    service.instance.id: service.instance.id
+```
+
+{{< admonition type="note" >}}
+Chart version 4.x replaced the old `labelsToKeep` filter list with explicit `labels:` and `annotations:` promotion maps: instead of filtering down a larger generated label set, you opt in to the specific Pod labels and annotations you want copied to log labels. By default, `podLogsViaKubernetesApi` already keeps `k8s.pod.name` and `service.instance.id` out of the indexed labels and sends them as structured metadata; the configuration above shows how to set this explicitly. For the full set of available `labels:`, `annotations:`, and `structuredMetadata:` options, refer to the [feature-pod-logs-via-kubernetes-api documentation](https://github.com/grafana/k8s-monitoring-helm/tree/main/charts/k8s-monitoring/charts/feature-pod-logs-via-kubernetes-api).
+{{< /admonition >}}
 
 ## Loki configuration example
 

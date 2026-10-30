@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -44,9 +45,40 @@ func BoolSlice(val, sep string) ([]bool, error) {
 	return values, nil
 }
 
+// parseFloat parses a floating point value the way the proto3 JSON mapping
+// does: a decimal number, or the exact strings "Infinity", "-Infinity" and
+// "NaN". strconv.ParseFloat additionally accepts hexadecimal floats ("0x1p4"),
+// underscore digit separators ("1_000") and alternate infinity/NaN spellings
+// ("Inf", "nan", "infinity"), none of which protojson (and so the request body
+// and backend) accept. Reject those so a value bound from a query or path
+// parameter can't differ from the same value sent in the body.
+func parseFloat(val string, bitSize int) (float64, error) {
+	switch val {
+	case "Infinity":
+		return math.Inf(1), nil
+	case "-Infinity":
+		return math.Inf(-1), nil
+	case "NaN":
+		return math.NaN(), nil
+	}
+	if strings.ContainsAny(val, "xX_") {
+		return 0, fmt.Errorf("invalid syntax %q", val)
+	}
+	f, err := strconv.ParseFloat(val, bitSize)
+	if err != nil {
+		return 0, err
+	}
+	// ParseFloat only yields Inf/NaN without an error for the alternate
+	// spellings handled above; overflow returns a range error instead.
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return 0, fmt.Errorf("invalid syntax %q", val)
+	}
+	return f, nil
+}
+
 // Float64 converts the given string representation into representation of a floating point number into float64.
 func Float64(val string) (float64, error) {
-	return strconv.ParseFloat(val, 64)
+	return parseFloat(val, 64)
 }
 
 // Float64Slice converts 'val' where individual floating point numbers are separated by
@@ -66,7 +98,7 @@ func Float64Slice(val, sep string) ([]float64, error) {
 
 // Float32 converts the given string representation of a floating point number into float32.
 func Float32(val string) (float32, error) {
-	f, err := strconv.ParseFloat(val, 32)
+	f, err := parseFloat(val, 32)
 	if err != nil {
 		return 0, err
 	}
