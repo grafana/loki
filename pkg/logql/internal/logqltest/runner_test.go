@@ -37,6 +37,92 @@ func TestLogQLScripts(t *testing.T) {
 	}
 }
 
+// TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFrontendStacks runs
+// every script under a low series limit on the direct stack and the query-frontend stack without
+// query sharding, and checks that every eval ends the same way on both. The limit makes many evals
+// fail, so the check covers the series limit failures.
+//
+// The query-frontend stack with query sharding is left out: it sends the child of a topk(),
+// bottomk(), stddev() or stdvar() to the querier on its own, and that child can fail on the
+// series limit where the whole query does not.
+func TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFrontendStacks(t *testing.T) {
+	const maxQuerySeries = 2
+
+	files, err := filepath.Glob("testdata/*.logqltest")
+	require.NoError(t, err)
+	require.NotEmpty(t, files, "no .logqltest scripts found under testdata/")
+
+	for _, f := range files {
+		t.Run(filepath.Base(f), func(t *testing.T) {
+			t.Parallel()
+
+			b, err := os.ReadFile(f)
+			require.NoError(t, err)
+
+			direct := newDirectTimestampFirstStackWith(t, "direct", stackOptions{maxQuerySeries: maxQuerySeries})
+			queryFrontend, err := newQueryFrontendTimestampFirstStackWith(t, "query-frontend", false, stackOptions{maxQuerySeries: maxQuerySeries})
+			require.NoError(t, err)
+
+			outcomes := runScriptOutcomes(t, filepath.Base(f), string(b), []executionStack{direct, queryFrontend})
+			requireSameOutcomes(t, outcomes[direct.name()], outcomes[queryFrontend.name()])
+		})
+	}
+}
+
+func TestRunScriptOutcomes_ShouldReportTheSeriesLimitFailures(t *testing.T) {
+	const script = `
+load
+  {app="a"} "x" @ 30s
+  {app="b"} "x" @ 30s
+  {app="c"} "x" @ 30s
+
+eval instant at 60s count_over_time({app=~"a|b|c"}[1m])
+  {app="a"} 1
+  {app="b"} 1
+  {app="c"} 1
+
+eval instant at 60s sum(count_over_time({app=~"a|b|c"}[1m]))
+  {} 3
+`
+	queryFrontend, err := newQueryFrontendTimestampFirstStackWith(t, "query-frontend", true, stackOptions{maxQuerySeries: 2})
+	require.NoError(t, err)
+	stacks := []executionStack{
+		newDirectTimestampFirstStackWith(t, "direct", stackOptions{maxQuerySeries: 2}),
+		queryFrontend,
+	}
+
+	outcomes := runScriptOutcomes(t, "series limit", script, stacks)
+	for _, stack := range stacks {
+		got := outcomes[stack.name()]
+		require.Len(t, got, 2, stack.name())
+
+		require.Equal(t, `instant: count_over_time({app=~"a|b|c"}[1m])`, got[0].eval, stack.name())
+		require.ErrorContains(t, got[0].err, "maximum number of series (2) reached", stack.name())
+		require.True(t, got[0].isSeriesLimitFailure(), stack.name())
+
+		require.Equal(t, `instant: sum(count_over_time({app=~"a|b|c"}[1m]))`, got[1].eval, stack.name())
+		require.NoError(t, got[1].err, stack.name())
+	}
+}
+
+// requireSameOutcomes checks that every eval that neither skipped ends the same way in want and
+// got: both succeed, both fail on the series limit, or both fail on something else. It doesn't
+// compare error messages, because some name whichever series failed first, which varies between
+// runs.
+func requireSameOutcomes(t *testing.T, want, got []evalOutcome) {
+	t.Helper()
+
+	require.Len(t, got, len(want))
+	for i := range want {
+		require.Equal(t, want[i].eval, got[i].eval)
+		if want[i].skipped || got[i].skipped {
+			continue
+		}
+		require.Equalf(t, want[i].err == nil, got[i].err == nil, "%s: want error %v, got %v", want[i].eval, want[i].err, got[i].err)
+		require.Equalf(t, want[i].isSeriesLimitFailure(), got[i].isSeriesLimitFailure(), "%s: want error %v, got %v", want[i].eval, want[i].err, got[i].err)
+	}
+}
+
 func TestRunScript_ShouldSupportClear(t *testing.T) {
 	// Verify that `clear` resets the loaded streams between scenarios.
 	RunScript(t, "clear", `

@@ -63,7 +63,13 @@ func newQueryFrontendTimestampFirstStack(t *testing.T, queryShardingEnabled bool
 	if queryShardingEnabled {
 		stackName = queryFrontendShardTimestampFirstStackName
 	}
-	return newQueryFrontendStack(t, stackName, queryShardingEnabled, execLimits{}, newChunkQuerier, time.Time{})
+	return newQueryFrontendTimestampFirstStackWith(t, stackName, queryShardingEnabled, stackOptions{})
+}
+
+// newQueryFrontendTimestampFirstStackWith returns the query-frontend stack in timestamp-first
+// order, with query sharding on or off, changed by opts.
+func newQueryFrontendTimestampFirstStackWith(t *testing.T, stackName string, queryShardingEnabled bool, opts stackOptions) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendStack(t, stackName, queryShardingEnabled, execLimits{maxQuerySeries: opts.maxQuerySeries}, newChunkQuerier, time.Time{})
 }
 
 // newQueryFrontendStreamFirstStack returns the query-frontend stack with query sharding and
@@ -119,7 +125,7 @@ func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled 
 		return nil, err
 	}
 
-	overrides, err := newQueryFrontendOverrides(limits.StreamFirstExecutionEnabled(tenant), dataObjQueryStart)
+	overrides, err := newQueryFrontendOverrides(limits, dataObjQueryStart)
 	if err != nil {
 		return abort(err)
 	}
@@ -336,13 +342,22 @@ func (s *queryFrontendExecutionStack) queryHandler(logger log.Logger) queryrange
 	}
 }
 
-// newQueryFrontendOverrides returns the limits of the query-frontend. The tenant reads data objects
-// from dataObjQueryStart on. A zero dataObjQueryStart turns them off.
-func newQueryFrontendOverrides(streamFirstEnabled bool, dataObjQueryStart time.Time) (*validation.Overrides, error) {
+// defaultMaxQuerySeries returns the default series limit of a tenant.
+func defaultMaxQuerySeries() int {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	return limits.MaxQuerySeries
+}
+
+// newQueryFrontendOverrides returns the limits of the query-frontend. They take the series limit and
+// stream-first execution from querierLimits, so the query-frontend and the querier agree. The
+// tenant reads data objects from dataObjQueryStart on. A zero dataObjQueryStart turns them off.
+func newQueryFrontendOverrides(querierLimits logql.Limits, dataObjQueryStart time.Time) (*validation.Overrides, error) {
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
 
-	limits.StreamFirstExecutionEnabled = streamFirstEnabled
+	limits.MaxQuerySeries = querierLimits.MaxQuerySeries(tenant)
+	limits.StreamFirstExecutionEnabled = querierLimits.StreamFirstExecutionEnabled(tenant)
 	limits.DataObjQueryStartTime = flagext.Time(dataObjQueryStart)
 
 	// Set both bytes-per-shard limits to a low value to deterministically fan out each query into a
