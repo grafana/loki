@@ -141,7 +141,7 @@ require (
 	github.com/moby/moby/client v0.4.1
 	github.com/ncw/swift/v2 v2.0.5
 	github.com/oklog/ulid/v2 v2.1.2
-	github.com/parquet-go/parquet-go v0.29.0
+	github.com/parquet-go/parquet-go v0.32.0
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/prometheus/alertmanager v0.32.1
 	github.com/prometheus/common/sigv4 v0.1.0

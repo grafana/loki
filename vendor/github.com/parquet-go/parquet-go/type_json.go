@@ -15,7 +15,7 @@ import (
 func JSON() Node { return Leaf(&jsonType{}) }
 
 var jsonLogicalType = format.LogicalType{
-	Json: new(format.JsonType),
+	Value: new(format.JsonType),
 }
 
 type jsonType format.JsonType

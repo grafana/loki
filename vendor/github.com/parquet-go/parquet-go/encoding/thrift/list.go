@@ -69,7 +69,7 @@ func (l Slice[T]) DecodeFunc(cache DecodeFuncCache) DecodeFunc {
 			if flags.Have(Strict) {
 				return &TypeMismatch{item: "list item", Expect: elemType, Found: listHeader.Type}
 			}
-			return nil
+			return skipListItems(r, listHeader)
 		}
 
 		size := int(listHeader.Size)

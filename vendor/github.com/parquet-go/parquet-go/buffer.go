@@ -144,6 +144,10 @@ func (buf *GenericBuffer[T]) Rows() Rows {
 	return buf.base.Rows()
 }
 
+// chunkTransparentRowGroup marks GenericBuffer as safe for the chunk-level
+// write fast paths, for the same reasons as Buffer.
+func (buf *GenericBuffer[T]) chunkTransparentRowGroup() {}
+
 func (buf *GenericBuffer[T]) Schema() *Schema {
 	return buf.base.Schema()
 }
@@ -436,6 +440,11 @@ func (buf *Buffer) WriteRowGroup(rowGroup RowGroup) (int64, error) {
 // The buffer and the returned reader share memory. Mutating the buffer
 // concurrently to reading rows may result in non-deterministic behavior.
 func (buf *Buffer) Rows() Rows { return NewRowGroupRowReader(buf) }
+
+// chunkTransparentRowGroup marks Buffer as safe for the chunk-level write fast
+// paths: its Rows() reads the column buffers in order, and sorting reorders all
+// columns together, so column-wise reads preserve row order.
+func (buf *Buffer) chunkTransparentRowGroup() {}
 
 // bufferWriter is an adapter for Buffer which implements both RowWriter and
 // PageWriter to enable optimizations in CopyRows for types that support writing

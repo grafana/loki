@@ -9,7 +9,7 @@ var (
 	// ErrCorrupted is an error returned by the Err method of ColumnPages
 	// instances when they encountered a mismatch between the CRC checksum
 	// recorded in a page header and the one computed while reading the page
-	// data.
+	// data. Also returned on invalid headers / footer decoding.
 	ErrCorrupted = errors.New("corrupted parquet page")
 
 	// ErrMissingRootColumn is an error returned when opening an invalid parquet

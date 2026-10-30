@@ -12,7 +12,7 @@ type nullPage struct {
 	count  int
 }
 
-func newNullPage(typ Type, columnIndex int16, numValues int32) *nullPage {
+func newNullPage(typ Type, columnIndex uint16, numValues int32) *nullPage {
 	return &nullPage{
 		typ:    typ,
 		column: int(columnIndex),
@@ -44,7 +44,7 @@ type nullPageValues struct {
 }
 
 func (r *nullPageValues) ReadValues(values []Value) (n int, err error) {
-	columnIndex := ^int16(r.column)
+	columnIndex := ^uint16(r.column)
 	values = values[:min(r.remain, len(values))]
 	for i := range values {
 		values[i] = Value{columnIndex: columnIndex}

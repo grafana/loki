@@ -13,7 +13,7 @@ import (
 
 type be128ColumnBuffer struct{ be128Page }
 
-func newBE128ColumnBuffer(typ Type, columnIndex int16, numValues int32) *be128ColumnBuffer {
+func newBE128ColumnBuffer(typ Type, columnIndex uint16, numValues int32) *be128ColumnBuffer {
 	return &be128ColumnBuffer{
 		be128Page: be128Page{
 			typ:         typ,

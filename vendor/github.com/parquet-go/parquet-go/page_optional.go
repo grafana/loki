@@ -72,7 +72,7 @@ type optionalPageValues struct {
 func (r *optionalPageValues) ReadValues(values []Value) (n int, err error) {
 	maxDefinitionLevel := r.page.maxDefinitionLevel
 	definitionLevels := r.page.definitionLevels
-	columnIndex := ^int16(r.page.Column())
+	columnIndex := ^uint16(r.page.Column())
 
 	for n < len(values) && r.offset < len(definitionLevels) {
 		for n < len(values) && r.offset < len(definitionLevels) && definitionLevels[r.offset] != maxDefinitionLevel {

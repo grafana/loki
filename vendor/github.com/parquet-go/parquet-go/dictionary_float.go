@@ -15,7 +15,7 @@ type floatDictionary struct {
 	table *hashprobe.Float32Table
 }
 
-func newFloatDictionary(typ Type, columnIndex int16, numValues int32, data encoding.Values) *floatDictionary {
+func newFloatDictionary(typ Type, columnIndex uint16, numValues int32, data encoding.Values) *floatDictionary {
 	return &floatDictionary{
 		floatPage: floatPage{
 			typ:         typ,
