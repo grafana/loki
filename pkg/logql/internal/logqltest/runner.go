@@ -37,9 +37,59 @@ const (
 func RunScript(t *testing.T, name, script string) {
 	t.Helper()
 
+	stacks := newExecutionStacks(t, name)
+	runScript(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
+		runEval(t, name, stacks, cmd, exp)
+	})
+}
+
+// evalOutcome is how one eval ended on one execution stack.
+type evalOutcome struct {
+	// eval identifies the eval, as its subtest does.
+	eval string
+	// skipped is set when the stack does not support the eval, which then has no err.
+	skipped bool
+	// err is the error the query failed with, or nil when it succeeded.
+	err error
+}
+
+// isSeriesLimitFailure reports whether the query failed on the series limit. It reads the error
+// message, because a query-frontend stack returns the error decoded from an HTTP response, which
+// errors.Is cannot match against logqlmodel.ErrLimit.
+func (o evalOutcome) isSeriesLimitFailure() bool {
+	return o.err != nil && strings.Contains(o.err.Error(), "maximum number of series")
+}
+
+// runScriptOutcomes runs every eval of script on each of stacks and returns how each one ended,
+// by stack name, in script order. Every stack has an outcome for every eval, so the outcomes of two
+// stacks line up.
+//
+// It does not check the results against the eval expectations. A test compares the outcomes of
+// two stacks instead, so the stacks can run with options, such as a low series limit, that the
+// expectations don't account for.
+func runScriptOutcomes(t *testing.T, name, script string, stacks []executionStack) map[string][]evalOutcome {
+	t.Helper()
+
+	outcomes := make(map[string][]evalOutcome, len(stacks))
+	runScript(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
+		for _, stack := range stacks {
+			outcome := evalOutcome{eval: evalLabel(cmd), skipped: !stack.isEvalSupported(cmd, exp)}
+			if !outcome.skipped {
+				_, outcome.err = stack.eval(cmd)
+			}
+			outcomes[stack.name()] = append(outcomes[stack.name()], outcome)
+		}
+	})
+	return outcomes
+}
+
+// runScript parses script, loads its streams into every stack, and calls runEval for each of its
+// evals.
+func runScript(t *testing.T, name, script string, stacks []executionStack, runEval func(cmd evalCmd, exp expectations)) {
+	t.Helper()
+
 	streams := newStreamsParser()
 	streamsChanged := true
-	stacks := newExecutionStacks(t, name)
 
 	// Every stack reads the same stores, which are expensive to build.
 	stores := newScriptStores(t)
@@ -96,7 +146,7 @@ func RunScript(t *testing.T, name, script string) {
 				t.Fatalf("%s: eval %q: %v", name, cmd.query, err)
 			}
 			refreshStreams()
-			runEval(t, name, stacks, cmd, exp)
+			runEval(cmd, exp)
 		default:
 			t.Fatalf("%s: unexpected command %q", name, fields[0])
 		}
@@ -126,6 +176,9 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 		must(newQueryFrontendStreamFirstStack(t)),
 		must(newQueryFrontendDataObjStack(t)),
 		must(newQueryFrontendDataObjAndChunkStack(t)),
+
+		// The querier runs with the default series limit, which no script reaches.
+		newDirectTimestampFirstStackWith(t, directDefaultSeriesLimitStackName, stackOptions{maxQuerySeries: defaultMaxQuerySeries()}),
 	}
 }
 
@@ -133,19 +186,8 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 // query skips its subtest (visible in the output) instead of being omitted.
 func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, exp expectations) {
 	t.Helper()
-	label := cmd.query
-	switch cmd.mode {
-	case evalInstant:
-		label = "instant: " + label
-	case evalRange:
-		label = "range: " + label
-	case evalSelect:
-		label = "select " + strings.ToLower(cmd.direction.String()) + ": " + label
-	default:
-		panic(fmt.Sprintf("unknown eval mode %v", cmd.mode))
-	}
 
-	t.Run(label, func(t *testing.T) {
+	t.Run(evalLabel(cmd), func(t *testing.T) {
 		for _, stack := range stacks {
 			t.Run(stack.name(), func(t *testing.T) {
 				if !stack.isEvalSupported(cmd, exp) {
@@ -157,6 +199,20 @@ func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, ex
 			})
 		}
 	})
+}
+
+// evalLabel returns the name of the subtest of cmd: its mode and its query.
+func evalLabel(cmd evalCmd) string {
+	switch cmd.mode {
+	case evalInstant:
+		return "instant: " + cmd.query
+	case evalRange:
+		return "range: " + cmd.query
+	case evalSelect:
+		return "select " + strings.ToLower(cmd.direction.String()) + ": " + cmd.query
+	default:
+		panic(fmt.Sprintf("unknown eval mode %v", cmd.mode))
+	}
 }
 
 // effectiveEpsilon returns the floating point comparison tolerance for stackName: the value set
