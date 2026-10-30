@@ -36,8 +36,8 @@ type OpenObjects struct {
 	tenant        string
 	prefetchBytes int64
 
-	// metadataCache holds each object's metadata region. It is shared across queries, and nil
-	// when caching is off.
+	// metadataCache holds each object's metadata region, or the entire object if it is tiny. It is
+	// shared across queries, and nil when caching is off.
 	metadataCache dataobj.MetadataCache
 
 	mu     sync.Mutex
