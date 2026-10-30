@@ -78,6 +78,7 @@ func (c cmdable) bitOp(ctx context.Context, op, destKey string, keys ...string) 
 		args[3+i] = key
 	}
 	cmd := NewIntCmd(ctx, args...)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }

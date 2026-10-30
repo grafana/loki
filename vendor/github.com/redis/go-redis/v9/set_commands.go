@@ -1,10 +1,6 @@
 package redis
 
-import (
-	"context"
-
-	"github.com/redis/go-redis/v9/internal/hashtag"
-)
+import "context"
 
 // SetCmdable is an interface for Redis set commands.
 // Sets are unordered collections of unique strings.
@@ -12,6 +8,7 @@ type SetCmdable interface {
 	SAdd(ctx context.Context, key string, members ...interface{}) *IntCmd
 	SCard(ctx context.Context, key string) *IntCmd
 	SDiff(ctx context.Context, keys ...string) *StringSliceCmd
+	SDiffCard(ctx context.Context, opts *SDiffCardOptions, keys ...string) *IntCmd
 	SDiffStore(ctx context.Context, destination string, keys ...string) *IntCmd
 	SInter(ctx context.Context, keys ...string) *StringSliceCmd
 	SInterCard(ctx context.Context, limit int64, keys ...string) *IntCmd
@@ -28,7 +25,19 @@ type SetCmdable interface {
 	SRem(ctx context.Context, key string, members ...interface{}) *IntCmd
 	SScan(ctx context.Context, key string, cursor uint64, match string, count int64) *ScanCmd
 	SUnion(ctx context.Context, keys ...string) *StringSliceCmd
+	SUnionCard(ctx context.Context, opts *SUnionCardOptions, keys ...string) *IntCmd
 	SUnionStore(ctx context.Context, destination string, keys ...string) *IntCmd
+}
+
+// SUnionCardOptions are the options for SUnionCard.
+type SUnionCardOptions struct {
+	Approx bool  // use an approximate (HyperLogLog) count.
+	Limit  int64 // cap the result; 0 means no limit.
+}
+
+// SDiffCardOptions are the options for SDiffCard.
+type SDiffCardOptions struct {
+	Limit int64 // cap the result; 0 means no limit.
 }
 
 // Returns the number of elements that were added to the set, not including all
@@ -96,6 +105,30 @@ func (c cmdable) SDiffStore(ctx context.Context, destination string, keys ...str
 	return cmd
 }
 
+// Returns the cardinality of the difference of the first set and the rest.
+// Missing keys are treated as empty sets.
+//
+// For more information about the command please refer to [SDIFFCARD].
+//
+// [SDIFFCARD]: (https://redis.io/docs/latest/commands/sdiffcard/)
+func (c cmdable) SDiffCard(ctx context.Context, opts *SDiffCardOptions, keys ...string) *IntCmd {
+	if opts == nil {
+		opts = &SDiffCardOptions{}
+	}
+	numKeys := len(keys)
+	args := make([]interface{}, 0, 4+numKeys)
+	args = append(args, "sdiffcard", numKeys)
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	args = append(args, "limit", opts.Limit)
+	cmd := NewIntCmd(ctx, args...)
+	// Keys start after the numkeys arg: ["sdiffcard", numKeys, key1, ...].
+	cmd.SetFirstKeyPos(2)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
 // Returns the members of the set resulting from the intersection of all the given sets.
 // Keys that do not exist are considered to be empty sets.
 // With one of the keys being an empty set, the resulting set is also empty.
@@ -135,6 +168,10 @@ func (c cmdable) SInterCard(ctx context.Context, limit int64, keys ...string) *I
 	args[2+numKeys] = "limit"
 	args[3+numKeys] = limit
 	cmd := NewIntCmd(ctx, args...)
+	// The key follows numkeys, not args[1]: route by it.
+	if len(keys) > 0 {
+		cmd.SetFirstKeyPos(2)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -328,6 +365,33 @@ func (c cmdable) SUnionStore(ctx context.Context, destination string, keys ...st
 	return cmd
 }
 
+// Returns the cardinality of the union of all the given sets.
+// Missing keys are treated as empty sets.
+//
+// For more information about the command please refer to [SUNIONCARD].
+//
+// [SUNIONCARD]: (https://redis.io/docs/latest/commands/sunioncard/)
+func (c cmdable) SUnionCard(ctx context.Context, opts *SUnionCardOptions, keys ...string) *IntCmd {
+	if opts == nil {
+		opts = &SUnionCardOptions{}
+	}
+	numKeys := len(keys)
+	args := make([]interface{}, 0, 4+numKeys+1)
+	args = append(args, "sunioncard", numKeys)
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	if opts.Approx {
+		args = append(args, "approx")
+	}
+	args = append(args, "limit", opts.Limit)
+	cmd := NewIntCmd(ctx, args...)
+	// Keys start after the numkeys arg: ["sunioncard", numKeys, key1, ...].
+	cmd.SetFirstKeyPos(2)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
 // Incrementally iterates the set elements stored at key.
 // This is a cursor-based iterator that allows scanning large sets efficiently.
 //
@@ -348,9 +412,6 @@ func (c cmdable) SScan(ctx context.Context, key string, cursor uint64, match str
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
-	if hashtag.Present(match) {
-		cmd.SetFirstKeyPos(4)
-	}
 	_ = c(ctx, cmd)
 	return cmd
 }

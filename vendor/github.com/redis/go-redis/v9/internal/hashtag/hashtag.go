@@ -1,9 +1,8 @@
 package hashtag
 
 import (
+	"math/rand"
 	"strings"
-
-	"github.com/redis/go-redis/v9/internal/rand"
 )
 
 const slotNumber = 16384
@@ -11,7 +10,7 @@ const slotNumber = 16384
 // CRC16 implementation according to CCITT standards.
 // Copyright 2001-2010 Georges Menie (www.menie.org)
 // Copyright 2013 The Go Authors. All rights reserved.
-// http://redis.io/topics/cluster-spec#appendix-a-crc16-reference-implementation-in-ansi-c
+// https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec#appendix-a-crc16-reference-implementation-in-ansi-c.
 var crc16tab = [256]uint16{
 	0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
 	0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
