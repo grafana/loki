@@ -146,6 +146,23 @@ eval range from 40s to 60s step 20s sum by (who) (count_over_time({app="a"} | lo
   {who="alice"} 2 3
   {who="bob"} 1 1
 
+# trunc() and substr() count characters, not bytes, so they do not cut a multi-byte character.
+clear
+load
+  {app="a"} "x" @ 20s [repeat every 20s for 3] [metadata city="São"]
+  {app="a"} "x" @ 30s                          [metadata city="Santos"] # noise the filter drops
+
+eval instant at 60s count_over_time({app="a"} | line_format "{{ .city | substr 0 2 }}" |= "Sã" [1m])
+  {app="a", city="São"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | line_format "{{ .city | substr 0 2 }}" |= "Sã" [1m])   # overlapping
+  {app="a", city="São"} 2 3
+eval instant at 60s sum by (short) (count_over_time({app="a"} | label_format short="{{ .city | trunc 2 }}" [1m]))
+  {short="Sã"} 3
+  {short="Sa"} 1
+eval instant at 60s sum by (short) (count_over_time({app="a"} | label_format short="{{ .city | trunc -2 }}" [1m]))
+  {short="ão"} 3
+  {short="os"} 1
+
 # decolorize removes ANSI color codes from the line.
 #
 # The DSL cannot embed an ESC byte, so line_format with printf generates the colored line first;
