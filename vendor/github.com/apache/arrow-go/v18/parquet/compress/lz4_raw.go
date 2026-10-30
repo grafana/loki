@@ -35,6 +35,10 @@ func compressBlock(src, dst []byte) (int, error) {
 type lz4RawCodec struct{}
 
 func (c lz4RawCodec) Encode(dst, src []byte) []byte {
+	if bound := c.CompressBound(int64(len(src))); int64(cap(dst)) < bound {
+		dst = make([]byte, int(bound))
+	}
+
 	n, err := compressBlock(src, dst[:cap(dst)])
 	if err != nil {
 		panic(err)
@@ -49,12 +53,20 @@ func (c lz4RawCodec) EncodeLevel(dst, src []byte, _ int) []byte {
 }
 
 func (lz4RawCodec) Decode(dst, src []byte) []byte {
-	n, err := lz4.UncompressBlock(src, dst)
+	dst, err := (lz4RawCodec{}).DecodeWithError(dst, src)
 	if err != nil {
 		panic(err)
 	}
+	return dst
+}
 
-	return dst[:n]
+func (lz4RawCodec) DecodeWithError(dst, src []byte) ([]byte, error) {
+	n, err := lz4.UncompressBlock(src, dst)
+	if err != nil {
+		return nil, err
+	}
+
+	return dst[:n], nil
 }
 
 func (c lz4RawCodec) CompressBound(len int64) int64 {

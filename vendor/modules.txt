@@ -347,8 +347,8 @@ github.com/aliyun/aliyun-oss-go-sdk/oss
 ## explicit; go 1.22
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
-# github.com/apache/arrow-go/v18 v18.5.2
-## explicit; go 1.24.0
+# github.com/apache/arrow-go/v18 v18.8.0
+## explicit; go 1.25.0
 github.com/apache/arrow-go/v18/arrow
 github.com/apache/arrow-go/v18/arrow/array
 github.com/apache/arrow-go/v18/arrow/arrio
@@ -377,6 +377,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
+github.com/apache/arrow-go/v18/internal/utils/maphash
 github.com/apache/arrow-go/v18/parquet
 github.com/apache/arrow-go/v18/parquet/compress
 github.com/apache/arrow-go/v18/parquet/internal/debug
@@ -1400,10 +1401,6 @@ github.com/julienschmidt/httprouter
 # github.com/kamstrup/intmap v0.5.2
 ## explicit; go 1.23
 github.com/kamstrup/intmap
-# github.com/klauspost/asmfmt v1.3.2
-## explicit; go 1.16
-github.com/klauspost/asmfmt
-github.com/klauspost/asmfmt/cmd/asmfmt
 # github.com/klauspost/compress v1.20.3
 ## explicit; go 1.25
 github.com/klauspost/compress
@@ -1422,8 +1419,8 @@ github.com/klauspost/compress/snappy/xerial
 github.com/klauspost/compress/zlib
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/klauspost/cpuid/v2 v2.3.0
-## explicit; go 1.22
+# github.com/klauspost/cpuid/v2 v2.4.0
+## explicit; go 1.24.0
 github.com/klauspost/cpuid/v2
 # github.com/klauspost/crc32 v1.3.0
 ## explicit; go 1.23.0
@@ -1492,12 +1489,6 @@ github.com/mfridman/interpolate
 # github.com/miekg/dns v1.1.73
 ## explicit; go 1.25.0
 github.com/miekg/dns
-# github.com/minio/asm2plan9s v0.0.0-20200509001527-cdd76441f9d8
-## explicit
-github.com/minio/asm2plan9s
-# github.com/minio/c2goasm v0.0.0-20190812172519-36a3d3bbc4f3
-## explicit
-github.com/minio/c2goasm
 # github.com/minio/crc64nvme v1.1.1
 ## explicit; go 1.22
 github.com/minio/crc64nvme
@@ -2492,11 +2483,6 @@ golang.org/x/crypto/sha3
 ## explicit; go 1.26.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
-# golang.org/x/mod v0.42.0
-## explicit; go 1.26.0
-golang.org/x/mod/internal/lazyregexp
-golang.org/x/mod/module
-golang.org/x/mod/semver
 # golang.org/x/net v0.61.0
 ## explicit; go 1.26.0
 golang.org/x/net/bpf
@@ -2544,12 +2530,6 @@ golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 golang.org/x/sys/windows/svc/eventlog
-# golang.org/x/telemetry v0.0.0-20261021172232-6cd571d43fbb
-## explicit; go 1.26.0
-golang.org/x/telemetry/counter
-golang.org/x/telemetry/internal/counter
-golang.org/x/telemetry/internal/mmap
-golang.org/x/telemetry/internal/telemetry
 # golang.org/x/term v0.47.0
 ## explicit; go 1.26.0
 golang.org/x/term
@@ -2586,34 +2566,7 @@ golang.org/x/text/unicode/norm
 golang.org/x/time/rate
 # golang.org/x/tools v0.52.0
 ## explicit; go 1.26.0
-golang.org/x/tools/cmd/goimports
-golang.org/x/tools/cmd/stringer
-golang.org/x/tools/go/ast/astutil
-golang.org/x/tools/go/ast/edge
-golang.org/x/tools/go/ast/inspector
-golang.org/x/tools/go/gcexportdata
-golang.org/x/tools/go/packages
-golang.org/x/tools/go/types/objectpath
-golang.org/x/tools/internal/event
-golang.org/x/tools/internal/event/core
-golang.org/x/tools/internal/event/keys
-golang.org/x/tools/internal/event/label
-golang.org/x/tools/internal/gcimporter
-golang.org/x/tools/internal/gocommand
-golang.org/x/tools/internal/gopathwalk
-golang.org/x/tools/internal/imports
-golang.org/x/tools/internal/modindex
-golang.org/x/tools/internal/moremaps
-golang.org/x/tools/internal/packagesinternal
-golang.org/x/tools/internal/pkgbits
-golang.org/x/tools/internal/stdlib
-golang.org/x/tools/internal/typesinternal
-golang.org/x/tools/internal/versions
 golang.org/x/tools/txtar
-# golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da
-## explicit; go 1.18
-golang.org/x/xerrors
-golang.org/x/xerrors/internal
 # google.golang.org/api v0.309.0
 ## explicit; go 1.26.0
 google.golang.org/api/cloudresourcemanager/v1

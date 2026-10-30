@@ -30,6 +30,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/float16"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/internal/bitutils"
 	"github.com/apache/arrow-go/v18/internal/hashing"
 	"github.com/apache/arrow-go/v18/internal/json"
 	"github.com/apache/arrow-go/v18/internal/utils"
@@ -57,6 +58,72 @@ type Dictionary struct {
 
 	indices arrow.Array
 	dict    arrow.Array
+}
+
+const maxDictionaryIndexValidRuns = 8
+
+type dictionaryIndexValidRuns struct {
+	runs       [maxDictionaryIndexValidRuns]bitutils.SetBitRun
+	count      int
+	fragmented bool
+}
+
+func findDictionaryIndexValidRuns(validBits []byte, offset, length int) dictionaryIndexValidRuns {
+	var result dictionaryIndexValidRuns
+	reader := bitutils.NewSetBitRunReader(validBits, int64(offset), int64(length))
+	for i := range result.runs {
+		run := reader.NextRun()
+		if run.AtEnd() {
+			result.count = i
+			return result
+		}
+		result.runs[i] = run
+	}
+
+	result.count = len(result.runs)
+	result.fragmented = !reader.NextRun().AtEnd()
+	return result
+}
+
+func getMinMaxRuns[T arrow.IntType | arrow.UintType](
+	values []T, offset int, runs []bitutils.SetBitRun, getMinMax func([]T) (T, T),
+) (min, max T, hasValues bool) {
+	for _, run := range runs {
+		start := offset + int(run.Pos)
+		runMin, runMax := getMinMax(values[start : start+int(run.Length)])
+		if !hasValues {
+			min, max, hasValues = runMin, runMax, true
+			continue
+		}
+		if runMin < min {
+			min = runMin
+		}
+		if runMax > max {
+			max = runMax
+		}
+	}
+	return
+}
+
+func getMinMaxValid[T arrow.IntType | arrow.UintType](
+	values []T, validBits []byte, offset, length int, getMinMax func([]T) (T, T),
+) (min, max T, hasValues bool) {
+	visitRun := func(pos, runLength int64) {
+		start := offset + int(pos)
+		runMin, runMax := getMinMax(values[start : start+int(runLength)])
+		if !hasValues {
+			min, max, hasValues = runMin, runMax, true
+			return
+		}
+		if runMin < min {
+			min = runMin
+		}
+		if runMax > max {
+			max = runMax
+		}
+	}
+	bitutils.VisitSetBitRunsNoErr(validBits, int64(offset), int64(length), visitRun)
+	return
 }
 
 // NewDictionaryArray constructs a dictionary array with the provided indices
@@ -103,55 +170,181 @@ func checkIndexBounds(indices *Data, upperlimit uint64) error {
 	start := indices.offset
 	end := indices.offset + indices.length
 
-	// TODO(ARROW-15950): lift BitSetRunReader from parquet to utils
-	// and use it here for performance improvement.
+	var validBits []byte
+	var validRuns dictionaryIndexValidRuns
+	if indices.buffers[0] != nil && indices.nulls != 0 {
+		validBits = indices.buffers[0].Bytes()
+		// Run-based min/max is useful for clustered validity. Fragmented
+		// bitmaps retain the whole-slice fast path below.
+		validRuns = findDictionaryIndexValidRuns(validBits, start, indices.length)
+	}
 
 	switch indices.dtype.ID() {
 	case arrow.INT8:
 		data := arrow.Int8Traits.CastFromBytes(indices.buffers[1].Bytes())
-		min, max := utils.GetMinMaxInt8(data[start:end])
-		if min < 0 || max >= int8(upperlimit) {
+		min, max := int8(0), int8(0)
+		hasValues := true
+		if validBits == nil {
+			min, max = utils.GetMinMaxInt8(data[start:end])
+		} else if !validRuns.fragmented {
+			min, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxInt8)
+		} else {
+			min, max = utils.GetMinMaxInt8(data[start:end])
+			if min >= 0 && uint64(max) < upperlimit {
+				return nil
+			}
+			min, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxInt8)
+		}
+		if !hasValues {
+			return nil
+		}
+		if min < 0 || uint64(max) >= upperlimit {
 			return fmt.Errorf("contains out of bounds index: min: %d, max: %d", min, max)
 		}
 	case arrow.UINT8:
 		data := arrow.Uint8Traits.CastFromBytes(indices.buffers[1].Bytes())
-		_, max := utils.GetMinMaxUint8(data[start:end])
+		max := uint8(0)
+		hasValues := true
+		if validBits == nil {
+			_, max = utils.GetMinMaxUint8(data[start:end])
+		} else if !validRuns.fragmented {
+			_, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxUint8)
+		} else {
+			_, max = utils.GetMinMaxUint8(data[start:end])
+			if uint64(max) < upperlimit {
+				return nil
+			}
+			_, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxUint8)
+		}
+		if !hasValues {
+			return nil
+		}
 		if max >= uint8(upperlimit) {
 			return fmt.Errorf("contains out of bounds index: max: %d", max)
 		}
 	case arrow.INT16:
 		data := arrow.Int16Traits.CastFromBytes(indices.buffers[1].Bytes())
-		min, max := utils.GetMinMaxInt16(data[start:end])
-		if min < 0 || max >= int16(upperlimit) {
+		min, max := int16(0), int16(0)
+		hasValues := true
+		if validBits == nil {
+			min, max = utils.GetMinMaxInt16(data[start:end])
+		} else if !validRuns.fragmented {
+			min, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxInt16)
+		} else {
+			min, max = utils.GetMinMaxInt16(data[start:end])
+			if min >= 0 && uint64(max) < upperlimit {
+				return nil
+			}
+			min, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxInt16)
+		}
+		if !hasValues {
+			return nil
+		}
+		if min < 0 || uint64(max) >= upperlimit {
 			return fmt.Errorf("contains out of bounds index: min: %d, max: %d", min, max)
 		}
 	case arrow.UINT16:
 		data := arrow.Uint16Traits.CastFromBytes(indices.buffers[1].Bytes())
-		_, max := utils.GetMinMaxUint16(data[start:end])
+		max := uint16(0)
+		hasValues := true
+		if validBits == nil {
+			_, max = utils.GetMinMaxUint16(data[start:end])
+		} else if !validRuns.fragmented {
+			_, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxUint16)
+		} else {
+			_, max = utils.GetMinMaxUint16(data[start:end])
+			if uint64(max) < upperlimit {
+				return nil
+			}
+			_, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxUint16)
+		}
+		if !hasValues {
+			return nil
+		}
 		if max >= uint16(upperlimit) {
 			return fmt.Errorf("contains out of bounds index: max: %d", max)
 		}
 	case arrow.INT32:
 		data := arrow.Int32Traits.CastFromBytes(indices.buffers[1].Bytes())
-		min, max := utils.GetMinMaxInt32(data[start:end])
-		if min < 0 || max >= int32(upperlimit) {
+		min, max := int32(0), int32(0)
+		hasValues := true
+		if validBits == nil {
+			min, max = utils.GetMinMaxInt32(data[start:end])
+		} else if !validRuns.fragmented {
+			min, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxInt32)
+		} else {
+			min, max = utils.GetMinMaxInt32(data[start:end])
+			if min >= 0 && uint64(max) < upperlimit {
+				return nil
+			}
+			min, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxInt32)
+		}
+		if !hasValues {
+			return nil
+		}
+		if min < 0 || uint64(max) >= upperlimit {
 			return fmt.Errorf("contains out of bounds index: min: %d, max: %d", min, max)
 		}
 	case arrow.UINT32:
 		data := arrow.Uint32Traits.CastFromBytes(indices.buffers[1].Bytes())
-		_, max := utils.GetMinMaxUint32(data[start:end])
+		max := uint32(0)
+		hasValues := true
+		if validBits == nil {
+			_, max = utils.GetMinMaxUint32(data[start:end])
+		} else if !validRuns.fragmented {
+			_, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxUint32)
+		} else {
+			_, max = utils.GetMinMaxUint32(data[start:end])
+			if uint64(max) < upperlimit {
+				return nil
+			}
+			_, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxUint32)
+		}
+		if !hasValues {
+			return nil
+		}
 		if max >= uint32(upperlimit) {
 			return fmt.Errorf("contains out of bounds index: max: %d", max)
 		}
 	case arrow.INT64:
 		data := arrow.Int64Traits.CastFromBytes(indices.buffers[1].Bytes())
-		min, max := utils.GetMinMaxInt64(data[start:end])
-		if min < 0 || max >= int64(upperlimit) {
+		min, max := int64(0), int64(0)
+		hasValues := true
+		if validBits == nil {
+			min, max = utils.GetMinMaxInt64(data[start:end])
+		} else if !validRuns.fragmented {
+			min, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxInt64)
+		} else {
+			min, max = utils.GetMinMaxInt64(data[start:end])
+			if min >= 0 && uint64(max) < upperlimit {
+				return nil
+			}
+			min, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxInt64)
+		}
+		if !hasValues {
+			return nil
+		}
+		if min < 0 || uint64(max) >= upperlimit {
 			return fmt.Errorf("contains out of bounds index: min: %d, max: %d", min, max)
 		}
 	case arrow.UINT64:
 		data := arrow.Uint64Traits.CastFromBytes(indices.buffers[1].Bytes())
-		_, max := utils.GetMinMaxUint64(data[indices.offset : indices.offset+indices.length])
+		max := uint64(0)
+		hasValues := true
+		if validBits == nil {
+			_, max = utils.GetMinMaxUint64(data[start:end])
+		} else if !validRuns.fragmented {
+			_, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxUint64)
+		} else {
+			_, max = utils.GetMinMaxUint64(data[start:end])
+			if max < upperlimit {
+				return nil
+			}
+			_, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxUint64)
+		}
+		if !hasValues {
+			return nil
+		}
 		if max >= upperlimit {
 			return fmt.Errorf("contains out of bounds value: max: %d", max)
 		}
@@ -295,6 +488,13 @@ func (d *Dictionary) GetOneForMarshal(i int) interface{} {
 	return d.Dictionary().GetOneForMarshal(vidx)
 }
 
+func (d *Dictionary) ValueAsAny(i int) any {
+	if d.IsNull(i) {
+		return nil
+	}
+	return ValueAsAny(d.Dictionary(), d.GetValueIndex(i))
+}
+
 func (d *Dictionary) MarshalJSON() ([]byte, error) {
 	vals := make([]any, d.Len())
 	for i := range d.Len() {
@@ -314,7 +514,8 @@ func arrayApproxEqualDict(l, r *Dictionary, opt equalOption) bool {
 // helper for building the properly typed indices of the dictionary builder
 type IndexBuilder struct {
 	Builder
-	Append func(int)
+	Append       func(int)
+	UnsafeAppend func(int)
 }
 
 func createIndexBuilder(mem memory.Allocator, dt arrow.FixedWidthDataType) (ret IndexBuilder, err error) {
@@ -324,33 +525,57 @@ func createIndexBuilder(mem memory.Allocator, dt arrow.FixedWidthDataType) (ret 
 		ret.Append = func(idx int) {
 			ret.Builder.(*Int8Builder).Append(int8(idx))
 		}
+		ret.UnsafeAppend = func(idx int) {
+			ret.Builder.(*Int8Builder).UnsafeAppend(int8(idx))
+		}
 	case arrow.UINT8:
 		ret.Append = func(idx int) {
 			ret.Builder.(*Uint8Builder).Append(uint8(idx))
+		}
+		ret.UnsafeAppend = func(idx int) {
+			ret.Builder.(*Uint8Builder).UnsafeAppend(uint8(idx))
 		}
 	case arrow.INT16:
 		ret.Append = func(idx int) {
 			ret.Builder.(*Int16Builder).Append(int16(idx))
 		}
+		ret.UnsafeAppend = func(idx int) {
+			ret.Builder.(*Int16Builder).UnsafeAppend(int16(idx))
+		}
 	case arrow.UINT16:
 		ret.Append = func(idx int) {
 			ret.Builder.(*Uint16Builder).Append(uint16(idx))
+		}
+		ret.UnsafeAppend = func(idx int) {
+			ret.Builder.(*Uint16Builder).UnsafeAppend(uint16(idx))
 		}
 	case arrow.INT32:
 		ret.Append = func(idx int) {
 			ret.Builder.(*Int32Builder).Append(int32(idx))
 		}
+		ret.UnsafeAppend = func(idx int) {
+			ret.Builder.(*Int32Builder).UnsafeAppend(int32(idx))
+		}
 	case arrow.UINT32:
 		ret.Append = func(idx int) {
 			ret.Builder.(*Uint32Builder).Append(uint32(idx))
+		}
+		ret.UnsafeAppend = func(idx int) {
+			ret.Builder.(*Uint32Builder).UnsafeAppend(uint32(idx))
 		}
 	case arrow.INT64:
 		ret.Append = func(idx int) {
 			ret.Builder.(*Int64Builder).Append(int64(idx))
 		}
+		ret.UnsafeAppend = func(idx int) {
+			ret.Builder.(*Int64Builder).UnsafeAppend(int64(idx))
+		}
 	case arrow.UINT64:
 		ret.Append = func(idx int) {
 			ret.Builder.(*Uint64Builder).Append(uint64(idx))
+		}
+		ret.UnsafeAppend = func(idx int) {
+			ret.Builder.(*Uint64Builder).UnsafeAppend(uint64(idx))
 		}
 	default:
 		debug.Assert(false, "dictionary index type must be integral")
@@ -636,14 +861,43 @@ func (b *dictionaryBuilder) AppendNulls(n int) {
 }
 
 func (b *dictionaryBuilder) AppendEmptyValue() {
-	b.length += 1
-	b.idxBuilder.AppendEmptyValue()
+	b.AppendEmptyValues(1)
 }
 
 func (b *dictionaryBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+
+	if b.dt.ValueType.ID() == arrow.NULL {
+		b.AppendNulls(n)
+		return
+	}
+
+	valueBuilder := NewBuilder(b.mem, b.dt.ValueType)
+	defer valueBuilder.Release()
+	valueBuilder.AppendEmptyValue()
+
+	values := valueBuilder.NewArray()
+	defer values.Release()
+	idx, _, err := b.memoTable.GetOrInsert(getvalFn(values)(0))
+	if err != nil {
+		panic(err)
+	}
+
+	b.idxBuilder.Reserve(n)
+	for i := 0; i < n; i++ {
+		b.idxBuilder.UnsafeAppend(idx)
+	}
+	b.length += n
+}
+
+func (b *dictionaryBuilder) UnsafeAppendBoolToBitmap(v bool) {
+	if !v {
+		b.nulls += 1
+	}
+	b.length += 1
+	b.idxBuilder.UnsafeAppendBoolToBitmap(v)
 }
 
 func (b *dictionaryBuilder) Reserve(n int) {
@@ -653,6 +907,13 @@ func (b *dictionaryBuilder) Reserve(n int) {
 func (b *dictionaryBuilder) Resize(n int) {
 	b.idxBuilder.Resize(n)
 	b.length = b.idxBuilder.Len()
+	b.nulls = b.idxBuilder.NullN()
+}
+
+func (b *dictionaryBuilder) truncate(n int) {
+	b.idxBuilder.truncate(n)
+	b.length = b.idxBuilder.Len()
+	b.nulls = b.idxBuilder.NullN()
 }
 
 func (b *dictionaryBuilder) ResetFull() {
@@ -661,12 +922,30 @@ func (b *dictionaryBuilder) ResetFull() {
 	b.memoTable.Reset()
 }
 
+type dictionaryBuilderCheckpoint struct {
+	builder *dictionaryBuilder
+	size    int
+}
+
+func (c *dictionaryBuilderCheckpoint) capture() {
+	c.size = c.builder.memoTable.Size()
+}
+
+func (c *dictionaryBuilderCheckpoint) restore() {
+	c.builder.memoTable.Truncate(c.size)
+}
+
+func (b *dictionaryBuilder) newCheckpoint() checkpointState {
+	return &dictionaryBuilderCheckpoint{builder: b}
+}
+
 func (b *dictionaryBuilder) Cap() int { return b.idxBuilder.Cap() }
 
 func (b *dictionaryBuilder) IsNull(i int) bool { return b.idxBuilder.IsNull(i) }
 
 func (b *dictionaryBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -778,6 +1057,13 @@ func (b *dictionaryBuilder) insertDictValue(val interface{}) error {
 
 func (b *dictionaryBuilder) insertDictBytes(val []byte) error {
 	_, _, err := b.memoTable.GetOrInsertBytes(val)
+	return err
+}
+
+func (b *dictionaryBuilder) unsafeAppendValue(val interface{}) error {
+	idx, _, err := b.memoTable.GetOrInsert(val)
+	b.idxBuilder.UnsafeAppend(idx)
+	b.length += 1
 	return err
 }
 
@@ -990,7 +1276,39 @@ type dictBuilder[T arrow.ValueType] struct {
 	dictionaryBuilder
 }
 
+func (b *dictBuilder[T]) UnsafeAppend(v T) {
+	// SAFETY: it is safe to ignore the value returned by the calls to `unsafeAppendValue()`
+	// here since `UnsafeAppend()` is statically typed and the only case in which that method
+	// errors is when trying to insert an invalid `interface{}` into the `memoTable`.
+	var err error
+	switch val := any(v).(type) {
+	case arrow.Duration:
+		err = b.unsafeAppendValue(int64(val))
+	case arrow.Timestamp:
+		err = b.unsafeAppendValue(int64(val))
+	case arrow.Time32:
+		err = b.unsafeAppendValue(int32(val))
+	case arrow.Time64:
+		err = b.unsafeAppendValue(int64(val))
+	case arrow.Date32:
+		err = b.unsafeAppendValue(int32(val))
+	case arrow.Date64:
+		err = b.unsafeAppendValue(int64(val))
+	case arrow.MonthInterval:
+		err = b.unsafeAppendValue(int32(val))
+	default:
+		err = b.unsafeAppendValue(v)
+	}
+	debug.Assert(err == nil, "Trying to insert wrong type into memoTable even though this method is statically typed. This is an implementation bug.")
+}
+
 func (b *dictBuilder[T]) Append(v T) error {
+	// TODO: it is safe to ignore the value returned by the calls to `appendValue()`
+	// here since `Append()` is statically typed and the only case in which that
+	// method errors is when trying to insert an invalid `interface{}` into the `memoTable`.
+	//
+	// This would be a breaking change to the public API of `dictBuilder`, so it needs
+	// to happen over a major release.
 	switch val := any(v).(type) {
 	case arrow.Duration:
 		return b.appendValue(int64(val))
@@ -1058,6 +1376,12 @@ func (b *BinaryDictionaryBuilder) Append(v []byte) error {
 		return nil
 	}
 
+	// TODO: it is safe to ignore the value returned by the call to `appendBytes()`
+	// here since `Append()` is statically typed and the only case in which that
+	// method errors is when trying to insert an invalid `interface{}` into the `memoTable`.
+	//
+	// This would be a breaking change to the public API of `BinaryDictionaryBuilder`,
+	// so it needs to happen over a major release.
 	return b.appendBytes(v)
 }
 
@@ -1134,6 +1458,13 @@ type fixedSizeDictionaryBuilder[T fsbType] struct {
 }
 
 func (b *fixedSizeDictionaryBuilder[T]) Append(v T) error {
+	// TODO: it is safe to ignore the value returned by the calls to `appendValue()`
+	// and `appendBytes()` here since `Append()` is statically typed and the only
+	// case in which these method error is when trying to insert an invalid
+	// `interface{}` into the `memoTable`.
+	//
+	// This would be a breaking change to the public API of `fixedSizeDictionaryBuilder`,
+	// so it needs to happen over a major release.
 	if v, ok := any(v).([]byte); ok {
 		return b.appendBytes(v[:b.byteWidth])
 	}
@@ -1164,6 +1495,12 @@ type FixedSizeBinaryDictionaryBuilder struct {
 }
 
 func (b *FixedSizeBinaryDictionaryBuilder) Append(v []byte) error {
+	// TODO: it is safe to ignore the value returned by the calls to `appendValue()`
+	// here since `Append()` is statically typed and the only case in which that
+	// method errors is when trying to insert an invalid `interface{}` into the `memoTable`.
+	//
+	// This would be a breaking change to the public API of `FixedSizeBinaryDictionaryBuilder`,
+	// so it needs to happen over a major release.
 	return b.appendValue(v[:b.byteWidth])
 }
 

@@ -18,6 +18,7 @@ package ipc
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -149,8 +150,10 @@ type messageReader struct {
 	refCount atomic.Int64
 	msg      *Message
 
-	mem    memory.Allocator
-	header [4]byte
+	mem             memory.Allocator
+	maxMetadataSize int64
+	maxBodySize     int64
+	header          [4]byte
 }
 
 // NewMessageReader returns a reader that reads messages from an input stream.
@@ -160,9 +163,22 @@ func NewMessageReader(r io.Reader, opts ...Option) MessageReader {
 		opt(cfg)
 	}
 
-	mr := &messageReader{r: r, mem: cfg.alloc}
+	mr := &messageReader{
+		r:               r,
+		mem:             cfg.alloc,
+		maxMetadataSize: cfg.maxMetadataSize,
+		maxBodySize:     cfg.maxBodySize,
+	}
 	mr.refCount.Add(1)
 	return mr
+}
+
+func readFullMessagePart(r io.Reader, buf []byte) error {
+	_, err := io.ReadFull(r, buf)
+	if errors.Is(err, io.EOF) {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }
 
 // Retain increases the reference count by 1.
@@ -188,9 +204,16 @@ func (r *messageReader) Release() {
 // Message returns the current message that has been extracted from the
 // underlying stream.
 // It is valid until the next call to Message.
-func (r *messageReader) Message() (*Message, error) {
+func (r *messageReader) Message() (msg *Message, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			msg = nil
+			err = fmt.Errorf("arrow/ipc: invalid message metadata: %v", recovered)
+		}
+	}()
+
 	buf := r.header[:]
-	_, err := io.ReadFull(r.r, buf)
+	_, err = io.ReadFull(r.r, buf)
 	if err != nil {
 		return nil, fmt.Errorf("arrow/ipc: could not read continuation indicator: %w", err)
 	}
@@ -203,7 +226,7 @@ func (r *messageReader) Message() (*Message, error) {
 		// EOS message.
 		return nil, io.EOF // FIXME(sbinet): send nil instead? or a special EOS error?
 	case kIPCContToken:
-		_, err = io.ReadFull(r.r, buf)
+		err = readFullMessagePart(r.r, buf)
 		if err != nil {
 			return nil, fmt.Errorf("arrow/ipc: could not read message length: %w", err)
 		}
@@ -218,21 +241,34 @@ func (r *messageReader) Message() (*Message, error) {
 		// messages produced prior to version 0.15.0
 		msgLen = int32(cid)
 	}
+	if msgLen < 4 {
+		return nil, fmt.Errorf("arrow/ipc: invalid message metadata length %d", msgLen)
+	}
+	if r.maxMetadataSize > 0 && int64(msgLen) > r.maxMetadataSize {
+		return nil, fmt.Errorf("arrow/ipc: message metadata length %d exceeds limit %d", msgLen, r.maxMetadataSize)
+	}
 
 	buf = make([]byte, msgLen)
-	_, err = io.ReadFull(r.r, buf)
+	err = readFullMessagePart(r.r, buf)
 	if err != nil {
 		return nil, fmt.Errorf("arrow/ipc: could not read message metadata: %w", err)
 	}
 
 	meta := flatbuf.GetRootAsMessage(buf, 0)
 	bodyLen := meta.BodyLength()
+	maxInt := int64(^uint(0) >> 1)
+	if bodyLen < 0 || bodyLen > maxInt {
+		return nil, fmt.Errorf("arrow/ipc: invalid message body length %d", bodyLen)
+	}
+	if r.maxBodySize > 0 && bodyLen > r.maxBodySize {
+		return nil, fmt.Errorf("arrow/ipc: message body length %d exceeds limit %d", bodyLen, r.maxBodySize)
+	}
 
 	body := memory.NewResizableBuffer(r.mem)
 	defer body.Release()
 	body.Resize(int(bodyLen))
 
-	_, err = io.ReadFull(r.r, body.Bytes())
+	err = readFullMessagePart(r.r, body.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("arrow/ipc: could not read message body: %w", err)
 	}

@@ -35,6 +35,12 @@ func isNonZero[T arrow.FixedWidthType](ctx *exec.KernelCtx, in []T, out []byte) 
 	return nil
 }
 
+func numericToBoolKernel[T arrow.NumericType](typ arrow.Type) func(*exec.KernelCtx, []T, []byte) error {
+	return func(ctx *exec.KernelCtx, in []T, out []byte) error {
+		return numericToBoolNeon(typ, ctx, in, out)
+	}
+}
+
 // GetBooleanCastKernels returns the slice of scalar kernels for casting
 // values *to* a boolean type.
 func GetBooleanCastKernels() []exec.ScalarKernel {
@@ -55,17 +61,17 @@ func GetBooleanCastKernels() []exec.ScalarKernel {
 		case arrow.UINT16:
 			ex = ScalarUnaryBoolOutput(isNonZero[uint16])
 		case arrow.INT32:
-			ex = ScalarUnaryBoolOutput(isNonZero[int32])
+			ex = ScalarUnaryBoolOutput(numericToBoolKernel[int32](arrow.INT32))
 		case arrow.UINT32:
-			ex = ScalarUnaryBoolOutput(isNonZero[uint32])
+			ex = ScalarUnaryBoolOutput(numericToBoolKernel[uint32](arrow.UINT32))
 		case arrow.INT64:
-			ex = ScalarUnaryBoolOutput(isNonZero[int64])
+			ex = ScalarUnaryBoolOutput(numericToBoolKernel[int64](arrow.INT64))
 		case arrow.UINT64:
-			ex = ScalarUnaryBoolOutput(isNonZero[uint64])
+			ex = ScalarUnaryBoolOutput(numericToBoolKernel[uint64](arrow.UINT64))
 		case arrow.FLOAT32:
-			ex = ScalarUnaryBoolOutput(isNonZero[float32])
+			ex = ScalarUnaryBoolOutput(numericToBoolKernel[float32](arrow.FLOAT32))
 		case arrow.FLOAT64:
-			ex = ScalarUnaryBoolOutput(isNonZero[float64])
+			ex = ScalarUnaryBoolOutput(numericToBoolKernel[float64](arrow.FLOAT64))
 		}
 		k := exec.NewScalarKernel(
 			[]exec.InputType{exec.NewExactInput(ty)}, out, ex, nil)

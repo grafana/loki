@@ -68,14 +68,19 @@ func (a *CheckedAllocator) Allocate(size int) []byte {
 func (a *CheckedAllocator) Reallocate(size int, b []byte) []byte {
 	a.sz.Add(int64(size - len(b)))
 
-	oldptr := uintptr(unsafe.Pointer(&b[0]))
+	var oldptr uintptr
+	if len(b) > 0 {
+		oldptr = uintptr(unsafe.Pointer(unsafe.SliceData(b)))
+	}
 	out := a.mem.Reallocate(size, b)
+	if oldptr != 0 {
+		a.allocs.Delete(oldptr)
+	}
 	if size == 0 {
 		return out
 	}
 
 	newptr := uintptr(unsafe.Pointer(&out[0]))
-	a.allocs.Delete(oldptr)
 	pcs := make([]uintptr, maxRetainedFrames)
 
 	// For historical reasons the meaning of the skip argument
@@ -167,10 +172,10 @@ func (a *CheckedAllocator) AssertSize(t TestingT, sz int) {
 			// It may be nil for non-Go code or fully inlined functions.
 			if fn := frame.Func; fn != nil {
 				// format as func name + the offset in bytes from func entrypoint
-				callersMsg.WriteString(fmt.Sprintf("%s+%x", fn.Name(), frame.PC-fn.Entry()))
+				fmt.Fprintf(&callersMsg, "%s+%x", fn.Name(), frame.PC-fn.Entry())
 			} else {
 				// fallback to outer func name + file line
-				callersMsg.WriteString(fmt.Sprintf("%s, line %d", frame.Function, frame.Line))
+				fmt.Fprintf(&callersMsg, "%s, line %d", frame.Function, frame.Line)
 			}
 
 			// Write a proper file name + line, so it's really easy to find the leak

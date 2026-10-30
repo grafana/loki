@@ -24,10 +24,42 @@ import "unsafe"
 // and efficiently get the min and max from an integral slice.
 
 //go:noescape
+func _int8_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
+
+func int8MaxMinNEON(values []int8) (min, max int8) {
+	_int8_max_min_neon(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	return
+}
+
+//go:noescape
+func _uint8_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
+
+func uint8MaxMinNEON(values []uint8) (min, max uint8) {
+	_uint8_max_min_neon(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	return
+}
+
+//go:noescape
+func _int16_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
+
+func int16MaxMinNEON(values []int16) (min, max int16) {
+	_int16_max_min_neon(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	return
+}
+
+//go:noescape
+func _uint16_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
+
+func uint16MaxMinNEON(values []uint16) (min, max uint16) {
+	_uint16_max_min_neon(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	return
+}
+
+//go:noescape
 func _int32_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func int32MaxMinNEON(values []int32) (min, max int32) {
-	_int32_max_min_neon(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_int32_max_min_neon(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -35,7 +67,7 @@ func int32MaxMinNEON(values []int32) (min, max int32) {
 func _uint32_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func uint32MaxMinNEON(values []uint32) (min, max uint32) {
-	_uint32_max_min_neon(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_uint32_max_min_neon(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -43,7 +75,7 @@ func uint32MaxMinNEON(values []uint32) (min, max uint32) {
 func _int64_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func int64MaxMinNEON(values []int64) (min, max int64) {
-	_int64_max_min_neon(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_int64_max_min_neon(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -51,6 +83,6 @@ func int64MaxMinNEON(values []int64) (min, max int64) {
 func _uint64_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func uint64MaxMinNEON(values []uint64) (min, max uint64) {
-	_uint64_max_min_neon(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_uint64_max_min_neon(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }

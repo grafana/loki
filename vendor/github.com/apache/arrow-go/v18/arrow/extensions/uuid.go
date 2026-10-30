@@ -202,6 +202,13 @@ func (a *UUIDArray) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *UUIDArray) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 // UUIDType is a simple extension type that represents a FixedSizeBinary(16)
 // to be used for representing UUIDs
 type UUIDType struct {

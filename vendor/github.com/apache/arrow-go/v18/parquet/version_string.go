@@ -18,8 +18,9 @@ const _Version_name = "v1.0v2.4v2.6"
 var _Version_index = [...]uint8{0, 4, 8, 12}
 
 func (i Version) String() string {
-	if i < 0 || i >= Version(len(_Version_index)-1) {
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_Version_index)-1 {
 		return "Version(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _Version_name[_Version_index[i]:_Version_index[i+1]]
+	return _Version_name[_Version_index[idx]:_Version_index[idx+1]]
 }

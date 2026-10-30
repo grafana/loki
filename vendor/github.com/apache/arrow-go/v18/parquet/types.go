@@ -18,7 +18,9 @@ package parquet
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 	"time"
@@ -85,9 +87,38 @@ func (i96 Int96) ToTime() time.Time {
 	nanos := binary.LittleEndian.Uint64(i96[:8])
 	jdays := binary.LittleEndian.Uint32(i96[8:])
 
-	nanos = (uint64(jdays)-uint64(julianUnixEpoch))*uint64(nanosPerDay) + nanos
-	t := time.Unix(0, int64(nanos))
+	days := int64(jdays) - julianUnixEpoch
+	seconds := days*86400 + int64(nanos/1_000_000_000)
+	t := time.Unix(seconds, int64(nanos%1_000_000_000))
 	return t.UTC()
+}
+
+// ToTimestamp converts an Int96 value to an Arrow nanosecond timestamp.
+func (i96 Int96) ToTimestamp() (arrow.Timestamp, error) {
+	nanosOfDay := binary.LittleEndian.Uint64(i96[:8])
+	if nanosOfDay >= uint64(nanosPerDay) {
+		return 0, fmt.Errorf("%w: invalid INT96 nanoseconds of day: %d", arrow.ErrInvalid, nanosOfDay)
+	}
+
+	days := int64(binary.LittleEndian.Uint32(i96[8:])) - julianUnixEpoch
+	maxDays := math.MaxInt64 / nanosPerDay
+	if days > maxDays || (days == maxDays && int64(nanosOfDay) > math.MaxInt64%nanosPerDay) {
+		return 0, fmt.Errorf("%w: INT96 timestamp is outside the Arrow nanosecond range", arrow.ErrInvalid)
+	}
+
+	minDays := math.MinInt64 / nanosPerDay
+	minRemainder := math.MinInt64 % nanosPerDay
+	minNanos := nanosPerDay + minRemainder
+	// Go division truncates toward zero, so the minimum timestamp can fall on
+	// the day before minDays with a positive nanoseconds-of-day remainder.
+	if days < minDays {
+		if days != minDays-1 || int64(nanosOfDay) < minNanos {
+			return 0, fmt.Errorf("%w: INT96 timestamp is outside the Arrow nanosecond range", arrow.ErrInvalid)
+		}
+		return arrow.Timestamp(math.MinInt64 + int64(nanosOfDay) - minNanos), nil
+	}
+
+	return arrow.Timestamp(days*nanosPerDay + int64(nanosOfDay)), nil
 }
 
 type int96Traits struct{}

@@ -19,11 +19,12 @@ package compute
 import (
 	"errors"
 	"fmt"
-	"hash/maphash"
 	"reflect"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -191,7 +192,7 @@ func (ref nameRef) findAll(fields []arrow.Field) []FieldPath {
 	return out
 }
 
-func (ref nameRef) hash(h *maphash.Hash) { h.WriteString(string(ref)) }
+func (ref nameRef) hash(h *maphash.MapHash) { h.WriteString(string(ref)) }
 
 type matches struct {
 	prefixes []FieldPath
@@ -223,7 +224,7 @@ func (r refList) String() string {
 	return ret[:len(ret)-1] + ")"
 }
 
-func (ref refList) hash(h *maphash.Hash) {
+func (ref refList) hash(h *maphash.MapHash) {
 	for _, r := range ref {
 		r.hash(h)
 	}
@@ -254,7 +255,7 @@ func (ref refList) findAll(fields []arrow.Field) []FieldPath {
 type refImpl interface {
 	fmt.Stringer
 	findAll(fields []arrow.Field) []FieldPath
-	hash(h *maphash.Hash)
+	hash(h *maphash.MapHash)
 }
 
 // FieldRef is a descriptor of a (potentially nested) field within a schema.
@@ -407,12 +408,12 @@ func NewFieldRefFromDotPath(dotpath string) (out FieldRef, err error) {
 	return
 }
 
-func (f FieldRef) hash(h *maphash.Hash) { f.impl.hash(h) }
+func (f FieldRef) hash(h *maphash.MapHash) { f.impl.hash(h) }
 
 // Hash produces a hash of this field reference and takes in a seed so that
 // it can maintain consistency across multiple places / processes /etc.
 func (f FieldRef) Hash(seed maphash.Seed) uint64 {
-	h := maphash.Hash{}
+	h := maphash.MapHash{}
 	h.SetSeed(seed)
 	f.hash(&h)
 	return h.Sum64()

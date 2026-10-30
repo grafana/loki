@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -31,6 +32,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/internal/dictutils"
 	"github.com/apache/arrow-go/v18/arrow/internal/flatbuf"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/internal/utils"
 )
 
 type readerImpl interface {
@@ -58,7 +60,42 @@ const footerSizeLen = 4
 var minimumOffsetSize = int64(len(Magic)*2 + footerSizeLen)
 
 type basicReaderImpl struct {
-	r ReadAtSeeker
+	r               ReadAtSeeker
+	maxMetadataSize int64
+	maxBodySize     int64
+}
+
+func validateFileBlock(offset int64, meta int32, body, fileSize, maxMetadataSize, maxBodySize int64) error {
+	if offset < 0 {
+		return fmt.Errorf("arrow/ipc: invalid file block offset %d", offset)
+	}
+	if meta < 4 {
+		return fmt.Errorf("arrow/ipc: invalid file block metadata length %d", meta)
+	}
+	if body < 0 {
+		return fmt.Errorf("arrow/ipc: invalid file block body length %d", body)
+	}
+	if body%8 != 0 {
+		return fmt.Errorf("arrow/ipc: file block body length %d is not a multiple of 8", body)
+	}
+	if maxMetadataSize > 0 && int64(meta) > maxMetadataSize {
+		return fmt.Errorf("arrow/ipc: file block metadata length %d exceeds limit %d", meta, maxMetadataSize)
+	}
+	if maxBodySize > 0 && body > maxBodySize {
+		return fmt.Errorf("arrow/ipc: file block body length %d exceeds limit %d", body, maxBodySize)
+	}
+	maxInt := int64(^uint(0) >> 1)
+	if body > maxInt {
+		return fmt.Errorf("arrow/ipc: file block body length %d is not addressable", body)
+	}
+	if body > math.MaxInt64-int64(meta) {
+		return fmt.Errorf("arrow/ipc: file block length overflows: metadata=%d body=%d", meta, body)
+	}
+	blockLen := int64(meta) + body
+	if offset > fileSize || blockLen > fileSize-offset {
+		return fmt.Errorf("arrow/ipc: file block at offset %d with length %d exceeds file size %d", offset, blockLen, fileSize)
+	}
+	return nil
 }
 
 func (r *basicReaderImpl) getBytes(offset, len int64) ([]byte, error) {
@@ -82,6 +119,9 @@ func (r *basicReaderImpl) block(mem memory.Allocator, f *footerBlock, i int) (da
 	if !f.data.RecordBatches(&blk, i) {
 		return fileBlock{}, fmt.Errorf("arrow/ipc: could not extract file block %d", i)
 	}
+	if err := validateFileBlock(blk.Offset(), blk.MetaDataLength(), blk.BodyLength(), f.offset, r.maxMetadataSize, r.maxBodySize); err != nil {
+		return fileBlock{}, err
+	}
 
 	return fileBlock{
 		offset: blk.Offset(),
@@ -97,6 +137,9 @@ func (r *basicReaderImpl) dict(mem memory.Allocator, f *footerBlock, i int) (dat
 	if !f.data.Dictionaries(&blk, i) {
 		return fileBlock{}, fmt.Errorf("arrow/ipc: could not extract dictionary block %d", i)
 	}
+	if err := validateFileBlock(blk.Offset(), blk.MetaDataLength(), blk.BodyLength(), f.offset, r.maxMetadataSize, r.maxBodySize); err != nil {
+		return fileBlock{}, err
+	}
 
 	return fileBlock{
 		offset: blk.Offset(),
@@ -108,7 +151,9 @@ func (r *basicReaderImpl) dict(mem memory.Allocator, f *footerBlock, i int) (dat
 }
 
 type mappedReaderImpl struct {
-	data []byte
+	data            []byte
+	maxMetadataSize int64
+	maxBodySize     int64
 }
 
 func (r *mappedReaderImpl) getBytes(offset, length int64) ([]byte, error) {
@@ -126,6 +171,9 @@ func (r *mappedReaderImpl) block(_ memory.Allocator, f *footerBlock, i int) (dat
 	if !f.data.RecordBatches(&blk, i) {
 		return mappedFileBlock{}, fmt.Errorf("arrow/ipc: could not extract file block %d", i)
 	}
+	if err := validateFileBlock(blk.Offset(), blk.MetaDataLength(), blk.BodyLength(), int64(len(r.data)), r.maxMetadataSize, r.maxBodySize); err != nil {
+		return mappedFileBlock{}, err
+	}
 
 	return mappedFileBlock{
 		offset: blk.Offset(),
@@ -139,6 +187,9 @@ func (r *mappedReaderImpl) dict(_ memory.Allocator, f *footerBlock, i int) (data
 	var blk flatbuf.Block
 	if !f.data.Dictionaries(&blk, i) {
 		return mappedFileBlock{}, fmt.Errorf("arrow/ipc: could not extract dictionary block %d", i)
+	}
+	if err := validateFileBlock(blk.Offset(), blk.MetaDataLength(), blk.BodyLength(), int64(len(r.data)), r.maxMetadataSize, r.maxBodySize); err != nil {
+		return mappedFileBlock{}, err
 	}
 
 	return mappedFileBlock{
@@ -181,12 +232,17 @@ func NewMappedFileReader(data []byte, opts ...Option) (*FileReader, error) {
 	var (
 		cfg = newConfig(opts...)
 		f   = FileReader{
-			r:   &mappedReaderImpl{data: data},
+			r: &mappedReaderImpl{
+				data:            data,
+				maxMetadataSize: cfg.maxMetadataSize,
+				maxBodySize:     cfg.maxBodySize,
+			},
 			mem: cfg.alloc,
 		}
 	)
 
 	if err := f.init(cfg); err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 	return &f, nil
@@ -197,13 +253,18 @@ func NewFileReader(r ReadAtSeeker, opts ...Option) (*FileReader, error) {
 	var (
 		cfg = newConfig(opts...)
 		f   = FileReader{
-			r:    &basicReaderImpl{r: r},
+			r: &basicReaderImpl{
+				r:               r,
+				maxMetadataSize: cfg.maxMetadataSize,
+				maxBodySize:     cfg.maxBodySize,
+			},
 			memo: dictutils.NewMemo(),
 			mem:  cfg.alloc,
 		}
 	)
 
 	if err := f.init(cfg); err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 	return &f, nil
@@ -274,8 +335,10 @@ func (f *FileReader) readSchema(ensureNativeEndian bool) error {
 		if err != nil {
 			return err
 		}
-
-		kind, err = readDictionary(&f.memo, msg.meta, msg.body, f.swapEndianness, f.mem)
+		kind, err = func() (dictutils.Kind, error) {
+			defer msg.Release()
+			return readDictionary(&f.memo, msg.meta, msg.body, f.swapEndianness, f.mem)
+		}()
 		if err != nil {
 			return err
 		}
@@ -352,6 +415,7 @@ func (f *FileReader) Close() error {
 		f.record.Release()
 		f.record = nil
 	}
+	f.memo.Clear()
 	return nil
 }
 
@@ -385,8 +449,8 @@ func (f *FileReader) Record(i int) (arrow.Record, error) {
 // caller and must call Release() to free the memory. This method is safe to
 // call concurrently.
 func (f *FileReader) RecordBatchAt(i int) (arrow.RecordBatch, error) {
-	if i < 0 || i > f.NumRecords() {
-		panic("arrow/ipc: record index out of bounds")
+	if i < 0 || i >= f.NumRecords() {
+		return nil, fmt.Errorf("%w: record index %d out of bounds", arrow.ErrIndex, i)
 	}
 
 	blk, err := f.r.block(f.mem, &f.footer, i)
@@ -412,7 +476,17 @@ func (f *FileReader) RecordBatchAt(i int) (arrow.RecordBatch, error) {
 		return nil, fmt.Errorf("arrow/ipc: message %d is not a RecordBatch", i)
 	}
 
-	return newRecordBatch(f.schema, &f.memo, msg.meta, msg.body, f.swapEndianness, f.mem), nil
+	return loadRecordBatch(f.schema, &f.memo, msg.meta, msg.body, f.swapEndianness, f.mem)
+}
+
+func loadRecordBatch(schema *arrow.Schema, memo *dictutils.Memo, meta, body *memory.Buffer, swapEndianness bool, mem memory.Allocator) (rec arrow.RecordBatch, err error) {
+	defer func() {
+		if pErr := recover(); pErr != nil {
+			rec = nil
+			err = utils.FormatRecoveredError("arrow/ipc: error reading record batch", pErr)
+		}
+	}()
+	return newRecordBatch(schema, memo, meta, body, swapEndianness, mem), nil
 }
 
 // RecordAt returns the i-th record from the file. Ownership is transferred to the
@@ -440,6 +514,9 @@ func (f *FileReader) Read() (rec arrow.RecordBatch, err error) {
 
 // ReadAt reads the i-th record batch from the underlying stream and an error, if any.
 func (f *FileReader) ReadAt(i int64) (arrow.RecordBatch, error) {
+	if i < 0 || i >= int64(f.NumRecords()) {
+		return nil, fmt.Errorf("%w: record index %d out of bounds", arrow.ErrIndex, i)
+	}
 	return f.RecordBatch(int(i))
 }
 
@@ -908,18 +985,18 @@ func (blk mappedFileBlock) NewMessage() (*Message, error) {
 
 	metaBytes := buf[:blk.meta]
 
-	prefix := 0
-	switch binary.LittleEndian.Uint32(metaBytes) {
-	case 0:
-	case kIPCContToken:
-		prefix = 8
-	default:
-		// ARROW-6314: backwards compatibility for reading old IPC
-		// messages produced prior to version 0.15.0
-		prefix = 4
+	prefix, err := validateFileBlockMetadata(metaBytes, blk.meta)
+	if err != nil {
+		return nil, err
 	}
 
 	meta = memory.NewBufferBytes(metaBytes[prefix:])
 	body = memory.NewBufferBytes(buf[blk.meta : int64(blk.meta)+blk.body])
-	return NewMessage(meta, body), nil
+	msg := NewMessage(meta, body)
+	messageBodyLen := msg.BodyLen()
+	if messageBodyLen != blk.body {
+		msg.Release()
+		return nil, fmt.Errorf("arrow/ipc: file block body length %d does not match message body length %d", blk.body, messageBodyLen)
+	}
+	return msg, nil
 }
