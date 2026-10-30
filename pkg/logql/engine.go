@@ -183,6 +183,8 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
+
+	EarlySeriesCutoff bool `yaml:"early_series_cutoff" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -192,6 +194,7 @@ func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
+	f.BoolVar(&opts.EarlySeriesCutoff, prefix+"early-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -228,12 +231,13 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *QueryEn
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (qe *QueryEngine) Query(params Params) Query {
 	return &query{
-		logger:       qe.logger,
-		params:       params,
-		evaluator:    qe.evaluatorFactory,
-		record:       true,
-		logExecQuery: qe.opts.LogExecutingQuery,
-		limits:       qe.limits,
+		logger:            qe.logger,
+		params:            params,
+		evaluator:         qe.evaluatorFactory,
+		record:            true,
+		logExecQuery:      qe.opts.LogExecutingQuery,
+		limits:            qe.limits,
+		earlySeriesCutoff: qe.opts.EarlySeriesCutoff,
 	}
 }
 
@@ -250,6 +254,8 @@ type query struct {
 	evaluator    EvaluatorFactory
 	record       bool
 	logExecQuery bool
+
+	earlySeriesCutoff bool
 }
 
 func (q *query) resultLength(res promql_parser.Value) int {
@@ -412,8 +418,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	// Only count the real query evaluation, not the *DownstreamEvaluator the query-frontend uses
 	// to dispatch a sharded or astmapper-rewritten query. It never reads a sample itself.
 	//
-	// expr here is always the query's root: evalSample never recurses, so isRootExpr is always
-	// true, matching the NewStepEvaluator call below.
+	// expr here is always the query's root: evalSample never recurses, so the root context is
+	// always the right one, matching the NewStepEvaluator call below.
 	if _, ok := q.evaluator.(*DefaultEvaluator); ok {
 		switch sampleOrderFor(ctx, expr, q.limits, true) {
 		case logproto.SAMPLE_ORDER_BY_STREAM:
@@ -425,7 +431,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, true)
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.earlySeriesCutoffLimit(ctx, maxSeries)))
 	if err != nil {
 		return nil, err
 	}
@@ -495,6 +501,22 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 		sm[hash] = series
 	}
 	return limitExceeded
+}
+
+// earlySeriesCutoffLimit returns the limit that preserving expressions may fail on before the
+// query's output is built, or zero when the early cut-off is off. Logs Drilldown requests are
+// exempt, so they still get partial results and a warning from JoinSampleVector.
+func (q *query) earlySeriesCutoffLimit(ctx context.Context, maxSeries int) int {
+	if !q.earlySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
+		return 0
+	}
+	// vector() steps in whole milliseconds and the range iterators in nanoseconds, so below a
+	// millisecond a range leg of a binary operation can run steps past the end of a vector() leg.
+	// The binary operation discards those steps, so they are not a lower bound on the output.
+	if step := q.params.Step(); step > 0 && step < time.Millisecond {
+		return 0
+	}
+	return maxSeries
 }
 
 func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {

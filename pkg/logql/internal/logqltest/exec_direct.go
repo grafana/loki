@@ -31,7 +31,13 @@ type directExecutionStack struct {
 
 // newDirectTimestampFirstStack returns the direct stack in timestamp-first order.
 func newDirectTimestampFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directTimestampFirstStackName, limits: execLimits{}, newQuerier: newChunkQuerier}
+	return newDirectTimestampFirstStackWith(t, directTimestampFirstStackName, stackOptions{})
+}
+
+// newDirectTimestampFirstStackWith returns the direct stack in timestamp-first order, changed by
+// opts.
+func newDirectTimestampFirstStackWith(t *testing.T, stackName string, opts stackOptions) *directExecutionStack {
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{maxQuerySeries: opts.maxQuerySeries}, newQuerier: newChunkQuerier}
 }
 
 // newDirectStreamFirstStack returns the direct stack with stream-first execution enabled.

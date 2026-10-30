@@ -24,10 +24,11 @@ const (
 	directDataObjStackName                      = "direct (dataobj)"
 	queryFrontendShardDataObjStackName          = "query-frontend + query-scheduler (sharding, dataobj)"
 	queryFrontendShardDataObjAndChunkStackName  = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+	directDefaultSeriesLimitStackName           = "direct (timestamp-first, default series limit)"
 )
 
 var (
-	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName, directDataObjStackName, queryFrontendShardDataObjStackName, queryFrontendShardDataObjAndChunkStackName}
+	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName, directDataObjStackName, queryFrontendShardDataObjStackName, queryFrontendShardDataObjAndChunkStackName, directDefaultSeriesLimitStackName}
 )
 
 // splitDataObjStart is the data-object start time of the stack that reads both data objects and
@@ -87,6 +88,13 @@ func isQueryShardingSupported(query string) bool {
 	return shardable
 }
 
+// stackOptions change an execution stack from its defaults. The zero value changes nothing.
+type stackOptions struct {
+	// maxQuerySeries, when positive, is the series limit of every query the stack runs, in the
+	// querier and in the query-frontend.
+	maxQuerySeries int
+}
+
 // newScriptQuerierFunc builds the querier of an execution stack over stores.
 type newScriptQuerierFunc func(t *testing.T, stores *scriptStores) logql.Querier
 
@@ -105,12 +113,19 @@ func newDataObjQuerierFunc(dataObjQueryStart time.Time) newScriptQuerierFunc {
 }
 
 // execLimits are the limits an execution stack runs queries with. They apply to every tenant. The
-// series limit and the query timeout are high enough that no script reaches them.
+// query timeout, and the series limit unless maxQuerySeries sets one, are high enough that no
+// script reaches them.
 type execLimits struct {
 	streamFirstExecutionEnabled bool
+	maxQuerySeries              int
 }
 
-func (execLimits) MaxQuerySeries(string) int { return math.MaxInt32 }
+func (l execLimits) MaxQuerySeries(string) int {
+	if l.maxQuerySeries > 0 {
+		return l.maxQuerySeries
+	}
+	return math.MaxInt32
+}
 
 func (execLimits) MaxQueryRange(context.Context, string) time.Duration { return 0 }
 

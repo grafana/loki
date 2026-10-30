@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logql/vector"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // avgPrecisionCase is a sequence of values and the average that every avg
@@ -286,7 +287,7 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 		i := 0
 		it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
-			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset, iteratorLimits{})
 		if err != nil {
 			panic(err)
 		}
@@ -416,6 +417,7 @@ func Test_RangeVectorIterator_InstantQuery(t *testing.T) {
 					tt.now.UnixNano(), // start
 					tt.now.UnixNano(), // end
 					0,                 // offset
+					iteratorLimits{},
 				)
 				require.NoError(t, err)
 
@@ -555,7 +557,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			func(t *testing.T) {
 				it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
-					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset, iteratorLimits{})
 				require.NoError(t, err)
 
 				i := 0
@@ -583,7 +585,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 	t.Run("batch iterator fails the query instead of skipping the series", func(t *testing.T) {
 		it, err := newTimestampFirstRangeVectorIterator(newBadIterator(),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
-			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0, iteratorLimits{})
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
@@ -593,7 +595,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 	t.Run("streaming iterator fails the query instead of skipping the series", func(t *testing.T) {
 		it, err := newTimestampFirstRangeVectorIterator(newBadIterator(),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (5 * time.Second).Nanoseconds(),
-			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0, iteratorLimits{})
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
@@ -630,7 +632,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
 			it, err := newTimestampFirstRangeVectorIterator(sampleIter(tt.negative),
 				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
-				3, 1, start, end, 0)
+				3, 1, start, end, 0, iteratorLimits{})
 			require.NoError(t, err)
 
 			//nolint:revive
@@ -942,4 +944,104 @@ func TestAvgOverTime(t *testing.T) {
 		require.InEpsilon(t, wantApprox, streaming, 1e-9)
 		require.Equal(t, batch, streaming, "batch and streaming implementations must agree")
 	})
+}
+
+// distinctSeriesIterator returns an iterator over n series, each with one sample at ts.
+func distinctSeriesIterator(n int, ts time.Time) iter.PeekingSampleIterator {
+	series := make([]iter.SampleIterator, 0, n)
+	for i := range n {
+		lbs := labels.FromStrings("app", "a", "id", fmt.Sprint(i))
+		series = append(series, iter.NewSeriesIterator(logproto.Series{
+			Labels:     lbs.String(),
+			Samples:    []logproto.Sample{{Timestamp: ts.UnixNano(), Hash: uint64(i), Value: 1}},
+			StreamHash: labels.StableHash(lbs),
+		}))
+	}
+	return iter.NewPeekingSampleIterator(iter.NewTimestampFirstSortSampleIterator(series))
+}
+
+func TestRangeVectorIterator_ShouldStopLoadingAtSeriesLimit(t *testing.T) {
+	const (
+		numSeries = 10
+		maxSeries = 3
+	)
+	var (
+		start = time.Unix(10, 0)
+		end   = time.Unix(20, 0)
+		step  = 5 * time.Second
+	)
+	count := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+
+	for name, tc := range map[string]struct {
+		build func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error)
+	}{
+		"batch": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				rangeIt, err := newTimestampFirstRangeVectorIterator(it, count, (10 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, limits)
+				require.IsType(t, &batchRangeVectorIterator{}, rangeIt)
+				return rangeIt, err
+			},
+		},
+		"stream": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				rangeIt, err := newTimestampFirstRangeVectorIterator(it, count, (2 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, limits)
+				require.IsType(t, &streamRangeVectorIterator{}, rangeIt)
+				return rangeIt, err
+			},
+		},
+		"first with timestamp": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				return newFirstWithTimestampIterator(it, (10 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, limits), nil
+			},
+		},
+		"last with timestamp": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				return newLastWithTimestampIterator(it, (10 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, limits), nil
+			},
+		},
+		"count distinct": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				return newCountDistinctIterator(it, (10 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, false, limits), nil
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Run("fails on the series after the limit", func(t *testing.T) {
+				it := distinctSeriesIterator(numSeries, start.Add(-time.Second))
+				rangeIt, err := tc.build(it, iteratorLimits{maxSeries: maxSeries})
+				require.NoError(t, err)
+
+				require.False(t, rangeIt.Next())
+				require.Equal(t, logqlmodel.NewSeriesLimitError(maxSeries), rangeIt.Error())
+				require.False(t, rangeIt.Next())
+
+				unread := 0
+				for _, _, ok := it.Peek(); ok; _, _, ok = it.Peek() {
+					unread++
+					it.Next()
+				}
+				require.Equal(t, numSeries-maxSeries, unread)
+			})
+
+			t.Run("loads every series at the limit", func(t *testing.T) {
+				rangeIt, err := tc.build(distinctSeriesIterator(maxSeries, start.Add(-time.Second)), iteratorLimits{maxSeries: maxSeries})
+				require.NoError(t, err)
+
+				require.True(t, rangeIt.Next())
+				_, vec := rangeIt.At()
+				require.Len(t, vec.SampleVector(), maxSeries)
+				require.NoError(t, rangeIt.Error())
+			})
+
+			t.Run("loads every series without a limit", func(t *testing.T) {
+				rangeIt, err := tc.build(distinctSeriesIterator(numSeries, start.Add(-time.Second)), iteratorLimits{})
+				require.NoError(t, err)
+
+				require.True(t, rangeIt.Next())
+				_, vec := rangeIt.At()
+				require.Len(t, vec.SampleVector(), numSeries)
+				require.NoError(t, rangeIt.Error())
+			})
+		})
+	}
 }

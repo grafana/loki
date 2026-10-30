@@ -70,6 +70,8 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		limits:    ng.limits,
+
+		earlySeriesCutoff: ng.opts.EarlySeriesCutoff,
 	}
 }
 
@@ -534,7 +536,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	params Params,
-	isRootExpr bool,
+	nc NodeContext,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 
@@ -756,7 +758,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		inner := NewCountDistinctSketchMatrixStepEvaluator(matrix, params)
 		return NewCountDistinctSketchVectorStepEvaluator(inner), nil
 	default:
-		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, isRootExpr)
+		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, nc)
 	}
 }
 
