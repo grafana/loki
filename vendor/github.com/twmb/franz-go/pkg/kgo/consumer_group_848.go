@@ -1,6 +1,7 @@
 package kgo
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -600,12 +601,24 @@ func (g *g848) mkreq() *kmsg.ConsumerGroupHeartbeatRequest {
 	// uses prerevoking to strip this to nil during prerevoke,
 	// preventing the server from seeing released partitions before
 	// offsets are committed.
+	//
+	// A topic may be in nowAssigned but absent from tps if the user
+	// just called PurgeFetchTopics: purge removes from tps, but
+	// nowAssigned reflects the server's view and is only updated when
+	// the server acknowledges the revoke in a future heartbeat
+	// response. We skip such topics here; SubscribedTopicNames (built
+	// from tps above) signals the unsubscribe and the server revokes
+	// on the next response.
 	nowAssigned := g.g.nowAssigned.read()
 	req.Topics = []kmsg.ConsumerGroupHeartbeatRequestTopic{} // ALWAYS initialize: len 0 is significantly different than nil (nil means same as last time)
 	for t, ps := range nowAssigned {
+		tp, ok := tps[t]
+		if !ok {
+			continue
+		}
 		rt := kmsg.NewConsumerGroupHeartbeatRequestTopic()
 		rt.Partitions = slices.Clone(ps)
-		rt.TopicID = tps[t].load().id
+		rt.TopicID = tp.load().id
 		req.Topics = append(req.Topics, rt)
 	}
 	// Include unresolved topic IDs so the server sees them
@@ -618,6 +631,13 @@ func (g *g848) mkreq() *kmsg.ConsumerGroupHeartbeatRequest {
 		rt.Partitions = slices.Clone(ps)
 		req.Topics = append(req.Topics, rt)
 	}
+
+	// Canonicalize ordering by TopicID so the heartbeat closure's
+	// DeepEqual against lastTopics is stable across map-iteration
+	// orderings, avoiding unnecessary full heartbeats.
+	slices.SortFunc(req.Topics, func(a, b kmsg.ConsumerGroupHeartbeatRequestTopic) int {
+		return bytes.Compare(a.TopicID[:], b.TopicID[:])
+	})
 
 	return req
 }
