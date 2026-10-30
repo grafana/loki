@@ -173,37 +173,57 @@ func TestSizeLeveledStrategyPlan(t *testing.T) {
 		require.Empty(t, unmerged)
 	})
 
-	t.Run("splits a level into merge tasks of at most k runs", func(t *testing.T) {
+	t.Run("splits a level into merge tasks of k runs", func(t *testing.T) {
 		runs := []Run{namedRun{"a", 1 * gib}, namedRun{"b", 1 * gib}, namedRun{"c", 1 * gib}, namedRun{"d", 1 * gib}}
 		merges, unmerged := newStrategy(t, 2).Plan(runs, "tenant")
 		require.Equal(t, [][]string{{"a", "b"}, {"c", "d"}}, taskPaths(merges))
 		require.Empty(t, unmerged)
 	})
 
-	t.Run("returns a run left over after the split as unmerged", func(t *testing.T) {
-		runs := []Run{namedRun{"a", 1 * gib}, namedRun{"b", 1 * gib}, namedRun{"c", 1 * gib}}
-		merges, unmerged := newStrategy(t, 2).Plan(runs, "tenant")
-		require.Equal(t, [][]string{{"a", "b"}}, taskPaths(merges))
-		require.Equal(t, []string{"c"}, runPaths(unmerged))
+	t.Run("returns runs left over after the split as unmerged", func(t *testing.T) {
+		runs := []Run{namedRun{"a", 1 * gib}, namedRun{"b", 1 * gib}, namedRun{"c", 1 * gib}, namedRun{"d", 1 * gib}, namedRun{"e", 1 * gib}}
+		merges, unmerged := newStrategy(t, 3).Plan(runs, "tenant")
+		require.Equal(t, [][]string{{"a", "b", "c"}}, taskPaths(merges))
+		require.Equal(t, []string{"d", "e"}, runPaths(unmerged))
+	})
+
+	t.Run("splits a level of 2k+1 runs into two merge tasks and one unmerged run", func(t *testing.T) {
+		var runs []Run
+		for _, name := range []string{"a", "b", "c", "d", "e", "f", "g"} {
+			runs = append(runs, namedRun{name, 1 * gib})
+		}
+		merges, unmerged := newStrategy(t, 3).Plan(runs, "tenant")
+		require.Equal(t, [][]string{{"a", "b", "c"}, {"d", "e", "f"}}, taskPaths(merges))
+		require.Equal(t, []string{"g"}, runPaths(unmerged))
 	})
 
 	t.Run("returns a run alone in its level as unmerged", func(t *testing.T) {
 		runs := []Run{namedRun{"l0-a", 1 * gib}, namedRun{"l2", 200 * gib}, namedRun{"l0-b", 2 * gib}}
-		merges, unmerged := newStrategy(t, 8).Plan(runs, "tenant")
+		merges, unmerged := newStrategy(t, 2).Plan(runs, "tenant")
 		require.Equal(t, [][]string{{"l0-a", "l0-b"}}, taskPaths(merges))
 		require.Equal(t, []string{"l2"}, runPaths(unmerged))
 	})
 
+	t.Run("returns all runs of a level with fewer than k runs as unmerged", func(t *testing.T) {
+		runs := []Run{
+			namedRun{"l0-a", 1 * gib}, namedRun{"l0-b", 1 * gib}, namedRun{"l0-c", 1 * gib},
+			namedRun{"l2-a", 200 * gib}, namedRun{"l2-b", 200 * gib},
+		}
+		merges, unmerged := newStrategy(t, 3).Plan(runs, "tenant")
+		require.Equal(t, [][]string{{"l0-a", "l0-b", "l0-c"}}, taskPaths(merges))
+		require.Equal(t, []string{"l2-a", "l2-b"}, runPaths(unmerged))
+	})
+
 	t.Run("puts a run of exactly base size in level 1 and not with level 0 runs", func(t *testing.T) {
 		runs := []Run{namedRun{"below", DefaultSizeLevelBase - 1}, namedRun{"at", DefaultSizeLevelBase}, namedRun{"small", 1 * gib}}
-		merges, unmerged := newStrategy(t, 8).Plan(runs, "tenant")
+		merges, unmerged := newStrategy(t, 2).Plan(runs, "tenant")
 		require.Equal(t, [][]string{{"below", "small"}}, taskPaths(merges))
 		require.Equal(t, []string{"at"}, runPaths(unmerged))
 	})
 
 	t.Run("sets the tenant on every merge task", func(t *testing.T) {
 		runs := []Run{namedRun{"a", 1 * gib}, namedRun{"b", 1 * gib}, namedRun{"c", 200 * gib}, namedRun{"d", 200 * gib}}
-		merges, _ := newStrategy(t, 8).Plan(runs, "tenant")
+		merges, _ := newStrategy(t, 2).Plan(runs, "tenant")
 		require.Len(t, merges, 2)
 		for _, task := range merges {
 			require.Equal(t, "tenant", task.Tenant)

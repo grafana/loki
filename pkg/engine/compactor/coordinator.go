@@ -240,7 +240,8 @@ func (c *coordinator) compactTenantLogs(
 // index. It reads the index but dispatches nothing and changes no state.
 //
 // It plans LogMerge tasks that keep the sort schema of the source index. An
-// IndexFilter of the source index keeps the runs that have no merge partner.
+// IndexFilter of the source index keeps the runs that the strategy does not
+// merge.
 // Compaction never changes the layout of an object.
 //
 // planLogCompaction returns a plan with no work if the index has no sections
