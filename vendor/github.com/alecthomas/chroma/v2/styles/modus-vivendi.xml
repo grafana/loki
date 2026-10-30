@@ -1,4 +1,4 @@
-<style name="modus-vivendi">
+<style name="modus-vivendi" counterpart="modus-operandi">
   <entry type="Background" style="#ffffff bg:#000000"/>
   <entry type="Keyword" style="#b6a0ff"/>
   <entry type="KeywordConstant" style="#00bcff"/>
