@@ -42,7 +42,7 @@ jobs:
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1" # v7
       with:
         node-version: 24
         package-manager-cache: false
