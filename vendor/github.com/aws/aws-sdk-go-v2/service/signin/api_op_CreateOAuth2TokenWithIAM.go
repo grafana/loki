@@ -4,6 +4,8 @@ package signin
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/signin/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
 )
@@ -42,6 +44,20 @@ type CreateOAuth2TokenWithIAMInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateOAuth2TokenWithIAMInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateOAuth2TokenWithIAMRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateOAuth2TokenWithIAMInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.GrantType != nil {
+		s.WriteString(schemas.CreateOAuth2TokenWithIAMRequest_grantType, *v.GrantType)
+	}
+	if v.Resource != nil {
+		s.WriteString(schemas.CreateOAuth2TokenWithIAMRequest_resource, *v.Resource)
+	}
+}
 func (in *CreateOAuth2TokenWithIAMInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.IsOAuthEndpoint = ptr.Bool(true)
@@ -76,13 +92,44 @@ type CreateOAuth2TokenWithIAMOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateOAuth2TokenWithIAMOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateOAuth2TokenWithIAMResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateOAuth2TokenWithIAMOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AccessToken != nil {
+		s.WriteString(schemas.CreateOAuth2TokenWithIAMResponse_accessToken, *v.AccessToken)
+	}
+	if v.ExpiresIn != nil {
+		s.WriteInt32(schemas.CreateOAuth2TokenWithIAMResponse_expiresIn, *v.ExpiresIn)
+	}
+	if v.TokenType != nil {
+		s.WriteString(schemas.CreateOAuth2TokenWithIAMResponse_tokenType, *v.TokenType)
+	}
+}
+func (v *CreateOAuth2TokenWithIAMOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.CreateOAuth2TokenWithIAMResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.CreateOAuth2TokenWithIAMResponse_accessToken:
+			v.AccessToken = new(string)
+			return d.ReadString(schemas.CreateOAuth2TokenWithIAMResponse_accessToken, v.AccessToken)
+		case schemas.CreateOAuth2TokenWithIAMResponse_expiresIn:
+			v.ExpiresIn = new(int32)
+			return d.ReadInt32(schemas.CreateOAuth2TokenWithIAMResponse_expiresIn, v.ExpiresIn)
+		case schemas.CreateOAuth2TokenWithIAMResponse_tokenType:
+			v.TokenType = new(string)
+			return d.ReadString(schemas.CreateOAuth2TokenWithIAMResponse_tokenType, v.TokenType)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationCreateOAuth2TokenWithIAMMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestjson1_serializeOpCreateOAuth2TokenWithIAM{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateOAuth2TokenWithIAM, schemas.CreateOAuth2TokenWithIAMRequest, schemas.CreateOAuth2TokenWithIAMResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestjson1_deserializeOpCreateOAuth2TokenWithIAM{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateOAuth2TokenWithIAM, schemas.CreateOAuth2TokenWithIAMRequest, schemas.CreateOAuth2TokenWithIAMResponse), output: &CreateOAuth2TokenWithIAMOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
