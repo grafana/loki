@@ -56,6 +56,7 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 		kgo.SeedBrokers(seedBrokers...),
 		kgo.ClientID(s.cfg.Kafka.ClientID),
 		kgo.DialTimeout(s.cfg.Kafka.DialTimeout),
+		// Cap ApiVersions so WarpStream accepts the connection; see kafkaclient.MaxVersions.
 		kgo.MaxVersions(kafkaclient.MaxVersions()),
 		kgo.MetadataMinAge(10 * time.Second),
 		kgo.MetadataMaxAge(10 * time.Second),

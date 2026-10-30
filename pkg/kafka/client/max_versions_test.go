@@ -22,7 +22,7 @@ func TestMaxVersions(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, int16(maxAPIVersionsRequestVersion), got)
 
-	// Every other request keeps franz-go's default maximum version.
+	// Spot-check that other requests keep franz-go's default (kversion.Stable) maximum versions.
 	stable := kversion.Stable()
 	for _, key := range []kmsg.Key{kmsg.Produce, kmsg.Fetch, kmsg.Metadata, kmsg.ListOffsets, kmsg.JoinGroup, kmsg.OffsetCommit} {
 		want, wantOK := stable.LookupMaxKeyVersion(key.Int16())
@@ -62,8 +62,9 @@ func TestClientsConnectWithoutApiVersionsV5(t *testing.T) {
 	})
 
 	// Sanity check that the fake cluster reproduces the failure: a client with franz-go's default
-	// versions sends ApiVersions v5 and never connects. If a future franz-go release falls back to a
-	// lower version when the connection is closed, this subtest fails and the cap may no longer be needed.
+	// versions sends ApiVersions v5 and never connects. If a future franz-go release also falls back to a
+	// lower version when the connection is closed cleanly (it already does on a connection reset), this
+	// subtest fails and the cap may no longer be needed.
 	t.Run("default versions fail", func(t *testing.T) {
 		cluster, cfg := testkafka.CreateCluster(t, 1, "test-topic")
 		rejected := testkafka.CloseOnAPIVersionsAbove(cluster, 4)
