@@ -49255,7 +49255,7 @@
       }
     }
   },
-  "revision": "20261007",
+  "revision": "20261016",
   "rootUrl": "https://compute.googleapis.com/",
   "schemas": {
     "AWSV4Signature": {
@@ -53802,7 +53802,7 @@
       "id": "BackendServiceHAPolicy",
       "properties": {
         "fastIPMove": {
-          "description": "Specifies whether fast IP move is enabled, and if so, the mechanism to\nachieve it.\n\nSupported values are:\n   \n   - DISABLED: Fast IP Move is disabled. You can only use the\n   haPolicy.leader API to update the leader.\n   - \u003eGARP_RA: Provides a method to very quickly define a new network\n   endpoint as the leader. This method is faster than updating the leader\n   using the haPolicy.leader API. Fast IP move works as follows: The VM\n   hosting the network endpoint that should become the new leader sends\n   either a Gratuitous ARP (GARP) packet (IPv4) or an ICMPv6 Router\n   Advertisement(RA) packet (IPv6).  Google Cloud immediately but\n   temporarily associates the forwarding rule IP address with that VM, and\n   both new and in-flight packets are quickly delivered to that VM.\n\n\n\nNote the important properties of the Fast IP Move functionality:\n   \n   - The GARP/RA-initiated re-routing stays active for approximately 20\n   minutes. After triggering fast failover, you must also\n   appropriately set the haPolicy.leader.\n   -  The new leader instance should continue to send GARP/RA packets\n   periodically every 10 seconds until at least 10 minutes after updating\n   the haPolicy.leader (but stop immediately if it is no longer the leader).\n   - After triggering a fast failover, we recommend that you wait at least\n   3 seconds before sending another GARP/RA packet from a different VM\n   instance to avoid race conditions.\n   - Don't send GARP/RA packets from different VM\n   instances at the same time. If multiple instances continue to send\n   GARP/RA packets, traffic might be routed to different destinations in an\n   alternating order. This condition ceases when a single instance\n   issues a GARP/RA packet.\n   - The GARP/RA request always takes priority over the leader API.\n   Using the haPolicy.leader API to change the leader to a different\n   instance will have no effect until the GARP/RA request becomes\n   inactive.\n   - The GARP/RA packets should follow the GARP/RA\n   Packet Specifications..\n   -  When multiple forwarding rules refer to a regional backend service,\n   you need only send a GARP or RA packet for a single forwarding rule\n   virtual IP. The virtual IPs for all forwarding rules targeting the same\n   backend service will also be moved to the sender of the GARP or RA\n   packet. \n\n\n\nThe following are the Fast IP Move limitations (that is, when fastIPMove\nis not DISABLED):\n   \n   - Multiple forwarding rules cannot use the same IP address if one of\n   them refers to a regional backend service with fastIPMove.\n   - The regional backend service must set the network field, and all\n   NEGs must belong to that network. However, individual\n   NEGs can belong to different subnetworks of that network. \n   - The maximum number of network endpoints across all backends of a\n   backend service with fastIPMove is 32.\n   - The maximum number of backend services with fastIPMove that can have\n   the same network endpoint attached to one of its backends is 64.\n   - The maximum number of backend services with fastIPMove in a VPC in a\n   region is 64.\n   - The network endpoints that are attached to a backend of a backend\n   service with fastIPMove cannot resolve to Gen3+ machines for IPv6.\n   - Traffic directed to the leader by a static route next hop will not be\n   redirected to a new leader by fast failover. Such traffic will only be\n   redirected once an haPolicy.leader update has taken effect. Only traffic\n   to the forwarding rule's virtual IP will be redirected to a new leader by\n   fast failover.\n\n\nhaPolicy.fastIPMove can be set only at backend service creation time.\nOnce set, it cannot be updated.\n\nBy default, fastIpMove is set to DISABLED.",
+          "description": "Specifies whether fast IP move is enabled, and if so, the mechanism to\nachieve it.\n\nSupported values are:\n   \n   - DISABLED: Fast IP Move is disabled. You can only use the\n   haPolicy.leader API to update the leader.\n   - \u003eGARP_RA: Provides a method to very quickly define a new network\n   endpoint as the leader. This method is faster than updating the leader\n   using the haPolicy.leader API. Fast IP move works as follows: The VM\n   hosting the network endpoint that should become the new leader sends\n   either a Gratuitous ARP (GARP) packet (IPv4) or an ICMPv6 Router\n   Advertisement(RA) packet (IPv6).  Google Cloud immediately but\n   temporarily associates the forwarding rule IP address with that VM, and\n   both new and in-flight packets are quickly delivered to that VM.\n   - HA_CONTROLLER: The Backend Service is managed by a High Availability\n   Controller. Failover and leader election are exclusively managed by the\n   HA Controller service.\n\n\n\nNote the important properties of the Fast IP Move functionality:\n   \n   - The GARP/RA-initiated re-routing stays active for approximately 20\n   minutes. After triggering fast failover, you must also\n   appropriately set the haPolicy.leader.\n   -  The new leader instance should continue to send GARP/RA packets\n   periodically every 10 seconds until at least 10 minutes after updating\n   the haPolicy.leader (but stop immediately if it is no longer the leader).\n   - After triggering a fast failover, we recommend that you wait at least\n   3 seconds before sending another GARP/RA packet from a different VM\n   instance to avoid race conditions.\n   - Don't send GARP/RA packets from different VM\n   instances at the same time. If multiple instances continue to send\n   GARP/RA packets, traffic might be routed to different destinations in an\n   alternating order. This condition ceases when a single instance\n   issues a GARP/RA packet.\n   - The GARP/RA request always takes priority over the leader API.\n   Using the haPolicy.leader API to change the leader to a different\n   instance will have no effect until the GARP/RA request becomes\n   inactive.\n   - The GARP/RA packets should follow the GARP/RA\n   Packet Specifications..\n   -  When multiple forwarding rules refer to a regional backend service,\n   you need only send a GARP or RA packet for a single forwarding rule\n   virtual IP. The virtual IPs for all forwarding rules targeting the same\n   backend service will also be moved to the sender of the GARP or RA\n   packet. \n\n\n\nThe following are the Fast IP Move limitations (that is, when fastIPMove\nis not DISABLED):\n   \n   - Multiple forwarding rules cannot use the same IP address if one of\n   them refers to a regional backend service with fastIPMove.\n   - The regional backend service must set the network field, and all\n   NEGs must belong to that network. However, individual\n   NEGs can belong to different subnetworks of that network. \n   - The maximum number of network endpoints across all backends of a\n   backend service with fastIPMove is 32.\n   - The maximum number of backend services with fastIPMove that can have\n   the same network endpoint attached to one of its backends is 64.\n   - The maximum number of backend services with fastIPMove in a VPC in a\n   region is 64.\n   - The network endpoints that are attached to a backend of a backend\n   service with fastIPMove cannot resolve to Gen3+ machines for IPv6.\n   - Traffic directed to the leader by a static route next hop will not be\n   redirected to a new leader by fast failover. Such traffic will only be\n   redirected once an haPolicy.leader update has taken effect. Only traffic\n   to the forwarding rule's virtual IP will be redirected to a new leader by\n   fast failover.\n\n\nhaPolicy.fastIPMove can be set only at backend service creation time.\nOnce set, it cannot be updated.\n\nBy default, fastIpMove is set to DISABLED.",
           "enum": [
             "DISABLED",
             "GARP_RA"
@@ -54979,7 +54979,7 @@
         },
         "instanceFlexibilityPolicy": {
           "$ref": "InstanceFlexibilityPolicy",
-          "description": "A flexible specification of machine type of instances to create."
+          "description": "A specification of alternative machine types to use when creating\ninstances. A single bulkInsert request can create instances with multiple\ndifferent machine types based on capacity and quota availability. This\nfield is supported only for regional bulkInsert requests. For more\ninformation, see About\ninstance flexibility for VMs created in bulk."
         },
         "instanceProperties": {
           "$ref": "InstanceProperties",
@@ -55126,7 +55126,7 @@
           "type": "array"
         },
         "host": {
-          "description": "If set, this invalidation rule will only apply to requests with a Host\nheader matching host.",
+          "description": "If set, this invalidation rule will only apply to requests with a Host\nheader matching host. This field also accepts wildcards (*) to replace the\nleftmost (or first) label of a hostname. For example, *.example.com will\nmatch www.example.com, but not sub1.dev.example.com.",
           "type": "string"
         },
         "path": {
@@ -55995,6 +55995,8 @@
             "MEMORY_OPTIMIZED",
             "MEMORY_OPTIMIZED_M3",
             "MEMORY_OPTIMIZED_M4",
+            "MEMORY_OPTIMIZED_M4N",
+            "MEMORY_OPTIMIZED_M4N_6TB",
             "MEMORY_OPTIMIZED_M4_6TB",
             "MEMORY_OPTIMIZED_X4_1440_24T",
             "MEMORY_OPTIMIZED_X4_16TB",
@@ -56046,6 +56048,8 @@
             "",
             "",
             "",
+            "CUD bucket for M4N machines with less than 6TB of memory.",
+            "CUD bucket for M4N machines with 6TB of memory.",
             "",
             "CUD bucket for X4 machine with 1440 vCPUs and 24TB of memory.",
             "",
@@ -68820,7 +68824,7 @@
           "additionalProperties": {
             "$ref": "InstanceFlexibilityPolicyInstanceSelection"
           },
-          "description": "Specification of alternative, flexible instance subsets.\nOne of them will be selected to create the instances\nbased on various criteria, like:\n- ranks,\n- location policy,\n- current capacity,\n- available reservations (you can specify affinity in\nInstanceProperties),\n- SWAN/GOOSE limitations.\nKey is an arbitrary, unique RFC1035 string that identifies the instance\nselection.",
+          "description": "Specifies named instance selections that define properties for instances\ncreated in bulk.\nKey is an arbitrary, unique RFC1035 string that identifies the instance\nselection.",
           "type": "object"
         }
       },
@@ -99977,7 +99981,7 @@
           "type": "string"
         },
         "skipGuestOsShutdown": {
-          "description": "Default is false and there will be 120 seconds between GCE ACPI G2 Soft\nOff and ACPI G3 Mechanical\nOff for Standard VMs and 30 seconds for Spot VMs.",
+          "description": "Defines whether GCE ACPI G2 Soft\nOff signal should be skipped during shutdown operation of VM.\n\nDefault is false, meaning there will be 120 seconds between GCE ACPI G2 Soft\nOff and ACPI G3 Mechanical\nOff for Standard VMs and 30 seconds for Spot VMs.",
           "type": "boolean"
         },
         "terminationTime": {
@@ -114135,10 +114139,12 @@
       "id": "VpnTunnelCipherSuite",
       "properties": {
         "phase1": {
-          "$ref": "VpnTunnelPhase1Algorithms"
+          "$ref": "VpnTunnelPhase1Algorithms",
+          "description": "Cipher algorithms for IKE phase 1."
         },
         "phase2": {
-          "$ref": "VpnTunnelPhase2Algorithms"
+          "$ref": "VpnTunnelPhase2Algorithms",
+          "description": "Cipher algorithms for IKE phase 2."
         }
       },
       "type": "object"
@@ -114317,24 +114323,28 @@
       "id": "VpnTunnelPhase1Algorithms",
       "properties": {
         "dh": {
+          "description": "Diffie-Hellman groups for IKE phase 1.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "encryption": {
+          "description": "Encryption algorithms for IKE phase 1.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "integrity": {
+          "description": "Integrity algorithms for IKE phase 1.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "prf": {
+          "description": "Pseudo-random functions (PRF) for IKE phase 1.",
           "items": {
             "type": "string"
           },
@@ -114347,18 +114357,21 @@
       "id": "VpnTunnelPhase2Algorithms",
       "properties": {
         "encryption": {
+          "description": "Encryption algorithms for IKE phase 2.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "integrity": {
+          "description": "Integrity algorithms for IKE phase 2.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "pfs": {
+          "description": "Perfect Forward Secrecy (PFS) groups for IKE phase 2.",
           "items": {
             "type": "string"
           },
