@@ -9,7 +9,8 @@ the full storage read path and parsing/extraction pipeline are exercised end to 
 The format is adapted from Prometheus' [`promqltest`](https://github.com/prometheus/prometheus/tree/main/promql/promqltest)
 DSL.
 
-For syntax highlighting of `.logqltest` files in GoLand or VS Code, see [syntax/README.md](syntax/README.md).
+For syntax highlighting of `.logqltest` files in GoLand, VS Code or Zed, see `tools/syntax/logqltest`
+in the `grafana/loki-toolbox` repository.
 
 ## Commands
 
