@@ -151,9 +151,11 @@ func (d *DescribeClientQuotasEntry) decode(pd packetDecoder, version int16) erro
 	if err != nil {
 		return err
 	}
-	if componentCount > 0 {
+	if componentCount < 0 {
+		return errInvalidArrayLength
+	} else if componentCount > 0 {
 		d.Entity = make([]QuotaEntityComponent, componentCount)
-		for i := 0; i < componentCount; i++ {
+		for i := range componentCount {
 			component := QuotaEntityComponent{}
 			if err := component.decode(pd, version); err != nil {
 				return err
@@ -169,9 +171,11 @@ func (d *DescribeClientQuotasEntry) decode(pd packetDecoder, version int16) erro
 	if err != nil {
 		return err
 	}
-	if valueCount > 0 {
+	if valueCount < 0 {
+		return errInvalidArrayLength
+	} else if valueCount > 0 {
 		d.Values = make(map[string]float64, valueCount)
-		for i := 0; i < valueCount; i++ {
+		for range valueCount {
 			// key
 			key, err := pd.getString()
 			if err != nil {

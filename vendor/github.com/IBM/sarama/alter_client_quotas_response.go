@@ -42,10 +42,13 @@ func (a *AlterClientQuotasResponse) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
+
 	return nil
 }
 
 func (a *AlterClientQuotasResponse) decode(pd packetDecoder, version int16) (err error) {
+	a.Version = version
 	if a.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
@@ -55,7 +58,9 @@ func (a *AlterClientQuotasResponse) decode(pd packetDecoder, version int16) (err
 	if err != nil {
 		return err
 	}
-	if entryCount > 0 {
+	if entryCount < 0 {
+		return errInvalidArrayLength
+	} else if entryCount > 0 {
 		a.Entries = make([]AlterClientQuotasEntryResponse, entryCount)
 		for i := range a.Entries {
 			e := AlterClientQuotasEntryResponse{}
@@ -66,6 +71,10 @@ func (a *AlterClientQuotasResponse) decode(pd packetDecoder, version int16) (err
 		}
 	} else {
 		a.Entries = []AlterClientQuotasEntryResponse{}
+	}
+
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
 	}
 
 	return nil
@@ -89,6 +98,8 @@ func (a *AlterClientQuotasEntryResponse) encode(pe packetEncoder) error {
 			return err
 		}
 	}
+
+	pe.putEmptyTaggedFieldArray()
 
 	return nil
 }
@@ -114,7 +125,7 @@ func (a *AlterClientQuotasEntryResponse) decode(pd packetDecoder, version int16)
 	}
 	if componentCount > 0 {
 		a.Entity = make([]QuotaEntityComponent, componentCount)
-		for i := 0; i < componentCount; i++ {
+		for i := range componentCount {
 			component := QuotaEntityComponent{}
 			if err := component.decode(pd, version); err != nil {
 				return err
@@ -123,6 +134,10 @@ func (a *AlterClientQuotasEntryResponse) decode(pd packetDecoder, version int16)
 		}
 	} else {
 		a.Entity = []QuotaEntityComponent{}
+	}
+
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
 	}
 
 	return nil
@@ -137,15 +152,31 @@ func (a *AlterClientQuotasResponse) version() int16 {
 }
 
 func (a *AlterClientQuotasResponse) headerVersion() int16 {
+	if a.Version >= 1 {
+		return 1
+	}
 	return 0
 }
 
 func (a *AlterClientQuotasResponse) isValidVersion() bool {
-	return a.Version == 0
+	return a.Version >= 0 && a.Version <= 1
+}
+
+func (a *AlterClientQuotasResponse) isFlexible() bool {
+	return a.isFlexibleVersion(a.Version)
+}
+
+func (a *AlterClientQuotasResponse) isFlexibleVersion(version int16) bool {
+	return version >= 1
 }
 
 func (a *AlterClientQuotasResponse) requiredVersion() KafkaVersion {
-	return V2_6_0_0
+	switch a.Version {
+	case 1:
+		return V2_8_0_0
+	default:
+		return V2_6_0_0
+	}
 }
 
 func (r *AlterClientQuotasResponse) throttleTime() time.Duration {

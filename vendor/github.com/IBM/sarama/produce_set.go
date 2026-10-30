@@ -20,15 +20,24 @@ type produceSet struct {
 
 	bufferBytes int
 	bufferCount int
+
+	// resent marks a batch that retryBatch sent straight to a broker. Its
+	// messages did not go through the partitionProducer, so the fin/retry
+	// ordering there does not cover them.
+	resent bool
 }
 
 func newProduceSet(parent *asyncProducer) *produceSet {
 	pid, epoch := parent.txnmgr.getProducerID()
+	return newProduceSetWithMeta(parent, pid, epoch)
+}
+
+func newProduceSetWithMeta(parent *asyncProducer, producerID int64, producerEpoch int16) *produceSet {
 	return &produceSet{
 		msgs:          make(map[string]map[int32]*partitionSet),
 		parent:        parent,
-		producerID:    pid,
-		producerEpoch: epoch,
+		producerID:    producerID,
+		producerEpoch: producerEpoch,
 	}
 }
 
@@ -127,6 +136,52 @@ func (ps *produceSet) add(msg *ProducerMessage) error {
 	return nil
 }
 
+func (ps *produceSet) takePartitions(predicate func(topic string, partition int32) bool) *produceSet {
+	if ps.empty() {
+		return nil
+	}
+	out := newProduceSetWithMeta(ps.parent, ps.producerID, ps.producerEpoch)
+	for topic, partitions := range ps.msgs {
+		for partition, set := range partitions {
+			if !predicate(topic, partition) {
+				continue
+			}
+			if out.msgs[topic] == nil {
+				out.msgs[topic] = make(map[int32]*partitionSet)
+			}
+			out.msgs[topic][partition] = set
+			out.bufferBytes += set.bufferBytes
+			out.bufferCount += len(set.msgs)
+			ps.bufferBytes -= set.bufferBytes
+			ps.bufferCount -= len(set.msgs)
+			delete(partitions, partition)
+		}
+		if len(partitions) == 0 {
+			delete(ps.msgs, topic)
+		}
+	}
+	if out.empty() {
+		return nil
+	}
+	return out
+}
+
+func (ps *produceSet) copyFunc(predicate func(topic string, partition int32) bool) *produceSet {
+	out := newProduceSetWithMeta(ps.parent, ps.producerID, ps.producerEpoch)
+	for topic, partitions := range ps.msgs {
+		for partition, set := range partitions {
+			if !predicate(topic, partition) {
+				continue
+			}
+			if out.msgs[topic] == nil {
+				out.msgs[topic] = make(map[int32]*partitionSet)
+			}
+			out.msgs[topic][partition] = set
+		}
+	}
+	return out
+}
+
 func (ps *produceSet) buildRequest() *ProduceRequest {
 	req := &ProduceRequest{
 		RequiredAcks: ps.parent.conf.Producer.RequiredAcks,
@@ -149,6 +204,15 @@ func (ps *produceSet) buildRequest() *ProduceRequest {
 	}
 	if ps.parent.conf.Version.IsAtLeast(V2_1_0_0) {
 		req.Version = 7
+	}
+	if ps.parent.conf.Version.IsAtLeast(V2_4_0_0) {
+		req.Version = 8
+	}
+	if ps.parent.conf.Version.IsAtLeast(V2_8_0_0) {
+		req.Version = 9
+	}
+	if ps.parent.conf.Version.IsAtLeast(V3_7_0_0) {
+		req.Version = 10
 	}
 
 	for topic, partitionSets := range ps.msgs {
@@ -227,6 +291,17 @@ func (ps *produceSet) eachPartition(cb func(topic string, partition int32, pSet 
 			cb(topic, partition, set)
 		}
 	}
+}
+
+func (ps *produceSet) anyPartition(predicate func(topic string, partition int32, pSet *partitionSet) bool) bool {
+	for topic, partitionSet := range ps.msgs {
+		for partition, set := range partitionSet {
+			if predicate(topic, partition, set) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (ps *produceSet) dropPartition(topic string, partition int32) []*ProducerMessage {

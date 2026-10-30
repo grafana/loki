@@ -98,6 +98,11 @@ func (pe *prepEncoder) putRawBytes(in []byte) error {
 	return nil
 }
 
+func (pe *prepEncoder) putUuid(in Uuid) error {
+	pe.length += 16
+	return nil
+}
+
 func (pe *prepEncoder) putNullableString(in *string) error {
 	if in == nil {
 		pe.length += 2
@@ -197,6 +202,10 @@ func (pe *prepFlexibleEncoder) putArrayLength(in int) error {
 }
 
 func (pe *prepFlexibleEncoder) putBytes(in []byte) error {
+	if in == nil {
+		pe.putUVarint(0)
+		return nil
+	}
 	pe.putUVarint(uint64(len(in) + 1))
 	return pe.putRawBytes(in)
 }
@@ -250,6 +259,12 @@ func (pe *prepFlexibleEncoder) putNullableInt32Array(in []int32) error {
 
 	pe.putUVarint(uint64(len(in)) + 1)
 	pe.length += 4 * len(in)
+	return nil
+}
+
+func (pe *prepFlexibleEncoder) putInt64Array(in []int64) error {
+	pe.putUVarint(uint64(len(in)) + 1)
+	pe.length += 8 * len(in)
 	return nil
 }
 

@@ -12,7 +12,7 @@ import (
 
 var (
 	lz4WriterPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			lz := lz4.NewWriter(nil)
 			if err := lz.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
 				panic(err)
@@ -22,12 +22,12 @@ var (
 	}
 
 	gzipWriterPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return gzip.NewWriter(nil)
 		},
 	}
 	gzipWriterPoolForCompressionLevel1 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 1)
 			if err != nil {
 				panic(err)
@@ -36,7 +36,7 @@ var (
 		},
 	}
 	gzipWriterPoolForCompressionLevel2 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 2)
 			if err != nil {
 				panic(err)
@@ -45,7 +45,7 @@ var (
 		},
 	}
 	gzipWriterPoolForCompressionLevel3 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 3)
 			if err != nil {
 				panic(err)
@@ -54,7 +54,7 @@ var (
 		},
 	}
 	gzipWriterPoolForCompressionLevel4 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 4)
 			if err != nil {
 				panic(err)
@@ -63,7 +63,7 @@ var (
 		},
 	}
 	gzipWriterPoolForCompressionLevel5 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 5)
 			if err != nil {
 				panic(err)
@@ -72,7 +72,7 @@ var (
 		},
 	}
 	gzipWriterPoolForCompressionLevel6 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 6)
 			if err != nil {
 				panic(err)
@@ -81,7 +81,7 @@ var (
 		},
 	}
 	gzipWriterPoolForCompressionLevel7 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 7)
 			if err != nil {
 				panic(err)
@@ -90,7 +90,7 @@ var (
 		},
 	}
 	gzipWriterPoolForCompressionLevel8 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 8)
 			if err != nil {
 				panic(err)
@@ -99,7 +99,7 @@ var (
 		},
 	}
 	gzipWriterPoolForCompressionLevel9 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			gz, err := gzip.NewWriterLevel(nil, 9)
 			if err != nil {
 				panic(err)

@@ -107,10 +107,11 @@ func (r *AlterPartitionReassignmentsResponse) decode(pd packetDecoder, version i
 	if err != nil {
 		return err
 	}
-
-	if numTopics > 0 {
+	if numTopics < 0 {
+		return errInvalidArrayLength
+	} else if numTopics > 0 {
 		r.Errors = make(map[string]map[int32]*alterPartitionReassignmentsErrorBlock, numTopics)
-		for i := 0; i < numTopics; i++ {
+		for range numTopics {
 			topic, err := pd.getString()
 			if err != nil {
 				return err
@@ -120,10 +121,13 @@ func (r *AlterPartitionReassignmentsResponse) decode(pd packetDecoder, version i
 			if err != nil {
 				return err
 			}
+			if ongoingPartitionReassignments < 0 {
+				return errInvalidArrayLength
+			}
 
 			r.Errors[topic] = make(map[int32]*alterPartitionReassignmentsErrorBlock, ongoingPartitionReassignments)
 
-			for j := 0; j < ongoingPartitionReassignments; j++ {
+			for range ongoingPartitionReassignments {
 				partition, err := pd.getInt32()
 				if err != nil {
 					return err

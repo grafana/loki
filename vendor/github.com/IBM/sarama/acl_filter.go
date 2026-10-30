@@ -17,7 +17,7 @@ func (a *AclFilter) encode(pe packetEncoder) error {
 		return err
 	}
 
-	if a.Version == 1 {
+	if a.Version >= 1 {
 		pe.putInt8(int8(a.ResourcePatternTypeFilter))
 	}
 
@@ -30,6 +30,7 @@ func (a *AclFilter) encode(pe packetEncoder) error {
 	pe.putInt8(int8(a.Operation))
 	pe.putInt8(int8(a.PermissionType))
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -44,7 +45,7 @@ func (a *AclFilter) decode(pd packetDecoder, version int16) (err error) {
 		return err
 	}
 
-	if a.Version == 1 {
+	if a.Version >= 1 {
 		pattern, err := pd.getInt8()
 		if err != nil {
 			return err
@@ -73,5 +74,6 @@ func (a *AclFilter) decode(pd packetDecoder, version int16) (err error) {
 	}
 	a.PermissionType = AclPermissionType(permissionType)
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
