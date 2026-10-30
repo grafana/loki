@@ -3,12 +3,15 @@
 package testkafka
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kfake"
+	"github.com/twmb/franz-go/pkg/kmsg"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -54,4 +57,21 @@ func CreateClusterWithoutCustomConsumerGroupsSupport(t testing.TB, numPartitions
 	require.Len(t, addrs, 1)
 
 	return cluster, addrs[0]
+}
+
+// CloseOnAPIVersionsAbove makes the cluster close the connection on any ApiVersions request above
+// maxVersion, like WarpStream agents that don't support ApiVersions v5 (KIP-1242). A real Kafka broker
+// replies UNSUPPORTED_VERSION instead, which franz-go handles by retrying at a lower version. It
+// returns the number of requests rejected so far.
+func CloseOnAPIVersionsAbove(cluster *kfake.Cluster, maxVersion int16) *atomic.Int32 {
+	rejected := atomic.NewInt32(0)
+	cluster.ControlKey(kmsg.ApiVersions.Int16(), func(req kmsg.Request) (kmsg.Response, error, bool) {
+		cluster.KeepControl()
+		if req.GetVersion() > maxVersion {
+			rejected.Inc()
+			return nil, errors.New("unsupported ApiVersions version"), true
+		}
+		return nil, nil, false
+	})
+	return rejected
 }

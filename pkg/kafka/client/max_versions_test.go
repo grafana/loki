@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -11,33 +10,32 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
-	"go.uber.org/atomic"
+	"github.com/twmb/franz-go/pkg/kversion"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 )
 
-// newWarpStreamLikeCluster returns a fake Kafka cluster that closes the connection on any ApiVersions
-// request above v4, like WarpStream agents that don't support ApiVersions v5 (KIP-1242). A real Kafka
-// broker replies UNSUPPORTED_VERSION instead, which franz-go handles by retrying at a lower version.
-func newWarpStreamLikeCluster(t *testing.T) (kafka.Config, *atomic.Int32) {
-	cluster, cfg := testkafka.CreateCluster(t, 1, "test-topic")
+func TestMaxVersions(t *testing.T) {
+	versions := MaxVersions()
 
-	rejected := atomic.NewInt32(0)
-	cluster.ControlKey(kmsg.ApiVersions.Int16(), func(req kmsg.Request) (kmsg.Response, error, bool) {
-		cluster.KeepControl()
-		if req.GetVersion() > 4 {
-			rejected.Inc()
-			return nil, errors.New("unsupported ApiVersions version"), true
-		}
-		return nil, nil, false
-	})
-	return cfg, rejected
+	got, ok := versions.LookupMaxKeyVersion(kmsg.ApiVersions.Int16())
+	require.True(t, ok)
+	require.Equal(t, int16(maxAPIVersionsRequestVersion), got)
+
+	// Every other request keeps franz-go's default maximum version.
+	stable := kversion.Stable()
+	for _, key := range []kmsg.Key{kmsg.Produce, kmsg.Fetch, kmsg.Metadata, kmsg.ListOffsets, kmsg.JoinGroup, kmsg.OffsetCommit} {
+		want, wantOK := stable.LookupMaxKeyVersion(key.Int16())
+		got, gotOK := versions.LookupMaxKeyVersion(key.Int16())
+		require.Equal(t, wantOK, gotOK, key.Name())
+		require.Equal(t, want, got, key.Name())
+	}
 }
 
 func TestClientsConnectWithoutApiVersionsV5(t *testing.T) {
 	t.Run("writer", func(t *testing.T) {
-		cfg, rejected := newWarpStreamLikeCluster(t)
+		cluster, cfg := testkafka.CreateCluster(t, 1, "test-topic")
+		rejected := testkafka.CloseOnAPIVersionsAbove(cluster, 4)
 
 		client, err := NewWriterClient("test", cfg, log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, err)
@@ -50,7 +48,8 @@ func TestClientsConnectWithoutApiVersionsV5(t *testing.T) {
 	})
 
 	t.Run("reader", func(t *testing.T) {
-		cfg, rejected := newWarpStreamLikeCluster(t)
+		cluster, cfg := testkafka.CreateCluster(t, 1, "test-topic")
+		rejected := testkafka.CloseOnAPIVersionsAbove(cluster, 4)
 
 		client, err := NewReaderClient("test", cfg, log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, err)
@@ -63,9 +62,11 @@ func TestClientsConnectWithoutApiVersionsV5(t *testing.T) {
 	})
 
 	// Sanity check that the fake cluster reproduces the failure: a client with franz-go's default
-	// versions sends ApiVersions v5 and never connects.
+	// versions sends ApiVersions v5 and never connects. If a future franz-go release falls back to a
+	// lower version when the connection is closed, this subtest fails and the cap may no longer be needed.
 	t.Run("default versions fail", func(t *testing.T) {
-		cfg, rejected := newWarpStreamLikeCluster(t)
+		cluster, cfg := testkafka.CreateCluster(t, 1, "test-topic")
+		rejected := testkafka.CloseOnAPIVersionsAbove(cluster, 4)
 
 		client, err := kgo.NewClient(kgo.SeedBrokers(cfg.WriterConfig.Address))
 		require.NoError(t, err)
