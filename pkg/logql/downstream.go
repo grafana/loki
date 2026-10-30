@@ -70,6 +70,8 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		limits:    ng.limits,
+
+		earlySeriesCutoff: ng.opts.EarlySeriesCutoff,
 	}
 }
 

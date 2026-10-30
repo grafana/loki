@@ -1413,3 +1413,112 @@ func TestJoinSampleVector_RangeQueryVectorOverwrite(t *testing.T) {
 	require.NotEmpty(t, warnings, "Expected warnings due to series limit exceeded")
 	require.Contains(t, warnings[0], "maximum number of series")
 }
+
+// countingQuerier counts the samples read from the iterators that Querier returns.
+type countingQuerier struct {
+	Querier
+	read *int
+}
+
+// newCountingQuerier returns a Querier over q that counts the samples read into read.
+func newCountingQuerier(q Querier, read *int) countingQuerier {
+	return countingQuerier{Querier: q, read: read}
+}
+
+func (q countingQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	it, err := q.Querier.SelectSamples(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return &countingSampleIterator{SampleIterator: it, count: q.read}, nil
+}
+
+// distinctStreams returns n streams {app="a", id="<i>"} from 0s to end. Stream i has i+1 lines a
+// second, so every stream has a different rate.
+func distinctStreams(n int, end time.Time) []logproto.Stream {
+	streams := make([]logproto.Stream, 0, n)
+	for i := range n {
+		var entries []logproto.Entry
+		for ts := time.Unix(0, 0); !ts.After(end); ts = ts.Add(time.Second) {
+			for j := range i + 1 {
+				entries = append(entries, logproto.Entry{Timestamp: ts, Line: fmt.Sprintf("line %d %d", ts.Unix(), j)})
+			}
+		}
+		streams = append(streams, logproto.Stream{Labels: fmt.Sprintf(`{app="a", id="%d"}`, i), Entries: entries})
+	}
+	return streams
+}
+
+func TestEngine_EarlySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
+	const maxSeries = 3
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	run := func(t *testing.T, ctx context.Context, cutoff bool, query string, numSeries int) (logqlmodel.Result, int, error) {
+		t.Helper()
+		read := 0
+		querier := newCountingQuerier(NewMockQuerier(1, distinctStreams(numSeries, end)), &read)
+		eng := NewEngine(EngineOpts{EarlySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+		params, err := NewLiteralParams(query, start, end, 30*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		res, err := eng.Query(params).Exec(ctx)
+		return res, read, err
+	}
+
+	for name, tc := range map[string]struct {
+		query     string
+		numSeries int
+		wantErr   bool
+		wantEarly bool
+	}{
+		"bare range aggregation":            {query: `count_over_time({app="a"}[1m])`, numSeries: 10, wantErr: true, wantEarly: true},
+		"sort":                              {query: `sort(count_over_time({app="a"}[1m]))`, numSeries: 10, wantErr: true, wantEarly: true},
+		"arithmetic with a literal":         {query: `count_over_time({app="a"}[1m]) * 2`, numSeries: 10, wantErr: true, wantEarly: true},
+		"or":                                {query: `count_over_time({app="a"}[1m]) or rate({app="a"}[1m])`, numSeries: 10, wantErr: true, wantEarly: true},
+		"stream iterator":                   {query: `count_over_time({app="a"}[10s])`, numSeries: 10, wantErr: true, wantEarly: true},
+		"vector aggregation over the limit": {query: `sum by (id) (count_over_time({app="a"}[1m]))`, numSeries: 10, wantErr: true},
+		"under the limit":                   {query: `count_over_time({app="a"}[1m])`, numSeries: maxSeries},
+		"or with overlapping legs":          {query: `count_over_time({app="a"}[1m]) or rate({app="a"}[1m])`, numSeries: maxSeries},
+		"sum":                               {query: `sum(count_over_time({app="a"}[1m]))`, numSeries: 10},
+		"topk":                              {query: `topk(1, count_over_time({app="a"}[1m]))`, numSeries: 10},
+		"filtering comparison":              {query: `count_over_time({app="a"}[1m]) > 450`, numSeries: 10},
+		"absent_over_time":                  {query: `absent_over_time({app="a"}[1m])`, numSeries: 10},
+		"label_replace":                     {query: `label_replace(count_over_time({app="a"}[1m]), "id", "x", "", "")`, numSeries: 10, wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			resOff, readOff, errOff := run(t, ctx, false, tc.query, tc.numSeries)
+			resOn, readOn, errOn := run(t, ctx, true, tc.query, tc.numSeries)
+
+			require.Equal(t, errOff, errOn)
+			if !tc.wantErr {
+				require.NoError(t, errOn)
+				require.Equal(t, resOff.Data, resOn.Data)
+				require.Equal(t, readOff, readOn)
+				return
+			}
+			require.Equal(t, logqlmodel.NewSeriesLimitError(maxSeries), errOn)
+			if tc.wantEarly {
+				require.Less(t, readOn, readOff)
+			} else {
+				require.Equal(t, readOff, readOn)
+			}
+		})
+	}
+
+	t.Run("Logs Drilldown request gets partial results and a warning", func(t *testing.T) {
+		ctx := httpreq.InjectQueryTags(user.InjectOrgID(context.Background(), "fake"), "Source=grafana-lokiexplore-app")
+		const query = `count_over_time({app="a"}[1m])`
+		resOff, readOff, errOff := run(t, ctx, false, query, 10)
+		resOn, readOn, errOn := run(t, ctx, true, query, 10)
+
+		require.NoError(t, errOff)
+		require.NoError(t, errOn)
+		require.Equal(t, readOff, readOn)
+		require.Len(t, resOff.Data.(promql.Matrix), maxSeries)
+		require.Len(t, resOn.Data.(promql.Matrix), maxSeries)
+		require.Equal(t, resOff.Warnings, resOn.Warnings)
+		require.Equal(t, []string{seriesLimitPartialResultsWarning(maxSeries)}, resOn.Warnings)
+	})
+}

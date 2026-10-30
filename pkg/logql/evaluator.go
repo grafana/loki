@@ -281,12 +281,20 @@ type EvaluatorFactory interface {
 type NodeContext struct {
 	isRoot     bool
 	preserving bool
+	maxSeries  int
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
 // preserves the output unless expr produces a sketch, which is not counted as series.
-func RootContext(expr syntax.SampleExpr) NodeContext {
-	return NodeContext{isRoot: true, preserving: !producesSketch(expr)}
+//
+// maxSeries is the limit on the query's output series that preserving expressions may fail on
+// early. Zero turns the early cut-off off.
+func RootContext(expr syntax.SampleExpr, maxSeries int) NodeContext {
+	nc := NodeContext{isRoot: true, preserving: !producesSketch(expr)}
+	if nc.preserving {
+		nc.maxSeries = maxSeries
+	}
+	return nc
 }
 
 // producesSketch reports whether expr contains an operator that returns a sketch.
@@ -325,7 +333,32 @@ func (c NodeContext) OutputPreserving() bool {
 // child returns the NodeContext of an operand of an operator that keeps every series it receives
 // when opPreserves is true.
 func (c NodeContext) child(opPreserves bool) NodeContext {
-	return NodeContext{preserving: c.preserving && opPreserves}
+	if !opPreserves {
+		return NodeContext{}
+	}
+	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries}
+}
+
+// iteratorLimits returns the limits that an iterator built for the expression checks as it
+// stores series.
+func (c NodeContext) iteratorLimits() iteratorLimits {
+	return iteratorLimits{maxSeries: c.maxSeries}
+}
+
+// iteratorLimits is what an iterator checks each time it stores a new series.
+type iteratorLimits struct {
+	// maxSeries is zero when the early cut-off does not apply to the iterator.
+	maxSeries int
+}
+
+// exceeded returns the series limit error when an iterator holding series series has passed the
+// limit, and nil otherwise. The iterator's own count is a lower bound on the output only where
+// the expression is preserving, so it is never summed with other iterators.
+func (l iteratorLimits) exceeded(series int) error {
+	if l.maxSeries > 0 && series > l.maxSeries {
+		return logqlmodel.NewSeriesLimitError(l.maxSeries)
+	}
+	return nil
 }
 
 type SampleEvaluatorFactory interface {
@@ -407,7 +440,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ NodeContext) (StepEvaluator, error) {
+			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, nc NodeContext) (StepEvaluator, error) {
 				keepsErroredLines, err := syntax.KeepsErroredLines(rangExpr.Left)
 				if err != nil {
 					return nil, err
@@ -421,7 +454,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				case logproto.SAMPLE_ORDER_BY_STREAM:
 					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.maxQuerySeries(ctx), keepsErroredLines)
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
-					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines)
+					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines, rangeAggIteratorLimits(nc, rangExpr))
 				default:
 					util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
 					return nil, errors.Errorf("unknown sample order %v", sampleOrder)
@@ -441,11 +474,11 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines)
+		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines, rangeAggIteratorLimits(nc, e))
 	case *syntax.LabelAggregationExpr:
-		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, false)
+		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, false, nc.iteratorLimits())
 	case *syntax.CountDistinctSketchExpr:
-		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, true)
+		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, true, nc.iteratorLimits())
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q, nc)
 	case *syntax.LabelReplaceExpr:
@@ -528,6 +561,7 @@ func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 	left *syntax.LogRangeExpr,
 	q Params,
 	emitSketch bool,
+	limits iteratorLimits,
 ) (StepEvaluator, error) {
 	keepsErroredLines, err := syntax.KeepsErroredLines(left)
 	if err != nil {
@@ -538,7 +572,7 @@ func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch, keepsErroredLines), nil
+	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch, keepsErroredLines, limits), nil
 }
 
 func newVectorAggEvaluator(
@@ -574,6 +608,7 @@ func newVectorAggEvaluator(
 		exprSortedGroups: exprSortedGroups,
 		buf:              make([]byte, 0, 1024),
 		lb:               labels.NewBuilder(labels.EmptyLabels()),
+		limits:           nc.iteratorLimits(),
 	}, nil
 }
 
@@ -586,9 +621,15 @@ type VectorAggEvaluator struct {
 
 	buf []byte
 	lb  *labels.Builder
+
+	limits iteratorLimits
+	err    error
 }
 
 func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
+	if e.err != nil {
+		return false, 0, SampleVector{}
+	}
 	next, ts, r := e.nextEvaluator.Next()
 
 	if !next {
@@ -613,6 +654,9 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 		group, ok := result[groupingKey]
 		// Add a new group if it doesn't exist.
 		if !ok {
+			if e.err = e.limits.exceeded(len(result) + 1); e.err != nil {
+				return false, 0, SampleVector{}
+			}
 			var m labels.Labels
 
 			if e.expr.Grouping.Without {
@@ -796,6 +840,9 @@ func (e *VectorAggEvaluator) Close() error {
 }
 
 func (e *VectorAggEvaluator) Error() error {
+	if e.err != nil {
+		return e.err
+	}
 	return e.nextEvaluator.Error()
 }
 
@@ -808,6 +855,7 @@ func newTimestampFirstRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 	keepsErroredLines bool,
+	limits iteratorLimits,
 ) (_ StepEvaluator, returnErr error) {
 	defer func() {
 		if returnErr != nil {
@@ -822,6 +870,7 @@ func newTimestampFirstRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			limits,
 		)
 		if err != nil {
 			return nil, err
@@ -842,6 +891,7 @@ func newTimestampFirstRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			limits,
 		)
 
 		return &QuantileSketchStepEvaluator{
@@ -854,6 +904,7 @@ func newTimestampFirstRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			limits,
 		)
 
 		return &RangeVectorEvaluator{
@@ -866,6 +917,7 @@ func newTimestampFirstRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			limits,
 		)
 
 		return &RangeVectorEvaluator{
@@ -878,6 +930,7 @@ func newTimestampFirstRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			limits,
 		)
 		if err != nil {
 			return nil, err
@@ -992,6 +1045,12 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 		return r.err
 	}
 	return r.iter.Error()
+}
+
+// rangeAggIteratorLimits returns the limits of the range iterator of expr, an expression whose
+// NodeContext is nc.
+func rangeAggIteratorLimits(nc NodeContext, expr *syntax.RangeAggregationExpr) iteratorLimits {
+	return nc.child(rangeAggPreservesSeries(expr.Operation)).iteratorLimits()
 }
 
 // rangeAggPreservesSeries reports whether the range aggregation op returns one series for each
