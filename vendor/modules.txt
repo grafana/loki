@@ -2200,7 +2200,7 @@ go.opentelemetry.io/collector/confmap/xconfmap
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
-# go.opentelemetry.io/collector/featuregate v1.69.0
+# go.opentelemetry.io/collector/featuregate v1.70.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/featuregate
 # go.opentelemetry.io/collector/internal/componentalias v0.153.0
