@@ -1,8 +1,6 @@
 package stages
 
 import (
-	"os"
-	"runtime"
 	"sync"
 	"time"
 
@@ -10,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/clients/pkg/util"
 )
@@ -65,51 +62,20 @@ type Stage interface {
 	Cleanup()
 }
 
-func (entry *Entry) copy() *Entry {
-	out, err := yaml.Marshal(entry)
-	if err != nil {
-		return nil
-	}
-
-	var n *Entry
-	err = yaml.Unmarshal(out, &n)
-	if err != nil {
-		return nil
-	}
-
-	return n
-}
-
 // stageProcessor Allow to transform a Processor (old synchronous pipeline stage) into an async Stage
 type stageProcessor struct {
 	Processor
-
-	inspector *inspector
 }
 
 func (s stageProcessor) Run(in chan Entry) chan Entry {
 	return RunWith(in, func(e Entry) Entry {
-		var before *Entry
-
-		if Inspect {
-			before = e.copy()
-		}
-
 		s.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
-
-		if Inspect {
-			s.inspector.inspect(s.Name(), before, e)
-		}
-
 		return e
 	})
 }
 
 func toStage(p Processor) Stage {
-	return &stageProcessor{
-		Processor: p,
-		inspector: newInspector(os.Stderr, runtime.GOOS == "windows"),
-	}
+	return &stageProcessor{Processor: p}
 }
 
 type StageCreationParams struct {
@@ -143,13 +109,13 @@ func initCreators() {
 			return NewCRI(params.logger, params.config, params.registerer)
 		},
 		StageTypeJSON: func(params StageCreationParams) (Stage, error) {
-			return newJSONStage(params.logger, params.config)
+			return newJSONStage(params.config)
 		},
 		StageTypeLogfmt: func(params StageCreationParams) (Stage, error) {
-			return newLogfmtStage(params.logger, params.config)
+			return newLogfmtStage(params.config)
 		},
 		StageTypeRegex: func(params StageCreationParams) (Stage, error) {
-			return newRegexStage(params.logger, params.config)
+			return newRegexStage(params.config)
 		},
 		StageTypeMetric: func(params StageCreationParams) (Stage, error) {
 			return newMetricStage(params.logger, params.config, params.registerer)
@@ -161,25 +127,25 @@ func initCreators() {
 			return newLabelDropStage(params.config)
 		},
 		StageTypeTimestamp: func(params StageCreationParams) (Stage, error) {
-			return newTimestampStage(params.logger, params.config)
+			return newTimestampStage(params.config)
 		},
 		StageTypeOutput: func(params StageCreationParams) (Stage, error) {
-			return newOutputStage(params.logger, params.config)
+			return newOutputStage(params.config)
 		},
 		StageTypeMatch: func(params StageCreationParams) (Stage, error) {
 			return newMatcherStage(params.logger, params.jobName, params.config, params.registerer)
 		},
 		StageTypeTemplate: func(params StageCreationParams) (Stage, error) {
-			return newTemplateStage(params.logger, params.config)
+			return newTemplateStage(params.config)
 		},
 		StageTypeTenant: func(params StageCreationParams) (Stage, error) {
-			return newTenantStage(params.logger, params.config)
+			return newTenantStage(params.config)
 		},
 		StageTypeReplace: func(params StageCreationParams) (Stage, error) {
-			return newReplaceStage(params.logger, params.config)
+			return newReplaceStage(params.config)
 		},
 		StageTypeDrop: func(params StageCreationParams) (Stage, error) {
-			return newDropStage(params.logger, params.config, params.registerer)
+			return newDropStage(params.config, params.registerer)
 		},
 		StageTypeSampling: func(params StageCreationParams) (Stage, error) {
 			return newSamplingStage(params.logger, params.config, params.registerer)
@@ -188,16 +154,16 @@ func initCreators() {
 			return newLimitStage(params.logger, params.config, params.registerer)
 		},
 		StageTypeMultiline: func(params StageCreationParams) (Stage, error) {
-			return newMultilineStage(params.logger, params.config)
+			return newMultilineStage(params.config)
 		},
 		StageTypePack: func(params StageCreationParams) (Stage, error) {
-			return newPackStage(params.logger, params.config, params.registerer)
+			return newPackStage(params.config, params.registerer)
 		},
 		StageTypeLabelAllow: func(params StageCreationParams) (Stage, error) {
 			return newLabelAllowStage(params.config)
 		},
 		StageTypeStaticLabels: func(params StageCreationParams) (Stage, error) {
-			return newStaticLabelsStage(params.logger, params.config)
+			return newStaticLabelsStage(params.config)
 		},
 		StageTypeDecolorize: func(params StageCreationParams) (Stage, error) {
 			return newDecolorizeStage(params.config)

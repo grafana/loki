@@ -2,11 +2,8 @@ package stages
 
 import (
 	"errors"
-	"reflect"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
 )
@@ -34,7 +31,7 @@ func validateOutputConfig(cfg *OutputConfig) error {
 }
 
 // newOutputStage creates a new outputStage
-func newOutputStage(logger log.Logger, config interface{}) (Stage, error) {
+func newOutputStage(config interface{}) (Stage, error) {
 	cfg := &OutputConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -45,15 +42,13 @@ func newOutputStage(logger log.Logger, config interface{}) (Stage, error) {
 		return nil, err
 	}
 	return toStage(&outputStage{
-		cfgs:   cfg,
-		logger: logger,
+		cfgs: cfg,
 	}), nil
 }
 
 // outputStage will mutate the incoming entry and set it from extracted data
 type outputStage struct {
-	cfgs   *OutputConfig
-	logger log.Logger
+	cfgs *OutputConfig
 }
 
 // Process implements Stage
@@ -64,16 +59,9 @@ func (o *outputStage) Process(_ model.LabelSet, extracted map[string]interface{}
 	if v, ok := extracted[o.cfgs.Source]; ok {
 		s, err := getString(v)
 		if err != nil {
-			if Debug {
-				level.Debug(o.logger).Log("msg", "extracted output could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
-			}
 			return
 		}
 		*entry = s
-	} else {
-		if Debug {
-			level.Debug(o.logger).Log("msg", "extracted data did not contain output source")
-		}
 	}
 }
 
