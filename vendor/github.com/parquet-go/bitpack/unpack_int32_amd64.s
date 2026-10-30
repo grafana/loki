@@ -114,7 +114,7 @@ TEXT ·unpackInt32x1to16bitsAVX2(SB), NOSPLIT, $56-56
     MOVQ $1, R8
     SHLQ CX, R8
     DECQ R8
-    MOVQ R8, X0
+    VMOVQ R8, X0
     VPBROADCASTD X0, X0 // bitMask = (1 << bitWidth) - 1
 
     MOVQ CX, R9
@@ -192,7 +192,7 @@ TEXT ·unpackInt32x17to26bitsAVX2(SB), NOSPLIT, $56-56
     MOVQ $1, R8
     SHLQ CX, R8
     DECQ R8
-    MOVQ R8, X0
+    VMOVQ R8, X0
     VPBROADCASTD X0, X0
 
     MOVQ CX, R9
@@ -281,7 +281,7 @@ TEXT ·unpackInt32x27to31bitsAVX2(SB), NOSPLIT, $56-56
     MOVQ $1, R8
     SHLQ CX, R8
     DECQ R8
-    MOVQ R8, X0
+    VMOVQ R8, X0
     VPBROADCASTD X0, X0
 
     MOVQ CX, R9
