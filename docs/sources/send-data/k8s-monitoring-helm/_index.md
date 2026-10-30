@@ -29,7 +29,7 @@ In this tutorial, we will deploy [Loki](https://grafana.com/docs/loki/latest/get
 Before you begin, here are some things you should know:
 
 * **Loki**: Loki can run in a single binary mode or as a distributed system. In this tutorial, we will deploy Loki as a single binary, otherwise known as monolithic mode. Loki can be vertically scaled in this mode depending on the number of logs you are collecting. Grafana Labs recommends running Loki in a distributed/microservice mode for production use cases to monitor high volumes of logs.
-* **Deployment**: You will deploy Loki, Grafana, and Alloy (as part of the Kubernetes Monitoring Helm chart) in the `meta` namespace of your Kubernetes cluster. Make sure you have the necessary permissions to create resources in this namespace. These pods will also require resources to run, so consider the amount of capacity your nodes have available. It also possible to just deploy the Kubernetes monitoring Helm chart (since it has a minimal resource footprint) within your cluster and write logs to an external Loki instance or Grafana Cloud.
+* **Deployment**: You will deploy Loki, Grafana, and Alloy (as part of the Kubernetes Monitoring Helm chart) in the `meta` namespace of your Kubernetes cluster. Make sure you have the necessary permissions to create resources in this namespace. These pods will also require resources to run, so consider the amount of capacity your nodes have available. It is also possible to just deploy the Kubernetes monitoring Helm chart (since it has a minimal resource footprint) within your cluster and write logs to an external Loki instance or Grafana Cloud.
 * **Storage**:  In this tutorial, Loki will use the default object storage backend provided in the Loki Helm chart; [MinIO](https://min.io/docs/minio/kubernetes/upstream/index.html). You should migrate to a more production-ready storage backend like [S3](https://aws.amazon.com/s3/getting-started/), [GCS](https://cloud.google.com/storage/docs), [Azure Blob Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/) or a MinIO Cluster for production use cases.
 
 <!-- INTERACTIVE ignore START -->
@@ -37,7 +37,7 @@ Before you begin, here are some things you should know:
 
 Before you begin, you will need the following:
 
-* A Kubernetes cluster running version `1.23` or later.
+* A Kubernetes cluster running a [currently supported version](https://kubernetes.io/releases/) of Kubernetes. The Kubernetes Monitoring Helm chart aims to be compatible with all supported Kubernetes versions.
 * [kubectl](https://kubernetes.io/docs/tasks/tools/) installed on your local machine.
 * [Helm](https://helm.sh/docs/intro/install/) installed on your local machine.
 
@@ -169,13 +169,20 @@ As before, the command also includes a `values` file that specifies the configur
 
 ## Deploy the Kubernetes Monitoring Helm chart
 
-The Kubernetes Monitoring Helm chart is used for gathering, scraping, and forwarding Kubernetes telemetry data to a Grafana stack. This includes the ability to collect metrics, logs, traces, and continuous profiling data. The scope of this tutorial is to deploy the Kubernetes Monitoring Helm chart to collect pod logs and Kubernetes events.
+The Kubernetes Monitoring Helm chart is used for gathering, scraping, and forwarding Kubernetes telemetry data to a Grafana stack. This includes the ability to collect metrics, logs, traces, and continuous profiling data. The scope of this tutorial is to deploy the Kubernetes Monitoring Helm chart to collect Pod logs and Kubernetes events.
+
+{{< admonition type="note" >}}
+This tutorial uses chart version 4.x, the current major version of the Kubernetes Monitoring Helm chart. If you have an existing `values.yml` file written for chart version 3.x or earlier, its configuration keys do not carry over directly. Refer to the [migration guide](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/helm-chart-config/helm-chart/migrate-helm-chart/) before reusing an older values file with this tutorial.
+{{< /admonition >}}
 
 To deploy the Kubernetes Monitoring Helm chart run the following command:
 
 ```bash
-helm install --values ./k8s-monitoring-values.yml k8s grafana/k8s-monitoring -n meta
+helm install --values ./k8s-monitoring-values.yml k8s grafana/k8s-monitoring -n meta --version "^4"
 ```
+
+Pinning the chart to the 4.x line (`--version "^4"`) keeps this tutorial working even after a future major release changes the configuration format again.
+
 Within the configuration file `k8s-monitoring-values.yml` we have defined the following:
 
 ```yaml
@@ -184,65 +191,47 @@ cluster:
   name: meta-monitoring-tutorial
 
 destinations:
-  - name: loki
+  loki:
     type: loki
     url: http://loki-gateway.meta.svc.cluster.local/loki/api/v1/push
 
-
 clusterEvents:
   enabled: true
-  collector: alloy-logs
+  collector: alloy-singleton
   namespaces:
     - meta
     - prod
 
-nodeLogs:
-  enabled: false
-
-podLogs:
+podLogsViaKubernetesApi:
   enabled: true
-  gatherMethod: kubernetesApi
   collector: alloy-logs
-  labelsToKeep: ["app_kubernetes_io_name","container","instance","job","level","namespace","service_name","service_namespace","deployment_environment","deployment_environment_name"]
+  namespaces:
+    - meta
+    - prod
   structuredMetadata:
     pod: pod  # Set structured metadata "pod" from label "pod"
-  namespaces:
-    - meta
-    - prod
 
 # Collectors
-alloy-singleton:
-  enabled: false
-
-alloy-metrics:
-  enabled: false
-
-alloy-logs:
-  enabled: true
-  # Required when using the Kubernetes API to pod logs
-  alloy:
-    mounts:
-      varlog: false
-    clustering:
-      enabled: true
-
-alloy-profiles:
-  enabled: false
-
-alloy-receiver:
-  enabled: false
+collectors:
+  alloy-singleton:
+    presets: [singleton]
+  alloy-logs:
+    presets: [clustered]
 ```
 
 To break down the configuration file:
-* Define the cluster name as `meta-monitoring-tutorial`. This a static label that will be attached to all logs collected by the Kubernetes Monitoring Helm chart.
+* Define the cluster name as `meta-monitoring-tutorial`. This is a static label that will be attached to all logs collected by the Kubernetes Monitoring Helm chart.
 * Define a destination named `loki` that will be used to forward logs to Loki. The `url` attribute specifies the URL of the Loki gateway. **If you choose to deploy Loki in a different namespace or in a different location entirely, you will need to update the `url` attribute accordingly.**
-* Enable the collection of cluster events and pod logs:
-  * `collector`: specifies which collector to use to collect logs. In this case, we are using the `alloy-logs` collector.
-  * `labelsToKeep`: specifies the labels to keep when collecting logs. Note this does not drop logs. This is useful when you do not want to apply a high cardanility label. In this case we have removed `pod` from the labels to keep.
-  * `structuredMetadata`: specifies the structured metadata to collect. In this case, we are setting the structured metadata `pod` so we can retain the pod name for querying. Though it does not need to be indexed as a label.zw
+* Enable the collection of cluster events and Pod logs. Pod logs are gathered via the Kubernetes API, using the `podLogsViaKubernetesApi` feature:
+  * `collector`: specifies which collector to use to collect logs. The value must match a name defined under `collectors:` below. In this case, `clusterEvents` uses the `alloy-singleton` collector, and `podLogsViaKubernetesApi` uses the `alloy-logs` collector.
+  * `structuredMetadata`: specifies the structured metadata to collect. In this case, we are setting the structured metadata `pod` so we can retain the pod name for querying, without promoting it to an indexed label (which would add high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/)).
   * `namespaces`: specifies the namespaces to collect logs from. In this case, we are collecting logs from the `meta` and `prod` namespaces.
-* Disable the collection of node logs for the purpose of this tutorial as it requires the mounting of `/var/log/journal`. This is out of scope for this tutorial.
-* Lastly, define the role of the collector. The Kubernetes Monitoring Helm chart will deploy only what you need and nothing more. In this case, we are telling the Helm chart to only deploy Alloy with the capability to collect logs. If you need to collect K8s metrics, traces, or continuous profiling data, you can enable the respective collectors.
+* Node log collection is not enabled in this tutorial. The `nodeLogs` feature defaults to disabled, and requires mounting `/var/log/journal`, which is out of scope here.
+* Define the `collectors:` map. Each entry is a name you choose for an Alloy instance, configured with one or more `presets:` that determine how that instance is deployed:
+  * `alloy-singleton` uses the `singleton` preset, which deploys a single Alloy replica. This is sufficient for gathering cluster-wide data such as Kubernetes events.
+  * `alloy-logs` uses the `clustered` preset, which deploys Alloy as a coordinated group of replicas. This is required for collecting Pod logs through the Kubernetes API, since the replicas need to coordinate which Pods each one collects logs from.
+
+  At least one collector must be defined under `collectors:`, and every `collector:` reference elsewhere in the file (such as `clusterEvents.collector` and `podLogsViaKubernetesApi.collector`) must match a key in this map, or the install fails with an error naming the missing collector.
 
 <!-- INTERACTIVE page step5.md END -->
 
