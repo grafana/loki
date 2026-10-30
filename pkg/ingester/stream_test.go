@@ -579,7 +579,7 @@ func TestValidRecordTimestamp(t *testing.T) {
 		{"a record timestamp", time.UnixMilli(1_700_000_000_000), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, validRecordTimestamp(tc.ts))
+			require.Equal(t, tc.want, validRecordTimestamp(tc.ts, gokitlog.NewNopLogger()))
 		})
 	}
 }

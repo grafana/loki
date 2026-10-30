@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -128,19 +127,6 @@ func (c *chunkDesc) observeRecordTimestamp(ts time.Time) {
 	if ts.After(c.ingestedAt) {
 		c.ingestedAt = ts
 	}
-}
-
-// maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
-// ones are ignored since UnixNano overflows after it.
-var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
-
-// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested record.
-// Records without a timestamp come with a zero time, or with a timestamp at or before the epoch
-// (e.g. Kafka's NoTimestamp, -1). Those would end up as an IngestedAt of zero, which means "not
-// set" and makes the chunk fall back to Through-based retention. Timestamps after
-// maxRecordTimestamp are ignored too.
-func validRecordTimestamp(ts time.Time) bool {
-	return ts.UnixMilli() > 0 && ts.Before(maxRecordTimestamp)
 }
 
 type entryWithError struct {

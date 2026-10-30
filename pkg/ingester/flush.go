@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -620,6 +621,27 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	desc.flushed = time.Now()
 }
 
+// maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
+// ones are ignored since UnixNano overflows after it.
+var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
+
+// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested record.
+// Records without a timestamp come with a zero time, or with a timestamp at or before the epoch
+// (e.g. Kafka's NoTimestamp, -1). Those would end up as an IngestedAt of zero, which means "not
+// set" and makes the chunk fall back to Through-based retention. Timestamps after
+// maxRecordTimestamp are ignored too, and logged since they mean something is very wrong (e.g. a
+// producer's clock).
+func validRecordTimestamp(ts time.Time, logger log.Logger) bool {
+	if ts.UnixMilli() <= 0 {
+		return false
+	}
+	if !ts.Before(maxRecordTimestamp) {
+		level.Error(logger).Log("msg", "ignoring record timestamp after the supported range", "record_timestamp", ts, "max", maxRecordTimestamp)
+		return false
+	}
+	return true
+}
+
 // maybeSetIngestedAt stamps the chunk's IngestedAt for chunks belonging to backfilled
 // streams (those carrying the __backfill__ label), so that under TSDB FormatV4 (schema v14)
 // retention can be measured from ingestion rather than from the log timestamps. Chunks of
@@ -648,7 +670,7 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, rec
 
 	// Replicas of a partition consume the same records, so the record timestamp is the same on
 	// all of them and is used as is.
-	if validRecordTimestamp(recordTime) {
+	if validRecordTimestamp(recordTime, i.logger) {
 		ch.IngestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
 		return
 	}

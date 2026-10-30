@@ -234,7 +234,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	// The timestamp of the record (e.g. Kafka) the push comes from, if it has a usable one. It is
 	// persisted in the WAL record, so a replay restores it.
 	var recordTime time.Time
-	if ts := time.UnixMilli(req.IngestedAtMs); validRecordTimestamp(ts) {
+	if ts := time.UnixMilli(req.IngestedAtMs); validRecordTimestamp(ts, util_log.Logger) {
 		recordTime = ts
 	}
 	record.IngestedAt = recordTime
