@@ -65,11 +65,15 @@ func (ng *DownstreamEngine) Opts() EngineOpts { return ng.opts }
 
 // Query constructs a Query
 func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
+	opts := ng.opts
+	opts.LogExecutingQuery = false
+
 	return &query{
 		logger:    ng.logger,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		limits:    ng.limits,
+		opts:      opts,
 	}
 }
 

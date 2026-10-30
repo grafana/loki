@@ -5163,6 +5163,12 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+  # Experimental: Fail a query on max_query_series as soon as a range iterator
+  # or vector aggregation holds more series than the limit, where the query's
+  # output cannot be smaller. Logs Drilldown requests are exempt.
+  # CLI flag: -querier.engine.early-series-cutoff
+  [early_series_cutoff: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent

@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -26,6 +27,43 @@ var (
 	nilShardMetrics = NewShardMapperMetrics(nil)
 	nilRangeMetrics = NewRangeMapperMetrics(nil)
 )
+
+func TestDownstreamEngine_ShouldNotLogTheExecutingQuery(t *testing.T) {
+	const query = `rate({a=~".+"}[1s])`
+
+	var (
+		shards  = 3
+		streams = randomStreams(10, 2, shards, []string{"a", "b"}, true)
+		opts    = EngineOpts{LogExecutingQuery: true}
+		ctx     = user.InjectOrgID(context.Background(), "fake")
+	)
+	params, err := NewLiteralParams(query, time.Unix(0, 0), time.Unix(0, int64(time.Second)), time.Second, 0, logproto.FORWARD, 100, nil, nil)
+	require.NoError(t, err)
+
+	regular := NewEngine(EngineOpts{}, NewMockQuerier(shards, streams), NoLimits, log.NewNopLogger())
+
+	t.Run("the engine logs it, so the downstream engine opting out is not vacuous", func(t *testing.T) {
+		var logs bytes.Buffer
+		_, err := NewEngine(opts, NewMockQuerier(shards, streams), NoLimits, log.NewLogfmtLogger(&logs)).Query(params).Exec(ctx)
+		require.NoError(t, err)
+
+		require.Contains(t, logs.String(), "executing query")
+	})
+
+	t.Run("the downstream engine does not log it even when its options ask for it", func(t *testing.T) {
+		var logs bytes.Buffer
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewLogfmtLogger(&logs))
+
+		strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+		_, _, mapped, err := NewShardMapper(strategy, nilShardMetrics, nil).Parse(params.GetExpression())
+		require.NoError(t, err)
+
+		_, err = sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped}).Exec(ctx)
+		require.NoError(t, err)
+
+		require.NotContains(t, logs.String(), "executing query")
+	})
+}
 
 func TestMappingEquivalence(t *testing.T) {
 	var (

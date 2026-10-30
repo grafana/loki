@@ -3,10 +3,12 @@ package logql
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -229,7 +231,7 @@ func TestCountDistinctSketchEvalNilMergeExpr(t *testing.T) {
 	require.NoError(t, err)
 
 	missingMerge := &CountDistinctSketchEvalExpr{}
-	_, err = ev.NewStepEvaluator(context.Background(), nil, missingMerge, params, RootContext(missingMerge))
+	_, err = ev.NewStepEvaluator(context.Background(), nil, missingMerge, params, RootContext(missingMerge, 0))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing merge expression")
 }
@@ -495,7 +497,7 @@ func TestCountDistinctSketchExprReturnsSketches(t *testing.T) {
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext(sketch))
+	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext(sketch, 0))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = step.Close() })
 	okNext, _, result := step.Next()
@@ -536,7 +538,7 @@ func TestCountDistinctSketchExprRangeSteps(t *testing.T) {
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext(sketch))
+	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext(sketch, 0))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stepEv.Close() })
 
@@ -653,4 +655,34 @@ func TestApproxCountDistinctShardedRange(t *testing.T) {
 		require.InDelta(t, localMatrix[0].Floats[i].F, shardedMatrix[0].Floats[i].F, 0.01)
 		require.InDelta(t, 3, localMatrix[0].Floats[i].F, 0.01)
 	}
+}
+
+func TestCountDistinctSketchExpr_ShouldNotFailEarlyOnSeriesLimit(t *testing.T) {
+	const (
+		numGroups = 10
+		maxSeries = 3
+	)
+	now := time.Unix(100, 0)
+	streams := make([]logproto.Stream, 0, numGroups)
+	for i := range numGroups {
+		streams = append(streams, logproto.Stream{
+			Labels:  fmt.Sprintf(`{job="devices", version="%d"}`, i),
+			Entries: []logproto.Entry{{Timestamp: now.Add(-10 * time.Second), Line: `mac="aa:bb"`}},
+		})
+	}
+	params, err := NewLiteralParams(
+		`approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by (version)`,
+		now, now, 0, 0, logproto.FORWARD, 1000, nil, nil,
+	)
+	require.NoError(t, err)
+	parsed, ok := params.GetExpression().(*syntax.LabelAggregationExpr)
+	require.True(t, ok)
+	sketchParams := ParamsWithExpressionOverride{
+		Params:             params,
+		ExpressionOverride: syntax.NewCountDistinctSketchFromLabelAggregation(parsed),
+	}
+
+	eng := NewEngine(EngineOpts{EarlySeriesCutoff: true}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+	_, err = eng.Query(sketchParams).Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.NoError(t, err)
 }
