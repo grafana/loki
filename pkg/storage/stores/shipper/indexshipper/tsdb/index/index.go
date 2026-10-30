@@ -624,6 +624,16 @@ func decodeIngestedAtDayDelta(encoded uint64, maxTime int64) int64 {
 	return (unixEpochDay(maxTime) + deltaDays) * ingestedAtDayMilliseconds
 }
 
+// RoundIngestedAtUpToDay rounds ingestedAt up to the next UTC day boundary (a
+// value already on a boundary is kept). It does so through the same day-delta
+// codec used when writing the index for a chunk ending at maxTime, so the result
+// is exactly what the index stores and reads back. Because it only has day
+// precision, it is identical across replicas that flush the same chunk within the
+// same day.
+func RoundIngestedAtUpToDay(ingestedAt, maxTime int64) int64 {
+	return decodeIngestedAtDayDelta(encodeIngestedAtDayDelta(ingestedAt, maxTime), maxTime)
+}
+
 func unixEpochDay(t int64) int64 {
 	if t >= 0 {
 		return t / ingestedAtDayMilliseconds

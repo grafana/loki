@@ -459,6 +459,140 @@ func TestUnorderedPush(t *testing.T) {
 	require.Equal(t, false, sItr.Next())
 }
 
+func TestPushTracksHighestRecordTimestampPerChunk(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
+	newTestStream := func() *stream {
+		return newStream(
+			chunkfmt,
+			headfmt,
+			&cfg,
+			limiter.rateLimitStrategy,
+			"fake",
+			model.Fingerprint(0),
+			labels.FromStrings("foo", "bar"),
+			NewStreamRateCalculator(),
+			NilMetrics,
+			nil,
+			nil,
+			retentionHours,
+			noPolicy,
+		)
+	}
+
+	early := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
+	late := early.Add(time.Minute)
+
+	// A zero timestamp pushes without a record timestamp.
+	type step struct {
+		recordTime time.Time
+		// line is the line to push, at the same timestamp as the others with a line. Pushing the
+		// same line twice pushes a duplicate entry. If empty, a different entry is pushed.
+		line string
+		// cutBefore cuts the chunk before the push, so the push goes to a new chunk.
+		cutBefore bool
+	}
+
+	for _, tc := range []struct {
+		name  string
+		steps []step
+		// want is the ingestedAt of each chunk of the stream.
+		want []time.Time
+	}{
+		{
+			name:  "highest record timestamp is kept",
+			steps: []step{{recordTime: early}, {recordTime: late}},
+			want:  []time.Time{late},
+		},
+		{
+			name:  "highest record timestamp is kept whatever the push order",
+			steps: []step{{recordTime: late}, {recordTime: early}},
+			want:  []time.Time{late},
+		},
+		{
+			name:  "each chunk only gets the timestamps of the records that fed it",
+			steps: []step{{recordTime: late}, {recordTime: early, cutBefore: true}},
+			want:  []time.Time{late, early},
+		},
+		{
+			name:  "a duplicate of the last line doesn't count",
+			steps: []step{{recordTime: early, line: "dup"}, {recordTime: late, line: "dup"}},
+			want:  []time.Time{early},
+		},
+		{
+			name: "a duplicate entry that is not the last line from a later record counts",
+			steps: []step{
+				{recordTime: early, line: "dup"},
+				{recordTime: early.Add(30 * time.Second), line: "other"},
+				{recordTime: late, line: "dup"},
+			},
+			want: []time.Time{late},
+		},
+		{
+			name:  "no record timestamp leaves it unset",
+			steps: []step{{}, {}},
+			want:  []time.Time{{}},
+		},
+		{
+			name:  "pushes without a record timestamp don't change it",
+			steps: []step{{recordTime: early}, {}},
+			want:  []time.Time{early},
+		},
+		{
+			name:  "epoch record timestamp is ignored",
+			steps: []step{{recordTime: time.UnixMilli(0)}},
+			want:  []time.Time{{}},
+		},
+		{
+			name:  "Kafka NoTimestamp is ignored",
+			steps: []step{{recordTime: time.UnixMilli(-1)}},
+			want:  []time.Time{{}},
+		},
+		{
+			name:  "far future record timestamp is ignored",
+			steps: []step{{recordTime: early}, {recordTime: time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)}},
+			want:  []time.Time{early},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestStream()
+			for i, st := range tc.steps {
+				if st.cutBefore {
+					_ = s.cutChunk(context.Background())
+				}
+				entry := logproto.Entry{Timestamp: time.Unix(int64(i+1), 0), Line: fmt.Sprintf("line %d", i)}
+				if st.line != "" {
+					entry = logproto.Entry{Timestamp: time.Unix(1, 0), Line: st.line}
+				}
+				_, err := s.Push(withRecordTimestamp(context.Background(), st.recordTime), []logproto.Entry{entry}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+				require.NoError(t, err)
+			}
+
+			require.Len(t, s.chunks, len(tc.want))
+			for i, want := range tc.want {
+				require.True(t, want.Equal(s.chunks[i].ingestedAt), "chunk %d: got %s, want %s", i, s.chunks[i].ingestedAt, want)
+			}
+		})
+	}
+}
+
+func TestRecordTimestampIgnoresUnusable(t *testing.T) {
+	for _, ts := range []time.Time{{}, time.UnixMilli(0), time.UnixMilli(-1), time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)} {
+		_, ok := recordTimestamp(withRecordTimestamp(context.Background(), ts))
+		require.False(t, ok, ts.String())
+	}
+
+	ts := time.UnixMilli(1_700_000_000_000)
+	got, ok := recordTimestamp(withRecordTimestamp(context.Background(), ts))
+	require.True(t, ok)
+	require.True(t, ts.Equal(got))
+}
+
 func TestPushRateLimit(t *testing.T) {
 	l := validation.Limits{
 		PerStreamRateLimit:      10,

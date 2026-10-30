@@ -231,6 +231,10 @@ func newInstance(
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
+	// Persist the timestamp of the record the push comes from, so a replay of the WAL restores it.
+	if ts, ok := recordTimestamp(ctx); ok {
+		record.IngestedAt = ts
+	}
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 

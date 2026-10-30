@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -99,6 +100,65 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
+
+	// ingestedAt is the highest timestamp of the ingested records (e.g. Kafka records) whose
+	// entries went into this chunk. It is zero when the entries did not come with one.
+	ingestedAt time.Time
+}
+
+// observeRecordTimestamp keeps the highest record timestamp that fed the chunk. That doesn't
+// depend on the order records are applied in, so replicas consuming the same records end up with
+// the same value for the same chunk, and the chunk is deduplicated.
+//
+// That holds for most duplicate entries too: they are not added to the chunk twice, but their
+// record timestamp still counts. The exception is a duplicate of the stream's last line, which is
+// discarded before its record timestamp is counted. Replicas apply records with several workers,
+// so they can apply them in a different order. For example, with a push of a single line A that
+// the client retries:
+//
+//	R1 (10:00): [A]
+//	R2 (10:01): [A]  (retry of R1)
+//
+//	replica 1 applies R1, then R2: stores A from R1, discards it from R2 -> 10:00
+//	replica 2 applies R2, then R1: stores A from R2, discards it from R1 -> 10:01
+//
+// Both replicas hold the same entries but stamp different values, so the chunk is stored twice.
+// Fixing it would mean counting the timestamps of discarded records and writing them to the WAL,
+// so a restart remembers them. We don't think the edge case is worth the extra complexity.
+func (c *chunkDesc) observeRecordTimestamp(ts time.Time) {
+	if ts.After(c.ingestedAt) {
+		c.ingestedAt = ts
+	}
+}
+
+type recordTimestampKey struct{}
+
+// maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
+// ones are ignored since UnixNano overflows after it.
+var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
+
+// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested record.
+// Records without a timestamp come with a zero time, or with a timestamp at or before the epoch
+// (e.g. Kafka's NoTimestamp, -1). Those would end up as an IngestedAt of zero, which means "not
+// set" and makes the chunk fall back to Through-based retention. Timestamps after
+// maxRecordTimestamp are ignored too.
+func validRecordTimestamp(ts time.Time) bool {
+	return ts.UnixMilli() > 0 && ts.Before(maxRecordTimestamp)
+}
+
+// withRecordTimestamp returns a context carrying the timestamp of the record being pushed, e.g. a
+// Kafka record. Timestamps that are not valid, see validRecordTimestamp, are ignored.
+func withRecordTimestamp(ctx context.Context, ts time.Time) context.Context {
+	if !validRecordTimestamp(ts) {
+		return ctx
+	}
+	return context.WithValue(ctx, recordTimestampKey{}, ts)
+}
+
+// recordTimestamp returns the timestamp of the record being pushed, if the context carries one.
+func recordTimestamp(ctx context.Context) (time.Time, bool) {
+	ts, ok := ctx.Value(recordTimestampKey{}).(time.Time)
+	return ts, ok
 }
 
 type entryWithError struct {
@@ -329,6 +389,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 	var invalid []entryWithError
 	storedEntries := make([]logproto.Entry, 0, len(entries))
+	recordTs, hasRecordTs := recordTimestamp(ctx)
 	for i := 0; i < len(entries); i++ {
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
@@ -348,6 +409,11 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		}
 		if dup {
 			s.handleLoggingOfDuplicateEntry(entries[i])
+		}
+		// Duplicates count too: the entry is stored once, by whichever record is processed first,
+		// and that order can differ between replicas.
+		if hasRecordTs {
+			chunk.observeRecordTimestamp(recordTs)
 		}
 
 		s.entryCt++

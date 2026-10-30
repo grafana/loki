@@ -37,6 +37,16 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Ingester WAL entries records have a new version
+
+Ingesters now write WAL entries records as `WALRecordEntriesV4`, which adds the timestamp of the
+Kafka record the entries were ingested from. Older versions can't read this record version.
+If you roll an ingester back, it can't replay the WAL records written since the upgrade. It logs
+`Recovered from WAL segments with errors`, increments
+`loki_ingester_wal_corruptions_total{type="segment"}`, and starts without them, so entries that
+were not flushed yet are lost. To avoid that, shut the ingester down with a flush before rolling
+back, for example with `/ingester/shutdown?flush=true`.
+
 ### Statistics in detected-field query responses
 
 The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON

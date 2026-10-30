@@ -23,6 +23,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -2086,4 +2087,40 @@ func TestInstance_PolicyStreamLimitBuckets(t *testing.T) {
 			}
 		})
 	}
+}
+
+// recordingWAL keeps a copy of what is logged to it.
+type recordingWAL struct {
+	noopWAL
+	ingestedAt []time.Time
+}
+
+func (w *recordingWAL) Log(rec *wal.Record) error {
+	w.ingestedAt = append(w.ingestedAt, rec.IngestedAt)
+	return nil
+}
+
+// The timestamp of the record a push comes from is logged to the WAL, so it is restored on replay.
+func TestPushLogsRecordTimestampToWAL(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+
+	w := &recordingWAL{}
+	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), w, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+
+	tt := time.Now().Add(-5 * time.Minute)
+	req := func(app string) *logproto.PushRequest {
+		return &logproto.PushRequest{Streams: []logproto.Stream{{Labels: `{app="` + app + `"}`, Entries: entries(1, tt)}}}
+	}
+
+	recordTime := time.UnixMilli(1_700_000_000_000)
+	require.NoError(t, i.Push(withRecordTimestamp(context.Background(), recordTime), req("a")))
+	require.NoError(t, i.Push(context.Background(), req("b")))
+
+	require.Len(t, w.ingestedAt, 2)
+	require.True(t, recordTime.Equal(w.ingestedAt[0]))
+	require.True(t, w.ingestedAt[1].IsZero())
 }
