@@ -4,7 +4,9 @@ package signin
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/signin/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/signin/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
 )
@@ -42,6 +44,19 @@ type CreateOAuth2TokenInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateOAuth2TokenInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateOAuth2TokenRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateOAuth2TokenInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TokenInput != nil {
+		s.WriteStruct(schemas.CreateOAuth2TokenRequest_tokenInput)
+		v.TokenInput.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
 func (in *CreateOAuth2TokenInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.IsControlPlane = ptr.Bool(false)
@@ -66,13 +81,34 @@ type CreateOAuth2TokenOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateOAuth2TokenOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateOAuth2TokenResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateOAuth2TokenOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TokenOutput != nil {
+		s.WriteStruct(schemas.CreateOAuth2TokenResponse_tokenOutput)
+		v.TokenOutput.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *CreateOAuth2TokenOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.CreateOAuth2TokenResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.CreateOAuth2TokenResponse_tokenOutput:
+			v.TokenOutput = &types.CreateOAuth2TokenResponseBody{}
+			return v.TokenOutput.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationCreateOAuth2TokenMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestjson1_serializeOpCreateOAuth2Token{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateOAuth2Token, schemas.CreateOAuth2TokenRequest, schemas.CreateOAuth2TokenResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestjson1_deserializeOpCreateOAuth2Token{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateOAuth2Token, schemas.CreateOAuth2TokenRequest, schemas.CreateOAuth2TokenResponse), output: &CreateOAuth2TokenOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
