@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	hostedAgentTriggersBasePath           = "/v2/agents/triggers"
+	hostedAgentTriggersBasePath           = hostedAgentsAPIPrefix + "/triggers"
 	hostedAgentTriggerByIDPath            = hostedAgentTriggersBasePath + "/%s"
 	hostedAgentTriggerRotateSecretPath    = hostedAgentTriggerByIDPath + "/rotate-secret"
 	hostedAgentTriggerExecutionsPath      = hostedAgentTriggerByIDPath + "/executions"
@@ -16,12 +16,12 @@ const (
 	hostedAgentTriggerExecutionCancelPath = hostedAgentTriggerExecutionByIDPath + "/cancel"
 	hostedAgentTriggerBySessionPath       = hostedAgentTriggersBasePath + "/by-session/%s"
 	hostedAgentReusableSessionsPath       = hostedAgentTriggersBasePath + "/reusable-sessions"
-	hostedAgentWebhookProvidersPath       = "/v2/agents/webhook-providers"
+	hostedAgentWebhookProvidersPath       = hostedAgentsAPIPrefix + "/webhook-providers"
 )
 
 // HostedAgentTriggersService exposes the Hosted Agents Triggers public REST API
-// (webhook & cron triggers for agent runs) under /v2/agents/triggers and
-// /v2/agents/webhook-providers.
+// (webhook & cron triggers for agent runs) under /v2/harness-runtime/triggers and
+// /v2/harness-runtime/webhook-providers.
 type HostedAgentTriggersService interface {
 	List(context.Context, *HostedAgentTriggerListOptions) (*HostedAgentTriggersListResponse, *Response, error)
 	Create(context.Context, *HostedAgentTriggerCreateRequest) (*HostedAgentTriggerCreateResponse, *Response, error)
