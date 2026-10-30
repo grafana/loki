@@ -1,13 +1,15 @@
 ---
-title: Upgrade the Helm chart to 6.0
-menuTitle: Upgrade the Helm chart to 6.0
+title: Upgrade the Helm chart to 6.x
+menuTitle: Upgrade Helm chart to 6.x
 description: Upgrade the Helm chart from 5.x to 6.0.
-weight: 800
+weight: 298
+aliases:
+  - ../upgrade-to-6x/
 keywords:
   - upgrade
 ---
 
-# Upgrading to v6.x
+# Upgrade the Helm chart to 6.0
 
 v6.x of this chart introduces distributed mode but also introduces breaking changes from v5x.
 
