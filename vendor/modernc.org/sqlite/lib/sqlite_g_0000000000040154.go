@@ -32,11 +32,9 @@ const INTPTR_MIN = -2147483648
 
 const MEMCELLSIZE = 20
 
-const PARSE_HDR_SZ = 132
+const PARSE_HDR_SZ = 124
 
 const PARSE_RECURSE_SZ = 208
-
-const PARSE_TAIL_SZ = 76
 
 const PTRDIFF_MAX = 2147483647
 
@@ -92,88 +90,10 @@ type TIndexIterator = struct {
 	}
 }
 
-type TParse = struct {
-	Fdb               uintptr
-	FzErrMsg          uintptr
-	FpVdbe            uintptr
-	Frc               int32
-	FnQueryLoop       TLogEst
-	Fnested           Tu8
-	FnTempReg         Tu8
-	FisMultiWrite     Tu8
-	FdisableLookaside Tu8
-	FprepFlags        Tu8
-	FwithinRJSubrtn   Tu8
-	FmSubrtnSig       Tu8
-	FeTriggerOp       Tu8
-	FeOrconf          Tu8
-	F__ccgo28         uint16
-	FnRangeReg        int32
-	FiRangeReg        int32
-	FnErr             int32
-	FnTab             int32
-	FnMem             int32
-	FszOpAlloc        int32
-	FiSelfTab         int32
-	FnNestSel         int32
-	FnLabel           int32
-	FnLabelAlloc      int32
-	FaLabel           uintptr
-	FpConstExpr       uintptr
-	FpIdxEpr          uintptr
-	FpIdxPartExpr     uintptr
-	FwriteMask        TyDbMask
-	FcookieMask       TyDbMask
-	FnMaxArg          int32
-	FnSelect          int32
-	FnProgressSteps   Tu32
-	FnTableLock       int32
-	FaTableLock       uintptr
-	FpAinc            uintptr
-	FpToplevel        uintptr
-	FpTriggerTab      uintptr
-	FpTriggerPrg      uintptr
-	FpCleanup         uintptr
-	FaTempReg         [8]int32
-	FpOuterParse      uintptr
-	FsNameToken       TToken
-	Foldmask          Tu32
-	Fnewmask          Tu32
-	Fu1               struct {
-		Fd [0]struct {
-			FpReturning uintptr
-		}
-		Fcr struct {
-			FaddrCrTab      int32
-			FregRowid       int32
-			FregRoot        int32
-			FconstraintName TToken
-		}
-	}
-	FsLastToken   TToken
-	FnVar         TynVar
-	FiPkSortOrder Tu8
-	Fexplain      Tu8
-	FeParseMode   Tu8
-	FnVtabLock    int32
-	FnHeight      int32
-	FaddrExplain  int32
-	FpVList       uintptr
-	FpReprepare   uintptr
-	FzTail        uintptr
-	FpNewTable    uintptr
-	FpNewIndex    uintptr
-	FpNewTrigger  uintptr
-	FzAuthContext uintptr
-	FsArg         TToken
-	FapVtabLock   uintptr
-	FpWith        uintptr
-	FpRename      uintptr
-}
-
 type TWalIterator = struct {
 	FiPrior   Tu32
 	FnSegment int32
+	FnPagemap Tu32
 }
 
 // C documentation
@@ -337,8 +257,6 @@ type Tintptr_t = int32
 type Tp4union = struct {
 	Fp          [0]uintptr
 	Fz          [0]uintptr
-	FpI64       [0]uintptr
-	FpReal      [0]uintptr
 	FpFunc      [0]uintptr
 	FpCtx       [0]uintptr
 	FpColl      [0]uintptr
@@ -2642,6 +2560,25 @@ func _dbpageSync(tls *libc.TLS, pVtab uintptr) (r int32) {
 // C documentation
 //
 //	/*
+//	** If any TEMP triggers reference schema pSchema, move those triggers to
+//	** reference the TEMP schema itself.
+//	*/
+func _detachTempTriggers(tls *libc.TLS, db uintptr, pSchema uintptr) {
+	var pEntry, pTrig uintptr
+	_, _ = pEntry, pTrig
+	pEntry = (*THash)(unsafe.Pointer((**(**TDb)(__ccgo_up((*Tsqlite3)(unsafe.Pointer(db)).FaDb + 1*16))).FpSchema + 40)).Ffirst
+	for pEntry != 0 {
+		pTrig = (*THashElem)(unsafe.Pointer(pEntry)).Fdata
+		if (*TTrigger)(unsafe.Pointer(pTrig)).FpTabSchema == pSchema {
+			(*TTrigger)(unsafe.Pointer(pTrig)).FpTabSchema = (*TTrigger)(unsafe.Pointer(pTrig)).FpSchema
+		}
+		pEntry = (*THashElem)(unsafe.Pointer(pEntry)).Fnext
+	}
+}
+
+// C documentation
+//
+//	/*
 //	** Disable lookaside memory allocation for objects that might be
 //	** shared across database connections.
 //	*/
@@ -2650,7 +2587,7 @@ func _disableLookaside(tls *libc.TLS, pParse uintptr) {
 	_ = db
 	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
 	(*TParse)(unsafe.Pointer(pParse)).FdisableLookaside = (*TParse)(unsafe.Pointer(pParse)).FdisableLookaside + 1
-	libc.Xmemset(tls, pParse+188, 0, uint32(20))
+	libc.Xmemset(tls, pParse+180, 0, uint32(20))
 	(*Tsqlite3)(unsafe.Pointer(db)).Flookaside.FbDisable = (*Tsqlite3)(unsafe.Pointer(db)).Flookaside.FbDisable + 1
 	(*Tsqlite3)(unsafe.Pointer(db)).Flookaside.Fsz = uint16(0)
 }
@@ -2813,31 +2750,6 @@ func _exprListDeleteNN(tls *libc.TLS, db uintptr, pList uintptr) {
 // C documentation
 //
 //	/*
-//	** Return true if all expressions in the expression-list passed as the
-//	** only argument are constant.
-//	*/
-func _exprListIsConstant(tls *libc.TLS, pParse uintptr, pRow uintptr) (r int32) {
-	var ii int32
-	_ = ii
-	ii = 0
-	for {
-		if !(ii < (*TExprList)(unsafe.Pointer(pRow)).FnExpr) {
-			break
-		}
-		if 0 == _sqlite3ExprIsConstant(tls, pParse, (*(*TExprList_item)(unsafe.Pointer(pRow + 8 + uintptr(ii)*20))).FpExpr) {
-			return 0
-		}
-		goto _1
-	_1:
-		;
-		ii = ii + 1
-	}
-	return int32(1)
-}
-
-// C documentation
-//
-//	/*
 //	** sqlite3WalkExpr() callback used by sqlite3ExprIsConstantOrGroupBy().
 //	*/
 func _exprNodeIsConstantOrGroupBy(tls *libc.TLS, pWalker uintptr, pExpr uintptr) (r int32) {
@@ -2901,6 +2813,11 @@ func _exprPartidxExprLookup(tls *libc.TLS, pParse uintptr, pExpr uintptr, iTarge
 			}
 			ret = _sqlite3ExprCodeTarget(tls, pParse, (*TIndexedExpr)(unsafe.Pointer(p)).FpExpr, iTarget)
 			_sqlite3VdbeAddOp4(tls, (*TParse)(unsafe.Pointer(pParse)).FpVdbe, int32(OP_Affinity), ret, int32(1), 0, p+17, int32(1))
+			if _sqlite3ExprCanReturnSubtype(tls, pParse, (*TIndexedExpr)(unsafe.Pointer(p)).FpExpr) != 0 {
+				/* If the expression value may have a sub-type, clear it. Values
+				 ** read from columns do not have subtypes. */
+				_sqlite3VdbeAddOp1(tls, (*TParse)(unsafe.Pointer(pParse)).FpVdbe, int32(OP_ClrSubtype), ret)
+			}
 			if addr != 0 {
 				_sqlite3VdbeJumpHere(tls, v, addr)
 				_sqlite3VdbeChangeP3(tls, v, addr, ret)
@@ -4728,7 +4645,7 @@ func _jsonBlobAppendOneByte(tls *libc.TLS, pParse uintptr, c Tu8) {
 //	*/
 func _jsonBlobMakeEditable(tls *libc.TLS, pParse uintptr, nExtra Tu32) (r int32) {
 	var aOld uintptr
-	var nSize Tu32
+	var nSize Tu64
 	_, _ = aOld, nSize
 	if (*TJsonParse)(unsafe.Pointer(pParse)).Foom != 0 {
 		return 0
@@ -4737,7 +4654,7 @@ func _jsonBlobMakeEditable(tls *libc.TLS, pParse uintptr, nExtra Tu32) (r int32)
 		return int32(1)
 	}
 	aOld = (*TJsonParse)(unsafe.Pointer(pParse)).FaBlob
-	nSize = (*TJsonParse)(unsafe.Pointer(pParse)).FnBlob + nExtra
+	nSize = uint64((*TJsonParse)(unsafe.Pointer(pParse)).FnBlob + nExtra)
 	(*TJsonParse)(unsafe.Pointer(pParse)).FaBlob = uintptr(0)
 	if _jsonBlobExpand(tls, pParse, nSize) != 0 {
 		return 0
@@ -5387,8 +5304,10 @@ func _pcache1FetchNoMutex(tls *libc.TLS, p uintptr, iKey uint32, createFlag int3
 	_, _ = pCache, pPage
 	pCache = p
 	pPage = uintptr(0)
-	/* Step 1: Search the hash table for an existing entry. */
-	pPage = **(**uintptr)(__ccgo_up((*TPCache1)(unsafe.Pointer(pCache)).FapHash + uintptr(iKey%(*TPCache1)(unsafe.Pointer(pCache)).FnHash)*4))
+	/* Step 1: Search the hash table for an existing entry.  nHash is always
+	 ** a power of two when the cache is in use (see pcache1ResizeHash()), so
+	 ** the modulo reduces to a mask, avoiding a hardware divide. */
+	pPage = **(**uintptr)(__ccgo_up((*TPCache1)(unsafe.Pointer(pCache)).FapHash + uintptr(iKey&((*TPCache1)(unsafe.Pointer(pCache)).FnHash-uint32(1)))*4))
 	for pPage != 0 && (*TPgHdr1)(unsafe.Pointer(pPage)).FiKey != iKey {
 		pPage = (*TPgHdr1)(unsafe.Pointer(pPage)).FpNext
 	}
@@ -5495,14 +5414,14 @@ func _pcache1Rekey(tls *libc.TLS, p uintptr, pPg uintptr, iOld uint32, iNew uint
 	/* The page number really is changing */
 	Xsqlite3_mutex_enter(tls, (*TPGroup)(unsafe.Pointer((*TPCache1)(unsafe.Pointer(pCache)).FpGroup)).Fmutex)
 	/* pPg really is iOld */
-	hOld = iOld % (*TPCache1)(unsafe.Pointer(pCache)).FnHash
+	hOld = iOld & ((*TPCache1)(unsafe.Pointer(pCache)).FnHash - uint32(1))
 	pp = (*TPCache1)(unsafe.Pointer(pCache)).FapHash + uintptr(hOld)*4
 	for **(**uintptr)(__ccgo_up(pp)) != pPage {
 		pp = **(**uintptr)(__ccgo_up(pp)) + 16
 	}
 	**(**uintptr)(__ccgo_up(pp)) = (*TPgHdr1)(unsafe.Pointer(pPage)).FpNext
 	/* iNew not in cache */
-	hNew = iNew % (*TPCache1)(unsafe.Pointer(pCache)).FnHash
+	hNew = iNew & ((*TPCache1)(unsafe.Pointer(pCache)).FnHash - uint32(1))
 	(*TPgHdr1)(unsafe.Pointer(pPage)).FiKey = iNew
 	(*TPgHdr1)(unsafe.Pointer(pPage)).FpNext = **(**uintptr)(__ccgo_up((*TPCache1)(unsafe.Pointer(pCache)).FapHash + uintptr(hNew)*4))
 	**(**uintptr)(__ccgo_up((*TPCache1)(unsafe.Pointer(pCache)).FapHash + uintptr(hNew)*4)) = pPage
@@ -5526,7 +5445,7 @@ func _pcache1RemoveFromHash(tls *libc.TLS, pPage uintptr, freeFlag int32) {
 	var pCache, pp uintptr
 	_, _, _ = h, pCache, pp
 	pCache = (*TPgHdr1)(unsafe.Pointer(pPage)).FpCache
-	h = (*TPgHdr1)(unsafe.Pointer(pPage)).FiKey % (*TPCache1)(unsafe.Pointer(pCache)).FnHash
+	h = (*TPgHdr1)(unsafe.Pointer(pPage)).FiKey & ((*TPCache1)(unsafe.Pointer(pCache)).FnHash - uint32(1))
 	pp = (*TPCache1)(unsafe.Pointer(pCache)).FapHash + uintptr(h)*4
 	for {
 		if !(**(**uintptr)(__ccgo_up(pp)) != pPage) {
@@ -5562,6 +5481,7 @@ func _pcache1ResizeHash(tls *libc.TLS, p uintptr) {
 	if nNew < uint64(256) {
 		nNew = uint64(256)
 	}
+	/* nNew is always a power of two */
 	Xsqlite3_mutex_leave(tls, (*TPGroup)(unsafe.Pointer((*TPCache1)(unsafe.Pointer(p)).FpGroup)).Fmutex)
 	if (*TPCache1)(unsafe.Pointer(p)).FnHash != 0 {
 		_sqlite3BeginBenignMalloc(tls)
@@ -5584,7 +5504,7 @@ func _pcache1ResizeHash(tls *libc.TLS, p uintptr) {
 				if !(v2 != uintptr(0)) {
 					break
 				}
-				h = uint32(uint64((*TPgHdr1)(unsafe.Pointer(pPage)).FiKey) % nNew)
+				h = uint32(uint64((*TPgHdr1)(unsafe.Pointer(pPage)).FiKey) & (nNew - libc.Uint64FromInt32(1)))
 				pNext = (*TPgHdr1)(unsafe.Pointer(pPage)).FpNext
 				(*TPgHdr1)(unsafe.Pointer(pPage)).FpNext = **(**uintptr)(__ccgo_up(apNew + uintptr(h)*4))
 				**(**uintptr)(__ccgo_up(apNew + uintptr(h)*4)) = pPage
@@ -5630,8 +5550,8 @@ func _pcache1TruncateUnsafe(tls *libc.TLS, pCache uintptr, iLimit uint32) {
 		 ** cache, then there is no point in scanning the entire hash table.
 		 ** Only scan those hash slots that might contain pages that need to
 		 ** be removed. */
-		h = iLimit % (*TPCache1)(unsafe.Pointer(pCache)).FnHash
-		iStop = (*TPCache1)(unsafe.Pointer(pCache)).FiMaxKey % (*TPCache1)(unsafe.Pointer(pCache)).FnHash
+		h = iLimit & ((*TPCache1)(unsafe.Pointer(pCache)).FnHash - uint32(1))
+		iStop = (*TPCache1)(unsafe.Pointer(pCache)).FiMaxKey & ((*TPCache1)(unsafe.Pointer(pCache)).FnHash - uint32(1))
 		/* Disable the pCache->nPage validity check */
 	} else {
 		/* This is the general case where many pages are being removed.
@@ -5661,7 +5581,7 @@ func _pcache1TruncateUnsafe(tls *libc.TLS, pCache uintptr, iLimit uint32) {
 		if h == iStop {
 			break
 		}
-		h = (h + uint32(1)) % (*TPCache1)(unsafe.Pointer(pCache)).FnHash
+		h = (h + uint32(1)) & ((*TPCache1)(unsafe.Pointer(pCache)).FnHash - uint32(1))
 		goto _1
 	_1:
 	}
@@ -6381,46 +6301,6 @@ func _renameResolveTrigger(tls *libc.TLS, pParse uintptr) (r int32) {
 // C documentation
 //
 //	/*
-//	** Search the Parse object passed as the first argument for a RenameToken
-//	** object associated with parse tree element pPtr. If found, return a pointer
-//	** to it. Otherwise, return NULL.
-//	**
-//	** If the second argument passed to this function is not NULL and a matching
-//	** RenameToken object is found, remove it from the Parse object and add it to
-//	** the list maintained by the RenameCtx object.
-//	*/
-func _renameTokenFind(tls *libc.TLS, pParse uintptr, pCtx uintptr, pPtr uintptr) (r uintptr) {
-	var pToken, pp uintptr
-	_, _ = pToken, pp
-	if pPtr == uintptr(0) {
-		return uintptr(0)
-	}
-	pp = pParse + 280
-	for {
-		if !(**(**uintptr)(__ccgo_up(pp)) != 0) {
-			break
-		}
-		if (*TRenameToken)(unsafe.Pointer(**(**uintptr)(__ccgo_up(pp)))).Fp == pPtr {
-			pToken = **(**uintptr)(__ccgo_up(pp))
-			if pCtx != 0 {
-				**(**uintptr)(__ccgo_up(pp)) = (*TRenameToken)(unsafe.Pointer(pToken)).FpNext
-				(*TRenameToken)(unsafe.Pointer(pToken)).FpNext = (*TRenameCtx)(unsafe.Pointer(pCtx)).FpList
-				(*TRenameCtx)(unsafe.Pointer(pCtx)).FpList = pToken
-				(*TRenameCtx)(unsafe.Pointer(pCtx)).FnList = (*TRenameCtx)(unsafe.Pointer(pCtx)).FnList + 1
-			}
-			return pToken
-		}
-		goto _1
-	_1:
-		;
-		pp = **(**uintptr)(__ccgo_up(pp)) + 12
-	}
-	return uintptr(0)
-}
-
-// C documentation
-//
-//	/*
 //	** Invoke sqlite3WalkExpr() or sqlite3WalkSelect() on all Select or Expr
 //	** objects that are part of the trigger passed as the second argument.
 //	*/
@@ -6827,10 +6707,6 @@ func _rtreeDeleteRowid(tls *libc.TLS, pRtree uintptr, iDelete Tsqlite3_int64) (r
 	return rc
 }
 
-/*
-** Rounding constants for float->double conversion.
- */
-
 // C documentation
 //
 //	/*
@@ -7040,6 +6916,58 @@ func _rtreeShadowName(tls *libc.TLS, zName uintptr) (r int32) {
 		i = i + 1
 	}
 	return 0
+}
+
+// C documentation
+//
+//	/*
+//	** Convert an sqlite3_value into an RtreeValue (presumably a float)
+//	** while taking care to round toward negative or positive, respectively.
+//	*/
+func _rtreeValueDown(tls *libc.TLS, v uintptr) (r TRtreeValue) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var d float64
+	var v1 uint32
+	var _ /* f at bp+0 */ float32
+	var _ /* x at bp+4 */ uint32
+	_, _ = d, v1
+	d = Xsqlite3_value_double(tls, v)
+	**(**float32)(__ccgo_up(bp)) = float32(d)
+	if float64(**(**float32)(__ccgo_up(bp))) > d {
+		libc.Xmemcpy(tls, bp+4, bp, uint32(4))
+		if **(**uint32)(__ccgo_up(bp + 4))&uint32(0x80000000) != uint32(0) {
+			v1 = **(**uint32)(__ccgo_up(bp + 4)) + uint32(1)
+		} else {
+			v1 = **(**uint32)(__ccgo_up(bp + 4)) - uint32(1)
+		}
+		**(**uint32)(__ccgo_up(bp + 4)) = v1
+		libc.Xmemcpy(tls, bp, bp+4, uint32(4))
+	}
+	return **(**float32)(__ccgo_up(bp))
+}
+
+func _rtreeValueUp(tls *libc.TLS, v uintptr) (r TRtreeValue) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var d float64
+	var v1 uint32
+	var _ /* f at bp+0 */ float32
+	var _ /* x at bp+4 */ uint32
+	_, _ = d, v1
+	d = Xsqlite3_value_double(tls, v)
+	**(**float32)(__ccgo_up(bp)) = float32(d)
+	if float64(**(**float32)(__ccgo_up(bp))) < d {
+		libc.Xmemcpy(tls, bp+4, bp, uint32(4))
+		if **(**uint32)(__ccgo_up(bp + 4))&uint32(0x80000000) != uint32(0) {
+			v1 = **(**uint32)(__ccgo_up(bp + 4)) - uint32(1)
+		} else {
+			v1 = **(**uint32)(__ccgo_up(bp + 4)) + uint32(1)
+		}
+		**(**uint32)(__ccgo_up(bp + 4)) = v1
+		libc.Xmemcpy(tls, bp, bp+4, uint32(4))
+	}
+	return **(**float32)(__ccgo_up(bp))
 }
 
 // C documentation
@@ -7768,6 +7696,12 @@ func _sqlite3AggInfoPersistWalkerInit(tls *libc.TLS, pWalker uintptr, pParse uin
 	(*TWalker)(unsafe.Pointer(pWalker)).FxSelectCallback = __ccgo_fp(_sqlite3SelectWalkNoop)
 }
 
+func _sqlite3AutoincrementEnd(tls *libc.TLS, pParse uintptr) {
+	if int32(Tbft(*(*uint16)(unsafe.Pointer(pParse + 28))&0x200>>9)) != 0 {
+		_autoIncrementEnd(tls, pParse)
+	}
+}
+
 // C documentation
 //
 //	/*
@@ -8378,6 +8312,40 @@ func _sqlite3ExprListFlags(tls *libc.TLS, pList uintptr) (r Tu32) {
 		i = i + 1
 	}
 	return m
+}
+
+// C documentation
+//
+//	/*
+//	** Return true if all expressions in pList are constant. If parameter bNoIs
+//	** is true, do not consider expressions that contain "IS" operators to be
+//	** constant. IS operators are not always considered constant as expressions
+//	** like "x IS TRUE" need to be transformed to TK_TRUTH expression nodes,
+//	** which happens at the same time as column name resolution.
+//	*/
+func _sqlite3ExprListIsConstant(tls *libc.TLS, pParse uintptr, pList uintptr, bNoIs int32) (r int32) {
+	var iInit, ii, v1 int32
+	_, _, _ = iInit, ii, v1
+	if bNoIs != 0 {
+		v1 = int32(6)
+	} else {
+		v1 = int32(1)
+	}
+	iInit = v1
+	ii = 0
+	for {
+		if !(ii < (*TExprList)(unsafe.Pointer(pList)).FnExpr) {
+			break
+		}
+		if 0 == _exprIsConst(tls, pParse, (*(*TExprList_item)(unsafe.Pointer(pList + 8 + uintptr(ii)*20))).FpExpr, iInit) {
+			return 0
+		}
+		goto _2
+	_2:
+		;
+		ii = ii + 1
+	}
+	return int32(1)
 }
 
 // C documentation
@@ -9102,6 +9070,16 @@ func _sqlite3Fts5TermsetNew(tls *libc.TLS, pp uintptr) (r int32) {
 	return **(**int32)(__ccgo_up(bp))
 }
 
+func _sqlite3FuncAuth(tls *libc.TLS, pParse uintptr, pExpr uintptr) {
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
+	var _ /* w at bp+0 */ TWalker
+	libc.Xmemset(tls, bp, 0, uint32(28))
+	(**(**TWalker)(__ccgo_up(bp))).FxExprCallback = __ccgo_fp(_authFunctions)
+	(**(**TWalker)(__ccgo_up(bp))).FpParse = pParse
+	_sqlite3WalkExpr(tls, bp, pExpr)
+}
+
 // C documentation
 //
 //	/*
@@ -9187,6 +9165,22 @@ func _sqlite3GetVTable(tls *libc.TLS, db uintptr, pTab uintptr) (r uintptr) {
 		pVtab = (*TVTable)(unsafe.Pointer(pVtab)).FpNext
 	}
 	return pVtab
+}
+
+// C documentation
+//
+//	/*
+//	** Get a VDBE for the given parser context.  Create a new one if necessary.
+//	** If an error occurs, return NULL and leave a message in pParse.
+//	*/
+func _sqlite3GetVdbe(tls *libc.TLS, pParse uintptr) (r uintptr) {
+	if (*TParse)(unsafe.Pointer(pParse)).FpVdbe != 0 {
+		return (*TParse)(unsafe.Pointer(pParse)).FpVdbe
+	}
+	if (*TParse)(unsafe.Pointer(pParse)).FpToplevel == uintptr(0) {
+		libc.SetBitFieldPtr16Uint32(pParse+28, libc.Uint32FromInt32(1), 7, 0x80)
+	}
+	return _sqlite3VdbeCreate(tls, pParse)
 }
 
 // C documentation
@@ -10782,22 +10776,6 @@ func _sqlite3ValueNew(tls *libc.TLS, db uintptr) (r uintptr) {
 // C documentation
 //
 //	/*
-//	** Add an opcode that includes the p4 value with a P4_INT64 or
-//	** P4_REAL type.
-//	*/
-func _sqlite3VdbeAddOp4Dup8(tls *libc.TLS, p uintptr, op int32, p1 int32, p2 int32, p3 int32, zP4 uintptr, p4type int32) (r int32) {
-	var p4copy uintptr
-	_ = p4copy
-	p4copy = _sqlite3DbMallocRawNN(tls, _sqlite3VdbeDb(tls, p), uint64(8))
-	if p4copy != 0 {
-		libc.Xmemcpy(tls, p4copy, zP4, uint32(8))
-	}
-	return _sqlite3VdbeAddOp4(tls, p, op, p1, p2, p3, p4copy, p4type)
-}
-
-// C documentation
-//
-//	/*
 //	** Change the P4 operand of the most recently coded instruction
 //	** to the value defined by the arguments.  This is a high-speed
 //	** version of sqlite3VdbeChangeP4().
@@ -11001,7 +10979,7 @@ func _sqlite3VdbeFinishMoveto(tls *libc.TLS, p uintptr) (r int32) {
 		return rc
 	}
 	if **(**int32)(__ccgo_up(bp)) != 0 {
-		return _sqlite3CorruptError(tls, int32(92104))
+		return _sqlite3CorruptError(tls, int32(91715))
 	}
 	(*TVdbeCursor)(unsafe.Pointer(p)).FdeferredMoveto = uint8(0)
 	(*TVdbeCursor)(unsafe.Pointer(p)).FcacheStatus = uint32(CACHE_STALE)
@@ -11156,6 +11134,27 @@ func _sqlite3VdbeMemMove(tls *libc.TLS, pTo uintptr, pFrom uintptr) {
 	libc.Xmemcpy(tls, pTo, pFrom, uint32(40))
 	(*TMem)(unsafe.Pointer(pFrom)).Fflags = uint16(MEM_Null)
 	(*TMem)(unsafe.Pointer(pFrom)).FszMalloc = 0
+}
+
+// C documentation
+//
+//	/*
+//	** Deserialize the REAL number pointed to by buf and store it in pMem.
+//	*/
+func _sqlite3VdbeSerialGet7(tls *libc.TLS, buf uintptr, pMem uintptr) (r int32) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var _ /* x at bp+0 */ Tu64
+	/* EVIDENCE-OF: R-57343-49114 Value is a big-endian IEEE 754-2008 64-bit
+	 ** floating point number. */
+	**(**Tu64)(__ccgo_up(bp)) = _sqlite3Get8byte(tls, buf)
+	libc.Xmemcpy(tls, pMem, bp, uint32(8))
+	if **(**Tu64)(__ccgo_up(bp))&(libc.Uint64FromInt32(0x7ff)<<libc.Int32FromInt32(52)) == libc.Uint64FromInt32(0x7ff)<<libc.Int32FromInt32(52) && **(**Tu64)(__ccgo_up(bp))&(libc.Uint64FromInt32(1)<<libc.Int32FromInt32(52)-libc.Uint64FromInt32(1)) != uint64(0) {
+		(*TMem)(unsafe.Pointer(pMem)).Fflags = uint16(MEM_Null)
+		return int32(1)
+	}
+	(*TMem)(unsafe.Pointer(pMem)).Fflags = uint16(MEM_Real)
+	return 0
 }
 
 // C documentation
@@ -13096,6 +13095,37 @@ func _windowReturnOneRow(tls *libc.TLS, p uintptr) {
 // C documentation
 //
 //	/*
+//	** Analyze CHECK constraints on the source and destination tables and
+//	** return true if those CHECK constraints are compatible with the
+//	** xfer-optimization.
+//	**
+//	**    *  The pDest and pSrc tables must have identical CHECK constraints.
+//	**
+//	**    *  If the destination table, pDest, does not have an
+//	**       INTEGER PRIMARY KEY column, then no CHECK constraint may
+//	**       referenced the ROWID.  (See forum post 2026-05-11T13:15:57Z)
+//	*/
+func _xferCompatibleCheck(tls *libc.TLS, pDest uintptr, pSrc uintptr) (r int32) {
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
+	var _ /* w at bp+0 */ TWalker
+	if _sqlite3ExprListCompare(tls, (*TTable)(unsafe.Pointer(pSrc)).FpCheck, (*TTable)(unsafe.Pointer(pDest)).FpCheck, -int32(1)) != 0 {
+		return 0
+	}
+	if int32((*TTable)(unsafe.Pointer(pDest)).FiPKey) < 0 {
+		libc.Xmemset(tls, bp, 0, uint32(28))
+		(**(**TWalker)(__ccgo_up(bp))).FxExprCallback = __ccgo_fp(_xferCheckRowid)
+		_sqlite3WalkExprList(tls, bp, (*TTable)(unsafe.Pointer(pDest)).FpCheck)
+		if (**(**TWalker)(__ccgo_up(bp))).FeCode != 0 {
+			return 0
+		}
+	}
+	return int32(1)
+}
+
+// C documentation
+//
+//	/*
 //	** Pop the parser's stack once.
 //	**
 //	** If there is a destructor routine associated with the token which
@@ -13146,245 +13176,6 @@ func init() {
 	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_rbuVfsFileControl)
 	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_rbuVfsSectorSize)
 	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_rbuVfsDeviceCharacteristics)
-}
-
-func init() {
-	p := unsafe.Pointer(&_dbstat_module)
-	*(*uintptr)(unsafe.Add(p, 4)) = __ccgo_fp(_statConnect)
-	*(*uintptr)(unsafe.Add(p, 8)) = __ccgo_fp(_statConnect)
-	*(*uintptr)(unsafe.Add(p, 12)) = __ccgo_fp(_statBestIndex)
-	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_statDisconnect)
-	*(*uintptr)(unsafe.Add(p, 20)) = __ccgo_fp(_statDisconnect)
-	*(*uintptr)(unsafe.Add(p, 24)) = __ccgo_fp(_statOpen)
-	*(*uintptr)(unsafe.Add(p, 28)) = __ccgo_fp(_statClose)
-	*(*uintptr)(unsafe.Add(p, 32)) = __ccgo_fp(_statFilter)
-	*(*uintptr)(unsafe.Add(p, 36)) = __ccgo_fp(_statNext)
-	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_statEof)
-	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_statColumn)
-	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_statRowid)
-}
-
-/************** End of dbstat.c **********************************************/
-/************** Begin file dbpage.c ******************************************/
-/*
-** 2017-10-11
-**
-** The author disclaims copyright to this source code.  In place of
-** a legal notice, here is a blessing:
-**
-**    May you do good and not evil.
-**    May you find forgiveness for yourself and forgive others.
-**    May you share freely, never taking more than you give.
-**
-******************************************************************************
-**
-** This file contains an implementation of the "sqlite_dbpage" virtual table.
-**
-** The sqlite_dbpage virtual table is used to read or write whole raw
-** pages of the database file.  The pager interface is used so that
-** uncommitted changes and changes recorded in the WAL file are correctly
-** retrieved.
-**
-** Usage example:
-**
-**    SELECT data FROM sqlite_dbpage('aux1') WHERE pgno=123;
-**
-** This is an eponymous virtual table so it does not need to be created before
-** use.  The optional argument to the sqlite_dbpage() table name is the
-** schema for the database file that is to be read.  The default schema is
-** "main".
-**
-** The data field of sqlite_dbpage table can be updated.  The new
-** value must be a BLOB which is the correct page size, otherwise the
-** update fails.  INSERT operations also work, and operate as if they
-** where REPLACE.  The size of the database can be extended by INSERT-ing
-** new pages on the end.
-**
-** Rows may not be deleted.  However, doing an INSERT to page number N
-** with NULL page data causes the N-th page and all subsequent pages to be
-** deleted and the database to be truncated.
- */
-
-/* #include "sqliteInt.h"   ** Requires access to internal data structures ** */
-
-func init() {
-	p := unsafe.Pointer(&_aJsonFunc)
-	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_jsonRemoveFunc)
-	*(*uintptr)(unsafe.Add(p, 56)) = __ccgo_fp(_jsonRemoveFunc)
-	*(*uintptr)(unsafe.Add(p, 96)) = __ccgo_fp(_jsonArrayFunc)
-	*(*uintptr)(unsafe.Add(p, 136)) = __ccgo_fp(_jsonArrayFunc)
-	*(*uintptr)(unsafe.Add(p, 176)) = __ccgo_fp(_jsonSetFunc)
-	*(*uintptr)(unsafe.Add(p, 216)) = __ccgo_fp(_jsonSetFunc)
-	*(*uintptr)(unsafe.Add(p, 256)) = __ccgo_fp(_jsonArrayLengthFunc)
-	*(*uintptr)(unsafe.Add(p, 296)) = __ccgo_fp(_jsonArrayLengthFunc)
-	*(*uintptr)(unsafe.Add(p, 336)) = __ccgo_fp(_jsonErrorFunc)
-	*(*uintptr)(unsafe.Add(p, 376)) = __ccgo_fp(_jsonExtractFunc)
-	*(*uintptr)(unsafe.Add(p, 416)) = __ccgo_fp(_jsonExtractFunc)
-	*(*uintptr)(unsafe.Add(p, 456)) = __ccgo_fp(_jsonExtractFunc)
-	*(*uintptr)(unsafe.Add(p, 496)) = __ccgo_fp(_jsonExtractFunc)
-	*(*uintptr)(unsafe.Add(p, 536)) = __ccgo_fp(_jsonSetFunc)
-	*(*uintptr)(unsafe.Add(p, 576)) = __ccgo_fp(_jsonSetFunc)
-	*(*uintptr)(unsafe.Add(p, 616)) = __ccgo_fp(_jsonObjectFunc)
-	*(*uintptr)(unsafe.Add(p, 656)) = __ccgo_fp(_jsonObjectFunc)
-	*(*uintptr)(unsafe.Add(p, 696)) = __ccgo_fp(_jsonPatchFunc)
-	*(*uintptr)(unsafe.Add(p, 736)) = __ccgo_fp(_jsonPatchFunc)
-	*(*uintptr)(unsafe.Add(p, 776)) = __ccgo_fp(_jsonPrettyFunc)
-	*(*uintptr)(unsafe.Add(p, 816)) = __ccgo_fp(_jsonPrettyFunc)
-	*(*uintptr)(unsafe.Add(p, 856)) = __ccgo_fp(_jsonQuoteFunc)
-	*(*uintptr)(unsafe.Add(p, 896)) = __ccgo_fp(_jsonRemoveFunc)
-	*(*uintptr)(unsafe.Add(p, 936)) = __ccgo_fp(_jsonRemoveFunc)
-	*(*uintptr)(unsafe.Add(p, 976)) = __ccgo_fp(_jsonReplaceFunc)
-	*(*uintptr)(unsafe.Add(p, 1016)) = __ccgo_fp(_jsonReplaceFunc)
-	*(*uintptr)(unsafe.Add(p, 1056)) = __ccgo_fp(_jsonSetFunc)
-	*(*uintptr)(unsafe.Add(p, 1096)) = __ccgo_fp(_jsonSetFunc)
-	*(*uintptr)(unsafe.Add(p, 1136)) = __ccgo_fp(_jsonTypeFunc)
-	*(*uintptr)(unsafe.Add(p, 1176)) = __ccgo_fp(_jsonTypeFunc)
-	*(*uintptr)(unsafe.Add(p, 1216)) = __ccgo_fp(_jsonValidFunc)
-	*(*uintptr)(unsafe.Add(p, 1256)) = __ccgo_fp(_jsonValidFunc)
-	*(*uintptr)(unsafe.Add(p, 1296)) = __ccgo_fp(_jsonArrayStep)
-	*(*uintptr)(unsafe.Add(p, 1300)) = __ccgo_fp(_jsonArrayFinal)
-	*(*uintptr)(unsafe.Add(p, 1304)) = __ccgo_fp(_jsonArrayValue)
-	*(*uintptr)(unsafe.Add(p, 1308)) = __ccgo_fp(_jsonGroupInverse)
-	*(*uintptr)(unsafe.Add(p, 1336)) = __ccgo_fp(_jsonArrayStep)
-	*(*uintptr)(unsafe.Add(p, 1340)) = __ccgo_fp(_jsonArrayFinal)
-	*(*uintptr)(unsafe.Add(p, 1344)) = __ccgo_fp(_jsonArrayValue)
-	*(*uintptr)(unsafe.Add(p, 1348)) = __ccgo_fp(_jsonGroupInverse)
-	*(*uintptr)(unsafe.Add(p, 1376)) = __ccgo_fp(_jsonObjectStep)
-	*(*uintptr)(unsafe.Add(p, 1380)) = __ccgo_fp(_jsonObjectFinal)
-	*(*uintptr)(unsafe.Add(p, 1384)) = __ccgo_fp(_jsonObjectValue)
-	*(*uintptr)(unsafe.Add(p, 1388)) = __ccgo_fp(_jsonGroupInverse)
-	*(*uintptr)(unsafe.Add(p, 1416)) = __ccgo_fp(_jsonObjectStep)
-	*(*uintptr)(unsafe.Add(p, 1420)) = __ccgo_fp(_jsonObjectFinal)
-	*(*uintptr)(unsafe.Add(p, 1424)) = __ccgo_fp(_jsonObjectValue)
-	*(*uintptr)(unsafe.Add(p, 1428)) = __ccgo_fp(_jsonGroupInverse)
-}
-
-func init() {
-	p := unsafe.Pointer(&_memdb_vfs)
-	*(*uintptr)(unsafe.Add(p, 24)) = __ccgo_fp(_memdbOpen)
-	*(*uintptr)(unsafe.Add(p, 32)) = __ccgo_fp(_memdbAccess)
-	*(*uintptr)(unsafe.Add(p, 36)) = __ccgo_fp(_memdbFullPathname)
-	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_memdbDlOpen)
-	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_memdbDlError)
-	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_memdbDlSym)
-	*(*uintptr)(unsafe.Add(p, 52)) = __ccgo_fp(_memdbDlClose)
-	*(*uintptr)(unsafe.Add(p, 56)) = __ccgo_fp(_memdbRandomness)
-	*(*uintptr)(unsafe.Add(p, 60)) = __ccgo_fp(_memdbSleep)
-	*(*uintptr)(unsafe.Add(p, 68)) = __ccgo_fp(_memdbGetLastError)
-	*(*uintptr)(unsafe.Add(p, 72)) = __ccgo_fp(_memdbCurrentTimeInt64)
-}
-
-func init() {
-	p := unsafe.Pointer(&_rbuvfs_io_methods)
-	*(*uintptr)(unsafe.Add(p, 4)) = __ccgo_fp(_rbuVfsClose)
-	*(*uintptr)(unsafe.Add(p, 8)) = __ccgo_fp(_rbuVfsRead)
-	*(*uintptr)(unsafe.Add(p, 12)) = __ccgo_fp(_rbuVfsWrite)
-	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_rbuVfsTruncate)
-	*(*uintptr)(unsafe.Add(p, 20)) = __ccgo_fp(_rbuVfsSync)
-	*(*uintptr)(unsafe.Add(p, 24)) = __ccgo_fp(_rbuVfsFileSize)
-	*(*uintptr)(unsafe.Add(p, 28)) = __ccgo_fp(_rbuVfsLock)
-	*(*uintptr)(unsafe.Add(p, 32)) = __ccgo_fp(_rbuVfsUnlock)
-	*(*uintptr)(unsafe.Add(p, 36)) = __ccgo_fp(_rbuVfsCheckReservedLock)
-	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_rbuVfsFileControl)
-	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_rbuVfsSectorSize)
-	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_rbuVfsDeviceCharacteristics)
-	*(*uintptr)(unsafe.Add(p, 52)) = __ccgo_fp(_rbuVfsShmMap)
-	*(*uintptr)(unsafe.Add(p, 56)) = __ccgo_fp(_rbuVfsShmLock)
-	*(*uintptr)(unsafe.Add(p, 60)) = __ccgo_fp(_rbuVfsShmBarrier)
-	*(*uintptr)(unsafe.Add(p, 64)) = __ccgo_fp(_rbuVfsShmUnmap)
-}
-
-func init() {
-	p := unsafe.Pointer(&_dbpage_module)
-	*(*uintptr)(unsafe.Add(p, 4)) = __ccgo_fp(_dbpageConnect)
-	*(*uintptr)(unsafe.Add(p, 8)) = __ccgo_fp(_dbpageConnect)
-	*(*uintptr)(unsafe.Add(p, 12)) = __ccgo_fp(_dbpageBestIndex)
-	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_dbpageDisconnect)
-	*(*uintptr)(unsafe.Add(p, 20)) = __ccgo_fp(_dbpageDisconnect)
-	*(*uintptr)(unsafe.Add(p, 24)) = __ccgo_fp(_dbpageOpen)
-	*(*uintptr)(unsafe.Add(p, 28)) = __ccgo_fp(_dbpageClose)
-	*(*uintptr)(unsafe.Add(p, 32)) = __ccgo_fp(_dbpageFilter)
-	*(*uintptr)(unsafe.Add(p, 36)) = __ccgo_fp(_dbpageNext)
-	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_dbpageEof)
-	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_dbpageColumn)
-	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_dbpageRowid)
-	*(*uintptr)(unsafe.Add(p, 52)) = __ccgo_fp(_dbpageUpdate)
-	*(*uintptr)(unsafe.Add(p, 56)) = __ccgo_fp(_dbpageBegin)
-	*(*uintptr)(unsafe.Add(p, 60)) = __ccgo_fp(_dbpageSync)
-	*(*uintptr)(unsafe.Add(p, 88)) = __ccgo_fp(_dbpageRollbackTo)
-}
-
-/************** End of dbpage.c **********************************************/
-/************** Begin file carray.c ******************************************/
-/*
-** 2016-06-29
-**
-** The author disclaims copyright to this source code.  In place of
-** a legal notice, here is a blessing:
-**
-**    May you do good and not evil.
-**    May you find forgiveness for yourself and forgive others.
-**    May you share freely, never taking more than you give.
-**
-*************************************************************************
-**
-** This file implements a table-valued-function that
-** returns the values in a C-language array.
-** Examples:
-**
-**      SELECT * FROM carray($ptr,5)
-**
-** The query above returns 5 integers contained in a C-language array
-** at the address $ptr.  $ptr is a pointer to the array of integers.
-** The pointer value must be assigned to $ptr using the
-** sqlite3_bind_pointer() interface with a pointer type of "carray".
-** For example:
-**
-**    static int aX[] = { 53, 9, 17, 2231, 4, 99 };
-**    int i = sqlite3_bind_parameter_index(pStmt, "$ptr");
-**    sqlite3_bind_pointer(pStmt, i, aX, "carray", 0);
-**
-** There is an optional third parameter to determine the datatype of
-** the C-language array.  Allowed values of the third parameter are
-** 'int32', 'int64', 'double', 'char*', 'struct iovec'.  Example:
-**
-**      SELECT * FROM carray($ptr,10,'char*');
-**
-** The default value of the third parameter is 'int32'.
-**
-** HOW IT WORKS
-**
-** The carray "function" is really a virtual table with the
-** following schema:
-**
-**     CREATE TABLE carray(
-**       value,
-**       pointer HIDDEN,
-**       count HIDDEN,
-**       ctype TEXT HIDDEN
-**     );
-**
-** If the hidden columns "pointer" and "count" are unconstrained, then
-** the virtual table has no rows.  Otherwise, the virtual table interprets
-** the integer value of "pointer" as a pointer to the array and "count"
-** as the number of elements in the array.  The virtual table steps through
-** the array, element by element.
- */
-
-/************** End of carray.c **********************************************/
-/************** Begin file sqlite3session.c **********************************/
-
-/* #include "sqlite3session.h" */
-/* #include <assert.h> */
-/* #include <string.h> */
-
-func init() {
-	p := unsafe.Pointer(&_sqlite3BuiltinExtensions)
-	*(*uintptr)(unsafe.Add(p, 0)) = __ccgo_fp(_sqlite3Fts5Init)
-	*(*uintptr)(unsafe.Add(p, 4)) = __ccgo_fp(_sqlite3RtreeInit)
-	*(*uintptr)(unsafe.Add(p, 8)) = __ccgo_fp(_sqlite3DbpageRegister)
-	*(*uintptr)(unsafe.Add(p, 12)) = __ccgo_fp(_sqlite3DbstatRegister)
-	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_sqlite3TestExtInit)
 }
 
 func init() {
@@ -13662,10 +13453,251 @@ func init() {
 	*(*uintptr)(unsafe.Add(p, 1088)) = __ccgo_fp(Xsqlite3_db_status64)
 	*(*uintptr)(unsafe.Add(p, 1092)) = __ccgo_fp(Xsqlite3_str_truncate)
 	*(*uintptr)(unsafe.Add(p, 1096)) = __ccgo_fp(Xsqlite3_str_free)
+	*(*uintptr)(unsafe.Add(p, 1108)) = __ccgo_fp(Xsqlite3_incomplete)
+	*(*uintptr)(unsafe.Add(p, 1112)) = __ccgo_fp(Xsqlite3_result_str)
 }
 
 /* True if x is the directory separator character
  */
+
+func init() {
+	p := unsafe.Pointer(&_dbstat_module)
+	*(*uintptr)(unsafe.Add(p, 4)) = __ccgo_fp(_statConnect)
+	*(*uintptr)(unsafe.Add(p, 8)) = __ccgo_fp(_statConnect)
+	*(*uintptr)(unsafe.Add(p, 12)) = __ccgo_fp(_statBestIndex)
+	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_statDisconnect)
+	*(*uintptr)(unsafe.Add(p, 20)) = __ccgo_fp(_statDisconnect)
+	*(*uintptr)(unsafe.Add(p, 24)) = __ccgo_fp(_statOpen)
+	*(*uintptr)(unsafe.Add(p, 28)) = __ccgo_fp(_statClose)
+	*(*uintptr)(unsafe.Add(p, 32)) = __ccgo_fp(_statFilter)
+	*(*uintptr)(unsafe.Add(p, 36)) = __ccgo_fp(_statNext)
+	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_statEof)
+	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_statColumn)
+	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_statRowid)
+}
+
+/************** End of dbstat.c **********************************************/
+/************** Begin file dbpage.c ******************************************/
+/*
+** 2017-10-11
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+******************************************************************************
+**
+** This file contains an implementation of the "sqlite_dbpage" virtual table.
+**
+** The sqlite_dbpage virtual table is used to read or write whole raw
+** pages of the database file.  The pager interface is used so that
+** uncommitted changes and changes recorded in the WAL file are correctly
+** retrieved.
+**
+** Usage example:
+**
+**    SELECT data FROM sqlite_dbpage('aux1') WHERE pgno=123;
+**
+** This is an eponymous virtual table so it does not need to be created before
+** use.  The optional argument to the sqlite_dbpage() table name is the
+** schema for the database file that is to be read.  The default schema is
+** "main".
+**
+** The data field of sqlite_dbpage table can be updated.  The new
+** value must be a BLOB which is the correct page size, otherwise the
+** update fails.  INSERT operations also work, and operate as if they
+** where REPLACE.  The size of the database can be extended by INSERT-ing
+** new pages on the end.
+**
+** Rows may not be deleted.  However, doing an INSERT to page number N
+** with NULL page data causes the N-th page and all subsequent pages to be
+** deleted and the database to be truncated.
+ */
+
+/* #include "sqliteInt.h"   ** Requires access to internal data structures ** */
+
+func init() {
+	p := unsafe.Pointer(&_aJsonFunc)
+	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_jsonRemoveFunc)
+	*(*uintptr)(unsafe.Add(p, 56)) = __ccgo_fp(_jsonRemoveFunc)
+	*(*uintptr)(unsafe.Add(p, 96)) = __ccgo_fp(_jsonArrayFunc)
+	*(*uintptr)(unsafe.Add(p, 136)) = __ccgo_fp(_jsonArrayFunc)
+	*(*uintptr)(unsafe.Add(p, 176)) = __ccgo_fp(_jsonSetFunc)
+	*(*uintptr)(unsafe.Add(p, 216)) = __ccgo_fp(_jsonSetFunc)
+	*(*uintptr)(unsafe.Add(p, 256)) = __ccgo_fp(_jsonArrayLengthFunc)
+	*(*uintptr)(unsafe.Add(p, 296)) = __ccgo_fp(_jsonArrayLengthFunc)
+	*(*uintptr)(unsafe.Add(p, 336)) = __ccgo_fp(_jsonErrorFunc)
+	*(*uintptr)(unsafe.Add(p, 376)) = __ccgo_fp(_jsonExtractFunc)
+	*(*uintptr)(unsafe.Add(p, 416)) = __ccgo_fp(_jsonExtractFunc)
+	*(*uintptr)(unsafe.Add(p, 456)) = __ccgo_fp(_jsonExtractFunc)
+	*(*uintptr)(unsafe.Add(p, 496)) = __ccgo_fp(_jsonExtractFunc)
+	*(*uintptr)(unsafe.Add(p, 536)) = __ccgo_fp(_jsonSetFunc)
+	*(*uintptr)(unsafe.Add(p, 576)) = __ccgo_fp(_jsonSetFunc)
+	*(*uintptr)(unsafe.Add(p, 616)) = __ccgo_fp(_jsonObjectFunc)
+	*(*uintptr)(unsafe.Add(p, 656)) = __ccgo_fp(_jsonObjectFunc)
+	*(*uintptr)(unsafe.Add(p, 696)) = __ccgo_fp(_jsonPatchFunc)
+	*(*uintptr)(unsafe.Add(p, 736)) = __ccgo_fp(_jsonPatchFunc)
+	*(*uintptr)(unsafe.Add(p, 776)) = __ccgo_fp(_jsonPrettyFunc)
+	*(*uintptr)(unsafe.Add(p, 816)) = __ccgo_fp(_jsonPrettyFunc)
+	*(*uintptr)(unsafe.Add(p, 856)) = __ccgo_fp(_jsonQuoteFunc)
+	*(*uintptr)(unsafe.Add(p, 896)) = __ccgo_fp(_jsonRemoveFunc)
+	*(*uintptr)(unsafe.Add(p, 936)) = __ccgo_fp(_jsonRemoveFunc)
+	*(*uintptr)(unsafe.Add(p, 976)) = __ccgo_fp(_jsonReplaceFunc)
+	*(*uintptr)(unsafe.Add(p, 1016)) = __ccgo_fp(_jsonReplaceFunc)
+	*(*uintptr)(unsafe.Add(p, 1056)) = __ccgo_fp(_jsonSetFunc)
+	*(*uintptr)(unsafe.Add(p, 1096)) = __ccgo_fp(_jsonSetFunc)
+	*(*uintptr)(unsafe.Add(p, 1136)) = __ccgo_fp(_jsonTypeFunc)
+	*(*uintptr)(unsafe.Add(p, 1176)) = __ccgo_fp(_jsonTypeFunc)
+	*(*uintptr)(unsafe.Add(p, 1216)) = __ccgo_fp(_jsonValidFunc)
+	*(*uintptr)(unsafe.Add(p, 1256)) = __ccgo_fp(_jsonValidFunc)
+	*(*uintptr)(unsafe.Add(p, 1296)) = __ccgo_fp(_jsonArrayStep)
+	*(*uintptr)(unsafe.Add(p, 1300)) = __ccgo_fp(_jsonArrayFinal)
+	*(*uintptr)(unsafe.Add(p, 1304)) = __ccgo_fp(_jsonArrayValue)
+	*(*uintptr)(unsafe.Add(p, 1308)) = __ccgo_fp(_jsonGroupInverse)
+	*(*uintptr)(unsafe.Add(p, 1336)) = __ccgo_fp(_jsonArrayStep)
+	*(*uintptr)(unsafe.Add(p, 1340)) = __ccgo_fp(_jsonArrayFinal)
+	*(*uintptr)(unsafe.Add(p, 1344)) = __ccgo_fp(_jsonArrayValue)
+	*(*uintptr)(unsafe.Add(p, 1348)) = __ccgo_fp(_jsonGroupInverse)
+	*(*uintptr)(unsafe.Add(p, 1376)) = __ccgo_fp(_jsonObjectStep)
+	*(*uintptr)(unsafe.Add(p, 1380)) = __ccgo_fp(_jsonObjectFinal)
+	*(*uintptr)(unsafe.Add(p, 1384)) = __ccgo_fp(_jsonObjectValue)
+	*(*uintptr)(unsafe.Add(p, 1388)) = __ccgo_fp(_jsonGroupInverse)
+	*(*uintptr)(unsafe.Add(p, 1416)) = __ccgo_fp(_jsonObjectStep)
+	*(*uintptr)(unsafe.Add(p, 1420)) = __ccgo_fp(_jsonObjectFinal)
+	*(*uintptr)(unsafe.Add(p, 1424)) = __ccgo_fp(_jsonObjectValue)
+	*(*uintptr)(unsafe.Add(p, 1428)) = __ccgo_fp(_jsonGroupInverse)
+}
+
+func init() {
+	p := unsafe.Pointer(&_memdb_vfs)
+	*(*uintptr)(unsafe.Add(p, 24)) = __ccgo_fp(_memdbOpen)
+	*(*uintptr)(unsafe.Add(p, 32)) = __ccgo_fp(_memdbAccess)
+	*(*uintptr)(unsafe.Add(p, 36)) = __ccgo_fp(_memdbFullPathname)
+	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_memdbDlOpen)
+	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_memdbDlError)
+	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_memdbDlSym)
+	*(*uintptr)(unsafe.Add(p, 52)) = __ccgo_fp(_memdbDlClose)
+	*(*uintptr)(unsafe.Add(p, 56)) = __ccgo_fp(_memdbRandomness)
+	*(*uintptr)(unsafe.Add(p, 60)) = __ccgo_fp(_memdbSleep)
+	*(*uintptr)(unsafe.Add(p, 68)) = __ccgo_fp(_memdbGetLastError)
+	*(*uintptr)(unsafe.Add(p, 72)) = __ccgo_fp(_memdbCurrentTimeInt64)
+}
+
+func init() {
+	p := unsafe.Pointer(&_rbuvfs_io_methods)
+	*(*uintptr)(unsafe.Add(p, 4)) = __ccgo_fp(_rbuVfsClose)
+	*(*uintptr)(unsafe.Add(p, 8)) = __ccgo_fp(_rbuVfsRead)
+	*(*uintptr)(unsafe.Add(p, 12)) = __ccgo_fp(_rbuVfsWrite)
+	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_rbuVfsTruncate)
+	*(*uintptr)(unsafe.Add(p, 20)) = __ccgo_fp(_rbuVfsSync)
+	*(*uintptr)(unsafe.Add(p, 24)) = __ccgo_fp(_rbuVfsFileSize)
+	*(*uintptr)(unsafe.Add(p, 28)) = __ccgo_fp(_rbuVfsLock)
+	*(*uintptr)(unsafe.Add(p, 32)) = __ccgo_fp(_rbuVfsUnlock)
+	*(*uintptr)(unsafe.Add(p, 36)) = __ccgo_fp(_rbuVfsCheckReservedLock)
+	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_rbuVfsFileControl)
+	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_rbuVfsSectorSize)
+	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_rbuVfsDeviceCharacteristics)
+	*(*uintptr)(unsafe.Add(p, 52)) = __ccgo_fp(_rbuVfsShmMap)
+	*(*uintptr)(unsafe.Add(p, 56)) = __ccgo_fp(_rbuVfsShmLock)
+	*(*uintptr)(unsafe.Add(p, 60)) = __ccgo_fp(_rbuVfsShmBarrier)
+	*(*uintptr)(unsafe.Add(p, 64)) = __ccgo_fp(_rbuVfsShmUnmap)
+}
+
+func init() {
+	p := unsafe.Pointer(&_dbpage_module)
+	*(*uintptr)(unsafe.Add(p, 4)) = __ccgo_fp(_dbpageConnect)
+	*(*uintptr)(unsafe.Add(p, 8)) = __ccgo_fp(_dbpageConnect)
+	*(*uintptr)(unsafe.Add(p, 12)) = __ccgo_fp(_dbpageBestIndex)
+	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_dbpageDisconnect)
+	*(*uintptr)(unsafe.Add(p, 20)) = __ccgo_fp(_dbpageDisconnect)
+	*(*uintptr)(unsafe.Add(p, 24)) = __ccgo_fp(_dbpageOpen)
+	*(*uintptr)(unsafe.Add(p, 28)) = __ccgo_fp(_dbpageClose)
+	*(*uintptr)(unsafe.Add(p, 32)) = __ccgo_fp(_dbpageFilter)
+	*(*uintptr)(unsafe.Add(p, 36)) = __ccgo_fp(_dbpageNext)
+	*(*uintptr)(unsafe.Add(p, 40)) = __ccgo_fp(_dbpageEof)
+	*(*uintptr)(unsafe.Add(p, 44)) = __ccgo_fp(_dbpageColumn)
+	*(*uintptr)(unsafe.Add(p, 48)) = __ccgo_fp(_dbpageRowid)
+	*(*uintptr)(unsafe.Add(p, 52)) = __ccgo_fp(_dbpageUpdate)
+	*(*uintptr)(unsafe.Add(p, 56)) = __ccgo_fp(_dbpageBegin)
+	*(*uintptr)(unsafe.Add(p, 60)) = __ccgo_fp(_dbpageSync)
+	*(*uintptr)(unsafe.Add(p, 88)) = __ccgo_fp(_dbpageRollbackTo)
+}
+
+/************** End of dbpage.c **********************************************/
+/************** Begin file carray.c ******************************************/
+/*
+** 2016-06-29
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+*************************************************************************
+**
+** This file implements a table-valued-function that
+** returns the values in a C-language array.
+** Examples:
+**
+**      SELECT * FROM carray($ptr,5)
+**
+** The query above returns 5 integers contained in a C-language array
+** at the address $ptr.  $ptr is a pointer to the array of integers.
+** The pointer value must be assigned to $ptr using the
+** sqlite3_bind_pointer() interface with a pointer type of "carray".
+** For example:
+**
+**    static int aX[] = { 53, 9, 17, 2231, 4, 99 };
+**    int i = sqlite3_bind_parameter_index(pStmt, "$ptr");
+**    sqlite3_bind_pointer(pStmt, i, aX, "carray", 0);
+**
+** There is an optional third parameter to determine the datatype of
+** the C-language array.  Allowed values of the third parameter are
+** 'int32', 'int64', 'double', 'char*', 'struct iovec'.  Example:
+**
+**      SELECT * FROM carray($ptr,10,'char*');
+**
+** The default value of the third parameter is 'int32'.
+**
+** HOW IT WORKS
+**
+** The carray "function" is really a virtual table with the
+** following schema:
+**
+**     CREATE TABLE carray(
+**       value,
+**       pointer HIDDEN,
+**       count HIDDEN,
+**       ctype TEXT HIDDEN
+**     );
+**
+** If the hidden columns "pointer" and "count" are unconstrained, then
+** the virtual table has no rows.  Otherwise, the virtual table interprets
+** the integer value of "pointer" as a pointer to the array and "count"
+** as the number of elements in the array.  The virtual table steps through
+** the array, element by element.
+ */
+
+/************** End of carray.c **********************************************/
+/************** Begin file sqlite3session.c **********************************/
+
+/* #include "sqlite3session.h" */
+/* #include <assert.h> */
+/* #include <string.h> */
+
+func init() {
+	p := unsafe.Pointer(&_sqlite3BuiltinExtensions)
+	*(*uintptr)(unsafe.Add(p, 0)) = __ccgo_fp(_sqlite3Fts5Init)
+	*(*uintptr)(unsafe.Add(p, 4)) = __ccgo_fp(_sqlite3RtreeInit)
+	*(*uintptr)(unsafe.Add(p, 8)) = __ccgo_fp(_sqlite3DbpageRegister)
+	*(*uintptr)(unsafe.Add(p, 12)) = __ccgo_fp(_sqlite3DbstatRegister)
+	*(*uintptr)(unsafe.Add(p, 16)) = __ccgo_fp(_sqlite3TestExtInit)
+}
 
 func init() {
 	p := unsafe.Pointer(&_MemJournalMethods)

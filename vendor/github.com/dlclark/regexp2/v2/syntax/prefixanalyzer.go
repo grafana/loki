@@ -1286,7 +1286,11 @@ func findRequiredLandmarkChain(node *RegexNode) *RequiredLandmarkChain {
 			if !isZeroWidthLandmarkGap(child) {
 				return nil
 			}
-			if child = unwrapTransparentNodes(child); child != nil && isLandmarkAnchor(child.T) && !slices.Contains(anchors, child.T) {
+			// The runner tests ECMAScript boundaries without the extra word
+			// characters of IgnoreCase|Unicode, so leave those out: fewer
+			// anchors only means fewer starts are skipped.
+			if child = unwrapTransparentNodes(child); child != nil && isLandmarkAnchor(child.T) && !slices.Contains(anchors, child.T) &&
+				!((child.T == NtECMABoundary || child.T == NtNonECMABoundary) && hasECMAWordCharExtras(child.Options)) {
 				anchors = append(anchors, child.T)
 			}
 		}

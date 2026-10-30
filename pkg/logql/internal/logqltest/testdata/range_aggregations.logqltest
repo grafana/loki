@@ -870,9 +870,9 @@ load
 
 eval instant at 60s rate({app="a"} |= "keep" [1m])
   {app="a"} 0.1
-eval range from 60s to 120s step 30s rate({app="a"} |= "keep" [1m]) # overlapping
+eval range from 60s to 120s step 30s rate({app="a"} |= "keep" [1m])        # overlapping
   {app="a"} 0.1 0.1 0.1
-eval range from 60s to 180s step 90s rate({app="a"} |= "keep" [1m]) # non-overlapping
+eval range from 60s to 180s step 90s rate({app="a"} |= "keep" [1m])        # non-overlapping
   {app="a"} 0.1 0.1
 # The offset shifts the window back.
 eval instant at 90s rate({app="a"} |= "keep" [20s] offset 90s)
@@ -882,6 +882,21 @@ eval range from 60s to 150s step 30s rate({app="a"} |= "keep" [20s] offset 90s)
 # rate() doesn't allow grouping.
 eval instant at 60s rate({app="a"} |= "keep" [1m]) by (app)
   expect fail msg: grouping not allowed for rate aggregation
+# sum(rate()).
+eval instant at 60s sum(rate({app="a"} |= "keep" [1m]))
+  {} 0.1
+eval range from 60s to 120s step 30s sum(rate({app="a"} |= "keep" [1m]))   # overlapping
+  {} 0.1 0.1 0.1
+eval range from 60s to 240s step 90s sum(rate({app="a"} |= "keep" [1m]))   # non-overlapping
+  {} 0.1 0.1 _   # (180s,240s] has no sample
+eval instant at 60s sum(rate({app="a"} |= "keep" [45s]))
+  {} 0.1111111111111111   # (15s,60s] holds 5 samples, 5 / 45
+eval range from 30s to 60s step 15s sum(rate({app="a"} |= "keep" [45s]))   # overlapping
+  {} 0.08888888888888889 0.08888888888888889 0.1111111111111111   # 4 / 45, 4 / 45, 5 / 45
+eval instant at 90s sum(rate({app="a"} |= "keep" [20s] offset 90s))
+  {} 0.05
+eval range from 60s to 150s step 30s sum(rate({app="a"} |= "keep" [20s] offset 90s))
+  {} _ 0.05 0.1 0.1
 
 # rate() over a sub-second [500ms] range divides the matching-line count by 0.5s.
 clear
@@ -891,15 +906,26 @@ load
 
 eval instant at 500ms rate({app="b"} |= "keep" [500ms])
   {app="b"} 6
-eval range from 500ms to 900ms step 400ms rate({app="b"} |= "keep" [500ms])  # overlapping
+eval range from 500ms to 900ms step 400ms rate({app="b"} |= "keep" [500ms])         # overlapping
   {app="b"} 6 6
-eval range from 500ms to 1100ms step 600ms rate({app="b"} |= "keep" [500ms]) # non-overlapping
+eval range from 500ms to 1100ms step 600ms rate({app="b"} |= "keep" [500ms])        # non-overlapping
   {app="b"} 6 6
 # The offset shifts the window back.
 eval instant at 1300ms rate({app="b"} |= "keep" [500ms] offset 500ms)
   {app="b"} 4
 eval range from 1000ms to 1600ms step 300ms rate({app="b"} |= "keep" [500ms] offset 500ms)
   {app="b"} 6 4 6
+# sum(rate()).
+eval instant at 500ms sum(rate({app="b"} |= "keep" [500ms]))
+  {} 6
+eval range from 500ms to 900ms step 400ms sum(rate({app="b"} |= "keep" [500ms]))    # overlapping
+  {} 6 6
+eval range from 500ms to 1100ms step 600ms sum(rate({app="b"} |= "keep" [500ms]))   # non-overlapping
+  {} 6 6
+eval instant at 1300ms sum(rate({app="b"} |= "keep" [500ms] offset 500ms))
+  {} 4
+eval range from 1000ms to 1600ms step 300ms sum(rate({app="b"} |= "keep" [500ms] offset 500ms))
+  {} 6 4 6
 
 # rate() with unwrap, from a stream label, structured metadata, or a parsed field.
 clear
@@ -941,13 +967,23 @@ eval instant at 60s rate({app="err"} | unwrap v | __error__="" [1m])
   {app="err"} 0.1
 eval instant at 60s rate({app="err"} | unwrap v | __error__!="" [1m])
   {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", app="err"} 0
+eval instant at 60s sum(rate({app="err"} | unwrap v [1m]))
+  expect fail msg: SampleExtractionErr
+eval instant at 60s sum(rate({app="err"} | unwrap v | __error__="" [1m]))
+  {} 0.1
 # A large value that a later negative value cancels does not drop the small values between them.
 eval instant at 60s rate({app="k"} | logfmt | unwrap v [1m])
   {app="k", c="ten"} 0.16666666666666666
-eval range from 20s to 60s step 20s rate({app="k"} | logfmt | unwrap v [1m])    # overlapping
+eval range from 20s to 60s step 20s rate({app="k"} | logfmt | unwrap v [1m])         # overlapping
   {app="k", c="ten"} 0.16666666666666666 0.16666666666666666 0.16666666666666666
-eval range from 20s to 60s step 40s rate({app="k"} | logfmt | unwrap v [20s])   # non-overlapping
+eval range from 20s to 60s step 40s rate({app="k"} | logfmt | unwrap v [20s])        # non-overlapping
   {app="k", c="ten"} 0.5 _
+eval instant at 60s sum(rate({app="k"} | logfmt | unwrap v [1m]))
+  {} 0.16666666666666666
+eval range from 20s to 60s step 20s sum(rate({app="k"} | logfmt | unwrap v [1m]))    # overlapping
+  {} 0.16666666666666666 0.16666666666666666 0.16666666666666666
+eval range from 20s to 60s step 40s sum(rate({app="k"} | logfmt | unwrap v [20s]))   # non-overlapping
+  {} 0.5 _
 
 # rate() with unwrap: window shapes, offset, and grouping.
 clear
@@ -978,6 +1014,39 @@ eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m]) by (app
   expect fail msg: grouping not allowed for rate aggregation
 eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m]) without (app)
   expect fail msg: grouping not allowed for rate aggregation
+
+# sum() of rate() with unwrap edge cases:
+# - A window that sums to zero or to a negative value is a value, not an empty window.
+# - A huge value in one window does not change the rate of a later window.
+# - A NaN or an Inf stays in its own window.
+clear
+load
+  {app="z", c="zero"}  "v=5"                  @ 20s
+  {app="z", c="zero"}  "v=-5"                 @ 40s
+  {app="z", c="neg"}   "v=-3"                 @ 20s
+  {app="z", c="pos"}   "v=1"                  @ 20s
+  {app="h", c="big"}   "v=10000000000000000"  @ 20s
+  {app="h", c="big"}   "v=1.5"                @ 40s
+  {app="h", c="small"} "v=123456789.123"      @ 20s
+  {app="h", c="small"} "v=0.1"                @ 40s
+  {app="n", c="nan"}   "v=7"                  @ 20s
+  {app="n", c="nan"}   "v=NaN"                @ 40s
+  {app="n", c="nan"}   "v=3"                  @ 60s
+  {app="n", c="inf"}   "v=+Inf"               @ 20s
+  {app="n", c="inf"}   "v=-Inf"               @ 40s
+  {app="n", c="inf"}   "v=5"                  @ 60s
+  {app="noise"}        "v=1"                  @ 30s
+
+eval instant at 60s sum by (c) (rate({app="z"} | logfmt | unwrap v [1m]))
+  {c="zero"} 0                      # (5 - 5) / 60
+  {c="neg"} -0.05                   # -3 / 60
+  {c="pos"} 0.016666666666666666    # 1 / 60
+eval range from 20s to 40s step 20s sum by (c) (rate({app="h"} | logfmt | unwrap v [20s])) # overlapping
+  {c="big"}   500000000000000 0.075   # 1e16 / 20, 1.5 / 20
+  {c="small"} 6172839.45615 0.005     # 123456789.123 / 20, 0.1 / 20
+eval range from 20s to 80s step 20s sum by (c) (rate({app="n"} | logfmt | unwrap v [20s])) # overlapping
+  {c="nan"} 0.35 NaN 0.15 _
+  {c="inf"} +Inf -Inf 0.25 _
 
 # avg_over_time() edge cases:
 # - any NaN -> NaN

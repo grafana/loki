@@ -20,15 +20,25 @@
 package internal
 
 import (
-	"fmt"
 	"time"
 
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
+	"google.golang.org/grpc/internal/xds/grpcservice"
 )
 
 var (
+	// CreateExtProcChannel creates the channel to the external processing
+	// server described by the given config. The returned function closes the
+	// channel. It is a variable so that tests can intercept channel creation
+	// and observe its release.
+	CreateExtProcChannel = func(server *grpcservice.Config) (grpc.ClientConnInterface, func(), error) {
+		conn, err := server.Dial()
+		if err != nil {
+			return nil, nil, err
+		}
+		return conn, func() { conn.Close() }, nil
+	}
+
 	// RegisterForTesting registers the external processor HTTP Filter for testing
 	// purposes.
 	RegisterForTesting func()
@@ -37,18 +47,6 @@ var (
 	// testing purposes.
 	UnregisterForTesting func()
 
-	// ParseGRPCServiceConfig parses the gRPC service configuration from the given
-	// protobuf message.
-	ParseGRPCServiceConfig = func(*v3corepb.GrpcService) (xdsresource.GRPCServiceConfig, error) {
-		return xdsresource.GRPCServiceConfig{}, fmt.Errorf("extproc: ParseGRPCServiceConfig not implemented")
-	}
-
-	// CreateExtProcChannel creates a gRPC client channel to the external
-	// processing server.
-	CreateExtProcChannel = func(xdsresource.GRPCServiceConfig) (grpc.ClientConnInterface, func() error, error) {
-		return nil, nil, fmt.Errorf("extproc: dialing external processor server not implemented")
-	}
-
 	// TimeNowFunc returns the current time.Time, and can be overridden for
 	// testing purposes.
 	TimeNowFunc func() time.Time
@@ -56,4 +54,8 @@ var (
 	// TimeSinceFunc returns the time elapsed, and can be overridden for testing
 	// purposes.
 	TimeSinceFunc func(t time.Time) time.Duration
+
+	// DefaultFlowControlWindowSize is the initial flow control window size for
+	// the external processor filter and can be overridden for testing purposes.
+	DefaultFlowControlWindowSize int64 = 64 * 1024
 )

@@ -514,8 +514,13 @@ func (w *writer) emitFragment(nodetype NodeType, node *RegexNode, curIndex int) 
 	case NtRef:
 		w.emit1(InstOp(node.T|ntBits), w.mapCapnum(node.M))
 
-	case NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary, NtBeginning, NtStart, NtEndZ, NtEnd, NtUpdateBumpalong:
+	case NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtBeginning, NtStart, NtEndZ, NtEnd, NtUpdateBumpalong:
 		w.emit(InstOp(node.T))
+
+	case NtECMABoundary, NtNonECMABoundary:
+		// Ci tells the runner that IgnoreCase applies, which (with Unicode)
+		// adds to the word characters.
+		w.emit(InstOp(node.T) | bits&Ci)
 
 	case NtGrapheme:
 		w.emit(InstOp(node.T | ntBits))

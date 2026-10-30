@@ -12,22 +12,48 @@ import (
 
 type Trsize_t = uint32
 
+func Xsqlite3_initialize(tls *libc.TLS) (r int32) {
+	/* If this build does not support writable static data (WSD) natively
+	 ** then we have to invoke the (application-supplied) WSD initialization
+	 ** routine before doing anything else. */
+	if libc.AtomicLoadPInt32(uintptr(unsafe.Pointer(&_sqlite3Config))+208) != 0 {
+		/* SQLite has already been initialized.  Fast early-out. */
+		return SQLITE_OK
+	} else {
+		/* Invoke sqlite3Initialize() to do the actual work. */
+		return _sqlite3Initialize(tls)
+	}
+	return r
+}
+
 // C documentation
 //
 //	/*
 //	** Initialize SQLite.
 //	**
-//	** This routine must be called to initialize the memory allocation,
-//	** VFS, and mutex subsystems prior to doing any serious work with
-//	** SQLite.  But as long as you do not compile with SQLITE_OMIT_AUTOINIT
+//	** The sqlite3_initialize() routine must be called to initialize the
+//	** memory allocation, VFS, and mutex subsystems prior to doing any
+//	** serious work.  As long as you do not compile with SQLITE_OMIT_AUTOINIT
 //	** this routine will be called automatically by key routines such as
 //	** sqlite3_open().
 //	**
 //	** This routine is a no-op except on its very first call for the process,
-//	** or for the first call after a call to sqlite3_shutdown.
+//	** or for the first call after a call to sqlite3_shutdown.  Most calls
+//	** to sqlite3_initialize() are, in fact, no-ops.  For that reason, the
+//	** routine is broken into two pieces:
 //	**
-//	** The first thread to call this routine runs the initialization to
-//	** completion.  If subsequent threads call this routine before the first
+//	**     sqlite3Initialize()     Does the actual work of initialization
+//	**
+//	**     sqlite3_initialize()    Checks to see if initialization is needed
+//	**                             and invokes sqlite3Initialize() if it is.
+//	**
+//	** The sqlite3_initialize() interface is called frequently, but
+//	** sqlite3Initialize() runs rarely.  The function is broken up this way
+//	** to avoid wasting CPU cycles with unnecessary stack setup for local
+//	** variables in cases where it is not needed.
+//	**
+//	** The first thread to call sqlite3_initialize() runs the initialization to
+//	** completion. If subsequent threads call sqlite3_initialize() before the first
 //	** thread has finished the initialization process, then the subsequent
 //	** threads must block until the first thread finishes with the initialization.
 //	**
@@ -35,31 +61,25 @@ type Trsize_t = uint32
 //	** calls to this routine should not block, of course.  Otherwise the
 //	** initialization process would never complete.
 //	**
-//	** Let X be the first thread to enter this routine.  Let Y be some other
-//	** thread.  Then while the initial invocation of this routine by X is
-//	** incomplete, it is required that:
+//	** Let X be the first thread to enter sqlite3_initialize().  Let Y be some
+//	** other thread.  While the initial invocation of sqlite3_initialize() by X
+//	** is incomplete, it is required that:
 //	**
-//	**    *  Calls to this routine from Y must block until the outer-most
+//	**    *  Calls to sqlite3_initialize() from Y must block until the outer-most
 //	**       call by X completes.
 //	**
-//	**    *  Recursive calls to this routine from thread X return immediately
-//	**       without blocking.
+//	**    *  Recursive calls to sqlite3_initialize() from thread X return
+//	**       immediately without blocking.
 //	*/
-func Xsqlite3_initialize(tls *libc.TLS) (r int32) {
+func _sqlite3Initialize(tls *libc.TLS) (r int32) {
 	var pMainMtx uintptr
 	var rc int32
 	_, _ = pMainMtx, rc /* Result code */
 	/* If the following assert() fails on some obscure processor/compiler
-	 ** combination, the work-around is to set the correct pointer
-	 ** size at compile-time using -DSQLITE_PTRSIZE=n compile-time option */
-	/* If SQLite is already completely initialized, then this call
-	 ** to sqlite3_initialize() should be a no-op.  But the initialization
-	 ** must be complete.  So isInit must not be set until the very end
-	 ** of this routine.
+	 ** combination to warn that SQLite has been mis-compiled.  If you hit
+	 ** this assert(), that means you need to recompile with the
+	 ** -DSQLITE_PTRSIZE=n compile-time option to set the correct pointer size.
 	 */
-	if libc.AtomicLoadPInt32(uintptr(unsafe.Pointer(&_sqlite3Config))+208) != 0 {
-		return SQLITE_OK
-	}
 	/* Make sure the mutex subsystem is initialized.  If unable to
 	 ** initialize the mutex subsystem, return early with the error.
 	 ** If the system is so sick that we are unable to allocate a mutex,
@@ -188,30 +208,3 @@ func _sqlite3MutexInit(tls *libc.TLS) (r int32) {
 	rc = (*(*func(*libc.TLS) int32)(unsafe.Pointer(&struct{ uintptr }{_sqlite3Config.Fmutex.FxMutexInit})))(tls)
 	return rc
 }
-
-// C documentation
-//
-//	/*
-//	** Turn bulk memory into a valid Parse object and link that Parse object
-//	** into database connection db.
-//	**
-//	** Call sqlite3ParseObjectReset() to undo this operation.
-//	**
-//	** Caution:  Do not confuse this routine with sqlite3ParseObjectInit() which
-//	** is generated by Lemon.
-//	*/
-func _sqlite3ParseObjectInit(tls *libc.TLS, pParse uintptr, db uintptr) {
-	libc.Xmemset(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+4)), 0, uint32(libc.UintptrFromInt32(0)+136)-uint32(libc.UintptrFromInt32(0)+4))
-	libc.Xmemset(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+208)), 0, libc.Uint32FromInt64(284)-uint32(libc.UintptrFromInt32(0)+208))
-	(*TParse)(unsafe.Pointer(pParse)).FpOuterParse = (*Tsqlite3)(unsafe.Pointer(db)).FpParse
-	(*Tsqlite3)(unsafe.Pointer(db)).FpParse = pParse
-	(*TParse)(unsafe.Pointer(pParse)).Fdb = db
-	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
-		_sqlite3ErrorMsg(tls, pParse, __ccgo_ts+1672, 0)
-	}
-}
-
-/*
-** Maximum number of times that we will try again to prepare a statement
-** that returns SQLITE_ERROR_RETRY.
- */

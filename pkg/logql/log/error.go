@@ -3,7 +3,7 @@ package log
 import (
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 var (
@@ -30,11 +30,11 @@ func errorLabelHints(m *labels.Matcher, passes func(string) bool) (readsError, k
 	// A comparison against __error_details__ reads an error label, but it never asks to keep the
 	// errored lines. The filter reads the label set, which holds no error details, so the
 	// comparison cannot name an error.
-	if m.Name == logqlmodel.ErrorDetailsLabel {
+	if m.Name == logqlerr.ErrorDetailsLabel {
 		return true, false
 	}
 
-	if m.Name != logqlmodel.ErrorLabel {
+	if m.Name != logqlerr.ErrorLabel {
 		return false, false
 	}
 

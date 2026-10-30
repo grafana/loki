@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	stditer "iter"
+	"maps"
+	"math"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
@@ -13,6 +16,7 @@ import (
 	"github.com/grafana/dskit/metrics"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -22,11 +26,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/dataobjread"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -728,6 +733,96 @@ func TestDataObjStore_Sharding(t *testing.T) {
 	}
 }
 
+// TestDataObjStore_ShardingAcrossLayouts asserts that the shards of one query read every sample
+// once when the data objects of the tenant have different numbers of shard buckets, as they do
+// after the tenant changes its shard factor.
+//
+// The expected samples come from the input, not from an unsharded read. A mistake that the
+// unsharded and the sharded reads share cannot hide that way.
+func TestDataObjStore_ShardingAcrossLayouts(t *testing.T) {
+	const (
+		streamCount = 128
+		query       = `sum by (app) (count_over_time({env="prod"}[1m]))`
+	)
+
+	var (
+		objects []testObject
+		want    []sampleRow
+	)
+	for objectIdx, buckets := range []uint32{1, 8, 32, 128} {
+		second := 10*objectIdx + 1
+		objectStreams := make([]logproto.Stream, 0, streamCount)
+
+		for streamIdx := range streamCount {
+			streamLabels := fmt.Sprintf(`{app="app-%d", env="prod"}`, streamIdx)
+			objectStreams = append(objectStreams, logproto.Stream{
+				Labels:  streamLabels,
+				Entries: []push.Entry{entry(t, second, "line")},
+			})
+			want = append(want, sampleRow{
+				Labels:       fmt.Sprintf(`{app="app-%d"}`, streamIdx),
+				TimestampSec: int64(second),
+				Value:        1,
+				StreamHash:   streamHashOf(streamLabels),
+			})
+		}
+		objects = append(objects, testObject{shardBuckets: buckets, streams: objectStreams})
+	}
+	sortSamples(want)
+
+	store := newTestDataObjStoreOfObjects(t, objects)
+
+	// requireEverySampleOnce runs the query once for each shard and checks that the shards
+	// together return the expected samples, and that no stream is served by two shards.
+	requireEverySampleOnce := func(t *testing.T, shards []string) {
+		t.Helper()
+
+		var got []sampleRow
+		shardsPerStream := map[uint64]map[int]struct{}{}
+		for shard, annotation := range shards {
+			rows := store.selectSamples(testCtx(t), query, at(0), at(100), func(req *logproto.SampleQueryRequest) {
+				req.Shards = []string{annotation}
+			})
+			got = append(got, rows...)
+			for _, row := range rows {
+				if shardsPerStream[row.StreamHash] == nil {
+					shardsPerStream[row.StreamHash] = map[int]struct{}{}
+				}
+				shardsPerStream[row.StreamHash][shard] = struct{}{}
+			}
+		}
+		sortSamples(got)
+
+		require.Equal(t, want, got)
+		for streamHash, servedBy := range shardsPerStream {
+			require.Len(t, servedBy, 1, "the stream with hash %d was served by shards %v", streamHash, slices.Collect(maps.Keys(servedBy)))
+		}
+	}
+
+	t.Run("an unsharded query returns every sample once across objects of 1, 8, 32 and 128 buckets", func(t *testing.T) {
+		got := store.selectSamples(testCtx(t), query, at(0), at(100))
+
+		require.Equal(t, want, got)
+	})
+
+	for _, of := range []uint32{2, 8, 32, 64, 256} {
+		t.Run(fmt.Sprintf("%d power-of-two shards together return every sample once across objects of 1, 8, 32 and 128 buckets", of), func(t *testing.T) {
+			shards := make([]string, 0, of)
+			for shard := range of {
+				shards = append(shards, powerOfTwoShard(shard, of).String())
+			}
+
+			requireEverySampleOnce(t, shards)
+		})
+	}
+
+	for _, n := range []uint64{1, 3, 10} {
+		t.Run(fmt.Sprintf("%d bounded shards together return every sample once across objects of 1, 8, 32 and 128 buckets", n), func(t *testing.T) {
+			requireEverySampleOnce(t, boundedShardsOfFingerprintSpace(n))
+		})
+	}
+}
+
 // TestDataObjStore_Unwrap reads the number a metric query unwraps out of a metadata column.
 func TestDataObjStore_Unwrap(t *testing.T) {
 	stream := logproto.Stream{
@@ -1178,4 +1273,60 @@ func (s *metadataCacheSpy) loadCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.loads
+}
+
+// boundedShardsOfFingerprintSpace splits the fingerprint space into n adjacent bounded shards, and
+// returns them as the query-frontend encodes them. n must not be zero.
+func boundedShardsOfFingerprintSpace(n uint64) []string {
+	width := math.MaxUint64 / n
+	shards := make([]string, 0, n)
+	for i := range n {
+		shard := logproto.Shard{Bounds: logproto.FPBounds{Min: model.Fingerprint(i * width), Max: model.Fingerprint((i+1)*width - 1)}}
+		if i == n-1 {
+			shard.Bounds.Max = math.MaxUint64
+		}
+		shards = append(shards, logql.NewBoundedShard(shard).String())
+	}
+	return shards
+}
+
+// testObject is one data object of a test store: the streams it holds and the number of shard
+// buckets it records.
+type testObject struct {
+	shardBuckets uint32
+	streams      []logproto.Stream
+}
+
+// newTestDataObjStoreOfObjects writes one data object for each of objects, in order, and returns
+// a store over them. Each object records its own number of shard buckets.
+func newTestDataObjStoreOfObjects(t *testing.T, objects []testObject) *testDataObjStore {
+	t.Helper()
+
+	overrides := &shardLayoutOverrides{}
+	builder := objtest.NewBuilder(t, objtest.WithTenantOverrides(overrides))
+	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
+	for _, object := range objects {
+		overrides.layout = dataobjstreams.MustShardLayoutFromBuckets(object.shardBuckets)
+
+		for _, stream := range object.streams {
+			builder.Append(ctx, stream)
+		}
+		builder.Flush(ctx)
+	}
+	builder.Close()
+
+	chunkStore := &chunkStoreSpy{}
+	store, err := NewDataObjStore(chunkStore, builder.Location().Bucket, builder.Metastore(), nil)
+	require.NoError(t, err)
+
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
+}
+
+// shardLayoutOverrides gives every tenant the shard layout in its layout field and no schema labels.
+type shardLayoutOverrides struct{ layout dataobjstreams.ShardLayout }
+
+func (o *shardLayoutOverrides) SortSchemaLabels(string) []string { return nil }
+
+func (o *shardLayoutOverrides) DataObjShardLayout(string) dataobjstreams.ShardLayout {
+	return o.layout
 }

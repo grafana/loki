@@ -10,7 +10,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 var (
@@ -401,7 +401,7 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 	// An always-true comparison reduces to a no-op, which reports no required label name. A
 	// comparison against a reserved error label must stay a real filter: the pipeline reads its
 	// required name and its matcher to learn that the query asks for the errored lines.
-	if f == TrueFilter && m.Name != logqlmodel.ErrorLabel && m.Name != logqlmodel.ErrorDetailsLabel {
+	if f == TrueFilter && m.Name != logqlerr.ErrorLabel && m.Name != logqlerr.ErrorDetailsLabel {
 		return &NoopLabelFilter{m}
 	}
 
@@ -480,7 +480,7 @@ func (s *LineFilterLabelFilter) RequiredLabelNames() []string {
 }
 
 func labelValue(name string, lbs *LabelsBuilder) string {
-	if name == logqlmodel.ErrorLabel {
+	if name == logqlerr.ErrorLabel {
 		return lbs.GetErr()
 	}
 	v, _ := lbs.Get(name)

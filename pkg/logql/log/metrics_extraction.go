@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 const (
@@ -167,7 +167,7 @@ func (l *lineSampleExtractor) canUseConstantLabelsWithoutStructuredMetadata(stre
 
 // structuredMetadataHasError reports whether structuredMetadata carries a literal __error__ label.
 func structuredMetadataHasError(structuredMetadata labels.Labels) bool {
-	return structuredMetadata.Has(logqlmodel.ErrorLabel)
+	return structuredMetadata.Has(logqlerr.ErrorLabel)
 }
 
 type streamLineSampleExtractor struct {

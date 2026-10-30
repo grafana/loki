@@ -532,7 +532,7 @@ func alignedBitmapOp(op bitOp, left, right []byte, lOffset, rOffset int64, out [
 	left = left[lOffset/8:]
 	right = right[rOffset/8:]
 	out = out[outOffset/8:]
-	endMask := (lOffset + length%8)
+	endMask := (lOffset + length) % 8
 	switch nbytes {
 	case 0:
 		return
