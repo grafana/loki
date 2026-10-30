@@ -253,13 +253,13 @@ func TestPushRejectOldCounter(t *testing.T) {
 		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
 
 	// fail to push with a counter <= the streams internal counter
-	_, err = s.PushReplay(context.Background(), []logproto.Entry{
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 	}, 2, nil)
 	require.Equal(t, ErrEntriesExist, err)
 
 	// succeed with a greater counter
-	_, err = s.PushReplay(context.Background(), []logproto.Entry{
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 	}, 3, nil)
 	require.Nil(t, err)
@@ -622,7 +622,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	}
 
 	// Push a first entry through the replay path
-	_, err = s.PushReplay(context.Background(), entries, 1, nil)
+	_, err = s.PushWalReplay(context.Background(), entries, 1, nil)
 	require.Nil(t, err)
 
 	// Create a sample outside the validity window
@@ -635,14 +635,14 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	require.NotNil(t, err)
 
 	// The same write through the replay path should succeed and be stored.
-	_, err = s.PushReplay(context.Background(), entries, 2, nil)
+	_, err = s.PushWalReplay(context.Background(), entries, 2, nil)
 	require.Nil(t, err)
 	require.Equal(t, 2, s.chunks[0].chunk.Size())
 
 }
 
 // WAL V1 records carry no counter and decode to 0; they must not be dropped as duplicates.
-func TestPushReplayZeroCounter(t *testing.T) {
+func TestPushWalReplayZeroCounter(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
@@ -668,14 +668,14 @@ func TestPushReplayZeroCounter(t *testing.T) {
 	)
 
 	base := time.Now()
-	_, err = s.PushReplay(context.Background(), []logproto.Entry{
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
 		{Timestamp: base, Line: "a"},
 	}, 0, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, s.chunks[0].chunk.Size())
 
 	// A second counterless push still isn't a duplicate, even though entryCt > 0.
-	_, err = s.PushReplay(context.Background(), []logproto.Entry{
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
 		{Timestamp: base.Add(time.Second), Line: "b"},
 	}, 0, nil)
 	require.NoError(t, err)
@@ -683,14 +683,14 @@ func TestPushReplayZeroCounter(t *testing.T) {
 
 	// Counterless records are validated like live pushes, so entries outside
 	// the validity window are rejected.
-	_, err = s.PushReplay(context.Background(), []logproto.Entry{
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
 		{Timestamp: base.Add(-time.Hour), Line: "old"},
 	}, 0, nil)
 	require.Error(t, err)
 	require.Equal(t, 2, s.chunks[0].chunk.Size())
 
 	// A positive counter that is not ahead of the stream is still a duplicate.
-	_, err = s.PushReplay(context.Background(), []logproto.Entry{
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
 		{Timestamp: base.Add(2 * time.Second), Line: "c"},
 	}, 1, nil)
 	require.Equal(t, ErrEntriesExist, err)

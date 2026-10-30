@@ -193,13 +193,13 @@ func (s *stream) Push(
 	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), len(entries))
 }
 
-// PushReplay ingests entries read back from WAL segments during recovery.
+// PushWalReplay ingests entries read back from WAL segments during recovery.
 // Entries are not written to a WAL record again. It takes chunkMtx itself, so
 // callers must not hold it. Whole-stream rate limiting does not apply, and
 // replayed entries are not sent to tailers.
 // The WAL does not record the request format, so discard metrics for replayed
 // entries are always attributed to "loki".
-func (s *stream) PushReplay(
+func (s *stream) PushWalReplay(
 	ctx context.Context,
 	entries []logproto.Entry,
 	// Counter of the WAL record the entries came from. Entries are rejected
