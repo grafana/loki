@@ -23,9 +23,12 @@
 
 ## Manual decoding improvements
 
-- Custom types can implement `UnmarshalMaxMindDB(d *maxminddb.Decoder) error`
-  to skip reflection and zero allocations for hot paths.
-- `maxminddb.Decoder` mirrors the APIs from `internal/decoder`, giving fine
+- Custom types can import `github.com/oschwald/maxminddb-golang/v2/mmdbdata`
+  and implement `mmdbdata.CursorUnmarshaler` to skip reflection on hot paths.
+  The older `UnmarshalMaxMindDB(*mmdbdata.Decoder) error` callback remains
+  supported throughout v2 but is deprecated and planned for removal in v3. If
+  a type implements both interfaces, `CursorUnmarshaler` takes precedence.
+- `mmdbdata.Decoder` mirrors the APIs from `internal/decoder`, giving fine
   grained access to the underlying data section.
 - `DecodePath` works on the result object, supporting nested lookups without
   decoding entire records.
