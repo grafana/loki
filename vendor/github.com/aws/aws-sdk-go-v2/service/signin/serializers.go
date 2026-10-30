@@ -183,6 +183,107 @@ func awsRestjson1_serializeOpDocumentCreateOAuth2TokenWithIAMInput(v *CreateOAut
 	return nil
 }
 
+type awsRestjson1_serializeOpCreateOAuth2TokenWithTokenExchange struct {
+}
+
+func (*awsRestjson1_serializeOpCreateOAuth2TokenWithTokenExchange) ID() string {
+	return "OperationSerializer"
+}
+
+func (m *awsRestjson1_serializeOpCreateOAuth2TokenWithTokenExchange) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
+	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
+) {
+	_, span := tracing.StartSpan(ctx, "OperationSerializer")
+	endTimer := startMetricTimer(ctx, "client.call.serialization_duration")
+	defer endTimer()
+	defer span.End()
+	request, ok := in.Request.(*smithyhttp.Request)
+	if !ok {
+		return out, metadata, &smithy.SerializationError{Err: fmt.Errorf("unknown transport type %T", in.Request)}
+	}
+
+	input, ok := in.Parameters.(*CreateOAuth2TokenWithTokenExchangeInput)
+	_ = input
+	if !ok {
+		return out, metadata, &smithy.SerializationError{Err: fmt.Errorf("unknown input parameters type %T", in.Parameters)}
+	}
+
+	opPath, opQuery := httpbinding.SplitURI("/v1/token?x-amz-oauth-token-method=token-exchange")
+	request.URL.Path = smithyhttp.JoinPath(request.URL.Path, opPath)
+	request.URL.RawQuery = smithyhttp.JoinRawQuery(request.URL.RawQuery, opQuery)
+	request.Method = "POST"
+	var restEncoder *httpbinding.Encoder
+	if request.URL.RawPath == "" {
+		restEncoder, err = httpbinding.NewEncoder(request.URL.Path, request.URL.RawQuery, request.Header)
+	} else {
+		request.URL.RawPath = smithyhttp.JoinPath(request.URL.RawPath, opPath)
+		restEncoder, err = httpbinding.NewEncoderWithRawPath(request.URL.Path, request.URL.RawPath, request.URL.RawQuery, request.Header)
+	}
+
+	if err != nil {
+		return out, metadata, &smithy.SerializationError{Err: err}
+	}
+
+	restEncoder.SetHeader("Content-Type").String("application/json")
+
+	jsonEncoder := smithyjson.NewEncoder()
+	if err := awsRestjson1_serializeOpDocumentCreateOAuth2TokenWithTokenExchangeInput(input, jsonEncoder.Value); err != nil {
+		return out, metadata, &smithy.SerializationError{Err: err}
+	}
+
+	if request, err = request.SetStream(bytes.NewReader(jsonEncoder.Bytes())); err != nil {
+		return out, metadata, &smithy.SerializationError{Err: err}
+	}
+
+	if request.Request, err = restEncoder.Encode(request.Request); err != nil {
+		return out, metadata, &smithy.SerializationError{Err: err}
+	}
+	in.Request = request
+
+	endTimer()
+	span.End()
+	return next.HandleSerialize(ctx, in)
+}
+func awsRestjson1_serializeOpHttpBindingsCreateOAuth2TokenWithTokenExchangeInput(v *CreateOAuth2TokenWithTokenExchangeInput, encoder *httpbinding.Encoder) error {
+	if v == nil {
+		return fmt.Errorf("unsupported serialization of nil %T", v)
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeOpDocumentCreateOAuth2TokenWithTokenExchangeInput(v *CreateOAuth2TokenWithTokenExchangeInput, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.GrantType != nil {
+		ok := object.Key("grant_type")
+		ok.String(*v.GrantType)
+	}
+
+	if v.Resource != nil {
+		ok := object.Key("resource")
+		ok.String(*v.Resource)
+	}
+
+	if v.Scope != nil {
+		ok := object.Key("scope")
+		ok.String(*v.Scope)
+	}
+
+	if v.SubjectToken != nil {
+		ok := object.Key("subject_token")
+		ok.String(*v.SubjectToken)
+	}
+
+	if v.SubjectTokenType != nil {
+		ok := object.Key("subject_token_type")
+		ok.String(*v.SubjectTokenType)
+	}
+
+	return nil
+}
+
 type awsRestjson1_serializeOpDeleteConsoleAuthorizationConfiguration struct {
 }
 

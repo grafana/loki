@@ -7,16 +7,7 @@ import (
 	smithy "github.com/aws/smithy-go"
 )
 
-// Error thrown for access denied scenarios with flexible HTTP status mapping
-//
-// Runtime HTTP Status Code Mapping:
-//
-//   - HTTP 401 (Unauthorized): TOKEN_EXPIRED, AUTHCODE_EXPIRED
-//   - HTTP 403 (Forbidden): USER_CREDENTIALS_CHANGED, INSUFFICIENT_PERMISSIONS
-//
-// The specific HTTP status code is determined at runtime based on the error enum
-// value. Consumers should use the error field to determine the specific access
-// denial reason.
+// You do not have sufficient access to perform this action.
 type AccessDeniedException struct {
 	Message *string
 
@@ -76,11 +67,7 @@ func (e *ConflictException) ErrorCode() string {
 }
 func (e *ConflictException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// Error thrown when an internal server error occurs
-//
-// HTTP Status Code: 500 Internal Server Error
-//
-// Used for unexpected server-side errors that prevent request processing.
+// The request failed because of an internal server error.
 type InternalServerException struct {
 	Message *string
 
@@ -107,6 +94,63 @@ func (e *InternalServerException) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *InternalServerException) ErrorFault() smithy.ErrorFault { return smithy.FaultServer }
+
+// The request failed because the provided grant is invalid or expired.
+type InvalidGrantException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	Error_ OAuth2ErrorCode
+
+	noSmithyDocumentSerde
+}
+
+func (e *InvalidGrantException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *InvalidGrantException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *InvalidGrantException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidGrantException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *InvalidGrantException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The request failed because the requested scope is invalid or exceeds the scope
+// that can be granted.
+type InvalidScopeException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	Error_ OAuth2ErrorCode
+
+	noSmithyDocumentSerde
+}
+
+func (e *InvalidScopeException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *InvalidScopeException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *InvalidScopeException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidScopeException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *InvalidScopeException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // Error thrown when requested resource is not found
 //
@@ -172,20 +216,37 @@ func (e *ServiceQuotaExceededException) ErrorCode() string {
 }
 func (e *ServiceQuotaExceededException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// Error thrown when rate limit is exceeded
-//
-// HTTP Status Code: 429 Too Many Requests
-//
-// Possible OAuth2ErrorCode values:
-//
-//   - INVALID_REQUEST: Rate limiting, too many requests, abuse prevention
-//
-// Possible causes:
-//
-//   - Too many token requests from the same client
-//   - Rate limiting based on client_id or IP address
-//   - Abuse prevention mechanisms triggered
-//   - Service protection against excessive token generation
+// The request failed because a dependency is temporarily unavailable. You can
+// retry the request.
+type ServiceUnavailableException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	Error_ OAuth2ErrorCode
+
+	noSmithyDocumentSerde
+}
+
+func (e *ServiceUnavailableException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *ServiceUnavailableException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *ServiceUnavailableException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "ServiceUnavailableException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *ServiceUnavailableException) ErrorFault() smithy.ErrorFault { return smithy.FaultServer }
+
+// The request failed because you exceeded the request rate limit for this
+// operation.
 type TooManyRequestsError struct {
 	Message *string
 
@@ -213,12 +274,8 @@ func (e *TooManyRequestsError) ErrorCode() string {
 }
 func (e *TooManyRequestsError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// Error thrown when request validation fails
-//
-// HTTP Status Code: 400 Bad Request
-//
-// Used for request validation errors such as malformed parameters, missing
-// required fields, or invalid parameter values.
+// The request failed because it contains a malformed, missing, or invalid
+// parameter.
 type ValidationException struct {
 	Message *string
 
