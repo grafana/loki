@@ -11,6 +11,7 @@ import (
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	anypb "github.com/planetscale/vtprotobuf/types/known/anypb"
 	durationpb "github.com/planetscale/vtprotobuf/types/known/durationpb"
+	wrapperspb "github.com/planetscale/vtprotobuf/types/known/wrapperspb"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	math "math"
@@ -432,6 +433,59 @@ func (m *ScaleTimersOverloadActionConfig) MarshalToSizedBufferVTStrict(dAtA []by
 	return len(dAtA) - i, nil
 }
 
+func (m *ShrinkHeapConfig) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ShrinkHeapConfig) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *ShrinkHeapConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MaxUnfreedMemoryBytes != nil {
+		size, err := (*wrapperspb.UInt64Value)(m.MaxUnfreedMemoryBytes).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.TimerInterval != nil {
+		size, err := (*durationpb.Duration)(m.TimerInterval).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *OverloadAction) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -839,6 +893,24 @@ func (m *ScaleTimersOverloadActionConfig) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *ShrinkHeapConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.TimerInterval != nil {
+		l = (*durationpb.Duration)(m.TimerInterval).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.MaxUnfreedMemoryBytes != nil {
+		l = (*wrapperspb.UInt64Value)(m.MaxUnfreedMemoryBytes).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n

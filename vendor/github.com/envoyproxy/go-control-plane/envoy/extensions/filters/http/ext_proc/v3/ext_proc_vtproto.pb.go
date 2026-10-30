@@ -52,6 +52,18 @@ func (m *ExternalProcessor) MarshalToSizedBufferVTStrict(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.AllowContentLengthHeader {
+		i--
+		if m.AllowContentLengthHeader {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xd0
+	}
 	if m.ProcessingRequestModifier != nil {
 		if vtmsg, ok := interface{}(m.ProcessingRequestModifier).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -989,6 +1001,9 @@ func (m *ExternalProcessor) SizeVT() (n int) {
 			l = proto.Size(m.ProcessingRequestModifier)
 		}
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.AllowContentLengthHeader {
+		n += 3
 	}
 	n += len(m.unknownFields)
 	return n
