@@ -11,7 +11,7 @@ import (
 
 	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 )
 
 // covers responses from /api/prom/query
