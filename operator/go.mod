@@ -1,6 +1,6 @@
 module github.com/grafana/loki/operator
 
-go 1.26.7
+go 1.26.10
 
 toolchain go1.27.3
 
@@ -11,7 +11,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki/operator/api/loki v0.0.0-20260827121917-dd170be07101
-	github.com/grafana/loki/v3 v3.7.8
+	github.com/grafana/loki/v3 v3.7.9
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.14.0
 	github.com/openshift/api v0.0.0-20260827103138-252412308277 // release-5.0
 	github.com/openshift/cloud-credential-operator v0.0.0-20260923223624-82a5b4459331 // release-5.0
