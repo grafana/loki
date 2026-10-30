@@ -1009,6 +1009,9 @@ func (p *mockExtractor) Reset() {}
 type mockStreamExtractor struct {
 	wrappedSP lokilog.StreamSampleExtractor
 	called    int
+
+	// structuredMetadata is the structured metadata of the last processed line.
+	structuredMetadata labels.Labels
 }
 
 func (p *mockStreamExtractor) ReferencedStructuredMetadata() bool {
@@ -1021,6 +1024,7 @@ func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 
 func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
+	p.structuredMetadata = lbs
 	return p.wrappedSP.Process(ts, line, lbs)
 }
 
@@ -2260,5 +2264,22 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 				require.Equal(t, tc.expectedReferencedStructuredMetadata, statsCtx.Result(0, 0, 0).QueryReferencedStructuredMetadata())
 			})
 		}
+	})
+
+	t.Run("an extractor wrapper gets structured metadata the query does not read", func(t *testing.T) {
+		lokiStore := store.(*LokiStore)
+		wrapper := &testExtractorWrapper{extractor: newMockExtractor()}
+		lokiStore.SetExtractorWrapper(wrapper)
+		t.Cleanup(func() { lokiStore.SetExtractorWrapper(nil) })
+
+		query := `sum(count_over_time({sm="true"}[1m]))`
+		it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(query, chkFrom, chkThrough.Add(time.Minute), nil, nil)})
+		require.NoError(t, err)
+		for it.Next() {
+		}
+		require.NoError(t, it.Err())
+		require.NoError(t, it.Close())
+
+		require.Equal(t, labels.FromStrings("fizz", "buzz", "num", "1"), wrapper.extractor.sp.structuredMetadata)
 	})
 }
