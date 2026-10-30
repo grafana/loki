@@ -15,9 +15,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/canary/writer"
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/canary/writer"
+	"github.com/grafana/loki/v4/pkg/loghttp/push"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // Exercise the actual canary HTTP writer against Loki's ingestion parser so

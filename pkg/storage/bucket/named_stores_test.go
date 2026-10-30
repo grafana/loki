@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/s3"
 )
 
 func TestConfigWithNamedStores_DisableRetries(t *testing.T) {

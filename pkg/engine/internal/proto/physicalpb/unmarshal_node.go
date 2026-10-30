@@ -4,8 +4,8 @@ import (
 	fmt "fmt"
 	"slices"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid"
 )
 
 type unmarshaler interface {

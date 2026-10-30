@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj"
 )
 
 // discardSectionWriter is a no-op [dataobj.SectionWriter] that counts bytes so

@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/limits"
-	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
-	"github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/limits"
+	limits_frontend_client "github.com/grafana/loki/v4/pkg/limits/frontend/client"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
 )
 
 // The ingestLimitsFrontendClient interface is used to mock calls in tests.

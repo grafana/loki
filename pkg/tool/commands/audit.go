@@ -10,8 +10,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/tool/audit"
-	util_cfg "github.com/grafana/loki/v3/pkg/util/cfg"
+	"github.com/grafana/loki/v4/pkg/tool/audit"
+	util_cfg "github.com/grafana/loki/v4/pkg/util/cfg"
 )
 
 // AuditIndexCommand validates an index by checking existing chunks.

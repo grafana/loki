@@ -6,8 +6,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/ingester"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // shardNested divides a nested stream's entries across shards, each taking a contiguous run of

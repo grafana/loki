@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/memory"
+	columnarv2 "github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 func TestReaderAdapter_ReadPreservesUTF8Nulls(t *testing.T) {

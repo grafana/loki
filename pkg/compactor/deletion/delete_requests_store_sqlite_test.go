@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"zombiezen.com/go/sqlite/sqlitex"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion/deletionproto"
 )
 
 func TestDeleteRequestsStoreSQLite(t *testing.T) {

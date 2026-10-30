@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
 )
 
 // SplitFingerprintKeyspaceByFactor splits the keyspace covered by model.Fingerprint into contiguous non-overlapping ranges.

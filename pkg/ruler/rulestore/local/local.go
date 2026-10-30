@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v4/pkg/ruler/rulespb"
 )
 
 const (

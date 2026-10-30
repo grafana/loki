@@ -24,9 +24,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 const (

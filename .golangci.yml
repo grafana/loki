@@ -59,7 +59,7 @@ linters:
             - "!**/pkg/util/spanlogger/spanlogger.go"
           deny:
             - pkg: github.com/grafana/dskit/spanlogger$
-              desc: Use github.com/grafana/loki/v3/pkg/util/spanlogger instead of github.com/grafana/dskit/spanlogger
+              desc: Use github.com/grafana/loki/v4/pkg/util/spanlogger instead of github.com/grafana/dskit/spanlogger
         opentracing:
           deny:
             - pkg: github.com/opentracing/opentracing-go
@@ -75,7 +75,7 @@ linters:
         # https://github.com/prometheus/prometheus/issues/17993 (closed as not planned)
         - pattern: ^parser\.NewParser$
           pkg: ^github.com/prometheus/prometheus/promql/parser$
-          msg: Use github.com/grafana/loki/v3/pkg/logql/syntax.ParseLabels or .ParseMetric instead; it guards against a known upstream panic on pathological input
+          msg: Use github.com/grafana/loki/v4/pkg/logql/syntax.ParseLabels or .ParseMetric instead; it guards against a known upstream panic on pathological input
     goconst:
       min-occurrences: 5
     misspell:

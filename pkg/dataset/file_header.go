@@ -9,7 +9,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/dataset/encoding"
+	"github.com/grafana/loki/v4/pkg/dataset/encoding"
 )
 
 const (

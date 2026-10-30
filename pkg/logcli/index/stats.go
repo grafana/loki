@@ -6,8 +6,8 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/grafana/loki/v3/pkg/logcli/client"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logcli/client"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 type StatsQuery struct {

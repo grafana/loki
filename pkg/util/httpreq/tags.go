@@ -9,7 +9,7 @@ import (
 
 	"github.com/grafana/dskit/middleware"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 // NOTE(kavi): Why new type?

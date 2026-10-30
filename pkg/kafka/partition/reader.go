@@ -14,9 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/kafka"
 
-	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v4/pkg/kafka/client"
 )
 
 type SpecialOffset int

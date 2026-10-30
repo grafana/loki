@@ -3,7 +3,7 @@ package metastore
 import (
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // RegionSections names the xcap region of [ObjectMetastore.Sections] and

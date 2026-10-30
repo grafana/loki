@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/metadata"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 // PeekingSampleIterator is a sample iterator that can peek sample without moving the current sample.

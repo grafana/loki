@@ -3,8 +3,8 @@ package compute
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 func dispatchNumericEquality[T columnar.Numeric](alloc *memory.Allocator, kernel numericEqualityKernel[T], left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {

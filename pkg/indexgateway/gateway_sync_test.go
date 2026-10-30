@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/index"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/storage/stores/index"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // syncerQuerierMock is an IndexQuerier that also implements index.Syncer, so the

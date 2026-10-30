@@ -5,7 +5,7 @@
 // Reach for objtest when a test needs section resolution to work, because the metastore, the
 // section indexes and the stream IDs are all real.
 //
-// Reach for [github.com/grafana/loki/v3/pkg/dataobj/fixtures] instead when a test only needs one
+// Reach for [github.com/grafana/loki/v4/pkg/dataobj/fixtures] instead when a test only needs one
 // object with a hand-laid section and no bucket. That is cheaper and lets the test state every
 // row.
 package objtest
@@ -26,13 +26,13 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/index"
+	"github.com/grafana/loki/v4/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v4/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // Tenant is the tenant a [Builder] stores logs for. A Builder holds one tenant

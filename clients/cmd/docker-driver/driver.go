@@ -19,7 +19,7 @@ import (
 	"github.com/moby/moby/v2/daemon/server/backend"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/clients/cmd/docker-driver/logdriver"
+	"github.com/grafana/loki/v4/clients/cmd/docker-driver/logdriver"
 )
 
 type driver struct {

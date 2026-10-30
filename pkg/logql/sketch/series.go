@@ -3,7 +3,7 @@ package sketch
 import (
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 const ValueTypeTopKMatrix = "topk_matrix"

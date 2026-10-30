@@ -27,10 +27,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	yaml "go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/pkg/ruler/storage/util"
-	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
-	"github.com/grafana/loki/v3/pkg/util/build"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/ruler/storage/util"
+	"github.com/grafana/loki/v4/pkg/ruler/storage/wal"
+	"github.com/grafana/loki/v4/pkg/util/build"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 func init() {

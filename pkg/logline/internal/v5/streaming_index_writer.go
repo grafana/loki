@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 // incrementalEncoder is the package-private streaming contract that

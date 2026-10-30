@@ -19,8 +19,8 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
-	"github.com/grafana/loki/v3/pkg/util"
+	ruler_config "github.com/grafana/loki/v4/pkg/ruler/config"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 func TestBuildNotifierConfig(t *testing.T) {

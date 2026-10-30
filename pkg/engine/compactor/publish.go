@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
 )
 
 // tocReplacer is the subset of *metastore.TableOfContentsWriter the

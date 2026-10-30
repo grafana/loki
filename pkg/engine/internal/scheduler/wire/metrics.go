@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
-	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
+	"github.com/grafana/loki/v4/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v4/pkg/engine/internal/obslock"
 )
 
 type sendMode string

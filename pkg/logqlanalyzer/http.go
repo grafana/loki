@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 func CorsMiddleware() mux.MiddlewareFunc {

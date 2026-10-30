@@ -6,7 +6,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/dag"
 )
 
 func TestGraph_Walk(t *testing.T) {

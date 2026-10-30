@@ -24,13 +24,13 @@ import (
 	"github.com/prometheus/common/model"
 	"go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/integration/util"
+	"github.com/grafana/loki/v4/integration/util"
 
-	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/util/cfg"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/loki"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 var configTemplate = template.Must(template.New("").Parse(`

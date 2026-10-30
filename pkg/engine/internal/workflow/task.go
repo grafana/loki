@@ -3,7 +3,7 @@ package workflow
 import (
 	"github.com/oklog/ulid/v2"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
 )
 
 // A Task is a single unit of work within a workflow. Each Task runs a

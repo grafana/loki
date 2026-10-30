@@ -8,10 +8,10 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/worker/workerstat"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // nodeSource exposes data for a receiver of a stream as an [executor.Pipeline].
