@@ -102,7 +102,7 @@ func TestDataObjResolve(t *testing.T) {
 		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
 	})
 
-	t.Run("accepts a query when only one of its stream-first parts overlaps the data-object range", func(t *testing.T) {
+	t.Run("accepts a query when only one of its stream-first parts overlaps the data-object range and counts the other part as zero coverage", func(t *testing.T) {
 		const outside = `sum(count_over_time({app="a"}[1m] offset 100h))`
 		const inside = `sum(count_over_time({app="a"}[1m]))`
 
@@ -111,7 +111,8 @@ func TestDataObjResolve(t *testing.T) {
 				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
 
 				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
-				require.InDelta(t, 1.0, res.Coverage, 1e-9)
+				require.InDelta(t, 0.5, res.Coverage, 1e-9)
+				require.False(t, res.prefers())
 			})
 		}
 	})
@@ -122,7 +123,7 @@ func TestDataObjResolve(t *testing.T) {
 		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
 	})
 
-	t.Run("reports the largest share of the read window that data objects hold among the stream-first parts", func(t *testing.T) {
+	t.Run("reports the average coverage of the stream-first parts when several of them overlap the data-object range", func(t *testing.T) {
 		windowStart := dataObjRoutingBandEnd.Add(-25 * time.Minute)
 		start, end := streamFirstRequestRange(windowStart, windowStart.Add(100*time.Minute))
 		const partial = `sum(count_over_time({app="a"}[1m]))`
@@ -133,7 +134,40 @@ func TestDataObjResolve(t *testing.T) {
 				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, start, end)
 
 				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
-				require.InDelta(t, 1.0, res.Coverage, 1e-9)
+				require.InDelta(t, (0.25+1.0)/2, res.Coverage, 1e-9)
+				require.True(t, res.prefers())
+			})
+		}
+	})
+
+	t.Run("counts a range vector that does not run in stream-first order as zero coverage", func(t *testing.T) {
+		const streamFirst = `sum(count_over_time({app="a"}[1h]))`
+		const notStreamFirst = `min(count_over_time({app="a"}[1h]))`
+
+		for _, query := range []string{streamFirst + " / " + notStreamFirst, notStreamFirst + " / " + streamFirst} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+				require.InDelta(t, 0.5, res.Coverage, 1e-9)
+				require.False(t, res.prefers())
+			})
+		}
+	})
+
+	t.Run("weights the coverage of each stream-first part by the length of its read window", func(t *testing.T) {
+		const longRangeInside = `sum(count_over_time({app="a"}[1h]))`
+		const shortRangeOutside = `sum(count_over_time({app="a"}[1m] offset 100h))`
+		span := insideEnd.Sub(insideStart)
+		wantCoverage := float64(span+time.Hour) / float64(2*span+time.Hour+time.Minute)
+
+		for _, query := range []string{longRangeInside + " + " + shortRangeOutside, shortRangeOutside + " + " + longRangeInside} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+				require.InDelta(t, wantCoverage, res.Coverage, 1e-9)
+				require.True(t, res.prefers())
 			})
 		}
 	})

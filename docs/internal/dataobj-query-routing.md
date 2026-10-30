@@ -60,8 +60,10 @@ through a query-frontend is never marked, so it reads chunks.
 
 Eligibility decides whether a querier may read data objects. A second rule decides whether the
 query-frontend changes how it splits and shards the query. A query prefers data objects when it is
-eligible and data objects hold more than half of the read window of at least one of its stream-first
-parts. The query-frontend applies this rule to the piece it is working on:
+eligible and data objects hold more than half of the read windows of all its range vectors, taken
+together. A longer window weighs more. A range vector that reads from chunks, such as one that does
+not run in stream-first order, counts as zero. The query-frontend applies this rule to the piece it
+is working on:
 
 - to the whole query when it splits it in time;
 - to each time split when it shards it, so a recent split that no data object covers keeps the
