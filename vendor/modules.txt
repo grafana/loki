@@ -1676,7 +1676,7 @@ go.opentelemetry.io/collector/confmap/internal/third_party/composehook
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
-# go.opentelemetry.io/collector/consumer/xconsumer v0.163.0
+# go.opentelemetry.io/collector/consumer/xconsumer v0.164.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/consumer/xconsumer
 # go.opentelemetry.io/collector/featuregate v1.70.0
