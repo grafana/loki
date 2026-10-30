@@ -26,7 +26,7 @@ common:
     kvstore:
       store: inmemory
   replication_factor: 1
-  path_prefix: /tmp/loki
+  path_prefix: /var/lib/loki
 
 schema_config:
   configs:
@@ -41,7 +41,7 @@ schema_config:
 storage_config:
   use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   filesystem:
-    directory: /tmp/loki/chunks
+    directory: /var/lib/loki/chunks
 
 ```
 
@@ -153,7 +153,7 @@ storage_config:
 # This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS).
 # The index will be shipped to the storage via tsdb-shipper.
 common:
-  path_prefix: /tmp/loki
+  path_prefix: /var/lib/loki
 
 schema_config:
   configs:
