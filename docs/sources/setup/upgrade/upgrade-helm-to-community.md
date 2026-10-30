@@ -2,7 +2,9 @@
 title: Upgrade from the Loki Helm chart to the Community Helm chart
 menuTitle: Upgrade to Community Helm chart
 description: Upgrade from the Loki repository Helm chart (6.x) to the Grafana Community Helm chart.
-weight: 900
+weight: 399
+aliases:
+  - ../upgrade-to-community/
 keywords:
   - upgrade
   - community
@@ -730,4 +732,4 @@ After a successful upgrade:
 
 - [Community chart changelog](https://grafana-community.github.io/helm-charts/changelog/?chart=loki)
 - [Community chart README - Upgrading](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading)
-- [Helm chart 6.x upgrade guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/)
+- [Helm chart 6.x upgrade guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-helm-to-6.x/)

@@ -279,7 +279,7 @@ With the move to the [Grafana-community/helm-charts repository](https://github.c
 
 ### Migrating from the Loki Repository Helm Chart to the Community Helm Chart
 
-If you are upgrading from the Helm chart previously hosted in the Loki repository (chart version 6.x) to the Grafana Community Helm chart (chart version 18.x), refer to the dedicated migration guide: [Upgrade to the Community Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-community/).
+If you are upgrading from the Helm chart previously hosted in the Loki repository (chart version 6.x) to the Grafana Community Helm chart (chart version 18.x), refer to the dedicated migration guide: [Upgrade to the Community Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-helm-to-community/).
 
 ### Helm Chart 6.50.0 - Respect the global registry in the sidecar image
 
@@ -328,7 +328,7 @@ Helm chart version 6.34.0 introduces a **breaking change** that affects users wi
 
 If you are using zone-aware ingesters (`ingester.zoneAwareReplication.enabled: true`), upgrading to Helm chart 6.34.0 requires manual StatefulSet deletion before the upgrade. This is due to a fix for the `serviceName` field in zone-aware ingester StatefulSets, which is an immutable field in Kubernetes.
 
-**For detailed upgrade instructions, see**: [Helm Chart 6.x Upgrade Guide - Zone-aware Ingester Breaking Change](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/#breaking-zone-aware-ingester-statefulset-servicename-fix-6340)
+**For detailed upgrade instructions, see**: [Helm Chart 6.x Upgrade Guide - Zone-aware Ingester Breaking Change](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-helm-to-6.x/#breaking-zone-aware-ingester-statefulset-servicename-fix-6340)
 
 Key points:
 - Only affects deployments with `ingester.zoneAwareReplication.enabled: true`
@@ -497,7 +497,7 @@ If you introduce a new schema_config entry it may cause additional validation er
 If you configure `path_prefix` in the `common` config section this can help save a lot of configuration. Refer to the [Common Config Docs](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common).
 {{< /admonition >}}
 
-The **Helm chart** has gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+The **Helm chart** has gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-helm-to-6.x/).
 
 ### Loki 3.0.0
 

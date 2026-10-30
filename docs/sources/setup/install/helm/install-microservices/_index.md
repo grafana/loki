@@ -51,7 +51,7 @@ We do not recommend running in microservices mode with `filesystem` storage. For
 ## Deploying the Helm chart for development and testing
 
 {{< admonition type="note" >}}
-If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-helm-to-6.x/).
 {{< /admonition >}}
 
 1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
