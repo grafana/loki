@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
 )
 
 func newTestService(t *testing.T, limits Limits, numPartitions int) (*Service, *quartz.Mock) {

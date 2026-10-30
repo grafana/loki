@@ -11,7 +11,7 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	deletionproto "github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
+	deletionproto "github.com/grafana/loki/v4/pkg/compactor/deletion/deletionproto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"

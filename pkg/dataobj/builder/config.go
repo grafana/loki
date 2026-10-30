@@ -5,7 +5,7 @@ import (
 	"flag"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/logsobj"
 )
 
 type Config struct {

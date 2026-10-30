@@ -13,6 +13,6 @@
 package compute
 
 import (
-	_ "github.com/grafana/loki/v3/pkg/columnar" // blank import for package doc comment
-	_ "github.com/grafana/loki/v3/pkg/memory"   // blank import for package doc comment
+	_ "github.com/grafana/loki/v4/pkg/columnar" // blank import for package doc comment
+	_ "github.com/grafana/loki/v4/pkg/memory"   // blank import for package doc comment
 )

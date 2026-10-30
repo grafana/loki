@@ -11,15 +11,15 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	logline_query_limits "github.com/grafana/loki/v4/pkg/logline/queryfrontend/limits"
+	"github.com/grafana/loki/v4/pkg/logql/model/stats"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/storage/bucket"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v4/pkg/storage/config"
 
-	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 // lenientRegisterer wraps a prometheus.Registerer to swallow duplicate

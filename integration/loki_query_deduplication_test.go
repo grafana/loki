@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/integration/client"
-	"github.com/grafana/loki/v3/integration/cluster"
-	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/integration/client"
+	"github.com/grafana/loki/v4/integration/cluster"
+	"github.com/grafana/loki/v4/pkg/kafka/testkafka"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
 )
 
 // TestDedupMicroServicesKafka verifies query-time log line deduplication over the

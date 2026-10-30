@@ -3,7 +3,7 @@ package columnar
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // Clone returns a deep copy of the input Datum, allocating all new memory from

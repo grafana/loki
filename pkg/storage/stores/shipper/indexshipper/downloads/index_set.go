@@ -17,10 +17,10 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v4/pkg/util/spanlogger"
 )
 
 const (

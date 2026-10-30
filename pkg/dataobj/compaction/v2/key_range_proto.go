@@ -1,8 +1,8 @@
 package compactionv2
 
 import (
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
 )
 
 // FullKeyRangeProto returns the key range that holds every stream, from

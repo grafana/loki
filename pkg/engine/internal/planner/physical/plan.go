@@ -3,7 +3,7 @@ package physical
 import (
 	"github.com/oklog/ulid/v2"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/dag"
 )
 
 // NodeType represents the type of a node in the physical execution plan.

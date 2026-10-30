@@ -8,7 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
+	indexstore "github.com/grafana/loki/v4/pkg/storage/stores/index"
 )
 
 // syncManager serializes index syncs and tracks their status. It guarantees at

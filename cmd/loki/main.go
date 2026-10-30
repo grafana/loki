@@ -27,13 +27,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/v3/pkg/loki"
-	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/util"
-	_ "github.com/grafana/loki/v3/pkg/util/build"
-	"github.com/grafana/loki/v3/pkg/util/cfg"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/loki"
+	loki_runtime "github.com/grafana/loki/v4/pkg/runtime"
+	"github.com/grafana/loki/v4/pkg/util"
+	_ "github.com/grafana/loki/v4/pkg/util/build"
+	"github.com/grafana/loki/v4/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 func exit(code int) {

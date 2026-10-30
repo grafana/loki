@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
+	"github.com/grafana/loki/v4/pkg/labelaccess/types"
 )
 
 const (

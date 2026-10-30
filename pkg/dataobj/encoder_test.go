@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v4/pkg/scratch"
 )
 
 func Test_encoder_typeRefs(t *testing.T) {

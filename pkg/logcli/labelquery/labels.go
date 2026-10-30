@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logcli/client"
-	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v4/pkg/logcli/client"
+	"github.com/grafana/loki/v4/pkg/loghttp"
 )
 
 // LabelQuery contains all necessary fields to execute label queries and print out the results

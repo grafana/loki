@@ -5,8 +5,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 
-	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
-	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	ruler "github.com/grafana/loki/v4/pkg/ruler/base"
+	"github.com/grafana/loki/v4/pkg/ruler/rulestore"
 )
 
 var tracer = otel.Tracer("pkg/ruler")

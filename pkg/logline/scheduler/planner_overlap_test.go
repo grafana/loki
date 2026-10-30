@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 func makeMeta(date, hash string, minT, maxT time.Time, sizeBytes int64) store.Meta {

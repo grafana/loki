@@ -3,7 +3,7 @@ syntax = "proto3";
 
 package loki.xcap;
 
-option go_package = "github.com/grafana/loki/v3/pkg/xcap/internal/proto";
+option go_package = "github.com/grafana/loki/v4/pkg/xcap/internal/proto";
 
 // Capture is protobuf representation of a Capture.
 message Capture {

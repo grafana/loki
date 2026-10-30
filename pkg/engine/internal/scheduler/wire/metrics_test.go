@@ -14,7 +14,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v4/pkg/engine/internal/metrictimer"
 )
 
 func TestPeer_Metrics_Roundtrip(t *testing.T) {

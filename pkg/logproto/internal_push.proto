@@ -5,7 +5,7 @@ package logproto;
 import "gogoproto/gogo.proto";
 import "pkg/push/push.proto";
 
-option go_package = "github.com/grafana/loki/v3/pkg/logproto";
+option go_package = "github.com/grafana/loki/v4/pkg/logproto";
 
 // InternalPushRequest is an internal representation of a push request, in which log entries are nested under the OTLP
 // resource and scope attributes that apply to them rather than each carrying its own copy.

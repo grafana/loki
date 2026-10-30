@@ -16,8 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/tools/stream-generator/generator"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/tools/stream-generator/generator"
 )
 
 func main() {

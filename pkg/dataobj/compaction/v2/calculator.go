@@ -3,7 +3,7 @@ package compactionv2
 import (
 	"sort"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
 )
 
 // run is one ordered sequence built by the calculateRuns. topMax is the upper

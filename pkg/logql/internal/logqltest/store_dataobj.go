@@ -6,9 +6,9 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v4/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // newTestingDataObjectsWithStreams builds data objects from streams. It returns the bucket that

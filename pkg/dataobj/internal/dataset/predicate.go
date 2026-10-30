@@ -5,7 +5,7 @@ import (
 	"iter"
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/columnar"
 )
 
 // Predicate is an expression used to filter rows in a [RowReader].

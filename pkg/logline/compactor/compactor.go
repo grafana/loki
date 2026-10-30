@@ -10,10 +10,10 @@ import (
 	"github.com/go-kit/log/level"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
-	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/format"
+	schedulerapi "github.com/grafana/loki/v4/pkg/logline/scheduler/api"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 // compact executes a compaction job: opens source indexes via range reads,

@@ -7,7 +7,7 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
+	v3 "github.com/grafana/loki/v4/pkg/logline/internal/v3"
 )
 
 func textGrams(t *testing.T, keys [][8]byte, n int) []string {

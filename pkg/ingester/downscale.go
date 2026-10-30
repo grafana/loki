@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 // PreparePartitionDownscaleHandler prepares the ingester's partition downscaling. The partition owned by the

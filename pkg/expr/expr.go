@@ -8,7 +8,7 @@ package expr
 import (
 	"github.com/grafana/regexp"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/columnar"
 )
 
 // Expression represents an operation that can be evaluated to produce a result.

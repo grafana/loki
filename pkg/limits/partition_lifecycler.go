@@ -11,7 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	kafka_partition "github.com/grafana/loki/v3/pkg/kafka/partition"
+	kafka_partition "github.com/grafana/loki/v4/pkg/kafka/partition"
 )
 
 // partitionLifecycler manages assignment and revocation of partitions.

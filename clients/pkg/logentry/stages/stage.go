@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/v4/clients/pkg/util"
 )
 
 const (

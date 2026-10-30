@@ -3,8 +3,8 @@ package compute
 import (
 	"bytes"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 type utf8EqualityKernel interface {

@@ -1,6 +1,6 @@
 package executor
 
-import "github.com/grafana/loki/v3/pkg/xcap"
+import "github.com/grafana/loki/v4/pkg/xcap"
 
 // Common pipeline statistics tracked across executor nodes.
 var (

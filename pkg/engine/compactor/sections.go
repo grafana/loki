@@ -15,15 +15,15 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	v2 "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v4/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
 )
 
 const prefetchBytes = 2 * 1024 * 1024

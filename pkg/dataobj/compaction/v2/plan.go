@@ -3,7 +3,7 @@ package compactionv2
 import (
 	"fmt"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
 )
 
 // CompareFunc compares two ordering keys.

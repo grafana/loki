@@ -22,13 +22,13 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
-	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v4/pkg/engine/internal/obslock"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/queue/fair"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // Config holds configuration options for [Scheduler].

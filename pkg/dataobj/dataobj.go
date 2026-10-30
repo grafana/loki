@@ -82,7 +82,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/filemd"
 )
 
 // An Object is a representation of a data object.

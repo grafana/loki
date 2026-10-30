@@ -1,8 +1,8 @@
 package dataset
 
 import (
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/dataset/layout"
+	"github.com/grafana/loki/v4/pkg/columnar/types"
+	"github.com/grafana/loki/v4/pkg/dataset/layout"
 )
 
 // A Dataset holds a collection of rows with a fixed schema.

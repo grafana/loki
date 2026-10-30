@@ -9,10 +9,10 @@ import (
 	"github.com/parquet-go/parquet-go"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	serverutil "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	serverutil "github.com/grafana/loki/v4/pkg/util/server"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
 )
 
 func encodeResponseParquet(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
