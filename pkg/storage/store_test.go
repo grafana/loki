@@ -2262,3 +2262,73 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		}
 	})
 }
+
+// TestSplitIntervalBoundaryMultiEntryChunk tests that when a multi-entry chunk ends
+// exactly on a split interval boundary (e.g. at the hour), the boundary entry is not dropped
+// when querying across split intervals. (Issue #25172)
+func TestSplitIntervalBoundaryMultiEntryChunk(t *testing.T) {
+	tempDir := t.TempDir()
+	st := getLocalStore(tempDir, cm)
+	t.Cleanup(st.Stop)
+
+	// T is a whole hour on April 16, 2018 (after start = April 15, 2018)
+	T := time.Date(2018, 4, 16, 12, 0, 0, 0, time.UTC)
+	e1 := logproto.Entry{Timestamp: T.Add(1 * time.Second), Line: "s=1"}
+	e2 := logproto.Entry{Timestamp: T.Add(30 * time.Minute), Line: "s=1800"}
+	e3 := logproto.Entry{Timestamp: T.Add(1 * time.Hour), Line: "s=3600"}
+
+	stream := logproto.Stream{
+		Labels:  `{job="repro"}`,
+		Entries: []logproto.Entry{e1, e2, e3},
+	}
+
+	chk := newChunk(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, stream)
+	err := st.PutOne(ctx, chk.From, chk.Through, chk)
+	require.NoError(t, err)
+
+	// Flush indexes to disk so TSDB reads from flushed index
+	lokiSt := st.(*LokiStore)
+	err = lokiSt.FlushIndexes(ctx)
+	require.NoError(t, err)
+
+	// Interval [T, T+1h): should return entries e2 (T+30m) and e1 (T+1s).
+	// e3 (T+1h) is excluded because End timestamp is exclusive.
+	req1 := &logproto.QueryRequest{
+		Selector:  `{job="repro"}`,
+		Start:     T,
+		End:       T.Add(1 * time.Hour),
+		Limit:     100,
+		Direction: logproto.BACKWARD,
+	}
+	req1.Plan = testutil.MustPlan(req1.Selector)
+	it1, err := st.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: req1})
+	require.NoError(t, err)
+	batch1, _, err := iter.ReadBatch(it1, 100)
+	require.NoError(t, err)
+	_ = it1.Close()
+
+	require.Len(t, batch1.Streams, 1)
+	require.Len(t, batch1.Streams[0].Entries, 2)
+	require.Equal(t, "s=1800", batch1.Streams[0].Entries[0].Line)
+	require.Equal(t, "s=1", batch1.Streams[0].Entries[1].Line)
+
+	// Interval [T+1h, T+2h): should return entry e3 (T+1h) whose timestamp is exactly on the start boundary.
+	req2 := &logproto.QueryRequest{
+		Selector:  `{job="repro"}`,
+		Start:     T.Add(1 * time.Hour),
+		End:       T.Add(2 * time.Hour),
+		Limit:     100,
+		Direction: logproto.BACKWARD,
+	}
+	req2.Plan = testutil.MustPlan(req2.Selector)
+	it2, err := st.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: req2})
+	require.NoError(t, err)
+	batch2, _, err := iter.ReadBatch(it2, 100)
+	require.NoError(t, err)
+	_ = it2.Close()
+
+	require.Len(t, batch2.Streams, 1)
+	require.Len(t, batch2.Streams[0].Entries, 1)
+	require.Equal(t, "s=3600", batch2.Streams[0].Entries[0].Line)
+}
+
