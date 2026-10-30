@@ -244,14 +244,14 @@ func loglineOutcome(l *logqlstats.Logline, lookupTimedOut bool) string {
 }
 
 // attachLoglineStats sets the lookup-level logline statistics and the outcome
-// on the final query response. The stats collector aliases the response's
+// on the final log or metric response. The stats collector aliases the response's
 // statistics, so these values reach the frontend metrics.go line.
 func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult) {
-	lokiResp, ok := resp.(*queryrange.LokiResponse)
-	if !ok || result == nil {
+	stats := lokiResponseStats(resp)
+	if stats == nil || result == nil {
 		return
 	}
-	l := lokiResp.Statistics.LoglineStats()
+	l := stats.LoglineStats()
 	l.HintStatus = result.status()
 	l.HintWaitTime = result.wait.duration(time.Now()).Nanoseconds()
 	if l.HintStatus != hintStatusIncomplete {
@@ -265,8 +265,20 @@ func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult
 			l.IOWait = snap.TotalIOWait.Nanoseconds()
 		}
 	}
-	setLoglineChunkStats(&lokiResp.Statistics)
+	setLoglineChunkStats(stats)
 	l.Outcome = loglineOutcome(l, result.stats.Snapshot().PrefetchTimeouts > 0)
+}
+
+// lokiResponseStats returns the statistics of a log or metric response.
+func lokiResponseStats(resp queryrangebase.Response) *logqlstats.Result {
+	switch r := resp.(type) {
+	case *queryrange.LokiResponse:
+		return &r.Statistics
+	case *queryrange.LokiPromResponse:
+		return &r.Statistics
+	default:
+		return nil
+	}
 }
 
 // setLoglineChunkStats copies the shard planning chunk counts and their ratio
@@ -1115,9 +1127,9 @@ func (h *loglinePrefetchHandler) nextWithOutcome(ctx context.Context, req queryr
 	if mode != ModeLive || err != nil {
 		return resp, err
 	}
-	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok {
-		setLoglineChunkStats(&lokiResp.Statistics)
-		lokiResp.Statistics.LoglineStats().Outcome = outcome
+	if stats := lokiResponseStats(resp); stats != nil {
+		setLoglineChunkStats(stats)
+		stats.LoglineStats().Outcome = outcome
 	}
 	return resp, nil
 }
