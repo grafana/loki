@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package winio
 
@@ -442,7 +441,7 @@ func canRedial(err error) bool {
 
 func (conn *HvsockConn) opErr(op string, err error) error {
 	// translate from "file closed" to "socket closed"
-	if errors.Is(err, ErrFileClosed) {
+	if errors.Is(err, os.ErrClosed) {
 		err = socket.ErrSocketClosed
 	}
 	return &net.OpError{Op: op, Net: "hvsock", Source: &conn.local, Addr: &conn.remote, Err: err}
