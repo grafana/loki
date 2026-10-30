@@ -491,55 +491,20 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 // The hint may not be the line that produced the sample. TotalEntries counts the positive
 // steps whose lookback ended at or before the ingester cutoff. A miss records that whole lookback.
 func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
-	report := verification.Report{HintRanges: len(hints)}
-	// For now, we don't check absent_over_time for correctness
-	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
-		return report
+	if promResp == nil || promResp.Response == nil {
+		return verification.Report{HintRanges: len(hints)}
 	}
-	group := metricMatcherGroup(expr)
+
+	var samples []verification.MetricSample
 	for _, stream := range promResp.Response.Data.Result {
 		for _, sample := range stream.Samples {
-			if sample.Value <= 0 {
-				continue
-			}
-			step := time.UnixMilli(sample.TimestampMs)
-			winStart, winEnd := group.Widen(step, step)
-			if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
-				continue
-			}
-			report.TotalEntries++
-			if !rangesOverlap(hints, winStart, winEnd) {
-				report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
-					Start: winStart,
-					End:   winEnd,
-				})
-				continue
-			}
-			report.CoveredEntries++
+			samples = append(samples, verification.MetricSample{
+				Time:  time.UnixMilli(sample.TimestampMs),
+				Value: sample.Value,
+			})
 		}
 	}
-	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
-	return report
-}
-
-// metricMatcherGroup returns the single matcher group for a supported metric query.
-func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
-	groups, err := syntax.MatcherGroups(expr)
-	if err != nil || len(groups) != 1 {
-		return syntax.MatcherRange{}
-	}
-	return groups[0]
-}
-
-func isAbsentOverTimeAgg(expr syntax.Expr) bool {
-	switch e := expr.(type) {
-	case *syntax.VectorAggregationExpr:
-		return isAbsentOverTimeAgg(e.Left)
-	case *syntax.RangeAggregationExpr:
-		return e.Operation == syntax.OpRangeTypeAbsent
-	default:
-		return false
-	}
+	return verification.VerifySamples(expr, hints, samples, eligibleEnd)
 }
 
 func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
@@ -1322,19 +1287,6 @@ func hintCoverageDuration(ranges []hintprovider.HintTimeRange, start, end time.T
 
 func isCancel(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
-
-// rangesOverlap reports whether any half-open hint [Start, End) overlaps (start, end].
-// A hint that only ends at start shares no time with the window.
-// Assumes ranges are sorted by Start. It does not allocate.
-func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
-	if len(ranges) == 0 {
-		return false
-	}
-	idx := sort.Search(len(ranges), func(i int) bool {
-		return ranges[i].End.After(start)
-	})
-	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }
 
 // rangesOverlapping returns hint ranges that overlap [start, end].

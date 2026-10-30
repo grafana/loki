@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,7 +28,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logline/verification"
 )
 
 func TestRunVerificationCycle_Correct(t *testing.T) {
@@ -42,6 +45,7 @@ func TestRunVerificationCycle_Correct(t *testing.T) {
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base.Add(50*time.Second), base.Add(70*time.Second))
 
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
@@ -65,13 +69,22 @@ func TestRunVerificationCycle_FalseNegative(t *testing.T) {
 	// non-deterministic index, does not affect correctness).
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, base.Add(110*time.Second), base.Add(115*time.Second))
 
+	var buf bytes.Buffer
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
+	svc.logger = log.NewLogfmtLogger(&buf)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
 	require.False(t, report.Correct, "false negative should make the test incorrect")
 	require.Greater(t, report.FalseNegatives, 0)
 	require.Equal(t, 1, report.FalsePositives)
+	require.NotEmpty(t, report.FalseNegativeTimestamps)
+	require.Empty(t, report.FalseNegativeRanges)
+	logLine := buf.String()
+	require.Contains(t, logLine, "false_negative_timestamps=")
+	require.Contains(t, logLine, "excluded_covering_fn_count=")
+	require.NotContains(t, logLine, "false_negative_ranges=")
 }
 
 func TestRunVerificationCycle_ExcludedIndexCoveringFN(t *testing.T) {
@@ -100,6 +113,7 @@ func TestRunVerificationCycle_ExcludedIndexCoveringFN(t *testing.T) {
 	)
 
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
@@ -125,6 +139,7 @@ func TestRunVerificationCycle_UnsupportedQuery(t *testing.T) {
 
 	indexStore := newTestStore(t)
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	svc.hintProvider = unsupportedHintProvider{}
 
 	report, err := svc.runVerificationCycle(context.Background())
@@ -151,6 +166,113 @@ func TestBuildLabelFilterHintQuery(t *testing.T) {
 func TestBuildJSONLabelFilterHintQuery(t *testing.T) {
 	query := buildJSONLabelFilterHintQuery(`{job="api"}`, "dashboardUID", "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec")
 	require.Equal(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, query)
+}
+
+func TestBuildMetricQuery(t *testing.T) {
+	hq, err := newHintQuery(hintQueryTypeLineFilter, "9fA81cD2Ef0077aa", `{job="api"} |= "9fA81cD2Ef0077aa"`)
+	require.NoError(t, err)
+
+	got, err := buildMetricQuery(hintQueryTypeMetricRange, hq)
+	require.NoError(t, err)
+	require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, got.query)
+	require.Equal(t, hintQueryTypeMetricRange, got.queryType)
+	require.Equal(t, "9fA81cD2Ef0077aa", got.needle)
+	require.NotNil(t, got.expr)
+	require.NotEmpty(t, hintprovider.SupportedMetricQuery(got.expr, 6))
+}
+
+func TestQueryResponseSamples(t *testing.T) {
+	first := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	second := first.Add(time.Minute)
+	firstMs := model.TimeFromUnixNano(first.UnixNano())
+	secondMs := model.TimeFromUnixNano(second.UnixNano())
+
+	matrix := &loghttp.QueryResponse{
+		Status: string(loghttp.QueryStatusSuccess),
+		Data: loghttp.QueryResponseData{
+			ResultType: loghttp.ResultTypeMatrix,
+			Result: loghttp.Matrix{
+				{Values: []model.SamplePair{{Timestamp: firstMs, Value: 1}}},
+				{Values: []model.SamplePair{{Timestamp: secondMs, Value: 2}}},
+			},
+		},
+	}
+	got, err := queryResponseSamples(matrix)
+	require.NoError(t, err)
+	require.Equal(t, []verification.MetricSample{
+		{Time: first, Value: 1},
+		{Time: second, Value: 2},
+	}, got)
+
+	empty, err := queryResponseSamples(&loghttp.QueryResponse{Status: string(loghttp.QueryStatusSuccess)})
+	require.NoError(t, err)
+	require.Empty(t, empty)
+
+	_, err = queryResponseSamples(nil)
+	require.Error(t, err)
+
+	_, err = queryResponseSamples(&loghttp.QueryResponse{Status: "error"})
+	require.Error(t, err)
+
+	_, err = queryResponseSamples(&loghttp.QueryResponse{
+		Status: string(loghttp.QueryStatusSuccess),
+		Data: loghttp.QueryResponseData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     loghttp.Streams{},
+		},
+	})
+	require.Error(t, err)
+}
+
+func TestSeriesLimitTruncated(t *testing.T) {
+	require.True(t, seriesLimitTruncated([]string{
+		"maximum number of series (100) reached for a single query; returning partial results",
+	}))
+	require.False(t, seriesLimitTruncated(nil))
+	require.False(t, seriesLimitTruncated([]string{"query time range exceeds the limit"}))
+}
+
+func TestRunVerificationCycle_MetricRange(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	witnessTS := base.Add(1 * time.Minute)
+	needle := "9fA81cD2Ef0077aa"
+
+	metric := &recordedMetricQuery{}
+	loki := newTestLokiServerRecording(t, witnessTS, needle, metric)
+	defer loki.Close()
+
+	indexStore := newTestStore(t)
+	var buf bytes.Buffer
+	svc := newTestService(t, indexStore, loki.URL, base)
+	useMetricHintSeed(svc)
+	hints := &recordingHintProvider{}
+	svc.hintProvider = hints
+	svc.logger = log.NewLogfmtLogger(&buf)
+
+	report, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, report.SkippedReason)
+	require.Equal(t, string(hintQueryTypeMetricRange), report.HintQueryType)
+	require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, report.HintQuery)
+	require.False(t, report.Correct)
+	require.Empty(t, report.FalseNegativeTimestamps)
+	require.Equal(t, []hintprovider.HintTimeRange{{
+		Start: witnessTS.Add(-5 * time.Minute),
+		End:   witnessTS,
+	}}, report.FalseNegativeRanges)
+	logLine := buf.String()
+	require.Contains(t, logLine, "false_negative_ranges=")
+	require.NotContains(t, logLine, "false_negative_timestamps=")
+	require.NotContains(t, logLine, "excluded_covering_fn_count=")
+
+	expr, err := syntax.ParseExpr(report.HintQuery)
+	require.NoError(t, err)
+	qb := querybounds.GetQueryBounds(report.RangeStart, report.RangeEnd, time.Minute.Milliseconds(), expr, querybounds.QueryTypeMetricRange, false)
+	require.Equal(t, qb.RequestedStart, metric.start)
+	require.Equal(t, qb.RequestedEnd, metric.end)
+	require.Equal(t, "60", metric.step)
+	require.Equal(t, model.TimeFromUnixNano(qb.ReadStart.UnixNano()), hints.from)
+	require.Equal(t, model.TimeFromUnixNano(qb.ReadEnd.UnixNano()), hints.through)
 }
 
 func TestPickJSONField(t *testing.T) {
@@ -226,13 +348,19 @@ func TestPickHintQuery_ShortValueUsesLineFilter(t *testing.T) {
 	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
 
 	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
 		require.True(t, ok)
-		require.Equal(t, hintQueryTypeLineFilter, h.queryType)
-		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
-		require.Equal(t, `{job="api"} |= "9fA81cD2Ef0077aa"`, h.query)
 		require.NotNil(t, h.expr)
+		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+		switch h.queryType {
+		case hintQueryTypeLineFilter:
+			require.Equal(t, `{job="api"} |= "9fA81cD2Ef0077aa"`, h.query)
+		case hintQueryTypeMetricRange:
+			require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, h.query)
+		default:
+			t.Fatalf("unexpected query type %q", h.queryType)
+		}
 	}
 }
 
@@ -263,6 +391,9 @@ func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
 			sawLine = true
 			require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
 			require.Equal(t, `{job="checkout-service"} |= "9fA81cD2Ef0077aa"`, h.query)
+		case hintQueryTypeMetricRange:
+			require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+			require.Equal(t, `sum(count_over_time({job="checkout-service"} |= "9fA81cD2Ef0077aa" [5m0s]))`, h.query)
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -271,7 +402,7 @@ func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
 	require.True(t, sawLine, "expected some seeds to pick line_filter")
 }
 
-func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
+func TestPickHintQuery_FiveWayWhenAllEligible(t *testing.T) {
 	indexStore := newTestStore(t)
 	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
 	defer loki.Close()
@@ -291,8 +422,8 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 	lineNeedle, _, ok := pickNeedle(protoEntries(logs), 6)
 	require.True(t, ok)
 
-	sawSM, sawLabel, sawJSON, sawLine := false, false, false, false
-	for seed := int64(0); seed < 100 && (!sawSM || !sawLabel || !sawJSON || !sawLine); seed++ {
+	sawSM, sawLabel, sawJSON, sawLine, sawMetricRange := false, false, false, false, false
+	for seed := int64(0); seed < 200 && (!sawSM || !sawLabel || !sawJSON || !sawLine || !sawMetricRange); seed++ {
 		svc.randMu.Lock()
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
@@ -314,6 +445,10 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 		case hintQueryTypeLineFilter:
 			sawLine = true
 			require.Equal(t, lineNeedle, h.needle)
+		case hintQueryTypeMetricRange:
+			sawMetricRange = true
+			require.Equal(t, lineNeedle, h.needle)
+			require.Equal(t, `sum(count_over_time({job="checkout-service"} |= "`+lineNeedle+`" [5m0s]))`, h.query)
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -321,6 +456,7 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 	require.True(t, sawSM, "expected some seeds to pick sm_label_filter")
 	require.True(t, sawLabel, "expected some seeds to pick label_filter")
 	require.True(t, sawJSON, "expected some seeds to pick json_label_filter")
+	require.True(t, sawMetricRange, "expected some seeds to pick metric_range")
 	require.True(t, sawLine, "expected some seeds to pick line_filter")
 }
 
@@ -351,6 +487,7 @@ func TestPickHintQuery_CanUseJSONLabelFilter(t *testing.T) {
 			require.Equal(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, h.query)
 		case hintQueryTypeLineFilter:
 			sawLine = true
+		case hintQueryTypeMetricRange:
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -393,6 +530,7 @@ func TestPickHintQuery_CanUseStructuredMetadata(t *testing.T) {
 			require.Equal(t, `{job="api"} | trace_id="traceidvalue99"`, h.query)
 		case hintQueryTypeLineFilter:
 			sawLine = true
+		case hintQueryTypeMetricRange:
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -422,7 +560,7 @@ func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
 
 	sawSMFirst := false
 	for seed := int64(0); seed < 100; seed++ {
-		if rand.New(rand.NewSource(seed)).Intn(4) != 0 {
+		if rand.New(rand.NewSource(seed)).Intn(5) != 0 {
 			continue
 		}
 		sawSMFirst = true
@@ -450,6 +588,42 @@ func (unsupportedHintProvider) ProvideHints(
 	model.Time,
 ) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
 	return nil, nil, hintprovider.ErrUnsupported
+}
+
+// recordingHintProvider records the hint-lookup window and returns a range
+// that starts after it, so a positive sample's lookback is a miss.
+type recordingHintProvider struct {
+	from, through model.Time
+}
+
+func (p *recordingHintProvider) ProvideHints(
+	_ context.Context,
+	_ string,
+	_ syntax.Expr,
+	from, through model.Time,
+) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
+	p.from = from
+	p.through = through
+	miss := through.Time().Add(time.Minute)
+	return &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{{
+		Start: miss,
+		End:   miss.Add(time.Minute),
+	}}}, nil, nil
+}
+
+// useLogHintSeed fixes the cycle RNG so the hint pick stays on a log check.
+// The cycle draws Intn(1) for the single label value, then Intn(5) for the
+// hint shape. Seed 0 is not metric_range, and these fixtures fall back to a
+// line filter.
+func useLogHintSeed(svc *Service) {
+	svc.rand = rand.New(rand.NewSource(0)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+}
+
+// useMetricHintSeed fixes the cycle RNG so the hint pick is metric_range.
+// The cycle draws Intn(1) for the single label value, then Intn(5) for the
+// hint shape. Seed 6 yields metric_range.
+func useMetricHintSeed(svc *Service) {
+	svc.rand = rand.New(rand.NewSource(6)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
 }
 
 func newTestService(t *testing.T, indexStore *store.Store, endpoint string, start time.Time) *Service {
@@ -584,6 +758,7 @@ func TestRunning_CompletesTests(t *testing.T) {
 	svc.nowFn = func() time.Time {
 		return base.Add(3 * time.Minute)
 	}
+	useLogHintSeed(svc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -607,7 +782,19 @@ func TestRunning_CompletesTests(t *testing.T) {
 	require.GreaterOrEqual(t, testsTotal, float64(1), "service should complete at least one test")
 }
 
+type recordedMetricQuery struct {
+	start time.Time
+	end   time.Time
+	step  string
+	query string
+}
+
 func newTestLokiServer(t *testing.T, witnessTS time.Time, needle string) *httptest.Server {
+	t.Helper()
+	return newTestLokiServerRecording(t, witnessTS, needle, nil)
+}
+
+func newTestLokiServerRecording(t *testing.T, witnessTS time.Time, needle string, metric *recordedMetricQuery) *httptest.Server {
 	t.Helper()
 
 	writeEnvelope := func(w http.ResponseWriter, data any) {
@@ -633,6 +820,23 @@ func newTestLokiServer(t *testing.T, witnessTS time.Time, needle string) *httpte
 			require.NoError(t, err)
 			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
 			require.NoError(t, err)
+
+			if strings.Contains(r.URL.Query().Get("query"), "count_over_time") {
+				if metric != nil {
+					metric.start = time.Unix(0, startNS).UTC()
+					metric.end = time.Unix(0, endNS).UTC()
+					metric.step = r.URL.Query().Get("step")
+					metric.query = r.URL.Query().Get("query")
+				}
+				writeEnvelope(w, map[string]any{
+					"resultType": "matrix",
+					"result": []map[string]any{{
+						"metric": map[string]string{"job": "api"},
+						"values": [][]any{{witnessTS.Unix(), "1"}},
+					}},
+				})
+				return
+			}
 
 			withinRange := witnessTS.UnixNano() >= startNS && witnessTS.UnixNano() <= endNS
 
@@ -673,7 +877,7 @@ func TestPickRandomRange_ClampsToMaxLookback(t *testing.T) {
 		rand:      rand.New(rand.NewSource(1)),
 	}
 
-	earliest := now.Add(-maxLookback)
+	earliest := now.Add(-maxLookback + metricLookback)
 	eligibleEnd := now.Add(-3 * time.Hour)
 
 	for i := 0; i < 50; i++ {
@@ -683,7 +887,79 @@ func TestPickRandomRange_ClampsToMaxLookback(t *testing.T) {
 		require.True(t, start.After(startedAt), "expected clamp past started_at")
 		require.Equal(t, rangeDur, end.Sub(start))
 		require.False(t, end.After(eligibleEnd))
+		require.Equal(t, start.Truncate(time.Minute), start)
+		require.Equal(t, end.Truncate(time.Minute), end)
 	}
+}
+
+func TestPickRandomRange_TruncatesEndToTheMinute(t *testing.T) {
+	now := time.Date(2026, 8, 3, 12, 0, 10, 0, time.UTC)
+	startedAt := now.Add(-60 * 24 * time.Hour)
+	rangeDur := 10 * time.Minute
+
+	svc := &Service{
+		cfg: Config{
+			QueryIngestersWithin: 3 * time.Hour,
+			QueryRangeMin:        rangeDur,
+			QueryRangeMax:        rangeDur,
+			MaxLookback:          30 * 24 * time.Hour,
+		},
+		startedAt: startedAt,
+		rand:      rand.New(rand.NewSource(1)),
+	}
+
+	eligibleEnd := now.Add(-3 * time.Hour).Truncate(time.Minute)
+	for i := 0; i < 50; i++ {
+		start, end, skip := svc.pickRandomRange(now)
+		require.Empty(t, skip)
+		require.False(t, end.After(eligibleEnd), "end %v after cutoff %v", end, eligibleEnd)
+		require.Equal(t, rangeDur, end.Sub(start))
+		require.Equal(t, start.Truncate(time.Minute), start)
+		require.Equal(t, end.Truncate(time.Minute), end)
+	}
+}
+
+func TestPickRandomRange_RoundsPartialMinutes(t *testing.T) {
+	now := time.Date(2026, 8, 3, 12, 0, 10, 0, time.UTC)
+	startedAt := now.Add(-60 * 24 * time.Hour)
+	maxLookback := 30 * 24 * time.Hour
+	minDuration := 5*time.Minute + 30*time.Second
+	maxDuration := 10*time.Minute + 30*time.Second
+
+	svc := &Service{
+		cfg: Config{
+			QueryIngestersWithin: 3 * time.Hour,
+			QueryRangeMin:        minDuration,
+			QueryRangeMax:        maxDuration,
+			MaxLookback:          maxLookback,
+		},
+		startedAt: startedAt,
+		rand:      rand.New(rand.NewSource(1)),
+	}
+
+	earliest := ceilToMinute(now.Add(-maxLookback + metricLookback))
+	eligibleEnd := now.Add(-3 * time.Hour).Truncate(time.Minute)
+	roundedMin := 6 * time.Minute
+	roundedMax := 10 * time.Minute
+	sawMin, sawMax := false, false
+
+	for i := 0; i < 50; i++ {
+		start, end, skip := svc.pickRandomRange(now)
+		require.Empty(t, skip)
+		require.False(t, start.Before(earliest), "start %v before ceiled lookback %v", start, earliest)
+		require.False(t, end.After(eligibleEnd), "end %v after ingester cutoff %v", end, eligibleEnd)
+		require.Equal(t, start.Truncate(time.Minute), start)
+		require.Equal(t, end.Truncate(time.Minute), end)
+
+		got := end.Sub(start)
+		require.Equal(t, got.Truncate(time.Minute), got)
+		require.GreaterOrEqual(t, got, roundedMin)
+		require.LessOrEqual(t, got, roundedMax)
+		sawMin = sawMin || got == roundedMin
+		sawMax = sawMax || got == roundedMax
+	}
+	require.True(t, sawMin, "expected a draw at the rounded minimum")
+	require.True(t, sawMax, "expected a draw at the rounded maximum")
 }
 
 func TestPickRandomRange_RespectsRecentStartedAt(t *testing.T) {
@@ -708,5 +984,7 @@ func TestPickRandomRange_RespectsRecentStartedAt(t *testing.T) {
 		require.Empty(t, skip)
 		require.False(t, start.Before(startedAt), "start %v before started_at %v", start, startedAt)
 		require.Equal(t, rangeDur, end.Sub(start))
+		require.Equal(t, start.Truncate(time.Minute), start)
+		require.Equal(t, end.Truncate(time.Minute), end)
 	}
 }

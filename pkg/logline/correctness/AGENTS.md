@@ -15,18 +15,20 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
    - Indexes whose `MinRecordTs` falls within the ingester window are filtered out — they contain data still covered by ingesters.
 
 3. **Cross-system verification**
-   - For the selected needle, sampled Loki result entries are passed to `verifyHints` (defined in `verify.go`).
-   - `verifyHints` calls `QueryHintProvider.ProvideHints` and performs coverage analysis locally.
-   - A test is only `correct` when all sampled results are covered by hint ranges and at least one sampled result exists.
-   - False positives are hint ranges with no sampled result timestamp; they are tracked via metrics but do not affect correctness.
-   - Coverage boundaries in `coverTimestamp` are inclusive on both start and end.
-   - `verificationReport.Correct` requires zero false negatives and at least one result (`FalseNegatives == 0 && TotalResults > 0`).
-   - Cycles pick among four hint-query shapes with equal weight: structured
+   - For the selected needle, the cycle queries Loki, then calls `ProvideHints`, then scores locally. `verifyHints` and `verifyMetricHints` do not fetch hints.
+   - A log check passes result entries to `verifyHints`. A test is only `correct` when all sampled results are covered by hint ranges and at least one sampled result exists.
+   - False positives are hint ranges with no sampled result timestamp; they are tracked via metrics but do not affect correctness. Metric checks do not count false positives.
+   - Coverage boundaries in `RangeCoversTimestamp` are inclusive on both start and end.
+   - `verificationReport.Correct` requires zero false negatives and at least one result (`FalseNegatives == 0 && TotalResults > 0`) for both log and metric checks.
+   - A metric check passes samples to `verifyMetricHints` with `eligibleEnd` set to `now - query_ingesters_within`. Only a sample with value greater than zero is scored, and a sample whose lookback ends after that cutoff is left unscored. It is considered covered when any hint overlaps its lookback, and a miss records that whole lookback in `FalseNegativeRanges`.
+   - `querybounds.GetQueryBounds` builds the hint-lookup window with `AlignQueriesWithStep` copied from `query_range.align_queries_with_step`. When that is false, a metric range uses the splitter round: floor the start and ceil the end onto the one-minute step, then widen by the 5-minute range. When it is true, both ends are floored onto the step before that round. A log selector does not widen. Index overlap, `ProvideHints`, and the ingester-window check use that window (`ReadStart`, `ReadEnd`). `fetchNeedleResults` sends the cycle window (`RequestedStart`, `RequestedEnd`) to Loki for both the log query and the metric query.
+   - Cycles pick among five hint-query shapes with equal weight: structured
      metadata label filter (`sm_label_filter`), stream label filter
      (`label_filter`), post-parser JSON (`json_label_filter`:
      `{sel} | json | field="value"` from a top-level JSON string on the
-     sampled line), and line filter (`|= "needle"`). The chosen path is
-     tried first; on failure the cycle falls back to a line-filter needle.
+     sampled line), line filter (`|= "needle"`), and metric range (`metric_range`).
+     The chosen path is tried first; on failure the cycle falls back to a line-filter needle.
+     A metric range check wraps that line-filter needle as `sum(count_over_time(<needle> [5m0s]))`.
      JSON fields must be LogQL identifiers, long enough for n-grams,
      `IsVerbatimLineLiteral`, and a substring of the raw line. Keys that
      already exist as stream or SM labels are skipped (`| json` extracts
@@ -35,18 +37,19 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
      Loki query requests must send
      `X-Loki-Response-Encoding-Flags: categorize-labels` so SM appears on
      entries (otherwise Loki folds it into stream labels). Loki and ProvideHints
-     must see the same query string: Logline looks up value n-grams for all
-     four shapes, but Loki's result set differs.
+     must see the same query string: Logline looks up value n-grams for the log
+     shapes and for the inner needle of a metric check, but Loki's result set differs.
 
 4. **Operator visibility**
-   - Every non-skipped cycle emits a `msg="correctness cycle step"` log at each major step: `picked_range`, `picked_label_value`, `fetched_sample_logs`, `picked_needle`, `fetched_verification_results`.
+   - Every non-skipped cycle emits a `msg="correctness cycle step"` log at each major step: `picked_range`, `picked_label_value`, `fetched_sample_logs`, `picked_needle`, `fetched_needle_results`, `fetched_hints`.
    - Final outcome is logged as `msg="correctness cycle completed"` with the cycle report (selector, range, needle, candidate counts, true/false positives, correctness).
-   - On incorrect cycles, `correctness failure detail` includes `excluded_covering_fn_count`, and each matching index is logged as `correctness failure FN covered by ingester-window index` — candidates for the Loki event-time vs logline `min_rec_ts` asymmetry (metadata only; no term probe).
+   - On an incorrect log cycle, `correctness failure detail` includes `excluded_covering_fn_count`, and each matching index is logged as `correctness failure FN covered by ingester-window index` — candidates for the Loki event-time vs logline `min_rec_ts` asymmetry (metadata only; no term probe).
+   - On an incorrect metric cycle, `correctness failure detail` adds `false_negative_ranges` when a positive sample's lookback is missed, and omits `false_negative_timestamps` and `excluded_covering_fn_count`. The `correctness failure FN covered by ingester-window index` lines are emitted when a false-negative timestamp falls in an excluded index, so a metric miss emits none.
    - Aggregate counters are exported via Prometheus metrics.
 
 5. **Queryable token requirement**
    - Needles must produce at least one n-gram using the same normalization path as indexing (`logline.ExtractFeatures`).
 
 6. **Debug handler consistency**
-   - The `/correctness/debug` handler must use the same core logic as `runVerificationCycle`: `buildLineFilterHintQuery` / `buildLabelFilterHintQuery` / `buildJSONLabelFilterHintQuery` + `newHintQuery` for query construction (via `query_type`), `rangeCoversTimestamp` for boundary checks, and `verifyHints` for coverage analysis.
+   - The `/correctness/debug` handler must use the same core logic as `runVerificationCycle`: `buildLineFilterHintQuery` / `buildLabelFilterHintQuery` / `buildJSONLabelFilterHintQuery` + `newHintQuery` for query construction (via `query_type`), `queryLogs` for the Loki query, and `verifyHints` for coverage analysis. Log coverage uses `RangeCoversTimestamp`.
    - Never duplicate or inline these primitives — drift between the debug endpoint and the cycle makes the debug endpoint unreliable for diagnosing correctness failures.

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 var base = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -81,4 +82,114 @@ func TestCountFalsePositives(t *testing.T) {
 	timestamps := []time.Time{base.Add(5 * time.Minute)}
 	fp := CountFalsePositives(ranges, timestamps)
 	require.Equal(t, 1, fp, "second range has no entries")
+}
+
+func TestVerifySamples_OverlapCoversSample(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	// The matching hint is not the first range. Any overlap covers the sample.
+	hints := []hintprovider.HintTimeRange{
+		{Start: step.Add(-30 * time.Minute), End: step.Add(-20 * time.Minute)},
+		{Start: step.Add(-2 * time.Minute), End: step.Add(-1 * time.Minute)},
+	}
+
+	report := VerifySamples(metricExpr(t), hints, []MetricSample{{Time: step, Value: 1}}, time.Time{})
+	require.Equal(t, 1, report.TotalEntries)
+	require.Equal(t, 1, report.CoveredEntries)
+	require.Equal(t, 0, report.FalseNegatives)
+	require.Empty(t, report.FalseNegativeRanges)
+	require.True(t, report.Correct())
+}
+
+func TestVerifySamples_MissRecordsWholeLookback(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	hints := []hintprovider.HintTimeRange{
+		{Start: step.Add(-30 * time.Minute), End: step.Add(-20 * time.Minute)},
+	}
+
+	report := VerifySamples(metricExpr(t), hints, []MetricSample{{Time: step, Value: 1}}, time.Time{})
+	require.Equal(t, 1, report.TotalEntries)
+	require.Equal(t, 0, report.CoveredEntries)
+	require.Equal(t, 1, report.FalseNegatives)
+	require.Equal(t, []hintprovider.HintTimeRange{{
+		Start: step.Add(-5 * time.Minute),
+		End:   step,
+	}}, report.FalseNegativeRanges)
+	require.False(t, report.Correct())
+}
+
+func TestVerifySamples_HintEndingAtLookbackStartIsAMiss(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	lookbackStart := step.Add(-5 * time.Minute)
+	hints := []hintprovider.HintTimeRange{
+		{Start: lookbackStart.Add(-time.Minute), End: lookbackStart},
+	}
+
+	report := VerifySamples(metricExpr(t), hints, []MetricSample{{Time: step, Value: 1}}, time.Time{})
+	require.Equal(t, 1, report.FalseNegatives)
+	require.Equal(t, []hintprovider.HintTimeRange{{
+		Start: lookbackStart,
+		End:   step,
+	}}, report.FalseNegativeRanges)
+}
+
+func TestVerifySamples_HintStartingAtLookbackEndCoversSample(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	hints := []hintprovider.HintTimeRange{
+		{Start: step, End: step.Add(time.Minute)},
+	}
+
+	report := VerifySamples(metricExpr(t), hints, []MetricSample{{Time: step, Value: 1}}, time.Time{})
+	require.Equal(t, 1, report.CoveredEntries)
+	require.Equal(t, 0, report.FalseNegatives)
+	require.True(t, report.Correct())
+}
+
+func TestVerifySamples_NonPositiveSamplesAreLeftOut(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	hints := []hintprovider.HintTimeRange{
+		{Start: step.Add(-5 * time.Minute), End: step.Add(3 * time.Minute)},
+	}
+
+	report := VerifySamples(metricExpr(t), hints, []MetricSample{
+		{Time: step, Value: 0},
+		{Time: step.Add(time.Minute), Value: -1},
+		{Time: step.Add(2 * time.Minute), Value: 2},
+	}, time.Time{})
+	require.Equal(t, 1, report.TotalEntries)
+	require.Equal(t, 1, report.CoveredEntries)
+	require.True(t, report.Correct())
+}
+
+func TestVerifySamples_AbsentOverTimeScoresNothing(t *testing.T) {
+	expr, err := syntax.ParseExpr(`sum(absent_over_time({job="api"} |= "timeout" [5m]))`)
+	require.NoError(t, err)
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+
+	report := VerifySamples(expr, nil, []MetricSample{{Time: step, Value: 1}}, time.Time{})
+	require.Equal(t, 0, report.TotalEntries)
+	require.Empty(t, report.FalseNegativeRanges)
+	require.True(t, report.Correct())
+}
+
+func TestVerifySamples_LookbackEndingAfterEligibleEndIsSkipped(t *testing.T) {
+	step := time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC)
+	hints := []hintprovider.HintTimeRange{
+		{Start: step.Add(-5 * time.Minute), End: step.Add(time.Minute)},
+	}
+
+	report := VerifySamples(metricExpr(t), hints, []MetricSample{
+		{Time: step, Value: 1},
+		{Time: step.Add(time.Minute), Value: 1},
+	}, step)
+	require.Equal(t, 1, report.TotalEntries)
+	require.Equal(t, 1, report.CoveredEntries)
+	require.Empty(t, report.FalseNegativeRanges)
+	require.True(t, report.Correct())
+}
+
+func metricExpr(t *testing.T) syntax.Expr {
+	t.Helper()
+	expr, err := syntax.ParseExpr(`sum(count_over_time({job="api"} |= "timeout" [5m]))`)
+	require.NoError(t, err)
+	return expr
 }

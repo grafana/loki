@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
@@ -17,6 +18,7 @@ type verificationReport struct {
 	FalseNegatives          int
 	FalsePositives          int
 	FalseNegativeTimestamps []time.Time
+	FalseNegativeRanges     []hintprovider.HintTimeRange
 	Correct                 bool
 }
 
@@ -42,5 +44,22 @@ func verifyHints(
 		FalseNegativeTimestamps: r.FalseNegativeTimestamps,
 		FalsePositives:          verification.CountFalsePositives(hintRanges, timestamps),
 		Correct:                 r.FalseNegatives == 0 && r.TotalEntries > 0,
+	}
+}
+
+// verifyMetricHints measures coverage of pre-fetched hint ranges against the
+// supplied metric samples. A miss is recorded as that sample's lookback.
+// A sample whose lookback ends after eligibleEnd is left unscored; a zero
+// eligibleEnd scores every positive sample. It performs pure computation
+// with no I/O.
+func verifyMetricHints(expr syntax.Expr, hintRanges []hintprovider.HintTimeRange, samples []verification.MetricSample, eligibleEnd time.Time) *verificationReport {
+	r := verification.VerifySamples(expr, hintRanges, samples, eligibleEnd)
+	return &verificationReport{
+		HintRanges:          r.HintRanges,
+		TotalResults:        r.TotalEntries,
+		CoveredResults:      r.CoveredEntries,
+		FalseNegatives:      r.FalseNegatives,
+		FalseNegativeRanges: r.FalseNegativeRanges,
+		Correct:             r.FalseNegatives == 0 && r.TotalEntries > 0,
 	}
 }
