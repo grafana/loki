@@ -218,7 +218,18 @@ func (b *BitSet) extendSet(i uint) {
 	if b.set == nil {
 		b.set = make([]uint64, nsize)
 	} else if cap(b.set) >= nsize {
-		b.set = b.set[:nsize] // fast resize
+		// New words must be zeroed. They may hold stale bits because functions
+		// such as CopyFull, ReadFrom, and DeleteAt shrink the slice, and
+		// extendSet accepts slices whose capacity is arbitrary. After extension
+		// those stale bits would get revived unless zeroed here.
+		oldLen := len(b.set)
+		b.set = b.set[:nsize]
+		if oldLen < nsize {
+			newWords := b.set[oldLen:]
+			for j := range newWords {
+				newWords[j] = 0
+			}
+		}
 	} else if len(b.set) < nsize {
 		newset := make([]uint64, nsize, 2*nsize) // increase capacity 2x
 		copy(newset, b.set)
@@ -565,12 +576,9 @@ func (b *BitSet) DeleteAt(i uint) *BitSet {
 	// of the package expects. Otherwise, functions that scan the whole
 	// slice (e.g., SetAll, Count) would operate on a word that lies
 	// beyond the length of the bitset.
+	// Note that discarded words are not zeroed here. extendSet zeroes
+	// words on growth.
 	if wordCount := b.wordCount(); wordCount < len(b.set) {
-		// the discarded words must be zeroed: extendSet may later revive
-		// them with a fast resize, and they must not carry stale bits.
-		for i := wordCount; i < len(b.set); i++ {
-			b.set[i] = 0
-		}
 		b.set = b.set[:wordCount]
 	}
 
@@ -791,6 +799,9 @@ func (b *BitSet) PreviousSet(i uint) (uint, bool) {
 // including possibly the current index
 // along with an error code (true = valid, false = no clear bit found i.e. all bits are set)
 func (b *BitSet) PreviousClear(i uint) (uint, bool) {
+	if i >= b.length {
+		return 0, false
+	}
 	x := int(i >> log2WordSize)
 	if x >= len(b.set) {
 		return 0, false
@@ -1398,6 +1409,8 @@ func (b *BitSet) ReadFrom(stream io.Reader) (int64, error) {
 		b.length = 0
 		return 0, err
 	}
+
+	b.cleanLastWord()
 
 	return int64(b.BinaryStorageSize()), nil
 }
