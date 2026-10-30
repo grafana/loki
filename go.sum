@@ -1010,8 +1010,8 @@ github.com/prometheus/procfs v0.0.2/go.mod h1:TjEm7ze935MbeOT/UhFTIMYKhuLP4wbCsT
 github.com/prometheus/procfs v0.0.3/go.mod h1:4A/X28fw3Fc593LaREMrKMqOKvUAntwMDaekg4FpcdQ=
 github.com/prometheus/procfs v0.1.3/go.mod h1:lV6e/gmhEcM9IjHGsFOCxxuZ+z1YqCvr4OA4YeYWdaU=
 github.com/prometheus/procfs v0.6.0/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1xBZuNvfVA=
-github.com/prometheus/procfs v0.22.0 h1:6q9+/JL9IKAPbCmBrv9n5O5Ty3NKnciV5X7YGw0oics=
-github.com/prometheus/procfs v0.22.0/go.mod h1:CvmFr/GVhIjIvWJZW3tgkODBQMRIf0EyWMQLHCHab58=
+github.com/prometheus/procfs v0.23.0 h1:ad+S6FTkzwaMgacKLM5h6bNKExS+DMH0YiUwXItH/o4=
+github.com/prometheus/procfs v0.23.0/go.mod h1:3AVXO0FqLafyYFU/V/IQRZlC8Rgqz8Dm/x6pKLK+RIk=
 github.com/prometheus/prometheus v0.312.1-0.20260612131846-2ad3a8717015 h1:DeUM+40/PKd/YPvCvsevpB4f5N7jtnJvJHG4MjFsNwI=
 github.com/prometheus/prometheus v0.312.1-0.20260612131846-2ad3a8717015/go.mod h1:GgwJCUxpytsT8b4joSfadnQ+IhyfaI0665Eta0VTqM0=
 github.com/prometheus/sigv4 v0.4.1 h1:EIc3j+8NBea9u1iV6O5ZAN8uvPq2xOIUPcqCTivHuXs=
