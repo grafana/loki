@@ -331,6 +331,21 @@
 //	}
 //	defer session.Close()
 //
+// # Cluster schema metadata caching
+//
+// The driver supports cluster schema metadata caching. The driver queries system.schema_* and system_schema.* tables
+// depending on Cassandra version for all keyspaces in async manner during session initialization. Also, the driver will
+// refresh the cached metadata in case of receiving schema change events from Cassandra.
+//
+// This is useful for efficient query routing with [TokenAwareHostPolicy] which is a recommended policy for production use.
+// There are three modes of metadata caching:
+//
+//   - Full: All cluster schema metadata is cached. This is the default mode.
+//   - KeyspaceOnly: Only keyspace schema metadata is cached.
+//   - Disabled: No schema metadata is cached.
+//
+// See [MetadataCacheMode] and [ClusterConfig.Metadata] for more details.
+//
 // # Data-center awareness and query routing
 //
 // To route queries to local DC first, use [DCAwareRoundRobinPolicy]. For example, if the datacenter you
@@ -344,7 +359,7 @@
 //	cluster := gocql.NewCluster("192.168.1.1", "192.168.1.2", "192.168.1.3")
 //	cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.DCAwareRoundRobinPolicy("dc1"))
 //
-// Note that [TokenAwareHostPolicy] can take options such as [ShuffleReplicas] and [NonLocalReplicasFallback].
+// Note that [TokenAwareHostPolicy] can take options such as [ShuffleReplicas], [DoNotShuffleReplicas] and [NonLocalReplicasFallback].
 //
 // We recommend running with a token aware host policy in production for maximum performance.
 //
@@ -814,6 +829,21 @@
 // Gathering trace information might be essential for debugging and optimizing queries, but writing traces has overhead,
 // so this feature should not be used on production systems with very high load unless you know what you are doing.
 //
-// [upgrade guide]: https://github.com/apache/cassandra-gocql-driver/blob/trunk/UPGRADE_GUIDE.md
-// [CASSANDRA-10880]: https://issues.apache.org/jira/browse/CASSANDRA-10880
+// # Event listening
+//
+// The driver supports event listening for cluster schema changes and host state changes. It is useful for monitoring and debugging the driver's behavior.
+// You can register listeners for the following events:
+//   - Cluster schema changes: keyspace created, updated, dropped, table created, updated, dropped, function created, updated, dropped, aggregate created, updated, dropped
+//   - Host state changes: host up, host down
+//   - Topology changes: new host added, host removed, host moved
+//
+// Schema and topology callbacks are sequential, but host status callbacks can be concurrent. If your listener
+// implements multiple event types (e.g., both topology and status changes), add proper synchronization.
+//
+// Also, if there is a need to know when the session is ready to be used, you can register a [SessionReadyListener].
+//
+// Consider using multiplexer types like [SchemaListenersMux], [HostListenersMux], and [SessionReadyListenersMux]
+// if you need to have multiple listeners for the same event.
+//
+// See [ClusterConfig.Metadata] for more details and Example_eventListeners for a complete implementation example.
 package gocql // import "github.com/apache/cassandra-gocql-driver/v2"

@@ -42,6 +42,44 @@ type PoolConfig struct {
 	HostSelectionPolicy HostSelectionPolicy
 }
 
+// MetadataCacheMode controls how the driver reads and caches schema metadata from Cassandra system tables.
+// This affects the behavior of Session.KeyspaceMetadata and token-aware host selection policies.
+//
+// See the individual mode constants (Full, KeyspaceOnly, Disabled) for detailed behavior of each mode.
+type MetadataCacheMode int
+
+const (
+	// Full mode reads and caches all schema metadata including keyspaces, tables, columns,
+	// functions, aggregates, user-defined types, and materialized views.
+	//
+	// Token-aware routing works normally (if TokenAwareHostPolicy is used) with full replica information.
+	// Session.KeyspaceMetadata returns cached metadata without querying system tables.
+	//
+	// It enables SchemaChangeListener to be notified about all schema changes.
+	Full MetadataCacheMode = iota
+
+	// KeyspaceOnly mode reads and caches only keyspace metadata (replication strategy and options).
+	// This enables token-aware routing (if TokenAwareHostPolicy is used) without the overhead of caching detailed schema information.
+	//
+	// Token-aware routing works normally (if TokenAwareHostPolicy is used) with full replica information.
+	// Session.KeyspaceMetadata returns cached keyspace metadata, but Tables, Functions, Aggregates,
+	// MaterializedViews, and UserTypes fields will be nil.
+	//
+	// If CacheMode is Full, schema change listeners will be notified about all schema changes.
+	//
+	// Having other then KeyspaceChangeListener of schema events registered will result in an error during session creation.
+	KeyspaceOnly
+
+	// Disabled mode completely disables schema metadata caching.
+	//
+	// Token-aware routing falls back to the configured fallback policy (e.g., RoundRobinHostPolicy,
+	// DCAwareRoundRobinPolicy) since replica information is not available.
+	// Session.KeyspaceMetadata queries system tables on every call instead of using a cache.
+	//
+	// Having schema change listeners will result in an error during session creation.
+	Disabled
+)
+
 func (p PoolConfig) buildPool(session *Session) *policyConnPool {
 	return newPolicyConnPool(session)
 }
@@ -204,11 +242,11 @@ type ClusterConfig struct {
 
 	// Configure events the driver will register for
 	Events struct {
-		// disable registering for status events (node up/down)
+		// Disable registering for status events (host up/down)
 		DisableNodeStatusEvents bool
-		// disable registering for topology events (node added/removed/moved)
+		// Disable registering for topology events (node added/removed/moved)
 		DisableTopologyEvents bool
-		// disable registering for schema events (keyspace/table/function removed/created/updated)
+		// Disable registering for schema events (keyspace/table/function removed/created/updated)
 		DisableSchemaEvents bool
 	}
 
@@ -286,6 +324,9 @@ type ClusterConfig struct {
 
 	// internal config for testing
 	disableControlConn bool
+
+	// Metadata configures driver's internal metadata caching and event listening.
+	Metadata MetadataConfig
 }
 
 // Dialer is the interface that wraps the DialContext method for establishing network connections to Cassandra nodes.
@@ -325,6 +366,9 @@ func NewCluster(hosts ...string) *ClusterConfig {
 		ReconnectionPolicy:     &ConstantReconnectionPolicy{MaxRetries: 3, Interval: 1 * time.Second},
 		WriteCoalesceWaitTime:  200 * time.Microsecond,
 		NextPagePrefetch:       0.25,
+		Metadata: MetadataConfig{
+			CacheMode: Full,
+		},
 	}
 	return cfg
 }
@@ -352,13 +396,66 @@ func (cfg *ClusterConfig) translateAddressPort(addr net.IP, port int, logger Str
 	}
 	newAddr, newPort := cfg.AddressTranslator.Translate(addr, port)
 	logger.Debug("Translating address.",
-		newLogFieldIp("old_addr", addr), newLogFieldInt("old_port", port),
-		newLogFieldIp("new_addr", newAddr), newLogFieldInt("new_port", newPort))
+		NewLogFieldIP("old_addr", addr), NewLogFieldInt("old_port", port),
+		NewLogFieldIP("new_addr", newAddr), NewLogFieldInt("new_port", newPort))
 	return newAddr, newPort
 }
 
 func (cfg *ClusterConfig) filterHost(host *HostInfo) bool {
 	return !(cfg.HostFilter == nil || cfg.HostFilter.Accept(host))
+}
+
+// MetadataConfig configures driver's internal metadata caching and event listening.
+type MetadataConfig struct {
+	// CacheMode controls how the driver reads and caches schema metadata from Cassandra system tables.
+	//
+	// Also, it affects the behavior of schema change listeners.
+	//
+	// If CacheMode is [KeyspaceOnly], only [KeyspaceChangeListener] will be notified,
+	// having other listeners registered will result in an error during session creation.
+	//
+	// If CacheMode is [Disabled], having these listeners will result in an error during session creation.
+	//
+	// See [MetadataCacheMode] for more details.
+	CacheMode MetadataCacheMode
+
+	// HostListener will be notified when host state and topology changes occur.
+	//
+	// Thread Safety: Topology change callbacks are sequential, but host status callbacks can be concurrent.
+	// If your listener implements both TopologyChangeListener and HostStatusChangeListener, it must be
+	// thread-safe as these event types can run simultaneously from different sources.
+	//
+	// Consider using [HostListenersMux] if you need to register multiple listeners for the same type of host state and topology change.
+	HostListener HostListenersConfig
+
+	// SchemaListener will be notified when schema changes occur.
+	//
+	// Consider using [SchemaListenersMux] if you need to register multiple listeners for the same type of schema change.
+	SchemaListener SchemaListenersConfig
+
+	// SessionReadyListener will be notified when the session is ready to be used.
+	// This is meant to be implemented by Host and Schema listeners but it can also be used as
+	// a generic callback for when the session is ready regardless of whether a metadata listener is implemented or not.
+	//
+	// Consider using [SessionReadyListenersMux] if you need to register multiple listeners for the same session ready event.
+	SessionReadyListener SessionReadyListener
+}
+
+type HostListenersConfig struct {
+	// HostStateChangeListener will be notified about host state events (UP, DOWN).
+	HostStateChangeListener HostStatusChangeListener
+
+	// TopologyChangeListener will be notified about topology change events
+	// (NEW_NODE, REMOVED_NODE).
+	TopologyChangeListener TopologyChangeListener
+}
+
+type SchemaListenersConfig struct {
+	KeyspaceChangeListener  KeyspaceChangeListener
+	TableChangeListener     TableChangeListener
+	UserTypeChangeListener  UserTypeChangeListener
+	FunctionChangeListener  FunctionChangeListener
+	AggregateChangeListener AggregateChangeListener
 }
 
 var (

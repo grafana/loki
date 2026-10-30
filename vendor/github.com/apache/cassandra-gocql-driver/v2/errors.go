@@ -154,6 +154,46 @@ func (e *RequestErrUnavailable) String() string {
 	return fmt.Sprintf("[request_error_unavailable consistency=%s required=%d alive=%d]", e.Consistency, e.Required, e.Alive)
 }
 
+// RequestErrOverloaded represents an overloaded error returned by Cassandra.
+type RequestErrOverloaded struct {
+	errorFrame
+}
+
+// RequestErrBootstrapping represents a bootstrapping error returned by Cassandra.
+type RequestErrBootstrapping struct {
+	errorFrame
+}
+
+// RequestErrInvalid represents an invalid query error returned by Cassandra.
+type RequestErrInvalid struct {
+	errorFrame
+}
+
+// RequestErrConfig represents a configuration error returned by Cassandra.
+type RequestErrConfig struct {
+	errorFrame
+}
+
+// RequestErrCredentials represents a credentials error returned by Cassandra.
+type RequestErrCredentials struct {
+	errorFrame
+}
+
+// RequestErrSyntax represents a syntax error returned by Cassandra.
+type RequestErrSyntax struct {
+	errorFrame
+}
+
+// RequestErrTruncate represents a truncation error returned by Cassandra.
+type RequestErrTruncate struct {
+	errorFrame
+}
+
+// RequestErrUnauthorized represents an unauthorized error returned by Cassandra.
+type RequestErrUnauthorized struct {
+	errorFrame
+}
+
 // ErrorMap maps node IP addresses to their respective error codes for read/write failure responses.
 // Each entry represents a node that failed during the operation, with the key being the node's
 // IP address as a string and the value being the specific error code returned by that node.
@@ -243,4 +283,14 @@ type RequestErrCASWriteUnknown struct {
 	Consistency Consistency
 	Received    int
 	BlockFor    int
+}
+
+type unsupportedProtocolVersionError struct {
+	hostInfo *HostInfo
+	version  protoVersion
+	err      error
+}
+
+func (e unsupportedProtocolVersionError) Error() string {
+	return fmt.Sprintf("unsupported protocol version %d for host %s", e.version, e.hostInfo.ConnectAddress())
 }

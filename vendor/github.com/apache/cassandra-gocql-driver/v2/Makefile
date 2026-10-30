@@ -100,7 +100,7 @@ test-integration-auth: .prepare-cassandra-cluster
 test-unit:
 	@echo "Run unit tests"
 	@go clean -testcache
-	go test -tags unit -timeout=5m -race ./...
+	go test -v -tags unit -timeout=5m -race ./...
 
 check: .prepare-golangci
 	@echo "Build"
