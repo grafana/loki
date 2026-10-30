@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -116,7 +117,6 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		maxOffset    = int64(0)
 		consumeStart = time.Now()
 		limitWorkers = kc.maxConsumerWorkers
-		wg           sync.WaitGroup
 	)
 
 	// Find min/max offsets
@@ -132,62 +132,52 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	// build identical chunks, which the chunk store can then dedupe, if they apply its records
 	// in the same order. Different streams are still applied in parallel.
 	groups := groupByStream(records)
-	numWorkers := min(limitWorkers, len(groups))
-	workChan := make(chan []int, len(groups))
-	for _, group := range groups {
-		workChan <- group.indexes
-	}
-	close(workChan)
 	// success keeps track of the records that were processed. It is expected to
 	// be sorted in ascending order of offset since the records themselves are
 	// ordered.
 	success := make([]*int64, len(records))
 
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for indexes := range workChan {
-				for _, index := range indexes {
-					record := records[index]
-					stream, err := kc.decoder.DecodeWithoutLabels(record.Content)
-					if err != nil {
-						level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
-						continue
-					}
-
-					recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
-					req := &logproto.PushRequest{
-						Streams: []logproto.Stream{stream},
-					}
-
-					level.Debug(kc.logger).Log("msg", "pushing record", "offset", record.Offset, "length", len(record.Content))
-
-					if err := retryWithBackoff(ctx, func(attempts int) error {
-						pushTime := time.Now()
-						_, err := kc.pusher.Push(recordCtx, req)
-
-						kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
-
-						if err != nil {
-							level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", record.Offset, "attempts", attempts)
-							return err
-						}
-
-						return nil
-					}); err != nil {
-						level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", record.Offset)
-						continue
-					}
-
-					offset := record.Offset
-					success[index] = &offset
-				}
+	// ForEachJob hands out the groups in order, so the largest start first.
+	// context.WithoutCancel() is used to mimic prior behavior. every record is tried at least once
+	// on shutdown
+	_ = concurrency.ForEachJob(context.WithoutCancel(ctx), len(groups), limitWorkers, func(_ context.Context, idx int) error {
+		for _, index := range groups[idx].indexes {
+			record := records[index]
+			stream, err := kc.decoder.DecodeWithoutLabels(record.Content)
+			if err != nil {
+				level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
+				continue
 			}
-		}()
-	}
 
-	wg.Wait()
+			recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
+			req := &logproto.PushRequest{
+				Streams: []logproto.Stream{stream},
+			}
+
+			level.Debug(kc.logger).Log("msg", "pushing record", "offset", record.Offset, "length", len(record.Content))
+
+			if err := retryWithBackoff(ctx, func(attempts int) error {
+				pushTime := time.Now()
+				_, err := kc.pusher.Push(recordCtx, req)
+
+				kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
+
+				if err != nil {
+					level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", record.Offset, "attempts", attempts)
+					return err
+				}
+
+				return nil
+			}); err != nil {
+				level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", record.Offset)
+				continue
+			}
+
+			offset := record.Offset
+			success[index] = &offset
+		}
+		return nil
+	})
 
 	// Find the highest offset before a gap, and commit that.
 	var highestOffset int64

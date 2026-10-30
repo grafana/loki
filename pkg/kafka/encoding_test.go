@@ -2,11 +2,13 @@ package kafka
 
 import (
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -138,26 +140,112 @@ func TestDecoderDoesNotCarryFieldsBetweenRecords(t *testing.T) {
 }
 
 func TestStreamLabels(t *testing.T) {
-	stream := logproto.Stream{
-		Labels:  `{app="test"}`,
-		Hash:    999,
-		Entries: []logproto.Entry{{Timestamp: time.Unix(0, 1), Line: "first"}},
+	entries := []logproto.Entry{{Timestamp: time.Unix(0, 1), Line: "first"}}
+	tests := []struct {
+		name    string
+		stream  logproto.Stream
+		maxSize int
+		split   bool // the stream must be split across several records
+		wantErr bool // the encoders leave the labels out, so there are none to read
+	}{
+		{
+			name:   "single label",
+			stream: logproto.Stream{Labels: `{app="test"}`, Hash: 999, Entries: entries},
+		},
+		{
+			name:   "no hash",
+			stream: logproto.Stream{Labels: `{app="test"}`, Entries: entries},
+		},
+		{
+			// Over 127 bytes, so the length takes a two byte varint.
+			name: "many labels",
+			stream: logproto.Stream{
+				Labels: labels.FromStrings(
+					"app", "checkout", "cluster", "prod-eu-west-0", "container", "checkout-api",
+					"env", "prod", "job", "checkout/checkout-api", "namespace", "checkout",
+					"pod", "checkout-api-7d9f8b6c5d-x2x9k", "service_name", "checkout-api",
+				).String(),
+				Entries: entries,
+			},
+		},
+		{
+			// Over 16KiB, so the length takes a three byte varint.
+			name:   "very long label value",
+			stream: logproto.Stream{Labels: labels.FromStrings("app", strings.Repeat("a", 20<<10)).String(), Entries: entries},
+		},
+		{
+			name: "escaped and non-ASCII values",
+			stream: logproto.Stream{
+				Labels:  labels.FromStrings("app", `say "hi"`, "city", "Zürich", "path", `C:\tmp`).String(),
+				Entries: entries,
+			},
+		},
+		{
+			name: "structured metadata",
+			stream: logproto.Stream{
+				Labels: `{app="test"}`,
+				Entries: []logproto.Entry{{
+					Timestamp:          time.Unix(0, 1),
+					Line:               "first",
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("trace_id", "abc", "user", "bob")),
+				}},
+			},
+		},
+		{
+			name:    "split into several records",
+			stream:  generateStream(100, 1000),
+			maxSize: 10 << 10,
+			split:   true,
+		},
+		{
+			name:    "no labels",
+			stream:  logproto.Stream{Entries: entries},
+			wantErr: true,
+		},
 	}
-	flat, err := Encode(0, "test-tenant", stream, 10<<20)
-	require.NoError(t, err)
-	nested, err := EncodeInternal(0, "test-tenant", *logproto.FromStream(stream), 10<<20)
+
+	decoder, err := NewDecoder()
 	require.NoError(t, err)
 
-	for name, data := range map[string][]byte{"flat": flat[0].Value, "nested": nested[0].Value} {
-		t.Run(name, func(t *testing.T) {
-			ls, err := StreamLabels(data)
-			require.NoError(t, err)
-			require.Equal(t, stream.Labels, string(ls))
+	for _, tc := range tests {
+		maxSize := tc.maxSize
+		if maxSize == 0 {
+			maxSize = 10 << 20
+		}
+		encoders := map[string]func() ([]*kgo.Record, error){
+			"flat": func() ([]*kgo.Record, error) { return Encode(0, "test-tenant", tc.stream, maxSize) },
+			"nested": func() ([]*kgo.Record, error) {
+				return EncodeInternal(0, "test-tenant", *logproto.FromStream(tc.stream), maxSize)
+			},
+		}
+		for encoding, encode := range encoders {
+			t.Run(tc.name+"/"+encoding, func(t *testing.T) {
+				records, err := encode()
+				require.NoError(t, err)
+				if tc.split {
+					require.Greater(t, len(records), 1)
+				}
 
-			// Cut inside the labels, which come first.
-			_, err = StreamLabels(data[:4])
-			require.Error(t, err)
-		})
+				for _, record := range records {
+					ls, err := StreamLabels(record.Value)
+					if tc.wantErr {
+						require.Error(t, err)
+						continue
+					}
+					require.NoError(t, err)
+					require.Equal(t, tc.stream.Labels, string(ls))
+
+					// The labels are the ones the record decodes to.
+					stream, err := decoder.DecodeWithoutLabels(record.Value)
+					require.NoError(t, err)
+					require.Equal(t, stream.Labels, string(ls))
+
+					// Cut inside the labels, which come first.
+					_, err = StreamLabels(record.Value[:4])
+					require.Error(t, err)
+				}
+			})
+		}
 	}
 
 	_, err = StreamLabels(nil)
