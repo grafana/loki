@@ -25,7 +25,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -82,9 +84,9 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				noPolicy,
 			)
 
-			_, err := s.Push(context.Background(), []logproto.Entry{
+			_, err := lockThenPush(context.Background(), s, []logproto.Entry{
 				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
-			}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+			}, recordPool.GetRecord(), false, nil, "loki")
 			require.NoError(t, err)
 
 			newLines := make([]logproto.Entry, numLogs)
@@ -105,7 +107,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d for stream: {foo=\"bar\"}", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, "%s", expected.String())
 
-			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false, nil, "loki")
+			_, err = lockThenPush(context.Background(), s, newLines, recordPool.GetRecord(), false, nil, "loki")
 			require.Error(t, err)
 			require.Equal(t, expectErr.Error(), err.Error())
 		})
@@ -135,11 +137,11 @@ func TestPushDeduplication(t *testing.T) {
 		noPolicy,
 	)
 
-	written, err := s.Push(context.Background(), []logproto.Entry{
+	written, err := lockThenPush(context.Background(), s, []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	}, recordPool.GetRecord(), false, nil, "loki")
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
@@ -194,17 +196,17 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 		noPolicy,
 	)
 
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, err = lockThenPush(context.Background(), s, []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	}, recordPool.GetRecord(), false, nil, "loki")
 	require.NoError(t, err)
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, err = lockThenPush(context.Background(), s, []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "not a test"},
-	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	}, recordPool.GetRecord(), false, nil, "loki")
 	require.NoError(t, err)
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, err = lockThenPush(context.Background(), s, []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	}, recordPool.GetRecord(), false, nil, "loki")
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, 2, s.chunks[0].chunk.Size(), "expected exact duplicate to be dropped and newer content with same timestamp to be appended")
@@ -240,26 +242,26 @@ func TestPushRejectOldCounter(t *testing.T) {
 	)
 
 	// counter should be 2 now since the first line will be deduped
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, err = lockThenPush(context.Background(), s, []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	}, recordPool.GetRecord(), false, nil, "loki")
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
 		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
 
 	// fail to push with a counter <= the streams internal counter
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 2, true, false, nil, "loki")
+	}, 2, nil)
 	require.Equal(t, ErrEntriesExist, err)
 
 	// succeed with a greater counter
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 3, true, false, nil, "loki")
+	}, 3, nil)
 	require.Nil(t, err)
 
 }
@@ -424,7 +426,7 @@ func TestUnorderedPush(t *testing.T) {
 		if x.cutBefore {
 			_ = s.cutChunk(context.Background())
 		}
-		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
+		written, err := lockThenPush(context.Background(), s, x.entries, recordPool.GetRecord(), false, nil, "loki")
 		if x.err {
 			require.NotNil(t, err)
 		} else {
@@ -492,7 +494,7 @@ func TestPushRateLimit(t *testing.T) {
 	}
 	// Counter should be 2 now since the first line will be deduped.
 	tracker := &mockUsageTracker{}
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker, "loki")
+	_, err = lockThenPush(context.Background(), s, entries, recordPool.GetRecord(), true, tracker, "loki")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 	require.Equal(t, 20.0, tracker.discardedBytes)
@@ -539,7 +541,7 @@ func TestPushRateLimitPolicyOverride(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
 	}
 	tracker := &mockUsageTracker{}
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker, "loki")
+	_, err = lockThenPush(context.Background(), s, entries, recordPool.GetRecord(), true, tracker, "loki")
 	require.Error(t, err)
 	// The error must reference the policy override limit (10), not the tenant limit (100).
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: *l.PolicyOverrideLimits[policy].PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
@@ -581,7 +583,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 
 	// Both entries have errors because rate limiting is done all at once
 	tracker := &mockUsageTracker{}
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker, "loki")
+	_, err = lockThenPush(context.Background(), s, entries, recordPool.GetRecord(), true, tracker, "loki")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[0].Line))}).Error())
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
@@ -619,8 +621,8 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		{Timestamp: base, Line: "1"},
 	}
 
-	// Push a first entry (it doesn't matter if we look like we're replaying or not)
-	_, err = s.Push(context.Background(), entries, nil, 1, true, false, nil, "loki")
+	// Push a first entry through the replay path
+	_, err = s.PushWalReplay(context.Background(), entries, 1, nil)
 	require.Nil(t, err)
 
 	// Create a sample outside the validity window
@@ -628,14 +630,71 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		{Timestamp: base.Add(-time.Hour), Line: "2"},
 	}
 
-	// Pretend it's not a replay, ensure we error
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	// A live push outside the validity window must error
+	_, err = lockThenPush(context.Background(), s, entries, recordPool.GetRecord(), false, nil, "loki")
 	require.NotNil(t, err)
 
-	// Now pretend it's a replay. The same write should succeed.
-	_, err = s.Push(context.Background(), entries, nil, 2, true, false, nil, "loki")
+	// The same write through the replay path should succeed and be stored.
+	_, err = s.PushWalReplay(context.Background(), entries, 2, nil)
 	require.Nil(t, err)
+	require.Equal(t, 2, s.chunks[0].chunk.Size())
 
+}
+
+// WAL V1 records carry no counter and decode to 0; they must not be dropped as duplicates.
+func TestPushWalReplayZeroCounter(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = time.Minute
+	s := newStream(
+		chunkfmt,
+		headfmt,
+		cfg,
+		limiter.rateLimitStrategy,
+		"fake",
+		model.Fingerprint(0),
+		labels.FromStrings("foo", "bar"),
+		NewStreamRateCalculator(),
+		NilMetrics,
+		nil,
+		nil,
+		retentionHours,
+		noPolicy,
+	)
+
+	base := time.Now()
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
+		{Timestamp: base, Line: "a"},
+	}, 0, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, s.chunks[0].chunk.Size())
+
+	// A second counterless push still isn't a duplicate, even though entryCt > 0.
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
+		{Timestamp: base.Add(time.Second), Line: "b"},
+	}, 0, nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, s.chunks[0].chunk.Size())
+
+	// Counterless records are validated like live pushes, so entries outside
+	// the validity window are rejected.
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
+		{Timestamp: base.Add(-time.Hour), Line: "old"},
+	}, 0, nil)
+	require.Error(t, err)
+	require.Equal(t, 2, s.chunks[0].chunk.Size())
+
+	// A positive counter that is not ahead of the stream is still a duplicate.
+	_, err = s.PushWalReplay(context.Background(), []logproto.Entry{
+		{Timestamp: base.Add(2 * time.Second), Line: "c"},
+	}, 1, nil)
+	require.Equal(t, ErrEntriesExist, err)
+	require.Equal(t, 2, s.chunks[0].chunk.Size())
 }
 
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
@@ -678,7 +737,7 @@ func Benchmark_PushStream(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(ctx, e, rec, 0, true, false, nil, "loki")
+		_, err := lockThenPush(ctx, s, e, rec, false, nil, "loki")
 		require.NoError(b, err)
 		recordPool.PutRecord(rec)
 	}
@@ -702,4 +761,11 @@ type providerMock struct {
 
 func (m *providerMock) TenantConfig(userID string) *runtime.Config {
 	return m.tenantConfig(userID)
+}
+
+// lockThenPush takes chunkMtx and then calls s.Push, as instance.Push does.
+func lockThenPush(ctx context.Context, s *stream, entries []logproto.Entry, record *wal.Record, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) (int, error) {
+	s.chunkMtx.Lock()
+	defer s.chunkMtx.Unlock()
+	return s.Push(ctx, entries, record, rateLimitWholeStream, usageTracker, format)
 }
