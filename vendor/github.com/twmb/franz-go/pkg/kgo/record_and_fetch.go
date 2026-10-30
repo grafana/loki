@@ -191,7 +191,7 @@ func (r *Record) AppendFormat(b []byte, layout string) ([]byte, error) {
 // after an AckRelease or acquisition lock timeout. Returns 0 for records that
 // are not from a share group fetch.
 func (r *Record) DeliveryCount() int32 {
-	_, st := shareAckFromCtx(r)
+	st := shareAckFromCtx(r)
 	if st == nil {
 		return 0
 	}
@@ -211,7 +211,10 @@ func (r *Record) DeliveryCount() int32 {
 // network overhead. It is best to assume your actual practical deadline may be
 // a few seconds before the deadline returned from this function.
 func (r *Record) AcquisitionDeadline() time.Time {
-	slab, _ := shareAckFromCtx(r)
+	if r.Context == nil {
+		return time.Time{}
+	}
+	slab, _ := r.Context.Value(shareAckKey).(*shareAckSlab)
 	if slab == nil {
 		return time.Time{}
 	}
@@ -251,38 +254,15 @@ func (r *Record) Ack(status AckStatus) {
 	if status < AckAccept || status > AckRenew {
 		return
 	}
-	slab, st := shareAckFromCtx(r)
-	if st == nil {
+	st := shareAckFromCtx(r)
+	if st == nil || !st.tryAck(status, false) {
 		return
 	}
 	// Every successful CAS appends an entry and increments
 	// pendingAcks. Multiple calls on the same record (e.g.
 	// renew then accept) produce multiple entries that coalesce
 	// at request-build time.
-	if status == AckRenew {
-		if !st.status.CompareAndSwap(0, int32(AckRenew)) {
-			return // already set (renew or terminal)
-		}
-	} else {
-		// Terminal: override 0 or AckRenew. Reject if already terminal.
-		for {
-			cur := st.status.Load()
-			if cur != 0 && cur != int32(AckRenew) {
-				return
-			}
-			if st.status.CompareAndSwap(cur, int32(status)) {
-				break
-			}
-		}
-	}
-	// slab.ackSource was set when the slab was constructed in
-	// processSharePartition; its share.sc is the same per-client
-	// shareConsumer that cursor.source.Load().share.sc would resolve
-	// to. Read it directly to avoid an atomic load on the hot
-	// per-record ack path.
-	cursor := slab.cursor
-	sc := slab.ackSource.share.sc
-	cursor.appendAck(sc, slab.ackSource, slab.sessionEpoch, r.Offset, &st.status)
+	st.appendAck()
 }
 
 // StringRecord returns a Record with the Value field set to the input value
@@ -675,17 +655,28 @@ func (fs Fetches) EachTopic(fn func(FetchTopic)) {
 		return
 	}
 
+	// A topic's partitions are led by different brokers, so the same topic
+	// is spread across multiple Fetch entries (one per broker response); we
+	// must carry the TopicID across them rather than zeroing it. The broker
+	// returns the same ID in every fetch response for the topic, so the
+	// first non-zero copy is authoritative. Without this, EachTopic returns
+	// a zero TopicID whenever more than one broker replied -- i.e. nearly
+	// always in a real cluster, yet never in a single-broker test.
 	topics := make(map[string][]FetchPartition)
+	ids := make(map[string][16]byte)
 	for _, fetch := range fs {
 		for _, topic := range fetch.Topics {
 			topics[topic.Topic] = append(topics[topic.Topic], topic.Partitions...)
+			if topic.TopicID != ([16]byte{}) {
+				ids[topic.Topic] = topic.TopicID
+			}
 		}
 	}
 
 	for topic, partitions := range topics {
 		fn(FetchTopic{
 			topic,
-			[16]byte{},
+			ids[topic],
 			partitions,
 		})
 	}
