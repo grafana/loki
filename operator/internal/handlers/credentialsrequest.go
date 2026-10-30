@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/status"
 )
 
 // CreateUpdateDeleteCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
@@ -70,6 +72,23 @@ func CreateUpdateDeleteCredentialsRequest(ctx context.Context, log logr.Logger, 
 	err = ctrl.SetControllerReference(&stack, credReq, scheme)
 	if err != nil {
 		return kverrors.Wrap(err, "failed to set controller owner reference to resource")
+	}
+
+	// Check for ownership conflicts before creating or updating the resource
+	conflicts, err := CheckResourceOwnership(ctx, ll, k, scheme, req, &stack, []client.Object{credReq})
+	if err != nil {
+		return err
+	}
+	if len(conflicts) > 0 {
+		conflictList := strings.Join(conflicts, "; ")
+		return &status.DegradedError{
+			Message: fmt.Sprintf(
+				"Resource ownership conflict detected, this instance reconciliation is blocked until the conflict is resolved, conflicting resources: %s",
+				conflictList,
+			),
+			Reason:  lokiv1.ReasonResourceOwnershipConflict,
+			Requeue: true,
+		}
 	}
 
 	desired := credReq.DeepCopyObject().(client.Object)

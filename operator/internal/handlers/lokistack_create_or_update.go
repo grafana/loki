@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -163,6 +166,23 @@ func CreateOrUpdateLokiStack(
 
 	ll.Info("manifests built", "count", len(objects))
 
+	// Check for ownership conflicts before creating or updating resources
+	conflicts, err := CheckResourceOwnership(ctx, ll, k, s, req, &stack, objects)
+	if err != nil {
+		return nil, err
+	}
+	if len(conflicts) > 0 {
+		conflictList := strings.Join(conflicts, "; ")
+		return nil, &status.DegradedError{
+			Message: fmt.Sprintf(
+				"Resource ownership conflict detected, this instance reconciliation is blocked until the conflict is resolved, conflicting resources: %s",
+				conflictList,
+			),
+			Reason:  lokiv1.ReasonResourceOwnershipConflict,
+			Requeue: true,
+		}
+	}
+
 	// The status is updated before the objects are actually created to
 	// avoid the scenario in which the configmap is successfully created or
 	// updated and another resource is not. This would cause the status to
@@ -229,6 +249,62 @@ func CreateOrUpdateLokiStack(
 		NetworkPolicies:            networkPolicyRuleSet,
 		NetworkPolicyObjStorePorts: opts.NetworkPolicyObjStorePorts,
 	}, nil
+}
+
+// CheckResourceOwnership checks if any resources exist and are not owned by this LokiStack instance.
+// It returns a list of conflicting resource names.
+func CheckResourceOwnership(
+	ctx context.Context,
+	ll logr.Logger,
+	k k8s.Client,
+	s *runtime.Scheme,
+	req ctrl.Request,
+	stack *lokiv1.LokiStack,
+	objects []client.Object,
+) ([]string, error) {
+	var conflicts []string
+
+	// Check each namespaced resource in the manifests
+	for _, obj := range objects {
+		if !isNamespacedResource(obj) {
+			continue
+		}
+
+		// Get GVK from scheme based on Go type (works even without TypeMeta)
+		gvks, _, err := s.ObjectKinds(obj)
+		if err != nil {
+			return nil, fmt.Errorf("failed to determine GVK for object %s: %w", obj.GetName(), err)
+		}
+		if len(gvks) == 0 {
+			return nil, kverrors.New("no GVK registered for type", "type", fmt.Sprintf("%T", obj))
+		}
+		gvk := gvks[0]
+
+		existing := &unstructured.Unstructured{}
+		existing.SetGroupVersionKind(gvk)
+
+		err = k.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: req.Namespace}, existing)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+
+		// Resource exists - check if it's owned by this LokiStack instance
+		existingOwner := metav1.GetControllerOf(existing)
+		if existingOwner == nil || existingOwner.UID != stack.UID {
+			var resourceName string
+			if existingOwner != nil {
+				resourceName = fmt.Sprintf("%s/%s (owned by %s/%s)", gvk.Kind, obj.GetName(), existingOwner.Kind, existingOwner.Name)
+			} else {
+				resourceName = fmt.Sprintf("%s/%s (unowned)", gvk.Kind, obj.GetName())
+			}
+			conflicts = append(conflicts, resourceName)
+		}
+	}
+
+	return conflicts, nil
 }
 
 func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {
