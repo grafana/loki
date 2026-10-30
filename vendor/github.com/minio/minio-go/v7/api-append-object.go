@@ -175,6 +175,11 @@ func (c *Client) appendObjectDo(ctx context.Context, bucketName, objectName stri
 		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
 		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
 		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
+		ChecksumMD5:       h.Get(ChecksumMD5.Key()),
+		ChecksumSHA512:    h.Get(ChecksumSHA512.Key()),
+		ChecksumXXHash64:  h.Get(ChecksumXXHash64.Key()),
+		ChecksumXXHash3:   h.Get(ChecksumXXHash3.Key()),
+		ChecksumXXHash128: h.Get(ChecksumXXHash128.Key()),
 		ChecksumMode:      h.Get(ChecksumFullObjectMode.Key()),
 	}, nil
 }

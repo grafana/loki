@@ -276,6 +276,8 @@ type InventoryJobStatus struct {
 	User              string    `json:"user"`
 	AccessKey         string    `json:"accessKey"`
 	Schedule          string    `json:"schedule"`
+	ScheduleTime      string    `json:"scheduleTime,omitempty"`
+	ScheduleTimezone  string    `json:"scheduleTimezone,omitempty"`
 	State             string    `json:"state"`
 	NextScheduledTime time.Time `json:"nextScheduledTime,omitempty"`
 	StartTime         time.Time `json:"startTime,omitempty"`

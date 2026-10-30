@@ -85,7 +85,21 @@ type CopyDestOptions struct {
 	// PartSize specifies the part size for multipart copy operations.
 	// If not specified, defaults to maxPartSize (5 GiB).
 	PartSize uint64
+
+	// AnnotationDirective controls whether the source object's annotations are
+	// copied to the destination. Valid values are CopyAnnotationsDirective
+	// ("COPY", the default when unset) and ExcludeAnnotationsDirective
+	// ("EXCLUDE"). Sent as the x-amz-annotation-directive header.
+	AnnotationDirective string
 }
+
+// Annotation directives for CopyDestOptions.AnnotationDirective.
+const (
+	// CopyAnnotationsDirective copies the source object's annotations to the destination.
+	CopyAnnotationsDirective = "COPY"
+	// ExcludeAnnotationsDirective excludes the source object's annotations from the destination.
+	ExcludeAnnotationsDirective = "EXCLUDE"
+)
 
 // Process custom-metadata to remove a `x-amz-meta-` prefix if
 // present and validate that keys are distinct (after this
@@ -147,6 +161,10 @@ func (opts CopyDestOptions) Marshal(header http.Header) {
 	}
 	if opts.ChecksumType.IsSet() {
 		header.Set(amzChecksumAlgo, opts.ChecksumType.String())
+	}
+
+	if opts.AnnotationDirective != "" {
+		header.Set("x-amz-annotation-directive", opts.AnnotationDirective)
 	}
 
 	if opts.ReplaceMetadata {
@@ -368,6 +386,7 @@ func (c *Client) copyObjectPartDo(ctx context.Context, srcBucket, srcObject, des
 		return p, err
 	}
 	p.PartNumber, p.ETag = partID, cpObjRes.ETag
+	cpObjRes.setChecksums(&p)
 	return p, nil
 }
 
@@ -406,6 +425,7 @@ func (c *Client) uploadPartCopy(ctx context.Context, bucket, object, uploadID st
 		return p, err
 	}
 	p.PartNumber, p.ETag = partNumber, cpObjRes.ETag
+	cpObjRes.setChecksums(&p)
 	return p, nil
 }
 
@@ -511,6 +531,19 @@ func (c *Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ..
 		userTags = dst.UserTags
 	} else {
 		userTags = srcObjectInfos[0].UserTags
+	}
+
+	// Set the requested checksum algorithm on the multipart upload.
+	if dst.ChecksumType.IsSet() {
+		meta := make(map[string]string, len(userMeta)+2)
+		for k, v := range userMeta {
+			meta[k] = v
+		}
+		meta[amzChecksumAlgo] = dst.ChecksumType.String()
+		if dst.ChecksumType.FullObjectRequested() {
+			meta[amzChecksumMode] = ChecksumFullObjectMode.String()
+		}
+		userMeta = meta
 	}
 
 	uploadID, err := c.newUploadID(ctx, dst.Bucket, dst.Object, PutObjectOptions{
