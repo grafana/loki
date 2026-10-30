@@ -486,6 +486,35 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	return totalBytes, nil
 }
 
+// lookupBounds returns the range a hint lookup for the query reads, and the end
+// of the first step's window.
+// A supported metric query has one log selector, so it has one matcher group.
+// A log query has one too, with a zero interval and offset, so its range is
+// unchanged and its first window ends at from.
+func lookupBounds(expr syntax.Expr, from, through time.Time, stepMillis int64) (readStart, readEnd, firstWindowEnd time.Time) {
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		readStart, readEnd = metricLookupBounds(groups[0], from, through, stepMillis)
+		return readStart, readEnd, readStart.Add(groups[0].Interval)
+	}
+	return from, through, from
+}
+
+// dryRunScoresNoStep reports whether the first step's window ends after the
+// ingester cutoff. Every later window does too, so the dry-run report would
+// skip them all.
+func dryRunScoresNoStep(cutoff, firstWindowEnd time.Time) bool {
+	return !cutoff.IsZero() && cutoff.Before(firstWindowEnd)
+}
+
+// ingesterWindowStart returns the oldest time queriers read from ingesters, or
+// the zero time when QueryIngestersWithin is unset.
+func (h *loglinePrefetchHandler) ingesterWindowStart(now time.Time) time.Time {
+	if h.queryIngestersWithin <= 0 {
+		return time.Time{}
+	}
+	return now.Add(-h.queryIngestersWithin).UTC()
+}
+
 // metricLookupBounds rounds onto the step, then widens by the range and offset.
 // Prefetch runs before the splitter, which floors the start and rounds the end up.
 // A zero interval or a zero step is only widened.
@@ -689,28 +718,17 @@ func (h *loglinePrefetchHandler) doDryRun(
 	direction logproto.Direction,
 	expr syntax.Expr,
 	from, through time.Time,
+	readStart, readEnd, firstWindowEnd time.Time,
+	cutoff time.Time,
 	queryBytes uint64,
 ) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, h.logger)
-	// A supported metric query has one log selector, so it has one matcher group.
-	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
-	readStart, readEnd := from, through
-	firstWindowEnd := from
-	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		readStart, readEnd = metricLookupBounds(groups[0], from, through, req.GetStep())
-		firstWindowEnd = readStart.Add(groups[0].Interval)
+	if dryRunScoresNoStep(cutoff, firstWindowEnd) {
+		return h.next.Do(ctx, req)
 	}
 	eligibleEnd := readEnd
-	if h.queryIngestersWithin > 0 {
-		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
-		// If the oldest window ends after the ingester cutoff, every later step does too.
-		// The correctness report would skip them all, so skip the hint lookup.
-		if cutoff.Before(firstWindowEnd) {
-			return h.next.Do(ctx, req)
-		}
-		if cutoff.Before(readEnd) {
-			eligibleEnd = cutoff
-		}
+	if !cutoff.IsZero() && cutoff.Before(readEnd) {
+		eligibleEnd = cutoff
 	}
 
 	if !h.dryRunInflight.CompareAndSwap(0, 1) {
@@ -957,8 +975,17 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// Shared eligibility: stats-based byte threshold.
 	from := req.GetStart().UTC()
 	through := req.GetEnd().UTC()
+	readStart, readEnd, firstWindowEnd := lookupBounds(expr, from, through, req.GetStep())
+	cutoff := h.ingesterWindowStart(time.Now())
+	// A lookup that would read only the ingester window never runs, so the
+	// size estimate would be an index-stats call for nothing. Neither does a
+	// dry-run lookup whose report would score no step.
+	recentOnly := !cutoff.IsZero() && !cutoff.After(readStart)
+	if mode == ModeDryRun {
+		recentOnly = dryRunScoresNoStep(cutoff, firstWindowEnd)
+	}
 	queryBytes := uint64(0)
-	if minQueryBytes > 0 {
+	if minQueryBytes > 0 && !recentOnly {
 		queryBytes, err = h.getQueryBytes(ctx, expr, from, through, req.GetStep())
 		if err != nil {
 			level.Warn(logger).Log(
@@ -990,12 +1017,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	if mode == ModeDryRun {
-		return h.doDryRun(ctx, req, direction, expr, from, through, queryBytes)
+		return h.doDryRun(ctx, req, direction, expr, from, through, readStart, readEnd, firstWindowEnd, cutoff, queryBytes)
 	}
 
 	ingesterCutoff := through
-	if h.queryIngestersWithin > 0 {
-		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
+	if !cutoff.IsZero() {
 		if cutoff.After(from) && cutoff.Before(through) {
 			ingesterCutoff = cutoff
 		} else if !cutoff.After(from) {
