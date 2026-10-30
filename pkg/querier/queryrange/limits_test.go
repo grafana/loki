@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -435,7 +436,7 @@ func Test_MaxQueryParallelismDisableClassification(t *testing.T) {
 	).Do(ctx, &LokiRequest{Query: query, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
 	require.Error(t, err)
 
-	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryParallelism,
 		server.FailureThrottled, "max_query_parallelism",
 		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
 
@@ -475,7 +476,7 @@ func Test_MaxQueryParallelismNoUsageLineForMetadataQuery(t *testing.T) {
 		}),
 	).Do(ctx, &LokiSeriesRequest{Match: []string{`{app="foo"}`}, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
 
-	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryParallelism,
 		server.FailureThrottled, "max_query_parallelism",
 		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
 	require.Empty(t, lines.all())
@@ -501,7 +502,7 @@ func Test_MaxQueryLengthClassification(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, called)
 
-	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryLength,
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryLength,
 		server.FailureLimit, "max_query_length",
 		http.StatusBadRequest, "the query time range exceeds the limit (query length: 48h0m0s, limit: 1d)")
 }

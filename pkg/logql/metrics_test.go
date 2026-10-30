@@ -19,6 +19,7 @@ import (
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -139,14 +140,14 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 		},
 		{
 			name:         "adds the syntax category when the query does not parse",
-			err:          logqlmodel.ErrParse,
+			err:          logqlerr.ErrParse,
 			wantErr:      "err=",
 			wantCategory: server.FailureSyntax,
 			wantReason:   "parse",
 		},
 		{
 			name:         "adds the limit category when the query hits a limit",
-			err:          logqlmodel.ErrLimit,
+			err:          logqlerr.ErrLimit,
 			wantErr:      "err=",
 			wantCategory: server.FailureLimit,
 			wantReason:   "series_limit",
@@ -167,7 +168,7 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 		},
 		{
 			name:         "adds the blocked category when a policy blocks the query",
-			err:          logqlmodel.ErrBlocked,
+			err:          logqlerr.ErrBlocked,
 			wantErr:      "err=",
 			wantCategory: server.FailureBlocked,
 			wantReason:   "blocked_by_policy",

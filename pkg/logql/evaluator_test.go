@@ -17,8 +17,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 type hintCapturingQuerier struct {
@@ -980,7 +980,7 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 	t.Run("fails at the first series over the tenant's series limit without reading the remaining samples", func(t *testing.T) {
 		querier := &seriesQuerier{series: streamFirstSeries("foo", "bar")}
 		_, err := execute(t, limitsWithMaxSeries(1), querier, `sum by (app) (count_over_time({app=~"foo|bar"}[1m]))`, time.Minute)
-		require.ErrorIs(t, err, logqlmodel.ErrLimit)
+		require.ErrorIs(t, err, logqlerr.ErrLimit)
 
 		totalSamples := 0
 		for _, s := range querier.series {
@@ -995,7 +995,7 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		querier := &seriesQuerier{series: append(series, errored, errored)}
 		_, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app) (count_over_time({app="foo"}[1m]))`, time.Minute)
 
-		require.EqualError(t, err, logqlmodel.NewPipelineErr(labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo")).Error())
+		require.EqualError(t, err, logqlerr.NewPipelineErr(labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo")).Error())
 
 		totalSamples := 0
 		for _, s := range querier.series {

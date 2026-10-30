@@ -17,7 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
@@ -37,7 +37,7 @@ func TestASTMapperware_DiscardedWorkStatsOnError(t *testing.T) {
 		shardsPerLeg  = 2
 	)
 
-	limitErr := wrapErr(logqlmodel.ErrQuerierTooManyBytes, httpgrpc.Errorf(http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"))
+	limitErr := wrapErr(logqlerr.ErrQuerierTooManyBytes, httpgrpc.Errorf(http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"))
 
 	var (
 		leftCalls   atomic.Int64
@@ -118,7 +118,7 @@ func TestASTMapperware_DiscardedWorkStatsOnError(t *testing.T) {
 	countBefore := failedQueryUsageCount(t, server.FailureLimit)
 
 	_, err := StatsCollectorMiddleware().Wrap(mware).Do(ctx, req)
-	require.ErrorIs(t, err, logqlmodel.ErrQuerierTooManyBytes)
+	require.ErrorIs(t, err, logqlerr.ErrQuerierTooManyBytes)
 	require.False(t, gateTimeout.Load(), "the left leg never completed, the test did not exercise the intended path")
 	require.Equal(t, int64(shardsPerLeg), leftCalls.Load())
 
@@ -182,7 +182,7 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Error(t, err)
 
-	requireSentinelClassification(t, err, logqlmodel.ErrQuerierTooManyBytes,
+	requireSentinelClassification(t, err, logqlerr.ErrQuerierTooManyBytes,
 		server.FailureLimit, "querier_too_large",
 		http.StatusBadRequest, fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "100 B", "10 B"))
 }
@@ -201,22 +201,22 @@ func TestQuerySizeLimitSpecs(t *testing.T) {
 	}{
 		"max_query_bytes_read": {
 			maxQueryBytesReadSpec, "MaxQueryBytesRead",
-			logqlmodel.ErrMaxQueryBytesRead, limErrQueryTooManyBytesTmpl,
+			logqlerr.ErrMaxQueryBytesRead, limErrQueryTooManyBytesTmpl,
 			server.FailureLimit, "max_query_bytes_read",
 		},
 		"max_querier_bytes_read": {
 			maxQuerierBytesReadSpec, "MaxQuerierBytesRead",
-			logqlmodel.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesTmpl,
+			logqlerr.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesTmpl,
 			server.FailureLimit, "querier_too_large",
 		},
 		"max_querier_bytes_read_shardable": {
 			maxQuerierBytesReadShardableSpec, "MaxQuerierBytesRead",
-			logqlmodel.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesShardableTmpl,
+			logqlerr.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesShardableTmpl,
 			server.FailureLimit, "querier_too_large",
 		},
 		"max_querier_bytes_read_unshardable": {
 			maxQuerierBytesReadUnshardableSpec, "MaxQuerierBytesRead",
-			logqlmodel.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesUnshardableTmpl,
+			logqlerr.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesUnshardableTmpl,
 			server.FailureLimit, "querier_too_large",
 		},
 	} {

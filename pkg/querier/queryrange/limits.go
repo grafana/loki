@@ -23,8 +23,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	querystats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
@@ -67,22 +67,22 @@ type querySizeLimitSpec struct {
 var (
 	maxQueryBytesReadSpec = querySizeLimitSpec{
 		limitName: "MaxQueryBytesRead",
-		sentinel:  logqlmodel.ErrMaxQueryBytesRead,
+		sentinel:  logqlerr.ErrMaxQueryBytesRead,
 		errorTmpl: limErrQueryTooManyBytesTmpl,
 	}
 	maxQuerierBytesReadSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		sentinel:  logqlerr.ErrQuerierTooManyBytes,
 		errorTmpl: limErrQuerierTooManyBytesTmpl,
 	}
 	maxQuerierBytesReadShardableSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		sentinel:  logqlerr.ErrQuerierTooManyBytes,
 		errorTmpl: limErrQuerierTooManyBytesShardableTmpl,
 	}
 	maxQuerierBytesReadUnshardableSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		sentinel:  logqlerr.ErrQuerierTooManyBytes,
 		errorTmpl: limErrQuerierTooManyBytesUnshardableTmpl,
 	}
 )
@@ -233,7 +233,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
 		queryLen := timestamp.Time(r.GetEnd().UnixMilli()).Sub(timestamp.Time(r.GetStart().UnixMilli()))
 		if queryLen > maxQueryLength {
-			return nil, fmt.Errorf("%w: %w", logqlmodel.ErrMaxQueryLength,
+			return nil, fmt.Errorf("%w: %w", logqlerr.ErrMaxQueryLength,
 				httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength)))
 		}
 	}
@@ -552,8 +552,8 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 
 	if parallelism < 1 {
 		err := fmt.Errorf("%w: %w",
-			logqlmodel.ErrMaxQueryParallelism,
-			httpgrpc.Errorf(http.StatusTooManyRequests, "%s", logqlmodel.ErrMaxQueryParallelism.Error()),
+			logqlerr.ErrMaxQueryParallelism,
+			httpgrpc.Errorf(http.StatusTooManyRequests, "%s", logqlerr.ErrMaxQueryParallelism.Error()),
 		)
 		// Rejected before rt.middleware runs, so the line is emitted here.
 		logFailedQueryUsageForRejection(ctx, request, err)
@@ -735,7 +735,7 @@ func validateMaxEntriesLimits(ctx context.Context, reqLimit uint32, limits Limit
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
-		return fmt.Errorf("%w: %w", logqlmodel.ErrMaxEntriesLimit,
+		return fmt.Errorf("%w: %w", logqlerr.ErrMaxEntriesLimit,
 			httpgrpc.Errorf(http.StatusBadRequest, maxSeriesErrTmpl, reqLimit, maxEntriesLimit))
 	}
 	return nil
