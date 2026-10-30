@@ -2,11 +2,17 @@ package godo
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"hash"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -99,6 +105,9 @@ type MicroVMsService interface {
 
 	Exec(ctx context.Context, id string, execRequest *MicroVMExecRequest) (*MicroVMExecResult, *Response, error)
 	ConsoleURL(id string, opt *MicroVMConsoleOptions) (string, error)
+
+	UploadFile(ctx context.Context, id string, uploadRequest *MicroVMFileUploadRequest) (*MicroVMFileInfo, *Response, error)
+	DownloadFile(ctx context.Context, id, path string) (*MicroVMFileDownload, *Response, error)
 }
 
 // MicroVMsServiceOp handles communication with the MicroVM related
@@ -166,6 +175,34 @@ type MicroVM struct {
 	HTTPProtocol  MicroVMHTTPProtocol `json:"http_protocol,omitempty"`
 	Created       string              `json:"created_at,omitempty"`
 	Tags          []string            `json:"tags,omitempty"`
+	// EgressPolicy is the outbound allow list set at create, as supplied.
+	// Nil when the MicroVM has no policy and egress is unrestricted.
+	EgressPolicy *MicroVMEgressPolicy `json:"egress_policy,omitempty"`
+}
+
+// MicroVMEgressAction is what happens to a destination no egress rule matches.
+type MicroVMEgressAction string
+
+const (
+	// MicroVMEgressActionDeny refuses unmatched destinations. It is the API default.
+	MicroVMEgressActionDeny = MicroVMEgressAction("deny")
+	// MicroVMEgressActionAllow permits unmatched destinations.
+	MicroVMEgressActionAllow = MicroVMEgressAction("allow")
+)
+
+// MicroVMEgressPolicy is an outbound allow list for a MicroVM. A destination
+// that matches any rule is allowed; DefaultAction decides every other one.
+type MicroVMEgressPolicy struct {
+	DefaultAction MicroVMEgressAction `json:"default_action,omitempty"`
+	Rules         []MicroVMEgressRule `json:"rules,omitempty"`
+}
+
+// MicroVMEgressRule is one allowed destination. Set exactly one of Domain
+// (an exact host or a `*.example.com` wildcard) or IP (an exact address;
+// CIDR ranges are not supported).
+type MicroVMEgressRule struct {
+	Domain string `json:"domain,omitempty"`
+	IP     string `json:"ip,omitempty"`
 }
 
 // AutoPauseConfig configures MicroVM auto-pause behavior. IdleTimeout is
@@ -215,6 +252,10 @@ type MicroVMCreateRequest struct {
 	// the MicroVM without a default URL; URLs can be added later with
 	// MicroVMsService.AddURL.
 	Ingress *bool `json:"ingress,omitempty"`
+	// EgressPolicy restricts where code in the MicroVM can connect. Nil leaves
+	// egress unrestricted, or inherits the origin's policy on a checkpoint
+	// restore. Only valid with public networking and fixed at create.
+	EgressPolicy *MicroVMEgressPolicy `json:"egress_policy,omitempty"`
 }
 
 // MicroVMCheckpointCreateRequest represents a request to create a checkpoint.
@@ -325,6 +366,67 @@ type MicroVMConsoleExit struct {
 // (e.g. state "resuming" while a paused MicroVM is auto-resumed).
 type MicroVMConsoleStatus struct {
 	State string `json:"state"`
+}
+
+// MicroVMFileUploadRequest is the input for UploadFile.
+type MicroVMFileUploadRequest struct {
+	// Path is the absolute destination inside the workload container. Its
+	// parent directory must already exist. Required.
+	Path string
+	// Body is the raw file content. nil writes an empty file.
+	Body io.Reader
+	// Size is the exact number of bytes Body yields. The API requires
+	// Content-Length and refuses chunked bodies, so Size must be set unless
+	// Body is a *bytes.Buffer, *bytes.Reader, or *strings.Reader, whose
+	// length is known. Must not exceed 64 MiB.
+	Size int64
+	// Mode is the octal permission string for the file, "0001" to "0777"
+	// (e.g. "0600"). Empty means the API default of "0644". Setuid, setgid,
+	// sticky, and "0000" are rejected by the API.
+	Mode string
+	// UID and GID set the file owner. Both or neither must be set; the
+	// default is the workload container's configured user.
+	UID *uint32
+	GID *uint32
+	// SHA256 is the optional lowercase hex digest of Body. When set, the API
+	// verifies the content before replacing the target and returns 422
+	// CHECKSUM_MISMATCH on a mismatch, leaving the target untouched.
+	SHA256 string
+}
+
+// MicroVMFileInfo is the metadata of a file written into a MicroVM.
+type MicroVMFileInfo struct {
+	Path      string `json:"path"`
+	SizeBytes uint64 `json:"size_bytes"`
+	// SHA256 is the lowercase hex digest of the content as written.
+	SHA256 string `json:"sha256"`
+	// Mode is the octal permission string as written, e.g. "0644".
+	Mode string `json:"mode"`
+	UID  uint32 `json:"uid"`
+	GID  uint32 `json:"gid"`
+}
+
+// MicroVMFileDownload is the streaming result of DownloadFile. Callers must
+// read Body to EOF and Close it. Body verifies the content against SHA256 as
+// it is read: the Read that reaches EOF returns ErrMicroVMFileChecksum instead
+// of io.EOF when the digest does not match.
+type MicroVMFileDownload struct {
+	Body io.ReadCloser
+	// SizeBytes is the content length announced by the API, or -1 when it
+	// was not sent.
+	SizeBytes int64
+	// SHA256 is the lowercase hex digest announced in X-Checksum-Sha256,
+	// describing the file as it was when the transfer began.
+	SHA256 string
+}
+
+// ErrMicroVMFileChecksum is returned by MicroVMFileDownload.Body when the
+// bytes read do not hash to the digest the API announced.
+var ErrMicroVMFileChecksum = errors.New("microvm file download: sha256 mismatch")
+
+// String returns a human-readable description of a MicroVMFileInfo.
+func (f MicroVMFileInfo) String() string {
+	return Stringify(f)
 }
 
 // String returns a human-readable description of a MicroVM.
@@ -816,4 +918,135 @@ func ParseMicroVMConsoleControl(data []byte) (*MicroVMConsoleControl, error) {
 		return nil, fmt.Errorf("microvm console: unrecognized control frame")
 	}
 	return ctrl, nil
+}
+
+// UploadFile writes a single file into the MicroVM's workload container
+// (PUT /v2/microvms/{id}/files), replacing any existing regular file
+// atomically. Requires the file_transfer feature gate (see GetCreateOptions
+// Features). A paused MicroVM is auto-resumed. The returned MicroVMFileInfo
+// carries the SHA-256 of the content as written; pass uploadRequest.SHA256 to
+// have the API verify it before the target is replaced.
+func (s *MicroVMsServiceOp) UploadFile(ctx context.Context, id string, uploadRequest *MicroVMFileUploadRequest) (*MicroVMFileInfo, *Response, error) {
+	if id == "" {
+		return nil, nil, NewArgError("id", "cannot be empty")
+	}
+	if uploadRequest == nil {
+		return nil, nil, NewArgError("uploadRequest", "cannot be nil")
+	}
+	if uploadRequest.Path == "" {
+		return nil, nil, NewArgError("uploadRequest.Path", "cannot be empty")
+	}
+	if uploadRequest.Size < 0 {
+		return nil, nil, NewArgError("uploadRequest.Size", "cannot be negative")
+	}
+	if (uploadRequest.UID == nil) != (uploadRequest.GID == nil) {
+		return nil, nil, NewArgError("uploadRequest.UID/GID", "must be set together")
+	}
+
+	u, err := s.client.BaseURL.Parse(fmt.Sprintf("%s/%s/files", microVMBasePath, id))
+	if err != nil {
+		return nil, nil, err
+	}
+	q := url.Values{}
+	q.Set("path", uploadRequest.Path)
+	if uploadRequest.Mode != "" {
+		q.Set("mode", uploadRequest.Mode)
+	}
+	if uploadRequest.UID != nil {
+		q.Set("uid", strconv.FormatUint(uint64(*uploadRequest.UID), 10))
+		q.Set("gid", strconv.FormatUint(uint64(*uploadRequest.GID), 10))
+	}
+	if uploadRequest.SHA256 != "" {
+		q.Set("sha256", uploadRequest.SHA256)
+	}
+	u.RawQuery = q.Encode()
+
+	body := uploadRequest.Body
+	if body == nil {
+		body = http.NoBody
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), body)
+	if err != nil {
+		return nil, nil, err
+	}
+	// The API requires Content-Length and answers 411 to a chunked body.
+	// http.NewRequest fills ContentLength for in-memory readers; anything
+	// else needs the caller's Size.
+	if uploadRequest.Size > 0 {
+		req.ContentLength = uploadRequest.Size
+	} else if req.ContentLength == 0 && req.Body != http.NoBody {
+		return nil, nil, NewArgError("uploadRequest.Size", "required when Body length is not known")
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Accept", mediaType)
+	req.Header.Set("User-Agent", s.client.UserAgent)
+	for k, v := range s.client.headers {
+		req.Header.Add(k, v)
+	}
+
+	info := new(MicroVMFileInfo)
+	resp, err := s.client.Do(ctx, req, info)
+	if err != nil {
+		return nil, resp, err
+	}
+	return info, resp, nil
+}
+
+// DownloadFile streams a single regular file out of the MicroVM's workload
+// container (GET /v2/microvms/{id}/files). Requires the file_transfer feature
+// gate. A paused MicroVM is auto-resumed; files over 64 MiB are refused. On
+// success the caller owns Body and must read it to EOF and Close it; Body
+// verifies the content against the announced SHA-256 as it is read.
+func (s *MicroVMsServiceOp) DownloadFile(ctx context.Context, id, path string) (*MicroVMFileDownload, *Response, error) {
+	if id == "" {
+		return nil, nil, NewArgError("id", "cannot be empty")
+	}
+	if path == "" {
+		return nil, nil, NewArgError("path", "cannot be empty")
+	}
+
+	q := url.Values{}
+	q.Set("path", path)
+	reqPath := fmt.Sprintf("%s/%s/files?%s", microVMBasePath, id, q.Encode())
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, reqPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+
+	resp, err := s.client.DoStream(ctx, req)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	out := &MicroVMFileDownload{
+		SizeBytes: resp.ContentLength,
+		SHA256:    strings.ToLower(strings.TrimSpace(resp.Header.Get("X-Checksum-Sha256"))),
+	}
+	out.Body = &microVMFileBody{body: resp.Body, hasher: sha256.New(), want: out.SHA256}
+	return out, resp, nil
+}
+
+// microVMFileBody hashes a download as it is read and reports a mismatch
+// against the announced digest in place of io.EOF.
+type microVMFileBody struct {
+	body   io.ReadCloser
+	hasher hash.Hash
+	want   string
+}
+
+func (b *microVMFileBody) Read(p []byte) (int, error) {
+	n, err := b.body.Read(p)
+	if n > 0 {
+		b.hasher.Write(p[:n])
+	}
+	if err == io.EOF && b.want != "" && hex.EncodeToString(b.hasher.Sum(nil)) != b.want {
+		return n, ErrMicroVMFileChecksum
+	}
+	return n, err
+}
+
+func (b *microVMFileBody) Close() error {
+	return b.body.Close()
 }
