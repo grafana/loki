@@ -1329,7 +1329,7 @@ github.com/influxdata/tdigest
 ## explicit; go 1.25.5
 github.com/influxdata/telegraf
 github.com/influxdata/telegraf/plugins/inputs
-# github.com/jaegertracing/jaeger-idl v0.13.2
+# github.com/jaegertracing/jaeger-idl v0.14.0
 ## explicit; go 1.25.0
 github.com/jaegertracing/jaeger-idl/model/v1
 github.com/jaegertracing/jaeger-idl/proto-gen/api_v2
