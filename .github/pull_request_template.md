@@ -18,7 +18,7 @@ Fixes #<issue number>
 - [ ] Changes that require user attention or interaction to upgrade are documented in `docs/sources/setup/upgrade/_index.md`
 - [ ] If the change is deprecating or removing a configuration option, update the `deprecated-config.yaml` and `deleted-config.yaml` files respectively in the `tools/deprecated-config-checker` directory. [Example PR](https://github.com/grafana/loki/pull/10840/commits/0d4416a4b03739583349934b96f272fb4f685d15)
 - [Backporting](https://github.com/grafana/loki/blob/main/docs/sources/community/maintaining/release/backport-commits.md). Checking these will not trigger a backport but can be used for verification that the backporting is complete
-  - [ ] Backport to `release-4.0.0`
+  - [ ] Backport to `release-4.0.x`
   - [ ] Backport to `release-3.7.x`
   - [ ] Backport to `release-3.6.x`
   - [ ] Backport to latest `k` release (dev)
