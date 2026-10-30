@@ -130,8 +130,6 @@ func (c *chunkDesc) observeRecordTimestamp(ts time.Time) {
 	}
 }
 
-type recordTimestampKey struct{}
-
 // maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
 // ones are ignored since UnixNano overflows after it.
 var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
@@ -143,21 +141,6 @@ var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
 // maxRecordTimestamp are ignored too.
 func validRecordTimestamp(ts time.Time) bool {
 	return ts.UnixMilli() > 0 && ts.Before(maxRecordTimestamp)
-}
-
-// withRecordTimestamp returns a context carrying the timestamp of the record being pushed, e.g. a
-// Kafka record. Timestamps that are not valid, see validRecordTimestamp, are ignored.
-func withRecordTimestamp(ctx context.Context, ts time.Time) context.Context {
-	if !validRecordTimestamp(ts) {
-		return ctx
-	}
-	return context.WithValue(ctx, recordTimestampKey{}, ts)
-}
-
-// recordTimestamp returns the timestamp of the record being pushed, if the context carries one.
-func recordTimestamp(ctx context.Context) (time.Time, bool) {
-	ts, ok := ctx.Value(recordTimestampKey{}).(time.Time)
-	return ts, ok
 }
 
 type entryWithError struct {
@@ -244,7 +227,8 @@ func (s *stream) Push(
 	usageTracker push.UsageTracker,
 	// format of the request - loki or otlp, mainly used for metrics
 	format string,
-
+	// Timestamp of the record (e.g. Kafka) the entries were ingested from, or zero if there is none.
+	recordTime time.Time,
 ) (int, error) {
 	if lockChunk {
 		s.chunkMtx.Lock()
@@ -277,7 +261,7 @@ func (s *stream) Push(
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
-	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format)
+	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format, recordTime)
 	s.recordAndSendToTailers(record, storedEntries)
 
 	if len(s.chunks) != prevNumChunks {
@@ -377,7 +361,7 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 	}
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string, recordTime time.Time) (int, []logproto.Entry, []entryWithError) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to store entries", trace.WithAttributes(
 		attribute.String("labels", s.labelsString)),
@@ -388,7 +372,6 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 	var invalid []entryWithError
 	storedEntries := make([]logproto.Entry, 0, len(entries))
-	recordTs, hasRecordTs := recordTimestamp(ctx)
 	for i := 0; i < len(entries); i++ {
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
@@ -411,8 +394,8 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		}
 		// Duplicates count too: the entry is stored once, by whichever record is processed first,
 		// and that order can differ between replicas.
-		if hasRecordTs {
-			chunk.observeRecordTimestamp(recordTs)
+		if !recordTime.IsZero() {
+			chunk.observeRecordTimestamp(recordTime)
 		}
 
 		s.entryCt++

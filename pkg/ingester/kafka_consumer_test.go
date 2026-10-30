@@ -52,9 +52,9 @@ var (
 
 type fakePusher struct {
 	pushes []*logproto.PushRequest
-	// recordTimestamps holds the record timestamp carried by the context of each push, if any.
-	recordTimestamps []time.Time
-	t                *testing.T
+	// ingestedAtMs holds the IngestedAtMs of each push.
+	ingestedAtMs []int64
+	t            *testing.T
 }
 
 func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logproto.PushResponse, error) {
@@ -72,8 +72,7 @@ func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logpr
 		req.Streams = append(req.Streams, newStream)
 	}
 	f.pushes = append(f.pushes, req)
-	ts, _ := recordTimestamp(ctx)
-	f.recordTimestamps = append(f.recordTimestamps, ts)
+	f.ingestedAtMs = append(f.ingestedAtMs, in.IngestedAtMs)
 	return nil, nil
 }
 
@@ -133,8 +132,8 @@ func TestConsumerPassesRecordTimestamp(t *testing.T) {
 	cancel()
 	wait()
 
-	// A record without a timestamp doesn't set one on the context.
-	require.Equal(t, []time.Time{recordTime, {}}, pusher.recordTimestamps)
+	// The record timestamp is passed as is; instance.Push ignores the ones it can't use.
+	require.Equal(t, []int64{recordTime.UnixMilli(), time.Time{}.UnixMilli()}, pusher.ingestedAtMs)
 }
 
 // consume runs the records of each stream through a consumer and returns what reached the

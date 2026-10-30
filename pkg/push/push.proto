@@ -18,6 +18,9 @@ message PushRequest {
   ];
   // format in which streams are ingested - loki or otlp
   string format = 2 [(gogoproto.jsontag) = "format"];
+  // Timestamp in milliseconds of the Kafka record the push was read from, or 0 if there is none.
+  // Only set by the ingester's Kafka consumer.
+  int64 ingested_at_ms = 3 [(gogoproto.jsontag) = "ingestedAtMs"];
 }
 
 message PushResponse {}
