@@ -3406,6 +3406,55 @@ func TestLive_MetricRange_LooksUpHints(t *testing.T) {
 	require.Equal(t, model.TimeFromUnixNano(now.UnixNano()), through)
 }
 
+func TestLive_MetricRange_UsesReadWindow(t *testing.T) {
+	start := time.Date(2026, 2, 26, 10, 0, 10, 0, time.UTC)
+	end := time.Date(2026, 2, 26, 10, 5, 10, 0, time.UTC)
+	step := time.Minute
+
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return metricMatrixResponse(1, end), nil
+	})
+	lookup := func(t *testing.T, query string) (model.Time, model.Time) {
+		t.Helper()
+		hp := &mockHintProvider{hints: &hintprovider.Hints{}}
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+		req := newTestLokiRequest(query, start, end)
+		req.Step = step.Milliseconds()
+		_, err := handler.Do(testTenantContextWithLive(), req)
+		require.NoError(t, err)
+		require.Equal(t, 1, hp.Calls())
+		return hp.Window()
+	}
+
+	t.Run("range metric", func(t *testing.T) {
+		query := `sum(count_over_time({app="api"} |= "timeout" [5m]))`
+		from, through := lookup(t, query)
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+		qb := querybounds.GetQueryBounds(start, end, step.Milliseconds(), expr, querybounds.QueryTypeMetricRange, false)
+		require.Equal(t, model.TimeFromUnixNano(qb.ReadStart.UnixNano()), from)
+		require.Equal(t, model.TimeFromUnixNano(qb.ReadEnd.UnixNano()), through)
+		require.True(t, qb.ReadStart.Before(start))
+	})
+
+	t.Run("offset", func(t *testing.T) {
+		query := `sum(count_over_time({app="api"} |= "timeout" [5m] offset 10m))`
+		from, through := lookup(t, query)
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+		qb := querybounds.GetQueryBounds(start, end, step.Milliseconds(), expr, querybounds.QueryTypeMetricRange, false)
+		require.Equal(t, model.TimeFromUnixNano(qb.ReadStart.UnixNano()), from)
+		require.Equal(t, model.TimeFromUnixNano(qb.ReadEnd.UnixNano()), through)
+		require.True(t, qb.ReadEnd.Before(end))
+	})
+
+	t.Run("log query keeps the request bounds", func(t *testing.T) {
+		from, through := lookup(t, `{app="api"} |= "timeout"`)
+		require.Equal(t, model.TimeFromUnixNano(start.UnixNano()), from)
+		require.Equal(t, model.TimeFromUnixNano(end.UnixNano()), through)
+	})
+}
+
 func TestDryRun_MetricInstant_PositiveSampleOverlapsWidenedHint(t *testing.T) {
 	tests := []struct {
 		name     string
