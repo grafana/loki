@@ -16,8 +16,8 @@ import (
 )
 
 type KeyValue struct {
-	Key         string
 	Value       AnyValue
+	Key         string
 	KeyStrindex int32
 }
 
