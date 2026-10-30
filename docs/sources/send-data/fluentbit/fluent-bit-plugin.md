@@ -120,6 +120,8 @@ Here is an example of how to deploy the Fluent Bit Helm chart to collect logs fr
    
    ```bash
    helm repo add fluent https://fluent.github.io/helm-charts
+   ```
+
 1. Create a `values.yaml` file with the following content:
 
    ```yaml
@@ -135,6 +137,7 @@ Here is an example of how to deploy the Fluent Bit Helm chart to collect logs fr
                http_user   XXX
                http_passwd XXX
                Labels agent=fluend-bit
+   ```
 
    Note we are only updating the `outputs` section of the Fluent Bit configuration. This is to replace the default output plugin with the Loki output plugin. If you need to update other parts of the Fluent Bit configuration refer to the [Fluent Bit values file reference](https://github.com/fluent/helm-charts/blob/main/charts/fluent-bit/values.yaml).
 
@@ -142,6 +145,7 @@ Here is an example of how to deploy the Fluent Bit Helm chart to collect logs fr
 
    ```bash
    helm install fluent-bit fluent/fluent-bit -f values.yaml
+   ```
 
 ## Next steps
 
