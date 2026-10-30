@@ -332,6 +332,71 @@ func TestBuildOptions_WithInvalidStorageSchema_SetDegraded(t *testing.T) {
 	require.Equal(t, degradedErr, err)
 }
 
+func TestBuildOptions_WithDeprecatedStorageSchema_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid object storage schema contents: spec contains deprecated schema versions: [v11]",
+		Reason:  lokiv1.ReasonStorageNeedsSchemaUpdate,
+		Requeue: false,
+	}
+
+	stack := &lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						//nolint:staticcheck
+						Version:       lokiv1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-01",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		_, isLokiStack := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+		if name.Name == defaultSecret.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	_, err := BuildOptions(context.TODO(), k, stack, featureGates)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
 func TestBuildOptions_WhenMissingCAConfigMap_SetDegraded(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}

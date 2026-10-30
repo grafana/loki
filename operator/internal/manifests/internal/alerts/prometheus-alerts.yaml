@@ -182,17 +182,17 @@ groups:
   - alert: LokistackSchemaUpgradesRequired
     annotations:
       description: |-
-        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" is using a storage schema
-        configuration that does not contain the latest schema version. It is recommended to update the schema
-        configuration to update the schema version to the latest version in the future.
-      summary: "One or more of the deployed LokiStacks contains an outdated storage schema configuration."
+        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" contains deprecated v11 or v12 schemas which are not supported.
+        The LokiStack is in a degraded state and will not reconcile until all v11 and v12 schemas are removed from the configuration.
+        You must migrate to v13 schemas before this LokiStack can be reconciled.
+      summary: "LokiStack contains deprecated storage schemas and is in a degraded state."
       runbook_url: "[[ .RunbookURL ]]#Lokistack-Schema-Upgrades-Required"
     expr: |
       sum (
-        lokistack_status_condition{reason="StorageNeedsSchemaUpdate",status="true"}
+        lokistack_status_condition{condition="Degraded",reason="StorageNeedsSchemaUpdate",status="true"}
       ) by (stack_namespace, stack_name)
       > 0
-    for: 1m
+    for: 5m
     labels:
       severity: warning
   - alert: LokistackComponentsNotReadyWarning

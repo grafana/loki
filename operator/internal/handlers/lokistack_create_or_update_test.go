@@ -852,7 +852,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 
 			degradedErr := err.(*status.DegradedError)
 			require.Contains(t, degradedErr.Message, "spec contains deprecated schema versions")
-			require.Equal(t, lokiv1.ReasonInvalidObjectStorageSchema, degradedErr.Reason)
+			require.Equal(t, lokiv1.ReasonStorageNeedsSchemaUpdate, degradedErr.Reason)
 			require.False(t, degradedErr.Requeue)
 		})
 	}

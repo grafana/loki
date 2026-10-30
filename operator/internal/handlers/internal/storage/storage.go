@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 // The returned error can be a status.DegradedError in the following cases:
 //   - The user-provided object storage secret is missing.
 //   - The object storage Secret data is invalid.
+//   - The object storage schema config contains deprecated schema versions.
 //   - The object storage schema config is invalid.
 //   - The object storage CA ConfigMap is missing if one referenced.
 //   - The object storage CA ConfigMap data is invalid.
@@ -53,9 +55,14 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		stack.Spec.Limits,
 	)
 	if err != nil {
+		// Distinguish deprecated schema versions from invalid schema configurations.
+		reason := lokiv1.ReasonInvalidObjectStorageSchema
+		if _, ok := errors.AsType[*storage.DeprecatedSchemaError](err); ok {
+			reason = lokiv1.ReasonStorageNeedsSchemaUpdate
+		}
 		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage schema contents: %s", err),
-			Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
+			Reason:  reason,
 			Requeue: false,
 		}
 	}

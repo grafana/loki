@@ -335,15 +335,17 @@ One or more Loki ingesters are failing to flush at least 20% of their chunks to 
   - **For Capacity Issues**: Increase storage size/IOPS or implement lifecycle policies
   - **For Configuration Issues**: Correct the LokiStack storage configuration and wait for a restart of the ingesters
 
-## Lokistack Storage Schema Warning
+## Lokistack Schema Upgrades Required
 
 ### Impact
 
-The LokiStack warns on a newer object storage schema being available for configuration.
+The schema configuration used in the LokiStack references schema version v11 and/or v12. These schema versions do not support all the features of LokiStack and their use is deprecated. It is recommended to update the LokiStack to use the newer v13 schema (or newer schemas once available) to have support for all features and also improve performance.
+
+The v11 and v12 schemas are not supported in this operator version (Loki Operator 0.13+, or 6.7+ for the Red Hat version). The LokiStack is in a degraded state and will not reconcile until the configuration is migrated to v13 and all references to the old schema versions are removed.
 
 ### Summary
 
-The schema configuration does not contain the most recent schema version and needs an update.
+The schema configuration contains deprecated v11 or v12 schemas. The configuration must be migrated to use schema v13 and the old schemas removed before the LokiStack can reconcile.
 
 ### Severity
 
@@ -358,7 +360,15 @@ The schema configuration does not contain the most recent schema version and nee
 
 ### Steps
 
-- Add a new object storage schema V13 with a future EffectiveDate
+There is a [more detailed migration guide](https://loki-operator.dev/docs/user-guides/migrate-to-v13-schemas/) available for this operation.
+
+Summary of migration steps:
+1. Add a new object storage schema v13 with a future EffectiveDate and make sure the LokiStack has a set retention
+2. Wait for the effective date to pass and v13 to become active
+3. Wait for the retention period to expire for old data
+4. Remove all v11/v12 schema entries from the LokiStack spec
+
+**Important**: You must remove ALL v11 and v12 schemas from the configuration, not just set v13 as the active schema. The operator will not reconcile LokiStacks that contain any v11 or v12 schema definitions.
 
 ## Lokistack Components Not Ready Warning
 
