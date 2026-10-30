@@ -45,7 +45,8 @@ func PopulateQueryParameters(msg proto.Message, values url.Values, filter *utili
 type DefaultQueryParser struct{}
 
 // Parse populates "values" into "msg".
-// A value is ignored if its key starts with one of the elements in "filter".
+// A value is ignored if its key starts with one of the elements in "filter",
+// or names a field that contains one of them.
 func (*DefaultQueryParser) Parse(msg proto.Message, values url.Values, filter *utilities.DoubleArray) error {
 	// A field is addressable by both its proto name and its JSON name, so two
 	// keys can set the same one. Record which fields have been set and refuse a
@@ -61,7 +62,7 @@ func (*DefaultQueryParser) Parse(msg proto.Message, values url.Values, filter *u
 
 		msgValue := msg.ProtoReflect()
 		fieldPath := normalizeFieldPath(msgValue, strings.Split(fieldKey, "."))
-		if filter.HasCommonPrefix(fieldPath) {
+		if filter.HasCommonPrefix(fieldPath) || containsFilteredField(filter, fieldPath) {
 			continue
 		}
 		field := strings.Join(fieldPath, ".") + mapKey
@@ -69,17 +70,42 @@ func (*DefaultQueryParser) Parse(msg proto.Message, values url.Values, filter *u
 			return fmt.Errorf("duplicate field %q", field)
 		}
 		seen[field] = struct{}{}
-		if err := populateFieldValueFromPath(msgValue, fieldPath, values); err != nil {
+		if err := populateFieldValueFromPath(msgValue, fieldPath, values, mapKey != ""); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// containsFilteredField reports whether fieldPath names a field that contains
+// one of the sequences in filter, such as "id" for a path parameter bound to
+// "id.value". Setting such a field from the query, which the parser can do for
+// well-known types like wrappers and timestamps, would replace the whole
+// message and with it the value already bound from the path or body.
+func containsFilteredField(filter *utilities.DoubleArray, fieldPath []string) bool {
+	if len(filter.Base) == 0 {
+		return false
+	}
+
+	var i int
+	for _, t := range fieldPath {
+		code, ok := filter.Encoding[t]
+		if !ok {
+			return false
+		}
+		j := filter.Base[i] + code
+		if len(filter.Check) <= j || filter.Check[j] != i+1 {
+			return false
+		}
+		i = j
+	}
+	return true
+}
+
 // PopulateFieldFromPath sets a value in a nested Protobuf structure.
 func PopulateFieldFromPath(msg proto.Message, fieldPathString string, value string) error {
 	fieldPath := strings.Split(fieldPathString, ".")
-	return populateFieldValueFromPath(msg.ProtoReflect(), fieldPath, []string{value})
+	return populateFieldValueFromPath(msg.ProtoReflect(), fieldPath, []string{value}, false)
 }
 
 func normalizeFieldPath(msgValue protoreflect.Message, fieldPath []string) []string {
@@ -114,7 +140,7 @@ func normalizeFieldPath(msgValue protoreflect.Message, fieldPath []string) []str
 	return newFieldPath
 }
 
-func populateFieldValueFromPath(msgValue protoreflect.Message, fieldPath []string, values []string) error {
+func populateFieldValueFromPath(msgValue protoreflect.Message, fieldPath []string, values []string, hasMapKey bool) error {
 	if len(fieldPath) < 1 {
 		return errors.New("no field path")
 	}
@@ -159,6 +185,14 @@ func populateFieldValueFromPath(msgValue protoreflect.Message, fieldPath []strin
 
 		// Get the nested message
 		msgValue = msgValue.Mutable(fieldDescriptor).Message()
+	}
+
+	// A key using the map syntax (field[key]=value) must name a map field.
+	// Otherwise the bracket content would be bound as if it were a regular
+	// value: appended as a phantom element of a repeated field, or counted
+	// as a second value for a singular one.
+	if hasMapKey && !fieldDescriptor.IsMap() {
+		return fmt.Errorf("field %q is not a map", fieldDescriptor.FullName().Name())
 	}
 
 	switch {
@@ -271,13 +305,13 @@ func parseField(fieldDescriptor protoreflect.FieldDescriptor, value string) (pro
 		}
 		return protoreflect.ValueOfUint64(v), nil
 	case protoreflect.FloatKind:
-		v, err := strconv.ParseFloat(value, 32)
+		v, err := parseFloat(value, 32)
 		if err != nil {
 			return protoreflect.Value{}, err
 		}
 		return protoreflect.ValueOfFloat32(float32(v)), nil
 	case protoreflect.DoubleKind:
-		v, err := strconv.ParseFloat(value, 64)
+		v, err := parseFloat(value, 64)
 		if err != nil {
 			return protoreflect.Value{}, err
 		}
@@ -317,13 +351,13 @@ func parseMessage(msgDescriptor protoreflect.MessageDescriptor, value string) (p
 		}
 		msg = durationpb.New(d)
 	case "google.protobuf.DoubleValue":
-		v, err := strconv.ParseFloat(value, 64)
+		v, err := parseFloat(value, 64)
 		if err != nil {
 			return protoreflect.Value{}, err
 		}
 		msg = wrapperspb.Double(v)
 	case "google.protobuf.FloatValue":
-		v, err := strconv.ParseFloat(value, 32)
+		v, err := parseFloat(value, 32)
 		if err != nil {
 			return protoreflect.Value{}, err
 		}
@@ -368,7 +402,9 @@ func parseMessage(msgDescriptor protoreflect.MessageDescriptor, value string) (p
 		msg = wrapperspb.Bytes(v)
 	case "google.protobuf.FieldMask":
 		fm := &field_mask.FieldMask{}
-		fm.Paths = append(fm.Paths, strings.Split(value, ",")...)
+		if value != "" {
+			fm.Paths = append(fm.Paths, strings.Split(value, ",")...)
+		}
 		msg = fm
 	case "google.protobuf.Value":
 		var v structpb.Value
