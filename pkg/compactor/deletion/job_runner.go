@@ -165,10 +165,10 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 			facade,
 			newChunkStart,
 			newChunkEnd,
+			// Preserve the source chunk's ingestion timestamp so the rewritten chunk
+			// keeps ingestion-time retention semantics under schema v14.
+			chks[0].IngestedAt,
 		)
-		// Preserve the source chunk's ingestion timestamp so the rewritten chunk
-		// keeps ingestion-time retention semantics under schema v14.
-		newChunk.IngestedAt = chks[0].IngestedAt
 
 		err = newChunk.Encode()
 		if err != nil {
