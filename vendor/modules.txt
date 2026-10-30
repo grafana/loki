@@ -1099,7 +1099,7 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-querystring v1.2.0
 ## explicit; go 1.13
 github.com/google/go-querystring/query
-# github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50
+# github.com/google/pprof v0.0.0-20261026192309-dbd0ed30aa88
 ## explicit; go 1.26.0
 github.com/google/pprof/profile
 # github.com/google/renameio/v2 v2.0.2
