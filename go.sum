@@ -635,8 +635,8 @@ github.com/onsi/ginkgo/v2 v2.33.1 h1:62XfWJbEIjPSCSDYrsCPP/SHcmH7O0M8ne8zfqQ2iz4
 github.com/onsi/ginkgo/v2 v2.33.1/go.mod h1:+aXOY+vzZ5mu2iI2HpTZUPmM//oQfsNFX6gU9kNcA44=
 github.com/onsi/gomega v1.44.0 h1:eAiGl3Pw5jz5GQdDff0BcxYpAX1JxW8xD7mFUuwNfZQ=
 github.com/onsi/gomega v1.44.0/go.mod h1:e/C2HwaZ1DhvjzXXuFhcR7hY7Sh9pl7MmoWKEjzwcdA=
-github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.163.0 h1:sYHFBsmOgnKDWl5rdBHwLzeoh1ATJx+V8zzrh2E4Ics=
-github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.163.0/go.mod h1:tNmfBSa+rNOQP3wNbbAHey39GG4+cyaEXmrEYP1+aSc=
+github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.164.1 h1:f8nqcV9KiF9Lem347vWjOTHWFz/A3k5w5yyfP1WUCHM=
+github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.164.1/go.mod h1:BWGqs98cnvOIxAMstzjYS/i9IqHruKwX3dVaf5dctLw=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.163.0 h1:218x+JDo748oiBblOfdGH8RYoKq5QpuCjoEfsw3HeVA=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.163.0/go.mod h1:WqdxJOOGJuZpaGZj+hQdLtaBrHP9D9scgWhuazB2A9w=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
