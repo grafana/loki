@@ -26,7 +26,7 @@ For more information about using OpenTelemetry with Grafana products, refer to t
 
 ## Loki configuration
 
-When logs are ingested by Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata](../../get-started/labels/structured-metadata/).
+When logs are ingested by Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/).
 
 You must set `allow_structured_metadata` to `true` within your Loki config file. Otherwise, Loki will reject the log payload as malformed.  Note that Structured Metadata is enabled by default in Loki 3.0 and later.
 
@@ -84,10 +84,11 @@ service:
 
 Since the OpenTelemetry protocol differs from the Loki storage model, here is how data in the OpenTelemetry format will be mapped by default to the Loki data model during ingestion, which can be changed as explained later:
 
-- Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. The default list of Resource Attributes to store as Index labels can be configured using `default_resource_attributes_as_index_labels` under [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). By default, the following resource attributes will be stored as index labels, while the remaining attributes are stored as [Structured Metadata](../../get-started/labels/structured-metadata/) with each log entry:
+- Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. The default list of Resource Attributes to store as Index labels can be configured using `default_resource_attributes_as_index_labels` under [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). The distributor's `otlp_config` also supports `defer_attribute_expansion`, which controls whether resource and scope attributes are expanded into Structured Metadata during parsing or only when needed downstream; most users do not need to change this setting. By default, the following resource attributes will be stored as index labels, while the remaining attributes are stored as [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/) with each log entry:
   - cloud.availability_zone
   - cloud.region
   - container.name
+  - deployment.environment
   - deployment.environment.name
   - k8s.cluster.name
   - k8s.container.name
@@ -111,16 +112,31 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
     For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs).
     {{< /admonition >}}
 
+- Service name discovery: Loki requires every log stream to carry a `service_name` label. If the incoming OTLP data includes a non-empty `service.name` resource attribute, Loki stores it as the `service_name` index label. If `service.name` is absent or empty, Loki looks through the other index labels for the first match from a configurable discovery list (by default: `service`, `app`, `application`, `name`, and others). The matched label's value is copied to `service_name`. If no label from the list is present, `service_name` is set to `unknown_service`. You can change the discovery list with `discover_service_name` in the [limits_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). For the full default list and more detail, refer to [Default labels for all users](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#default-labels-for-all-users).
+
 - Timestamp: One of `LogRecord.TimeUnixNano` or `LogRecord.ObservedTimestamp`, based on which one is set. If both are not set, the ingestion timestamp will be used.
 
 - LogLine: `LogRecord.Body` holds the body of the log. However, since Loki only supports Log body in string format, we will stringify non-string values using the [AsString method from the OTel collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
 
-- [Structured Metadata](../../get-started/labels/structured-metadata/): Anything which can’t be stored in Index labels and LogLine would be stored as Structured Metadata. Here is a non-exhaustive list of what will be stored in Structured Metadata to give a sense of what it will hold:
-  - Resource Attributes not stored as Index labels is replicated and stored with each log entry.
-  - Everything under InstrumentationScope is replicated and stored with each log entry.
-  - Everything under LogRecord except `LogRecord.Body`, `LogRecord.TimeUnixNano` and sometimes `LogRecord.ObservedTimestamp`.
+- [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/): Anything not stored as an Index label or LogLine is stored as Structured Metadata. This includes:
+  - Resource Attributes not stored as Index labels. These are replicated and stored with each log entry.
+  - Scope (InstrumentationScope) fields, replicated and stored with each log entry:
+    - `scope_name`: the instrumentation scope name (when non-empty).
+    - `scope_version`: the instrumentation scope version (when non-empty).
+    - `scope_dropped_attributes_count`: the number of scope attributes dropped (when non-zero).
+    - Any Scope Attributes not configured to be dropped.
+  - LogRecord fields (other than `Body` and the primary timestamp):
+    - `observed_timestamp`: stored only when both `LogRecord.TimeUnixNano` and `LogRecord.ObservedTimestamp` are set, since one of the two is already used as the entry timestamp.
+    - `severity_number`: the numeric severity (when non-zero).
+    - `severity_text`: the severity string such as `INFO` or `ERROR` (when non-empty). Always stored as Structured Metadata. Can also be promoted to an index label with `severity_text_as_label`.
+    - `trace_id`: the hex-encoded trace ID (when present). Use this to correlate logs with traces.
+    - `span_id`: the hex-encoded span ID (when present).
+    - `event_name`: the OTLP event name field (when non-empty).
+    - `flags`: the log record flags value (when non-zero).
+    - `dropped_attributes_count`: the number of log attributes dropped by the SDK (when non-zero).
+    - Any Log Attributes not configured to be dropped or promoted to index labels.
 
-The default list of resource attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
+The default list of resource attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
 
 {{< admonition type="caution" >}}
 Because of the potential for high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/), `k8s.pod.name` and `service.instance.id` are no longer recommended as default labels. But because removing these resource attributes from the default labels would be a breaking change for existing users, they have not yet been deprecated as default labels. If you are a new user of Grafana Loki, we recommend that you modify your Alloy or OpenTelemetry Collector configuration to convert `k8s.pod.name` and `service.instance.id` from index labels to structured metadata.
@@ -139,7 +155,7 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 - Flattening of nested Attributes
 
   While converting Attributes in OTLP to Index labels or Structured Metadata, any nested attribute values are flattened out using `_` as a separator.
-  It is done in a similar way as to how it is done in the [LogQL json parser](/docs/loki/<LOKI_VERSION>/query/log_queries/#json).
+  It is done in a similar way as to how it is done in the [LogQL json parser](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#json).
 
 - Stringification of non-string Attribute values
 
@@ -148,7 +164,7 @@ Things to note before ingesting OpenTelemetry logs to Loki:
   ### Changing the default mapping of OTLP to Loki Format
 
 Loki supports [per tenant](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) OTLP config which lets you change the default mapping of OTLP to Loki format for each tenant.
-It currently only supports changing the storage of Attributes. Here is what the config looks like:
+It supports changing how Attributes and select LogRecord fields are stored. Here is what the config looks like:
 
 ```yaml
 # OTLP log ingestion configurations
@@ -168,14 +184,20 @@ limits_config:
     # drop them altogether
     [scope_attributes: <list of attributes_configs>]
   
-    # Configuration for Log Attributes to store them as Structured Metadata or
-    # drop them altogether
+    # Configuration for Log Attributes to store them as index labels or
+    # Structured Metadata, or to drop them altogether
     [log_attributes: <list of attributes_configs>]
+
+    # When true, the severity_text field from the log record is also stored as
+    # an index label (it is always stored as Structured Metadata regardless of
+    # this setting). Not recommended unless absolutely necessary, since it can
+    # increase the number of streams.
+    [severity_text_as_label: <boolean> | default = false]
   
   attributes_config:
     # Configures action to take on matching Attributes. It allows one of
     # [structured_metadata, drop] for all Attribute types. It additionally allows
-    # index_label action for Resource Attributes
+    # index_label action for Resource Attributes and Log Attributes
     [action: <string> | default = ""]
   
     # List of attributes to configure how to store them or drop them altogether
@@ -186,7 +208,18 @@ limits_config:
     [regex: <Regexp>]
 ```
 
+Promoting a Log Attribute to an index label with `action: index_label` splits log entries into a different stream whenever the value of that attribute changes. Only do this for attributes with a small, stable set of values, since high-cardinality Log Attributes promoted to labels can create a large number of streams. For example, the following configuration promotes a log attribute named `http.route` to an index label:
+
+```yaml
+limits_config:
+  otlp_config:
+    log_attributes:
+      - action: index_label
+        attributes:
+          - http.route
+```
+
 {{< admonition type="note" >}}
-If you are a Grafana Cloud customer, you can use the [config self-serve API](https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve/#otlp-label-mappings) to configure your OTLP config.
+If you are a Grafana Cloud customer, you can use the [config self-serve UI](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/account-management/cloud-stacks/grafana-dbcfg-app/logs/#otlp-label-mappings) to configure your OTLP config.
 {{< /admonition >}}
   
