@@ -99,8 +99,6 @@
         'gomod',
       ],
       matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
         '!pkg/push/go.mod',
       ],
       groupName: '{{packageName}}',
@@ -125,8 +123,6 @@
         'github.com/aws/aws-sdk-go-v2/**',
       ],
       matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
         '!pkg/push/go.mod',
       ],
       groupName: 'aws-sdk-go-v2',
@@ -249,14 +245,6 @@
         '.github/workflows/release.yml',
         '.github/workflows/check.yml',
         '.github/workflows/images.yml',
-      ],
-      enabled: false,
-    },
-    {
-      // Disable operator updates
-      matchFileNames: [
-        'operator/go.mod',
-        'operator/api/loki/go.mod',
       ],
       enabled: false,
     },
