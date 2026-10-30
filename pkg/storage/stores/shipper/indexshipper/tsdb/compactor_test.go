@@ -635,10 +635,8 @@ func TestCompactor_Compact(t *testing.T) {
 						}
 
 						// now convert the compactedIndex to index.Index and verify the chunkmetas again
-						indexFiles, err := compactedIdx.ToIndexFiles()
+						indexFile, err := compactedIdx.ToIndexFile()
 						require.NoError(t, err)
-						require.Len(t, indexFiles, 1)
-						indexFile := indexFiles[0]
 
 						actualChunks = map[string]index.ChunkMetas{}
 						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
@@ -926,14 +924,12 @@ func TestCompactedIndex(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			indexFiles, err := compactedIndex.ToIndexFiles()
+			indexFile, err := compactedIndex.ToIndexFile()
 			if tc.shouldErr {
 				require.NotNil(t, err)
 				return
 			}
 			require.NoError(t, err)
-			require.Len(t, indexFiles, 1)
-			indexFile := indexFiles[0]
 
 			foundChunks := map[string][]retention.Chunk{}
 			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
@@ -1089,7 +1085,7 @@ func TestFormatV4IndexReadThroughStoreAndCompactor(t *testing.T) {
 	_, err = compactedIndex.IndexChunk(flushedChunk.ChunkRef, metric, flushedChunk.IngestedAt, writer.metas[0].KB, writer.metas[0].Entries)
 	require.NoError(t, err)
 
-	_, err = compactedIndex.ToIndexFiles()
+	_, err = compactedIndex.ToIndexFile()
 	require.NoError(t, err)
 
 	var got []retention.Chunk
@@ -1394,7 +1390,7 @@ func TestCompactedIndex_RoundTrip(t *testing.T) {
 						require.True(t, indexed)
 					}
 					if !rs.cleanup {
-						// removed and indexed chunks are only applied by ToIndexFiles, so every initial chunk still exists
+						// removed and indexed chunks are only applied by ToIndexFile, so every initial chunk still exists
 						chk := rs.initial[rng.IntN(len(rs.initial))]
 						exists, err := c.ChunkExists([]byte(userID), rs.ls, chunkMetaToChunkRef(userID, chk, rs.ls))
 						require.NoError(t, err)
@@ -1533,10 +1529,8 @@ func roundTripAdds(rng *rand.Rand, series []*roundTripSeries) []roundTripAdd {
 
 // verifyRoundTripIndex builds the index, checks it against the expected series and returns the index file.
 func verifyRoundTripIndex(t *testing.T, c *compactedIndex, series map[string]*roundTripSeries) []byte {
-	idxs, err := c.ToIndexFiles()
+	idx, err := c.ToIndexFile()
 	require.NoError(t, err)
-	require.Len(t, idxs, 1)
-	idx := idxs[0]
 	defer idx.Close()
 
 	actual := map[string]index.ChunkMetas{}
@@ -1786,14 +1780,14 @@ func allShardsOf(k uint32) []index.ShardAnnotation {
 	return shards
 }
 
-func TestCompactedIndex_ToShardedIndexFiles_AfterToIndexFilesHoldsSameSeries(t *testing.T) {
+func TestCompactedIndex_ToShardedIndexFiles_AfterToIndexFileHoldsSameSeries(t *testing.T) {
 	streams := shardTestStreams(64)
 	ci := newShardTestCompactedIndex(t, streams)
-	idxs, err := ci.ToIndexFiles()
+	idx, err := ci.ToIndexFile()
 	require.NoError(t, err)
-	tsdbFiles(t, idxs)
+	tsdbFiles(t, []shipperindex.Index{idx})
 
-	idxs, err = ci.ToShardedIndexFiles(4)
+	idxs, err := ci.ToShardedIndexFiles(4)
 	require.NoError(t, err)
 
 	require.ElementsMatch(t, streamFingerprints(streams), fileFingerprints(t, tsdbFiles(t, idxs)...))

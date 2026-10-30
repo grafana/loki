@@ -270,6 +270,7 @@ func TestTable_CompactionWritesShardedCopyOfUserIndexes(t *testing.T) {
 	}{
 		{name: "existing user indexes", perUser: IndexesConfig{NumCompactedFiles: 2}, numUsers: 3},
 		{name: "user indexes from multi-tenant files", perUser: IndexesConfig{NumUnCompactedFiles: 5}, numUsers: 3},
+		{name: "compacted and uncompacted user indexes", perUser: IndexesConfig{NumCompactedFiles: 1, NumUnCompactedFiles: 5}, numUsers: 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tempDir := t.TempDir()
@@ -305,6 +306,7 @@ func TestTable_CompactionUsesPerTenantShardFactor(t *testing.T) {
 	}{
 		{name: "existing user indexes", perUser: IndexesConfig{NumCompactedFiles: 2}},
 		{name: "user indexes from multi-tenant files", perUser: IndexesConfig{NumUnCompactedFiles: 5}},
+		{name: "compacted and uncompacted user indexes", perUser: IndexesConfig{NumCompactedFiles: 1, NumUnCompactedFiles: 5}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tempDir := t.TempDir()

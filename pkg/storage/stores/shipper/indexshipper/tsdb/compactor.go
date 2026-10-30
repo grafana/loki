@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -442,21 +443,23 @@ func (c *compactedIndex) ChunkExists(_ []byte, lbls labels.Labels, chunkRef logp
 
 func (c *compactedIndex) Cleanup() {}
 
-// ToIndexFiles creates an indexFile from the chunksmetas stored in the builder.
+// ToIndexFile creates an indexFile from the chunksmetas stored in the builder.
 // Before building the index, it takes care of the lined up updates i.e deletes and adding of new chunks.
-func (c *compactedIndex) ToIndexFiles() ([]shipperindex.Index, error) {
-	if err := c.applyUpdates(); err != nil {
-		return nil, err
-	}
-
-	idx, err := c.buildFile(c.builder, tsdbindex.ShardAnnotation{})
+func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
+	idxs, err := c.ToShardedIndexFiles(1)
 	if err != nil {
 		return nil, err
 	}
-	return []shipperindex.Index{idx}, nil
+
+	if len(idxs) < 1 {
+		return nil, errors.New("failed to build index file")
+
+	}
+
+	return idxs[0], err
 }
 
-// ToShardedIndexFiles is like ToIndexFiles, but with a shardFactor greater than 1 the series are
+// ToShardedIndexFiles is like ToIndexFile, but with a shardFactor greater than 1 the series are
 // partitioned by the top bits of their fingerprint into that many files, one per non-empty shard,
 // each named with its `<x>_of_<K>` range.
 func (c *compactedIndex) ToShardedIndexFiles(shardFactor int) ([]shipperindex.Index, error) {
@@ -465,7 +468,11 @@ func (c *compactedIndex) ToShardedIndexFiles(shardFactor int) ([]shipperindex.In
 	}
 
 	if shardFactor <= 1 || c.builder.numStreams() == 0 {
-		return c.ToIndexFiles()
+		idx, err := c.buildFile(c.builder, tsdbindex.ShardAnnotation{})
+		if err != nil {
+			return nil, err
+		}
+		return []shipperindex.Index{idx}, nil
 	}
 
 	k := uint32(shardFactor)
@@ -493,7 +500,8 @@ func (c *compactedIndex) ToShardedIndexFiles(shardFactor int) ([]shipperindex.In
 	return files, nil
 }
 
-// applyUpdates applies the lined up deletes and additions of chunks to the builder. It is a noop once applied.
+// applyUpdates applies the lined up deletes and additions of chunks to the
+// builder. It is idempotent and safe to call multiple times.
 func (c *compactedIndex) applyUpdates() error {
 	for seriesID, sc := range c.deleteChunks {
 		for _, chk := range sc.chunks {
