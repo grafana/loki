@@ -3,6 +3,7 @@ package limits
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -40,6 +41,10 @@ func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
 }
 
 func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_ string, _ string) (int, bool) {
+	return 0, false
+}
+
+func (m *mockLimits) PolicyStreamIdleExpiry(_ string, _ string) (time.Duration, bool) {
 	return 0, false
 }
 

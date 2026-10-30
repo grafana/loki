@@ -490,6 +490,34 @@ func (s *streamShardStore) Evict() map[string]int {
 	return evicted
 }
 
+// EvictIdle evicts the streams of policy buckets with an idle expiry that
+// have not been seen within it, mirroring usageStore.EvictIdle.
+func (s *streamShardStore) EvictIdle() map[string]int {
+	now := s.clock.Now()
+	evicted := make(map[string]int)
+	s.forEachLock(func(i int) {
+		for tenant, partitions := range s.stripes[i] {
+			expiries := tenantIdleExpiries(s.limits, tenant, partitions)
+			for _, policies := range partitions {
+				for policy, expiry := range expiries {
+					bucket, ok := policies[policy]
+					if !ok {
+						continue
+					}
+					cutoff := now.Add(-expiry).UnixNano()
+					for streamHash, stream := range bucket.streams {
+						if stream.lastSeenAt < cutoff {
+							bucket.remove(streamHash)
+							evicted[tenant]++
+						}
+					}
+				}
+			}
+		}
+	})
+	return evicted
+}
+
 // EvictPartitions evicts all streams for the specified partitions, mirroring
 // usageStore.EvictPartitions. It is called when this instance is no longer
 // assigned those partitions, see partition_lifecycler.go.

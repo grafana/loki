@@ -53,6 +53,47 @@ func getPolicyBucketAndStreamsLimit(limits Limits, numPartitions int, tenant, po
 	return noPolicy, defaultMaxStreams // Use default bucket (noPolicy)
 }
 
+// resolveIdleExpiry returns how long a stream in the policy bucket may go
+// unseen before it is evicted by EvictIdle, or 0 if the bucket has no idle
+// expiry. The shared noPolicy bucket never has one, as it holds the streams
+// of every policy that does not override the stream limits.
+//
+// It is shared by usageStore and streamShardStore so both evict the same
+// streams.
+func resolveIdleExpiry(limits Limits, tenant, policyBucket string) time.Duration {
+	if policyBucket == noPolicy {
+		return 0
+	}
+	expiry, ok := limits.PolicyStreamIdleExpiry(tenant, policyBucket)
+	if !ok || expiry <= 0 {
+		return 0
+	}
+	return expiry
+}
+
+// tenantIdleExpiries returns the idle expiry of each of the tenant's policy
+// buckets that has one, resolving each policy once rather than once per
+// partition.
+func tenantIdleExpiries[B any](limits Limits, tenant string, partitions map[int32]map[string]B) map[string]time.Duration {
+	var expiries map[string]time.Duration
+	seen := make(map[string]struct{})
+	for _, policies := range partitions {
+		for policy := range policies {
+			if _, ok := seen[policy]; ok {
+				continue
+			}
+			seen[policy] = struct{}{}
+			if expiry := resolveIdleExpiry(limits, tenant, policy); expiry > 0 {
+				if expiries == nil {
+					expiries = make(map[string]time.Duration)
+				}
+				expiries[policy] = expiry
+			}
+		}
+	}
+	return expiries
+}
+
 // usageStore stores per-tenant stream usage data.
 type usageStore struct {
 	activeWindow  time.Duration
@@ -313,6 +354,31 @@ func (s *usageStore) Evict() map[string]int {
 					for streamHash, stream := range streams {
 						if stream.lastSeenAt < cutoff {
 							delete(s.stripes[i][tenant][partition][policy], streamHash)
+							evicted[tenant]++
+						}
+					}
+				}
+			}
+		}
+	})
+	return evicted
+}
+
+// EvictIdle evicts the streams of policy buckets with an idle expiry that
+// have not been seen within it, see [resolveIdleExpiry].
+func (s *usageStore) EvictIdle() map[string]int {
+	now := s.clock.Now()
+	evicted := make(map[string]int)
+	s.forEachLock(func(i int) {
+		for tenant, partitions := range s.stripes[i] {
+			expiries := tenantIdleExpiries(s.limits, tenant, partitions)
+			for _, policies := range partitions {
+				for policy, expiry := range expiries {
+					cutoff := now.Add(-expiry).UnixNano()
+					streams := policies[policy]
+					for streamHash, stream := range streams {
+						if stream.lastSeenAt < cutoff {
+							delete(streams, streamHash)
 							evicted[tenant]++
 						}
 					}

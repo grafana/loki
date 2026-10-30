@@ -1,6 +1,8 @@
 package limiter
 
 import (
+	"time"
+
 	bloombuilder "github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	bloomplanner "github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
@@ -38,4 +40,5 @@ type CombinedLimits interface {
 	SortSchemaLabels(userID string) []string
 	DataObjShardLayout(userID string) streams.ShardLayout
 	CompactionPhases(userID string) (runIndex, runLog bool)
+	PolicyStreamIdleExpiry(userID, policy string) (time.Duration, bool)
 }

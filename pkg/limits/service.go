@@ -36,6 +36,15 @@ const (
 	partitionReadinessWaitAssignPeriod = 30 * time.Second
 )
 
+// Reasons for the stream eviction metrics.
+const (
+	// evictionReasonOld is for streams not seen within the active window.
+	evictionReasonOld = "old"
+	// evictionReasonPerPolicyOld is for streams evicted by a policy override
+	// for a shorter eviction.
+	evictionReasonPerPolicyOld = "per-policy-old"
+)
+
 type metrics struct {
 	streamEvictionsTotal            *prometheus.CounterVec
 	streamShardEvictionsTotal       *prometheus.CounterVec
@@ -47,13 +56,13 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		streamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_stream_evictions_total",
-			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
+			Help:      "The total number of streams evicted due to age per tenant and reason. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant", "reason"}),
 		streamShardEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_stream_shard_evictions_total",
-			Help:      "The total number of streams tracked for stream sharding that were evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
+			Help:      "The total number of streams tracked for stream sharding that were evicted due to age per tenant and reason. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant", "reason"}),
 		streamShardStreamsNotOwnedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_stream_shard_streams_not_owned_total",
@@ -392,23 +401,34 @@ func (s *Service) running(ctx context.Context) error {
 }
 
 // evictOldStreamsPeriodic runs a periodic job that evicts old streams.
-// It runs two evictions per window size.
+// It runs two evictions per window size. It also evicts the idle streams of
+// policies with a stream idle expiry, more often, as these expiries are
+// shorter than the active window.
 func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.EvictionInterval)
 	defer ticker.Stop()
+	idleTicker := time.NewTicker(s.cfg.IdleEvictionInterval)
+	defer idleTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			evicted := s.usage.Evict()
-			for tenant, numEvicted := range evicted {
-				s.metrics.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
-			}
-			for tenant, numEvicted := range s.streamShards.Evict() {
-				s.metrics.streamShardEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
-			}
+			s.recordEvictions(evictionReasonOld, s.usage.Evict(), s.streamShards.Evict())
+		case <-idleTicker.C:
+			s.recordEvictions(evictionReasonPerPolicyOld, s.usage.EvictIdle(), s.streamShards.EvictIdle())
 		}
+	}
+}
+
+// recordEvictions adds the per-tenant numbers of streams evicted from the
+// usage and stream shard stores to the eviction metrics.
+func (s *Service) recordEvictions(reason string, usage, streamShards map[string]int) {
+	for tenant, numEvicted := range usage {
+		s.metrics.streamEvictionsTotal.WithLabelValues(tenant, reason).Add(float64(numEvicted))
+	}
+	for tenant, numEvicted := range streamShards {
+		s.metrics.streamShardEvictionsTotal.WithLabelValues(tenant, reason).Add(float64(numEvicted))
 	}
 }
 
