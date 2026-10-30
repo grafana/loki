@@ -261,6 +261,13 @@ loop:
 			// still fail we will fall into the slower update below
 			// which waits (default) 5s between tries.
 			if now && err == nil && nowTries < 8 {
+				// This round merged: the metadata we just fetched was
+				// applied. Signal it and run the consumer's update hook
+				// before looping, otherwise everything waiting on a
+				// metadata update sleeps through every one of these
+				// rounds even though each of them updated.
+				cl.metawait.signal()
+				cl.consumer.doOnMetadataUpdate()
 				wait := min(cl.cfg.metadataMinAge, 250*time.Millisecond)
 				cl.cfg.logger.Log(LogLevelDebug, "immediate metadata update had inner errors, re-updating",
 					"errors", retryWhy.reason(""),
@@ -369,7 +376,7 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 				unknownTopics = append(unknownTopics, unknown)
 			}
 			var err error
-			unknownCreateResp, err = cl.fetchTopicMetadata(false, unknownTopics)
+			unknownCreateResp, err = cl.fetchTopicMetadata(false, unknownTopics, false) // prune: no; unknown produce topics only, the fetch below covers the rest
 			if err != nil {
 				// We bump all produce topics even though we
 				// only explicitly requested unknown ones; this
@@ -384,7 +391,7 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 		cl.producer.unknownTopicsMu.Unlock()
 	}
 
-	latest, err := cl.fetchTopicMetadata(all, reqTopics)
+	latest, err := cl.fetchTopicMetadata(all, reqTopics, true) // prune: yes; everything we track, so anything else is unwanted
 	if err != nil {
 		cl.bumpMetadataFailForTopics( // bump load failures for all topics
 			tpsProducerLoad,
@@ -450,24 +457,12 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 	// that we will store the topics at the end of our metadata update.
 	tpsConsumerLoad := tpsConsumer.load()
 	if all {
-		allTopics := make([]string, 0, len(latest))
-		for topic, mt := range latest {
-			// loadErr should only be non-nil when requesting all
-			// topics if this is with auto-topic-creation && the
-			// creation failed. That is, we should not consume the
-			// topic since we just tried creating it and creating
-			// it failed.
-			if mt.loadErr == nil {
-				allTopics = append(allTopics, topic)
-			}
-		}
-
 		// We filter out topics will not match any of our regex's.
 		// This ensures that the `tps` field does not contain topics
 		// we will never use (the client works with misc. topics in
 		// there, but it's better to avoid it -- and allows us to use
 		// `tps` in GetConsumeTopics).
-		allTopics = c.filterMetadataAllTopics(allTopics)
+		allTopics := c.filterMetadataAllTopics(latest)
 
 		tpsConsumerLoad = tpsConsumer.ensureTopics(allTopics)
 		defer tpsConsumer.storeData(tpsConsumerLoad)
@@ -663,8 +658,8 @@ func (mp metadataPartition) newPartition(cl *Client, kind partitionKind) *topicP
 
 // fetchTopicMetadata fetches metadata for all reqTopics and returns new
 // topicPartitionsData for each topic.
-func (cl *Client) fetchTopicMetadata(all bool, reqTopics []string) (map[string]*metadataTopic, error) {
-	_, meta, err := cl.fetchMetadataByName(cl.ctx, all, reqTopics, nil)
+func (cl *Client) fetchTopicMetadata(all bool, reqTopics []string, prune bool) (map[string]*metadataTopic, error) {
+	_, meta, err := cl.fetchMetadataByName(cl.ctx, all, reqTopics, prune, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -781,6 +776,12 @@ func (cl *Client) mergeTopicPartitions(
 ) {
 	isProduce := kind == partitionKindProduce
 	isShare := kind == partitionKindShare
+	// The logger is an interface, so the variadic slice and the interface
+	// boxes for every argument are built at the call site even when the
+	// logger drops the line. The logs below fire once per partition per
+	// metadata refresh, so for a client with many partitions that is
+	// continuous garbage forever; we only pay it if debug is on.
+	debug := cl.cfg.logger.Level() >= LogLevelDebug
 	lv := *l.load() // copy so our field writes do not collide with reads
 
 	r := mt.newPartitions(cl, kind)
@@ -835,8 +836,11 @@ func (cl *Client) mergeTopicPartitions(
 	//
 	// 2) a topic was deleted and recreated with fewer partitions
 	//
-	// Both of these scenarios should be rare to non-existent, and we do
-	// nothing if we encounter them.
+	// Case 1 is temporary and heals on a later refresh; case 2 is
+	// permanent. Below, we keep the missing partition around either way.
+	// For producers we bump its load error, which fails buffered records
+	// only once the unknown fail limit trips (so case 1 does not fail
+	// records); consumers keep consuming through the existing cursor.
 
 	// Migrating topicPartitions is a little tricky because we have to
 	// worry about underlying pointers that may currently be loaded.
@@ -851,9 +855,11 @@ func (cl *Client) mergeTopicPartitions(
 			// consuming, the partition is part of a group or part
 			// of what was loaded for direct consuming.
 			//
-			// We only clear a partition if it is purged from the
-			// client (which can happen automatically for consumers
-			// if the user opted into ConsumeRecreatedTopics).
+			// We only clear a partition if the topic is purged from
+			// the client, either manually via PurgeTopicsFromClient
+			// or automatically for regex consumers when the topic
+			// has been missing from metadata for longer than
+			// ConsiderMissingTopicDeletedAfter.
 			dup := *oldTP
 			newTP := &dup
 			newTP.loadErr = errMissingMetadataPartition
@@ -895,11 +901,47 @@ func (cl *Client) mergeTopicPartitions(
 		// fetched from an out of date broker. We just keep the old
 		// information.
 		if newTP.leaderEpoch < oldTP.leaderEpoch {
-			// If we repeatedly rewind, then perhaps the cluster
-			// entered some bad state and lost forward progress.
-			// We will log & allow the rewind to allow the client
-			// to continue; other requests may encounter fenced
-			// epoch errors (and respectively recover).
+			// A negative leader epoch is the "no leader" sentinel
+			// (Kafka uses -1): the partition is momentarily
+			// leaderless, e.g. mid-election after every replica
+			// restarted in a full cluster bounce. This is not a
+			// genuinely older epoch, so we must not treat it as a
+			// rewind. If we counted it toward maxEpochRewinds, then
+			// after enough leaderless refreshes we would fall through
+			// below and accept -1 as the partition's leader epoch --
+			// which is unsafe. A cursor at leader epoch -1 opts out of
+			// KIP-320 fencing: migrateCursorTo skips
+			// OffsetForLeaderEpoch validation for a negative new epoch,
+			// so a genuine log truncation during the leaderless window
+			// would go undetected (no ErrDataLoss), and the consumer
+			// would then fetch at a stale offset with currentLeaderEpoch
+			// -1 (which brokers never fence) and stall at the high
+			// watermark. Instead we keep our last known real leader and
+			// epoch and signal a retry; once a real epoch (>= old)
+			// reappears, normal validation runs and detects any
+			// truncation.
+			if newTP.leaderEpoch < 0 {
+				cl.cfg.logger.Log(LogLevelDebug, "metadata has a leader epoch of -1 (no leader); keeping our last known leader and epoch until a leader is elected",
+					"topic", topic,
+					"partition", part,
+					"old_leader_epoch", oldTP.leaderEpoch,
+				)
+				*newTP = *oldTP
+				retryWhy.add(topic, int32(part), errNoLeaderEpoch)
+				continue
+			}
+
+			// Otherwise newTP.leaderEpoch is a real (>= 0) epoch that
+			// is merely lower than ours. That can be the current
+			// reality: issue #119 saw an unclean leader election
+			// briefly surface a higher epoch from a broker that then
+			// died, leaving the surviving cluster on a real, lower
+			// epoch. Permanently refusing it stranded the client in an
+			// unrecoverable metadata loop, so if we repeatedly rewind we
+			// accept it to allow the client to continue. Unlike the -1
+			// sentinel handled above, a real lower epoch self-corrects
+			// downstream: consume sees FENCED_LEADER_EPOCH (and reports
+			// data loss) and produce sees NOT_LEADER_FOR_PARTITION.
 			//
 			// Five is a pretty low amount of retries, but since
 			// we iterate through known brokers, this basically
@@ -955,12 +997,14 @@ func (cl *Client) mergeTopicPartitions(
 		// If the tp data equals the old, then the sink / source is the
 		// same, because the sink/source is from the tp leader.
 		if newTP.topicPartitionData == oldTP.topicPartitionData {
-			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh has identical topic partition data",
-				"topic", topic,
-				"partition", part,
-				"leader", newTP.leader,
-				"leader_epoch", newTP.leaderEpoch,
-			)
+			if debug {
+				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh has identical topic partition data",
+					"topic", topic,
+					"partition", part,
+					"leader", newTP.leader,
+					"leader_epoch", newTP.leaderEpoch,
+				)
+			}
 			switch kind {
 			case partitionKindProduce:
 				newTP.records = oldTP.records
@@ -971,14 +1015,16 @@ func (cl *Client) mergeTopicPartitions(
 				newTP.cursor = oldTP.cursor // unlike records, there is no failing state for a cursor
 			}
 		} else {
-			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh topic partition data changed",
-				"topic", topic,
-				"partition", part,
-				"new_leader", newTP.leader,
-				"new_leader_epoch", newTP.leaderEpoch,
-				"old_leader", oldTP.leader,
-				"old_leader_epoch", oldTP.leaderEpoch,
-			)
+			if debug {
+				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh topic partition data changed",
+					"topic", topic,
+					"partition", part,
+					"new_leader", newTP.leader,
+					"new_leader_epoch", newTP.leaderEpoch,
+					"old_leader", oldTP.leader,
+					"old_leader_epoch", oldTP.leaderEpoch,
+				)
+			}
 			switch kind {
 			case partitionKindProduce:
 				oldTP.migrateProductionTo(newTP) // migration clears failing state
@@ -1014,32 +1060,38 @@ func (cl *Client) mergeTopicPartitions(
 		case partitionKindProduce:
 			if newTP.records.recBufsIdx == -1 {
 				newTP.records.sink.addRecBuf(newTP.records)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new produce partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new produce partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		case partitionKindShare:
 			if newTP.shareCursor.cursorsIdx == -1 {
 				newTP.shareCursor.source.Load().addShareCursor(newTP.shareCursor)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new share consume partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new share consume partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		default:
 			if newTP.cursor.cursorsIdx == -1 {
 				newTP.cursor.source.addCursor(newTP.cursor)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new consume partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new consume partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		}
 	}
@@ -1048,6 +1100,7 @@ func (cl *Client) mergeTopicPartitions(
 var (
 	errEpochRewind    = errors.New("epoch rewind")
 	errMissingTopicID = errors.New("missing topic ID")
+	errNoLeaderEpoch  = errors.New("no leader epoch")
 )
 
 type multiUpdateWhy map[kerrOrString]map[string]map[int32]struct{}
