@@ -9,11 +9,6 @@ import (
 	"testing"
 	"time"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
-	"github.com/grafana/loki/v3/pkg/querier/testutil"
-
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	json "github.com/json-iterator/go"
@@ -25,9 +20,13 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
