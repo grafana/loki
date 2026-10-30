@@ -5,7 +5,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 type httpTenantLimitsResponse struct {

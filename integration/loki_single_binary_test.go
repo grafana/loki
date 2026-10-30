@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/integration/client"
-	"github.com/grafana/loki/v3/integration/cluster"
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v4/integration/client"
+	"github.com/grafana/loki/v4/integration/cluster"
+	"github.com/grafana/loki/v4/pkg/storage/config"
 )
 
 func TestSingleBinaryIngestQuery(t *testing.T) {

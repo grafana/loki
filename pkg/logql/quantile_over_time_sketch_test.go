@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
+	"github.com/grafana/loki/v4/pkg/logql/sketch"
 )
 
 func TestProbabilisticQuantileMatrixSerialization(t *testing.T) {

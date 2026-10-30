@@ -7,7 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/oklog/ulid/v2"
 
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // A Manifest is a collection of related Tasks and Streams. A manifest is given

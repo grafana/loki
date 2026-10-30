@@ -9,9 +9,9 @@ import (
 	"github.com/grafana/dskit/ring"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/compactor/retention"
+	"github.com/grafana/loki/v4/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 const (

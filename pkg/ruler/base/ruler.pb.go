@@ -11,9 +11,9 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	_ "github.com/grafana/loki/v3/pkg/logproto"
-	github_com_grafana_loki_v3_pkg_logproto "github.com/grafana/loki/v3/pkg/logproto"
-	rulespb "github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	_ "github.com/grafana/loki/v4/pkg/logproto"
+	github_com_grafana_loki_v4_pkg_logproto "github.com/grafana/loki/v4/pkg/logproto"
+	rulespb "github.com/grafana/loki/v4/pkg/ruler/rulespb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -335,8 +335,8 @@ func (m *RuleStateDesc) GetEvaluationDuration() time.Duration {
 
 type AlertStateDesc struct {
 	State       string                                                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
-	Labels      []github_com_grafana_loki_v3_pkg_logproto.LabelAdapter `protobuf:"bytes,2,rep,name=labels,proto3,customtype=github.com/grafana/loki/v3/pkg/logproto.LabelAdapter" json:"labels"`
-	Annotations []github_com_grafana_loki_v3_pkg_logproto.LabelAdapter `protobuf:"bytes,3,rep,name=annotations,proto3,customtype=github.com/grafana/loki/v3/pkg/logproto.LabelAdapter" json:"annotations"`
+	Labels      []github_com_grafana_loki_v4_pkg_logproto.LabelAdapter `protobuf:"bytes,2,rep,name=labels,proto3,customtype=github.com/grafana/loki/v4/pkg/logproto.LabelAdapter" json:"labels"`
+	Annotations []github_com_grafana_loki_v4_pkg_logproto.LabelAdapter `protobuf:"bytes,3,rep,name=annotations,proto3,customtype=github.com/grafana/loki/v4/pkg/logproto.LabelAdapter" json:"annotations"`
 	Value       float64                                                `protobuf:"fixed64,4,opt,name=value,proto3" json:"value,omitempty"`
 	ActiveAt    time.Time                                              `protobuf:"bytes,5,opt,name=active_at,json=activeAt,proto3,stdtime" json:"active_at"`
 	FiredAt     time.Time                                              `protobuf:"bytes,6,opt,name=fired_at,json=firedAt,proto3,stdtime" json:"fired_at"`
@@ -475,7 +475,7 @@ var fileDescriptor_ca810a0fd7057a73 = []byte{
 	0xca, 0xa1, 0x55, 0xe5, 0x18, 0x54, 0x42, 0x32, 0xa4, 0x61, 0xbe, 0x65, 0x6f, 0x9d, 0xa7, 0xd7,
 	0x7f, 0x4a, 0x7d, 0x32, 0x9a, 0x9f, 0xca, 0xe8, 0x77, 0x24, 0xe0, 0x47, 0x87, 0xb2, 0xe2, 0x1f,
 	0x77, 0xad, 0x03, 0x3f, 0x10, 0x17, 0xe9, 0xd0, 0x19, 0xb1, 0xa9, 0xeb, 0x73, 0x32, 0x21, 0x11,
-	0x71, 0x43, 0x76, 0x19, 0xb8, 0xb3, 0x7d, 0x77, 0xf5, 0x3b, 0xe2, 0x28, 0x68, 0x7f, 0x4c, 0x62,
+	0x71, 0x43, 0x76, 0x19, 0xb8, 0xb3, 0x03, 0x77, 0xf5, 0x3b, 0xe2, 0x28, 0x68, 0x7f, 0x4c, 0x62,
 	0x41, 0xb9, 0x97, 0x95, 0xc1, 0x73, 0xa8, 0x93, 0x28, 0x62, 0x42, 0xf5, 0x99, 0x58, 0xc5, 0xd7,
 	0xad, 0xba, 0x5a, 0x4b, 0x2a, 0x20, 0x95, 0xa2, 0x6a, 0x13, 0x90, 0xa7, 0x0d, 0xdc, 0x07, 0x33,
 	0x7b, 0x6d, 0x44, 0x58, 0xe5, 0x0d, 0x6e, 0xb3, 0xa6, 0x61, 0x7d, 0x81, 0xbf, 0x82, 0xda, 0x24,
@@ -487,7 +487,7 @@ var fileDescriptor_ca810a0fd7057a73 = []byte{
 	0xf9, 0xf4, 0xf7, 0xb6, 0x63, 0x1c, 0x1d, 0xdc, 0xdc, 0xdb, 0xc6, 0xed, 0xbd, 0x6d, 0x3c, 0xde,
 	0xdb, 0xe8, 0xa7, 0x85, 0x8d, 0x7e, 0x5b, 0xd8, 0xe8, 0x7a, 0x61, 0xa3, 0x9b, 0x85, 0x8d, 0xfe,
 	0x5e, 0xd8, 0xe8, 0x9f, 0x85, 0x6d, 0x3c, 0x2e, 0x6c, 0x74, 0xf5, 0x60, 0x1b, 0x37, 0x0f, 0xb6,
-	0x71, 0xfb, 0x60, 0x1b, 0xc3, 0x8a, 0x6a, 0x6e, 0xff, 0xdf, 0x01, 0x00, 0xe9, 0x34, 0xd7, 0x09,
+	0x71, 0xfb, 0x60, 0x1b, 0xc3, 0x8a, 0x6a, 0x6e, 0xff, 0xdf, 0x01, 0x00, 0x87, 0xdf, 0xe9, 0x07,
 	0x4a, 0x07, 0x00, 0x00,
 }
 
@@ -2304,7 +2304,7 @@ func (m *AlertStateDesc) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Labels = append(m.Labels, github_com_grafana_loki_v3_pkg_logproto.LabelAdapter{})
+			m.Labels = append(m.Labels, github_com_grafana_loki_v4_pkg_logproto.LabelAdapter{})
 			if err := m.Labels[len(m.Labels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -2338,7 +2338,7 @@ func (m *AlertStateDesc) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Annotations = append(m.Annotations, github_com_grafana_loki_v3_pkg_logproto.LabelAdapter{})
+			m.Annotations = append(m.Annotations, github_com_grafana_loki_v4_pkg_logproto.LabelAdapter{})
 			if err := m.Annotations[len(m.Annotations)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}

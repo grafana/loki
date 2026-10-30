@@ -13,8 +13,8 @@ import (
 
 	"github.com/grafana/dskit/concurrency"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 // mergeShardStarted, when non-nil, runs at the start of each scheduled

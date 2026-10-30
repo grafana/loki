@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v4/pkg/logql/model/stats"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client"
 )
 
 var errFakeFailure = errors.New("fake failure")

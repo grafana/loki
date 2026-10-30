@@ -12,12 +12,12 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/arrowconv"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/internal/columnar"
+	memoryv2 "github.com/grafana/loki/v4/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 var tracer = otel.Tracer("pkg/dataobj/sections/indexpointers")

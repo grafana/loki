@@ -9,9 +9,9 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/kafka"
 
-	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline"
 )
 
 const (

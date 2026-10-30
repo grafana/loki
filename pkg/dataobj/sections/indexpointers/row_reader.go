@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/symbolizer"
 )
 
 // RowReader is a reader for index pointers in a data object.

@@ -10,12 +10,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/storage/chunk"
+	"github.com/grafana/loki/v4/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	loki_instrument "github.com/grafana/loki/v4/pkg/util/instrument"
 )
 
 type Filterable interface {

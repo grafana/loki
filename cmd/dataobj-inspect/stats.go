@@ -12,12 +12,12 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	statssection "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/postings"
+	statssection "github.com/grafana/loki/v4/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
 )
 
 // statsCommand prints stats for each data object in files.

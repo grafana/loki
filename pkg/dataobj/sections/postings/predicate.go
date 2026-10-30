@@ -7,9 +7,9 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/arrowconv"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // Predicate is an expression used to filter rows in a [Reader].

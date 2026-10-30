@@ -16,14 +16,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	internalserver "github.com/grafana/loki/v3/pkg/server"
+	internalserver "github.com/grafana/loki/v4/pkg/server"
 )
 
 func TestFlagDefaults(t *testing.T) {

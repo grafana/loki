@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/v4/pkg/logcli/client"
 )
 
 // TestEdgeCasesParameterValidation tests edge cases and parameter validation

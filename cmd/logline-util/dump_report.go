@@ -7,8 +7,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 func writeDumpReport(path string, reader logline.Reader, version, filePath string, includeGramFreq bool, gramSamples int) error {

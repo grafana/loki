@@ -13,14 +13,14 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
-	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
+	logql_log "github.com/grafana/loki/v4/pkg/logql/log"
+	logqlmodel "github.com/grafana/loki/v4/pkg/logql/model"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/querier/plan"
+	base "github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
 
 	"github.com/grafana/loki/pkg/push"
 )

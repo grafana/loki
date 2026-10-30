@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 func setupFrontend(t *testing.T, config Config) *Frontend {

@@ -14,8 +14,8 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/fatih/color"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
 )
 
 // listStreamsCommand lists the streams in the data object.

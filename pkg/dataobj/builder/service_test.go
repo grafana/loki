@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
-	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
+	dataobj_uploader "github.com/grafana/loki/v4/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v4/pkg/kafka"
 )
 
 func TestNew(t *testing.T) {

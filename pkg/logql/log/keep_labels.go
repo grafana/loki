@@ -1,6 +1,6 @@
 package log
 
-import logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+import logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 
 type KeepLabels struct {
 	labels []NamedLabelMatcher

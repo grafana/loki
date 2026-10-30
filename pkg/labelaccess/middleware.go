@@ -12,10 +12,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/labelaccess/types"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 type labelAccessMiddleware struct {

@@ -9,8 +9,8 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/logline"
 )
 
 func TestConfigValidation(t *testing.T) {

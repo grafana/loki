@@ -7,8 +7,8 @@ import (
 	"github.com/grafana/dskit/flagext"
 	dskitlog "github.com/grafana/dskit/log"
 
-	"github.com/grafana/loki/v3/pkg/storage"
-	lokiStorage "github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage"
+	lokiStorage "github.com/grafana/loki/v4/pkg/storage/config"
 )
 
 type FileConfig struct {

@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
 )
 
 // Limits contains all limits enforced by the limits frontend.

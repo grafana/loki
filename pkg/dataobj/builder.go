@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v4/pkg/scratch"
 )
 
 // A Builder builds data objects from a set of incoming log data. Log data is

@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/schedulerstat"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/queue/fair"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 var errUnassignable = fmt.Errorf("task has a terminal result or cancellation has been requested")

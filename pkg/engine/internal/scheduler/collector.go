@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/ewma"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/ewma"
 )
 
 // collector implements [prometheus.Collector], collecting metrics for a

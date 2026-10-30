@@ -11,8 +11,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/indexpointers"
 )
 
 func forEachIndexPointer(

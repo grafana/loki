@@ -1,14 +1,14 @@
 // Package columnar provides a base implementation for sections which store
 // columnar data using
-// [github.com/grafana/loki/v3/pkg/dataobj/internal/dataset].
+// [github.com/grafana/loki/v4/pkg/dataobj/internal/dataset].
 package columnar
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // Section represents an opened dataset-based section.

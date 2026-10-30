@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	yaml "go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/chunk"
+	"github.com/grafana/loki/v4/pkg/storage/config"
 )
 
 func BenchmarkExternalKey(b *testing.B) {

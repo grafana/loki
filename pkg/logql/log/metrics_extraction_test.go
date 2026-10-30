@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {

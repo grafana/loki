@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/dataset/buffer"
+	"github.com/grafana/loki/v4/pkg/dataset/encoding"
+	"github.com/grafana/loki/v4/pkg/dataset/encoding/wirecodec"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // Open reads a serialized dataset from r and returns the reconstructed

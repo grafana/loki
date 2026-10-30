@@ -12,9 +12,9 @@ import (
 	"github.com/grafana/dskit/log"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/clients/pkg/util"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v4/clients/pkg/util"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/util/flagext"
 )
 
 var defaultClientCfg = util.Config{}

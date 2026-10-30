@@ -15,15 +15,15 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion"
+	"github.com/grafana/loki/v4/pkg/compactor/retention"
+	"github.com/grafana/loki/v4/pkg/compression"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/storage/chunk"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/storage"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 var deleteFileBackoffConfig = backoff.Config{

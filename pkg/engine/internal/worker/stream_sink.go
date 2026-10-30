@@ -13,8 +13,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
 )
 
 // streamSink allows for sending records remotely across a stream.

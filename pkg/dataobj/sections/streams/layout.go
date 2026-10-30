@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // StreamOrder identifies the stream key that orders the stream IDs of a

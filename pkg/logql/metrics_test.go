@@ -18,15 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v4/pkg/logql/model"
+	"github.com/grafana/loki/v4/pkg/logql/model/stats"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/util/server"
 )
 
 func TestQueryType(t *testing.T) {

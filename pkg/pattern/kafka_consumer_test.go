@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/kafka/testkafka"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 func newKafkaTestIngester(t *testing.T, kafkaCfg kafka.Config) *Ingester {

@@ -11,7 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v4/pkg/logql/model/stats"
 )
 
 // Cache byte arrays by key.

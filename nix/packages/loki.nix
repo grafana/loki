@@ -14,7 +14,7 @@ pkgs.buildGoModule {
 
   ldflags =
     let
-      prefix = "github.com/grafana/loki/v3/pkg/util/build";
+      prefix = "github.com/grafana/loki/v4/pkg/util/build";
     in
     [
       "-s"

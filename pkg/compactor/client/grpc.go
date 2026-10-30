@@ -14,9 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 
-	compactor_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
+	compactor_grpc "github.com/grafana/loki/v4/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion/deletionproto"
 )
 
 type GRPCConfig struct {

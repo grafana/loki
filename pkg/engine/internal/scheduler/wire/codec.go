@@ -12,13 +12,13 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/oklog/ulid/v2"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
-	protoUlid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
-	arrowcodec "github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire/arrow"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/proto/physicalpb"
+	protoUlid "github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid"
+	"github.com/grafana/loki/v4/pkg/engine/internal/proto/wirepb"
+	arrowcodec "github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire/arrow"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 var DefaultFrameCodec = &protobufCodec{

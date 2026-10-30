@@ -3,7 +3,7 @@ package limits_test
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logline/limits"
+	"github.com/grafana/loki/v4/pkg/logline/limits"
 )
 
 // stubLimits is a test helper that satisfies limits.Limits.

@@ -3,7 +3,7 @@ package compute
 import (
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 type logicalKernel interface {

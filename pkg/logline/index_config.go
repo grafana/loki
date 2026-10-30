@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logline/shard"
+	"github.com/grafana/loki/v4/pkg/logline/shard"
 )
 
 const (

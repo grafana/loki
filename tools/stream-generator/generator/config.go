@@ -11,9 +11,9 @@ import (
 	dskit_log "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/ring"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
-	distributor_client "github.com/grafana/loki/v3/tools/stream-generator/distributor/client"
+	"github.com/grafana/loki/v4/pkg/kafka"
+	frontend_client "github.com/grafana/loki/v4/pkg/limits/frontend/client"
+	distributor_client "github.com/grafana/loki/v4/tools/stream-generator/distributor/client"
 )
 
 // Define default sizes for generated streams

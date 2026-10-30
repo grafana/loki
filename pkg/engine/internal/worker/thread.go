@@ -20,17 +20,17 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/scratch"
-	utillog "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v4/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v4/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/worker/workerstat"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/scratch"
+	utillog "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // RecordSink sends record batches to a destination. Used by drainPipeline so callers can inject mocks in tests.

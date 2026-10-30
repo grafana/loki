@@ -8,7 +8,7 @@ import (
 
 	"github.com/grafana/dskit/kv/memberlist"
 
-	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v4/pkg/util/build"
 )
 
 // ClusterSeed is the seed for the usage stats.

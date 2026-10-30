@@ -13,8 +13,8 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/builder"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/dataobj/builder"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
 )
 
 // BenchmarkLogObjectMerge merges 10 source objects into one. Every source holds

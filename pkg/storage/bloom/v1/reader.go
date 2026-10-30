@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
 )
 
 type BlockReader interface {

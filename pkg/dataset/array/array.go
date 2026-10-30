@@ -3,8 +3,8 @@
 package array
 
 import (
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
+	"github.com/grafana/loki/v4/pkg/columnar/types"
+	"github.com/grafana/loki/v4/pkg/dataset/buffer"
 )
 
 // Array describes encoded data stored within a dataset. Arrays are trees

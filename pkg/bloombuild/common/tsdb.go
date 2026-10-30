@@ -13,16 +13,16 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	baseStore "github.com/grafana/loki/v3/pkg/storage"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v4/pkg/compression"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
+	baseStore "github.com/grafana/loki/v4/pkg/storage"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v4/pkg/storage/types"
 )
 
 const (

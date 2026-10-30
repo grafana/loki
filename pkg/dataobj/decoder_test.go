@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/filemd"
 )
 
 func TestDecoder_ExtendedMetadataRegionEnd(t *testing.T) {

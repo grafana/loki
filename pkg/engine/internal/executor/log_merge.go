@@ -11,17 +11,17 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	v2 "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
+	dataobjindex "github.com/grafana/loki/v4/pkg/dataobj/index"
+	"github.com/grafana/loki/v4/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj/sortmerge"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 var errNoSourceObjects = errors.New("no source objects found")

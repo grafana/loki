@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange"
 )
 
 func TestAllStrategy(t *testing.T) {

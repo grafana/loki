@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v4/pkg/util/rangeio"
 )
 
 func FuzzReadRanges(f *testing.F) {

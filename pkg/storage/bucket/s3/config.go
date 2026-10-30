@@ -13,8 +13,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore/providers/s3"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket/http"
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/http"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 const (

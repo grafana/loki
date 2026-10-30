@@ -9,7 +9,7 @@ import (
 	"github.com/thanos-io/objstore"
 	thanos_s3 "github.com/thanos-io/objstore/providers/s3"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/s3"
 )
 
 // SSEConfigProvider defines a per-tenant SSE config provider.

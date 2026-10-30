@@ -14,8 +14,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/tools/doc-generator/parse"
+	"github.com/grafana/loki/v4/pkg/loki"
+	"github.com/grafana/loki/v4/tools/doc-generator/parse"
 )
 
 const (

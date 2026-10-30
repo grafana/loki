@@ -3,7 +3,7 @@ package postings
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // labelPostingKey is the unique key for a label posting aggregation entry.

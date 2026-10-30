@@ -7,11 +7,11 @@ import (
 	"github.com/grafana/dskit/flagext"
 	yaml "go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/azure"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/filesystem"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v4/pkg/storage/bucket/swift"
 )
 
 // NamedStores helps configure additional object stores from a given storage provider

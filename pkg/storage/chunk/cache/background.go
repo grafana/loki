@@ -12,9 +12,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/flagext"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/flagext"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // BackgroundConfig is config for a Background Cache.

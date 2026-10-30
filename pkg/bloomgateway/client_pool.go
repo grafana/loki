@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 
-	"github.com/grafana/loki/v3/pkg/util/jumphash"
+	"github.com/grafana/loki/v4/pkg/util/jumphash"
 )
 
 // PoolConfig is config for creating a Pool.

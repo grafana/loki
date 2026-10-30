@@ -20,9 +20,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // These tests cover the consumer-group machinery.

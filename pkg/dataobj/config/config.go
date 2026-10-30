@@ -4,11 +4,11 @@ import (
 	"flag"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/builder"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
-	"github.com/grafana/loki/v3/pkg/engine/compactor"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v4/pkg/dataobj/builder"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v4/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v4/pkg/engine/compactor"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/cache"
 )
 
 // DefaultStorageLag is the default of -dataobj.storage-lag.

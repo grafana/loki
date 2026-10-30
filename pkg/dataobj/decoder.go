@@ -11,8 +11,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/bufpool"
 )
 
 // errCannotCacheMetadata signals that extendedMetadataRegionEnd could not size a region to cache: it

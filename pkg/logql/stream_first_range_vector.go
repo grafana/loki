@@ -8,11 +8,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/v3/pkg/iter"
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/pkg/iter"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
+	"github.com/grafana/loki/v4/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
 )
 
 // streamFirstRangeVectorIterator is a RangeVectorIterator that accepts samples in any order.

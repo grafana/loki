@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/index/indexobj"
 )
 
 func BenchmarkWriteMetastores(b *testing.B) {

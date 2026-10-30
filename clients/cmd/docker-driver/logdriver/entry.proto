@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package logdriver;
 
-option go_package = "github.com/grafana/loki/v3/clients/cmd/docker-driver/logdriver";
+option go_package = "github.com/grafana/loki/v4/clients/cmd/docker-driver/logdriver";
 
 message LogAttr {
   string key = 1;

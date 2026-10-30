@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	syntaxutil "github.com/grafana/loki/v3/pkg/util/syntax"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
+	syntaxutil "github.com/grafana/loki/v4/pkg/util/syntax"
 )
 
 const (

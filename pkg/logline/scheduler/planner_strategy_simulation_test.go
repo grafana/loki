@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 // estimateDurationSeconds returns estimated total wall-clock seconds for a

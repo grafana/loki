@@ -24,11 +24,11 @@ import (
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	utillog "github.com/grafana/loki/v3/pkg/util/log"
-	serverutil "github.com/grafana/loki/v3/pkg/util/server"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/indexpointers"
+	utillog "github.com/grafana/loki/v4/pkg/util/log"
+	serverutil "github.com/grafana/loki/v4/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 const (

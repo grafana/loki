@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/util/validation"
+	"github.com/grafana/loki/v4/pkg/util/validation"
 )
 
 // MockLimits is a mock implementation of limits.Limits interface that can be used in tests

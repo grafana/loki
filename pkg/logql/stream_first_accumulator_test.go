@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
 )
 
 func TestCountAccumulator(t *testing.T) {

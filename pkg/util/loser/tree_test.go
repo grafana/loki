@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/util/loser"
+	"github.com/grafana/loki/v4/pkg/util/loser"
 )
 
 type List struct {

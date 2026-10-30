@@ -3,7 +3,7 @@ package iter
 import (
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 type queryClientIterator struct {

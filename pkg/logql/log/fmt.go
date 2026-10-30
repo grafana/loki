@@ -14,7 +14,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 )
 
 const (
