@@ -9,48 +9,8 @@ import (
 	"github.com/aws/smithy-go/ptr"
 )
 
-// CreateOAuth2Token API
-//
-// Path: /v1/token Request Method: POST Content-Type: application/json or
-// application/x-www-form-urlencoded
-//
-// This API implements OAuth 2.0 flows for AWS Sign-In CLI clients, supporting
-// both:
-//
-//   - Authorization code redemption (grant_type=authorization_code) - NOT
-//     idempotent
-//   - Token refresh (grant_type=refresh_token) - Idempotent within token validity
-//     window
-//
-// The operation behavior is determined by the grant_type parameter in the request
-// body:
-//
-// Authorization Code Flow (NOT Idempotent):
-//
-//   - JSON or form-encoded body with client_id, grant_type=authorization_code,
-//     code, redirect_uri, code_verifier
-//   - Returns access_token, token_type, expires_in, refresh_token, and id_token
-//   - Each authorization code can only be used ONCE for security (prevents replay
-//     attacks)
-//
-// Token Refresh Flow (Idempotent):
-//
-//   - JSON or form-encoded body with client_id, grant_type=refresh_token,
-//     refresh_token
-//   - Returns access_token, token_type, expires_in, and refresh_token (no
-//     id_token)
-//   - Multiple calls with same refresh_token return consistent results within
-//     validity window
-//
-// Authentication and authorization:
-//
-//   - Confidential clients: sigv4 signing required with signin:ExchangeToken
-//     permissions
-//   - CLI clients (public): authn/authz skipped based on client_id & grant_type
-//
-// Note: This operation cannot be marked as @idempotent because it handles both
-// idempotent (token refresh) and non-idempotent (auth code redemption) flows in a
-// single endpoint.
+// Exchanges an authorization code or refresh token for an OAuth 2.0 access token
+// and refresh token.
 func (c *Client) CreateOAuth2Token(ctx context.Context, params *CreateOAuth2TokenInput, optFns ...func(*Options)) (*CreateOAuth2TokenOutput, error) {
 	if params == nil {
 		params = &CreateOAuth2TokenInput{}
@@ -73,8 +33,8 @@ func (c *Client) CreateOAuth2Token(ctx context.Context, params *CreateOAuth2Toke
 // parameter in the request body.
 type CreateOAuth2TokenInput struct {
 
-	// Flattened token operation inputs The specific operation is determined by
-	// grant_type in the request body
+	// Flattened token operation inputs. The "grant_type" in the request body
+	// determines the specific operation.
 	//
 	// This member is required.
 	TokenInput *types.CreateOAuth2TokenRequestBody
@@ -94,8 +54,8 @@ func (in *CreateOAuth2TokenInput) bindEndpointParams(p *EndpointParameters) {
 // original request.
 type CreateOAuth2TokenOutput struct {
 
-	// Flattened token operation outputs The specific response fields depend on the
-	// grant_type used in the request
+	// Flattened token operation outputs. The specific response fields depend on the
+	// grant_type used in the request.
 	//
 	// This member is required.
 	TokenOutput *types.CreateOAuth2TokenResponseBody

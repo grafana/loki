@@ -8,15 +8,7 @@ import (
 	"github.com/aws/smithy-go/ptr"
 )
 
-// Grants permission to revoke an OAuth 2.0 refresh token and its associated
-// refresh tokens
-//
-// Revokes a refresh_token issued by AWS Sign-In, invalidating the entire token
-// chain so that the refresh_token can no longer be used to mint new access_tokens.
-//
-// Idempotency: revoking an already-revoked, expired, or otherwise invalid token
-// still returns 200 OK with an empty body. Only the refresh_token type is
-// accepted.
+// Revokes an OAuth 2.0 refresh token and its associated token chain.
 func (c *Client) RevokeOAuth2TokenWithIAM(ctx context.Context, params *RevokeOAuth2TokenWithIAMInput, optFns ...func(*Options)) (*RevokeOAuth2TokenWithIAMOutput, error) {
 	if params == nil {
 		params = &RevokeOAuth2TokenWithIAMInput{}
@@ -37,8 +29,8 @@ func (c *Client) RevokeOAuth2TokenWithIAM(ctx context.Context, params *RevokeOAu
 // RFC 7009 §2.1 revocation request. Contains the refresh_token to revoke.
 type RevokeOAuth2TokenWithIAMInput struct {
 
-	// The refresh_token to revoke. Must be a refresh_token issued by AWS Sign-In
-	// (prefix "ASOR"); access_tokens are not accepted for revocation.
+	// The refresh token to revoke. Must be a refresh token issued by AWS Sign-In.
+	// Access tokens are not accepted for revocation.
 	//
 	// This member is required.
 	Token *string
