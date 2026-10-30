@@ -70,7 +70,7 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 		step:        time.Minute,
 		hintRanges:  hintRanges,
 	}
-	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, RootContext(sampleExpr))
+	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, RootContext(sampleExpr, 0))
 	require.NoError(t, err)
 	require.NoError(t, stepEvaluator.Close())
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
@@ -98,7 +98,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 			options := &logproto.DataObjOptions{Eligible: true}
 			params := newParams(t, query).WithDataObjOptions(options)
 
-			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr)))
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr), 0))
 			require.NoError(t, err)
 			require.NoError(t, stepEvaluator.Close())
 
@@ -111,7 +111,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
 		params := newParams(t, queries["a sum of a range aggregation"])
 
-		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr)))
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr), 0))
 		require.NoError(t, err)
 		require.NoError(t, stepEvaluator.Close())
 
@@ -647,7 +647,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: "not-a-real-operation",
 		}
 
-		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false)
+		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, iteratorLimits{})
 		require.Error(t, err)
 		require.True(t, *closed)
 	})
@@ -659,7 +659,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: syntax.OpRangeTypeCount,
 		}
 
-		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false)
+		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, iteratorLimits{})
 		require.NoError(t, err)
 		require.False(t, *closed)
 
@@ -710,7 +710,7 @@ func TestNewVectorAggEvaluator_SumOfRangeAggregation(t *testing.T) {
 				return &emptyEvaluator{}, nil
 			})
 
-			_, err = newVectorAggEvaluator(context.Background(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr))
+			_, err = newVectorAggEvaluator(context.Background(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, 0))
 			require.NoError(t, err)
 			require.False(t, got.IsRoot())
 			require.False(t, got.OutputPreserving())
@@ -1134,7 +1134,7 @@ func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
 				return ev.NewStepEvaluator(ctx, factory, expr, p, nc)
 			}
 
-			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, RootContext(expr))
+			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, RootContext(expr, 0))
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 		})
@@ -1144,6 +1144,60 @@ func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
 // TestVectorAggEvaluator_Precision checks that the sum() and avg()
 // aggregations of VectorAggEvaluator use Kahan summation, and that avg()
 // switches to an incremental mean when the sum overflows float64.
+func TestVectorAggEvaluator_ShouldFailOnGroupsPastSeriesLimit(t *testing.T) {
+	const maxSeries = 3
+	vec := make(promql.Vector, 0, 10)
+	for i := range 10 {
+		vec = append(vec, promql.Sample{F: 1, Metric: labels.FromStrings("app", "a", "id", fmt.Sprint(i))})
+	}
+
+	for name, tc := range map[string]struct {
+		query   string
+		groups  int
+		wantErr bool
+	}{
+		"groups past the limit":           {query: `sum by (id) (rate({app="a"}[1m]))`, groups: 10, wantErr: true},
+		"groups past the limit with topk": {query: `topk by (id) (1, rate({app="a"}[1m]))`, groups: 10, wantErr: true},
+		"groups at the limit":             {query: `sum by (id) (rate({app="a"}[1m]))`, groups: maxSeries},
+		"one group":                       {query: `sum by (app) (rate({app="a"}[1m]))`, groups: 10},
+	} {
+		t.Run(name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
+				return &returnVectorEvaluator{vec: vec[:tc.groups]}, nil
+			})
+			ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, maxSeries))
+			require.NoError(t, err)
+
+			ok, _, _ := ev.Next()
+			if !tc.wantErr {
+				require.True(t, ok)
+				require.NoError(t, ev.Error())
+				return
+			}
+			require.False(t, ok)
+			require.Equal(t, logqlmodel.NewSeriesLimitError(maxSeries), ev.Error())
+			ok, _, _ = ev.Next()
+			require.False(t, ok)
+		})
+	}
+
+	t.Run("not preserving", func(t *testing.T) {
+		expr, err := syntax.ParseSampleExpr(`sum by (id) (rate({app="a"}[1m]))`)
+		require.NoError(t, err)
+		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
+			return &returnVectorEvaluator{vec: vec}, nil
+		})
+		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, maxSeries).child(false))
+		require.NoError(t, err)
+
+		ok, _, _ := ev.Next()
+		require.True(t, ok)
+		require.NoError(t, ev.Error())
+	})
+}
+
 func TestVectorAggEvaluator_Precision(t *testing.T) {
 	// newAggEvaluator builds the evaluator with newVectorAggEvaluator and
 	// returns next as the wrapped evaluator. A VectorAggEvaluator built by
@@ -1249,6 +1303,12 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 	})
 }
 
+func TestIteratorLimits(t *testing.T) {
+	require.NoError(t, iteratorLimits{}.exceeded(1_000_000))
+	require.NoError(t, iteratorLimits{maxSeries: 2}.exceeded(2))
+	require.Equal(t, logqlmodel.NewSeriesLimitError(2), iteratorLimits{maxSeries: 2}.exceeded(3))
+}
+
 func TestRangeAggPreservesSeries(t *testing.T) {
 	for op, want := range map[string]bool{
 		syntax.OpRangeTypeCount:              true,
@@ -1293,13 +1353,13 @@ func TestNodeContext(t *testing.T) {
 	})
 
 	t.Run("root of a query that returns series is preserving", func(t *testing.T) {
-		nc := RootContext(parse(t, `sum by (app) (`+rate+`)`))
+		nc := RootContext(parse(t, `sum by (app) (`+rate+`)`), 0)
 		require.True(t, nc.IsRoot())
 		require.True(t, nc.OutputPreserving())
 	})
 
 	t.Run("child is never the root", func(t *testing.T) {
-		nc := RootContext(parse(t, rate))
+		nc := RootContext(parse(t, rate), 0)
 
 		preserving := nc.child(true)
 		require.False(t, preserving.IsRoot())
@@ -1309,6 +1369,21 @@ func TestNodeContext(t *testing.T) {
 		require.Equal(t, NodeContext{}, nc.child(false))
 		require.Equal(t, NodeContext{}, preserving.child(false))
 		require.Equal(t, NodeContext{}, nc.child(false).child(true))
+	})
+
+	t.Run("series limit follows preserving children only", func(t *testing.T) {
+		nc := RootContext(parse(t, rate), 10)
+		require.Equal(t, iteratorLimits{maxSeries: 10}, nc.iteratorLimits())
+		require.Equal(t, iteratorLimits{maxSeries: 10}, nc.child(true).child(true).iteratorLimits())
+		require.Equal(t, iteratorLimits{}, nc.child(false).iteratorLimits())
+		require.Equal(t, iteratorLimits{}, nc.child(false).child(true).iteratorLimits())
+		require.Equal(t, iteratorLimits{}, nc.child(rangeAggPreservesSeries(syntax.OpRangeTypeAbsent)).iteratorLimits())
+	})
+
+	t.Run("zero series limit turns the cut-off off", func(t *testing.T) {
+		nc := RootContext(parse(t, rate), 0)
+		require.True(t, nc.OutputPreserving())
+		require.Equal(t, iteratorLimits{}, nc.iteratorLimits())
 	})
 
 	sketches := map[string]func(t *testing.T) syntax.SampleExpr{
@@ -1343,10 +1418,11 @@ func TestNodeContext(t *testing.T) {
 	}
 	for name, build := range sketches {
 		t.Run("root of a sketch is not preserving: "+name, func(t *testing.T) {
-			nc := RootContext(build(t))
+			nc := RootContext(build(t), 10)
 			require.True(t, nc.IsRoot())
 			require.False(t, nc.OutputPreserving())
 			require.False(t, nc.child(true).OutputPreserving())
+			require.Equal(t, iteratorLimits{}, nc.iteratorLimits())
 		})
 	}
 }

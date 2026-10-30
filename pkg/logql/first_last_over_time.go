@@ -15,6 +15,7 @@ import (
 func newFirstWithTimestampIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64,
+	limits iteratorLimits,
 ) RangeVectorIterator {
 	// forces at least one step.
 	if step == 0 {
@@ -35,6 +36,7 @@ func newFirstWithTimestampIterator(
 		agg:      nil,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
+		limits:   limits,
 	}
 	return &firstWithTimestampBatchRangeVectorIterator{
 		batchRangeVectorIterator: inner,
@@ -78,6 +80,7 @@ func (r *firstWithTimestampBatchRangeVectorIterator) agg(samples []promql.FPoint
 func newLastWithTimestampIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64,
+	limits iteratorLimits,
 ) RangeVectorIterator {
 	// forces at least one step.
 	if step == 0 {
@@ -98,6 +101,7 @@ func newLastWithTimestampIterator(
 		agg:      nil,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
+		limits:   limits,
 	}
 	return &lastWithTimestampBatchRangeVectorIterator{
 		batchRangeVectorIterator: inner,

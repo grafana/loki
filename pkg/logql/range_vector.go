@@ -42,7 +42,9 @@ type RangeVectorIterator interface {
 func newTimestampFirstRangeVectorIterator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
-	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
+	selRange, step, start, end, offset int64,
+	limits iteratorLimits,
+) (RangeVectorIterator, error) {
 	// forces at least one step.
 	if step == 0 {
 		step = 1
@@ -69,6 +71,7 @@ func newTimestampFirstRangeVectorIterator(
 			r:        expr,
 			current:  start - step, // first loop iteration will set it to start
 			offset:   offset,
+			limits:   limits,
 		}, nil
 	}
 	vectorAggregator, err := aggregator(expr)
@@ -85,6 +88,7 @@ func newTimestampFirstRangeVectorIterator(
 		agg:      vectorAggregator,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
+		limits:   limits,
 	}, nil
 }
 
@@ -97,6 +101,7 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
+	limits                               iteratorLimits
 	err                                  error
 }
 
@@ -172,6 +177,9 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 		if !ok {
 			var metric labels.Labels
 			if metric, ok = r.metrics[lbs]; !ok {
+				if r.err = r.limits.exceeded(len(r.metrics) + 1); r.err != nil {
+					return
+				}
 				var err error
 				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
@@ -481,6 +489,7 @@ type streamRangeVectorIterator struct {
 	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
+	limits                               iteratorLimits
 	err                                  error
 }
 
@@ -531,6 +540,9 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 		var ok bool
 		rangeAgg, ok = r.windowRangeAgg[lbs]
 		if !ok {
+			if r.err = r.limits.exceeded(len(r.windowRangeAgg) + 1); r.err != nil {
+				return
+			}
 			var metric labels.Labels
 			if _, ok = r.metrics[lbs]; !ok {
 				var err error
