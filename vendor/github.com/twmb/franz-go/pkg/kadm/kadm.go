@@ -153,6 +153,10 @@ func (cl *Client) Close() {
 //	UpdateFeatures
 //
 // Not all requests above are supported in the admin API.
+//
+// This is not safe to call concurrently with in-flight admin requests: the
+// value is read without synchronization while building requests. Set it once
+// after NewClient, before concurrent use.
 func (cl *Client) SetTimeoutMillis(millis int32) {
 	cl.timeoutMillis = millis
 }

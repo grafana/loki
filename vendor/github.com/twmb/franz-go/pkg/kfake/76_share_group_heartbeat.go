@@ -14,7 +14,6 @@ import (
 // * epoch -1: Leave group (release records, rebalance remaining members)
 // * epoch >0: Regular heartbeat (subscription changes, assignment delivery)
 // * Validates memberID format (non-empty, <=36 chars, client-generated UUID)
-// * Dispatched to the share group's manage goroutine for serialized access
 //
 // Version notes:
 // * v0: Initial share group heartbeat (KIP-932)
@@ -40,8 +39,8 @@ func (c *Cluster) handleShareGroupHeartbeat(creq *clientReq) (kmsg.Response, err
 	if ke := c.validateGroup(creq, req.GroupID); ke != nil {
 		return errResp(ke.Code)
 	}
-	if !c.allowedACL(creq, req.GroupID, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead) {
-		return errResp(kerr.GroupAuthorizationFailed.Code)
+	if e := c.deny(creq, req.GroupID, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.GroupID}); e != nil {
+		return errResp(e.Code)
 	}
 	if req.MemberID == "" || len(req.MemberID) > 36 {
 		return errResp(kerr.InvalidRequest.Code)
@@ -56,12 +55,10 @@ func (c *Cluster) handleShareGroupHeartbeat(creq *clientReq) (kmsg.Response, err
 		return errResp(kerr.InvalidRequest.Code)
 	}
 	for _, topic := range req.SubscribedTopicNames {
-		if !c.allowedACL(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
-			return errResp(kerr.TopicAuthorizationFailed.Code)
+		if e := c.deny(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe, faultKey{topic: topic}); e != nil {
+			return errResp(e.Code)
 		}
 	}
 
-	// Hijack to the share group's manage goroutine.
-	c.shareGroups.handleHeartbeat(creq)
-	return nil, nil
+	return c.shareGroups.handleHeartbeat(creq), nil
 }

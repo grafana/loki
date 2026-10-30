@@ -2,6 +2,7 @@ package kadm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -113,9 +114,7 @@ func NewACLs() *ACLBuilder {
 // This function does nothing for creating.
 func (b *ACLBuilder) AnyResource(name ...string) *ACLBuilder {
 	b.any = name
-	if len(name) == 0 {
-		b.anyResource = true
-	}
+	b.anyResource = len(name) == 0 // set OR clear: the last call wins
 	return b
 }
 
@@ -129,15 +128,13 @@ func (b *ACLBuilder) AnyResource(name ...string) *ACLBuilder {
 // function does nothing.
 func (b *ACLBuilder) Topics(t ...string) *ACLBuilder {
 	b.topics = t
-	if len(t) == 0 {
-		b.anyTopic = true
-	}
+	b.anyTopic = len(t) == 0 // set OR clear: the last call wins
 	return b
 }
 
 // MaybeTopics is the same as Topics, but does not match all topics if none are
 // provided.
-func (b *ACLBuilder) MaybeTopics(t ...string) *ACLBuilder { b.topics = t; return b }
+func (b *ACLBuilder) MaybeTopics(t ...string) *ACLBuilder { b.topics = t; b.anyTopic = false; return b }
 
 // Groups lists/deletes/creates ACLs of resource type "group" for the given
 // groups.
@@ -149,15 +146,13 @@ func (b *ACLBuilder) MaybeTopics(t ...string) *ACLBuilder { b.topics = t; return
 // function does nothing.
 func (b *ACLBuilder) Groups(g ...string) *ACLBuilder {
 	b.groups = g
-	if len(g) == 0 {
-		b.anyGroup = true
-	}
+	b.anyGroup = len(g) == 0 // set OR clear: the last call wins
 	return b
 }
 
 // MaybeGroups is the same as Groups, but does not match all groups if none are
 // provided.
-func (b *ACLBuilder) MaybeGroups(g ...string) *ACLBuilder { b.groups = g; return b }
+func (b *ACLBuilder) MaybeGroups(g ...string) *ACLBuilder { b.groups = g; b.anyGroup = false; return b }
 
 // Clusters lists/deletes/creates ACLs of resource type "cluster".
 //
@@ -185,15 +180,17 @@ func (b *ACLBuilder) MaybeClusters(c bool) *ACLBuilder { b.anyCluster = c; retur
 // function does nothing.
 func (b *ACLBuilder) TransactionalIDs(x ...string) *ACLBuilder {
 	b.txnIDs = x
-	if len(x) == 0 {
-		b.anyTxn = true
-	}
+	b.anyTxn = len(x) == 0 // set OR clear: the last call wins
 	return b
 }
 
 // MaybeTransactionalIDs is the same as TransactionalIDs, but does not match
 // all transactional ID's if none are provided.
-func (b *ACLBuilder) MaybeTransactionalIDs(x ...string) *ACLBuilder { b.txnIDs = x; return b }
+func (b *ACLBuilder) MaybeTransactionalIDs(x ...string) *ACLBuilder {
+	b.txnIDs = x
+	b.anyTxn = false
+	return b
+}
 
 // DelegationTokens lists/deletes/creates ACLs of resource type
 // "delegation_token" for the given delegation tokens.
@@ -205,15 +202,17 @@ func (b *ACLBuilder) MaybeTransactionalIDs(x ...string) *ACLBuilder { b.txnIDs =
 // tokens are provided, this function does nothing.
 func (b *ACLBuilder) DelegationTokens(t ...string) *ACLBuilder {
 	b.tokens = t
-	if len(t) == 0 {
-		b.anyToken = true
-	}
+	b.anyToken = len(t) == 0 // set OR clear: the last call wins
 	return b
 }
 
 // MaybeDelegationTokens is the same as DelegationTokens, but does not match
 // all tokens if none are provided.
-func (b *ACLBuilder) MaybeDelegationTokens(t ...string) *ACLBuilder { b.tokens = t; return b }
+func (b *ACLBuilder) MaybeDelegationTokens(t ...string) *ACLBuilder {
+	b.tokens = t
+	b.anyToken = false
+	return b
+}
 
 // Allow sets the principals to add allow permissions for. For listing and
 // deleting, you must also use AllowHosts.
@@ -226,15 +225,17 @@ func (b *ACLBuilder) MaybeDelegationTokens(t ...string) *ACLBuilder { b.tokens =
 // For listing & deleting, if the principals are empty, this matches any user.
 func (b *ACLBuilder) Allow(principals ...string) *ACLBuilder {
 	b.allow = principals
-	if len(principals) == 0 {
-		b.anyAllow = true
-	}
+	b.anyAllow = len(principals) == 0 // set OR clear: the last call wins
 	return b
 }
 
 // MaybeAllow is the same as Allow, but does not match all allowed principals
 // if none are provided.
-func (b *ACLBuilder) MaybeAllow(principals ...string) *ACLBuilder { b.allow = principals; return b }
+func (b *ACLBuilder) MaybeAllow(principals ...string) *ACLBuilder {
+	b.allow = principals
+	b.anyAllow = false
+	return b
+}
 
 // AllowHosts sets the hosts to add allow permissions for. If using this, you
 // must also use Allow.
@@ -247,15 +248,17 @@ func (b *ACLBuilder) MaybeAllow(principals ...string) *ACLBuilder { b.allow = pr
 // For listing & deleting, if the hosts are empty, this matches any host.
 func (b *ACLBuilder) AllowHosts(hosts ...string) *ACLBuilder {
 	b.allowHosts = hosts
-	if len(hosts) == 0 {
-		b.anyAllowHosts = true
-	}
+	b.anyAllowHosts = len(hosts) == 0 // set OR clear: the last call wins
 	return b
 }
 
 // MaybeAllowHosts is the same as AllowHosts, but does not match all allowed
 // hosts if none are provided.
-func (b *ACLBuilder) MaybeAllowHosts(hosts ...string) *ACLBuilder { b.allowHosts = hosts; return b }
+func (b *ACLBuilder) MaybeAllowHosts(hosts ...string) *ACLBuilder {
+	b.allowHosts = hosts
+	b.anyAllowHosts = false
+	return b
+}
 
 // Deny sets the principals to add deny permissions for. For listing and
 // deleting, you must also use DenyHosts.
@@ -268,15 +271,17 @@ func (b *ACLBuilder) MaybeAllowHosts(hosts ...string) *ACLBuilder { b.allowHosts
 // For listing & deleting, if the principals are empty, this matches any user.
 func (b *ACLBuilder) Deny(principals ...string) *ACLBuilder {
 	b.deny = principals
-	if len(principals) == 0 {
-		b.anyDeny = true
-	}
+	b.anyDeny = len(principals) == 0 // set OR clear: the last call wins
 	return b
 }
 
 // MaybeDeny is the same as Deny, but does not match all denied principals if
 // none are provided.
-func (b *ACLBuilder) MaybeDeny(principals ...string) *ACLBuilder { b.deny = principals; return b }
+func (b *ACLBuilder) MaybeDeny(principals ...string) *ACLBuilder {
+	b.deny = principals
+	b.anyDeny = false
+	return b
+}
 
 // DenyHosts sets the hosts to add deny permissions for. If using this, you
 // must also use Deny.
@@ -289,15 +294,17 @@ func (b *ACLBuilder) MaybeDeny(principals ...string) *ACLBuilder { b.deny = prin
 // For listing & deleting, if the hosts are empty, this matches any host.
 func (b *ACLBuilder) DenyHosts(hosts ...string) *ACLBuilder {
 	b.denyHosts = hosts
-	if len(hosts) == 0 {
-		b.anyDenyHosts = true
-	}
+	b.anyDenyHosts = len(hosts) == 0 // set OR clear: the last call wins
 	return b
 }
 
 // MaybeDenyHosts is the same as DenyHosts, but does not match all denied
 // hosts if none are provided.
-func (b *ACLBuilder) MaybeDenyHosts(hosts ...string) *ACLBuilder { b.denyHosts = hosts; return b }
+func (b *ACLBuilder) MaybeDenyHosts(hosts ...string) *ACLBuilder {
+	b.denyHosts = hosts
+	b.anyDenyHosts = false
+	return b
+}
 
 // ACLOperation is a type alias for kmsg.ACLOperation, which is an enum
 // containing all Kafka ACL operations and has helper functions.
@@ -546,8 +553,13 @@ func (b *ACLBuilder) ValidateCreate() error {
 
 	switch b.pattern {
 	case ACLPatternLiteral, ACLPatternPrefixed:
+	case ACLPatternUnknown: // unset; defaulted to literal at build time, per the ACLPattern docs
 	default:
 		return fmt.Errorf("invalid acl resource pattern %s for creating ACLs", b.pattern)
+	}
+
+	if len(b.ops) == 0 {
+		return fmt.Errorf("invalid empty operations for creating ACLs: Operations must be called")
 	}
 
 	if len(b.allowHosts) != 0 && len(b.allow) == 0 {
@@ -681,11 +693,22 @@ func (cl *Client) CreateACLs(ctx context.Context, b *ACLBuilder) (CreateACLsResu
 	if err := b.ValidateCreate(); err != nil {
 		return nil, err
 	}
-	if len(b.allow) != 0 && len(b.allowHosts) == 0 {
-		b.allowHosts = []string{"*"}
+	// Per the ACLPattern docs, literal is the default pattern. An unset
+	// pattern previously failed ValidateCreate outright, forcing every
+	// caller to spell out the documented default.
+	pattern := b.pattern
+	if pattern == ACLPatternUnknown {
+		pattern = ACLPatternLiteral
 	}
-	if len(b.deny) != 0 && len(b.denyHosts) == 0 {
-		b.denyHosts = []string{"*"}
+	// Default unset hosts to the wildcard in LOCALS: writing the default
+	// back into the builder is an observable side effect on reuse (a later
+	// AllowHosts-less filter call would inherit the create's wildcard).
+	allowHosts, denyHosts := b.allowHosts, b.denyHosts
+	if len(b.allow) != 0 && len(allowHosts) == 0 {
+		allowHosts = []string{"*"}
+	}
+	if len(b.deny) != 0 && len(denyHosts) == 0 {
+		denyHosts = []string{"*"}
 	}
 
 	var clusters []string
@@ -711,15 +734,15 @@ func (cl *Client) CreateACLs(ctx context.Context, b *ACLBuilder) (CreateACLsResu
 					hosts      []string
 					permType   kmsg.ACLPermissionType
 				}{
-					{b.allow, b.allowHosts, kmsg.ACLPermissionTypeAllow},
-					{b.deny, b.denyHosts, kmsg.ACLPermissionTypeDeny},
+					{b.allow, allowHosts, kmsg.ACLPermissionTypeAllow},
+					{b.deny, denyHosts, kmsg.ACLPermissionTypeDeny},
 				} {
 					for _, principal := range perm.principals {
 						for _, host := range perm.hosts {
 							c := kmsg.NewCreateACLsRequestCreation()
 							c.ResourceType = typeNames.t
 							c.ResourceName = name
-							c.ResourcePatternType = b.pattern
+							c.ResourcePatternType = pattern
 							c.Operation = op
 							c.Principal = principal
 							c.Host = host
@@ -995,6 +1018,29 @@ func createDelDescACL(b *ACLBuilder) ([]kmsg.DeleteACLsRequestFilter, []*kmsg.De
 		return nil, nil, err
 	}
 
+	// Per the ResourcePatternType docs, an unset pattern defaults to
+	// LITERAL. That default was never implemented: the zero value went out
+	// as UNKNOWN, which conformant brokers reject when parsing the request,
+	// so every describe or delete from a builder that never called
+	// ResourcePatternType failed against a real broker (kfake historically
+	// did not validate the pattern, hiding this). LITERAL is also the
+	// narrowest match, so a delete cannot silently cover prefixed or
+	// wildcard ACLs the caller did not ask for.
+	pattern := b.pattern
+	if pattern == ACLPatternUnknown {
+		pattern = ACLPatternLiteral
+	}
+
+	// Unset operations generated ZERO filters, silently doing nothing and
+	// returning no error. We error rather than defaulting to OpAny:
+	// MaybeOperations documents that providing none must NOT match all
+	// operations, and a delete must never widen on its own. Operations()
+	// with no arguments remains the documented way to ask for any.
+	if len(b.ops) == 0 {
+		return nil, nil, errors.New("no operations set: call Operations with no arguments to filter on any operation")
+	}
+	ops := b.ops
+
 	// As a special shortcut, if we have any allow and deny principals and
 	// hosts, we collapse these into one "any" group. The anyAny and
 	// anyAnyHosts vars are used in our looping below, and if we do this,
@@ -1038,7 +1084,7 @@ func createDelDescACL(b *ACLBuilder) ([]kmsg.DeleteACLsRequestFilter, []*kmsg.De
 			typeNames.names = sliceAny
 		}
 		for _, name := range typeNames.names {
-			for _, op := range b.ops {
+			for _, op := range ops {
 				for _, perm := range []struct {
 					principals   []string
 					anyPrincipal bool
@@ -1087,8 +1133,8 @@ func createDelDescACL(b *ACLBuilder) ([]kmsg.DeleteACLsRequestFilter, []*kmsg.De
 								describe.ResourceName = kmsg.StringPtr(name)
 							}
 
-							deletion.ResourcePatternType = b.pattern
-							describe.ResourcePatternType = b.pattern
+							deletion.ResourcePatternType = pattern
+							describe.ResourcePatternType = pattern
 
 							deletion.Operation = op
 							describe.Operation = op

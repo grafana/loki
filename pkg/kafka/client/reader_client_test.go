@@ -79,6 +79,27 @@ func TestNewReaderClient(t *testing.T) {
 	}
 }
 
+func TestNewReaderClientResetOffset(t *testing.T) {
+	_, cfg := testkafka.CreateCluster(t, 1, "test")
+
+	for _, tc := range []struct {
+		name string
+		opts []kgo.Opt
+		want kgo.Offset
+	}{
+		{name: "defaults to the start of the partition", want: kgo.NewOffset().AtStart()},
+		{name: "caller can override", opts: []kgo.Opt{kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd())}, want: kgo.NewOffset().AtEnd()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, err := NewReaderClient("test-client", cfg, log.NewNopLogger(), prometheus.NewRegistry(), tc.opts...)
+			require.NoError(t, err)
+			t.Cleanup(client.Close)
+
+			require.Equal(t, tc.want, client.OptValue(kgo.ConsumeResetOffset))
+		})
+	}
+}
+
 func TestSetDefaultNumberOfPartitionsForAutocreatedTopics(t *testing.T) {
 	cluster, err := kfake.NewCluster(kfake.NumBrokers(1))
 	require.NoError(t, err)

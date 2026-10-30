@@ -305,8 +305,17 @@ func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) 
 	}
 	sort.Slice(m.Brokers, func(i, j int) bool { return m.Brokers[i].NodeID < m.Brokers[j].NodeID })
 
-	if len(topics) > 0 && len(m.Topics) != len(topics) {
-		return Metadata{}, fmt.Errorf("metadata returned only %d topics of %d requested", len(m.Topics), len(topics))
+	// Compare against the UNIQUE requested names: m.Topics is a map, so
+	// duplicate requested topics previously tripped this as a spurious
+	// "returned only N of M" error.
+	if len(topics) > 0 {
+		uniq := make(map[string]struct{}, len(topics))
+		for _, t := range topics {
+			uniq[t] = struct{}{}
+		}
+		if len(m.Topics) != len(uniq) {
+			return Metadata{}, fmt.Errorf("metadata returned only %d topics of %d requested", len(m.Topics), len(uniq))
+		}
 	}
 
 	return m, nil
@@ -538,7 +547,15 @@ func (cl *Client) listOffsets(ctx context.Context, isolation int8, timestamp int
 					LeaderEpoch: p.LeaderEpoch,
 					Err:         kerr.ErrorForCode(p.ErrorCode),
 				}
-				if timestamp != -1 && p.Offset == -1 && p.ErrorCode == 0 {
+				// Rerequest only for real by-time listings (their -1 means
+				// "no offset at or after this timestamp"; we return end
+				// offsets, the documented ListOffsetsAfterMilli fallback).
+				// The special negative listings must NOT rerequest: -1 is
+				// their honest answer (an empty partition has no max
+				// timestamp offset; an untiered partition has no remote
+				// offset), and rewriting it with the end offset invents an
+				// answer the broker never gave.
+				if timestamp >= 0 && p.Offset == -1 && p.ErrorCode == 0 {
 					rerequest[t.Topic] = append(rerequest[t.Topic], p.Partition)
 				}
 			}

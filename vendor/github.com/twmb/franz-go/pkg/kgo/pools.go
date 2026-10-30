@@ -71,6 +71,9 @@ type PoolDecompressBytes interface {
 
 // PoolKRecords is a pool that returns a slice that raw kmsg.Record's are
 // decoded into.
+//
+// Deprecated: the client decodes fetched records straight into Records and no
+// longer uses this pool.
 type PoolKRecords interface {
 	// GetKRecords returns a slice with capacity n.
 	GetKRecords(n int) []kmsg.Record
