@@ -120,7 +120,9 @@ func (q *TreeQueue) Name() string {
 // This may be expensive depending on the size of the queue tree.
 func (q *TreeQueue) Len() int {
 	count := len(q.ch)
-	for _, subq := range q.mapping.Values() {
+	// Iterate the map directly, since Values() allocates a slice and Len() is
+	// called on the hot path of every dequeue.
+	for _, subq := range q.mapping.m {
 		count += subq.Len()
 	}
 	return count
