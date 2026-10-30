@@ -368,3 +368,74 @@ func TestFullPushApiFlow(t *testing.T) {
 	require.Equal(t, "a\nb\nc", reUnmarshaled.StructuredMetadata[0].Value,
 		"After round-trip marshaling, structured metadata should still contain actual newlines")
 }
+
+func TestParseLabels(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expected    labels.Labels
+		expectError bool
+	}{
+		{
+			name:     "string and number values",
+			input:    `{"foo": "bar", "count": 42}`,
+			expected: labels.FromStrings("count", "42", "foo", "bar"),
+		},
+		{
+			// The payload from https://github.com/grafana/loki/issues/10738.
+			name:     "boolean true value from issue payload",
+			input:    `{"namespace": "hey", "has_errors": true}`,
+			expected: labels.FromStrings("has_errors", "true", "namespace", "hey"),
+		},
+		{
+			name:     "boolean false value",
+			input:    `{"has_errors": false}`,
+			expected: labels.FromStrings("has_errors", "false"),
+		},
+		{
+			name:     "mixed string, number and boolean values",
+			input:    `{"name": "test", "count": 42, "ratio": 1.5, "ok": true, "bad": false}`,
+			expected: labels.FromStrings("bad", "false", "count", "42", "name", "test", "ok", "true", "ratio", "1.5"),
+		},
+		{
+			name:        "object value is rejected",
+			input:       `{"foo": {"bar": "baz"}}`,
+			expectError: true,
+		},
+		{
+			name:        "array value is rejected",
+			input:       `{"foo": ["bar"]}`,
+			expectError: true,
+		},
+		{
+			name:        "null value is rejected",
+			input:       `{"foo": null}`,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lbls, err := parseLabels([]byte(tt.input))
+			if tt.expectError {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "could not parse label value")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, lbls)
+		})
+	}
+}
+
+func TestEntryUnmarshalWithBooleanLabelValues(t *testing.T) {
+	// Boolean values inside the "structuredMetadata" and "parsed" objects of
+	// an entry go through parseLabels.
+	input := `["1570818238000000000", "fizzbuzz", {"structuredMetadata": {"namespace": "hey", "has_errors": true}, "parsed": {"namespace": "hey", "has_errors": false}}]`
+
+	var entry Entry
+	err := entry.UnmarshalJSON([]byte(input))
+	require.NoError(t, err)
+	require.Equal(t, labels.FromStrings("has_errors", "true", "namespace", "hey"), entry.StructuredMetadata)
+	require.Equal(t, labels.FromStrings("has_errors", "false", "namespace", "hey"), entry.Parsed)
+}

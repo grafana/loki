@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 )
@@ -271,6 +272,57 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 			err = actual.UnmarshalJSON(b)
 			require.Nil(t, err)
 			require.Equal(t, tt, actual)
+		})
+	}
+}
+
+func TestPushRequestEntryStructuredMetadataValueTypes(t *testing.T) {
+	tests := []struct {
+		name        string
+		metadata    string
+		expected    push.LabelsAdapter
+		expectError bool
+	}{
+		{
+			name:     "string and boolean values",
+			metadata: `{"namespace": "hey", "has_errors": true, "cached": false}`,
+			expected: push.LabelsAdapter{
+				{Name: "namespace", Value: "hey"},
+				{Name: "has_errors", Value: "true"},
+				{Name: "cached", Value: "false"},
+			},
+		},
+		{
+			name:        "null value is rejected",
+			metadata:    `{"foo": null}`,
+			expectError: true,
+		},
+		{
+			name:        "object value is rejected",
+			metadata:    `{"foo": {"bar": "baz"}}`,
+			expectError: true,
+		},
+		{
+			name:        "array value is rejected",
+			metadata:    `{"foo": ["bar"]}`,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := `{"streams": [{"stream": {"foo": "bar"}, "values": [["1570818238000000000", "fizzbuzz", ` + tt.metadata + `]]}]}`
+
+			var request PushRequest
+			err := jsoniter.Unmarshal([]byte(input), &request)
+			if tt.expectError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, request.Streams, 1)
+			require.Len(t, request.Streams[0].Entries, 1)
+			require.Equal(t, tt.expected, request.Streams[0].Entries[0].StructuredMetadata)
 		})
 	}
 }
