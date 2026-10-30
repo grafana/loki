@@ -43,6 +43,11 @@ const (
 	skipQueryUnsupported = "query_unsupported"
 )
 
+// metricLookback is the range on a correctness metric query. The cycle keeps
+// the query start this far inside max_lookback so that lookback stays inside
+// the retention bound.
+const metricLookback = 5 * time.Minute
+
 var (
 	tokenCandidateRE = regexp.MustCompile(`[A-Za-z0-9._:/@%?-]{6,128}`)
 	// jsonLabelNameRE is the subset of LogQL identifiers we will put after
@@ -568,10 +573,11 @@ func metaCoversAnyTimestamp(m store.Meta, timestamps []time.Time) bool {
 
 func (s *Service) pickRandomRange(now time.Time) (time.Time, time.Time, string) {
 	eligibleEnd := now.Add(-s.cfg.QueryIngestersWithin).Truncate(time.Minute)
-	// earliest = max(startedAt, now-maxLookback): started_at is the farthest
-	// allowed lookback, but never sample beyond max_lookback (retention safety).
+	// earliest = max(startedAt, now-maxLookback+metricLookback). started_at is the
+	// farthest allowed lookback. The metric range reads metricLookback before the
+	// query start, so the start stays that far inside max_lookback.
 	earliest := s.startedAt
-	if lookbackStart := now.Add(-s.cfg.MaxLookback); lookbackStart.After(earliest) {
+	if lookbackStart := now.Add(-s.cfg.MaxLookback + metricLookback); lookbackStart.After(earliest) {
 		earliest = lookbackStart
 	}
 	earliest = ceilToMinute(earliest)
@@ -1056,8 +1062,7 @@ func buildJSONLabelFilterHintQuery(selector, label, value string) string {
 }
 
 func buildMetricQuery(qt hintQueryType, hq hintQuery) (hintQuery, error) {
-	lookback := 5 * time.Minute
-	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, lookback.String())
+	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, metricLookback.String())
 	return newHintQuery(qt, hq.needle, query)
 }
 
