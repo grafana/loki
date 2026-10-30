@@ -1706,7 +1706,7 @@ github.com/pb33f/go-yaml
 github.com/pb33f/go-yaml/internal/libyaml
 github.com/pb33f/go-yaml/internal/plugin
 github.com/pb33f/go-yaml/plugin/limit
-# github.com/pb33f/jsonpath v0.8.2
+# github.com/pb33f/jsonpath v0.8.5
 ## explicit; go 1.24
 github.com/pb33f/jsonpath/pkg/jsonpath
 github.com/pb33f/jsonpath/pkg/jsonpath/config
