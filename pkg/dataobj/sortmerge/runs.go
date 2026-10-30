@@ -8,7 +8,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
@@ -59,7 +58,6 @@ func MixedRunIterator(ctx context.Context, runs []Run) result.Seq[logs.Record] {
 		}})
 		tree := loser.New(sequences, maxValue, (*runSequence).At, logs.CompareForSortOrder(logs.SortStreamASC), (*runSequence).Close)
 		defer tree.Close()
-		sym := symbolizer.New(1024, 100_000)
 		for tree.Next() {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -70,7 +68,7 @@ func MixedRunIterator(ctx context.Context, runs []Run) result.Seq[logs.Record] {
 				return err
 			}
 			var record logs.Record
-			if err := logs.DecodeRow(seq.current.Columns(), row, &record, sym); err != nil {
+			if err := logs.DecodeRow(seq.current.Columns(), row, &record); err != nil {
 				return err
 			}
 			if !yield(record) {

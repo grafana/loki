@@ -217,7 +217,7 @@ func TestDecodeRow(t *testing.T) {
 	record := Record{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := DecodeRow(tt.columns, tt.row, &record, nil)
+			err := DecodeRow(tt.columns, tt.row, &record)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -244,7 +244,6 @@ func TestDecodeRow_ResetsFieldsWithoutColumn(t *testing.T) {
 		[]*Column{{Type: ColumnTypeStreamID}},
 		dataset.Row{Values: []dataset.Value{dataset.Int64Value(123)}},
 		&record,
-		nil,
 	)
 	require.NoError(t, err)
 

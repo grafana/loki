@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
@@ -73,7 +72,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			}
 
 			for _, row := range rows[:n] {
-				err := DecodeRow(section.Columns(), row, &record, nil)
+				err := DecodeRow(section.Columns(), row, &record)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -108,10 +107,7 @@ func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
 //
 // DecodeRow resets record first, so a field whose column is absent from columns comes back
 // as its zero value rather than keeping what a previous row left there.
-//
-// The sym argument reuses metadata strings between calls to DecodeRow when
-// the label implementation keeps the strings it receives. sym may be nil.
-func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
+func DecodeRow(columns []*Column, row dataset.Row, record *Record) error {
 	record.Reset()
 
 	labelBuilder := labelpool.Get()
@@ -158,7 +154,7 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 				labelsSorted = false
 			}
 			lastLabel = column.Name
-			labelBuilder.Add(column.Name, metadataValue(sym, columnValue.Binary()))
+			labelBuilder.Add(column.Name, metadataValue(columnValue.Binary()))
 
 		case ColumnTypeMessage:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
