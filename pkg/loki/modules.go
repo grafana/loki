@@ -789,15 +789,18 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 }
 
 // withLoglineStorePolling starts catalog polling on the querier store so the
-// metadata cache's PollNotify loop can evict IDs that leave the snapshot. The
-// poller is loglinestore.NewPollingService, same helper the query-frontend uses. The
-// wrap below is querier-only: this module already returns the worker.
+// metadata cache's PollNotify loop can evict IDs that leave the snapshot.
+// The poller is loglinestore.NewBackgroundPollingService: the first list runs
+// after the worker is allowed to start. Hint lookups use the indexes on the
+// request, and the metadata cache starts empty, so an unfinished snapshot
+// misses and reads through. The query-frontend keeps the blocking poller.
+// The wrap below is querier-only: this module already returns the worker.
 func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Service) (services.Service, error) {
 	if loglineStore == nil {
 		return svc, nil
 	}
 
-	storeSvc := loglinestore.NewPollingService(loglineStore, "querier-logline-store", nil)
+	storeSvc := loglinestore.NewBackgroundPollingService(loglineStore, "querier-logline-store", nil)
 
 	if svc == nil {
 		return storeSvc, nil
@@ -809,10 +812,15 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 
 	return services.NewBasicService(
 		func(ctx context.Context) error {
-			if err := services.StartAndAwaitRunning(ctx, storeSvc); err != nil {
+			// The cold catalog fetch stays in the poller. Readiness follows the worker.
+			if err := storeSvc.StartAsync(ctx); err != nil {
 				return err
 			}
-			return services.StartAndAwaitRunning(ctx, svc)
+			if err := services.StartAndAwaitRunning(ctx, svc); err != nil {
+				_ = services.StopAndAwaitTerminated(context.Background(), storeSvc)
+				return err
+			}
+			return nil
 		},
 		func(ctx context.Context) error {
 			select {
