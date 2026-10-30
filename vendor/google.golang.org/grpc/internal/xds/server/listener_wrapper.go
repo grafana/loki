@@ -457,7 +457,10 @@ func (lw *ldsWatcher) ResourceChanged(update *xdsresource.ListenerUpdate, onDone
 	// What this means is that the XDSClient has ACKed a resource which can push
 	// the server into a "not serving" mode. This is not ideal, but this is
 	// what we have decided to do.
-	if ilc == nil || (ilc.Address != l.addr || ilc.Port != l.port) {
+	//
+	// A port value of 0 in the xDS Listener matches any listening port, but the
+	// listener address itself must still match exactly.
+	if ilc == nil || ilc.Address != l.addr || (ilc.Port != "0" && ilc.Port != l.port) {
 		// TODO(purnesh42h): Are there any other cases where this can be
 		// treated as an ambient error?
 		l.mu.Lock()

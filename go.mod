@@ -135,7 +135,7 @@ require (
 	golang.org/x/time v0.16.0
 	google.golang.org/api v0.309.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.37.1
