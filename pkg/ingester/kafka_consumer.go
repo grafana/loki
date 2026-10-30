@@ -1,15 +1,19 @@
 package ingester
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -113,7 +117,6 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		maxOffset    = int64(0)
 		consumeStart = time.Now()
 		limitWorkers = kc.maxConsumerWorkers
-		wg           sync.WaitGroup
 	)
 
 	// Find min/max offsets
@@ -124,65 +127,57 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 
 	level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset)
 
-	type recordWithIndex struct {
-		record partition.Record
-		index  int
-	}
-
-	numWorkers := min(limitWorkers, len(records))
-	workChan := make(chan recordWithIndex, numWorkers)
+	// Each worker applies all the records of a stream, in offset order. The order a stream's
+	// entries arrive in decides which of them share a chunk, so replicas of the partition only
+	// build identical chunks, which the chunk store can then dedupe, if they apply its records
+	// in the same order. Different streams are still applied in parallel.
+	groups := groupByStream(records)
 	// success keeps track of the records that were processed. It is expected to
 	// be sorted in ascending order of offset since the records themselves are
 	// ordered.
 	success := make([]*int64, len(records))
 
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for recordWithIndex := range workChan {
-				stream, err := kc.decoder.DecodeWithoutLabels(recordWithIndex.record.Content)
-				if err != nil {
-					level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
-					continue
-				}
-
-				recordCtx := user.InjectOrgID(recordWithIndex.record.Ctx, recordWithIndex.record.TenantID)
-				req := &logproto.PushRequest{
-					Streams: []logproto.Stream{stream},
-				}
-
-				level.Debug(kc.logger).Log("msg", "pushing record", "offset", recordWithIndex.record.Offset, "length", len(recordWithIndex.record.Content))
-
-				if err := retryWithBackoff(ctx, func(attempts int) error {
-					pushTime := time.Now()
-					_, err := kc.pusher.Push(recordCtx, req)
-
-					kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
-
-					if err != nil {
-						level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", recordWithIndex.record.Offset, "attempts", attempts)
-						return err
-					}
-
-					return nil
-				}); err != nil {
-					level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", recordWithIndex.record.Offset)
-					continue
-				}
-
-				offset := recordWithIndex.record.Offset
-				success[recordWithIndex.index] = &offset
+	// ForEachJob hands out the groups in order, so the largest start first.
+	// context.WithoutCancel() is used to mimic prior behavior. every record is tried at least once
+	// on shutdown
+	_ = concurrency.ForEachJob(context.WithoutCancel(ctx), len(groups), limitWorkers, func(_ context.Context, idx int) error {
+		for _, index := range groups[idx].indexes {
+			record := records[index]
+			stream, err := kc.decoder.DecodeWithoutLabels(record.Content)
+			if err != nil {
+				level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
+				continue
 			}
-		}()
-	}
 
-	for i, record := range records {
-		workChan <- recordWithIndex{record: record, index: i}
-	}
-	close(workChan)
+			recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
+			req := &logproto.PushRequest{
+				Streams: []logproto.Stream{stream},
+			}
 
-	wg.Wait()
+			level.Debug(kc.logger).Log("msg", "pushing record", "offset", record.Offset, "length", len(record.Content))
+
+			if err := retryWithBackoff(ctx, func(attempts int) error {
+				pushTime := time.Now()
+				_, err := kc.pusher.Push(recordCtx, req)
+
+				kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
+
+				if err != nil {
+					level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", record.Offset, "attempts", attempts)
+					return err
+				}
+
+				return nil
+			}); err != nil {
+				level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", record.Offset)
+				continue
+			}
+
+			offset := record.Offset
+			success[index] = &offset
+		}
+		return nil
+	})
 
 	// Find the highest offset before a gap, and commit that.
 	var highestOffset int64
@@ -198,6 +193,47 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 
 	kc.metrics.consumeLatency.Observe(time.Since(consumeStart).Seconds())
 	kc.metrics.currentOffset.Set(float64(maxOffset))
+}
+
+// streamGroup is the records of a batch that belong to one stream.
+type streamGroup struct {
+	indexes []int // indexes of the records in the batch, in offset order.
+	size    int   // total size of the records.
+}
+
+// groupByStream groups the records of a batch by their tenant and stream labels, largest group
+// first so the workers start on the longest streams. A record whose labels can't be read still
+// joins a group, and fails to decode when it is applied.
+//
+// Groups are keyed on a hash of the tenant and labels. Two streams that collide share a group,
+// which only means they are applied one after the other.
+func groupByStream(records []partition.Record) []streamGroup {
+	var (
+		digest = xxhash.New()
+		byKey  = make(map[uint64]int, len(records))
+		groups []streamGroup
+	)
+	for i, record := range records {
+		labels, _ := kafka.StreamLabels(record.Content)
+		digest.Reset()
+		_, _ = digest.WriteString(record.TenantID)
+		_, _ = digest.Write([]byte{0})
+		_, _ = digest.Write(labels)
+		key := digest.Sum64()
+
+		g, ok := byKey[key]
+		if !ok {
+			g = len(groups)
+			byKey[key] = g
+			groups = append(groups, streamGroup{})
+		}
+		groups[g].indexes = append(groups[g].indexes, i)
+		groups[g].size += len(record.Content)
+	}
+	slices.SortStableFunc(groups, func(a, b streamGroup) int {
+		return cmp.Compare(b.size, a.size)
+	})
+	return groups
 }
 
 func canRetry(err error) bool {
