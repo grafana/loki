@@ -13,12 +13,12 @@ import (
 	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/common/version"
 
-	_ "github.com/grafana/loki/v3/pkg/util/build"
+	_ "github.com/grafana/loki/pkg/util/build"
 )
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/clients/pkg/util"
 )
 
 var (

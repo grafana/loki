@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/pkg/logline"
+	schedulerapi "github.com/grafana/loki/pkg/logline/scheduler/api"
+	"github.com/grafana/loki/pkg/logline/store"
 )
 
 // stubLimits implements limits.Limits for tests.

@@ -20,14 +20,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/pkg/logline"
+	"github.com/grafana/loki/pkg/logline/format"
+	"github.com/grafana/loki/pkg/logline/hintprovider"
+	"github.com/grafana/loki/pkg/logline/store"
 )
 
 func TestRunVerificationCycle_Correct(t *testing.T) {

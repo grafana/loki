@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/testutil"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	boltdbcommon "github.com/grafana/loki/pkg/storage/common/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/testutil"
 )
 
 func TestDeleteRequestsTable(t *testing.T) {

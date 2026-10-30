@@ -9,10 +9,10 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	logqlmodel "github.com/grafana/loki/pkg/logql/model"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 // directExecutionStack runs queries straight through the v1 engine, with no query-frontend in

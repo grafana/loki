@@ -3,7 +3,7 @@ package columnar
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 type invalidMaskError struct {

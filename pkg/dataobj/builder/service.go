@@ -15,16 +15,16 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/index"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
-	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
-	"github.com/grafana/loki/v3/pkg/kafkav2"
-	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/pkg/dataobj/index"
+	"github.com/grafana/loki/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/pkg/dataobj/metastore"
+	dataobj_uploader "github.com/grafana/loki/pkg/dataobj/uploader"
+	"github.com/grafana/loki/pkg/kafka"
+	"github.com/grafana/loki/pkg/kafka/client"
+	"github.com/grafana/loki/pkg/kafka/partitionring"
+	"github.com/grafana/loki/pkg/kafkav2"
+	"github.com/grafana/loki/pkg/scratch"
 )
 
 // A partitionConsumer allows mocking of [kafkav2.SinglePartitionConsumer] in tests.

@@ -3,10 +3,10 @@ package queryrange
 import (
 	"net/http"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	serverutil "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/httpreq"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 type serializeRoundTripper struct {

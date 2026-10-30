@@ -3,8 +3,8 @@ package marshal
 import (
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 // NewLabelSet constructs a Labelset from a promql metric list as a string

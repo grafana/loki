@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type IndexBuilder struct {

@@ -3,7 +3,7 @@ package resultscache
 import (
 	"context"
 
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 type PipelineWrapperKeyGenerator struct {

@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/loser"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/model/metadata"
+	"github.com/grafana/loki/pkg/logql/model/stats"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/loser"
 )
 
 type streamIterator struct {

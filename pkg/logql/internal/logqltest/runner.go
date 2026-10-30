@@ -11,10 +11,10 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
-	"github.com/grafana/loki/v3/pkg/logql"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/dataobj/objtest"
+	"github.com/grafana/loki/pkg/logql"
+	logqlmodel "github.com/grafana/loki/pkg/logql/model"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 const (

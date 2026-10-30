@@ -6,7 +6,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // BuilderOptions configures common settings for building pages.

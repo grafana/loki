@@ -17,9 +17,9 @@ import (
 	"go.etcd.io/bbolt"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	boltdbcommon "github.com/grafana/loki/pkg/storage/common/boltdb"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (

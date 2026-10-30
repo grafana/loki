@@ -11,8 +11,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
-	syntaxutil "github.com/grafana/loki/v3/pkg/util/syntax"
+	"github.com/grafana/loki/pkg/logql/log/pattern"
+	syntaxutil "github.com/grafana/loki/pkg/util/syntax"
 )
 
 // LineMatchType is an enum for line matching types.

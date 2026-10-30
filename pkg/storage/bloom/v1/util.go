@@ -6,7 +6,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/util/mempool"
+	"github.com/grafana/loki/pkg/util/mempool"
 )
 
 var (

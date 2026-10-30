@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 func Test_BuildReport(t *testing.T) {

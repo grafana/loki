@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	yaml "go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var allowedIntegrationNames = []string{

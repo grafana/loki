@@ -6,8 +6,8 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	compactionv2pb "github.com/grafana/loki/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/pkg/engine/internal/planner/physical"
 )
 
 type marshaler interface {

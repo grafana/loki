@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/pkg/logcli/client"
 )
 
 // Query contains all necessary fields to execute delete requests

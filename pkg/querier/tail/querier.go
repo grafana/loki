@@ -11,14 +11,14 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/iter"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/deletion"
-	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/deletion"
+	querier_limits "github.com/grafana/loki/pkg/querier/limits"
+	"github.com/grafana/loki/pkg/querier/plan"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (

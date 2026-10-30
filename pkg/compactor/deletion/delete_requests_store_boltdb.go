@@ -18,10 +18,10 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/pkg/compactor/deletion/deletionproto"
+	boltdbcommon "github.com/grafana/loki/pkg/storage/common/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type (

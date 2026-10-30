@@ -7,9 +7,9 @@ import (
 
 	"github.com/grafana/regexp"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/columnar/types"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 // RegexpMatch computes the regular expression match against a datum.

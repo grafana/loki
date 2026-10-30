@@ -19,10 +19,10 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	yaml "go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
-	clients_util "github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
+	clients_util "github.com/grafana/loki/clients/pkg/util"
 
-	labelsutil "github.com/grafana/loki/v3/pkg/util/labels"
+	labelsutil "github.com/grafana/loki/pkg/util/labels"
 )
 
 const (

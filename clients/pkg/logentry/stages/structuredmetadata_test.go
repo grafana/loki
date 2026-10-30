@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var pipelineStagesStructuredMetadataUsingMatch = `

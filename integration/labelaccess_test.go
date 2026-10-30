@@ -17,12 +17,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/integration/client"
-	"github.com/grafana/loki/v3/integration/cluster"
-	"github.com/grafana/loki/v3/pkg/labelaccess"
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/integration/client"
+	"github.com/grafana/loki/integration/cluster"
+	"github.com/grafana/loki/pkg/labelaccess"
+	"github.com/grafana/loki/pkg/labelaccess/types"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 const (

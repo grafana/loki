@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/storage/bucket"
+	"github.com/grafana/loki/pkg/storage/bucket/s3"
 )
 
 func TestObject_Reader_S3Upload(t *testing.T) {

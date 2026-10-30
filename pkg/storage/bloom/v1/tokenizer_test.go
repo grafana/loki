@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
+	v2 "github.com/grafana/loki/pkg/iter/v2"
 
 	"github.com/grafana/loki/pkg/push"
 )

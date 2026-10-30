@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/pkg/dataobj/internal/util/slicegrow"
 )
 
 // RowReader reads the set of logs from an [Object].

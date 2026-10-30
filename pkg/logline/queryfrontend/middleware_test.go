@@ -20,15 +20,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/pkg/loghttp"
+	logline_query_limits "github.com/grafana/loki/pkg/logline/queryfrontend/limits"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/httpreq"
 
-	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/pkg/logline/hintprovider"
 )
 
 // ---------------------------------------------------------------------------

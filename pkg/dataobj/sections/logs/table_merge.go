@@ -9,11 +9,11 @@ import (
 	"io"
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/util/loser"
+	"github.com/grafana/loki/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/pkg/util/loser"
 )
 
 // mergeTablesIncremental incrementally merges the provides sorted tables into

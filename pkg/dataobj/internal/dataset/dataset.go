@@ -5,7 +5,7 @@ package dataset
 import (
 	"context"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/pkg/dataobj/internal/result"
 )
 
 // A Dataset holds a collection of [Columns], each of which is split into a set

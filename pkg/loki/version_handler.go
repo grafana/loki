@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 func versionHandler() http.HandlerFunc {

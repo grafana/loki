@@ -6,9 +6,9 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/compactor/deletion"
+	"github.com/grafana/loki/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 type DeleteGetter interface {

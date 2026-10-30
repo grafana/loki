@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 func TestCompileMatcher_PreservesMatcherAndCompilesRegex(t *testing.T) {

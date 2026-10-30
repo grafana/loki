@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/pkg/dataobj/internal/result"
 )
 
 type (

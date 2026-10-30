@@ -8,8 +8,8 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 type DeleteRequestsStoreDBType string

@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar/types"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 // Numeric is a constraint for recognized numeric types.

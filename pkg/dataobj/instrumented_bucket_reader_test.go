@@ -12,8 +12,8 @@ import (
 	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/xcap"
 )
 
 const instrumentedTestRegion = "test"

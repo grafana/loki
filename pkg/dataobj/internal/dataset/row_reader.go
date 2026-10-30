@@ -7,13 +7,13 @@ import (
 	"io"
 	"iter"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/pkg/dataobj/internal/util/bitmask"
+	"github.com/grafana/loki/pkg/dataobj/internal/util/rangeset"
+	"github.com/grafana/loki/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/pkg/xcap"
 )
 
 // RowReaderOptions configures how a [RowReader] will read [Row]s.

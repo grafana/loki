@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 // AssertExpressions function removes FastRegexMatchers from all Regexp matchers to allow simple objects comparison.

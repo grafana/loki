@@ -3,7 +3,7 @@ package v1
 import (
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/util/mempool"
+	"github.com/grafana/loki/pkg/util/mempool"
 )
 
 type BloomQuerier interface {

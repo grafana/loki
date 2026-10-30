@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/pkg/logline"
+	"github.com/grafana/loki/pkg/logline/format"
 )
 
 var encodingNames = map[string]format.PostingsEncoding{

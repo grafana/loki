@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/util/labelpool"
+	"github.com/grafana/loki/pkg/util/labelpool"
 )
 
 func init() {

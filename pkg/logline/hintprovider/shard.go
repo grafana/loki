@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/logline/shard"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/pkg/logline/shard"
+	"github.com/grafana/loki/pkg/logline/store"
 )
 
 // shardGroup identifies a partitioning scheme. Indexes in the same group

@@ -9,10 +9,10 @@
 // the [memory.Allocator] provided to the compute function.
 //
 // Package compute is EXPERIMENTAL and currently only intended to be used by
-// [github.com/grafana/loki/v3/pkg/dataobj].
+// [github.com/grafana/loki/pkg/dataobj].
 package compute
 
 import (
-	_ "github.com/grafana/loki/v3/pkg/columnar" // blank import for package doc comment
-	_ "github.com/grafana/loki/v3/pkg/memory"   // blank import for package doc comment
+	_ "github.com/grafana/loki/pkg/columnar" // blank import for package doc comment
+	_ "github.com/grafana/loki/pkg/memory"   // blank import for package doc comment
 )

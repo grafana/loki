@@ -3,9 +3,9 @@ package expr
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/compute"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/compute"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 // Reduce evaluates e by calling fn to resolve each child expression into a

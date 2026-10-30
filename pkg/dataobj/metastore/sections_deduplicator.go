@@ -7,7 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 	dslog "github.com/grafana/dskit/log"
 
-	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	utillog "github.com/grafana/loki/pkg/util/log"
 )
 
 const (

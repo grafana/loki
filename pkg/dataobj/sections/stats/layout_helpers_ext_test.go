@@ -3,7 +3,7 @@ package stats_test
 import (
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/pkg/dataobj/sections/streams"
 )
 
 // testLayout returns the layout with the default shard layout and the schema

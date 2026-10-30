@@ -4,9 +4,9 @@ import (
 	"iter"
 	"time"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	compactionv2pb "github.com/grafana/loki/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/pkg/dataobj/metastore"
+	"github.com/grafana/loki/pkg/engine/internal/planner/physical"
 )
 
 // logCompactionPlan is the work that replaces one source index in one window.

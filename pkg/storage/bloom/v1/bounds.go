@@ -9,9 +9,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/util/encoding"
+	iter "github.com/grafana/loki/pkg/iter/v2"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type BoundsCheck uint8

@@ -1,6 +1,6 @@
 package columnar
 
-import "github.com/grafana/loki/v3/pkg/columnar/types"
+import "github.com/grafana/loki/pkg/columnar/types"
 
 // Global definitions of types to reduce allocations.
 

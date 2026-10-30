@@ -15,13 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/bucket"
+	"github.com/grafana/loki/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
+	"github.com/grafana/loki/pkg/storage/config"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // Each test here that calls NewChunkClient uses a unique PeriodConfig.From date

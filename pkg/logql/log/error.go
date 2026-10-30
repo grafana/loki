@@ -3,7 +3,7 @@ package log
 import (
 	"github.com/prometheus/prometheus/model/labels"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlerr "github.com/grafana/loki/pkg/logql/errors"
 )
 
 var (

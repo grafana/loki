@@ -12,11 +12,11 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/pkg/dataobj/sections/streams"
 )
 
 type FileMetadata struct {

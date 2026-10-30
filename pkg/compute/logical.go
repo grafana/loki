@@ -5,9 +5,9 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/columnar/types"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 // Not negates the input boolean datum. Not returns an error if the input kind

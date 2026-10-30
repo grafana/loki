@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/pkg/xcap"
 )
 
 func columnWithLogical(logical string) dataset.Column {

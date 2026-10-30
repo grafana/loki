@@ -3,7 +3,7 @@ package buffer
 import (
 	"context"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 // Sink stores buffer [Data] and returns handles to the stored buffers.

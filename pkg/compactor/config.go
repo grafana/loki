@@ -10,11 +10,11 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
-	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/util/log"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/pkg/compactor/deletion"
+	"github.com/grafana/loki/pkg/compactor/jobqueue"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 )
 
 type Config struct {

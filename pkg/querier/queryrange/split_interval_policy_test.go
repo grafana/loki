@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/querier/testutil"
+	"github.com/grafana/loki/pkg/querier/testutil"
 )
 
 func TestChunkSplitIntervalPolicy_rangeQueryInterval(t *testing.T) {

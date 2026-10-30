@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/util/loser"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/pkg/util/loser"
 )
 
 // RemappedSection pairs a logs section with its source object's local-to-global

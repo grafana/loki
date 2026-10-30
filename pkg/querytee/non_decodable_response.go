@@ -3,7 +3,7 @@ package querytee
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 // NonDecodableResponse is a minimal response type used when returning errors.

@@ -3,8 +3,8 @@ package computetest
 import (
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 // Case is a parsed test case.

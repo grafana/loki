@@ -9,9 +9,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/pkg/compression"
+	iter "github.com/grafana/loki/pkg/iter/v2"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 // Options for the block which are not encoded into it iself.

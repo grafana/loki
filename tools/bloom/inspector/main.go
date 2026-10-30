@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/util/mempool"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/util/mempool"
 )
 
 func main() {

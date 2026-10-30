@@ -8,8 +8,8 @@ import (
 	"go.opentelemetry.io/otel"
 	attribute "go.opentelemetry.io/otel/attribute"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var tracer = otel.Tracer("pkg/storage/chunk/client/util")

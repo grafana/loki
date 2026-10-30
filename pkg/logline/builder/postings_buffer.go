@@ -10,7 +10,7 @@ import (
 
 	"github.com/klauspost/compress/s2"
 
-	"github.com/grafana/loki/v3/pkg/logline/shard"
+	"github.com/grafana/loki/pkg/logline/shard"
 )
 
 // postingsBuffer buffers (ngram, docID) pairs in one flat SoA buffer, and on

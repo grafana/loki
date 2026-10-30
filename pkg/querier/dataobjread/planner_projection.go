@@ -8,10 +8,10 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/dataobj/sections/logs"
+	logqlerr "github.com/grafana/loki/pkg/logql/errors"
+	logqllog "github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 // ProjectionPlan says which columns of a logs section a query returns and which of its metadata

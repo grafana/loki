@@ -18,15 +18,15 @@ import (
 
 	"github.com/thanos-io/objstore/providers/filesystem"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/dataobj/fixtures"
+	"github.com/grafana/loki/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/push"
 )

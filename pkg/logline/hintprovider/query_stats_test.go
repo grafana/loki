@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/logline"
+	"github.com/grafana/loki/pkg/logline/format"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 type noopReaderAt struct{}

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 func TestBitmap_Append(t *testing.T) {

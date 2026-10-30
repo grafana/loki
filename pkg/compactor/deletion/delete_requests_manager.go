@@ -17,13 +17,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
-	"github.com/grafana/loki/v3/pkg/util/filter"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/loki/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/pkg/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	boltdbcommon "github.com/grafana/loki/pkg/storage/common/boltdb"
+	"github.com/grafana/loki/pkg/util/filter"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type DeleteRequestsKind string

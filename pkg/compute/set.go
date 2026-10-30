@@ -3,9 +3,9 @@ package compute
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/columnar/types"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 // IsMember checks if each item in datum is a member of the values set.

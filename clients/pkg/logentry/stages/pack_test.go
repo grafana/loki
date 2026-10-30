@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/clients/pkg/util"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/pkg/logproto"
+	logqlerr "github.com/grafana/loki/pkg/logql/errors"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error

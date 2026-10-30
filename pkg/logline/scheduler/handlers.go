@@ -14,9 +14,9 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
-	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/pkg/logline/format"
+	schedulerapi "github.com/grafana/loki/pkg/logline/scheduler/api"
+	"github.com/grafana/loki/pkg/logline/store"
 )
 
 // RegisterHandlers registers HTTP handlers for the logline-scheduler target.

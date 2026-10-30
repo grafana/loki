@@ -3,7 +3,7 @@ package rangeset_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
+	"github.com/grafana/loki/pkg/dataobj/internal/util/rangeset"
 )
 
 func TestIntersect(t *testing.T) {

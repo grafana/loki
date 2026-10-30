@@ -8,8 +8,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/pkg/dataobj/sections/logs"
 )
 
 // BenchmarkFullPostingsPipeline drives both labelPostingsCalculation and

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
+	"github.com/grafana/loki/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/pkg/dataobj/internal/util/protocodec"
 )
 
 // decode* methods for metadata shared by Decoder implementations.

@@ -7,10 +7,10 @@ import (
 	"io"
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/columnar/types"
+	"github.com/grafana/loki/pkg/dataset/buffer"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 type plainWriter[T columnar.Numeric] struct {

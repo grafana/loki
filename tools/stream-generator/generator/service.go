@@ -21,14 +21,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
-	"github.com/grafana/loki/v3/pkg/limits/frontend"
-	frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
-	distributor_client "github.com/grafana/loki/v3/tools/stream-generator/distributor/client"
+	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/distributor"
+	"github.com/grafana/loki/pkg/kafka/client"
+	"github.com/grafana/loki/pkg/limits/frontend"
+	frontend_client "github.com/grafana/loki/pkg/limits/frontend/client"
+	"github.com/grafana/loki/pkg/logproto"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
+	distributor_client "github.com/grafana/loki/tools/stream-generator/distributor/client"
 )
 
 type Generator struct {

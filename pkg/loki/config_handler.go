@@ -11,8 +11,8 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"go.yaml.in/yaml/v4"
 
-	"github.com/grafana/loki/v3/pkg/util/build"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var errConfigFieldNotFound = errors.New("config field not found")

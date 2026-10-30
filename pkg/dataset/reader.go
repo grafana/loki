@@ -7,12 +7,12 @@ import (
 	"io"
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/compute"
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
-	"github.com/grafana/loki/v3/pkg/dataset/layout"
-	"github.com/grafana/loki/v3/pkg/expr"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar"
+	"github.com/grafana/loki/pkg/compute"
+	"github.com/grafana/loki/pkg/dataset/buffer"
+	"github.com/grafana/loki/pkg/dataset/layout"
+	"github.com/grafana/loki/pkg/expr"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 // A Reader reads rows from a [Dataset], applying filtering and projection.

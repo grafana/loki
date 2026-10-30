@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 func TestMemPool(t *testing.T) {

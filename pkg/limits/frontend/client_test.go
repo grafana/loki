@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/limits"
-	"github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/pkg/limits"
+	"github.com/grafana/loki/pkg/limits/proto"
 )
 
 func TestCacheLimitsClient(t *testing.T) {

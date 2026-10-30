@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/distributor"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func (s *Generator) sendStreams(ctx context.Context, tenant string, batch []distributor.KeyedStream, errCh chan<- error) {

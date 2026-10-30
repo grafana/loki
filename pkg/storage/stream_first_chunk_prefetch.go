@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 // streamFirstPrefetchConcurrency returns how many chunk batches the preloader should fetch

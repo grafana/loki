@@ -14,7 +14,7 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	"github.com/klauspost/compress/zstd"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/pkg/logline/format"
 )
 
 const (

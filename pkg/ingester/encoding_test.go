@@ -8,10 +8,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/ingester/wal"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/compression"
+	"github.com/grafana/loki/pkg/ingester/wal"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func fillChunk(t testing.TB, c chunkenc.Chunk) {

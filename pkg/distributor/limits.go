@@ -3,10 +3,10 @@ package distributor
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/pkg/compactor/retention"
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/loghttp/push"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // Limits is an interface for distributor limits/related configs

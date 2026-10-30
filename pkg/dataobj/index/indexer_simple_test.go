@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/pkg/dataobj/sections/streams"
 )
 
 // failingBucket fails every upload, which is the simplest way to make a real

@@ -6,15 +6,15 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/dataset/array"
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/arraymd"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/layoutmd"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/typemd"
-	"github.com/grafana/loki/v3/pkg/dataset/layout"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/pkg/columnar/types"
+	"github.com/grafana/loki/pkg/dataset/array"
+	"github.com/grafana/loki/pkg/dataset/buffer"
+	"github.com/grafana/loki/pkg/dataset/encoding/wirecodec/internal/arraymd"
+	"github.com/grafana/loki/pkg/dataset/encoding/wirecodec/internal/datasetmd"
+	"github.com/grafana/loki/pkg/dataset/encoding/wirecodec/internal/layoutmd"
+	"github.com/grafana/loki/pkg/dataset/encoding/wirecodec/internal/typemd"
+	"github.com/grafana/loki/pkg/dataset/layout"
+	"github.com/grafana/loki/pkg/memory"
 )
 
 type layoutDecoder struct {

@@ -1,6 +1,6 @@
 package layout
 
-import "github.com/grafana/loki/v3/pkg/dataset/array"
+import "github.com/grafana/loki/pkg/dataset/array"
 
 // Spec describes how to encode data for a [Layout].
 //

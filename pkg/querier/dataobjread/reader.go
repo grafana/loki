@@ -15,13 +15,13 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	util_server "github.com/grafana/loki/v3/pkg/util/server"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/dataobj/metastore"
+	"github.com/grafana/loki/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/pkg/logql/model/stats"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	util_server "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/pkg/xcap"
 )
 
 const (

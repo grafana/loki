@@ -16,12 +16,12 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	lokicfg "github.com/grafana/loki/v3/pkg/util/cfg"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/dataobj/metastore"
+	"github.com/grafana/loki/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage/bucket"
+	lokicfg "github.com/grafana/loki/pkg/util/cfg"
 )
 
 // sectionSource yields postings sections to the collector. Implementations

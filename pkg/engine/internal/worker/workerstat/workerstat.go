@@ -2,7 +2,7 @@
 // statistics.
 package workerstat
 
-import "github.com/grafana/loki/v3/pkg/xcap"
+import "github.com/grafana/loki/pkg/xcap"
 
 // These stats live in their own package rather than in
 // [pkg/engine/internal/worker] to avoid a cyclic dependency between workflow

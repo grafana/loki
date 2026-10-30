@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
-	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
-	"github.com/grafana/loki/v3/pkg/util"
+	logqlerr "github.com/grafana/loki/pkg/logql/errors"
+	storage_errors "github.com/grafana/loki/pkg/storage/errors"
+	"github.com/grafana/loki/pkg/util"
 
 	grpcstatus "google.golang.org/grpc/status"
 )

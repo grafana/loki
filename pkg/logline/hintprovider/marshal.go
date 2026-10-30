@@ -3,9 +3,9 @@ package hintprovider
 import (
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/logline/format"
+	"github.com/grafana/loki/pkg/logline/store"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func toProtoHeader(h *format.HeaderInfo) *logproto.HeaderInfo {

@@ -1,8 +1,8 @@
 package testutil
 
 import (
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 )
 
 // MustPlan creates a QueryPlan from a selector string.

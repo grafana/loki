@@ -13,11 +13,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
-	"github.com/grafana/loki/v3/pkg/querytee"
-	"github.com/grafana/loki/v3/pkg/querytee/comparator"
-	loki_tracing "github.com/grafana/loki/v3/pkg/tracing"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/pkg/querytee"
+	"github.com/grafana/loki/pkg/querytee/comparator"
+	loki_tracing "github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util/constants"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Config struct {

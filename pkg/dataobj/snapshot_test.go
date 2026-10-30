@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/pkg/scratch"
 )
 
 func Test_snapshot(t *testing.T) {

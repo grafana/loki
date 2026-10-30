@@ -7,14 +7,14 @@ import (
 	"io"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
-	"github.com/grafana/loki/v3/pkg/util/rangeio"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/pkg/dataobj"
+	"github.com/grafana/loki/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/pkg/dataobj/internal/util/bufpool"
+	"github.com/grafana/loki/pkg/dataobj/internal/util/protocodec"
+	"github.com/grafana/loki/pkg/util/rangeio"
+	"github.com/grafana/loki/pkg/xcap"
 )
 
 // A Decoder allows reading an encoded dataset-based section.

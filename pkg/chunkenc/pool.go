@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/prometheus/util/pool"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 var (

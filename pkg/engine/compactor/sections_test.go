@@ -17,15 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/pkg/dataobj"
+	v2 "github.com/grafana/loki/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/pkg/dataobj/metastore"
+	"github.com/grafana/loki/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/pkg/dataobj/sections/streams"
 )
 
 func TestLoadTenantIndexes_ReadsTenantToC(t *testing.T) {

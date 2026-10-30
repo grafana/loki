@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
 // drainPostings iterates a Postings to completion and returns the refs.

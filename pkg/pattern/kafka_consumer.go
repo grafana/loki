@@ -10,10 +10,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
-	"github.com/grafana/loki/v3/pkg/kafkav2"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/kafka"
+	"github.com/grafana/loki/pkg/kafka/client"
+	"github.com/grafana/loki/pkg/kafkav2"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // initKafka creates the Kafka client and group consumer. The consumer is

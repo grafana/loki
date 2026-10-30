@@ -23,12 +23,12 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/pattern/aggregation"
+	"github.com/grafana/loki/pkg/pattern/iter"
+	"github.com/grafana/loki/pkg/util/constants"
 
-	"github.com/grafana/loki/v3/pkg/pattern/drain"
+	"github.com/grafana/loki/pkg/pattern/drain"
 
 	"github.com/grafana/loki/pkg/push"
 )

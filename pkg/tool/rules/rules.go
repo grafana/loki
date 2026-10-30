@@ -10,9 +10,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.yaml.in/yaml/v3"
 
-	logql "github.com/grafana/loki/v3/pkg/logql/syntax"
+	logql "github.com/grafana/loki/pkg/logql/syntax"
 
-	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/pkg/tool/rules/rwrulefmt"
 )
 
 // RuleNamespace is used to parse a slightly modified prometheus
