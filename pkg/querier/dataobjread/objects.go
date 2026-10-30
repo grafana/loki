@@ -111,6 +111,48 @@ type openObject struct {
 	logsSections   map[int]*logs.Section
 }
 
+// shardBucketRange returns the bucket range that shard can hold in this object. The range depends
+// on the shard layout of the object.
+//
+// It returns nil without reading the layout if the shard has no hash range to push down. It also
+// returns nil if the range covers every bucket of the layout.
+func (o *openObject) shardBucketRange(ctx context.Context, shard *QueryShard) (*shardBucketRange, error) {
+	if shard.hashRange() == nil {
+		return nil, nil
+	}
+	layout, err := o.shardLayout(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return shard.bucketRange(layout), nil
+}
+
+// shardLayout returns the shard layout that the streams section of the tenant records.
+//
+// An object that records none was written before the streams section recorded its layout. Writers
+// had no other shard layout then, so shardLayout returns the default shard layout.
+//
+// shardLayout returns an error if the object has no streams section for the tenant, if the
+// section does not open, or if it records a layout that cannot be read.
+func (o *openObject) shardLayout(ctx context.Context) (streams.ShardLayout, error) {
+	if o.tenant.Streams == nil {
+		return streams.ShardLayout{}, fmt.Errorf("data object %q holds no streams section for the tenant", o.path)
+	}
+	section, err := o.openStreamsSection(ctx)
+	if err != nil {
+		return streams.ShardLayout{}, err
+	}
+
+	layout, ok, err := section.Layout()
+	if err != nil {
+		return streams.ShardLayout{}, fmt.Errorf("reading the layout of data object %q: %w", o.path, err)
+	}
+	if !ok {
+		return streams.DefaultShardLayout(), nil
+	}
+	return layout.ShardLayout(), nil
+}
+
 // streamLabels decodes the labels of the wanted stream IDs, reading only those streams.
 //
 // The returned label sets may be retained: [streams.NewRowReader] allocates a fresh one per row

@@ -90,22 +90,38 @@ A piece of a query that prefers data objects is sharded with its own rules. The 
 configured sharding strategy:
 
 - with the power-of-two strategy, the number of shards comes from the bytes of the query and the
-  setting `-querier.dataobj-max-bytes-per-shard`. The number of shards is capped at 256, which is
-  8 times the number of shard buckets of a data object. A data object has 32 buckets, so above 32
-  shards several shards read the same bucket. The query then reads up to 8 times as much data as
-  it needs. We accept that to get more shards and finish the query sooner;
-- with the bounded strategy, the index returns its shards. If it returns more than 256, the
-  query-frontend merges neighbouring shards by size into at most 256 shards. The merged shards
-  still cover the same range without gaps. The same over-read applies. The query-frontend drops the
-  chunk refs of the shards, merged or not, because the query reads most of its range from data
-  objects. The querier resolves the chunks it needs itself.
+  setting `-querier.dataobj-max-bytes-per-shard`. The number of shards is capped at 8 times the
+  number of shard buckets that the tenant sets for new data objects, and never above 256. The
+  default is 32 buckets, so the default cap is 256. Above the number of buckets, several shards
+  read the same bucket. The query then reads up to 8 times as much data as it needs. We accept that
+  to get more shards and finish the query sooner;
+- with the bounded strategy, the index returns its shards. If it returns more than the cap, the
+  query-frontend merges neighbouring shards by size into at most that many shards. The merged
+  shards still cover the same range without gaps. The same over-read applies. The query-frontend
+  drops the chunk refs of the shards, merged or not, because the query reads most of its range from
+  data objects. The querier resolves the chunks it needs itself.
+
+### Shard buckets
+
+A tenant sets the number of shard buckets of its new data objects with the `dataobj_shard_factor`
+limit. The query-frontend takes the number from the current setting of the tenant. A query can have
+several tenants. The query-frontend then takes the largest number, because a smaller one would
+limit the shards of the tenant with the most buckets. A tenant with fewer buckets over-reads by
+more than 8 times in that query.
+
+The query-frontend only estimates the cost. The metastore and the querier decide which streams a
+shard reads. The data objects of one query can have different numbers of buckets, because a tenant
+can change its setting. The metastore reads the number of buckets from each index object, and the
+querier reads it from each data object. Both take 32 for an object that records none, because
+legacy data objects used 32 hardcoded shard buckets. Each of them maps the shard to the buckets of
+that object. A shard reads the same streams whatever the number of buckets of the objects.
 
 ## Limitations
 
 - The shard count still comes from the chunk index.
 - The bounded strategy still asks the index for shards of the size of the chunk setting, then merges
   them. It does not use the data-object setting.
-- The cap of 256 shards can make a shard larger than `max_querier_bytes_read` allows. The
+- The cap on the number of shards can make a shard larger than `max_querier_bytes_read` allows. The
   query-frontend then rejects a query that the chunk logic would shard into smaller pieces and
   accept. This affects only the largest queries.
 - The prediction for time splitting is approximate.

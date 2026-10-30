@@ -294,8 +294,9 @@ func (f ShardFactor) Layout() (streams.ShardLayout, error) {
 
 // Validate returns an error if f is not a supported shard factor.
 //
-// Validate accepts only the default factor. Readers assume the default layout
-// for every object, so objects with another factor give wrong query results.
+// Validate accepts only the default factor. The compactor merges only objects
+// of the default shard layout, so it cannot compact objects with another
+// factor.
 func (f ShardFactor) Validate() error {
 	layout, err := f.Layout()
 	if err != nil {

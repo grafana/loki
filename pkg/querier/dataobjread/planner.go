@@ -108,11 +108,11 @@ func (p *Planner) planSections(ctx, planCtx context.Context, query QueryParams, 
 	planned := make(map[metastore.SectionKey]struct{})
 
 	for batch, streamErr := range p.metastore.SectionsStream(ctx, metastore.SectionsRequest{
-		Start:            query.Start,
-		End:              query.End,
-		Matchers:         query.Matchers,
-		Predicates:       query.Projection.sectionPredicates(),
-		ShardBucketRange: query.Shard.metastoreBucketRange(),
+		Start:           query.Start,
+		End:             query.End,
+		Matchers:        query.Matchers,
+		Predicates:      query.Projection.sectionPredicates(),
+		StreamHashRange: query.Shard.hashRange(),
 	}) {
 		// Planning failed or the query context ended. Returning from the loop cancels the metastore
 		// reads and waits for them to end.
@@ -184,18 +184,25 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 		return nil, err
 	}
 
-	decoded, err := object.streamLabels(ctx, descriptors.StreamIDs(), query.Shard.bucketRange())
+	// The shard bucket range depends on the shard layout of this object, which can differ from the
+	// layout of the other objects of the query.
+	buckets, err := object.shardBucketRange(ctx, query.Shard)
+	if err != nil {
+		return nil, err
+	}
+
+	decoded, err := object.streamLabels(ctx, descriptors.StreamIDs(), buckets)
 	if err != nil {
 		return nil, err
 	}
 
 	streams := newObjectStreams(decoded, func(streamLabels labels.Labels, streamHash uint64) bool {
-		return p.admits(streamLabels, streamHash, query.Shard)
+		return p.admits(streamLabels, streamHash, query.Shard, buckets)
 	})
 
 	tasks := make([]ReadTask, 0, len(descriptors))
 	for _, descriptor := range descriptors {
-		task, ok, err := p.planSection(descriptor, streams, query)
+		task, ok, err := p.planSection(descriptor, streams, query, buckets != nil)
 		if err != nil {
 			return nil, err
 		}
@@ -210,16 +217,17 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 // filtering, so there is nothing to read.
 //
 // A stream the metastore lists but the streams read did not return means one of two things,
-// which the query's shard tells apart.
+// which prunedShardBuckets tells apart. prunedShardBuckets reports whether the streams read pushed
+// a shard bucket range down.
 //
-// An unsharded read returns every listed stream, so a missing one is a broken invariant between
-// the index and the object. That fails the query: dropping the stream would under-count it
-// silently.
+// A read without a shard bucket range returns every listed stream, so a missing one is a broken
+// invariant between the index and the object. That fails the query: dropping the stream would
+// under-count it silently.
 //
-// A sharded read pushes the bucket predicate down, so a missing stream is out of shard. One
-// pruned read cannot tell that from a genuinely missing stream, and the extra read it would take
-// to find out costs more than the invariant is worth here.
-func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, streams *objectStreams, query QueryParams) (ReadTask, bool, error) {
+// A read with a shard bucket range pushes the shard bucket predicate down, so a missing stream is
+// out of shard. One pruned read cannot tell that from a genuinely missing stream, and the extra
+// read it would take to find out costs more than the invariant is worth here.
+func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, streams *objectStreams, query QueryParams, prunedShardBuckets bool) (ReadTask, bool, error) {
 	if len(descriptor.StreamIDs) == 0 {
 		return ReadTask{}, false, fmt.Errorf(
 			"data object %q logs section %d: the resolver listed no stream for the section",
@@ -235,7 +243,7 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 
 	for _, id := range descriptor.StreamIDs {
 		if !streams.decoded(id) {
-			if query.Shard.prunes() {
+			if prunedShardBuckets {
 				continue
 			}
 			return ReadTask{}, false, fmt.Errorf(
@@ -279,16 +287,17 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 	}, true, nil
 }
 
-// admits reports whether a stream passes the query's per-stream filters.
-func (p *Planner) admits(streamLabels labels.Labels, streamHash uint64, shard *QueryShard) bool {
+// admits reports whether a stream passes the query's per-stream filters. buckets is the shard
+// bucket range that the streams read of the object pushed down, or nil if it pushed none.
+func (p *Planner) admits(streamLabels labels.Labels, streamHash uint64, shard *QueryShard, buckets *shardBucketRange) bool {
 	if p.filterer != nil && p.filterer.ShouldFilter(streamLabels) {
 		return false
 	}
 
-	// The bucket range resolves a shard exactly only for a power-of-two shard of at most
-	// streams.DefaultShardBuckets. Any other shard maps to a range that covers streams outside it, so
-	// the stream hash still has to be checked.
-	if shard != nil && !shard.resolvesExactly() {
+	// The shard bucket range resolves a shard exactly only for a power-of-two shard of at most the
+	// shard bucket count of the object. Any other shard maps to a range that covers streams outside
+	// it, or to no range, so the stream hash still has to be checked.
+	if shard != nil && !buckets.isExact() {
 		if !shard.assignment.Match(model.Fingerprint(streamHash)) {
 			return false
 		}
