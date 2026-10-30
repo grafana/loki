@@ -14,7 +14,7 @@ import (
 
 // DefaultUserAgent is the default User-Agent string set in the request header.
 const (
-	DefaultUserAgent         = "gophercloud/v2.12.0"
+	DefaultUserAgent         = "gophercloud/v2.15.0"
 	DefaultMaxBackoffRetries = 60
 )
 
@@ -135,16 +135,25 @@ func (f *reauthFuture) Set(err error) {
 	close(f.done)
 }
 
-func (f *reauthFuture) Get() error {
-	<-f.done
-	return f.err
+func (f *reauthFuture) Get(ctx context.Context) error {
+	select {
+	case <-f.done:
+		return f.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // AuthenticatedHeaders returns a map of HTTP headers that are common for all
 // authenticated service requests. Blocks if Reauthenticate is in progress.
-func (client *ProviderClient) AuthenticatedHeaders() (m map[string]string) {
+func (client *ProviderClient) AuthenticatedHeaders() map[string]string {
+	headers, _ := client.authenticatedHeaders(context.Background())
+	return headers
+}
+
+func (client *ProviderClient) authenticatedHeaders(ctx context.Context) (map[string]string, error) {
 	if client.IsThrowaway() {
-		return
+		return nil, nil
 	}
 	if client.reauthmut != nil {
 		// If a Reauthenticate is in progress, wait for it to complete.
@@ -152,14 +161,16 @@ func (client *ProviderClient) AuthenticatedHeaders() (m map[string]string) {
 		ongoing := client.reauthmut.ongoing
 		client.reauthmut.Unlock()
 		if ongoing != nil {
-			_ = ongoing.Get()
+			if err := ongoing.Get(ctx); err != nil && ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 		}
 	}
 	t := client.Token()
 	if t == "" {
-		return
+		return nil, nil
 	}
-	return map[string]string{"X-Auth-Token": t}
+	return map[string]string{"X-Auth-Token": t}, nil
 }
 
 // UseTokenLock creates a mutex that is used to allow safe concurrent access to the auth token.
@@ -287,7 +298,7 @@ func (client *ProviderClient) Reauthenticate(ctx context.Context, previousToken 
 
 	// If Reauthenticate is running elsewhere, wait for its result.
 	if ongoing != nil {
-		return ongoing.Get()
+		return ongoing.Get(ctx)
 	}
 
 	// Perform the actual reauthentication.
@@ -410,7 +421,11 @@ func (client *ProviderClient) doRequest(ctx context.Context, method, url string,
 	}
 
 	// get latest token from client
-	for k, v := range client.AuthenticatedHeaders() {
+	authenticatedHeaders, err := client.authenticatedHeaders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range authenticatedHeaders {
 		req.Header.Set(k, v)
 	}
 
@@ -531,7 +546,13 @@ func (client *ProviderClient) doRequest(ctx context.Context, method, url string,
 			_, err = io.Copy(io.Discard, resp.Body)
 			return resp, err
 		}
-		if err := json.NewDecoder(resp.Body).Decode(options.JSONResponse); err != nil {
+		// UseNumber keeps integers that do not fit in float64 (for example
+		// signed 64-bit maximum BIOS bounds) exact when JSONResponse is any.
+		// Extract() round-trips Body through json.Marshal; float64 rounding
+		// makes that second unmarshal fail for int fields.
+		dec := json.NewDecoder(resp.Body)
+		dec.UseNumber()
+		if err := dec.Decode(options.JSONResponse); err != nil {
 			if client.RetryFunc != nil {
 				var e error
 				state.retries = state.retries + 1

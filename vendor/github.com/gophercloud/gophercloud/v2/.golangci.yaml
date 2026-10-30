@@ -17,7 +17,7 @@ linters:
     rules:
       - linters:
           - staticcheck
-        text: "SA1019: (x509.EncryptPEMBlock|strings.Title)"
+        text: "SA1019: (x509.EncryptPEMBlock|strings.Title|openstack.V2EndpointURL|openstack.V3EndpointURL)"
     paths:
       - third_party$
       - builtin$
