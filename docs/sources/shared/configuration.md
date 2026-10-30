@@ -1343,6 +1343,13 @@ ingest_limits:
   # CLI flag: -ingest-limits.stream-sharding-durability-enabled
   [stream_sharding_durability_enabled: <boolean> | default = false]
 
+  # EXPERIMENTAL: The clock skew tolerated between ingesters and the ingest
+  # limits service when applying stream removal records. A stream is deleted
+  # only if it has not been seen after the time of the last push the ingester
+  # received plus this slack.
+  # CLI flag: -ingest-limits.removal-record-slack
+  [removal_record_slack: <duration> | default = 5s]
+
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.
   # CLI flag: -ingest-limits.num-partitions
@@ -3958,6 +3965,27 @@ kafka_ingestion:
     # specified size is used.
     # CLI flag: -ingester.partition-ring.shuffle-shard-cache-size
     [shuffle_shard_cache_size: <int> | default = 0]
+
+# Write a record to the ingest limits metadata topic when a stream is removed
+# from memory, so the ingest limits service stops counting it without waiting
+# for its active window to expire.
+stream_removal_records:
+  # EXPERIMENTAL: Write a record to the ingest limits metadata topic when a
+  # stream is removed from memory, so the ingest limits service stops counting
+  # it without waiting for its active window to expire. Requires
+  # -ingest-limits.topic to be set.
+  # CLI flag: -ingester.stream-removal-records.enabled
+  [enabled: <boolean> | default = false]
+
+  # The maximum number of stream removal records waiting to be written. Records
+  # are dropped when the buffer is full, and the stream then expires from the
+  # ingest limits service after its active window.
+  # CLI flag: -ingester.stream-removal-records.buffer-size
+  [buffer_size: <int> | default = 100000]
+
+  # The maximum number of stream removal records written per second.
+  # CLI flag: -ingester.stream-removal-records.max-records-per-second
+  [max_records_per_second: <float> | default = 10000]
 ```
 
 ### ingester_client

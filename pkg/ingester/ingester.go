@@ -42,6 +42,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
+	ingestlimits "github.com/grafana/loki/v3/pkg/limits"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -137,6 +138,25 @@ type Config struct {
 	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=Deprecated: use the per-tenant limit delegate_stream_limits_enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled."`
 
 	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
+
+	StreamRemovalRecords ingestlimits.StreamRemovalProducerConfig `yaml:"stream_removal_records" category:"experimental" doc:"description=Write a record to the ingest limits metadata topic when a stream is removed from memory, so the ingest limits service stops counting it without waiting for its active window to expire."`
+
+	// StreamRemovalNotifier is notified when a stream is removed from
+	// memory. It is set when StreamRemovalRecords is enabled. The ingester
+	// starts it and stops it after the flush on shutdown.
+	StreamRemovalNotifier StreamRemovalNotifier `yaml:"-"`
+}
+
+// StreamRemovalNotifier is notified when the ingester removes a stream from
+// memory, so that components that count streams elsewhere can stop counting
+// it.
+type StreamRemovalNotifier interface {
+	services.Service
+	// StreamRemoved is called with the hash of the stream's labels without
+	// the stream shard label, and the time of the last push the ingester
+	// received for it. It must not block, as it is called while holding the
+	// streams lock.
+	StreamRemoved(tenant string, streamHashNoShard uint64, lastPushAt time.Time)
 }
 
 // RegisterFlags registers the flags.
@@ -144,6 +164,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
 	cfg.KafkaIngestion.RegisterFlags(f)
+	cfg.StreamRemovalRecords.RegisterFlagsWithPrefix("ingester.stream-removal-records.", f)
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
@@ -191,6 +212,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.IndexShards <= 0 {
 		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
+	}
+	if err = cfg.StreamRemovalRecords.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -549,8 +573,19 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 			// if starting() fails for any reason (e.g., context canceled),
 			// the lifecycler must be stopped.
 			_ = services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+			if i.cfg.StreamRemovalNotifier != nil {
+				_ = services.StopAndAwaitTerminated(context.Background(), i.cfg.StreamRemovalNotifier)
+			}
 		}
 	}()
+
+	// The notifier is started first, so it is running before any stream can
+	// be removed.
+	if i.cfg.StreamRemovalNotifier != nil {
+		if err = services.StartAndAwaitRunning(ctx, i.cfg.StreamRemovalNotifier); err != nil {
+			return fmt.Errorf("failed to start stream removal notifier: %w", err)
+		}
+	}
 
 	if i.cfg.WAL.Enabled {
 		start := time.Now()
@@ -741,6 +776,12 @@ func (i *Ingester) stopping(_ error) error {
 		flushQueue.Close()
 	}
 	i.flushQueuesDone.Wait()
+
+	// Stopped after the flush on shutdown, so that the streams it removes
+	// are reported.
+	if i.cfg.StreamRemovalNotifier != nil {
+		errs.Add(services.StopAndAwaitTerminated(context.Background(), i.cfg.StreamRemovalNotifier))
+	}
 
 	i.streamRateCalculator.Stop()
 
@@ -1075,6 +1116,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 		if err != nil {
 			return nil, err
 		}
+		inst.streamRemovalNotifier = i.cfg.StreamRemovalNotifier
 		i.instances[instanceID] = inst
 		activeTenantsStats.Set(int64(len(i.instances)))
 	}

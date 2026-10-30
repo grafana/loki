@@ -302,6 +302,37 @@ func (s *usageStore) markProduced(tenant string, metadata *proto.StreamMetadata,
 	return marked
 }
 
+// RemoveCond deletes the stream if it has not been seen after
+// removedLastSeenAt plus slack. It is used to apply removal records, which
+// are written when an ingester no longer holds a stream. The condition is
+// what keeps a stream that is still receiving pushes, such as one held by
+// another ingester replica, from being deleted and then rejected as a new
+// stream on its next push. It reports whether the stream was deleted.
+//
+// All policy buckets in the stream's partition are searched, as the policy
+// bucket the stream is tracked under depends on limits that may have
+// changed since it was last seen.
+func (s *usageStore) RemoveCond(tenant string, streamHash uint64, removedLastSeenAt time.Time, slack time.Duration) bool {
+	var (
+		partition = s.getPartitionForHash(streamHash)
+		cutoff    = removedLastSeenAt.Add(slack).UnixNano()
+		removed   bool
+	)
+	s.withLock(tenant, func(i int) {
+		for _, streams := range s.stripes[i][tenant][partition] {
+			stream, ok := streams[streamHash]
+			if !ok {
+				continue
+			}
+			if stream.lastSeenAt <= cutoff {
+				delete(streams, streamHash)
+				removed = true
+			}
+		}
+	})
+	return removed
+}
+
 // Evict evicts all streams that have not been seen within the window.
 func (s *usageStore) Evict() map[string]int {
 	cutoff := s.clock.Now().Add(-s.activeWindow).UnixNano()

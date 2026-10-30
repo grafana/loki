@@ -53,6 +53,7 @@ import (
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
@@ -843,6 +844,26 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	}
 	if t.Cfg.Ingester.ShutdownMarkerPath == "" {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
+	}
+
+	if t.Cfg.Ingester.StreamRemovalRecords.Enabled {
+		if t.Cfg.IngestLimits.Topic == "" {
+			return nil, errors.New("-ingest-limits.topic must be set when -ingester.stream-removal-records.enabled is true")
+		}
+		kCfg := t.Cfg.KafkaConfig
+		kCfg.Topic = t.Cfg.IngestLimits.Topic
+		kafkaWriter, err := kafka_client.NewWriterClient("ingester-stream-removal-writer", kCfg, logger, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kafka client for stream removal records: %w", err)
+		}
+		t.Cfg.Ingester.StreamRemovalNotifier = limits.NewStreamRemovalProducer(
+			t.Cfg.Ingester.StreamRemovalRecords,
+			kafkaWriter,
+			kCfg.Topic,
+			t.Cfg.IngestLimits.NumPartitions,
+			logger,
+			prometheus.DefaultRegisterer,
+		)
 	}
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring, t.PartitionRingWatcher)
