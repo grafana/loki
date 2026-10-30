@@ -1179,6 +1179,44 @@ When tailing logs, the WebSocket connection was closed unexpectedly. This can ha
 
 These errors occur when requested data is not available.
 
+### Logs with past timestamps are temporarily unavailable
+
+**Symptom:**
+
+Loki accepts log entries with past timestamps, but queries for those timestamps
+return an empty result. The entries appear later without another ingestion
+request.
+
+**Cause:**
+
+The `querier.query_ingesters_within` setting limits how far into the past a
+query can end and still reach ingesters. The default is `3h`. If a query ends
+more than three hours ago, Loki queries only the backing store. An ingester can
+still hold a newly accepted entry with a past timestamp in an in-memory chunk.
+Loki can't return the entry until the ingester flushes that chunk to the backing
+store.
+
+If you enable query result caching, Loki can cache an empty result obtained
+before the flush. That result can remain in the cache after the chunk reaches
+the backing store.
+
+**Resolution:**
+
+1. Confirm that Loki accepted the write request.
+1. Compare the query's end time with `querier.query_ingesters_within`.
+1. Wait for the ingester to flush the chunk, then retry after the cached result
+   expires, if applicable.
+1. If logs with past timestamps must be queryable immediately, increase
+   `query_ingesters_within` to cover the backfill window, or set it to `0s` to
+   query ingesters for all time ranges:
+
+   ```yaml
+   querier:
+     query_ingesters_within: 0s
+   ```
+
+   Querying ingesters for past time ranges increases ingester query load.
+
 ### Error: No data found
 
 **Error message:**
