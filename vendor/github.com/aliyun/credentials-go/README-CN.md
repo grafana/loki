@@ -153,6 +153,8 @@ func main() {
     SetType("oidc_role_arn").
     // OIDC提供商ARN，可以通过环境变量ALIBABA_CLOUD_OIDC_PROVIDER_ARN设置OidcProviderArn
     SetOIDCProviderArn("OIDCProviderArn").
+    // 直接传入 OIDC Token。Token 优先于文件路径，不论 Token 来自这里还是 ALIBABA_CLOUD_OIDC_TOKEN。
+    SetOIDCToken("OIDCToken").
     // OIDC Token文件路径，可以通过环境变量ALIBABA_CLOUD_OIDC_TOKEN_FILE设置OidcTokenFilePath
     SetOIDCTokenFilePath("OIDCTokenFilePath").
     // RAM角色名称ARN，可以通过环境变量ALIBABA_CLOUD_ROLE_ARN设置RoleArn
@@ -360,9 +362,11 @@ Credentials工具会优先在环境变量中获取凭据信息。
 
 `ALIBABA_CLOUD_OIDC_PROVIDER_ARN`：OIDC提供商ARN；
 
-`ALIBABA_CLOUD_OIDC_TOKEN_FILE`：OIDC Token文件路径；
+`ALIBABA_CLOUD_OIDC_TOKEN`：OIDC Token 原文。优先级是显式 Token，然后这个环境变量，再然后是显式文件路径，最后是 `ALIBABA_CLOUD_OIDC_TOKEN_FILE`。
 
-若以上三个环境变量都已设置内容，Credentials将会使用变量内容调用STS服务的[AssumeRoleWithOIDC - OIDC角色SSO时获取扮演角色的临时身份凭证](https://help.aliyun.com/zh/ram/developer-reference/api-sts-2015-04-01-assumerolewithoidc)接口换取STS Token作为默认凭据。
+`ALIBABA_CLOUD_OIDC_TOKEN_FILE`：OIDC Token文件路径。与 `ALIBABA_CLOUD_OIDC_TOKEN` 至少设置一个。
+
+若已设置角色 ARN、OIDC 提供商 ARN，以及 OIDC Token 或 Token 文件路径，Credentials将会使用变量内容调用STS服务的[AssumeRoleWithOIDC - OIDC角色SSO时获取扮演角色的临时身份凭证](https://help.aliyun.com/zh/ram/developer-reference/api-sts-2015-04-01-assumerolewithoidc)接口换取STS Token作为默认凭据。
 
 ### 3. 使用 Aliyun CLI 工具的 config.json 配置文件
 
