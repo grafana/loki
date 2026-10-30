@@ -14,11 +14,18 @@
    limitations under the License.
 */
 
-package tracing
+// Package otel provides integration between containerd/log and OpenTelemetry.
+//
+// In particular, it provides a hook that records log entries as events on
+// active OpenTelemetry spans.
+package otel
 
 import (
+	"slices"
+
 	"github.com/containerd/log"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -35,9 +42,45 @@ var allLevels = []log.Level{
 	log.TraceLevel,
 }
 
+type HookOpt func(*LogrusHook)
+
 // NewLogrusHook creates a new logrus hook
-func NewLogrusHook() *LogrusHook {
-	return &LogrusHook{}
+func NewLogrusHook(opts ...HookOpt) *LogrusHook {
+	hook := &LogrusHook{}
+	for _, opt := range opts {
+		opt(hook)
+	}
+	if hook.levels == nil {
+		hook.levels = slices.Clone(allLevels)
+	}
+	return hook
+}
+
+func WithTraceIDField(enabled bool) HookOpt {
+	return func(h *LogrusHook) {
+		h.enableTraceIDField = enabled
+	}
+}
+
+// WithLevel configures the minimum log level handled by the hook.
+// Entries below this level are ignored.
+func WithLevel(level log.Level) HookOpt {
+	return func(h *LogrusHook) {
+		for i, l := range allLevels {
+			if l == level {
+				h.levels = slices.Clone(allLevels[:i+1])
+				return
+			}
+		}
+	}
+}
+
+// WithErrorStatusLevel configures the minimum log level that marks the
+// active span with an error status.
+func WithErrorStatusLevel(level log.Level) HookOpt {
+	return func(h *LogrusHook) {
+		h.errorStatusLevel = &level
+	}
 }
 
 // LogrusHook is a [logrus.Hook] which adds logrus events to active spans.
@@ -45,21 +88,37 @@ func NewLogrusHook() *LogrusHook {
 // is a no-op.
 //
 // [logrus.Hook]: https://github.com/sirupsen/logrus/blob/v1.9.3/hooks.go#L3-L11
-type LogrusHook struct{}
+type LogrusHook struct {
+	enableTraceIDField bool
+	errorStatusLevel   *log.Level
+	levels             []log.Level
+}
 
 // Levels returns the logrus levels that this hook is interested in.
 func (h *LogrusHook) Levels() []log.Level {
-	return allLevels
+	if h.levels == nil {
+		return allLevels
+	}
+	return h.levels
 }
 
 // Fire is called when a log event occurs.
 func (h *LogrusHook) Fire(entry *log.Entry) error {
-	span := trace.SpanFromContext(entry.Context)
-	if span == nil {
+	if entry.Context == nil {
 		return nil
 	}
 
-	if !span.IsRecording() || !span.SpanContext().IsValid() {
+	span := trace.SpanFromContext(entry.Context)
+	spanCtx := span.SpanContext()
+	if !spanCtx.IsValid() {
+		return nil
+	}
+
+	if h.enableTraceIDField {
+		entry.Data["trace_id"] = spanCtx.TraceID().String()
+	}
+
+	if !span.IsRecording() {
 		return nil
 	}
 
@@ -69,6 +128,13 @@ func (h *LogrusHook) Fire(entry *log.Entry) error {
 		trace.WithAttributes(attribute.String("level", entry.Level.String())),
 		trace.WithTimestamp(entry.Time),
 	)
+
+	// Set the span status based on the log level, rather than the presence of
+	// an error field. Error values may be attached to lower-severity log entries
+	// without indicating that the operation represented by the span failed.
+	if h.errorStatusLevel != nil && entry.Level <= *h.errorStatusLevel {
+		span.SetStatus(codes.Error, entry.Message)
+	}
 
 	return nil
 }
