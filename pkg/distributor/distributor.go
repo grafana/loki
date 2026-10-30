@@ -1211,36 +1211,28 @@ type rateLimitBucket struct {
 	lines       int
 }
 
-// rateLimitError builds the client-facing 429 error for the rate-limit buckets a request
-// exceeded. A single exceeded bucket uses the existing per-tenant or per-policy message; two
-// or more are enumerated deterministically (the caller sorts them). All limits are looked up
-// at the same "now" used for the reservation decision.
-func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []*rateLimitBucket) error {
-	limitOf := func(b *rateLimitBucket) int {
-		key := tenantID
+// rateLimitError builds the client-facing 429 error when at least one rate limit bucket
+// is exceeded.
+func (d *Distributor) rateLimitError(exceededBuckets []*rateLimitBucket) error {
+	if len(exceededBuckets) == 1 {
+		b := exceededBuckets[0]
 		if b.hasOverride {
-			key = encodeRateLimitKey(tenantID, b.policy)
+			return fmt.Errorf(validation.RateLimitedPolicyErrorMsg, b.policy)
 		}
-		return int(d.ingestionRateLimiter.Limit(now, key))
+		return errors.New(validation.RateLimitedErrorMsg)
 	}
 
-	if len(exceeded) == 1 {
-		b := exceeded[0]
+	// Multiple buckets were exceeded at the same time, compose the error message.
+	policies := make([]string, 0, len(exceededBuckets))
+	for _, b := range exceededBuckets {
 		if b.hasOverride {
-			return fmt.Errorf(validation.RateLimitedPolicyErrorMsg, tenantID, b.policy, limitOf(b), b.lines, b.bytes)
-		}
-		return fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, limitOf(b), b.lines, b.bytes)
-	}
-
-	clauses := make([]string, 0, len(exceeded))
-	for _, b := range exceeded {
-		if b.hasOverride {
-			clauses = append(clauses, fmt.Sprintf("policy %q (limit: %d bytes/sec) ingesting %d lines totaling %d bytes", b.policy, limitOf(b), b.lines, b.bytes))
+			policies = append(policies, b.policy)
 		} else {
-			clauses = append(clauses, fmt.Sprintf("the tenant default (limit: %d bytes/sec) ingesting %d lines totaling %d bytes", limitOf(b), b.lines, b.bytes))
+			policies = append(policies, "tenant default")
 		}
 	}
-	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, tenantID, strings.Join(clauses, "; "))
+
+	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, strings.Join(policies, ", "))
 }
 
 // enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
@@ -1311,7 +1303,7 @@ func (d *Distributor) enforceIngestionRateLimits(
 		return strings.Compare(a.policy, b.policy)
 	})
 
-	err := d.rateLimitError(now, tenantID, exceeded)
+	err := d.rateLimitError(exceeded)
 	d.writeFailuresManager.Log(tenantID, err)
 	// Return a 429 to indicate to the client they are being rate limited
 	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
