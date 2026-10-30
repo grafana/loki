@@ -246,8 +246,8 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapp
 # github.com/IBM/go-sdk-core/v5 v5.25.1
 ## explicit; go 1.26.0
 github.com/IBM/go-sdk-core/v5/core
-# github.com/IBM/ibm-cos-sdk-go v1.14.1
-## explicit; go 1.25.0
+# github.com/IBM/ibm-cos-sdk-go v1.15.2
+## explicit; go 1.26.0
 github.com/IBM/ibm-cos-sdk-go/aws
 github.com/IBM/ibm-cos-sdk-go/aws/arn
 github.com/IBM/ibm-cos-sdk-go/aws/awserr
@@ -956,7 +956,7 @@ github.com/go-openapi/loads
 # github.com/go-openapi/spec v1.0.0
 ## explicit; go 1.25.0
 github.com/go-openapi/spec
-# github.com/go-openapi/strfmt v0.27.3
+# github.com/go-openapi/strfmt v0.27.4
 ## explicit; go 1.26.0
 github.com/go-openapi/strfmt
 github.com/go-openapi/strfmt/internal/bsonlite
