@@ -8,16 +8,11 @@ import (
 	"github.com/aws/smithy-go/ptr"
 )
 
-// Grants permission to inspect the metadata and state of an OAuth 2.0 access
-// token or refresh token
+// Inspects the metadata and active state of an OAuth 2.0 access token or refresh
+// token.
 //
 // Implements RFC 7662 OAuth 2.0 Token Introspection over a SigV4-authenticated
-// endpoint. Inspects the metadata of an access_token or refresh_token issued by
-// AWS Sign-In and returns the claims associated with it.
-//
-// Inactive token semantics (RFC 7662 §2.2): when the supplied token is unknown,
-// expired, revoked, malformed, or owned by a different account, the response body
-// is exactly { "active": false } with all other claims omitted.
+// endpoint. Returns the claims associated with a token issued by AWS Sign-In.
 func (c *Client) IntrospectOAuth2TokenWithIAM(ctx context.Context, params *IntrospectOAuth2TokenWithIAMInput, optFns ...func(*Options)) (*IntrospectOAuth2TokenWithIAMOutput, error) {
 	if params == nil {
 		params = &IntrospectOAuth2TokenWithIAMInput{}
@@ -39,15 +34,14 @@ func (c *Client) IntrospectOAuth2TokenWithIAM(ctx context.Context, params *Intro
 // optional hint about the token's type.
 type IntrospectOAuth2TokenWithIAMInput struct {
 
-	// The string value of the token to introspect. May be either an access_token or a
-	// refresh_token issued by AWS Sign-In.
+	// The access token or refresh token issued by AWS Sign-In.
 	//
 	// This member is required.
 	Token *string
 
-	// Optional hint about the type of the token submitted for introspection. The
-	// server uses this hint to optimize lookup, but still falls back to the other
-	// token type on miss. Allowed values: access_token, refresh_token.
+	// An optional hint about the type of the token submitted for introspection, as
+	// defined in RFC 7662 §2.1. The server checks both token types regardless of the
+	// hint. Allowed values: "access_token", "refresh_token".
 	TokenTypeHint *string
 
 	noSmithyDocumentSerde
@@ -64,9 +58,9 @@ func (in *IntrospectOAuth2TokenWithIAMInput) bindEndpointParams(p *EndpointParam
 // are omitted when the token is inactive.
 type IntrospectOAuth2TokenWithIAMOutput struct {
 
-	// Indicates whether the token is currently active. true only when the token is
-	// valid, has not expired, has not been revoked, and belongs to the caller's
-	// account.
+	// Indicates whether the token is currently active. Returns "true" only when the
+	// token is valid, has not expired, has not been revoked, and belongs to the
+	// caller's account.
 	//
 	// This member is required.
 	Active *bool
@@ -74,8 +68,8 @@ type IntrospectOAuth2TokenWithIAMOutput struct {
 	// 12-digit AWS account ID of the token's subject principal.
 	AccountId *string
 
-	// Audience of the token: the OAuth resource the token is scoped to (for example,
-	// "aws-mcp.amazonaws.com"). Omitted for refresh tokens.
+	// The OAuth resource the token is scoped to. Omitted for refresh tokens. Example:
+	// "aws-mcp.amazonaws.com".
 	Aud *string
 
 	// Client identifier for the OAuth 2.0 client that requested the token.
@@ -96,26 +90,24 @@ type IntrospectOAuth2TokenWithIAMOutput struct {
 	// Token "not before" time as a NumericDate (Unix epoch seconds).
 	Nbf *int64
 
-	// The OAuth resource the token is scoped to during Human OAuth flow. Only present
-	// for refresh token introspection.
+	// The OAuth resource the token is scoped to. Only present for refresh token
+	// introspection.
 	Resource *string
 
 	// AWS Sign-In session ARN bound to the token, of the form
 	// arn:aws:signin:{region}:{account}:session/{uuid}.
 	SigninSession *string
 
-	// Subject of the token: the IAM principal ARN. For assumed-role sessions, this is
-	// the session ARN (matches sts:GetCallerIdentity's Arn field), e.g.
-	// arn:aws:sts::123456789012:assumed-role/MyRole/session-name.
+	// The IAM principal Amazon Resource Name (ARN). For assumed-role sessions, this
+	// is the session ARN.
 	Sub *string
 
 	// Indicates which kind of token was introspected. One of "access_token" or
 	// "refresh_token".
 	TokenType *string
 
-	// User identifier matching sts:GetCallerIdentity's UserId field for the token's
-	// subject principal (e.g. "AIDAEXAMPLE" for an IAM user, or
-	// "AROAEXAMPLE:session-name" for an assumed role).
+	// User identifier matching the "UserId" field from "sts:GetCallerIdentity" for
+	// the token's subject principal.
 	UserId *string
 
 	// Metadata pertaining to the operation's result.

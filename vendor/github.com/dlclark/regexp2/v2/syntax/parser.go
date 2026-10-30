@@ -104,7 +104,7 @@ const (
 	ErrTooFewHex                  = "insufficient hexadecimal digits"
 	ErrInvalidHex                 = "hex values may not be larger than 0x10FFFF"
 	ErrMalformedNameRef           = "malformed \\k<...> named back reference"
-	ErrBadClassInCharRange        = "cannot include class \\%v in character range"
+	ErrBadClassInCharRange        = "cannot include class \\%c in character range"
 	ErrShorthandClassInCharRange  = "cannot create range with shorthand escape sequence \\%v"
 	ErrUnterminatedBracket        = "unterminated [] set"
 	ErrSubtractionMustBeLast      = "a subtraction must be the last element in a character class"
@@ -1481,14 +1481,20 @@ func (p *parser) scanBackslash(scanOnly bool) (*RegexNode, error) {
 
 	case 'w':
 		p.moveRight(1)
-		if p.useOptionE() || p.useRE2() {
+		if p.useOptionE() {
+			return newRegexNodeSet(NtSet, p.options, ecmaWordClass(p.options, false)), nil
+		}
+		if p.useRE2() {
 			return newRegexNodeSet(NtSet, p.options, ECMAWordClass()), nil
 		}
 		return newRegexNodeSet(NtSet, p.options, WordClass()), nil
 
 	case 'W':
 		p.moveRight(1)
-		if p.useOptionE() || p.useRE2() {
+		if p.useOptionE() {
+			return newRegexNodeSet(NtSet, p.options, ecmaWordClass(p.options, true)), nil
+		}
+		if p.useRE2() {
 			return newRegexNodeSet(NtSet, p.options, NotECMAWordClass()), nil
 		}
 		return newRegexNodeSet(NtSet, p.options, NotWordClass()), nil
@@ -1538,7 +1544,7 @@ func (p *parser) scanBackslash(scanOnly bool) (*RegexNode, error) {
 		}
 		cc := &CharSet{}
 		p.addProperty(cc, prop, (ch != 'p'), p.useOptionI())
-		if p.useOptionI() {
+		if p.useOptionI() && !p.useOptionE() {
 			cc.addLowercase()
 		}
 
@@ -1719,7 +1725,7 @@ func (p *parser) scanBasicBackslash(scanOnly bool) (*RegexNode, error) {
 		return nil, nil
 	}
 
-	if p.useOptionI() {
+	if p.useOptionI() && !p.useOptionE() {
 		ch = unicode.ToLower(ch)
 	}
 
@@ -1938,6 +1944,7 @@ func (p *parser) scanCapname() (string, error) {
 func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 	var ch rune
 	chPrev := '\x00'
+	var classPrev rune // ECMAScript range's left class escape, or zero for a character.
 	inRange := false
 	firstChar := true
 	closed := false
@@ -1957,6 +1964,7 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 
 	for ; p.charsRight() > 0 || len(quoted) > 0; firstChar = false {
 		fTranslatedChar := false
+		var classEscape rune
 		for {
 			if len(quoted) > 0 {
 				ch = quoted[0]
@@ -1994,48 +2002,30 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 
 		} else if ch == '\\' && !fTranslatedChar && p.charsRight() > 0 {
 			switch ch = p.moveRightGetChar(); ch {
-			case 'D', 'd':
+			case 'D', 'd', 'S', 's', 'W', 'w':
 				if !scanOnly {
-					if inRange {
-						if !p.useOptionE() {
-							return nil, p.getErr(ErrBadClassInCharRange, ch)
-						}
-						cc.addChar(chPrev)
-						cc.addChar('-')
-						inRange = false
+					if inRange && !p.useOptionE() {
+						return nil, p.getErr(ErrBadClassInCharRange, ch)
 					}
-					cc.addDigit(p.useOptionE() || p.useRE2(), ch == 'D')
-				}
-				continue
-
-			case 'S', 's':
-				if !scanOnly {
-					if inRange {
-						if !p.useOptionE() {
-							return nil, p.getErr(ErrBadClassInCharRange, ch)
+					switch ch {
+					case 'D', 'd':
+						cc.addDigit(p.useOptionE() || p.useRE2(), ch == 'D')
+					case 'S', 's':
+						cc.addSpace(p.useOptionE(), p.useRE2(), ch == 'S')
+					case 'W', 'w':
+						if p.useOptionE() {
+							cc.addRanges(ecmaWordClass(p.options, ch == 'W').ranges)
+						} else {
+							cc.addWord(p.useRE2(), ch == 'W')
 						}
-						cc.addChar(chPrev)
-						cc.addChar('-')
-						inRange = false
 					}
-					cc.addSpace(p.useOptionE(), p.useRE2(), ch == 'S')
 				}
-				continue
-
-			case 'W', 'w':
-				if !scanOnly {
-					if inRange {
-						if !p.useOptionE() {
-							return nil, p.getErr(ErrBadClassInCharRange, ch)
-						}
-						cc.addChar(chPrev)
-						cc.addChar('-')
-						inRange = false
-					}
-
-					cc.addWord(p.useOptionE() || p.useRE2(), ch == 'W')
+				if !p.useOptionE() {
+					continue
 				}
-				continue
+				// Class escapes participate in ECMAScript's range grammar just
+				// like character atoms. Their sets have already been added.
+				classEscape = ch
 
 			case 'p', 'P':
 				if p.useOptionE() && !p.useOptionU() {
@@ -2066,6 +2056,12 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 				continue
 
 			case '-':
+				if p.useOptionE() {
+					// An escaped hyphen is a character atom, including at either
+					// endpoint of a range; only an unescaped hyphen separates them.
+					fTranslatedChar = true
+					break
+				}
 				if !scanOnly {
 					cc.addRange(ch, ch)
 				}
@@ -2080,7 +2076,7 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 				}
 				fTranslatedChar = true
 			}
-		} else if ch == '[' && !fTranslatedChar {
+		} else if ch == '[' && !fTranslatedChar && !p.useOptionE() {
 			// This is code for Posix style properties - [:Ll:] or [:IsTibetan:].
 			// It currently doesn't do anything other than skip the whole thing!
 			if p.charsRight() > 0 && p.rightChar(0) == ':' && !inRange {
@@ -2113,7 +2109,23 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 		if inRange {
 			inRange = false
 			if !scanOnly {
-				if ch == '[' && !fTranslatedChar && !firstChar {
+				if classPrev != 0 || classEscape != 0 {
+					// Annex B's CharacterRangeOrUnion consumes both endpoints,
+					// even when a class escape turns the range into a union.
+					if p.useOptionU() {
+						if classPrev != 0 {
+							return nil, p.getErr(ErrBadClassInCharRange, classPrev)
+						}
+						return nil, p.getErr(ErrBadClassInCharRange, classEscape)
+					}
+					if classPrev == 0 {
+						cc.addChar(chPrev)
+					}
+					if classEscape == 0 {
+						cc.addChar(ch)
+					}
+					cc.addChar('-')
+				} else if ch == '[' && !fTranslatedChar && !firstChar && !p.useOptionE() {
 					// We thought we were in a range, but we're actually starting a subtraction.
 					// In that case, we'll add chPrev to our char class, skip the opening [, and
 					// scan the new character class recursively.
@@ -2138,9 +2150,10 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 		} else if p.charsRight() >= 2 && p.rightChar(0) == '-' && p.rightChar(1) != ']' {
 			// this could be the start of a range
 			chPrev = ch
+			classPrev = classEscape
 			inRange = true
 			p.moveRight(1)
-		} else if p.charsRight() >= 1 && ch == '-' && !fTranslatedChar && p.rightChar(0) == '[' && !firstChar {
+		} else if p.charsRight() >= 1 && ch == '-' && !fTranslatedChar && p.rightChar(0) == '[' && !firstChar && !p.useOptionE() {
 			// we aren't in a range, and now there is a subtraction.  Usually this happens
 			// only when a subtraction follows a range, like [a-z-[b]]
 			if !scanOnly {
@@ -2159,7 +2172,7 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 				_, _ = p.scanCharSet(caseInsensitive, true)
 			}
 		} else {
-			if !scanOnly {
+			if !scanOnly && classEscape == 0 {
 				cc.addRange(ch, ch)
 			}
 		}
@@ -2169,7 +2182,7 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 		return nil, p.getErr(ErrUnterminatedBracket)
 	}
 
-	if !scanOnly && caseInsensitive {
+	if !scanOnly && caseInsensitive && !p.useOptionE() {
 		cc.addLowercase()
 	}
 
@@ -2255,12 +2268,26 @@ func (p *parser) scanCharEscape(inClass bool) (r rune, err error) {
 			r, err = p.scanHex(2)
 		}
 	case 'u':
-		// ECMAscript suppot \u{HEX} only if `u` is also set
+		// ECMAscript support \u{HEX} only if `u` is also set
 		if p.useOptionE() && p.useOptionU() && p.charsRight() > 0 && p.rightChar(0) == '{' {
 			p.moveRight(1)
 			return p.scanHexUntilBrace()
 		} else {
 			r, err = p.scanHex(4)
+			if err == nil && p.useOptionE() && p.useOptionU() && r >= 0xD800 && r <= 0xDBFF &&
+				p.charsRight() >= 6 && p.rightChar(0) == '\\' && p.rightChar(1) == 'u' {
+				// Only adjacent four-hex escapes combine. Restore the cursor
+				// for a non-low or malformed follower so it is parsed normally,
+				// including its own early error, on the next scan.
+				pos := p.textpos()
+				p.moveRight(2)
+				low, pairErr := p.scanHex(4)
+				if pairErr == nil && low >= 0xDC00 && low <= 0xDFFF {
+					r = utf16.DecodeRune(r, low)
+				} else {
+					p.textto(pos)
+				}
+			}
 		}
 	case 'a':
 		if p.useOptionE() && !p.useOptionU() {
@@ -2285,8 +2312,8 @@ func (p *parser) scanCharEscape(inClass bool) (r rune, err error) {
 	case 'v':
 		return '\u000B', nil
 	case 'c':
-		if p.useOptionE() && !p.useOptionU() {
-			return p.scanECMAControl(inClass), nil
+		if p.useOptionE() {
+			return p.scanECMAControl(inClass)
 		}
 		r, err = p.scanControl()
 	default:
@@ -2298,27 +2325,40 @@ func (p *parser) scanCharEscape(inClass bool) (r rune, err error) {
 		}
 		return ch, nil
 	}
-	if err != nil && p.useOptionE() {
+	// Annex B's fallback to a literal character applies only without the
+	// Unicode flag; in Unicode mode escape errors are early errors.
+	if err != nil && p.useOptionE() && !p.useOptionU() {
 		p.textto(pos)
 		return ch, nil
 	}
 	return
 }
 
-// scanECMAControl implements Annex B's non-Unicode control escapes.
-func (p *parser) scanECMAControl(inClass bool) rune {
+// scanECMAControl implements Annex B's control escapes.
+func (p *parser) scanECMAControl(inClass bool) (rune, error) {
+	if p.useOptionU() {
+		// Unicode mode requires a control letter; Annex B's leniency
+		// (digits and '_' inside classes) does not apply.
+		if p.charsRight() == 0 {
+			return 0, p.getErr(ErrMissingControl)
+		}
+		c := p.rightChar(0)
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+			return 0, p.getErr(ErrUnrecognizedControl)
+		}
+	}
 	if p.charsRight() > 0 {
 		ch := p.rightChar(0)
 		if ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' ||
 			inClass && (ch >= '0' && ch <= '9' || ch == '_') {
 			p.moveRight(1)
-			return ch % 32
+			return ch % 32, nil
 		}
 	}
 	// Only the backslash is an atom; c and its following syntax are scanned
 	// normally, including in the capture prescan.
 	p.moveLeft()
-	return '\\'
+	return '\\', nil
 }
 
 // Grabs and converts an ascii control character

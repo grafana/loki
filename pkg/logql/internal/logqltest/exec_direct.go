@@ -11,7 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 

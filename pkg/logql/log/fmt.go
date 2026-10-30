@@ -14,7 +14,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 const (
@@ -421,7 +421,7 @@ func validate(fmts []LabelFmt) error {
 	// To avoid confusion we allow to have a label name only once per stage.
 	uniqueLabelName := map[string]struct{}{}
 	for _, f := range fmts {
-		if f.Name == logqlmodel.ErrorLabel {
+		if f.Name == logqlerr.ErrorLabel {
 			return fmt.Errorf("%s cannot be formatted", f.Name)
 		}
 		if _, ok := uniqueLabelName[f.Name]; ok {

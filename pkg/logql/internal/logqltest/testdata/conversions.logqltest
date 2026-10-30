@@ -118,6 +118,23 @@ eval range from 60s to 120s step 30s max_over_time({unit=~".+"} | logfmt | unwra
   {unit="fh"}  5400 5400 5400
   {unit="neg"} -5 -5 -5
   {unit="meta"} 5400 5400 5400
+# duration_seconds() under sum() by() and label_replace().
+eval instant at 70s label_replace(sum by (unit) (sum_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) [1m])), "engine", "pg", "unit", ".+")
+  {unit="s", engine="pg"}    12      # 6 samples of 2s
+  {unit="ms", engine="pg"}   3
+  {unit="m", engine="pg"}    360
+  {unit="hm", engine="pg"}   32400
+  {unit="fh", engine="pg"}   32400
+  {unit="neg", engine="pg"}  -30
+  {unit="meta", engine="pg"} 32400
+eval range from 10s to 70s step 30s label_replace(sum by (unit) (sum_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) [1m])), "engine", "pg", "unit", ".+")  # overlapping
+  {unit="s", engine="pg"}    2 8 12   # 1, 4, 6 samples of 2s
+  {unit="ms", engine="pg"}   0.5 2 3
+  {unit="m", engine="pg"}    60 240 360
+  {unit="hm", engine="pg"}   5400 21600 32400
+  {unit="fh", engine="pg"}   5400 21600 32400
+  {unit="neg", engine="pg"}  -5 -20 -30
+  {unit="meta", engine="pg"} 5400 21600 32400
 # The unwrapped label can itself be named "duration".
 eval instant at 120s max_over_time({unit="dur"} | logfmt | unwrap duration(duration) [1m])
   {unit="dur"} 90
@@ -135,4 +152,8 @@ eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap duration_second
 eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap duration(d) | __error__="" [1m]) by (unit)
   expect empty
 eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) | __error__="" [1m]) by (unit)
+  expect empty
+eval instant at 60s label_replace(sum by (unit) (sum_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) [1m])), "engine", "pg", "unit", ".+")
+  expect fail msg: pipeline error
+eval instant at 60s label_replace(sum by (unit) (sum_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) | __error__="" [1m])), "engine", "pg", "unit", ".+")
   expect empty

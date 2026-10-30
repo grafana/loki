@@ -1,12 +1,14 @@
 package queryrange
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	valid "github.com/grafana/loki/v3/pkg/validation"
@@ -64,10 +66,12 @@ func TestChunkShardingPolicy_powerOfTwoShards(t *testing.T) {
 }
 
 func TestChunkShardingPolicy_boundedShards(t *testing.T) {
+	tenants := []string{"1"}
+
 	t.Run("returns the bounded shards and chunk refs it receives", func(t *testing.T) {
 		shards, chunks := boundedShards(100, 10)
 
-		gotShards, gotChunks := newChunkShardingPolicy(fakeLimits{}).boundedShards(shards, chunks)
+		gotShards, gotChunks := newChunkShardingPolicy(fakeLimits{}).boundedShards(tenants, shards, chunks)
 
 		require.Equal(t, shards, gotShards)
 		require.Equal(t, chunks, gotChunks)
@@ -87,6 +91,36 @@ func TestDataObjShardingPolicy_powerOfTwoShards(t *testing.T) {
 	t.Run("caps the shard count at 8 times the number of shard buckets when the chunk cap is higher", func(t *testing.T) {
 		require.Equal(t, 256, policy.powerOfTwoShards(tenants, stats.Stats{Bytes: bytes}, 512))
 	})
+
+	t.Run("caps the shard count at 8 times the shard buckets of a tenant that has fewer buckets than the default", func(t *testing.T) {
+		policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{
+			bytesPerShardLimits: limits,
+			layouts:             map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(8)},
+		})
+
+		require.Equal(t, 64, policy.powerOfTwoShards(tenants, stats.Stats{Bytes: bytes}, 0))
+	})
+
+	t.Run("keeps the ceiling of 256 shards for a tenant that has more buckets than the default", func(t *testing.T) {
+		policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{
+			bytesPerShardLimits: limits,
+			layouts:             map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(1024)},
+		})
+
+		require.Equal(t, 256, policy.powerOfTwoShards(tenants, stats.Stats{Bytes: bytes}, 0))
+	})
+
+	for _, tenants := range [][]string{{"1", "2"}, {"2", "1"}} {
+		t.Run(fmt.Sprintf("sizes the cap for the tenant with the most buckets when a query lists the tenants as %v", tenants), func(t *testing.T) {
+			limits := bytesPerShardLimits{dataObjBytesPerShard: map[string]uint64{"1": maxBytesPerShard, "2": maxBytesPerShard}}
+			policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{
+				bytesPerShardLimits: limits,
+				layouts:             map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(8), "2": dataobjstreams.MustShardLayoutFromBuckets(16)},
+			})
+
+			require.Equal(t, 128, policy.powerOfTwoShards(tenants, stats.Stats{Bytes: bytes}, 0))
+		})
+	}
 
 	t.Run("keeps a chunk cap that is between the number of shard buckets and the data-object cap", func(t *testing.T) {
 		require.Equal(t, 64, policy.powerOfTwoShards(tenants, stats.Stats{Bytes: bytes}, 64))
@@ -144,21 +178,69 @@ func TestDataObjShardingPolicy_powerOfTwoShards(t *testing.T) {
 }
 
 func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
+	tenants := []string{"1"}
 	policy := newDataObjShardingPolicy(Config{}, fakeLimits{})
 
 	t.Run("returns 256 or fewer shards unchanged", func(t *testing.T) {
 		shards, chunks := boundedShards(256, 10)
 
-		gotShards, gotChunks := policy.boundedShards(shards, chunks)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.Equal(t, shards, gotShards)
 		require.Empty(t, gotChunks)
 	})
 
+	t.Run("merges 100 shards into at most 8 times the buckets of a tenant that has 8 buckets", func(t *testing.T) {
+		policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{layouts: map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(8)}})
+		shards, chunks := boundedShards(100, 10)
+
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
+
+		require.LessOrEqual(t, len(gotShards), 64)
+		require.Greater(t, len(gotShards), 32, "the merge must keep more than half of the cap")
+		require.Empty(t, gotChunks)
+	})
+
+	t.Run("returns 64 shards unchanged for a tenant that has 8 buckets", func(t *testing.T) {
+		policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{layouts: map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(8)}})
+		shards, chunks := boundedShards(64, 10)
+
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
+
+		require.Equal(t, shards, gotShards)
+		require.Empty(t, gotChunks)
+	})
+
+	t.Run("merges 1000 shards into at most the ceiling of 256 shards for a tenant that has 1024 buckets", func(t *testing.T) {
+		policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{layouts: map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(1024)}})
+		shards, chunks := boundedShards(1000, 10)
+
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
+
+		require.LessOrEqual(t, len(gotShards), 256)
+		require.Greater(t, len(gotShards), 128, "the merge must keep more than half of the cap")
+		require.Empty(t, gotChunks)
+	})
+
+	t.Run("merges 1000 shards into at most 8 times the buckets of the tenant with the most buckets, whatever the order of the tenants", func(t *testing.T) {
+		for _, tenants := range [][]string{{"1", "2"}, {"2", "1"}} {
+			t.Run(fmt.Sprintf("lists the tenants as %v", tenants), func(t *testing.T) {
+				policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{layouts: map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(8), "2": dataobjstreams.MustShardLayoutFromBuckets(16)}})
+				shards, chunks := boundedShards(1000, 10)
+
+				gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
+
+				require.LessOrEqual(t, len(gotShards), 128)
+				require.Greater(t, len(gotShards), 64, "the cap of the tenant with fewer buckets must not apply")
+				require.Empty(t, gotChunks)
+			})
+		}
+	})
+
 	t.Run("returns no chunk refs for 256 or fewer shards", func(t *testing.T) {
 		shards, chunks := boundedShards(256, 10)
 
-		_, gotChunks := policy.boundedShards(shards, chunks)
+		_, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.Empty(t, gotChunks)
 	})
@@ -166,7 +248,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 	t.Run("merges more than 256 shards into at most 256 shards", func(t *testing.T) {
 		shards, chunks := boundedShards(1000, 10)
 
-		gotShards, gotChunks := policy.boundedShards(shards, chunks)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.LessOrEqual(t, len(gotShards), 256)
 		require.Empty(t, gotChunks)
@@ -175,7 +257,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 	t.Run("returns no chunk refs for more than 256 shards", func(t *testing.T) {
 		shards, chunks := boundedShards(1000, 10)
 
-		_, gotChunks := policy.boundedShards(shards, chunks)
+		_, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.Empty(t, gotChunks)
 	})
@@ -183,7 +265,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 	t.Run("keeps the bounds contiguous and covering every fingerprint", func(t *testing.T) {
 		shards, chunks := boundedShards(1000, 10)
 
-		gotShards, gotChunks := policy.boundedShards(shards, chunks)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.Equal(t, model.Fingerprint(0), gotShards[0].Bounds.Min)
 		require.Equal(t, model.Fingerprint(math.MaxUint64), gotShards[len(gotShards)-1].Bounds.Max)
@@ -196,7 +278,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 	t.Run("sums the stats of the merged shards", func(t *testing.T) {
 		shards, chunks := boundedShards(1000, 10)
 
-		gotShards, gotChunks := policy.boundedShards(shards, chunks)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		var got stats.Stats
 		for _, shard := range gotShards {
@@ -212,7 +294,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 	t.Run("merges more than 256 shards when the index returns no chunk refs", func(t *testing.T) {
 		shards, _ := boundedShards(1000, 10)
 
-		gotShards, gotChunks := policy.boundedShards(shards, nil)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, nil)
 
 		require.LessOrEqual(t, len(gotShards), 256)
 		require.Empty(t, gotChunks)
@@ -224,7 +306,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 			shards[i].Stats.Bytes = 1000
 		}
 
-		gotShards, gotChunks := policy.boundedShards(shards, chunks)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.Len(t, gotShards, 256)
 		require.Equal(t, uint64(1+8), gotShards[255].Stats.Streams)
@@ -234,7 +316,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 	t.Run("closes a group once it holds its share of the bytes", func(t *testing.T) {
 		shards, chunks := boundedShards(1000, 10)
 
-		gotShards, gotChunks := policy.boundedShards(shards, chunks)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.Len(t, gotShards, 250)
 		for i, shard := range gotShards {
@@ -246,7 +328,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 	t.Run("rounds the bytes of a group up when the total does not divide evenly", func(t *testing.T) {
 		shards, chunks := boundedShards(257, 1)
 
-		gotShards, gotChunks := policy.boundedShards(shards, chunks)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.Len(t, gotShards, 129)
 		require.Equal(t, uint64(2), gotShards[0].Stats.Streams)
@@ -260,7 +342,7 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 			shards[i].Stats = nil
 		}
 
-		gotShards, gotChunks := policy.boundedShards(shards, chunks)
+		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
 		require.LessOrEqual(t, len(gotShards), 256)
 		require.Equal(t, model.Fingerprint(math.MaxUint64), gotShards[len(gotShards)-1].Bounds.Max)
@@ -309,4 +391,18 @@ func (l bytesPerShardLimits) DataObjMaxBytesPerShard(tenantID string) uint64 {
 		return limit
 	}
 	return l.fakeLimits.DataObjMaxBytesPerShard(tenantID)
+}
+
+// shardLayoutLimits gives each tenant its own shard layout for new data objects. A tenant that is
+// not in the map has the layout of fakeLimits.
+type shardLayoutLimits struct {
+	bytesPerShardLimits
+	layouts map[string]dataobjstreams.ShardLayout
+}
+
+func (l shardLayoutLimits) DataObjShardLayout(tenantID string) dataobjstreams.ShardLayout {
+	if layout, ok := l.layouts[tenantID]; ok {
+		return layout
+	}
+	return l.fakeLimits.DataObjShardLayout(tenantID)
 }

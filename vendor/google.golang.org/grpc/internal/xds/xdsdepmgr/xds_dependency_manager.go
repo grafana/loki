@@ -203,6 +203,12 @@ func (m *DependencyManager) Close() {
 		dnsResolver.stop()
 		delete(m.dnsResolvers, name)
 	}
+
+	// Drop references to externally-owned collaborators so the dependency
+	// manager itself doesn't retain them once Close returns. All in-flight
+	// callbacks re-check m.stopped under m.mu before touching these fields.
+	m.watcher = nil
+	m.xdsClient = nil
 }
 
 // annotateErrorWithNodeID annotates the given error with the provided xDS node
@@ -999,6 +1005,13 @@ func (m *DependencyManager) SubscribeToCluster(name string) func() {
 func (m *DependencyManager) unsubscribeFromCluster(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Balancers can invoke the unsubscribe closure returned by
+	// SubscribeToCluster after Close has already torn down all watchers and
+	// dropped m.watcher / m.xdsClient. Match the m.stopped guard used by
+	// every other post-Close callback in this file.
+	if m.stopped {
+		return
+	}
 	c := m.clusterSubscriptions[name]
 	c.dynamicRefCount--
 	// This should not happen as unsubscribe returned from the

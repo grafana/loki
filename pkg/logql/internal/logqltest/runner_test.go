@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 )
 
 // TestLogQLScripts runs every declarative `.logqltest` script under testdata/ through the

@@ -27,9 +27,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -89,7 +90,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
 	// do not allow log selector expression (aka log query) as instant query
 	if _, ok := req.Plan.AST.(syntax.SampleExpr); !ok {
-		return logqlmodel.Result{}, logqlmodel.ErrUnsupportedSyntaxForInstantQuery
+		return logqlmodel.Result{}, logqlerr.ErrUnsupportedSyntaxForInstantQuery
 	}
 
 	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {

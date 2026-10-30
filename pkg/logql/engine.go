@@ -13,7 +13,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	"github.com/grafana/loki/v3/pkg/tracing"
 
 	"github.com/go-kit/log"
@@ -29,9 +30,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -341,7 +342,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	defer cancel()
 
 	if q.checkBlocked(ctx, tenants) {
-		return nil, logqlmodel.ErrBlocked
+		return nil, logqlerr.ErrBlocked
 	}
 
 	switch e := q.params.GetExpression().(type) {
@@ -412,20 +413,18 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	// Only count the real query evaluation, not the *DownstreamEvaluator the query-frontend uses
 	// to dispatch a sharded or astmapper-rewritten query. It never reads a sample itself.
 	//
-	// expr here is always the query's root: evalSample never recurses, so isRootExpr is always
-	// true, matching the NewStepEvaluator call below.
+	// A query counts as stream-first when any part of it runs in stream-first order.
 	if _, ok := q.evaluator.(*DefaultEvaluator); ok {
-		switch sampleOrderFor(ctx, expr, q.limits, true) {
-		case logproto.SAMPLE_ORDER_BY_STREAM:
+		if sampleOrderForQuery(ctx, expr, q.limits) == logproto.SAMPLE_ORDER_BY_STREAM {
 			stats.FromContext(ctx).AddStreamFirstQueries(1)
-		default:
+		} else {
 			stats.FromContext(ctx).AddTimestampFirstQueries(1)
 		}
 	}
 
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, true)
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
@@ -514,7 +513,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 			next = false
 			vectorsToSeries(vec, seriesIndex)
 		} else {
-			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+			return nil, logqlerr.NewSeriesLimitError(maxSeries)
 		}
 	}
 
@@ -549,7 +548,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		// maxSeries regardless of request type.
 		if vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries) {
 			if !httpreq.IsLogsDrilldownRequest(ctx) {
-				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+				return nil, logqlerr.NewSeriesLimitError(maxSeries)
 			}
 			// Logs Drilldown returns partial results with a warning instead of failing.
 			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
@@ -578,7 +577,7 @@ func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) 
 		switch e := e.(type) {
 		case *syntax.LogRangeExpr:
 			if e.Interval > limit {
-				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
+				err = fmt.Errorf("%w: [%s] > [%s]", logqlerr.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}
 		}
 		return true

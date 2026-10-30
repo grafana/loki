@@ -29,6 +29,7 @@ const (
 	errNotArrowFile             = errString("arrow/ipc: not an Arrow file")
 	errInconsistentFileMetadata = errString("arrow/ipc: file is smaller than indicated metadata size")
 	errInconsistentSchema       = errString("arrow/ipc: tried to write record batch with different schema")
+	errFileWriterClosed         = errString("arrow/ipc: file writer is already closed")
 	errMaxRecursion             = errString("arrow/ipc: max recursion depth reached")
 	errBigArray                 = errString("arrow/ipc: array larger than 2^31-1 in length")
 
@@ -74,6 +75,7 @@ type config struct {
 	minSpaceSavings    float64
 	maxMetadataSize    int64
 	maxBodySize        int64
+	compressors        []compressor
 }
 
 const (
@@ -84,6 +86,12 @@ const (
 // Option is a functional option to configure opening or creating Arrow files
 // and streams.
 type Option func(*config)
+
+func withCompressors(compressors ...compressor) Option {
+	return func(cfg *config) {
+		cfg.compressors = compressors
+	}
+}
 
 func newConfig(opts ...Option) *config {
 	cfg := &config{

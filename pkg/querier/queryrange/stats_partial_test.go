@@ -19,8 +19,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -129,7 +129,7 @@ func failedQueryUsageCount(t *testing.T, category string) float64 {
 // original error.
 func TestStatsCollectorMiddleware_LogsFailedQueryUsage(t *testing.T) {
 	// A byte-limit failure sentinel-wrapped like queryrange/limits.go builds it.
-	limitErr := wrapErr(logqlmodel.ErrMaxQueryBytesRead,
+	limitErr := wrapErr(logqlerr.ErrMaxQueryBytesRead,
 		httpgrpc.Errorf(http.StatusBadRequest, "the query would read too many bytes (query: 5GB, limit: 1GB)"))
 
 	for _, tc := range []struct {
@@ -387,7 +387,7 @@ func TestStatsCollectorMiddleware_ConcurrentFanOutDiscardedWorkStats(t *testing.
 	lines := captureFailedQueryUsage(t)
 	countBefore := failedQueryUsageCount(t, server.FailureLimit)
 
-	limitErr := wrapErr(logqlmodel.ErrQuerierTooManyBytes, httpgrpc.Errorf(http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"))
+	limitErr := wrapErr(logqlerr.ErrQuerierTooManyBytes, httpgrpc.Errorf(http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"))
 
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		interval := int(r.GetStart().Sub(time.Unix(0, 0)) / time.Hour)
@@ -441,7 +441,7 @@ func TestStatsCollectorMiddleware_ConcurrentFanOutDiscardedWorkStats(t *testing.
 		Path:      "/loki/api/v1/query_range",
 	})
 
-	require.ErrorIs(t, err, logqlmodel.ErrQuerierTooManyBytes)
+	require.ErrorIs(t, err, logqlerr.ErrQuerierTooManyBytes)
 
 	line := lines.only(t)
 	requireFailedQueryUsageShape(t, line)
