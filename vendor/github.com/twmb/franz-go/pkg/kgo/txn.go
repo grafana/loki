@@ -525,8 +525,8 @@ func (cl *Client) BeginTransaction() error {
 	}
 
 	cl.producer.inTxn = true
-	if !cl.producer.tx890p2 {
-		cl.producer.tx890p2 = cl.supportsKIP890p2()
+	if !cl.producer.tx890p2.Load() && cl.supportsKIP890p2() {
+		cl.producer.tx890p2.Store(true)
 	}
 	cl.producer.producingTxn.Store(true) // allow produces for txns now
 	cl.cfg.logger.Log(LogLevelInfo, "beginning transaction", "transactional_id", *cl.cfg.txnID)
@@ -751,7 +751,7 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 		req.ProducerEpoch = epoch
 		req.Commit = bool(commit)
 		ctx := ctx // capture a local ctx variable in case we introduce concurrency above later
-		if !cl.producer.tx890p2 {
+		if !cl.producer.tx890p2.Load() {
 			ctx = context.WithValue(ctx, ctxPinReq, &pinReq{pinMax: true, max: 4}) // v5 is only supported with KIP-890 part 2
 		}
 		resp, err := req.RequestWith(ctx, cl)
@@ -782,7 +782,7 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 				"producer_id", id,
 				"epoch", epoch,
 			)
-			if !cl.producer.tx890p2 && cl.supportsKIP890p2() {
+			if !cl.producer.tx890p2.Load() && cl.supportsKIP890p2() {
 				cl.cfg.logger.Log(LogLevelInfo, "end transaction noticed the cluster now supports KIP-890p2, reloading the producer ID and opting in",
 					"transactional_id", *cl.cfg.txnID,
 					"producer_id", id,
@@ -982,7 +982,7 @@ func (cl *Client) commitTransactionOffsets(
 		return g
 	}
 
-	tx890p2 := cl.producer.tx890p2 // requires mu
+	tx890p2 := cl.producer.tx890p2.Load()
 
 	if !g.offsetsAddedToTxn {
 		// We only need to issue the AddOffsetsToTxn request if we are
