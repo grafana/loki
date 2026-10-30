@@ -285,8 +285,10 @@ Each `eval` runs on multiple execution stacks:
 - `direct (stream-first)` — the same, with stream-first execution enabled.
 - `direct (dataobj)` — the direct stack with stream-first execution and data objects on. The
   stack has no query-frontend, so it marks every query as eligible for data objects itself. The
-  querier reads stream-first queries from data objects and every other query from chunks. A
-  stream-first query that returns data must read data-object rows, or the eval fails.
+  querier reads the stream-first parts of a query from data objects and every other part from
+  chunks. A query with a stream-first part that returns data must read data-object rows, or the
+  eval fails. The check skips a query with another source of samples, such as `vector()` or a range
+  aggregation that is not stream-first, because that source does not read data objects.
 - `query-frontend + query-scheduler (no sharding, timestamp-first)` — a real frontend, scheduler, and querier loop.
 - `query-frontend + query-scheduler (sharding, timestamp-first)` — the same loop with query sharding on.
 - `query-frontend + query-scheduler (sharding, stream-first)` — the same loop with query sharding

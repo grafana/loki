@@ -34,18 +34,22 @@ func newStepAccumulatorFuncFor(expr *syntax.RangeAggregationExpr) (newStepAccumu
 	}
 }
 
-// StreamFirstRangeAggregation returns the range aggregation of query, and true, when the engine
-// is capable of running query in stream-first sample order.
-func StreamFirstRangeAggregation(query string) (*syntax.RangeAggregationExpr, bool) {
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return nil, false
-	}
-	return StreamFirstRangeAggregationExpr(expr)
+// StreamFirstRangeAggregations returns the range aggregation of each part of expr that can run in
+// stream-first order. The parts come in walk order and can sit at any depth.
+func StreamFirstRangeAggregations(expr syntax.Expr) []*syntax.RangeAggregationExpr {
+	var out []*syntax.RangeAggregationExpr
+	expr.Walk(func(e syntax.Expr) bool {
+		rng, ok := StreamFirstRangeAggregationExpr(e)
+		if ok {
+			out = append(out, rng)
+		}
+		return !ok
+	})
+	return out
 }
 
-// StreamFirstRangeAggregationExpr returns the range aggregation of a stream-first sum expression,
-// and true. It returns false for any other expression.
+// StreamFirstRangeAggregationExpr returns the range aggregation of expr, and true, when expr itself
+// can run in stream-first order. It does not search the descendants of expr.
 func StreamFirstRangeAggregationExpr(expr syntax.Expr) (*syntax.RangeAggregationExpr, bool) {
 	vec, ok := expr.(*syntax.VectorAggregationExpr)
 	if !ok || vec.Operation != syntax.OpTypeSum {

@@ -1012,6 +1012,12 @@ eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or vector(0)
 eval range from 60s to 180s step 30s sum(rate({app="foo"}[1m])) or vector(0)
   {} 0.1 0.05 0 0 0
 
+eval range from 60s to 180s step 30s sum(count_over_time({app="foo"}[1m])) or vector(0)             # overlapping
+  {} 6 3 0 0 0
+
+eval range from 60s to 180s step 30s (sum(count_over_time({app="foo"}[1m])) or vector(0)) > bool 0  # overlapping
+  {} 1 1 0 0 0
+
 # Non-bool `>` drops the non-matching samples; `> bool` keeps values as 0.
 clear
 load
@@ -1023,3 +1029,7 @@ eval range from 60s to 120s step 30s count_over_time({app="foo"}[1m]) > 3
   {app="foo"} 5 _ _
 eval range from 60s to 120s step 30s count_over_time({app="foo"}[1m]) > bool 3
   {app="foo"} 1 0 0
+eval range from 60s to 120s step 30s sum(count_over_time({app="foo"}[1m])) > 3       # overlapping
+  {} 5 _ _
+eval range from 60s to 120s step 30s sum(count_over_time({app="foo"}[1m])) > bool 3  # overlapping
+  {} 1 0 0

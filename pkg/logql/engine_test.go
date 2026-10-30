@@ -387,6 +387,38 @@ func TestEngine_Stats(t *testing.T) {
 		require.Positive(t, r.Statistics.Summary.StreamFirstQueries)
 		require.Zero(t, r.Statistics.Summary.TimestampFirstQueries)
 	})
+
+	t.Run("records one stream-first query for a query that nests or repeats a supported expression", func(t *testing.T) {
+		limits := tenantStreamFirstLimits{fakeLimits: fakeLimits{maxSeries: NoLimits.maxSeries, timeout: NoLimits.timeout}, enabled: map[string]bool{"a": true}}
+		for _, query := range []string{
+			`max(sum by (foo) (count_over_time({foo="bar"}[1m])))`,
+			`sum(count_over_time({foo="bar"}[1m])) / sum(count_over_time({foo="baz"}[1m]))`,
+			`sum(count_over_time({foo="bar"}[1m])) + sum(rate({foo="baz"}[1m]))`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				params, err := NewLiteralParams(query, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+				require.NoError(t, err)
+
+				r, err := NewEngine(EngineOpts{}, &statsQuerier{}, limits, log.NewNopLogger()).Query(params).Exec(user.InjectOrgID(t.Context(), "a"))
+
+				require.NoError(t, err)
+				require.Equal(t, int64(1), r.Statistics.Summary.StreamFirstQueries)
+				require.Zero(t, r.Statistics.Summary.TimestampFirstQueries)
+			})
+		}
+	})
+
+	t.Run("records a timestamp-first query when no part of the query is supported", func(t *testing.T) {
+		limits := tenantStreamFirstLimits{fakeLimits: fakeLimits{maxSeries: NoLimits.maxSeries, timeout: NoLimits.timeout}, enabled: map[string]bool{"a": true}}
+		params, err := NewLiteralParams(`max(sum(rate({foo="bar"}[1m])))`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+
+		r, err := NewEngine(EngineOpts{}, &statsQuerier{}, limits, log.NewNopLogger()).Query(params).Exec(user.InjectOrgID(t.Context(), "a"))
+
+		require.NoError(t, err)
+		require.Equal(t, int64(1), r.Statistics.Summary.TimestampFirstQueries)
+		require.Zero(t, r.Statistics.Summary.StreamFirstQueries)
+	})
 }
 
 type metaQuerier struct{}
@@ -744,7 +776,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 
 	mock := &mockEvaluatorFactory{
 		SampleEvaluatorFunc(
-			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
 				return EmptyEvaluator[SampleVector]{value: nil}, nil
 			},
 		),
@@ -764,9 +796,9 @@ type mockEvaluatorFactory struct {
 	sampleEvalFunc SampleEvaluatorFunc
 }
 
-func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error) {
+func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
 	if m.sampleEvalFunc != nil {
-		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p, isRootExpr)
+		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p)
 	}
 	return nil, errors.New("unimplemented mock SampleEvaluatorFactory")
 }
