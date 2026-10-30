@@ -2971,7 +2971,8 @@ func TestEmptyLokiResponseMergesSafely(t *testing.T) {
 // Metric range queries are verified in dry-run from the matrix already returned
 // to the user. Hint lookup still uses the request bounds widened by the range
 // interval and offset, matching getQueryBytes. A positive sample is correct
-// when its lookback window overlaps a hint. Instant queries stay unhinted.
+// when its lookback window overlaps a hint. A live instant metric uses that
+// same widened window.
 func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -3588,6 +3589,48 @@ func TestLive_MetricRange_FiltersByLookback(t *testing.T) {
 	})
 }
 
+func TestLive_MetricInstant_LooksUpHints(t *testing.T) {
+	ts := time.Date(2026, 2, 26, 10, 0, 10, 0, time.UTC)
+	lookup := func(t *testing.T, query string) (model.Time, model.Time) {
+		t.Helper()
+		hp := &mockHintProvider{hints: &hintprovider.Hints{}}
+		// The filter does not wait on an instant request yet, so the lookup runs
+		// beside the query and is canceled when the query returns.
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			require.IsType(t, &queryrange.LokiInstantRequest{}, req)
+			require.Eventually(t, func() bool { return hp.Calls() == 1 }, time.Second, 5*time.Millisecond)
+			return metricInstantResponse(1, ts), nil
+		})
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+		_, err := handler.Do(testTenantContextWithLive(), newTestLokiInstantRequest(query, ts))
+		require.NoError(t, err)
+		return hp.Window()
+	}
+
+	t.Run("instant metric", func(t *testing.T) {
+		query := `sum(count_over_time({app="api"} |= "timeout" [5m]))`
+		from, through := lookup(t, query)
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+		qb := querybounds.GetQueryBounds(ts, ts, 0, expr, querybounds.QueryTypeMetricInstant, false)
+		require.Equal(t, model.TimeFromUnixNano(qb.ReadStart.UnixNano()), from)
+		require.Equal(t, model.TimeFromUnixNano(qb.ReadEnd.UnixNano()), through)
+		require.True(t, qb.ReadStart.Before(ts))
+		require.True(t, qb.ReadEnd.Equal(ts))
+	})
+
+	t.Run("offset", func(t *testing.T) {
+		query := `sum(count_over_time({app="api"} |= "timeout" [5m] offset 10m))`
+		from, through := lookup(t, query)
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+		qb := querybounds.GetQueryBounds(ts, ts, 0, expr, querybounds.QueryTypeMetricInstant, false)
+		require.Equal(t, model.TimeFromUnixNano(qb.ReadStart.UnixNano()), from)
+		require.Equal(t, model.TimeFromUnixNano(qb.ReadEnd.UnixNano()), through)
+		require.True(t, qb.ReadEnd.Before(ts))
+	})
+}
+
 func TestDryRun_MetricInstant_PositiveSampleOverlapsWidenedHint(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -3811,11 +3854,6 @@ func TestDryRun_MetricInstant_SkipsHintLookup(t *testing.T) {
 			name:  "arithmetic",
 			ctx:   testTenantContext(),
 			query: `sum(count_over_time({app="api"} |= "timeout" [5m])) / sum(count_over_time({app="api"} |= "database" [5m]))`,
-		},
-		{
-			name:  "live header",
-			ctx:   testTenantContextWithLive(),
-			query: `sum(count_over_time({app="api"} |= "timeout" [5m]))`,
 		},
 		{
 			name:  "log instant query",

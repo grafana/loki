@@ -932,10 +932,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			return h.next.Do(ctx, req)
 		}
 		if mode == ModeLive {
-			if _, isRange := req.(*queryrange.LokiRequest); !isRange {
-				return h.next.Do(ctx, req)
-			}
-			// Left unhinted until a later PR. An empty matrix would drop the 1
+			// Left unhinted until a later PR. An empty result would drop the 1
 			// an empty window returns.
 			if isAbsentOverTimeAgg(expr) {
 				return h.next.Do(ctx, req)
