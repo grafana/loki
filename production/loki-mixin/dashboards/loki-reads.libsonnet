@@ -65,28 +65,28 @@ local utils = import 'mixin-utils/utils.libsonnet';
                              [],
 
                          matchers:: {
-                           cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
+                           cortexgateway: [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'cortex-gw(-internal)?')],
                            queryFrontend: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(query-frontend|loki-single-binary)')]
-                           else [utils.selector.re('job', '($namespace)/query-frontend')],
+                           then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(query-frontend|loki-single-binary)')]
+                           else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'query-frontend')],
                            querier: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(querier|loki-single-binary)')]
-                           else [utils.selector.re('job', '($namespace)/querier')],
+                           then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(querier|loki-single-binary)')]
+                           else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'querier')],
                            ingester: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|loki-single-binary)')]
-                           else [utils.selector.re('job', '($namespace)/(ingester.*|partition-ingester.*)')],
+                           then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester.*|ingester.*|loki-single-binary)')]
+                           else [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(ingester.*|partition-ingester.*)')],
                            ingesterZoneAware: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|loki-single-binary)')]
-                           else [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone.*)')],
+                           then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester-.*|ingester-zone-.*|loki-single-binary)')]
+                           else [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester-.*|ingester-zone.*)')],
                            querierOrIndexGateway: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(querier|index-gateway|loki-single-binary)')]
-                           else [utils.selector.re('job', '($namespace)/(querier|index-gateway)')],
+                           then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(querier|index-gateway|loki-single-binary)')]
+                           else [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(querier|index-gateway)')],
                            indexGateway: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(index-gateway|loki-single-binary)')]
-                           else [utils.selector.re('job', '($namespace)/index-gateway')],
+                           then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(index-gateway|loki-single-binary)')]
+                           else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'index-gateway')],
                            bloomGateway: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(bloom-gateway|loki-single-binary)')]
-                           else [utils.selector.re('job', '($namespace)/bloom-gateway')],
+                           then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(bloom-gateway|loki-single-binary)')]
+                           else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'bloom-gateway')],
                          },
 
                          local selector(matcherId) =
