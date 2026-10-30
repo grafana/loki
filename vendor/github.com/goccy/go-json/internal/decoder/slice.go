@@ -3,27 +3,29 @@ package decoder
 import (
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
-	"github.com/goccy/go-json/internal/runtime"
-)
-
-var (
-	sliceType = runtime.Type2RType(
-		reflect.TypeOf((*sliceHeader)(nil)).Elem(),
-	)
-	nilSlice = unsafe.Pointer(&sliceHeader{})
 )
 
 type sliceDecoder struct {
-	elemType          *runtime.Type
-	isElemPointerType bool
-	valueDecoder      Decoder
-	size              uintptr
-	arrayPool         sync.Pool
-	structName        string
-	fieldName         string
+	elemType reflect.Type
+	// slicePtrType is the type descriptor of the pointer to the slice.
+	slicePtrType unsafe.Pointer
+	valueDecoder Decoder
+	size         uintptr
+	// bufPool holds the buffers into which the elements of a long array are decoded before its length is known
+	// ( see decodeLong ). A buffer in the pool has only zero values, so that an element is decoded into a zero
+	// value.
+	bufPool sync.Pool
+	// lastLen is the length of the array which the decoder decoded last, which an empty slice is allocated for,
+	// up to inPlaceSliceLength: the arrays of a kind are often of a length. It is only a hint, for any goroutine.
+	lastLen    atomic.Int32
+	structName string
+	fieldName  string
+	// typ is the type of the slice, which the type errors report.
+	typ reflect.Type
 }
 
 // If use reflect.SliceHeader, data type is uintptr.
@@ -35,23 +37,31 @@ type sliceHeader struct {
 	cap  int
 }
 
+// sliceBuf is a buffer of the elements of a slice, allocated and grown by reflect.Value.Grow,
+// so that its memory has the type of the elements.
+type sliceBuf struct {
+	hdr sliceHeader
+}
+
 const (
-	defaultSliceCapacity = 2
+	// inPlaceSliceLength is the number of the elements of an array which are decoded into the slice itself, if it
+	// has no more capacity: most arrays are no longer, and the elements of a longer one are decoded into a buffer
+	// from there, so that its slice is allocated once, of its length.
+	inPlaceSliceLength = 64
+	// defaultSliceCapacity is the capacity of a new buffer of the elements.
+	defaultSliceCapacity = 4
 )
 
-func newSliceDecoder(dec Decoder, elemType *runtime.Type, size uintptr, structName, fieldName string) *sliceDecoder {
+func newSliceDecoder(dec Decoder, elemType reflect.Type, size uintptr, structName, fieldName string) *sliceDecoder {
 	return &sliceDecoder{
-		valueDecoder:      dec,
-		elemType:          elemType,
-		isElemPointerType: elemType.Kind() == reflect.Ptr || elemType.Kind() == reflect.Map,
-		size:              size,
-		arrayPool: sync.Pool{
-			New: func() interface{} {
-				return &sliceHeader{
-					data: newArray(elemType, defaultSliceCapacity),
-					len:  0,
-					cap:  defaultSliceCapacity,
-				}
+		typ:          reflect.SliceOf(elemType),
+		valueDecoder: dec,
+		elemType:     elemType,
+		slicePtrType: ptrTypeOf(reflect.SliceOf(elemType)),
+		size:         size,
+		bufPool: sync.Pool{
+			New: func() any {
+				return &sliceBuf{}
 			},
 		},
 		structName: structName,
@@ -59,151 +69,91 @@ func newSliceDecoder(dec Decoder, elemType *runtime.Type, size uintptr, structNa
 	}
 }
 
-func (d *sliceDecoder) newSlice(src *sliceHeader) *sliceHeader {
-	slice := d.arrayPool.Get().(*sliceHeader)
-	if src.len > 0 {
-		// copy original elem
-		if slice.cap < src.cap {
-			data := newArray(d.elemType, src.cap)
-			slice = &sliceHeader{data: data, len: src.len, cap: src.cap}
-		} else {
-			slice.len = src.len
-		}
-		copySlice(d.elemType, *slice, *src)
-	} else {
-		slice.len = 0
-	}
-	return slice
+// sliceValue returns the reflect.Value of the slice whose header is at p.
+func (d *sliceDecoder) sliceValue(p *sliceHeader) reflect.Value {
+	return valueAt(d.slicePtrType, unsafe.Pointer(p))
 }
 
-func (d *sliceDecoder) releaseSlice(p *sliceHeader) {
-	d.arrayPool.Put(p)
+// grow makes the capacity of the slice at dst n or more, keeping its first length elements, as append does.
+func (d *sliceDecoder) grow(dst *sliceHeader, length, n int) {
+	if n <= dst.cap {
+		return
+	}
+	dst.len = length
+	if n < defaultSliceCapacity {
+		n = defaultSliceCapacity
+	}
+	d.sliceValue(dst).Grow(n - length)
 }
 
-//go:linkname copySlice reflect.typedslicecopy
-func copySlice(elemType *runtime.Type, dst, src sliceHeader) int
-
-//go:linkname newArray reflect.unsafe_NewArray
-func newArray(*runtime.Type, int) unsafe.Pointer
-
-//go:linkname typedmemmove reflect.typedmemmove
-func typedmemmove(t *runtime.Type, dst, src unsafe.Pointer)
-
-func (d *sliceDecoder) errNumber(offset int64) *errors.UnmarshalTypeError {
-	return &errors.UnmarshalTypeError{
-		Value:  "number",
-		Type:   reflect.SliceOf(runtime.RType2Type(d.elemType)),
-		Struct: d.structName,
-		Field:  d.fieldName,
-		Offset: offset,
-	}
-}
-
-func (d *sliceDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Pointer) error {
-	depth++
-	if depth > maxDecodeNestingDepth {
-		return errors.ErrExceededMaxDepth(s.char(), s.cursor)
-	}
-
+// decodeLong decodes the elements of the array from cursor, the one at index n, which follows the n elements
+// decoded into the slice at dst, into a buffer whose length is not known yet, and stores them all into the slice,
+// allocated once, of their length. It is not inlined, so that Decode keeps the size it had: most arrays are shorter.
+//
+//go:noinline
+func (d *sliceDecoder) decodeLong(ctx *RuntimeContext, cursor, depth int64, dst *sliceHeader, n int) (int64, error) {
+	buf := ctx.Buf
+	elems := d.bufPool.Get().(*sliceBuf)
+	d.growBuf(elems, 0, 2*n)
+	elems.hdr.len = n
+	head := *dst
+	head.len = n
+	reflect.Copy(d.sliceValue(&elems.hdr), d.sliceValue(&head))
+	idx := n
 	for {
-		switch s.char() {
-		case ' ', '\n', '\t', '\r':
-			s.cursor++
-			continue
-		case 'n':
-			if err := nullBytes(s); err != nil {
-				return err
-			}
-			typedmemmove(sliceType, p, nilSlice)
-			return nil
-		case '[':
-			s.cursor++
-			if s.skipWhiteSpace() == ']' {
-				dst := (*sliceHeader)(p)
-				if dst.data == nil {
-					dst.data = newArray(d.elemType, 0)
-				} else {
-					dst.len = 0
-				}
-				s.cursor++
-				return nil
-			}
-			idx := 0
-			slice := d.newSlice((*sliceHeader)(p))
-			srcLen := slice.len
-			capacity := slice.cap
-			data := slice.data
-			for {
-				if capacity <= idx {
-					src := sliceHeader{data: data, len: idx, cap: capacity}
-					capacity *= 2
-					data = newArray(d.elemType, capacity)
-					dst := sliceHeader{data: data, len: idx, cap: capacity}
-					copySlice(d.elemType, dst, src)
-				}
-				ep := unsafe.Pointer(uintptr(data) + uintptr(idx)*d.size)
-
-				// if srcLen is greater than idx, keep the original reference
-				if srcLen <= idx {
-					if d.isElemPointerType {
-						**(**unsafe.Pointer)(unsafe.Pointer(&ep)) = nil // initialize elem pointer
-					} else {
-						// assign new element to the slice
-						typedmemmove(d.elemType, ep, unsafe_New(d.elemType))
-					}
-				}
-
-				if err := d.valueDecoder.DecodeStream(s, depth, ep); err != nil {
-					return err
-				}
-				s.skipWhiteSpace()
-			RETRY:
-				switch s.char() {
-				case ']':
-					slice.cap = capacity
-					slice.len = idx + 1
-					slice.data = data
-					dst := (*sliceHeader)(p)
-					dst.len = idx + 1
-					if dst.len > dst.cap {
-						dst.data = newArray(d.elemType, dst.len)
-						dst.cap = dst.len
-					}
-					copySlice(d.elemType, *dst, *slice)
-					d.releaseSlice(slice)
-					s.cursor++
-					return nil
-				case ',':
-					idx++
-				case nul:
-					if s.read() {
-						goto RETRY
-					}
-					slice.cap = capacity
-					slice.data = data
-					d.releaseSlice(slice)
-					goto ERROR
-				default:
-					slice.cap = capacity
-					slice.data = data
-					d.releaseSlice(slice)
-					goto ERROR
-				}
-				s.cursor++
-			}
-		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			return d.errNumber(s.totalOffset())
-		case nul:
-			if s.read() {
-				continue
-			}
-			goto ERROR
-		default:
-			goto ERROR
+		d.growBuf(elems, idx, idx+1)
+		ep := unsafe.Add(elems.hdr.data, uintptr(idx)*d.size)
+		c, err := d.valueDecoder.Decode(ctx, cursor, depth, ep)
+		if err != nil {
+			d.store(dst, elems, idx+1)
+			d.releaseBuf(elems, idx+1)
+			return 0, err
 		}
+		cursor = skipWhiteSpace(buf, c)
+		switch buf[cursor] {
+		case ']':
+			d.store(dst, elems, idx+1)
+			d.releaseBuf(elems, idx+1)
+			d.lastLen.Store(int32(min(idx+1, inPlaceSliceLength)))
+			return cursor + 1, nil
+		case ',':
+			idx++
+		default:
+			d.store(dst, elems, idx+1)
+			d.releaseBuf(elems, idx+1)
+			return 0, errors.ErrInvalidCharacter(buf[cursor], "slice", cursor)
+		}
+		cursor++
 	}
-ERROR:
-	return errors.ErrUnexpectedEndOfJSON("slice", s.totalOffset())
+}
+
+// growBuf makes the capacity of the buffer n or more, keeping its first length elements.
+// The elements after them are zero values.
+func (d *sliceDecoder) growBuf(buf *sliceBuf, length, n int) {
+	d.grow(&buf.hdr, length, n)
+}
+
+// releaseBuf clears the first n elements of the buffer, which are all it may have used,
+// and puts it back to the pool: it keeps nothing the decoded value refers to.
+func (d *sliceDecoder) releaseBuf(buf *sliceBuf, n int) {
+	if n > 0 {
+		buf.hdr.len = n
+		d.sliceValue(&buf.hdr).Clear()
+	}
+	buf.hdr.len = 0
+	d.bufPool.Put(buf)
+}
+
+// store copies the n elements of the buffer to the slice at dst: into its array when it has room
+// for them, or else into a new array of their length.
+func (d *sliceDecoder) store(dst *sliceHeader, buf *sliceBuf, n int) {
+	if dst.cap < n {
+		*dst = sliceHeader{}
+		d.sliceValue(dst).Grow(n)
+	}
+	dst.len = n
+	buf.hdr.len = n
+	reflect.Copy(d.sliceValue(dst), d.sliceValue(&buf.hdr))
 }
 
 func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
@@ -223,81 +173,73 @@ func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 				return 0, err
 			}
 			cursor += 4
-			typedmemmove(sliceType, p, nilSlice)
+			*(*sliceHeader)(p) = sliceHeader{}
 			return cursor, nil
 		case '[':
 			cursor++
 			cursor = skipWhiteSpace(buf, cursor)
+			dst := (*sliceHeader)(p)
 			if buf[cursor] == ']' {
-				dst := (*sliceHeader)(p)
 				if dst.data == nil {
-					dst.data = newArray(d.elemType, 0)
+					dst.data = unsafe.Pointer(&zeroBase)
 				} else {
 					dst.len = 0
 				}
 				cursor++
 				return cursor, nil
 			}
+			// The elements are decoded into the slice, which grows as append grows it: the elements of its array are
+			// decoded into, the ones after its length too, as encoding/json does. The elements beyond its capacity
+			// and inPlaceSliceLength are decoded into a buffer ( see decodeLong ).
+			limit := max(dst.cap, inPlaceSliceLength)
+			if dst.cap == 0 {
+				// the length of the last array, which an array of the kind is likely to have
+				if n := int(d.lastLen.Load()); n > 0 {
+					d.grow(dst, 0, min(n, inPlaceSliceLength))
+				}
+			}
 			idx := 0
-			slice := d.newSlice((*sliceHeader)(p))
-			srcLen := slice.len
-			capacity := slice.cap
-			data := slice.data
 			for {
-				if capacity <= idx {
-					src := sliceHeader{data: data, len: idx, cap: capacity}
-					capacity *= 2
-					data = newArray(d.elemType, capacity)
-					dst := sliceHeader{data: data, len: idx, cap: capacity}
-					copySlice(d.elemType, dst, src)
+				if idx == limit {
+					return d.decodeLong(ctx, cursor, depth, dst, idx)
 				}
-				ep := unsafe.Pointer(uintptr(data) + uintptr(idx)*d.size)
-				// if srcLen is greater than idx, keep the original reference
-				if srcLen <= idx {
-					if d.isElemPointerType {
-						**(**unsafe.Pointer)(unsafe.Pointer(&ep)) = nil // initialize elem pointer
-					} else {
-						// assign new element to the slice
-						typedmemmove(d.elemType, ep, unsafe_New(d.elemType))
-					}
-				}
+				d.grow(dst, idx, idx+1)
+				ep := unsafe.Add(dst.data, uintptr(idx)*d.size)
 				c, err := d.valueDecoder.Decode(ctx, cursor, depth, ep)
 				if err != nil {
+					dst.len = idx + 1
 					return 0, err
 				}
-				cursor = c
-				cursor = skipWhiteSpace(buf, cursor)
+				cursor = skipWhiteSpace(buf, c)
 				switch buf[cursor] {
 				case ']':
-					slice.cap = capacity
-					slice.len = idx + 1
-					slice.data = data
-					dst := (*sliceHeader)(p)
 					dst.len = idx + 1
-					if dst.len > dst.cap {
-						dst.data = newArray(d.elemType, dst.len)
-						dst.cap = dst.len
-					}
-					copySlice(d.elemType, *dst, *slice)
-					d.releaseSlice(slice)
+					d.lastLen.Store(int32(idx + 1))
 					cursor++
 					return cursor, nil
 				case ',':
 					idx++
 				default:
-					slice.cap = capacity
-					slice.data = data
-					d.releaseSlice(slice)
+					dst.len = idx + 1
 					return 0, errors.ErrInvalidCharacter(buf[cursor], "slice", cursor)
 				}
 				cursor++
 			}
-		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			return 0, d.errNumber(cursor)
 		default:
-			return 0, errors.ErrUnexpectedEndOfJSON("slice", cursor)
+			return d.decodeOther(ctx, cursor, depth-1)
 		}
 	}
+}
+
+// decodeOther skips the value at cursor, which is not an array: a value of another kind is a type error, and
+// anything else a syntax error. It is a function of its own, so that Decode keeps the size it had.
+//
+//go:noinline
+func (d *sliceDecoder) decodeOther(ctx *RuntimeContext, cursor, depth int64) (int64, error) {
+	if isOtherValue(ctx.Buf[cursor], arrayValue) {
+		return ctx.skipTypeError(cursor, depth, d.typ)
+	}
+	return 0, errors.ErrUnexpectedEndOfJSON("slice", cursor)
 }
 
 func (d *sliceDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
@@ -372,7 +314,7 @@ func (d *sliceDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][
 				cursor++
 			}
 		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			return nil, 0, d.errNumber(cursor)
+			return nil, 0, &errors.UnmarshalTypeError{Value: "number", Type: d.typ, Offset: cursor}
 		default:
 			return nil, 0, errors.ErrUnexpectedEndOfJSON("slice", cursor)
 		}
