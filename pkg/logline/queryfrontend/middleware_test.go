@@ -3708,6 +3708,113 @@ func TestLive_MetricInstant_NarrowsLookback(t *testing.T) {
 	})
 }
 
+func TestLive_MetricInstant_AttachesLoglineStats(t *testing.T) {
+	ts := time.Date(2026, 2, 26, 10, 0, 10, 0, time.UTC)
+	query := `sum(count_over_time({app="api"} |= "timeout" [5m]))`
+	// Inside the [ts-5m, ts] lookback, so the filter narrows.
+	hint := hintprovider.HintTimeRange{Start: ts.Add(-4 * time.Minute), End: ts.Add(-time.Minute)}
+
+	t.Run("narrowed", func(t *testing.T) {
+		hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hint}}}
+		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+			resp := metricInstantResponse(1, ts)
+			resp.Statistics.Index.ShardPlannedChunks = 40
+			resp.Statistics.Index.ShardPlannedChunksScanned = 4
+			return resp, nil
+		})
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+
+		resp, err := handler.Do(testTenantContextWithLive(), newTestLokiInstantRequest(query, ts))
+		require.NoError(t, err)
+
+		loglineStats := resp.(*queryrange.LokiPromResponse).Statistics.Logline
+		require.Equal(t, hintStatusOK, loglineStats.HintStatus)
+		require.Equal(t, int64(1), loglineStats.HintRanges)
+		require.Equal(t, (3 * time.Minute).Nanoseconds(), loglineStats.HintRangesDuration)
+		require.Equal(t, int64(1), loglineStats.NarrowedRequests)
+		require.Equal(t, int64(40), loglineStats.PlannedChunks)
+		require.Equal(t, int64(4), loglineStats.ScannedChunks)
+		require.Equal(t, outcomeDataSkipped, loglineStats.Outcome)
+	})
+
+	t.Run("query below the byte threshold", func(t *testing.T) {
+		hp := &mockHintProvider{hints: &hintprovider.Hints{}}
+		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+			resp := metricInstantResponse(1, ts)
+			resp.Statistics.Index.ShardPlannedChunks = 40
+			resp.Statistics.Index.ShardPlannedChunksScanned = 40
+			return resp, nil
+		})
+		querier := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: 100}, nil, nil, next)
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
+
+		resp, err := handler.Do(testTenantContextWithLive(), newTestLokiInstantRequest(query, ts))
+		require.NoError(t, err)
+		require.Equal(t, 0, hp.Calls())
+
+		loglineStats := resp.(*queryrange.LokiPromResponse).Statistics.Logline
+		require.Equal(t, outcomeQueryTooSmall, loglineStats.Outcome)
+		require.Equal(t, int64(40), loglineStats.PlannedChunks)
+		require.Equal(t, int64(40), loglineStats.ScannedChunks)
+	})
+}
+
+func TestLive_MetricInstant_AbsentOverTimeSkipsHintLookup(t *testing.T) {
+	ts := time.Date(2026, 2, 26, 10, 0, 10, 0, time.UTC)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: ts.Add(-30 * time.Minute), End: ts.Add(-20 * time.Minute)},
+			},
+		},
+	}
+
+	userResp := metricInstantResponse(1, ts)
+	var got *queryrange.LokiInstantRequest
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		got = req.(*queryrange.LokiInstantRequest)
+		return userResp, nil
+	})
+
+	handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+	resp, err := handler.Do(testTenantContextWithLive(), newTestLokiInstantRequest(`sum(absent_over_time({app="api"} |= "timeout" [5m]))`, ts))
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+	require.Equal(t, 0, hp.Calls())
+	require.Equal(t, 1, nextCalled)
+	require.Empty(t, got.HintRanges)
+}
+
+func TestLive_MetricInstant_LogSelectorSkipsHintLookup(t *testing.T) {
+	ts := time.Date(2026, 2, 26, 10, 0, 10, 0, time.UTC)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: ts.Add(-30 * time.Minute), End: ts.Add(-20 * time.Minute)},
+			},
+		},
+	}
+
+	userResp := metricInstantResponse(1, ts)
+	var got *queryrange.LokiInstantRequest
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		got = req.(*queryrange.LokiInstantRequest)
+		return userResp, nil
+	})
+
+	handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+	resp, err := handler.Do(testTenantContextWithLive(), newTestLokiInstantRequest(`{app="api"} |= "timeout"`, ts))
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+	require.Equal(t, 0, hp.Calls())
+	require.Equal(t, 1, nextCalled)
+	require.Empty(t, got.HintRanges)
+}
+
 func TestDryRun_MetricInstant_PositiveSampleOverlapsWidenedHint(t *testing.T) {
 	tests := []struct {
 		name     string
