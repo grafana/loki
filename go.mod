@@ -271,8 +271,8 @@ require (
 	github.com/parquet-go/bitpack v1.0.1 // indirect
 	github.com/parquet-go/jsonlite v1.5.5 // indirect
 	github.com/pb33f/go-yaml v0.1.1 // indirect
-	github.com/pb33f/jsonpath v0.8.2 // indirect
-	github.com/pb33f/libopenapi v0.37.2 // indirect
+	github.com/pb33f/jsonpath v0.8.4 // indirect
+	github.com/pb33f/libopenapi v0.41.8 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.2 // indirect
 	github.com/philhofer/fwd v1.2.1 // indirect
 	github.com/pires/go-proxyproto v0.16.0 // indirect

@@ -7,13 +7,12 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Build will perform a number of operations.
@@ -44,12 +43,11 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 	if root == nil {
 		return fmt.Errorf("cannot build schema from a nil node")
 	}
-	root = utils.NodeAlias(root)
-	utils.CheckForMergeNodes(root)
+	root = utils.ResolveMergeNodes(root)
 
 	s.reference = low.Reference{}
 	s.Reference = &s.reference
-	s.nodeStore = sync.Map{}
+	s.nodeStore = low.NodeLines{}
 	s.Nodes = &s.nodeStore
 	if root != nil && len(root.Content) > 0 {
 		s.NodeMap.ExtractNodes(root, false)
@@ -60,6 +58,8 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 	s.RootNode = root
 	s.context = ctx
 	s.index = idx
+	// Captured before any reference swap below, so it keeps naming the file RootNode is in.
+	s.refIndex = idx
 
 	isTransformed := false
 	if s.ParentProxy != nil && s.ParentProxy.TransformedRef != nil {
@@ -68,16 +68,27 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 
 	if !isTransformed {
 		if h, _, _ := utils.IsNodeRefValue(root); h {
-			ref, _, err, fctx := low.LocateRefNodeWithContext(ctx, root, idx)
+			ref, foundIdx, err, fctx := low.LocateRefNodeWithContext(ctx, root, idx)
 			if ref != nil {
-				root = ref
+				root = utils.ResolveMergeNodes(ref)
 				if fctx != nil {
 					ctx = fctx
+					s.context = ctx
 				}
 				if err != nil {
+					// circular policy is read from the referring index, before the swap below.
 					if !idx.AllowCircularReferenceResolving() {
 						return fmt.Errorf("build schema failed: %s", err.Error())
 					}
+				}
+				// re-attribute this schema to the index that owns the resolved nodes. everything built
+				// from here down (properties, allOf, items, and every other child) inherits it, so the
+				// index and the line/column of the content it describes finally agree on one file.
+				// RootNode is deliberately left alone: it stays the authored $ref node.
+				if foundIdx != nil {
+					idx = foundIdx
+					s.Index = idx
+					s.index = idx
 				}
 			} else {
 				return fmt.Errorf("build schema failed: reference cannot be found: '%s', line %d, col %d",
@@ -130,79 +141,24 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 	}
 
 	_, exMinLabel, exMinValue := utils.FindKeyNodeFullTop(ExclusiveMinimumLabel, root.Content)
-	if exMinValue != nil {
-		if idx != nil {
-			if idx.GetConfig().SpecInfo.VersionNumeric >= 3.1 {
-				val, _ := strconv.ParseFloat(exMinValue.Value, 64)
-				s.ExclusiveMinimum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
-					KeyNode:   exMinLabel,
-					ValueNode: exMinValue,
-					Value:     &SchemaDynamicValue[bool, float64]{N: 1, B: val},
-				}
-			}
-			if idx.GetConfig().SpecInfo.VersionNumeric <= 3.0 {
-				val, _ := strconv.ParseBool(exMinValue.Value)
-				s.ExclusiveMinimum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
-					KeyNode:   exMinLabel,
-					ValueNode: exMinValue,
-					Value:     &SchemaDynamicValue[bool, float64]{N: 0, A: val},
-				}
-			}
-		} else {
-			if utils.IsNodeBoolValue(exMinValue) {
-				val, _ := strconv.ParseBool(exMinValue.Value)
-				s.ExclusiveMinimum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
-					KeyNode:   exMinLabel,
-					ValueNode: exMinValue,
-					Value:     &SchemaDynamicValue[bool, float64]{N: 0, A: val},
-				}
-			}
-			if utils.IsNodeIntValue(exMinValue) {
-				val, _ := strconv.ParseFloat(exMinValue.Value, 64)
-				s.ExclusiveMinimum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
-					KeyNode:   exMinLabel,
-					ValueNode: exMinValue,
-					Value:     &SchemaDynamicValue[bool, float64]{N: 1, B: val},
-				}
+	_, exMaxLabel, exMaxValue := utils.FindKeyNodeFullTop(ExclusiveMaximumLabel, root.Content)
+	if exMinValue != nil || exMaxValue != nil {
+		// the version is resolved from the document, not from idx directly. idx may have been swapped
+		// to an external file during reference resolution, and a bare schema fragment has no version.
+		docVersion, versionKnown := idx.ResolveDocumentVersion()
+
+		if value := resolveExclusive(docVersion, versionKnown, exMinValue); value != nil {
+			s.ExclusiveMinimum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
+				KeyNode:   exMinLabel,
+				ValueNode: exMinValue,
+				Value:     value,
 			}
 		}
-	}
-
-	_, exMaxLabel, exMaxValue := utils.FindKeyNodeFullTop(ExclusiveMaximumLabel, root.Content)
-	if exMaxValue != nil {
-		if idx != nil {
-			if idx.GetConfig().SpecInfo.VersionNumeric >= 3.1 {
-				val, _ := strconv.ParseFloat(exMaxValue.Value, 64)
-				s.ExclusiveMaximum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
-					KeyNode:   exMaxLabel,
-					ValueNode: exMaxValue,
-					Value:     &SchemaDynamicValue[bool, float64]{N: 1, B: val},
-				}
-			}
-			if idx.GetConfig().SpecInfo.VersionNumeric <= 3.0 {
-				val, _ := strconv.ParseBool(exMaxValue.Value)
-				s.ExclusiveMaximum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
-					KeyNode:   exMaxLabel,
-					ValueNode: exMaxValue,
-					Value:     &SchemaDynamicValue[bool, float64]{N: 0, A: val},
-				}
-			}
-		} else {
-			if utils.IsNodeBoolValue(exMaxValue) {
-				val, _ := strconv.ParseBool(exMaxValue.Value)
-				s.ExclusiveMaximum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
-					KeyNode:   exMaxLabel,
-					ValueNode: exMaxValue,
-					Value:     &SchemaDynamicValue[bool, float64]{N: 0, A: val},
-				}
-			}
-			if utils.IsNodeIntValue(exMaxValue) {
-				val, _ := strconv.ParseFloat(exMaxValue.Value, 64)
-				s.ExclusiveMaximum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
-					KeyNode:   exMaxLabel,
-					ValueNode: exMaxValue,
-					Value:     &SchemaDynamicValue[bool, float64]{N: 1, B: val},
-				}
+		if value := resolveExclusive(docVersion, versionKnown, exMaxValue); value != nil {
+			s.ExclusiveMaximum = low.NodeReference[*SchemaDynamicValue[bool, float64]]{
+				KeyNode:   exMaxLabel,
+				ValueNode: exMaxValue,
+				Value:     value,
 			}
 		}
 	}
@@ -321,13 +277,14 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 		if err := ValidateDiscriminatorMappingValueNodes(discNode); err != nil {
 			return err
 		}
+		effective := utils.ResolveMergeNodes(discNode)
 		var discriminator Discriminator
-		_ = low.BuildModel(discNode, &discriminator)
+		_ = low.BuildModel(effective, &discriminator)
 		discriminator.KeyNode = discLabel
-		discriminator.RootNode = discNode
-		discriminator.Nodes = low.ExtractNodes(ctx, discNode)
+		discriminator.RootNode = effective
+		discriminator.Nodes = low.ExtractNodes(ctx, effective)
 		s.Discriminator = low.NodeReference[*Discriminator]{Value: &discriminator, KeyNode: discLabel, ValueNode: discNode}
-		low.AppendRecursiveNodes(&discriminator, discNode)
+		low.AppendRecursiveNodes(&discriminator, effective)
 	}
 
 	_, extDocLabel, extDocNode := utils.FindKeyNodeFullTop(ExternalDocsLabel, root.Content)
@@ -335,7 +292,7 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 		var exDoc ExternalDoc
 		_ = low.BuildModel(extDocNode, &exDoc)
 		_ = exDoc.Build(ctx, extDocLabel, extDocNode, idx)
-		exDoc.Nodes = low.ExtractNodes(ctx, extDocNode)
+		exDoc.Nodes = low.ExtractNodes(ctx, exDoc.RootNode)
 		s.ExternalDocs = low.NodeReference[*ExternalDoc]{Value: &exDoc, KeyNode: extDocLabel, ValueNode: extDocNode}
 	}
 
@@ -344,7 +301,7 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 		var xml XML
 		_ = low.BuildModel(xmlNode, &xml)
 		_ = xml.Build(xmlNode, idx)
-		xml.Nodes = low.ExtractNodes(ctx, xmlNode)
+		xml.Nodes = low.ExtractNodes(ctx, xml.RootNode)
 		s.XML = low.NodeReference[*XML]{Value: &xml, KeyNode: xmlLabel, ValueNode: xmlNode}
 	}
 
@@ -378,6 +335,14 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 	}
 	if props != nil {
 		s.PatternProperties = *props
+	}
+
+	props, err = buildPropertyMap(ctx, s, root, idx, DefsLabel)
+	if err != nil {
+		return err
+	}
+	if props != nil {
+		s.Defs = *props
 	}
 
 	itemsIsBool := false

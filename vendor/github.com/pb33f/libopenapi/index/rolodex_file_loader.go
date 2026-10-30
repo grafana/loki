@@ -18,9 +18,10 @@ import (
 
 	"context"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
+	"github.com/pb33f/libopenapi/internal/jsonnode"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 type Rolodexable interface {
@@ -293,7 +294,7 @@ func (l *LocalFile) GetContentAsYAMLNode() (*yaml.Node, error) {
 		return nil, fmt.Errorf("no data to parse for file: %s", l.fullPath)
 	}
 	var root yaml.Node
-	err := yaml.Unmarshal(l.data, &root)
+	err := jsonnode.Unmarshal(l.data, &root)
 	if err != nil {
 		// we can't parse it, so create a fake document node with a single string content
 		root = yaml.Node{

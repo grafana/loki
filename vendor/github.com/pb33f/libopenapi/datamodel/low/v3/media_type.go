@@ -7,14 +7,13 @@ import (
 	"context"
 	"hash/maphash"
 	"slices"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // MediaType represents a low-level OpenAPI MediaType object.
@@ -33,7 +32,7 @@ type MediaType struct {
 	RootNode     *yaml.Node
 	index        *index.SpecIndex
 	context      context.Context
-	nodeStore    sync.Map
+	nodeStore    low.NodeLines
 	reference    low.Reference
 	*low.Reference
 	low.NodeMap
@@ -87,12 +86,11 @@ func (mt *MediaType) GetKeyNode() *yaml.Node {
 // Build will extract examples, extensions, schema and encoding from node.
 func (mt *MediaType) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	mt.KeyNode = keyNode
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	mt.RootNode = root
-	utils.CheckForMergeNodes(root)
 	mt.reference = low.Reference{}
 	mt.Reference = &mt.reference
-	mt.nodeStore = sync.Map{}
+	mt.nodeStore = low.NodeLines{}
 	mt.Nodes = &mt.nodeStore
 	if len(root.Content) > 0 {
 		mt.NodeMap.ExtractNodes(root, false)
@@ -194,29 +192,17 @@ func (mt *MediaType) Build(ctx context.Context, keyNode, root *yaml.Node, idx *i
 func (mt *MediaType) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if mt.Schema.Value != nil {
-			h.WriteString(low.GenerateHashString(mt.Schema.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "schema", low.GenerateHashString(mt.Schema.Value))
 		}
 		if mt.ItemSchema.Value != nil {
-			h.WriteString(low.GenerateHashString(mt.ItemSchema.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "itemSchema", low.GenerateHashString(mt.ItemSchema.Value))
 		}
 		if mt.Example.Value != nil && !mt.Example.Value.IsZero() {
-			h.WriteString(low.GenerateHashString(mt.Example.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "example", low.GenerateHashString(mt.Example.Value))
 		}
-		for v := range orderedmap.SortAlpha(mt.Examples.Value).ValuesFromOldest() {
-			h.WriteString(low.GenerateHashString(v.Value))
-			h.WriteByte(low.HASH_PIPE)
-		}
-		for v := range orderedmap.SortAlpha(mt.Encoding.Value).ValuesFromOldest() {
-			h.WriteString(low.GenerateHashString(v.Value))
-			h.WriteByte(low.HASH_PIPE)
-		}
-		for v := range orderedmap.SortAlpha(mt.ItemEncoding.Value).ValuesFromOldest() {
-			h.WriteString(low.GenerateHashString(v.Value))
-			h.WriteByte(low.HASH_PIPE)
-		}
+		low.HashMap(h, "examples", mt.Examples.Value)
+		low.HashMap(h, "encoding", mt.Encoding.Value)
+		low.HashMap(h, "itemEncoding", mt.ItemEncoding.Value)
 		for _, ext := range low.HashExtensions(mt.Extensions) {
 			h.WriteString(ext)
 			h.WriteByte(low.HASH_PIPE)

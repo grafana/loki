@@ -6,7 +6,7 @@ package index
 import (
 	"sort"
 
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 // SetCircularReferences sets the circular reference results for this index.

@@ -5,18 +5,19 @@ package v3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/maphash"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // PathItem represents a low-level OpenAPI 3+ PathItem object.
@@ -45,7 +46,7 @@ type PathItem struct {
 	RootNode             *yaml.Node
 	index                *index.SpecIndex
 	context              context.Context
-	nodeStore            sync.Map
+	nodeStore            low.NodeLines
 	reference            low.Reference
 	*low.Reference
 	low.NodeMap
@@ -204,9 +205,9 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 	}
 	root = utils.NodeAlias(root)
 	p.KeyNode = keyNode
+	root = utils.ResolveMergeNodes(root)
 	p.RootNode = root
-	utils.CheckForMergeNodes(root)
-	p.nodeStore = sync.Map{}
+	p.nodeStore = low.NodeLines{}
 	p.Nodes = &p.nodeStore
 	if len(root.Content) > 0 {
 		p.NodeMap.ExtractNodes(root, false)
@@ -222,7 +223,10 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 	var currentNode *yaml.Node
 
 	ops := make([]low.NodeReference[*Operation], 0, len(root.Content)/2)
+	// the context each operation was resolved in, which its build runs with.
+	opContexts := make(map[*Operation]context.Context, len(root.Content)/2)
 	var additionalOps *orderedmap.Map[low.KeyReference[string], low.NodeReference[*Operation]]
+	var additionalOpsKeyNode, additionalOpsValueNode *yaml.Node
 
 	// extract parameters
 	params, ln, vn, pErr := low.ExtractArray[*Parameter](ctx, ParametersLabel, root, idx)
@@ -318,20 +322,25 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 		if err := low.BuildModel(pathNode, &op); err != nil {
 			return err
 		}
+		// initialize the embedded reference so a sibling operation that fails to
+		// build later cannot leave this operation with a nil *low.Reference, which
+		// panics when IsReference is called on the returned model (see #616).
+		op.reference = low.Reference{}
+		op.Reference = &op.reference
 
 		opRef := low.NodeReference[*Operation]{
 			Value:     &op,
 			KeyNode:   currentNode,
 			ValueNode: pathNode,
-			Context:   foundContext,
 		}
 		if opIsRef {
 			opRef.SetReference(opRefVal, opRefNode)
 		}
 
-		ops = append(ops, opRef)
+		opContexts[opRef.Value] = foundContext
 
 		if isStandardOp {
+			ops = append(ops, opRef)
 			switch currentNode.Value {
 			case GetLabel:
 				p.Get = opRef
@@ -356,6 +365,7 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 			// initialize additionalOps map if this is the first additional operation
 			if additionalOps == nil {
 				additionalOps = orderedmap.New[low.KeyReference[string], low.NodeReference[*Operation]]()
+				additionalOpsKeyNode, additionalOpsValueNode = currentNode, pathNode
 			}
 
 			// now we need to determine if these are inline additional operations, or just plonked into the root.
@@ -374,16 +384,18 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 					if err := low.BuildModel(opValueNode, &addOp); err != nil {
 						return err
 					}
+					addOp.reference = low.Reference{}
+					addOp.Reference = &addOp.reference
 
 					addOpRef := low.NodeReference[*Operation]{
 						Value:     &addOp,
 						KeyNode:   opKeyNode,
 						ValueNode: opValueNode,
-						Context:   foundContext,
 					}
 					if opIsRef {
 						addOpRef.SetReference(opRefVal, opRefNode)
 					}
+					opContexts[addOpRef.Value] = foundContext
 
 					additionalOps.Set(low.KeyReference[string]{
 						KeyNode: opKeyNode,
@@ -408,6 +420,9 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 
 	// all operations have been superficially built,
 	// now we need to build out the operation, we will do this asynchronously for speed.
+	// Collect build errors so a failed operation does not stop its siblings from building.
+	var opBuildErrors []error
+	var opBuildErrorsLock sync.Mutex
 	translateFunc := func(_ int, op low.NodeReference[*Operation]) (any, error) {
 		ref := ""
 		var refNode *yaml.Node
@@ -416,19 +431,19 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 			refNode = op.GetReferenceNode()
 		}
 
-		err := op.Value.Build(op.Context, op.KeyNode, op.ValueNode, op.Context.Value(index.FoundIndexKey).(*index.SpecIndex))
+		opCtx := opContexts[op.Value]
+		err := op.Value.Build(opCtx, op.KeyNode, op.ValueNode, opCtx.Value(index.FoundIndexKey).(*index.SpecIndex))
 		if ref != "" {
 			op.Value.Reference.SetReference(ref, refNode)
 		}
 		if err != nil {
-			return nil, err
+			opBuildErrorsLock.Lock()
+			opBuildErrors = append(opBuildErrors, err)
+			opBuildErrorsLock.Unlock()
 		}
 		return nil, nil
 	}
-	err := datamodel.TranslateSliceParallel[low.NodeReference[*Operation], any](ops, translateFunc, nil)
-	if err != nil {
-		return err
-	}
+	_ = datamodel.TranslateSliceParallel[low.NodeReference[*Operation], any](ops, translateFunc, nil)
 
 	// assign additionalOperations if any were found
 	if additionalOps != nil && additionalOps.Len() > 0 {
@@ -438,11 +453,16 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 			extrOps = append(extrOps, appVal)
 		}
 
-		err = datamodel.TranslateSliceParallel[low.NodeReference[*Operation], any](extrOps, translateFunc, nil)
+		_ = datamodel.TranslateSliceParallel[low.NodeReference[*Operation], any](extrOps, translateFunc, nil)
 
 		p.AdditionalOperations = low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.NodeReference[*Operation]]]{
-			Value: additionalOps,
+			Value:     additionalOps,
+			KeyNode:   additionalOpsKeyNode,
+			ValueNode: additionalOpsValueNode,
 		}
+	}
+	if len(opBuildErrors) > 0 {
+		return errors.Join(opBuildErrors...)
 	}
 	return nil
 }

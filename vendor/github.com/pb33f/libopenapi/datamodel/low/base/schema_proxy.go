@@ -12,11 +12,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // SchemaProxy exists as a stub that will create a Schema once (and only once) the Schema() method is called.
@@ -67,7 +67,7 @@ type SchemaProxy struct {
 	hashMu         sync.Mutex // protects cachedHash + hashGen
 	cachedHash     *uint64    // protected by hashMu
 	hashGen        uint64     // generation counter for invalidation
-	nodeStore      sync.Map
+	nodeStore      low.NodeLines
 	nodeMap        low.NodeMap
 	TransformedRef *yaml.Node // Original node that contained the ref before transformation
 	transformedRef *transformedSiblingRef
@@ -103,7 +103,7 @@ func (sp *SchemaProxy) Build(ctx context.Context, key, value *yaml.Node, idx *in
 	}
 	// for transformed schemas, don't set reference since it's now an allOf structure
 	// the reference is embedded within the allOf, but the schema itself is not a pure reference
-	sp.nodeStore = sync.Map{}
+	sp.nodeStore = low.NodeLines{}
 	sp.nodeMap = low.NodeMap{Nodes: &sp.nodeStore}
 	sp.NodeMap = &sp.nodeMap
 	return nil
@@ -133,7 +133,7 @@ func (sp *SchemaProxy) prepareForResolvedBuild(ctx context.Context, key, value, 
 	if refLocation != "" {
 		sp.SetReference(refLocation, refNode)
 	}
-	sp.nodeStore = sync.Map{}
+	sp.nodeStore = low.NodeLines{}
 	sp.nodeMap = low.NodeMap{Nodes: &sp.nodeStore}
 	sp.NodeMap = &sp.nodeMap
 }
@@ -230,15 +230,16 @@ func (sp *SchemaProxy) Schema() *Schema {
 		// handle property merging for references with sibling properties
 		buildNode := sp.vn
 		if cfg != nil {
-			if docConfig := sp.getDocumentConfig(); docConfig != nil && docConfig.MergeReferencedProperties {
-				if mergedNode := sp.attemptPropertyMerging(buildNode, docConfig); mergedNode != nil {
+			// read the flag straight from the rolodex config: the document configuration is only built
+			// when merging is actually enabled.
+			if rolodexConfig := sp.rolodexConfig(); rolodexConfig != nil && rolodexConfig.MergeReferencedProperties {
+				if mergedNode := sp.attemptPropertyMerging(buildNode, rolodexConfig.ToDocumentConfiguration()); mergedNode != nil {
 					buildNode = mergedNode
 				}
 			}
 		}
 
 		schema := new(Schema)
-		utils.CheckForMergeNodes(buildNode)
 		err := schema.Build(sp.ctx, buildNode, sp.idx)
 		if err != nil {
 			sp.buildError = err
@@ -253,8 +254,8 @@ func (sp *SchemaProxy) Schema() *Schema {
 
 		// Copy accumulated nodes to the built schema
 		if sp.NodeMap != nil {
-			sp.NodeMap.Nodes.Range(func(key, value any) bool {
-				schema.AddNode(key.(int), value.(*yaml.Node))
+			sp.NodeMap.Nodes.Range(func(line int, value any) bool {
+				schema.AddNode(line, value.(*yaml.Node))
 				return true
 			})
 		}
@@ -266,7 +267,8 @@ func (sp *SchemaProxy) Schema() *Schema {
 // there were no errors during build, then nil will be returned.
 //
 // Thread safety: GetBuildError() is safe to call concurrently only after Schema() has been called at least once
-// on this proxy (from any goroutine). All standard code paths (Hash(), high-level Schema()) call Schema() first.
+// on this proxy (from any goroutine). The high-level Schema() calls Schema() first; Hash() may not, when a quick
+// hash for the referenced schema is already cached.
 func (sp *SchemaProxy) GetBuildError() error {
 	return sp.buildError
 }
@@ -362,6 +364,10 @@ func (sp *SchemaProxy) computeHash() uint64 {
 	cfg := sp.getSpecConfig()
 	if cfg != nil && cfg.UseSchemaQuickHash {
 		if !CheckSchemaProxyForCircularRefs(sp) {
+			// many references point at the same schema; reuse its quick hash before building another copy.
+			if hash, ok := sp.cachedQuickHash(); ok {
+				return hash
+			}
 			sch = sp.Schema()
 			if sch != nil {
 				return sch.QuickHash()
@@ -404,6 +410,12 @@ func (sp *SchemaProxy) AddNode(key int, node *yaml.Node) {
 }
 
 // GetIndex will return the index.SpecIndex pointer that was passed to the SchemaProxy during build.
+// This is the index owning the proxy's own nodes (the key node and the value node).
+//
+// For a child proxy (a property, an allOf member, and so on) the reference is resolved before the
+// proxy is built, so this is already the referenced file. For a component level proxy holding an
+// unresolved $ref node it is the file the $ref was written in, not the file it points at, and
+// Schema().GetIndex() is the one that names the file the content came from.
 func (sp *SchemaProxy) GetIndex() *index.SpecIndex {
 	return sp.idx
 }
@@ -412,16 +424,12 @@ type HasIndex interface {
 	GetIndex() *index.SpecIndex
 }
 
-// getDocumentConfig retrieves the document configuration from the index
-func (sp *SchemaProxy) getDocumentConfig() *datamodel.DocumentConfiguration {
+// rolodexConfig returns the index configuration of the rolodex this proxy's index belongs to, or nil.
+func (sp *SchemaProxy) rolodexConfig() *index.SpecIndexConfig {
 	if sp.idx == nil || sp.idx.GetRolodex() == nil {
 		return nil
 	}
-	rolodex := sp.idx.GetRolodex()
-	if config := rolodex.GetConfig(); config != nil {
-		return config.ToDocumentConfiguration()
-	}
-	return nil
+	return sp.idx.GetRolodex().GetConfig()
 }
 
 // attemptPropertyMerging attempts to merge properties for references with siblings
@@ -471,4 +479,27 @@ func (sp *SchemaProxy) attemptPropertyMerging(node *yaml.Node, config *datamodel
 	}
 
 	return merged
+}
+
+// cachedQuickHash returns the quick hash already stored for the schema this reference would build, without
+// building it. It only answers when the key the built schema would use can be worked out from the proxy: a node
+// that is itself a $ref is re-attributed to another index while building (and is the only kind of node
+// referenced-property merging changes), so that is left to Schema().
+func (sp *SchemaProxy) cachedQuickHash() (uint64, bool) {
+	if sp.vn == nil {
+		return 0, false
+	}
+	root := utils.ResolveMergeNodes(sp.vn)
+	if root == nil {
+		return 0, false
+	}
+	if isRef, _, _ := utils.IsNodeRefValue(root); isRef {
+		return 0, false
+	}
+	if v, ok := SchemaQuickHashMap.Load(quickHashKeyOf(sp.idx, sp.idx, root)); ok {
+		if hash, isHash := v.(uint64); isHash {
+			return hash, true
+		}
+	}
+	return 0, false
 }

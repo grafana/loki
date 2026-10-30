@@ -7,11 +7,11 @@ import (
 	"context"
 	"hash/maphash"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Tag represents a low-level Tag instance that is backed by a low-level one.
@@ -65,9 +65,8 @@ func (t *Tag) GetKeyNode() *yaml.Node {
 // Build will extract extensions and external docs for the Tag.
 func (t *Tag) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	t.KeyNode = keyNode
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	t.RootNode = root
-	utils.CheckForMergeNodes(root)
 	t.Reference = new(low.Reference)
 	t.Nodes = low.ExtractNodes(ctx, root)
 	t.Extensions = low.ExtractExtensions(root)

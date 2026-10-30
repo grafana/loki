@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // FindSchemaIdInNode looks for a $id key in a mapping node and returns its value.

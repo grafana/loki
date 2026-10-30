@@ -14,8 +14,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/pb33f/go-yaml"
+	"github.com/pb33f/libopenapi/internal/weakcache"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 func (index *SpecIndex) extractDefinitionsAndSchemas(schemasNode *yaml.Node, pathPrefix string) {
@@ -423,14 +424,14 @@ func formatParameterPath(pathValue, method string, index int) string {
 
 func (index *SpecIndex) scanOperationParams(params []*yaml.Node, keyNode, pathItemNode *yaml.Node, method string) {
 	for i, param := range params {
-		// param is ref
-		if len(param.Content) > 0 && param.Content[0].Value == "$ref" {
+		// param is ref ($ref may have siblings in OA 3.1, so it is not always the first key)
+		if refValueNode := utils.GetRefValueNode(param); refValueNode != nil {
 
-			paramRefName := param.Content[1].Value
+			paramRefName := refValueNode.Value
 			paramRef := index.allMappedRefs[paramRefName]
 			if paramRef == nil {
 				// could be in the rolodex
-				searchInIndex := findIndex(index, param.Content[1])
+				searchInIndex := findIndex(index, refValueNode)
 				ctx := context.WithValue(context.Background(), CurrentPathKey, searchInIndex.specAbsolutePath)
 				ctx = context.WithValue(ctx, RootIndexKey, searchInIndex)
 				ref := seekRefEnd(ctx, searchInIndex, paramRefName)
@@ -555,16 +556,7 @@ func findIndex(index *SpecIndex, i *yaml.Node) *SpecIndex {
 	}
 	allIndexes := rolodex.GetIndexes()
 	for _, searchIndex := range allIndexes {
-		nodeMap := searchIndex.GetNodeMap()
-		line, ok := nodeMap[i.Line]
-		if !ok {
-			continue
-		}
-		node, ok := line[i.Column]
-		if !ok {
-			continue
-		}
-		if node == i {
+		if node, ok := searchIndex.GetNode(i.Line, i.Column); ok && node == i {
 			return searchIndex
 		}
 	}
@@ -645,28 +637,18 @@ func syncMapToMap[K comparable, V any](sm *sync.Map) map[K]V {
 	return m
 }
 
-// ClearHashCache clears the hash cache - useful for testing and memory management
+// ClearHashCache invalidates the node hash cache, so hashes of nodes modified in place are recalculated. It is
+// not needed to release memory: cached entries never keep a document alive.
 func ClearHashCache() {
 	nodeHashCache.Clear()
 }
 
-// ClearNodePools replaces the sync.Pool instances that hold *yaml.Node pointers
-// with fresh pools. After a document lifecycle ends, pooled slices and maps
-// still reference the parsed YAML tree, preventing GC from collecting it.
-// Call this (via libopenapi.ClearAllCaches) to release those references.
-func ClearNodePools() {
-	stackPool = sync.Pool{
-		New: func() interface{} {
-			s := make([]*yaml.Node, 0, 128)
-			return &s
-		},
-	}
-	visitedPool = sync.Pool{
-		New: func() interface{} {
-			return make(map[*yaml.Node]struct{}, 64)
-		},
-	}
-}
+// ClearNodePools does nothing. Pooled slices and maps are emptied before they are returned to their pools, so
+// they never hold *yaml.Node pointers between uses and there is nothing to release.
+//
+// Deprecated: there is no longer anything to clear. Replacing the pools while other goroutines used them was
+// also a data race.
+func ClearNodePools() {}
 
 // hasherPool pools maphash.Hash instances to avoid allocations.
 // maphash is ~15x faster than SHA256 and has native WriteString support.
@@ -695,9 +677,9 @@ var visitedPool = sync.Pool{
 	},
 }
 
-// nodeHashCache caches hash results by node pointer for repeated lookups.
-// yaml.Node pointers are stable for the document lifetime.
-var nodeHashCache = sync.Map{} // *yaml.Node -> string
+// nodeHashCache caches hash results by node identity for repeated lookups. Its keys are weak, so it never keeps
+// a released document alive.
+var nodeHashCache weakcache.Cache[yaml.Node, string]
 
 // hashCacheThreshold determines when to cache hash results.
 // lowered from 200 to 20 for more aggressive caching of repeated patterns.
@@ -745,7 +727,7 @@ func HashNode(n *yaml.Node) string {
 
 	// check cache first (by pointer - yaml.Node pointers are stable)
 	if cached, ok := nodeHashCache.Load(n); ok {
-		return cached.(string)
+		return cached
 	}
 
 	// get hasher from pool
@@ -753,47 +735,106 @@ func HashNode(n *yaml.Node) string {
 	h.Reset()
 	defer hasherPool.Put(h)
 
-	// get stack from pool, reset length but keep capacity
-	stackPtr := stackPool.Get().(*[]*yaml.Node)
-	stack := (*stackPtr)[:0]
-	stack = append(stack, n)
+	// a leaf cannot revisit a node, so it needs no traversal storage.
+	// keep this after the cache lookup: callers invalidate cached nodes explicitly.
+	if len(n.Content) == 0 {
+		h.WriteString(n.Tag)
+		writeIntToHash(h, n.Line)
+		writeIntToHash(h, n.Column)
+		h.WriteString(n.Value)
+		return strconv.FormatUint(h.Sum64(), 16)
+	}
+
+	// small subtrees use local storage; pooled state is acquired only on overflow.
+	// keep pooledStack separate so the local array never escapes through the pool.
+	var localStack [16]*yaml.Node
+	localStack[0] = n
+	pending := 1
+	var stackPtr *[]*yaml.Node
+	var pooledStack []*yaml.Node
+	var localVisited [16]*yaml.Node
+	visitedCount := 0
+	var visited map[*yaml.Node]struct{}
 	defer func() {
-		*stackPtr = stack[:0]
-		stackPool.Put(stackPtr)
+		if stackPtr != nil {
+			clear(pooledStack)
+			*stackPtr = pooledStack[:0]
+			stackPool.Put(stackPtr)
+		}
+		if visited != nil {
+			clear(visited)
+			visitedPool.Put(visited)
+		}
 	}()
 
-	// get visited map from pool, clear entries
-	visited := visitedPool.Get().(map[*yaml.Node]struct{})
-	clear(visited)
-	defer func() {
-		clear(visited)
-		visitedPool.Put(visited)
-	}()
-
-	for len(stack) > 0 {
-		// pop from stack
-		node := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-
+	for pending > 0 || len(pooledStack) > 0 {
+		var node *yaml.Node
+		if stackPtr == nil {
+			pending--
+			node = localStack[pending]
+			localStack[pending] = nil
+		} else {
+			last := len(pooledStack) - 1
+			node = pooledStack[last]
+			pooledStack[last] = nil
+			pooledStack = pooledStack[:last]
+		}
 		if node == nil {
 			continue
 		}
 
-		// skip already visited nodes (handles circular references)
-		if _, seen := visited[node]; seen {
-			continue
+		// visited-once semantics apply to shared children as well as cycles.
+		if visited == nil {
+			seen := false
+			for i := 0; i < visitedCount; i++ {
+				if localVisited[i] == node {
+					seen = true
+					break
+				}
+			}
+			if seen {
+				continue
+			}
+			if visitedCount < len(localVisited) {
+				localVisited[visitedCount] = node
+				visitedCount++
+			} else {
+				// every pooled map is emptied before it is returned.
+				visited = visitedPool.Get().(map[*yaml.Node]struct{})
+				for _, previous := range localVisited {
+					visited[previous] = struct{}{}
+				}
+				clear(localVisited[:])
+				visited[node] = struct{}{}
+			}
+		} else {
+			if _, seen := visited[node]; seen {
+				continue
+			}
+			visited[node] = struct{}{}
 		}
-		visited[node] = struct{}{}
 
-		// hash node content - WriteString for strings, writeIntToHash for ints (zero allocations)
 		h.WriteString(node.Tag)
 		writeIntToHash(h, node.Line)
 		writeIntToHash(h, node.Column)
 		h.WriteString(node.Value)
 
-		// push children in reverse order for correct traversal order
-		for i := len(node.Content) - 1; i >= 0; i-- {
-			stack = append(stack, node.Content[i])
+		// preserve pending entries and reverse child order when storage grows.
+		if stackPtr == nil && len(node.Content) > len(localStack)-pending {
+			stackPtr = stackPool.Get().(*[]*yaml.Node)
+			pooledStack = append((*stackPtr)[:0], localStack[:pending]...)
+			clear(localStack[:pending])
+			pending = 0
+		}
+		if stackPtr == nil {
+			for i := len(node.Content) - 1; i >= 0; i-- {
+				localStack[pending] = node.Content[i]
+				pending++
+			}
+		} else {
+			for i := len(node.Content) - 1; i >= 0; i-- {
+				pooledStack = append(pooledStack, node.Content[i])
+			}
 		}
 	}
 

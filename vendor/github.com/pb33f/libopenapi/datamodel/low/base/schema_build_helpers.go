@@ -7,12 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 type resolvedSchemaBuildInput struct {
@@ -99,6 +100,49 @@ func buildDependentRequiredMap(root *yaml.Node, label string) (*low.NodeReferenc
 // extract extensions from schema
 func (s *Schema) extractExtensions(root *yaml.Node) {
 	s.Extensions = low.ExtractExtensions(root)
+}
+
+// resolveExclusive reads an exclusiveMinimum or exclusiveMaximum value. 3.0 reads the keyword as a
+// boolean modifier on minimum/maximum, 3.1 reads it as the bound itself, so the document version
+// decides the shape. nil means there is nothing to record and the keyword stays absent.
+//
+// When the version is known the parse error is deliberately ignored, which is what coerces a value
+// written in the other version's form into the one this document uses: a 3.0 style boolean under
+// 3.1 becomes the bound 0, and a 3.1 style bound under 3.0 becomes false.
+//
+// When the version is unknown there is nothing to coerce towards, so a boolean is read as the 3.0
+// form because it cannot be a bound, anything numeric is read as 3.1, and anything else is left
+// absent rather than recorded as a bound of zero the author never wrote.
+func resolveExclusive(docVersion float32, versionKnown bool, valueNode *yaml.Node) *SchemaDynamicValue[bool, float64] {
+	if valueNode == nil {
+		return nil
+	}
+
+	if versionKnown {
+		if docVersion >= 3.1 {
+			parsed, _ := strconv.ParseFloat(valueNode.Value, 64)
+			return &SchemaDynamicValue[bool, float64]{N: 1, B: parsed}
+		}
+		if docVersion <= 3.0 {
+			parsed, _ := strconv.ParseBool(valueNode.Value)
+			return &SchemaDynamicValue[bool, float64]{N: 0, A: parsed}
+		}
+		return nil
+	}
+
+	if utils.IsNodeBoolValue(valueNode) {
+		parsed, err := strconv.ParseBool(valueNode.Value)
+		if err != nil {
+			return nil
+		}
+		return &SchemaDynamicValue[bool, float64]{N: 0, A: parsed}
+	}
+
+	parsed, err := strconv.ParseFloat(valueNode.Value, 64)
+	if err != nil {
+		return nil
+	}
+	return &SchemaDynamicValue[bool, float64]{N: 1, B: parsed}
 }
 
 // buildSchemaProxy builds out a SchemaProxy for a single node.

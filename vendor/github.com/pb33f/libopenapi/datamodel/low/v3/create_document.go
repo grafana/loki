@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 type documentTopLevelNode struct {
@@ -49,7 +49,7 @@ func selectDocumentNode(root *yaml.Node, preferred documentTopLevelNode, label s
 	if root == nil {
 		return documentTopLevelNode{}
 	}
-	utils.CheckForMergeNodes(root)
+	root = utils.ResolveMergeNodes(root)
 	if topOnly {
 		_, key, value := utils.FindKeyNodeFullTop(label, root.Content)
 		return documentTopLevelNode{key: key, value: value}
@@ -64,7 +64,7 @@ func collectDocumentTopLevelNodes(root *yaml.Node) documentTopLevelNodes {
 	if root == nil {
 		return nodes
 	}
-	utils.CheckForMergeNodes(root)
+	root = utils.ResolveMergeNodes(root)
 
 	content := root.Content
 	for i := 0; i+1 < len(content); i += 2 {
@@ -135,7 +135,7 @@ func CreateDocumentFromConfig(info *datamodel.SpecInfo, config *datamodel.Docume
 }
 
 func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfiguration) (*Document, error) {
-	rootNode := utils.NodeAlias(info.RootNode.Content[0])
+	rootNode := utils.ResolveMergeNodes(info.RootNode.Content[0])
 	topNodes := collectDocumentTopLevelNodes(rootNode)
 	versionNodeRef := selectDocumentNode(rootNode, topNodes.version, OpenAPILabel, false)
 	labelNode, versionNode := versionNodeRef.key, versionNodeRef.value
@@ -151,6 +151,7 @@ func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfigur
 	idxConfig.SpecInfo = info
 	idxConfig.UseSchemaQuickHash = config.UseSchemaQuickHash
 	idxConfig.ExcludeExtensionRefs = config.ExcludeExtensionRefs
+	idxConfig.SkipMetadataCollection = config.SkipMetadataCollection
 	idxConfig.IgnoreArrayCircularReferences = config.IgnoreArrayCircularReferences
 	idxConfig.IgnorePolymorphicCircularReferences = config.IgnorePolymorphicCircularReferences
 	idxConfig.AllowUnknownExtensionContentDetection = config.AllowUnknownExtensionContentDetection
@@ -483,6 +484,11 @@ func extractPaths(ctx context.Context, root *yaml.Node, nodes documentTopLevelNo
 }
 
 func extractWebhooks(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	// without a genuine top-level key, ExtractMap can match a same-named scalar
+	// (e.g. "webhooks" in an extension value) and create an empty webhooks map.
+	if nodes.webhooks.value == nil {
+		return nil
+	}
 	hooks, hooksL, hooksN, err := low.ExtractMap[*PathItem](ctx, WebhooksLabel, root, idx)
 	if err != nil {
 		return err

@@ -7,13 +7,12 @@ import (
 	"context"
 	"fmt"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Encoding represents a low-level OpenAPI 3+ Encoding object
@@ -28,7 +27,7 @@ type Encoding struct {
 	RootNode      *yaml.Node
 	index         *index.SpecIndex
 	context       context.Context
-	nodeStore     sync.Map
+	nodeStore     low.NodeLines
 	reference     low.Reference
 	*low.Reference
 	low.NodeMap
@@ -63,16 +62,14 @@ func (en *Encoding) GetKeyNode() *yaml.Node {
 func (en *Encoding) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if en.ContentType.Value != "" {
-			h.WriteString(en.ContentType.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "contentType", en.ContentType.Value)
 		}
 		for k, v := range orderedmap.SortAlpha(en.Headers.Value).FromOldest() {
 			h.WriteString(fmt.Sprintf("%s-%x", k.Value, v.Value.Hash()))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if en.Style.Value != "" {
-			h.WriteString(en.Style.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "style", en.Style.Value)
 		}
 		low.HashBool(h, en.Explode.Value)
 		h.WriteByte(low.HASH_PIPE)
@@ -85,10 +82,9 @@ func (en *Encoding) Hash() uint64 {
 // Build will extract all Header objects from supplied node.
 func (en *Encoding) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	en.KeyNode = keyNode
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	en.RootNode = root
-	utils.CheckForMergeNodes(root)
-	en.nodeStore = sync.Map{}
+	en.nodeStore = low.NodeLines{}
 	en.Nodes = &en.nodeStore
 	if len(root.Content) > 0 {
 		en.NodeMap.ExtractNodes(root, false)

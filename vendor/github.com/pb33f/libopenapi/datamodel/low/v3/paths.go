@@ -7,14 +7,13 @@ import (
 	"context"
 	"fmt"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Paths represents a high-level OpenAPI 3+ Paths object, that is backed by a low-level one.
@@ -30,7 +29,7 @@ type Paths struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
-	nodeStore  sync.Map
+	nodeStore  low.NodeLines
 	reference  low.Reference
 	*low.Reference
 	low.NodeMap
@@ -93,11 +92,11 @@ func (p *Paths) GetExtensions() *orderedmap.Map[low.KeyReference[string], low.Va
 func (p *Paths) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	root = utils.NodeAlias(root)
 	p.KeyNode = keyNode
+	root = utils.ResolveMergeNodes(root)
 	p.RootNode = root
-	utils.CheckForMergeNodes(root)
 	p.reference = low.Reference{}
 	p.Reference = &p.reference
-	p.nodeStore = sync.Map{}
+	p.nodeStore = low.NodeLines{}
 	p.Nodes = &p.nodeStore
 	if keyNode != nil {
 		p.AddNode(keyNode.Line, keyNode)
@@ -182,17 +181,24 @@ func extractPathItemsMap(ctx context.Context, root *yaml.Node, idx *index.SpecIn
 			cNode := value.currentNode
 
 			foundContext := ctx
+			// pathIdx is a closure local on purpose. idx is captured and shared by every goroutine
+			// this slice is translated across, so it must never be assigned to.
+			pathIdx := idx
 			var isRef bool
 			var refNode *yaml.Node
 			if ok, _, _ := utils.IsNodeRefValue(pNode); ok {
 				isRef = true
 				refNode = pNode
-				r, _, err, fCtx := low.LocateRefNodeWithContext(ctx, pNode, idx)
+				r, fIdx, err, fCtx := low.LocateRefNodeWithContext(ctx, pNode, idx)
 				if r != nil {
 					pNode = r
 					foundContext = fCtx
 					if err != nil && !idx.AllowCircularReferenceResolving() {
 						return buildResult{}, fmt.Errorf("path item build failed: %s", err.Error())
+					}
+					// attribute the path item to the file that owns the resolved node.
+					if fIdx != nil {
+						pathIdx = fIdx
 					}
 				} else {
 					return buildResult{}, fmt.Errorf("path item build failed: cannot find reference: '%s' at line %d, col %d",
@@ -202,7 +208,7 @@ func extractPathItemsMap(ctx context.Context, root *yaml.Node, idx *index.SpecIn
 
 			path := new(PathItem)
 			_ = low.BuildModel(pNode, path)
-			err := path.Build(foundContext, cNode, pNode, idx)
+			err := path.Build(foundContext, cNode, pNode, pathIdx)
 
 			if isRef {
 				path.SetReference(refNode.Content[1].Value, refNode)

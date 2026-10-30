@@ -1707,13 +1707,13 @@ github.com/pb33f/go-yaml
 github.com/pb33f/go-yaml/internal/libyaml
 github.com/pb33f/go-yaml/internal/plugin
 github.com/pb33f/go-yaml/plugin/limit
-# github.com/pb33f/jsonpath v0.8.2
+# github.com/pb33f/jsonpath v0.8.4
 ## explicit; go 1.24
 github.com/pb33f/jsonpath/pkg/jsonpath
 github.com/pb33f/jsonpath/pkg/jsonpath/config
 github.com/pb33f/jsonpath/pkg/jsonpath/token
-# github.com/pb33f/libopenapi v0.37.2
-## explicit; go 1.25.0
+# github.com/pb33f/libopenapi v0.41.8
+## explicit; go 1.26.0
 github.com/pb33f/libopenapi/datamodel
 github.com/pb33f/libopenapi/datamodel/high
 github.com/pb33f/libopenapi/datamodel/high/base
@@ -1723,6 +1723,8 @@ github.com/pb33f/libopenapi/datamodel/low
 github.com/pb33f/libopenapi/datamodel/low/base
 github.com/pb33f/libopenapi/datamodel/low/v3
 github.com/pb33f/libopenapi/index
+github.com/pb33f/libopenapi/internal/jsonnode
+github.com/pb33f/libopenapi/internal/weakcache
 github.com/pb33f/libopenapi/json
 github.com/pb33f/libopenapi/orderedmap
 github.com/pb33f/libopenapi/utils
