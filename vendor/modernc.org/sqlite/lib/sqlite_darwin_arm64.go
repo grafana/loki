@@ -4,6 +4,40 @@
 
 package sqlite3
 
+type Dl_info_t = TDl_info_t
+
+/*
+ * Flags for dlopen().
+ */
+
+/*
+ * Special handle values for dlsym().
+ */
+
+const FD_CLOFORK = 2
+
+const F_DUPFD_CLOFORK = 115
+
+const F_RDADVISEV = 116
+
+const F_RDADVISEV_NOAGE = 1
+
+const IFCAP_IPSEC = 65536
+
+const IFCAP_VALID = 131071
+
+const IOPOL_TYPE_VFS_CONTENT_PROTECTION = 6
+
+const IOPOL_VFS_CONTENT_PROTECTION_STRICT = 2
+
+const MACH_PORT_KERNEL_READ_ENTITLEMENT = "com.apple.private.system-task-ports.kernel.read"
+
+const MACH_PORT_QLIMIT_KERNEL_SOFT = 4096
+
+const MAC_OS_VERSION_26_6 = 260600
+
+const MAC_OS_VERSION_27_0 = 270000
+
 const MAXPHYS = 65536
 
 const MAXPHYSIO = 65536
@@ -11,6 +45,12 @@ const MAXPHYSIO = 65536
 const NMBCLUSTERS = "CONFIG_NMBCLUSTERS"
 
 const PTHREAD_STACK_MIN = 16384
+
+const READ_ADVISE_RANGES_MAX = 64
+
+const SBC_SKIP_AUTH = 64
+
+const SO_MAX_PACING_RATE = 4406
 
 const TARGET_ABI_USES_IOS_VALUES = 1
 
@@ -20,7 +60,127 @@ const TARGET_CPU_X86_64 = 0
 
 const TARGET_OS_ARROW = 1
 
+const TARGET_OS_FIRMWARE = 0
+
+const TARGET_OS_KERNELKIT = 0
+
 type Tboolean_t = int32
+
+type Tradvisoryv = struct {
+	Frav_flags  uint32
+	Frav_count  uint32
+	Frav_ranges uintptr
+}
+
+type Trusage_info_current = struct {
+	Fri_uuid                          [16]Tuint8_t
+	Fri_user_time                     Tuint64_t
+	Fri_system_time                   Tuint64_t
+	Fri_pkg_idle_wkups                Tuint64_t
+	Fri_interrupt_wkups               Tuint64_t
+	Fri_pageins                       Tuint64_t
+	Fri_wired_size                    Tuint64_t
+	Fri_resident_size                 Tuint64_t
+	Fri_phys_footprint                Tuint64_t
+	Fri_proc_start_abstime            Tuint64_t
+	Fri_proc_exit_abstime             Tuint64_t
+	Fri_child_user_time               Tuint64_t
+	Fri_child_system_time             Tuint64_t
+	Fri_child_pkg_idle_wkups          Tuint64_t
+	Fri_child_interrupt_wkups         Tuint64_t
+	Fri_child_pageins                 Tuint64_t
+	Fri_child_elapsed_abstime         Tuint64_t
+	Fri_diskio_bytesread              Tuint64_t
+	Fri_diskio_byteswritten           Tuint64_t
+	Fri_cpu_time_qos_default          Tuint64_t
+	Fri_cpu_time_qos_maintenance      Tuint64_t
+	Fri_cpu_time_qos_background       Tuint64_t
+	Fri_cpu_time_qos_utility          Tuint64_t
+	Fri_cpu_time_qos_legacy           Tuint64_t
+	Fri_cpu_time_qos_user_initiated   Tuint64_t
+	Fri_cpu_time_qos_user_interactive Tuint64_t
+	Fri_billed_system_time            Tuint64_t
+	Fri_serviced_system_time          Tuint64_t
+	Fri_logical_writes                Tuint64_t
+	Fri_lifetime_max_phys_footprint   Tuint64_t
+	Fri_instructions                  Tuint64_t
+	Fri_cycles                        Tuint64_t
+	Fri_billed_energy                 Tuint64_t
+	Fri_serviced_energy               Tuint64_t
+	Fri_interval_max_phys_footprint   Tuint64_t
+	Fri_runnable_time                 Tuint64_t
+	Fri_flags                         Tuint64_t
+	Fri_user_ptime                    Tuint64_t
+	Fri_system_ptime                  Tuint64_t
+	Fri_pinstructions                 Tuint64_t
+	Fri_pcycles                       Tuint64_t
+	Fri_energy_nj                     Tuint64_t
+	Fri_penergy_nj                    Tuint64_t
+	Fri_secure_time_in_system         Tuint64_t
+	Fri_secure_ptime_in_system        Tuint64_t
+	Fri_neural_footprint              Tuint64_t
+	Fri_lifetime_max_neural_footprint Tuint64_t
+	Fri_interval_max_neural_footprint Tuint64_t
+	Fri_conclave_footprint            Tuint64_t
+	Fri_page_wait_time_mach           Tuint64_t
+	Fri_page_cache_hits               Tuint64_t
+	Fri_reserved                      [6]Tuint64_t
+}
+
+type Trusage_info_v6 = struct {
+	Fri_uuid                          [16]Tuint8_t
+	Fri_user_time                     Tuint64_t
+	Fri_system_time                   Tuint64_t
+	Fri_pkg_idle_wkups                Tuint64_t
+	Fri_interrupt_wkups               Tuint64_t
+	Fri_pageins                       Tuint64_t
+	Fri_wired_size                    Tuint64_t
+	Fri_resident_size                 Tuint64_t
+	Fri_phys_footprint                Tuint64_t
+	Fri_proc_start_abstime            Tuint64_t
+	Fri_proc_exit_abstime             Tuint64_t
+	Fri_child_user_time               Tuint64_t
+	Fri_child_system_time             Tuint64_t
+	Fri_child_pkg_idle_wkups          Tuint64_t
+	Fri_child_interrupt_wkups         Tuint64_t
+	Fri_child_pageins                 Tuint64_t
+	Fri_child_elapsed_abstime         Tuint64_t
+	Fri_diskio_bytesread              Tuint64_t
+	Fri_diskio_byteswritten           Tuint64_t
+	Fri_cpu_time_qos_default          Tuint64_t
+	Fri_cpu_time_qos_maintenance      Tuint64_t
+	Fri_cpu_time_qos_background       Tuint64_t
+	Fri_cpu_time_qos_utility          Tuint64_t
+	Fri_cpu_time_qos_legacy           Tuint64_t
+	Fri_cpu_time_qos_user_initiated   Tuint64_t
+	Fri_cpu_time_qos_user_interactive Tuint64_t
+	Fri_billed_system_time            Tuint64_t
+	Fri_serviced_system_time          Tuint64_t
+	Fri_logical_writes                Tuint64_t
+	Fri_lifetime_max_phys_footprint   Tuint64_t
+	Fri_instructions                  Tuint64_t
+	Fri_cycles                        Tuint64_t
+	Fri_billed_energy                 Tuint64_t
+	Fri_serviced_energy               Tuint64_t
+	Fri_interval_max_phys_footprint   Tuint64_t
+	Fri_runnable_time                 Tuint64_t
+	Fri_flags                         Tuint64_t
+	Fri_user_ptime                    Tuint64_t
+	Fri_system_ptime                  Tuint64_t
+	Fri_pinstructions                 Tuint64_t
+	Fri_pcycles                       Tuint64_t
+	Fri_energy_nj                     Tuint64_t
+	Fri_penergy_nj                    Tuint64_t
+	Fri_secure_time_in_system         Tuint64_t
+	Fri_secure_ptime_in_system        Tuint64_t
+	Fri_neural_footprint              Tuint64_t
+	Fri_lifetime_max_neural_footprint Tuint64_t
+	Fri_interval_max_neural_footprint Tuint64_t
+	Fri_conclave_footprint            Tuint64_t
+	Fri_page_wait_time_mach           Tuint64_t
+	Fri_page_cache_hits               Tuint64_t
+	Fri_reserved                      [6]Tuint64_t
+}
 
 type Tvm32_address_t = uint32
 
@@ -86,19 +246,73 @@ const __ARM_FEATURE_SHA512 = 1
 
 const __ARM_NEON_SVE_BRIDGE = 1
 
+const __BRIDGEOS_10_5 = 100500
+
+const __BRIDGEOS_10_6 = 100600
+
 const __DARWIN_ONLY_64_BIT_INO_T = 1
 
 const __DARWIN_ONLY_VERS_1050 = 1
 
 const __DARWIN_OPAQUE_ARM_THREAD_STATE64 = 0
 
+const __DRIVERKIT_25_6 = 250600
+
+const __DRIVERKIT_27_0 = 270000
+
+const __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ = 270000
+
+const __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__ = 270000
+
 const __FUNCTION_MULTI_VERSIONING_SUPPORT_LEVEL = 202430
 
+const __IPHONE_26_6 = 260600
+
+const __IPHONE_27_0 = 270000
+
+const __MAC_26_6 = 260600
+
+const __MAC_27_0 = 270000
+
 const __OBJC_BOOL_IS_BOOL = 1
+
+const __TVOS_26_6 = 260600
+
+const __TVOS_27_0 = 270000
+
+const __VERSION__ = "Apple LLVM 21.0.0 (clang-2100.3.34.2)"
+
+const __VISIONOS_26_6 = 260600
+
+const __VISIONOS_27_0 = 270000
+
+const __WATCHOS_26_6 = 260600
+
+const __WATCHOS_27_0 = 270000
+
+const __apple_build_version__ = 21000334
 
 const __arm64 = 1
 
 const __arm64__ = 1
+
+const __clang_version__ = "21.0.0 (clang-2100.3.34.2)"
+
+const _kGUARD_EXC_BOOTSTRAP_PORT_NOTIFICATION = 17
+
+const _kGUARD_EXC_CV_INVALID_EXCEPTION_PORT = 18
+
+const _kGUARD_EXC_MACH_EXC_THREAD_SET_STATE = 12
+
+const _kGUARD_EXC_MOVE_WEAK_REPLY_PORT_FATAL = 13
+
+const _kGUARD_EXC_RESTRICT_INLINE_PORT_DESCRIPTORS = 34
+
+const _kGUARD_EXC_RESTRICT_VOUCHER_OPERATIONS = 11
+
+const _kGUARD_EXC_RESTRICT_VOUCHER_RECIPE_SIZE = 33
+
+type radvisoryv = Tradvisoryv
 
 type t__arm_legacy_debug_state = struct {
 	F__bvr [16]t__uint32_t
