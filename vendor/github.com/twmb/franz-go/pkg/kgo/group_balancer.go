@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo/internal/sticky"
@@ -84,6 +85,45 @@ type GroupMemberBalancerOrError interface {
 	BalanceOrError(topics map[string]int32) (IntoSyncAssignment, error)
 }
 
+// BalanceInfo contains information about the group being balanced and the
+// cluster it is in. We set this on balancers that implement
+// GroupMemberBalancerInfo, before we balance.
+type BalanceInfo struct {
+	// Group is the group being balanced.
+	Group string
+
+	// Generation is the generation we are balancing into. Each member's
+	// metadata contains the generation that member last knew of.
+	Generation int32
+
+	// LeaderID is the group leader's member ID, which is always you: the
+	// coordinator only asks the leader to balance. The coordinator keeps
+	// the same leader until that member leaves the group, so pinning work
+	// to the leader is stable while other members join and leave.
+	LeaderID string
+
+	// Topics returns metadata for every topic being balanced. The first
+	// call builds the result, later calls return the same map.
+	//
+	// We do not request metadata to answer this: topics we have not
+	// loaded yet are missing, and what we have can be up to MetadataMaxAge
+	// old.
+	Topics func() map[string]TopicMetadata
+
+	// Brokers returns every broker we know of, by node ID. Use this to map
+	// a partition's leader or replicas to a rack.
+	Brokers func() map[int32]BrokerMetadata
+}
+
+// GroupMemberBalancerInfo is an optional extension interface for
+// GroupMemberBalancer. If your balancer implements this, we set the info for
+// the group being balanced before balancing. ConsumerBalancer implements
+// this; see ConsumerBalancer.Info.
+type GroupMemberBalancerInfo interface {
+	GroupMemberBalancer
+	SetBalanceInfo(BalanceInfo)
+}
+
 // IntoSyncAssignment takes a balance plan and returns a list of assignments to
 // use in a kmsg.SyncGroupRequest.
 //
@@ -102,9 +142,19 @@ type ConsumerBalancer struct {
 	metadatas []kmsg.ConsumerMemberMetadata
 	topics    map[string]struct{}
 
-	// partitionRacks maps topic => partition index => leader rack.
-	// nil when rack-aware assignment is not active.
+	// partitionRacks maps topic => partition index => leader rack, or is
+	// nil if no member reported a rack or no leader has one. Any balancer
+	// may read it; the built in balancers use it only if balanceRacks is
+	// set, see BalanceRacks.
 	partitionRacks map[string][]string
+	balanceRacks   bool
+
+	// info is everything we know about the group and cluster at balance
+	// time, set by the client before balancing (see balanceGroup). When
+	// the balancer is constructed directly (NewConsumerBalancer) and
+	// balanced without a client, the strings are empty and the functions
+	// return nil.
+	info BalanceInfo
 
 	err error
 }
@@ -149,6 +199,20 @@ func (b *ConsumerBalancer) SetError(err error) {
 // if no rack info is available.
 func (b *ConsumerBalancer) PartitionRacks() map[string][]string {
 	return b.partitionRacks
+}
+
+// Info returns information about the group being balanced and the cluster it
+// is in. The client sets the info before balancing; if you construct a
+// ConsumerBalancer directly with NewConsumerBalancer and balance without a
+// client, the info is empty: LeaderID is unset and the Topics and Brokers
+// functions return nil.
+func (b *ConsumerBalancer) Info() BalanceInfo {
+	return b.info
+}
+
+// SetBalanceInfo implements GroupMemberBalancerInfo.
+func (b *ConsumerBalancer) SetBalanceInfo(info BalanceInfo) {
+	b.info = info
 }
 
 // MemberTopics returns the unique set of topics that all members are
@@ -205,11 +269,37 @@ func ParseConsumerSyncAssignment(assignment []byte) (map[string][]int32, error) 
 //
 // If any metadata parsing fails, this returns an error.
 func NewConsumerBalancer(balance ConsumerBalancerBalance, members []kmsg.JoinGroupResponseMember) (*ConsumerBalancer, error) {
+	// A buggy or hostile broker can list the same member ID twice in one
+	// JoinGroup response. Balancers key plans by member ID, so a duplicate
+	// either merges (range, roundrobin) or, worse, overwrites: the sticky
+	// engine balances the duplicates as two members and then loses one
+	// side's partitions when keying its returned plan -- partitions
+	// assigned to nobody. Keep the first occurrence.
+	seen := make(map[string]struct{}, len(members))
+	for _, member := range members {
+		seen[member.MemberID] = struct{}{}
+	}
+	if len(seen) != len(members) {
+		dedup := make([]kmsg.JoinGroupResponseMember, 0, len(seen))
+		clear(seen)
+		for _, member := range members {
+			if _, exists := seen[member.MemberID]; !exists {
+				seen[member.MemberID] = struct{}{}
+				dedup = append(dedup, member)
+			}
+		}
+		members = dedup
+	}
+
 	b := &ConsumerBalancer{
 		b:         balance,
 		members:   members,
 		metadatas: make([]kmsg.ConsumerMemberMetadata, len(members)),
 		topics:    make(map[string]struct{}),
+		info: BalanceInfo{
+			Topics:  func() map[string]TopicMetadata { return nil },
+			Brokers: func() map[int32]BrokerMetadata { return nil },
+		},
 	}
 
 	for i, member := range members {
@@ -225,12 +315,13 @@ func NewConsumerBalancer(balance ConsumerBalancerBalance, members []kmsg.JoinGro
 			// claiming higher and higher version support and not
 			// actually supporting them. Sarama has a similarish
 			// workaround. See #493.
-			if bytes.HasPrefix(memberMeta, []byte{0, 1}) {
-				memberMeta[0] = 0
-				memberMeta[1] = 0
-				if err = meta.ReadFrom(memberMeta); err != nil {
-					return nil, fmt.Errorf("unable to read member metadata: %v", err)
-				}
+			if !bytes.HasPrefix(memberMeta, []byte{0, 1}) {
+				return nil, fmt.Errorf("unable to read member metadata: %v", err)
+			}
+			memberMeta[0] = 0
+			memberMeta[1] = 0
+			if err = meta.ReadFrom(memberMeta); err != nil {
+				return nil, fmt.Errorf("unable to read member metadata: %v", err)
 			}
 		}
 		for _, topic := range meta.Topics {
@@ -363,7 +454,7 @@ func (g *groupConsumer) findBalancer(from, proto string) (GroupBalancer, error) 
 // returns all topics and partitions; the leader will then periodically do its
 // own metadata update to see if partition counts have changed for these random
 // topics.
-func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupResponseMember, skipBalance bool) ([]kmsg.SyncGroupRequestGroupAssignment, error) {
+func (g *groupConsumer) balanceGroup(proto string, resp *kmsg.JoinGroupResponse) ([]kmsg.SyncGroupRequestGroupAssignment, error) {
 	g.cl.cfg.logger.Log(LogLevelInfo, "balancing group as leader")
 
 	b, err := g.findBalancer("balance group", proto)
@@ -371,6 +462,7 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 		return nil, err
 	}
 
+	members := resp.Members
 	sortJoinMembers(members)
 
 	memberBalancer, topics, err := b.MemberBalancer(members)
@@ -407,14 +499,23 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 		})
 	}
 
+	// KIP-881: we build rack info below from the metadata cache, which
+	// can evict a topic when it stores a response that is missing it.
+	rackMeta := !needMeta && g.needRackMeta(memberBalancer, topics)
+	needMeta = needMeta || rackMeta
+
 	if needMeta {
-		g.cl.cfg.logger.Log(LogLevelInfo, "group members indicated interest in topics the leader is not assigned, fetching metadata for all group topics")
+		why := "group members indicated interest in topics the leader is not assigned"
+		if rackMeta {
+			why = "our metadata cache no longer has all group topics and we balance by rack"
+		}
+		g.cl.cfg.logger.Log(LogLevelInfo, "fetching metadata for all group topics", "why", why)
 		var metaTopics []string
 		for topic := range topics {
 			metaTopics = append(metaTopics, topic)
 		}
 
-		_, resp, err := g.cl.fetchMetadataByName(g.ctx, false, metaTopics, nil)
+		_, resp, err := g.cl.fetchMetadataByName(g.ctx, false, metaTopics, false, nil) // prune: no; the group's topics are not all we cache
 		if err != nil {
 			return nil, fmt.Errorf("unable to fetch metadata for group topics: %v", err)
 		}
@@ -434,11 +535,46 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 		g.initExternal(topicPartitionCount)
 	}
 
-	// KIP-881: build partition rack info for rack-aware assignment.
-	// We use cached broker racks and partition leaders from local
-	// metadata. This requires no extra fetches.
+	// KIP-881: build partition rack info from cached broker racks and
+	// partition leaders, which we refreshed above if we had to. Any balancer
+	// may read it; the built in ones use it only with BalanceRacks.
 	if cb, ok := memberBalancer.(*ConsumerBalancer); ok {
 		cb.partitionRacks = g.buildPartitionRacks(cb, topicPartitionCount)
+		cb.balanceRacks = g.cfg.balanceRacks
+
+		// A preferred read replica means the brokers run a rack aware
+		// replica selector and fetches are already rack local, so
+		// assigning partitions by leader rack gains nothing.
+		if cb.balanceRacks && g.cl.sawPreferredReplica.Load() {
+			g.cl.cfg.logger.Log(LogLevelWarn, "BalanceRacks is on but brokers are returning preferred read replicas; fetches are already rack local and rack aware balancing is assigning rack-local leader partitions for nothing", "group", g.cfg.group)
+		}
+	}
+
+	// Balancers that opt in receive everything we know about the group and
+	// cluster at balance time. Topics and Brokers are functions so that
+	// balancers that never read them (sticky, range, roundrobin) do not
+	// pay for building the snapshots.
+	if ib, ok := memberBalancer.(GroupMemberBalancerInfo); ok {
+		var topicsMdBuilder, brokersMdBuilder sync.Once
+		var topicsMd map[string]TopicMetadata
+		var brokersMd map[int32]BrokerMetadata
+		ib.SetBalanceInfo(BalanceInfo{
+			Group:      g.cfg.group,
+			Generation: resp.Generation,
+			LeaderID:   resp.LeaderID,
+			Topics: func() map[string]TopicMetadata {
+				topicsMdBuilder.Do(func() { // Only build the topics once
+					topicsMd = g.cl.balanceInfoTopics(topics)
+				})
+				return topicsMd
+			},
+			Brokers: func() map[int32]BrokerMetadata {
+				brokersMdBuilder.Do(func() { // Only build the brokers once
+					brokersMd = g.cl.balanceInfoBrokers()
+				})
+				return brokersMd
+			},
+		})
 	}
 
 	// If the returned balancer is a ConsumerBalancer (which it likely
@@ -471,7 +607,7 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 	// interested in and are now tracking them for metadata updates. We
 	// have logged the current interests, we do not need to actually
 	// balance.
-	if skipBalance {
+	if resp.SkipAssignment {
 		switch proto := b.ProtocolName(); proto {
 		case RangeBalancer().ProtocolName(),
 			RoundRobinBalancer().ProtocolName(),
@@ -495,6 +631,13 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 		into = memberBalancer.Balance(topicPartitionCount)
 	}
 
+	// A custom balancer that fails is documented to SetError and return
+	// nil; if it returns nil without setting an error, fail loudly rather
+	// than dereferencing the nil interface below.
+	if into == nil {
+		return nil, fmt.Errorf("balancer %s returned a nil plan with no error", proto)
+	}
+
 	if p, ok := into.(*BalancePlan); ok {
 		g.cl.cfg.logger.Log(LogLevelInfo, "balanced", "plan", p.String())
 	} else {
@@ -504,19 +647,47 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 	return into.IntoSyncAssignment(), nil
 }
 
-// buildPartitionRacks builds a topic => partition => rack map for rack-aware
-// assignment (KIP-881). It uses cached broker racks and partition leader info
-// from local metadata. Returns nil if no rack info is available.
-func (g *groupConsumer) buildPartitionRacks(b *ConsumerBalancer, topicPartitionCount map[string]int32) map[string][]string {
-	// Check if any member has a rack.
-	var hasRack bool
+// anyMemberRack returns whether any member reported a rack.
+func (b *ConsumerBalancer) anyMemberRack() bool {
 	for i := range b.metadatas {
 		if b.metadatas[i].Rack != nil {
-			hasRack = true
-			break
+			return true
 		}
 	}
-	if !hasRack {
+	return false
+}
+
+// needRackMeta returns whether we need to load metadata before we can rack
+// balance topics that other group members consume. We always have racks for
+// the topics we consume ourselves; for the rest, we load metadata through
+// groupExternal, which populates the metadata cache. Our own metadata
+// updates keep those topics cached, since we ask for them, but a user's
+// metadata request for other topics evicts them (see storeCachedMeta).
+func (g *groupConsumer) needRackMeta(memberBalancer GroupMemberBalancer, topics map[string]struct{}) bool {
+	cb, ok := memberBalancer.(*ConsumerBalancer)
+	if !ok || !cb.anyMemberRack() {
+		return false
+	}
+	myTopics := g.tps.load()
+	g.cl.metaCache.mu.Lock()
+	defer g.cl.metaCache.mu.Unlock()
+	for topic := range topics {
+		if _, ok := myTopics[topic]; ok {
+			continue
+		}
+		if _, ok := g.cl.metaCache.topics[topic]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+// buildPartitionRacks builds a topic => partition => rack map for rack-aware
+// assignment (KIP-881). It uses cached broker racks and partition leaders from
+// the metadata cache, falling back to our own topics. Returns nil if no rack
+// info is available.
+func (g *groupConsumer) buildPartitionRacks(b *ConsumerBalancer, topicPartitionCount map[string]int32) map[string][]string {
+	if !b.anyMemberRack() {
 		return nil
 	}
 
@@ -526,13 +697,35 @@ func (g *groupConsumer) buildPartitionRacks(b *ConsumerBalancer, topicPartitionC
 		return nil
 	}
 
-	// Build partition racks from local topic metadata. Each
-	// partition's rack is determined by its leader broker's rack.
+	// Each partition's rack is its leader broker's rack. We prefer the
+	// metadata cache: it has every topic the group is interested in,
+	// including topics we do not consume and so never have in tps. The
+	// cache prunes entries whenever a request that does not cover them
+	// stores its response, so for our own topics we fall back to tps.
+	cached := make(map[string]cachedMetaTopic, len(topicPartitionCount))
+	g.cl.metaCache.mu.Lock()
+	for topic := range topicPartitionCount {
+		if ct, ok := g.cl.metaCache.topics[topic]; ok {
+			cached[topic] = ct
+		}
+	}
+	g.cl.metaCache.mu.Unlock()
+
 	partitionRacks := make(map[string][]string, len(topicPartitionCount))
 	myTopics := g.tps.load()
 	for topic, numPartitions := range topicPartitionCount {
 		racks := make([]string, numPartitions)
-		if data, ok := myTopics[topic]; ok {
+		if ps := cached[topic].t.Partitions; len(ps) > 0 {
+			// The cache keeps the broker's partition order.
+			for _, p := range ps {
+				if p.Partition < 0 || p.Partition >= numPartitions {
+					continue
+				}
+				if rack, ok := brokerRacks[p.Leader]; ok {
+					racks[p.Partition] = rack
+				}
+			}
+		} else if data, ok := myTopics[topic]; ok {
 			tpd := data.load()
 			for i, p := range tpd.partitions {
 				if p == nil || int32(i) >= numPartitions {
@@ -555,6 +748,60 @@ func (g *groupConsumer) buildPartitionRacks(b *ConsumerBalancer, topicPartitionC
 		}
 	}
 	return nil
+}
+
+// balanceInfoTopics builds the BalanceInfo.Topics map of topic metadata
+func (cl *Client) balanceInfoTopics(topics map[string]struct{}) map[string]TopicMetadata {
+	// Shallow copy out of the cache in a small critical section
+	// since cachedMetaTopic is not modified after placement into cl.metaCache
+	cached := make(map[string]cachedMetaTopic, len(topics))
+	cl.metaCache.mu.Lock()
+	for topic := range topics {
+		if ct, ok := cl.metaCache.topics[topic]; ok {
+			cached[topic] = ct
+		}
+	}
+	cl.metaCache.mu.Unlock()
+
+	// Outside of the lock build the public TopicMetadata
+	m := make(map[string]TopicMetadata, len(cached))
+	for topic, ct := range cached {
+		t := TopicMetadata{
+			Topic:      topic,
+			Partitions: make([]PartitionMetadata, 0, len(ct.t.Partitions)),
+			ID:         ct.id,
+			Err:        kerr.ErrorForCode(ct.t.ErrorCode),
+		}
+		for _, p := range ct.t.Partitions {
+			t.Partitions = append(t.Partitions, PartitionMetadata{
+				Topic:           topic,
+				Partition:       p.Partition,
+				Leader:          p.Leader,
+				LeaderEpoch:     p.LeaderEpoch,
+				Replicas:        slices.Clone(p.Replicas),
+				ISR:             slices.Clone(p.ISR),
+				OfflineReplicas: slices.Clone(p.OfflineReplicas),
+				Err:             kerr.ErrorForCode(p.ErrorCode),
+			})
+		}
+		// Sort by partition
+		sort.Slice(t.Partitions, func(i, j int) bool {
+			return t.Partitions[i].Partition < t.Partitions[j].Partition
+		})
+		m[topic] = t
+	}
+	return m
+}
+
+// balanceInfoBrokers builds the BalanceInfo.Brokers map of broker metadata
+func (cl *Client) balanceInfoBrokers() map[int32]BrokerMetadata {
+	cl.brokersMu.RLock()
+	defer cl.brokersMu.RUnlock()
+	m := make(map[int32]BrokerMetadata, len(cl.brokers))
+	for _, b := range cl.brokers {
+		m[b.meta.NodeID] = b.meta
+	}
+	return m
 }
 
 // helper func; range and roundrobin use v0
@@ -718,9 +965,9 @@ func (*rangeBalancer) Balance(b *ConsumerBalancer, topics map[string]int32) Into
 		assigned := make([]bool, numPartitions)
 		assignCount := make([]int, nConsumers)
 
-		// Phase 1: if rack info is available, assign rack-matching
-		// partitions first. This is a no-op when partitionRacks is nil.
-		if topicRacks := b.partitionRacks[topic]; topicRacks != nil {
+		// Phase 1: with BalanceRacks and rack info, assign rack-matching
+		// partitions first.
+		if topicRacks := b.partitionRacks[topic]; b.balanceRacks && topicRacks != nil {
 			for ci, consumer := range potentialConsumers {
 				rack := memberRack[consumer.MemberID]
 				if rack == "" {
@@ -767,13 +1014,13 @@ func (*rangeBalancer) Balance(b *ConsumerBalancer, topics map[string]int32) Into
 // StickyBalancer returns a group balancer that ensures minimal partition
 // movement on group changes while also ensuring optimal balancing.
 //
-// Suppose there are three members M0, M1, and M2, and two topics t0 and t1
-// each with three partitions p0, p1, and p2. If the initial balance plan looks
-// like
+// Suppose there are three members M0, M1, and M2, and three topics t0, t1,
+// and t2 each with three partitions p0, p1, and p2. If the initial balance
+// plan looks like
 //
 //	M0: [t0p0, t0p1, t0p2]
 //	M1: [t1p0, t1p1, t1p2]
-//	M2: [t2p0, t2p2, t2p2]
+//	M2: [t2p0, t2p1, t2p2]
 //
 // If M2 disappears, both roundrobin and range would have mostly destructive
 // reassignments.
@@ -900,7 +1147,13 @@ func (s *stickyBalancer) Balance(b *ConsumerBalancer, topics map[string]int32) I
 		})
 	})
 
-	p := &BalancePlan{sticky.BalanceWithRacks(stickyMembers, topics, b.partitionRacks)}
+	var plan sticky.Plan
+	if b.balanceRacks {
+		plan = sticky.BalanceWithRacks(stickyMembers, topics, b.partitionRacks)
+	} else {
+		plan = sticky.Balance(stickyMembers, topics)
+	}
+	p := &BalancePlan{plan}
 	if s.cooperative {
 		p.AdjustCooperative(b)
 	}
@@ -972,6 +1225,37 @@ func (p *BalancePlan) AdjustCooperative(b *ConsumerBalancer) {
 	tmap := make(map[string]struct{}) // reusable topic existence map
 	pmap := make(map[int32]struct{})  // reusable partitions existence map
 
+	// KIP-792 / KAFKA-12983: an OwnedPartitions claim only proves current
+	// ownership when no other member claims the same partition at a
+	// strictly higher generation. A member that missed rebalances can
+	// rejoin still claiming a partition that has since been assigned to
+	// (and is actively consumed by) another member. The balance plan may
+	// deliberately move the partition back to that stale claimant (sticky
+	// re-sticking); if the claimant's own stale claim then masks the move
+	// as "already owned", we skip the revoke round and two members consume
+	// the partition until the current owner's next sync. We track the
+	// highest claimed generation per partition and ignore strictly lower
+	// claims when computing what was added. Same-generation claims all
+	// count: each claimant keeps what the plan gave it and revokes the
+	// rest at its own sync, which creates no new overlap. The revoked side
+	// below stays unfiltered on purpose -- any claimant might still be
+	// consuming, and revoking more is always safe.
+	maxClaim := make(map[string]map[int32]int32, 8)
+	b.EachMember(func(_ *kmsg.JoinGroupResponseMember, meta *kmsg.ConsumerMemberMetadata) {
+		for _, otopic := range meta.OwnedPartitions {
+			claimT := maxClaim[otopic.Topic]
+			if claimT == nil {
+				claimT = make(map[int32]int32, 20)
+				maxClaim[otopic.Topic] = claimT
+			}
+			for _, opartition := range otopic.Partitions {
+				if gen, ok := claimT[opartition]; !ok || meta.Generation > gen {
+					claimT[opartition] = meta.Generation
+				}
+			}
+		}
+	})
+
 	plan := p.plan
 
 	// First, on all members, we find what was added and what was removed
@@ -997,12 +1281,18 @@ func (p *BalancePlan) AdjustCooperative(b *ConsumerBalancer) {
 				continue
 			}
 			// calculate what was added by creating a planned existence map,
-			// then removing what was owned, and anything that remains is new,
+			// then removing what was owned, and anything that remains is new.
+			// A claim beaten by a strictly higher-generation claim elsewhere
+			// is stale and does not count as owned: the planned partition is
+			// then a real transfer that must wait for the owner's revoke.
 			for _, ppartition := range ppartitions {
 				pmap[ppartition] = struct{}{}
 			}
+			claimT := maxClaim[topic]
 			for _, opartition := range otopic.Partitions {
-				delete(pmap, opartition)
+				if meta.Generation >= claimT[opartition] {
+					delete(pmap, opartition)
+				}
 			}
 			if len(pmap) > 0 {
 				allAddedT := addT(topic)
@@ -1036,30 +1326,27 @@ func (p *BalancePlan) AdjustCooperative(b *ConsumerBalancer) {
 		}
 	})
 
-	// Over all revoked, if the revoked partition was added to a different
-	// member, we remove that partition from the new member.
-	for topic, rpartitions := range allRevoked {
-		atopic, exists := allAdded[topic]
-		if !exists {
-			continue
-		}
-		for rpartition := range rpartitions {
-			amember, exists := atopic[rpartition]
-			if !exists {
+	// Over all planned, if a partition was added to this member but is
+	// being revoked from another, we drop it from the plan: the member
+	// receives it in the rebalance that follows the revoke.
+	for member, ptopics := range plan {
+		for topic, ppartitions := range ptopics {
+			allRevokedT := allRevoked[topic]
+			if len(allRevokedT) == 0 {
 				continue
 			}
-
-			ptopics := plan[amember]
-			ppartitions := ptopics[topic]
-			for i, ppartition := range ppartitions {
-				if ppartition == rpartition {
-					ppartitions[i] = ppartitions[len(ppartitions)-1]
-					ppartitions = ppartitions[:len(ppartitions)-1]
-					break
+			allAddedT := allAdded[topic]
+			kept := ppartitions[:0]
+			for _, ppartition := range ppartitions {
+				if _, revoked := allRevokedT[ppartition]; revoked {
+					if addedTo, added := allAddedT[ppartition]; added && addedTo == member {
+						continue
+					}
 				}
+				kept = append(kept, ppartition)
 			}
-			if len(ppartitions) > 0 {
-				ptopics[topic] = ppartitions
+			if len(kept) > 0 {
+				ptopics[topic] = kept
 			} else {
 				delete(ptopics, topic)
 			}

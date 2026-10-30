@@ -2,17 +2,18 @@ package kfake
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
-	"sync"
+	"maps"
+	"math"
+	"regexp"
+	"slices"
 	"time"
+	"unicode/utf16"
 
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
-
-// TODO instance IDs
-// TODO persisting groups so commits can happen to client-managed groups
-//      we need lastCommit, and need to better prune empty groups
 
 type (
 	groups struct {
@@ -22,36 +23,51 @@ type (
 
 	group struct {
 		c    *Cluster
-		gs   *groups
 		name string
 		typ  string
 
-		state groupState
+		state   groupState
+		emptyAt time.Time // when classic group entered Empty state (for offset expiration)
 
-		leader  string
-		members map[string]*groupMember
-		pending map[string]*groupMember
+		leader        string
+		members       map[string]*groupMember
+		pending       map[string]*groupMember
+		staticMembers map[string]string // instanceID -> memberID; shared by classic and 848
 
 		commits tps[offsetCommit]
 
-		generation   int32
+		generation            int32
+		groupEpoch            int32 // 848: bumped on subscription/membership change
+		targetAssignmentEpoch int32 // 848: set to groupEpoch after target computation
+
 		protocolType string
 		protocols    map[string]int
 		protocol     string
 
-		reqCh     chan *clientReq
-		controlCh chan func()
-
 		nJoining int
 
-		tRebalance *time.Timer
+		tRebalance     *time.Timer
+		pendingSyncIDs map[string]struct{} // members that got JoinGroup but haven't sent SyncGroup yet
+		tPendingSync   *time.Timer         // fires when pending sync members should be removed
 
-		quit   sync.Once
-		quitCh chan struct{}
+		// KIP-848 consumer group fields
+		assignorName    string
+		consumerMembers map[string]*consumerMember
+		partitionEpochs map[uuid]map[int32]partitionOwner // (topicID, partition) -> who owns it and at what epoch; absent means free
+	}
+
+	// partitionOwner is the member holding a partition and the epoch it
+	// held when it took it. The epoch does not identify the member: two
+	// members legitimately sit at the same epoch, both at the group's
+	// target assignment epoch, so we key ownership on the member.
+	partitionOwner struct {
+		Member string `json:"member"`
+		Epoch  int32  `json:"epoch"`
 	}
 
 	groupMember struct {
 		memberID   string
+		instanceID *string
 		clientID   string
 		clientHost string
 
@@ -67,10 +83,44 @@ type (
 		last time.Time
 	}
 
+	consumerMember struct {
+		memberID   string
+		clientID   string
+		clientHost string
+		instanceID *string
+		rackID     *string
+
+		memberEpoch         int32 // confirmed epoch
+		previousMemberEpoch int32 // epoch before last advance
+		state               consumerMemberState
+
+		// KIP-1251: per-partition assignment epoch. Each partition
+		// tracks the member epoch at which it was first assigned.
+		// OffsetCommit accepts reqEpoch >= partition assignment epoch.
+		partAssignmentEpochs map[uuid]map[int32]int32
+
+		rebalanceTimeoutMs int32
+		serverAssignor     string
+
+		subscribedTopics      []string
+		subscribedTopicRegex  *regexp.Regexp
+		subscribedRegexSource string // source string for change detection
+
+		targetAssignment            map[uuid][]int32 // what server wants member to own
+		partitionsPendingRevocation map[uuid][]int32 // told to revoke, awaiting client confirmation; contributes to epoch map
+		lastReconciledSent          map[uuid][]int32 // exact reconciled assignment last included in a response
+
+		t    *time.Timer // session timeout: fences member if no heartbeats
+		last time.Time
+
+		tRebal *time.Timer // rebalance timeout: fences member if slow to revoke
+	}
+
 	offsetCommit struct {
 		offset      int64
 		leaderEpoch int32
 		metadata    *string
+		lastCommit  time.Time
 	}
 
 	groupState int8
@@ -82,6 +132,15 @@ const (
 	groupPreparingRebalance
 	groupCompletingRebalance
 	groupDead
+	groupReconciling
+)
+
+type consumerMemberState int8
+
+const (
+	cmStable               consumerMemberState = iota
+	cmUnrevokedPartitions                      // waiting for client to release revoked partitions
+	cmUnreleasedPartitions                     // waiting for other members to release partitions
 )
 
 func (gs groupState) String() string {
@@ -96,10 +155,24 @@ func (gs groupState) String() string {
 		return "CompletingRebalance"
 	case groupDead:
 		return "Dead"
+	case groupReconciling:
+		return "Reconciling"
 	default:
 		return "Unknown"
 	}
 }
+
+// emptyConsumerAssignment is a pre-serialized empty ConsumerMemberAssignment.
+// Used to ensure followers in a "consumer" protocol group always receive a
+// syntactically valid assignment blob even when the leader assigns them nothing.
+// Technically, the broker should pass through whatever bytes the leader sends
+// (including empty), but some clients fail to decode an empty assignment.
+// We only apply this workaround for the "consumer" protocol type since other
+// protocol types may use entirely different assignment formats.
+var emptyConsumerAssignment = func() []byte {
+	var assignment kmsg.ConsumerMemberAssignment
+	return assignment.AppendTo(nil)
+}()
 
 func (c *Cluster) coordinator(id string) *broker {
 	gen := c.coordinatorGen.Load()
@@ -107,9 +180,70 @@ func (c *Cluster) coordinator(id string) *broker {
 	return c.bs[n]
 }
 
+// topicInfo returns a topic's ID and partition count, and whether we
+// know the topic at all.
+func (c *Cluster) topicInfo(topic string) (id uuid, parts int32, ok bool) {
+	ps, ok := c.data.tps[topic]
+	if !ok {
+		return id, 0, false
+	}
+	return c.data.t2id[topic], int32(len(ps)), true
+}
+
+// dropGroupCommits removes every group's committed offsets for a deleted
+// topic, as Kafka and Redpanda do. The commits are gone when we return, so
+// the DeleteTopics response we are answering cannot beat the drop.
+func (c *Cluster) dropGroupCommits(topic string) {
+	for _, g := range c.groups.gs {
+		for part := range g.commits[topic] {
+			g.deleteCommitAndPersist(topic, part)
+		}
+	}
+}
+
+// notifyTopicChange recomputes target assignments for all consumer and
+// share groups after a topic is created, deleted, or has partitions
+// added. Every group is recomputed before we return, so the response to
+// the request that changed the topic cannot beat the recomputation.
+//
+// Note that on a delete, DeleteTopics calls us from the deferred block that
+// drops the topic from c.data, after the drop: the recomputation no longer
+// sees the topic and stops assigning its partitions.
+//
+// The generation bump matches Kafka's behavior where topic changes bump
+// the group epoch. This ensures heartbeat responses keep re-sending the
+// assignment until the member epoch catches up, which only happens when
+// the client confirms the assignment via the heartbeat Topics field.
+// Without this, a client that receives an assignment with an unknown
+// topic ID (metadata not yet refreshed) would miss the assignment
+// permanently because the server recorded it as delivered.
+func (c *Cluster) notifyTopicChange() {
+	for _, g := range c.groups.gs {
+		if len(g.consumerMembers) > 0 {
+			g.groupEpoch++
+			g.computeTargetAssignment()
+			g.updateConsumerStateField()
+			g.persistMeta848()
+		}
+	}
+	for _, sg := range c.shareGroups.gs {
+		if len(sg.members) > 0 {
+			sg.groupEpoch++
+			sg.recomputeAssignments()
+		}
+	}
+}
+
+// isCoordinator reports whether this request reached key's coordinator.
+// Faults on a coordinator request fire only there; any other broker answers
+// NOT_COORDINATOR.
+func (c *Cluster) isCoordinator(creq *clientReq, key string) bool {
+	return c.coordinator(key) == creq.cc.b
+}
+
 func (c *Cluster) validateGroup(creq *clientReq, group string) *kerr.Error {
 	switch key := kmsg.Key(creq.kreq.Key()); key {
-	case kmsg.OffsetCommit, kmsg.OffsetFetch, kmsg.DescribeGroups, kmsg.DeleteGroups:
+	case kmsg.OffsetCommit, kmsg.OffsetFetch, kmsg.DescribeGroups, kmsg.DeleteGroups, kmsg.ConsumerGroupDescribe:
 	default:
 		if group == "" {
 			return kerr.InvalidGroupID
@@ -133,140 +267,131 @@ func generateMemberID(clientID string, instanceID *string) string {
 // GROUPS //
 ////////////
 
+func (g *group) logName() string { return g.name[:min(16, len(g.name))] }
+
 func (gs *groups) newGroup(name string) *group {
 	return &group{
-		c:         gs.c,
-		gs:        gs,
-		name:      name,
-		typ:       "classic", // only supported group type at the moment; group-coordinator/src/main/java/org/apache/kafka/coordinator/group/Group.java
-		members:   make(map[string]*groupMember),
-		pending:   make(map[string]*groupMember),
-		protocols: make(map[string]int),
-		reqCh:     make(chan *clientReq),
-		controlCh: make(chan func()),
-		quitCh:    make(chan struct{}),
+		c:             gs.c,
+		name:          name,
+		typ:           "classic", // group-coordinator/src/main/java/org/apache/kafka/coordinator/group/Group.java
+		members:       make(map[string]*groupMember),
+		pending:       make(map[string]*groupMember),
+		staticMembers: make(map[string]string),
+		protocols:     make(map[string]int),
 	}
 }
 
-// handleJoin completely hijacks the incoming request.
-func (gs *groups) handleJoin(creq *clientReq) {
-	if gs.gs == nil {
-		gs.gs = make(map[string]*group)
+// newOrExisting returns the group for name, creating it if it does not
+// exist. The second return is whether we created it: if the very first
+// request to a new group is invalid, the caller drops the group again.
+func (gs *groups) newOrExisting(name string) (*group, bool) {
+	if g := gs.gs[name]; g != nil {
+		return g, false
 	}
+	g := gs.newGroup(name)
+	gs.gs[name] = g
+	return g, true
+}
+
+// handleJoin creates the group if needed and dispatches the join. A nil
+// response means the member is parked in the join barrier and will be
+// replied to when the rebalance completes.
+func (gs *groups) handleJoin(creq *clientReq) kmsg.Response {
 	req := creq.kreq.(*kmsg.JoinGroupRequest)
-start:
-	g := gs.gs[req.Group]
-	if g == nil {
-		g = gs.newGroup(req.Group)
-		waitJoin := make(chan struct{})
-		gs.gs[req.Group] = g
-		go g.manage(func() { close(waitJoin) })
-		defer func() { <-waitJoin }()
+
+	// Group type exclusivity: if this group ID is already a share
+	// group, reject the classic consumer join.
+	if _, isShare := gs.c.shareGroups.gs[req.Group]; isShare {
+		resp := req.ResponseKind().(*kmsg.JoinGroupResponse)
+		resp.ErrorCode = kerr.GroupIDNotFound.Code
+		resp.MemberID = ""
+		resp.Generation = -1
+		return resp
 	}
-	select {
-	case g.reqCh <- creq:
-	case <-g.quitCh:
-		goto start
+
+	g, isNew := gs.newOrExisting(req.Group)
+	kresp, ok := g.handleJoin(creq)
+	if isNew && !ok {
+		delete(gs.gs, req.Group)
 	}
+	return kresp
 }
 
-// Returns true if the request is hijacked and handled, otherwise false if the
-// group does not exist.
-func (gs *groups) handleHijack(group string, creq *clientReq) bool {
-	if gs.gs == nil {
-		return false
-	}
+// Returns the response and true if the group exists, otherwise false.
+func (gs *groups) handleHijack(group string, fn func(*group) kmsg.Response) (kmsg.Response, bool) {
 	g := gs.gs[group]
 	if g == nil {
-		return false
+		return nil, false
 	}
-	select {
-	case g.reqCh <- creq:
-		return true
-	case <-g.quitCh:
-		return false
-	}
+	return fn(g), true
 }
 
-func (gs *groups) handleSync(creq *clientReq) bool {
-	return gs.handleHijack(creq.kreq.(*kmsg.SyncGroupRequest).Group, creq)
+func (gs *groups) handleSync(creq *clientReq) (kmsg.Response, bool) {
+	return gs.handleHijack(creq.kreq.(*kmsg.SyncGroupRequest).Group, func(g *group) kmsg.Response { return g.handleSync(creq) })
 }
 
-func (gs *groups) handleHeartbeat(creq *clientReq) bool {
-	return gs.handleHijack(creq.kreq.(*kmsg.HeartbeatRequest).Group, creq)
+func (gs *groups) handleHeartbeat(creq *clientReq) (kmsg.Response, bool) {
+	return gs.handleHijack(creq.kreq.(*kmsg.HeartbeatRequest).Group, func(g *group) kmsg.Response { return g.handleHeartbeat(creq) })
 }
 
-func (gs *groups) handleLeave(creq *clientReq) bool {
-	return gs.handleHijack(creq.kreq.(*kmsg.LeaveGroupRequest).Group, creq)
+func (gs *groups) handleLeave(creq *clientReq) (kmsg.Response, bool) {
+	return gs.handleHijack(creq.kreq.(*kmsg.LeaveGroupRequest).Group, func(g *group) kmsg.Response { return g.handleLeave(creq) })
 }
 
-func (gs *groups) handleOffsetCommit(creq *clientReq) {
-	if gs.gs == nil {
-		gs.gs = make(map[string]*group)
-	}
+func (gs *groups) handleOffsetCommit(creq *clientReq) *kmsg.OffsetCommitResponse {
 	req := creq.kreq.(*kmsg.OffsetCommitRequest)
-start:
-	g := gs.gs[req.Group]
-	if g == nil {
-		g = gs.newGroup(req.Group)
-		waitCommit := make(chan struct{})
-		gs.gs[req.Group] = g
-		go g.manage(func() { close(waitCommit) })
-		defer func() { <-waitCommit }()
+
+	// Group type exclusivity: a share group holds no committed offsets,
+	// and creating a consumer group under its name would list the id
+	// twice. Kafka answers GROUP_ID_NOT_FOUND on every partition.
+	if _, isShare := gs.c.shareGroups.gs[req.Group]; isShare {
+		resp := req.ResponseKind().(*kmsg.OffsetCommitResponse)
+		fillOffsetCommit(req, resp, kerr.GroupIDNotFound.Code)
+		resp.Topics = append(resp.Topics, creq.offsetCommitErrTopics...)
+		return resp
 	}
-	select {
-	case g.reqCh <- creq:
-	case <-g.quitCh:
-		goto start
+
+	g, isNew := gs.newOrExisting(req.Group)
+	kresp, ok := g.dispatchOffsetCommit(creq)
+	if isNew && !ok {
+		delete(gs.gs, req.Group)
 	}
+	// Never nil: a commit is always answered, never parked. A nil
+	// pointer here becomes a non-nil kmsg.Response in the caller, which
+	// the loop would then try to write.
+	return kresp
 }
 
-func (gs *groups) handleOffsetDelete(creq *clientReq) bool {
-	return gs.handleHijack(creq.kreq.(*kmsg.OffsetDeleteRequest).Group, creq)
+func (gs *groups) handleOffsetDelete(creq *clientReq) (kmsg.Response, bool) {
+	// handleOffsetDelete is never nil: a delete is always answered, never
+	// parked. A nil pointer would become a non-nil kmsg.Response here.
+	return gs.handleHijack(creq.kreq.(*kmsg.OffsetDeleteRequest).Group, func(g *group) kmsg.Response { return g.handleOffsetDelete(creq) })
 }
 
 func (gs *groups) handleList(creq *clientReq) *kmsg.ListGroupsResponse {
 	req := creq.kreq.(*kmsg.ListGroupsRequest)
 	resp := req.ResponseKind().(*kmsg.ListGroupsResponse)
 
-	var states map[string]struct{}
-	if len(req.StatesFilter) > 0 {
-		states = make(map[string]struct{})
-		for _, state := range req.StatesFilter {
-			states[state] = struct{}{}
-		}
-	}
-
-	var types map[string]struct{}
-	if len(req.TypesFilter) > 0 {
-		types = make(map[string]struct{})
-		for _, typ := range req.TypesFilter {
-			types[typ] = struct{}{}
-		}
-	}
-
 	for _, g := range gs.gs {
 		if g.c.coordinator(g.name).node != creq.cc.b.node {
 			continue
 		}
-		g.waitControl(func() {
-			if states != nil {
-				if _, ok := states[g.state.String()]; !ok {
-					return
-				}
-			}
-			if types != nil {
-				if _, ok := types[g.typ]; !ok {
-					return
-				}
-			}
-			sg := kmsg.NewListGroupsResponseGroup()
-			sg.Group = g.name
-			sg.ProtocolType = g.protocolType
-			sg.GroupState = g.state.String()
-			sg.GroupType = g.typ
-			resp.Groups = append(resp.Groups, sg)
-		})
+		// ACL check: DESCRIBE on Group - filter out groups without permission
+		if e := g.c.deny(creq, g.name, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe, faultKey{group: g.name}); e != nil {
+			continue
+		}
+		if len(req.StatesFilter) > 0 && !slices.Contains(req.StatesFilter, g.state.String()) {
+			continue
+		}
+		if len(req.TypesFilter) > 0 && !slices.Contains(req.TypesFilter, g.typ) {
+			continue
+		}
+		sg := kmsg.NewListGroupsResponseGroup()
+		sg.Group = g.name
+		sg.ProtocolType = g.protocolType
+		sg.GroupState = g.state.String()
+		sg.GroupType = g.typ
+		resp.Groups = append(resp.Groups, sg)
 	}
 	return resp
 }
@@ -284,6 +409,11 @@ func (gs *groups) handleDescribe(creq *clientReq) *kmsg.DescribeGroupsResponse {
 
 	for _, rg := range req.Groups {
 		sg := doneg(rg)
+		// ACL check: DESCRIBE on Group
+		if e := gs.c.deny(creq, rg, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe, faultKey{group: rg, misrouted: !gs.c.isCoordinator(creq, rg)}); e != nil {
+			sg.ErrorCode = e.Code
+			continue
+		}
 		if kerr := gs.c.validateGroup(creq, rg); kerr != nil {
 			sg.ErrorCode = kerr.Code
 			continue
@@ -294,33 +424,35 @@ func (gs *groups) handleDescribe(creq *clientReq) *kmsg.DescribeGroupsResponse {
 			if req.Version >= 6 {
 				sg.ErrorCode = kerr.GroupIDNotFound.Code
 			}
+			if req.IncludeAuthorizedOperations {
+				sg.AuthorizedOperations = gs.c.groupAuthorizedOps(creq, rg)
+			}
 			continue
 		}
-		if !g.waitControl(func() {
-			sg.State = g.state.String()
-			sg.ProtocolType = g.protocolType
+		sg.State = g.state.String()
+		sg.ProtocolType = g.protocolType
+		if g.state == groupStable {
+			sg.Protocol = g.protocol
+		}
+		for _, m := range g.members {
+			sm := kmsg.NewDescribeGroupsResponseGroupMember()
+			sm.MemberID = m.memberID
+			sm.InstanceID = m.instanceID
+			sm.ClientID = m.clientID
+			sm.ClientHost = m.clientHost
 			if g.state == groupStable {
-				sg.Protocol = g.protocol
-			}
-			for _, m := range g.members {
-				sm := kmsg.NewDescribeGroupsResponseGroupMember()
-				sm.MemberID = m.memberID
-				sm.ClientID = m.clientID
-				sm.ClientHost = m.clientHost
-				if g.state == groupStable {
-					for _, p := range m.join.Protocols {
-						if p.Name == g.protocol {
-							sm.ProtocolMetadata = p.Metadata
-							break
-						}
+				for _, p := range m.join.Protocols {
+					if p.Name == g.protocol {
+						sm.ProtocolMetadata = p.Metadata
+						break
 					}
-					sm.MemberAssignment = m.assignment
 				}
-				sg.Members = append(sg.Members, sm)
-
+				sm.MemberAssignment = m.assignment
 			}
-		}) {
-			sg.State = groupDead.String()
+			sg.Members = append(sg.Members, sm)
+		}
+		if req.IncludeAuthorizedOperations {
+			sg.AuthorizedOperations = gs.c.groupAuthorizedOps(creq, rg)
 		}
 	}
 	return resp
@@ -339,27 +471,53 @@ func (gs *groups) handleDelete(creq *clientReq) *kmsg.DeleteGroupsResponse {
 
 	for _, rg := range req.Groups {
 		sg := doneg(rg)
+		// setErr sets the code unless a fault already answered.
+		setErr := func(code int16) {
+			if sg.ErrorCode == 0 {
+				sg.ErrorCode = code
+			}
+		}
+		// ACL check: DELETE on Group
+		if e := gs.c.deny(creq, rg, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDelete, faultKey{group: rg, misrouted: !gs.c.isCoordinator(creq, rg)}); e != nil {
+			sg.ErrorCode = e.Code
+			if creq.skipsWork(e) { // a timed-out delete still deletes
+				continue
+			}
+		}
 		if kerr := gs.c.validateGroup(creq, rg); kerr != nil {
-			sg.ErrorCode = kerr.Code
+			setErr(kerr.Code)
 			continue
 		}
 		g, ok := gs.gs[rg]
 		if !ok {
-			sg.ErrorCode = kerr.GroupIDNotFound.Code
+			// Kafka deletes share groups through this API too;
+			// there is no share-specific delete.
+			if shg := gs.c.shareGroups.get(rg); shg != nil {
+				if len(shg.members) > 0 {
+					setErr(kerr.NonEmptyGroup.Code)
+				} else {
+					shg.kill()
+				}
+				continue
+			}
+			setErr(kerr.GroupIDNotFound.Code)
 			continue
 		}
-		if !g.waitControl(func() {
+		if g.typ == "consumer" {
+			if g.activeConsumerCount() == 0 {
+				g.kill()
+			} else {
+				setErr(kerr.NonEmptyGroup.Code)
+			}
+		} else {
 			switch g.state {
 			case groupDead:
-				sg.ErrorCode = kerr.GroupIDNotFound.Code
+				setErr(kerr.GroupIDNotFound.Code)
 			case groupEmpty:
-				g.quitOnce()
-				delete(gs.gs, rg)
-			case groupPreparingRebalance, groupCompletingRebalance, groupStable:
-				sg.ErrorCode = kerr.NonEmptyGroup.Code
+				g.kill()
+			case groupPreparingRebalance, groupCompletingRebalance, groupStable, groupReconciling:
+				setErr(kerr.NonEmptyGroup.Code)
 			}
-		}) {
-			sg.ErrorCode = kerr.GroupIDNotFound.Code
 		}
 	}
 	return resp
@@ -373,7 +531,7 @@ func (gs *groups) handleOffsetFetch(creq *clientReq) *kmsg.OffsetFetchResponse {
 		rg := kmsg.NewOffsetFetchRequestGroup()
 		rg.Group = req.Group
 		if req.Topics != nil {
-			rg.Topics = make([]kmsg.OffsetFetchRequestGroupTopic, len(req.Topics))
+			rg.Topics = make([]kmsg.OffsetFetchRequestGroupTopic, 0, len(req.Topics))
 		}
 		for _, t := range req.Topics {
 			rt := kmsg.NewOffsetFetchRequestGroupTopic()
@@ -386,6 +544,23 @@ func (gs *groups) handleOffsetFetch(creq *clientReq) *kmsg.OffsetFetchResponse {
 		defer func() {
 			g0 := resp.Groups[0]
 			resp.ErrorCode = g0.ErrorCode
+			// v0-1 has no top-level ErrorCode on the wire, so a
+			// group error goes on every requested partition.
+			if req.Version <= 1 && g0.ErrorCode != 0 && len(g0.Topics) == 0 {
+				for _, t := range req.Topics {
+					st := kmsg.NewOffsetFetchResponseTopic()
+					st.Topic = t.Topic
+					for _, p := range t.Partitions {
+						sp := kmsg.NewOffsetFetchResponseTopicPartition()
+						sp.Partition = p
+						sp.Offset = -1
+						sp.ErrorCode = g0.ErrorCode
+						st.Partitions = append(st.Partitions, sp)
+					}
+					resp.Topics = append(resp.Topics, st)
+				}
+				return
+			}
 			for _, t := range g0.Topics {
 				st := kmsg.NewOffsetFetchResponseTopic()
 				st.Topic = t.Topic
@@ -412,61 +587,130 @@ func (gs *groups) handleOffsetFetch(creq *clientReq) *kmsg.OffsetFetchResponse {
 
 	for _, rg := range req.Groups {
 		sg := doneg(rg.Group)
+		// ACL check: DESCRIBE on Group
+		if e := gs.c.deny(creq, rg.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe, faultKey{group: rg.Group, misrouted: !gs.c.isCoordinator(creq, rg.Group)}); e != nil {
+			sg.ErrorCode = e.Code
+			continue
+		}
 		if kerr := gs.c.validateGroup(creq, rg.Group); kerr != nil {
 			sg.ErrorCode = kerr.Code
 			continue
 		}
+
+		// v10: resolve TopicIDs to topic names before processing.
+		if req.Version >= 10 && rg.Topics != nil {
+			for i := range rg.Topics {
+				t := &rg.Topics[i]
+				if name, ok := gs.c.data.id2t[t.TopicID]; ok {
+					t.Topic = name
+				}
+			}
+		}
+
+		// KIP-447: real Kafka returns UNSTABLE_OFFSET_COMMIT
+		// per-partition, not per-group.
+		unstable := req.RequireStable && gs.c.pids.hasUnstableOffsets(rg.Group)
 		g, ok := gs.gs[rg.Group]
 		if !ok {
 			sg.ErrorCode = kerr.GroupIDNotFound.Code
 			continue
 		}
-		if !g.waitControl(func() {
-			if rg.Topics == nil {
-				for t, ps := range g.commits {
-					st := kmsg.NewOffsetFetchResponseGroupTopic()
-					st.Topic = t
-					for p, c := range ps {
-						sp := kmsg.NewOffsetFetchResponseGroupTopicPartition()
-						sp.Partition = p
+		g.fillOffsetFetch(creq, rg, sg, unstable)
+	}
+	return resp
+}
+
+// fillOffsetFetch fills one group's portion of an OffsetFetch response.
+func (g *group) fillOffsetFetch(creq *clientReq, rg kmsg.OffsetFetchRequestGroup, sg *kmsg.OffsetFetchResponseGroup, unstable bool) {
+	// KIP-848: validate MemberID/MemberEpoch for consumer
+	// groups. Admin fetches (MemberID absent with
+	// MemberEpoch < 0) skip validation. MemberID="" is a
+	// real-but-invalid memberId per Java, not an admin
+	// signal - it falls through to the member lookup and
+	// returns UnknownMemberID.
+	adminFetch := rg.MemberID == nil && rg.MemberEpoch < 0
+	if g.typ == "consumer" && !adminFetch {
+		if rg.MemberID == nil || *rg.MemberID == "" {
+			sg.ErrorCode = kerr.UnknownMemberID.Code
+			return
+		}
+		m, ok := g.consumerMembers[*rg.MemberID]
+		if !ok {
+			sg.ErrorCode = kerr.UnknownMemberID.Code
+			return
+		}
+		if rg.MemberEpoch != m.memberEpoch {
+			sg.ErrorCode = kerr.StaleMemberEpoch.Code
+			return
+		}
+	}
+	if rg.Topics == nil {
+		for t, ps := range g.commits {
+			st := kmsg.NewOffsetFetchResponseGroupTopic()
+			st.Topic = t
+			st.TopicID = g.c.data.t2id[t]
+			for p, c := range ps {
+				sp := kmsg.NewOffsetFetchResponseGroupTopicPartition()
+				sp.Partition = p
+				if unstable {
+					sp.ErrorCode = kerr.UnstableOffsetCommit.Code
+					sp.Offset = -1
+					sp.LeaderEpoch = -1
+				} else {
+					sp.Offset = c.offset
+					sp.LeaderEpoch = c.leaderEpoch
+					sp.Metadata = c.metadata
+				}
+				st.Partitions = append(st.Partitions, sp)
+			}
+			sg.Topics = append(sg.Topics, st)
+		}
+	} else {
+		for _, t := range rg.Topics {
+			st := kmsg.NewOffsetFetchResponseGroupTopic()
+			st.Topic = t.Topic
+			st.TopicID = t.TopicID
+			for _, p := range t.Partitions {
+				sp := kmsg.NewOffsetFetchResponseGroupTopicPartition()
+				sp.Partition = p
+				if e := creq.faults.check(faultKey{group: rg.Group, topic: t.Topic, topicID: t.TopicID}.part(p)); e != nil {
+					sp.ErrorCode = e.Code
+					sp.Offset = -1
+					sp.LeaderEpoch = -1
+					st.Partitions = append(st.Partitions, sp)
+					continue
+				}
+				if unstable {
+					sp.ErrorCode = kerr.UnstableOffsetCommit.Code
+					sp.Offset = -1
+					sp.LeaderEpoch = -1
+				} else {
+					c, ok := g.commits.getp(t.Topic, p)
+					if !ok {
+						sp.Offset = -1
+						sp.LeaderEpoch = -1
+					} else {
 						sp.Offset = c.offset
 						sp.LeaderEpoch = c.leaderEpoch
 						sp.Metadata = c.metadata
-						st.Partitions = append(st.Partitions, sp)
 					}
-					sg.Topics = append(sg.Topics, st)
 				}
-			} else {
-				for _, t := range rg.Topics {
-					st := kmsg.NewOffsetFetchResponseGroupTopic()
-					st.Topic = t.Topic
-					for _, p := range t.Partitions {
-						sp := kmsg.NewOffsetFetchResponseGroupTopicPartition()
-						sp.Partition = p
-						c, ok := g.commits.getp(t.Topic, p)
-						if !ok {
-							sp.Offset = -1
-							sp.LeaderEpoch = -1
-						} else {
-							sp.Offset = c.offset
-							sp.LeaderEpoch = c.leaderEpoch
-							sp.Metadata = c.metadata
-						}
-						st.Partitions = append(st.Partitions, sp)
-					}
-					sg.Topics = append(sg.Topics, st)
-				}
+				st.Partitions = append(st.Partitions, sp)
 			}
-		}) {
-			sg.ErrorCode = kerr.GroupIDNotFound.Code
+			sg.Topics = append(sg.Topics, st)
 		}
 	}
-	return resp
 }
 
 func (g *group) handleOffsetDelete(creq *clientReq) *kmsg.OffsetDeleteResponse {
 	req := creq.kreq.(*kmsg.OffsetDeleteRequest)
 	resp := req.ResponseKind().(*kmsg.OffsetDeleteResponse)
+
+	// ACL check: DELETE on Group
+	if e := g.c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDelete, faultKey{group: req.Group, misrouted: !g.c.isCoordinator(creq, req.Group)}); e != nil {
+		resp.ErrorCode = e.Code
+		return resp
+	}
 
 	if kerr := g.c.validateGroup(creq, req.Group); kerr != nil {
 		resp.ErrorCode = kerr.Code
@@ -474,7 +718,7 @@ func (g *group) handleOffsetDelete(creq *clientReq) *kmsg.OffsetDeleteResponse {
 	}
 
 	tidx := make(map[string]int)
-	donet := func(t string, errCode int16) *kmsg.OffsetDeleteResponseTopic {
+	donet := func(t string) *kmsg.OffsetDeleteResponseTopic {
 		if i, ok := tidx[t]; ok {
 			return &resp.Topics[i]
 		}
@@ -484,20 +728,19 @@ func (g *group) handleOffsetDelete(creq *clientReq) *kmsg.OffsetDeleteResponse {
 		resp.Topics = append(resp.Topics, st)
 		return &resp.Topics[len(resp.Topics)-1]
 	}
-	donep := func(t string, p int32, errCode int16) *kmsg.OffsetDeleteResponseTopicPartition {
+	donep := func(t string, p int32, errCode int16) {
 		sp := kmsg.NewOffsetDeleteResponseTopicPartition()
 		sp.Partition = p
 		sp.ErrorCode = errCode
-		st := donet(t, 0)
+		st := donet(t)
 		st.Partitions = append(st.Partitions, sp)
-		return &st.Partitions[len(st.Partitions)-1]
 	}
 
 	// empty: delete everything in request
 	// preparingRebalance, completingRebalance, stable:
 	//   * if consumer, delete everything not subscribed to
 	//   * if not consumer, delete nothing, error with non_empty_group
-	subTopics := make(map[string]struct{})
+	var subTopics map[string]struct{}
 	switch g.state {
 	default:
 		resp.ErrorCode = kerr.GroupIDNotFound.Code
@@ -508,33 +751,20 @@ func (g *group) handleOffsetDelete(creq *clientReq) *kmsg.OffsetDeleteResponse {
 			resp.ErrorCode = kerr.NonEmptyGroup.Code
 			return resp
 		}
-		for _, m := range []map[string]*groupMember{
-			g.members,
-			g.pending,
-		} {
-			for _, m := range m {
-				if m.join == nil {
-					continue
-				}
-				for _, proto := range m.join.Protocols {
-					var m kmsg.ConsumerMemberMetadata
-					if err := m.ReadFrom(proto.Metadata); err == nil {
-						for _, topic := range m.Topics {
-							subTopics[topic] = struct{}{}
-						}
-					}
-				}
-			}
-		}
+		subTopics = g.classicSubscribedTopics()
 	}
 
 	for _, t := range req.Topics {
 		for _, p := range t.Partitions {
+			if e := creq.faults.check(faultKey{group: req.Group, topic: t.Topic}.part(p.Partition)); e != nil {
+				donep(t.Topic, p.Partition, e.Code)
+				continue
+			}
 			if _, ok := subTopics[t.Topic]; ok {
 				donep(t.Topic, p.Partition, kerr.GroupSubscribedToTopic.Code)
 				continue
 			}
-			g.commits.delp(t.Topic, p.Partition)
+			g.deleteCommitAndPersist(t.Topic, p.Partition)
 			donep(t.Topic, p.Partition, 0)
 		}
 	}
@@ -546,85 +776,60 @@ func (g *group) handleOffsetDelete(creq *clientReq) *kmsg.OffsetDeleteResponse {
 // GROUP HANDLING //
 ////////////////////
 
-func (g *group) manage(detachNew func()) {
-	// On the first join only, we want to ensure that if the join is
-	// invalid, we clean the group up before we detach from the cluster
-	// serialization loop that is initializing us.
-	var firstJoin func(bool)
-	firstJoin = func(ok bool) {
-		firstJoin = func(bool) {}
-		if !ok {
-			delete(g.gs.gs, g.name)
-			g.quitOnce()
-		}
-		detachNew()
+// dispatchOffsetCommit handles a commit for either group type. The bool
+// is whether the request was valid; a brand new group created solely to
+// hold this commit is dropped again if it was not.
+func (g *group) dispatchOffsetCommit(creq *clientReq) (*kmsg.OffsetCommitResponse, bool) {
+	var resp *kmsg.OffsetCommitResponse
+	var ok bool
+	if g.typ == "consumer" {
+		resp, ok = g.handleConsumerOffsetCommit(creq), true
+	} else {
+		resp, ok = g.handleOffsetCommit(creq)
 	}
+	if resp != nil && len(creq.offsetCommitErrTopics) > 0 {
+		resp.Topics = append(resp.Topics, creq.offsetCommitErrTopics...)
+	}
+	return resp, ok
+}
 
-	defer func() {
-		for _, m := range g.members {
-			if m.t != nil {
-				m.t.Stop()
-			}
+// stopTimers stops every timer the group owns. An unstopped timer keeps
+// the group, and through it the cluster, alive in the runtime timer heap
+// until it fires.
+func (g *group) stopTimers() {
+	for _, m := range g.members {
+		if m.t != nil {
+			m.t.Stop()
 		}
-		for _, m := range g.pending {
-			if m.t != nil {
-				m.t.Stop()
-			}
+	}
+	for _, m := range g.pending {
+		if m.t != nil {
+			m.t.Stop()
 		}
-	}()
-
-	for {
-		select {
-		case <-g.quitCh:
-			return
-		case creq := <-g.reqCh:
-			var kresp kmsg.Response
-			switch creq.kreq.(type) {
-			case *kmsg.JoinGroupRequest:
-				var ok bool
-				kresp, ok = g.handleJoin(creq)
-				firstJoin(ok)
-			case *kmsg.SyncGroupRequest:
-				kresp = g.handleSync(creq)
-			case *kmsg.HeartbeatRequest:
-				kresp = g.handleHeartbeat(creq)
-			case *kmsg.LeaveGroupRequest:
-				kresp = g.handleLeave(creq)
-			case *kmsg.OffsetCommitRequest:
-				var ok bool
-				kresp, ok = g.handleOffsetCommit(creq)
-				firstJoin(ok)
-			case *kmsg.OffsetDeleteRequest:
-				kresp = g.handleOffsetDelete(creq)
-			}
-			if kresp != nil {
-				g.reply(creq, kresp, nil)
-			}
-
-		case fn := <-g.controlCh:
-			fn()
+	}
+	for _, m := range g.consumerMembers {
+		if m.t != nil {
+			m.t.Stop()
 		}
+		g.cancelConsumerRebalanceTimeout(m)
+	}
+	if g.tRebalance != nil {
+		g.tRebalance.Stop()
+	}
+	if g.tPendingSync != nil {
+		g.tPendingSync.Stop()
 	}
 }
 
-func (g *group) waitControl(fn func()) bool {
-	wait := make(chan struct{})
-	wfn := func() { fn(); close(wait) }
-	select {
-	case <-g.quitCh:
-		return false
-	case g.controlCh <- wfn:
-		<-wait
-		return true
-	}
-}
-
-// Called in the manage loop.
-func (g *group) quitOnce() {
-	g.quit.Do(func() {
-		g.state = groupDead
-		close(g.quitCh)
-	})
+// kill marks the group dead and drops it from the cluster. Timers that
+// fired before this see the group is gone and do nothing.
+//
+// The group must be empty: a member with a parked JoinGroup or SyncGroup
+// is dropped here with no reply, leaving the client to time out.
+func (g *group) kill() {
+	g.state = groupDead
+	g.stopTimers()
+	delete(g.c.groups.gs, g.name)
 }
 
 // Handles a join. We do not do the delayed join aspects in Kafka, we just punt
@@ -639,11 +844,11 @@ func (g *group) handleJoin(creq *clientReq) (kmsg.Response, bool) {
 		resp.ErrorCode = kerr.Code
 		return resp, false
 	}
-	if req.InstanceID != nil {
-		resp.ErrorCode = kerr.InvalidGroupID.Code
+	if e := g.c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.Group}); e != nil {
+		resp.ErrorCode = e.Code
 		return resp, false
 	}
-	if st := int64(req.SessionTimeoutMillis); st < g.c.cfg.minSessionTimeout.Milliseconds() || st > g.c.cfg.maxSessionTimeout.Milliseconds() {
+	if st := req.SessionTimeoutMillis; st < g.c.groupMinSessionTimeoutMs() || st > g.c.groupMaxSessionTimeoutMs() {
 		resp.ErrorCode = kerr.InvalidSessionTimeout.Code
 		return resp, false
 	}
@@ -654,23 +859,53 @@ func (g *group) handleJoin(creq *clientReq) (kmsg.Response, bool) {
 
 	// Clients first join with no member ID. For join v4+, we generate
 	// the member ID and add the member to pending. For v3 and below,
-	// we immediately enter rebalance.
+	// we immediately enter rebalance. Static members (instanceID set)
+	// may rejoin with an empty memberID - check the static mapping.
 	if req.MemberID == "" {
+		// Kafka maps an instance ID only to a live member. We can keep a
+		// mapping whose member did not survive a restart, and a join for
+		// it is a new member's.
+		if req.InstanceID != nil {
+			if old := g.members[g.staticMembers[*req.InstanceID]]; old != nil {
+				return g.replaceStaticMember(old, creq, req, resp)
+			}
+		}
+		if int32(len(g.members)+len(g.pending)) >= g.c.groupMaxSize() {
+			resp.ErrorCode = kerr.GroupMaxSizeReached.Code
+			return resp, true
+		}
 		memberID := generateMemberID(creq.cid, req.InstanceID)
 		resp.MemberID = memberID
 		m := &groupMember{
 			memberID:   memberID,
+			instanceID: req.InstanceID,
 			clientID:   creq.cid,
 			clientHost: creq.cc.conn.RemoteAddr().String(),
 			join:       req,
 		}
-		if req.Version >= 4 {
+		if req.InstanceID != nil {
+			g.staticMembers[*req.InstanceID] = memberID
+			g.persistStaticMember(*req.InstanceID, memberID)
+		}
+		// Java's requiresKnownMemberId gate only triggers for DYNAMIC
+		// members; static members (groupInstanceId != null) are
+		// accepted with empty MemberID on v4+ JoinGroup and join
+		// immediately.
+		if req.Version >= 4 && req.InstanceID == nil {
 			g.addPendingRebalance(m)
 			resp.ErrorCode = kerr.MemberIDRequired.Code
 			return resp, true
 		}
 		g.addMemberAndRebalance(m, creq, req)
 		return nil, true
+	}
+
+	// Validate instanceID consistency for known members.
+	if req.InstanceID != nil {
+		if err := g.validateInstanceID(req.InstanceID, req.MemberID); err != nil {
+			resp.ErrorCode = err.Code
+			return resp, false
+		}
 	}
 
 	// Pending members rejoining immediately enters rebalance.
@@ -692,17 +927,91 @@ func (g *group) handleJoin(creq *clientReq) (kmsg.Response, bool) {
 		g.updateMemberAndRebalance(m, creq, req)
 	case groupCompletingRebalance:
 		if m.sameJoin(req) {
-			g.fillJoinResp(req, resp)
+			g.fillJoinResp(m.memberID, resp)
 			return resp, true
 		}
 		g.updateMemberAndRebalance(m, creq, req)
 	case groupStable:
-		if g.leader != req.MemberID || m.sameJoin(req) {
-			g.fillJoinResp(req, resp)
+		if g.leader != req.MemberID && m.sameJoin(req) {
+			// Non-leader with same metadata - no change needed
+			g.fillJoinResp(m.memberID, resp)
 			return resp, true
 		}
+		// Leader rejoining OR any member with changed metadata: trigger rebalance
 		g.updateMemberAndRebalance(m, creq, req)
 	}
+	return nil, true
+}
+
+// replaceStaticMember handles a static member rejoining with the same
+// instanceID. If the group is stable and the selected protocol would not
+// change, we skip the rebalance (KIP-345).
+func (g *group) replaceStaticMember(old *groupMember, creq *clientReq, req *kmsg.JoinGroupRequest, resp *kmsg.JoinGroupResponse) (kmsg.Response, bool) {
+	// Generate a new memberID for the replacement.
+	memberID := generateMemberID(creq.cid, req.InstanceID)
+
+	// Create the new member, preserving the old assignment.
+	m := &groupMember{
+		memberID:   memberID,
+		instanceID: req.InstanceID,
+		clientID:   creq.cid,
+		clientHost: creq.cc.conn.RemoteAddr().String(),
+		join:       req,
+		assignment: old.assignment,
+	}
+
+	// Fence the old member: if it's waiting for a reply, send FENCED_INSTANCE_ID.
+	if !old.waitingReply.empty() {
+		oldResp := old.waitingReply.kreq.ResponseKind()
+		switch r := oldResp.(type) {
+		case *kmsg.JoinGroupResponse:
+			r.ErrorCode = kerr.FencedInstanceID.Code
+		case *kmsg.SyncGroupResponse:
+			r.ErrorCode = kerr.FencedInstanceID.Code
+		}
+		g.reply(old.waitingReply, oldResp, nil)
+	}
+
+	// Remove old member state without triggering rebalance.
+	g.removeMember(old)
+
+	// Register new member in static mapping.
+	g.staticMembers[*req.InstanceID] = memberID
+	g.persistStaticMember(*req.InstanceID, memberID)
+	g.members[memberID] = m
+	for _, p := range m.join.Protocols {
+		g.protocols[p.Name]++
+	}
+
+	// If the group is stable and the protocol we would select is
+	// unchanged, skip the rebalance and keep the old assignment, whatever
+	// the new metadata says (KIP-345). For the leader, set SkipAssignment
+	// so it knows to re-send the existing assignment without running the
+	// balancer (KIP-814).
+	if g.state == groupStable && g.selectProtocol() == g.protocol {
+		oldLeader := g.leader
+		if g.leader == old.memberID {
+			g.leader = memberID
+		}
+		g.updateHeartbeat(m)
+		g.fillJoinResp(memberID, resp)
+		switch {
+		case req.Version < 9:
+			// Without SkipAssignment, Kafka names the leader from
+			// before the replacement and sends no members, so a
+			// replaced leader does not run the balancer.
+			resp.LeaderID = oldLeader
+			resp.Members = nil
+		case resp.LeaderID == memberID:
+			resp.SkipAssignment = true
+		}
+		return resp, true
+	}
+
+	// Otherwise trigger a rebalance, or join the one in progress.
+	g.nJoining++
+	m.waitingReply = creq
+	g.rebalance()
 	return nil, true
 }
 
@@ -715,8 +1024,12 @@ func (g *group) handleSync(creq *clientReq) kmsg.Response {
 		resp.ErrorCode = kerr.Code
 		return resp
 	}
-	if req.InstanceID != nil {
-		resp.ErrorCode = kerr.InvalidGroupID.Code
+	if e := g.c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.Group}); e != nil {
+		resp.ErrorCode = e.Code
+		return resp
+	}
+	if err := g.validateInstanceID(req.InstanceID, req.MemberID); err != nil {
+		resp.ErrorCode = err.Code
 		return resp
 	}
 	m, ok := g.members[req.MemberID]
@@ -743,6 +1056,7 @@ func (g *group) handleSync(creq *clientReq) kmsg.Response {
 	case groupPreparingRebalance:
 		resp.ErrorCode = kerr.RebalanceInProgress.Code
 	case groupCompletingRebalance:
+		delete(g.pendingSyncIDs, req.MemberID)
 		m.waitingReply = creq
 		if req.MemberID == g.leader {
 			g.completeLeaderSync(req)
@@ -766,8 +1080,12 @@ func (g *group) handleHeartbeat(creq *clientReq) kmsg.Response {
 		resp.ErrorCode = kerr.Code
 		return resp
 	}
-	if req.InstanceID != nil {
-		resp.ErrorCode = kerr.InvalidGroupID.Code
+	if e := g.c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.Group}); e != nil {
+		resp.ErrorCode = e.Code
+		return resp
+	}
+	if err := g.validateInstanceID(req.InstanceID, req.MemberID); err != nil {
+		resp.ErrorCode = err.Code
 		return resp
 	}
 	m, ok := g.members[req.MemberID]
@@ -793,13 +1111,18 @@ func (g *group) handleHeartbeat(creq *clientReq) kmsg.Response {
 }
 
 // Handles a leave. We trigger a rebalance for every member leaving in a batch
-// request, but that's fine because of our manage serialization.
+// request, but that's fine: the whole batch runs on the cluster loop before
+// anything else touches the group.
 func (g *group) handleLeave(creq *clientReq) kmsg.Response {
 	req := creq.kreq.(*kmsg.LeaveGroupRequest)
 	resp := req.ResponseKind().(*kmsg.LeaveGroupResponse)
 
 	if kerr := g.c.validateGroup(creq, req.Group); kerr != nil {
 		resp.ErrorCode = kerr.Code
+		return resp
+	}
+	if e := g.c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.Group}); e != nil {
+		resp.ErrorCode = e.Code
 		return resp
 	}
 	if req.Version < 3 {
@@ -816,10 +1139,23 @@ func (g *group) handleLeave(creq *clientReq) kmsg.Response {
 		resp.Members = append(resp.Members, mresp)
 
 		r := &resp.Members[len(resp.Members)-1]
-		if rm.InstanceID != nil {
-			r.ErrorCode = kerr.UnknownMemberID.Code
+
+		if e := creq.faults.check(faultKey{group: req.Group, resource: rm.MemberID}); e != nil {
+			r.ErrorCode = e.Code
 			continue
 		}
+
+		// Resolve memberID from instanceID for static members.
+		if rm.InstanceID != nil {
+			memberID, ok := g.staticMembers[*rm.InstanceID]
+			if !ok {
+				r.ErrorCode = kerr.UnknownMemberID.Code
+				continue
+			}
+			rm.MemberID = memberID
+			r.MemberID = memberID
+		}
+
 		if m, ok := g.members[rm.MemberID]; !ok {
 			if p, ok := g.pending[rm.MemberID]; !ok {
 				r.ErrorCode = kerr.UnknownMemberID.Code
@@ -838,6 +1174,7 @@ func fillOffsetCommit(req *kmsg.OffsetCommitRequest, resp *kmsg.OffsetCommitResp
 	for _, t := range req.Topics {
 		st := kmsg.NewOffsetCommitResponseTopic()
 		st.Topic = t.Topic
+		st.TopicID = t.TopicID
 		for _, p := range t.Partitions {
 			sp := kmsg.NewOffsetCommitResponseTopicPartition()
 			sp.Partition = p.Partition
@@ -846,6 +1183,69 @@ func fillOffsetCommit(req *kmsg.OffsetCommitRequest, resp *kmsg.OffsetCommitResp
 		}
 		resp.Topics = append(resp.Topics, st)
 	}
+}
+
+func setOffsetCommitPartitionErr(resp *kmsg.OffsetCommitResponse, topic string, partition int32, code int16) {
+	for i := range resp.Topics {
+		if resp.Topics[i].Topic == topic {
+			for j := range resp.Topics[i].Partitions {
+				if resp.Topics[i].Partitions[j].Partition == partition {
+					resp.Topics[i].Partitions[j].ErrorCode = code
+					return
+				}
+			}
+		}
+	}
+}
+
+// fillOffsetCommitWithACL fills the response with per-topic ACL checks and
+// per-partition existence checks. A real broker's API layer rejects commits
+// for partitions its metadata does not know with UNKNOWN_TOPIC_OR_PARTITION
+// before the group coordinator ever sees them (auth is checked first); the
+// coordinator itself stores offsets blindly.
+// Returns the topics+partitions that passed and should be committed.
+func (g *group) fillOffsetCommitWithACL(creq *clientReq, req *kmsg.OffsetCommitRequest, resp *kmsg.OffsetCommitResponse) []kmsg.OffsetCommitRequestTopic {
+	var allowed []kmsg.OffsetCommitRequestTopic
+	for _, t := range req.Topics {
+		st := kmsg.NewOffsetCommitResponseTopic()
+		st.Topic = t.Topic
+		st.TopicID = t.TopicID
+		tk := faultKey{group: g.name, topic: t.Topic, topicID: t.TopicID}
+		if e := g.c.deny(creq, t.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationRead, tk); e != nil && creq.skipsWork(e) { // a timed-out commit falls through to the per-partition checks
+			for _, p := range t.Partitions {
+				sp := kmsg.NewOffsetCommitResponseTopicPartition()
+				sp.Partition = p.Partition
+				sp.ErrorCode = e.Code
+				st.Partitions = append(st.Partitions, sp)
+			}
+		} else {
+			_, nparts, topicExists := g.c.topicInfo(t.Topic)
+			at := t
+			at.Partitions = nil
+			for _, p := range t.Partitions {
+				sp := kmsg.NewOffsetCommitResponseTopicPartition()
+				sp.Partition = p.Partition
+				e := creq.faults.check(tk.part(p.Partition))
+				switch {
+				case e != nil && creq.skipsWork(e): // a timed-out commit is still stored
+					sp.ErrorCode = e.Code
+				case !topicExists || p.Partition < 0 || p.Partition >= nparts:
+					sp.ErrorCode = kerr.UnknownTopicOrPartition.Code
+				default:
+					if e != nil {
+						sp.ErrorCode = e.Code
+					}
+					at.Partitions = append(at.Partitions, p)
+				}
+				st.Partitions = append(st.Partitions, sp)
+			}
+			if len(at.Partitions) > 0 {
+				allowed = append(allowed, at)
+			}
+		}
+		resp.Topics = append(resp.Topics, st)
+	}
+	return allowed
 }
 
 // Handles a commit.
@@ -857,8 +1257,15 @@ func (g *group) handleOffsetCommit(creq *clientReq) (*kmsg.OffsetCommitResponse,
 		fillOffsetCommit(req, resp, kerr.Code)
 		return resp, false
 	}
-	if req.InstanceID != nil {
-		fillOffsetCommit(req, resp, kerr.InvalidGroupID.Code)
+
+	// ACL check: READ on GROUP (if denied, fail all topics)
+	if e := g.c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.Group}); e != nil && creq.skipsWork(e) {
+		fillOffsetCommit(req, resp, e.Code)
+		return resp, false
+	}
+
+	if err := g.validateInstanceID(req.InstanceID, req.MemberID); err != nil {
+		fillOffsetCommit(req, resp, err.Code)
 		return resp, false
 	}
 
@@ -874,47 +1281,30 @@ func (g *group) handleOffsetCommit(creq *clientReq) (*kmsg.OffsetCommitResponse,
 			fillOffsetCommit(req, resp, kerr.IllegalGeneration.Code)
 			return resp, false
 		}
-	} else {
-		if req.MemberID != "" {
-			fillOffsetCommit(req, resp, kerr.UnknownMemberID.Code)
-			return resp, false
-		}
-		if req.Generation != -1 {
-			fillOffsetCommit(req, resp, kerr.IllegalGeneration.Code)
-			return resp, false
-		}
-		if g.state != groupEmpty {
-			panic("invalid state: no members, but group not empty")
-		}
+	} else if req.Generation >= 0 {
+		// Empty group: only accept simple commits (generation < 0).
+		fillOffsetCommit(req, resp, kerr.IllegalGeneration.Code)
+		return resp, false
 	}
 
 	switch g.state {
 	default:
 		fillOffsetCommit(req, resp, kerr.GroupIDNotFound.Code)
 		return resp, true
-	case groupEmpty:
-		for _, t := range req.Topics {
+	case groupEmpty, groupPreparingRebalance, groupStable:
+		allowed := g.fillOffsetCommitWithACL(creq, req, resp)
+		for _, t := range allowed {
 			for _, p := range t.Partitions {
-				g.commits.set(t.Topic, p.Partition, offsetCommit{
+				g.commitAndPersist(t.Topic, p.Partition, offsetCommit{
 					offset:      p.Offset,
 					leaderEpoch: p.LeaderEpoch,
 					metadata:    p.Metadata,
 				})
 			}
 		}
-		fillOffsetCommit(req, resp, 0)
-	case groupPreparingRebalance, groupStable:
-		for _, t := range req.Topics {
-			for _, p := range t.Partitions {
-				g.commits.set(t.Topic, p.Partition, offsetCommit{
-					offset:      p.Offset,
-					leaderEpoch: p.LeaderEpoch,
-					metadata:    p.Metadata,
-				})
-			}
+		if m != nil {
+			g.updateHeartbeat(m)
 		}
-		fillOffsetCommit(req, resp, 0)
-		g.updateHeartbeat(m)
 	case groupCompletingRebalance:
 		fillOffsetCommit(req, resp, kerr.RebalanceInProgress.Code)
 		g.updateHeartbeat(m)
@@ -925,7 +1315,7 @@ func (g *group) handleOffsetCommit(creq *clientReq) (*kmsg.OffsetCommitResponse,
 // Transitions the group to the preparing rebalance state. We first need to
 // clear any member that is currently sitting in sync. If enough members have
 // entered join, we immediately proceed to completeRebalance, otherwise we
-// begin a wait timer.
+// wait, starting the deadline if the rebalance just began.
 func (g *group) rebalance() {
 	if g.state == groupCompletingRebalance {
 		for _, m := range g.members {
@@ -944,54 +1334,74 @@ func (g *group) rebalance() {
 	}
 
 	g.state = groupPreparingRebalance
+	g.clearPendingSync()
 
 	if g.nJoining >= len(g.members) {
 		g.completeRebalance()
 		return
 	}
 
-	var rebalanceTimeoutMs int32
-	for _, m := range g.members {
-		if m.join.RebalanceTimeoutMillis > rebalanceTimeoutMs {
-			rebalanceTimeoutMs = m.join.RebalanceTimeoutMillis
+	// Kafka sets the deadline when the rebalance begins, from the largest
+	// rebalance timeout at that moment. A join or leave during the
+	// rebalance does not extend it. The timer is nil outside of
+	// PreparingRebalance.
+	if g.tRebalance != nil {
+		return
+	}
+	// The deadline belongs to this generation. completeRebalance's state
+	// check alone misses preparing to completing and back to preparing: a
+	// group back in preparing under a new generation has a new barrier,
+	// and a late run would clear it. Repeated rebalance() calls at the
+	// same generation are fine, completing early is what the deadline
+	// means.
+	gen := g.generation
+	g.tRebalance = g.timerWork(time.Duration(g.maxRebalanceTimeoutMs())*time.Millisecond, func() {
+		if g.generation != gen {
+			return
 		}
-	}
-	if g.tRebalance == nil {
-		g.tRebalance = time.AfterFunc(time.Duration(rebalanceTimeoutMs)*time.Millisecond, func() {
-			select {
-			case <-g.quitCh:
-			case g.controlCh <- func() {
-				g.completeRebalance()
-			}:
-			}
-		})
-	}
+		g.completeRebalance()
+	})
 }
 
-// Transitions the group to either dead or stable, depending on if any members
-// remain by the time we clear those that are not waiting in join.
+// Ends the join phase: the group moves to CompletingRebalance, or to Empty if
+// no member remains. Dynamic members that did not rejoin are removed. Static
+// members that did not rejoin stay with their stored metadata, as in Kafka,
+// until their session times out, they leave, or they are replaced.
 func (g *group) completeRebalance() {
+	// A timer that already fired cannot be retracted. If the rebalance
+	// completed inline since, every member is waiting in sync with an
+	// empty waitingReply and a late run would remove all of them.
+	if g.state != groupPreparingRebalance {
+		return
+	}
 	if g.tRebalance != nil {
 		g.tRebalance.Stop()
 		g.tRebalance = nil
 	}
 	g.nJoining = 0
 
-	var foundLeader bool
+	var (
+		leaderJoined bool
+		joined       string
+	)
 	for _, m := range g.members {
 		if m.waitingReply.empty() {
-			for _, p := range m.join.Protocols {
-				g.protocols[p.Name]--
-			}
-			delete(g.members, m.memberID)
-			if m.t != nil {
-				m.t.Stop()
+			if m.instanceID == nil {
+				g.removeMember(m)
 			}
 			continue
 		}
+		joined = m.memberID
 		if m.memberID == g.leader {
-			foundLeader = true
+			leaderJoined = true
 		}
+	}
+	// Only static members that did not rejoin remain. Kafka has no
+	// leader to give the next generation to, so it waits another
+	// rebalance timeout.
+	if joined == "" && len(g.members) > 0 {
+		g.rebalance()
+		return
 	}
 
 	g.generation++
@@ -1000,31 +1410,129 @@ func (g *group) completeRebalance() {
 	}
 	if len(g.members) == 0 {
 		g.state = groupEmpty
+		g.emptyAt = time.Now()
+		g.persistClassicMeta()
 		return
 	}
+	if !leaderJoined {
+		g.leader = joined
+	}
 	g.state = groupCompletingRebalance
+	g.protocol = g.selectProtocol()
+	g.persistClassicMeta()
 
-	var foundProto bool
-	for proto, nsupport := range g.protocols {
-		if nsupport == len(g.members) {
-			g.protocol = proto
-			foundProto = true
-			break
-		}
-	}
-	if !foundProto {
-		panic(fmt.Sprint("unable to find commonly supported protocol!", g.protocols, len(g.members)))
-	}
-
+	// Track which members need to send SyncGroup. Kafka restarts every
+	// member's session timer here, including a static member that did
+	// not rejoin.
+	g.pendingSyncIDs = make(map[string]struct{}, len(g.members))
 	for _, m := range g.members {
-		if !foundLeader {
-			g.leader = m.memberID
+		g.pendingSyncIDs[m.memberID] = struct{}{}
+		if m.waitingReply.empty() {
+			g.updateHeartbeat(m)
+			continue
 		}
 		req := m.join
 		resp := req.ResponseKind().(*kmsg.JoinGroupResponse)
-		g.fillJoinResp(req, resp)
+		g.fillJoinResp(m.memberID, resp)
 		g.reply(m.waitingReply, resp, m)
 	}
+
+	// Start pending sync timeout: remove members that don't send
+	// SyncGroup within the rebalance timeout.
+	if g.tPendingSync != nil {
+		g.tPendingSync.Stop()
+	}
+	gen := g.generation
+	g.tPendingSync = g.timerWork(time.Duration(g.maxRebalanceTimeoutMs())*time.Millisecond, func() {
+		// An empty barrier means everyone synced. A different
+		// generation means this timer belongs to a barrier that is
+		// already over and the members waiting now are not ours.
+		if g.generation != gen || len(g.pendingSyncIDs) == 0 {
+			return
+		}
+		// Remove all pending members, then trigger one rebalance.
+		for id := range g.pendingSyncIDs {
+			if m := g.members[id]; m != nil {
+				g.removeMember(m)
+			}
+		}
+		g.pendingSyncIDs = nil
+		g.rebalance()
+	})
+}
+
+// Kafka-style protocol voting: find candidate protocols (supported by all
+// members), then each member votes for their most-preferred candidate. The
+// protocol with the most votes wins.
+//
+// On a tie Kafka keeps the first protocol in the iteration order of the Java
+// HashMap holding the votes: by bucket, then by the order of each protocol's
+// first vote, which follows the iteration order of its member map. We order
+// both maps the same way, except that within a member bucket we go by member
+// ID where Kafka goes by join order, and we size the member table for the
+// current members where Kafka's keeps the size it once grew to.
+func (g *group) selectProtocol() string {
+	candidates := make(map[string]struct{})
+	for proto, nsupport := range g.protocols {
+		if nsupport == len(g.members) {
+			candidates[proto] = struct{}{}
+		}
+	}
+	if len(candidates) == 0 {
+		panic(fmt.Sprint("unable to find commonly supported protocol!", g.protocols, len(g.members)))
+	}
+
+	type bucketed struct {
+		m      *groupMember
+		bucket uint32
+	}
+	members := make([]bucketed, 0, len(g.members))
+	for _, m := range g.members {
+		members = append(members, bucketed{m, javaHashBucket(m.memberID, len(g.members))})
+	}
+	slices.SortFunc(members, func(a, b bucketed) int {
+		return cmp.Or(cmp.Compare(a.bucket, b.bucket), cmp.Compare(a.m.memberID, b.m.memberID))
+	})
+
+	votes := make(map[string]int, len(candidates))
+	var voted []string // in first-vote order
+	for _, b := range members {
+		for _, p := range b.m.join.Protocols {
+			if _, ok := candidates[p.Name]; ok {
+				if votes[p.Name] == 0 {
+					voted = append(voted, p.Name)
+				}
+				votes[p.Name]++
+				break
+			}
+		}
+	}
+	slices.SortStableFunc(voted, func(a, b string) int {
+		return cmp.Compare(javaHashBucket(a, len(voted)), javaHashBucket(b, len(voted)))
+	})
+	var best string
+	for i, p := range voted {
+		if i == 0 || votes[p] > votes[best] {
+			best = p
+		}
+	}
+	return best
+}
+
+// javaHashBucket returns the bucket of key in a Java HashMap holding size
+// string keys. The table starts at 16 buckets and doubles once it is more
+// than 3/4 full. The bucket is String.hashCode, which hashes UTF-16 code
+// units, with its high 16 bits folded into the low 16.
+func javaHashBucket(key string, size int) uint32 {
+	n := 16
+	for size > n/4*3 {
+		n *= 2
+	}
+	var h uint32
+	for _, c := range utf16.Encode([]rune(key)) {
+		h = 31*h + uint32(c)
+	}
+	return (h ^ h>>16) & uint32(n-1)
 }
 
 // Transitions the group to stable, the final step of a rebalance.
@@ -1037,11 +1545,11 @@ func (g *group) completeLeaderSync(req *kmsg.SyncGroupRequest) {
 		if !ok {
 			continue
 		}
-		m.assignment = a.MemberAssignment
+		m.assignment = g.assignmentOrEmpty(a.MemberAssignment)
 	}
 	for _, m := range g.members {
 		if m.waitingReply.empty() {
-			continue // this member saw join but has not yet called sync
+			continue
 		}
 		resp := m.waitingReply.kreq.ResponseKind().(*kmsg.SyncGroupResponse)
 		resp.ProtocolType = kmsg.StringPtr(g.protocolType)
@@ -1050,12 +1558,50 @@ func (g *group) completeLeaderSync(req *kmsg.SyncGroupRequest) {
 		g.reply(m.waitingReply, resp, m)
 	}
 	g.state = groupStable
+	g.clearPendingSync()
+}
+
+func (g *group) clearPendingSync() {
+	g.pendingSyncIDs = nil
+	if g.tPendingSync != nil {
+		g.tPendingSync.Stop()
+		g.tPendingSync = nil
+	}
+}
+
+// assignmentOrEmpty returns the assignment bytes, or a pre-serialized empty
+// ConsumerMemberAssignment if the assignment is empty and this is a "consumer"
+// protocol group. This ensures followers always receive a decodable assignment.
+func (g *group) assignmentOrEmpty(assignment []byte) []byte {
+	if len(assignment) == 0 && g.protocolType == "consumer" {
+		return append([]byte(nil), emptyConsumerAssignment...)
+	}
+	return assignment
 }
 
 func (g *group) updateHeartbeat(m *groupMember) {
-	g.atSessionTimeout(m, func() {
-		g.updateMemberAndRebalance(m, nil, nil)
-	})
+	g.atSessionTimeout(m, func() { g.expireSession(m) })
+}
+
+// expireSession removes m when its session timer fires.
+func (g *group) expireSession(m *groupMember) {
+	// A timer that already fired cannot be retracted: the member
+	// may have left and been removed since. removeMember is NOT
+	// idempotent, it decrements g.protocols and g.nJoining and
+	// drops the static mapping, so a second run skews counters
+	// that are never rebuilt.
+	if g.members[m.memberID] != m {
+		return
+	}
+	// Kafka counts a member waiting in JoinGroup or SyncGroup as
+	// heartbeating, and restarts its session when it answers. We
+	// restart the timer now instead, so that the member still expires
+	// if that answer cannot be sent.
+	if !m.waitingReply.empty() {
+		g.updateHeartbeat(m)
+		return
+	}
+	g.updateMemberAndRebalance(m, nil, nil)
 }
 
 func (g *group) addPendingRebalance(m *groupMember) {
@@ -1072,48 +1618,109 @@ func (g *group) stopPending(m *groupMember) {
 	}
 }
 
+func (g *group) maxRebalanceTimeoutMs() int32 {
+	var max int32
+	for _, m := range g.members {
+		if m.join.RebalanceTimeoutMillis > max {
+			max = m.join.RebalanceTimeoutMillis
+		}
+	}
+	return max
+}
+
+// timerWork runs fn on the cluster run loop after d. We only guarantee
+// that fn does not run for a group that has since been deleted or
+// replaced; see [Cluster.afterFuncOnLoop] for the rest.
+func (g *group) timerWork(d time.Duration, fn func()) *time.Timer {
+	return g.c.afterFuncOnLoop(d, func() {
+		if g.c.groups.gs[g.name] != g {
+			return
+		}
+		fn()
+	})
+}
+
 func (g *group) atSessionTimeout(m *groupMember, fn func()) {
+	g.atSessionTimeoutIn(m, time.Millisecond*time.Duration(m.join.SessionTimeoutMillis), fn)
+}
+
+// removeMember removes a member from the group, cleaning up its protocol
+// counts, session timer, join counter, and static membership. Does not
+// trigger a rebalance.
+func (g *group) removeMember(m *groupMember) {
+	for _, p := range m.join.Protocols {
+		g.protocols[p.Name]--
+	}
+	delete(g.members, m.memberID)
+	if m.instanceID != nil {
+		delete(g.staticMembers, *m.instanceID)
+		g.persistStaticMember(*m.instanceID, "")
+	}
 	if m.t != nil {
 		m.t.Stop()
 	}
-	timeout := time.Millisecond * time.Duration(m.join.SessionTimeoutMillis)
-	m.last = time.Now()
-	tfn := func() {
-		select {
-		case <-g.quitCh:
-		case g.controlCh <- func() {
-			if time.Since(m.last) >= timeout {
-				fn()
-			}
-		}:
+	if !m.waitingReply.empty() {
+		// nJoining counts parked joins only, not a sync parked in
+		// CompletingRebalance.
+		if _, ok := m.waitingReply.kreq.(*kmsg.JoinGroupRequest); ok {
+			g.nJoining--
 		}
 	}
-	m.t = time.AfterFunc(timeout, tfn)
+}
+
+// validateInstanceID checks that the given instanceID and memberID are
+// consistent with the group's static membership state. Returns nil on
+// success or a kerr error.
+func (g *group) validateInstanceID(instanceID *string, memberID string) *kerr.Error {
+	if instanceID == nil {
+		return nil
+	}
+	knownMID, ok := g.staticMembers[*instanceID]
+	if !ok {
+		return kerr.UnknownMemberID
+	}
+	if knownMID != memberID {
+		return kerr.FencedInstanceID
+	}
+	return nil
 }
 
 // This is used to update a member from a new join request, or to clear a
 // member from failed heartbeats.
 func (g *group) updateMemberAndRebalance(m *groupMember, waitingReply *clientReq, newJoin *kmsg.JoinGroupRequest) {
-	for _, p := range m.join.Protocols {
-		g.protocols[p.Name]--
-	}
-	m.join = newJoin
-	if m.join != nil {
+	if newJoin != nil {
+		for _, p := range m.join.Protocols {
+			g.protocols[p.Name]--
+		}
+		m.join = newJoin
 		for _, p := range m.join.Protocols {
 			g.protocols[p.Name]++
+		}
+		// Leaving CompletingRebalance answers every parked sync with
+		// REBALANCE_IN_PROGRESS, as Kafka does, but this member's is
+		// about to be replaced by its join.
+		if !m.waitingReply.empty() {
+			if sync, ok := m.waitingReply.kreq.(*kmsg.SyncGroupRequest); ok {
+				resp := sync.ResponseKind().(*kmsg.SyncGroupResponse)
+				resp.ErrorCode = kerr.RebalanceInProgress.Code
+				g.reply(m.waitingReply, resp, m)
+			}
 		}
 		if m.waitingReply.empty() && !waitingReply.empty() {
 			g.nJoining++
 		}
 		m.waitingReply = waitingReply
 	} else {
-		delete(g.members, m.memberID)
-		if m.t != nil {
-			m.t.Stop()
-		}
+		// Kafka answers a removed member's parked JoinGroup with
+		// UNKNOWN_MEMBER_ID. It never answers a parked SyncGroup.
 		if !m.waitingReply.empty() {
-			g.nJoining--
+			if join, ok := m.waitingReply.kreq.(*kmsg.JoinGroupRequest); ok {
+				resp := join.ResponseKind().(*kmsg.JoinGroupResponse)
+				resp.ErrorCode = kerr.UnknownMemberID.Code
+				g.reply(m.waitingReply, resp, nil)
+			}
 		}
+		g.removeMember(m)
 	}
 	g.rebalance()
 }
@@ -1147,8 +1754,10 @@ func (g *group) protocolsMatch(protocolType string, protocols []kmsg.JoinGroupRe
 	if len(g.protocols) == 0 {
 		return true
 	}
+	// The joining member must support at least one protocol that
+	// is universally supported by all existing members.
 	for _, p := range protocols {
-		if _, ok := g.protocols[p.Name]; ok {
+		if g.protocols[p.Name] == len(g.members) {
 			return true
 		}
 	}
@@ -1172,13 +1781,13 @@ func (m *groupMember) sameJoin(req *kmsg.JoinGroupRequest) bool {
 	return true
 }
 
-func (g *group) fillJoinResp(req *kmsg.JoinGroupRequest, resp *kmsg.JoinGroupResponse) {
+func (g *group) fillJoinResp(memberID string, resp *kmsg.JoinGroupResponse) {
 	resp.Generation = g.generation
 	resp.ProtocolType = kmsg.StringPtr(g.protocolType)
 	resp.Protocol = kmsg.StringPtr(g.protocol)
 	resp.LeaderID = g.leader
-	resp.MemberID = req.MemberID
-	if g.leader == req.MemberID {
+	resp.MemberID = memberID
+	if g.leader == memberID {
 		resp.Members = g.joinResponseMetadata()
 	}
 }
@@ -1191,6 +1800,7 @@ members:
 			if p.Name == g.protocol {
 				metadata = append(metadata, kmsg.JoinGroupResponseMember{
 					MemberID:         m.memberID,
+					InstanceID:       m.instanceID,
 					ProtocolMetadata: p.Metadata,
 				})
 				continue members
@@ -1201,14 +1811,1890 @@ members:
 	return metadata
 }
 
+// reply sends kresp back to the caller of creq. If m is non-nil,
+// m.waitingReply is cleared before the send attempt so a dead
+// connection does not leave a stale reply behind.
 func (g *group) reply(creq *clientReq, kresp kmsg.Response, m *groupMember) {
-	select {
-	case creq.cc.respCh <- clientResp{kresp: kresp, corr: creq.corr, seq: creq.seq}:
-	case <-g.c.die:
+	if m != nil {
+		m.waitingReply = nil
+	}
+	if !creq.reply(kresp) {
 		return
 	}
 	if m != nil {
-		m.waitingReply = nil
 		g.updateHeartbeat(m)
 	}
+}
+
+///////////////////////////
+// KIP-848 CONSUMER GROUPS
+///////////////////////////
+
+func (gs *groups) handleConsumerGroupHeartbeat(creq *clientReq) kmsg.Response {
+	req := creq.kreq.(*kmsg.ConsumerGroupHeartbeatRequest)
+
+	// Group type exclusivity: if this group ID is already a share
+	// group, reject the consumer group heartbeat.
+	if _, isShare := gs.c.shareGroups.gs[req.Group]; isShare {
+		resp := req.ResponseKind().(*kmsg.ConsumerGroupHeartbeatResponse)
+		resp.ErrorCode = kerr.GroupIDNotFound.Code
+		return resp
+	}
+
+	// We validate before creating the group, so a heartbeat we reject
+	// does not leave an empty group behind.
+	if kerr := gs.c.validateGroup(creq, req.Group); kerr != nil {
+		resp := req.ResponseKind().(*kmsg.ConsumerGroupHeartbeatResponse)
+		resp.HeartbeatIntervalMillis = gs.c.consumerHeartbeatIntervalMs()
+		resp.ErrorCode = kerr.Code
+		return resp
+	}
+	if e := gs.c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.Group}); e != nil {
+		resp := req.ResponseKind().(*kmsg.ConsumerGroupHeartbeatResponse)
+		resp.HeartbeatIntervalMillis = gs.c.consumerHeartbeatIntervalMs()
+		resp.ErrorCode = e.Code
+		return resp
+	}
+
+	g, _ := gs.newOrExisting(req.Group)
+	return g.handleConsumerHeartbeat(creq)
+}
+
+func (gs *groups) handleConsumerGroupDescribe(creq *clientReq) *kmsg.ConsumerGroupDescribeResponse {
+	req := creq.kreq.(*kmsg.ConsumerGroupDescribeRequest)
+	resp := req.ResponseKind().(*kmsg.ConsumerGroupDescribeResponse)
+
+	doneg := func(name string) *kmsg.ConsumerGroupDescribeResponseGroup {
+		sg := kmsg.NewConsumerGroupDescribeResponseGroup()
+		sg.Group = name
+		sg.AuthorizedOperations = math.MinInt32
+		resp.Groups = append(resp.Groups, sg)
+		return &resp.Groups[len(resp.Groups)-1]
+	}
+
+	for _, rg := range req.Groups {
+		sg := doneg(rg)
+		if e := gs.c.deny(creq, rg, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe, faultKey{group: rg, misrouted: !gs.c.isCoordinator(creq, rg)}); e != nil {
+			sg.ErrorCode = e.Code
+			continue
+		}
+		if kerr := gs.c.validateGroup(creq, rg); kerr != nil {
+			sg.ErrorCode = kerr.Code
+			continue
+		}
+		g, ok := gs.gs[rg]
+		if !ok {
+			sg.ErrorCode = kerr.GroupIDNotFound.Code
+			if req.IncludeAuthorizedOperations {
+				sg.AuthorizedOperations = gs.c.groupAuthorizedOps(creq, rg)
+			}
+			continue
+		}
+		if g.typ != "consumer" {
+			sg.ErrorCode = kerr.GroupIDNotFound.Code
+			if req.IncludeAuthorizedOperations {
+				sg.AuthorizedOperations = gs.c.groupAuthorizedOps(creq, rg)
+			}
+			continue
+		}
+		sg.State = g.state.String()
+		sg.Epoch = g.groupEpoch
+		sg.AssignmentEpoch = g.targetAssignmentEpoch
+		sg.AssignorName = g.assignorName
+		for _, m := range g.consumerMembers {
+			sm := kmsg.NewConsumerGroupDescribeResponseGroupMember()
+			sm.MemberID = m.memberID
+			sm.InstanceID = m.instanceID
+			sm.RackID = m.rackID
+			sm.MemberEpoch = m.memberEpoch
+			sm.ClientID = m.clientID
+			sm.ClientHost = m.clientHost
+			sm.SubscribedTopics = m.subscribedTopics
+			sm.MemberType = 1 // consumer
+			sm.Assignment = uuidAssignmentToKmsg(m.lastReconciledSent)
+			sm.TargetAssignment = uuidAssignmentToKmsg(m.targetAssignment)
+			sg.Members = append(sg.Members, sm)
+		}
+		if req.IncludeAuthorizedOperations {
+			sg.AuthorizedOperations = gs.c.groupAuthorizedOps(creq, rg)
+		}
+	}
+	return resp
+}
+
+func uuidAssignmentToKmsg(a map[uuid][]int32) kmsg.Assignment {
+	var ka kmsg.Assignment
+	for id, parts := range a {
+		tp := kmsg.NewAssignmentTopicPartition()
+		tp.TopicID = id
+		tp.Partitions = parts
+		ka.TopicPartitions = append(ka.TopicPartitions, tp)
+	}
+	return ka
+}
+
+// A "full request" carries subscription and assignment info. Keepalive
+// heartbeats set RebalanceTimeoutMillis to -1 and leave all optional
+// fields nil; the server should skip subscription processing and omit
+// assignment from the response unless the member is still reconciling.
+// Kafka requires ALL three conditions: timeout present, subscription
+// present, and owned partitions present.
+func isFullRequest(req *kmsg.ConsumerGroupHeartbeatRequest) bool {
+	return req.RebalanceTimeoutMillis != -1 &&
+		(req.SubscribedTopicNames != nil || req.SubscribedTopicRegex != nil) &&
+		req.Topics != nil
+}
+
+// Handles a KIP-848 consumer group heartbeat, routing to join, leave, or
+// regular heartbeat based on MemberEpoch.
+func (g *group) handleConsumerHeartbeat(creq *clientReq) kmsg.Response {
+	req := creq.kreq.(*kmsg.ConsumerGroupHeartbeatRequest)
+	resp := req.ResponseKind().(*kmsg.ConsumerGroupHeartbeatResponse)
+	resp.HeartbeatIntervalMillis = g.c.consumerHeartbeatIntervalMs()
+
+	// Groups start as "classic" (the default in newGroup). The first
+	// ConsumerGroupHeartbeat upgrades the group to "consumer",
+	// unless classic members are already active.
+	if g.typ == "classic" {
+		if len(g.members) > 0 {
+			resp.ErrorCode = kerr.GroupIDNotFound.Code
+			return resp
+		}
+		g.typ = "consumer"
+		g.consumerMembers = make(map[string]*consumerMember)
+		g.partitionEpochs = make(map[uuid]map[int32]partitionOwner)
+	}
+
+	switch req.MemberEpoch {
+	case 0:
+		return g.consumerJoin(creq, req, resp)
+	case -1:
+		return g.consumerLeave(req, resp)
+	case -2:
+		return g.consumerStaticLeave(req, resp)
+	default:
+		return g.consumerRegularHeartbeat(req, resp)
+	}
+}
+
+func (g *group) consumerJoin(creq *clientReq, req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.ConsumerGroupHeartbeatResponse) *kmsg.ConsumerGroupHeartbeatResponse {
+	// A real broker validates that the owned-partitions field is an
+	// empty list on every (re)join: null and non-empty are both
+	// rejected with "TopicPartitions must be empty when (re-)joining."
+	// before the request reaches the group state machine. Mirroring
+	// the rejection matters: a client that leaks stale owned state
+	// into its join would otherwise be silently accepted here while a
+	// real broker rejects it on every attempt, forever.
+	if req.Topics == nil || len(req.Topics) > 0 {
+		resp.ErrorCode = kerr.InvalidRequest.Code
+		resp.ErrorMessage = kmsg.StringPtr("TopicPartitions must be empty when (re-)joining.")
+		return resp
+	}
+
+	memberID := req.MemberID
+	if memberID == "" {
+		memberID = generateMemberID(creq.cid, req.InstanceID)
+	}
+
+	// Check group max size for truly new members (not rejoins).
+	isRejoin := g.consumerMembers[memberID] != nil
+	if req.InstanceID != nil {
+		if oldMID, ok := g.staticMembers[*req.InstanceID]; ok {
+			isRejoin = isRejoin || oldMID == memberID || g.consumerMembers[oldMID] != nil
+		}
+	}
+	if !isRejoin && int32(len(g.consumerMembers)) >= g.c.groupMaxSize() {
+		resp.ErrorCode = kerr.GroupMaxSizeReached.Code
+		return resp
+	}
+
+	// Static member: if this instanceID maps to a different member,
+	// the old member must have sent a static leave (epoch -2) before
+	// replacement is allowed. If the old member is still active, we
+	// return UNRELEASED_INSTANCE_ID per Kafka's
+	// throwIfInstanceIdIsUnreleased (GroupMetadataManager.java:3163).
+	var inheritSent, inheritTarget map[uuid][]int32
+	var inheritAssignEpochs map[uuid]map[int32]int32
+	var oldTopics []string
+	if req.InstanceID != nil {
+		if oldMemberID, ok := g.staticMembers[*req.InstanceID]; ok && oldMemberID != memberID {
+			if old := g.consumerMembers[oldMemberID]; old != nil {
+				if old.memberEpoch != -2 {
+					resp.ErrorCode = kerr.UnreleasedInstanceID.Code
+					return resp
+				}
+				oldTopics = old.subscribedTopics
+				inheritSent = copyAssignment(old.lastReconciledSent)
+				inheritTarget = copyAssignment(old.targetAssignment)
+				inheritAssignEpochs = old.partAssignmentEpochs
+				g.fenceConsumerMember(old)
+				delete(g.consumerMembers, oldMemberID)
+			}
+		}
+		g.staticMembers[*req.InstanceID] = memberID
+	}
+
+	// Same-memberID: handle static rejoin from epoch -2 or
+	// non-static rejoin (update in place).
+	if prev := g.consumerMembers[memberID]; prev != nil {
+		if prev.memberEpoch != -2 {
+			// Active non-static rejoin: update subscription
+			// in place, preserving partition state.
+			return g.consumerRejoin(creq, req, resp, prev)
+		}
+		if inheritSent == nil {
+			oldTopics = prev.subscribedTopics
+			inheritSent = copyAssignment(prev.lastReconciledSent)
+			inheritTarget = copyAssignment(prev.targetAssignment)
+			inheritAssignEpochs = prev.partAssignmentEpochs
+		}
+		g.fenceConsumerMember(prev)
+		delete(g.consumerMembers, memberID)
+	}
+
+	m := &consumerMember{
+		memberID:                    memberID,
+		clientID:                    creq.cid,
+		clientHost:                  creq.cc.conn.RemoteAddr().String(),
+		instanceID:                  req.InstanceID,
+		rackID:                      req.RackID,
+		rebalanceTimeoutMs:          req.RebalanceTimeoutMillis,
+		targetAssignment:            make(map[uuid][]int32),
+		partitionsPendingRevocation: make(map[uuid][]int32),
+	}
+	if req.ServerAssignor != nil {
+		if !validServerAssignor(*req.ServerAssignor) {
+			resp.ErrorCode = kerr.UnsupportedAssignor.Code
+			return resp
+		}
+		m.serverAssignor = *req.ServerAssignor
+	}
+	if req.SubscribedTopicNames != nil {
+		m.subscribedTopics = slices.Clone(req.SubscribedTopicNames)
+		slices.Sort(m.subscribedTopics)
+	}
+	if req.SubscribedTopicRegex != nil {
+		re, err := compileSubscribedTopicRegex(*req.SubscribedTopicRegex)
+		if err != nil {
+			resp.ErrorCode = kerr.InvalidRequest.Code
+			return resp
+		}
+		m.subscribedTopicRegex = re
+		m.subscribedRegexSource = *req.SubscribedTopicRegex
+	}
+	if m.rebalanceTimeoutMs <= 0 {
+		m.rebalanceTimeoutMs = 45000
+	}
+
+	// Inherit state from epoch -2 static member so the sticky
+	// assignor preserves the partition distribution and the
+	// reconciliation sees the correct owned partitions.
+	if inheritSent != nil {
+		m.lastReconciledSent = inheritSent
+		m.targetAssignment = inheritTarget
+		m.partAssignmentEpochs = inheritAssignEpochs
+	}
+
+	g.consumerMembers[memberID] = m
+	g.assignorName = m.serverAssignor
+
+	// Bump groupEpoch when: group is new (epoch 0), truly new
+	// member (no prior static member), or subscription changed.
+	if g.groupEpoch == 0 || oldTopics == nil || !slices.Equal(oldTopics, m.subscribedTopics) {
+		g.groupEpoch++
+		g.computeTargetAssignment()
+		g.persistMeta848()
+	}
+	if m.instanceID != nil {
+		g.persistStaticMember(*m.instanceID, memberID)
+	}
+
+	// Compute initial assignment for this new member.
+	newAssigned, newPending, _ := g.computeNextAssignment(m, nil)
+	m.lastReconciledSent = newAssigned
+	m.partitionsPendingRevocation = newPending
+
+	// Add to epoch map so other members can't claim these
+	// partitions until this member releases them. Old state
+	// is empty (new member or fenced rejoin).
+	g.updateMemberEpochs(m, nil, nil)
+
+	g.updateConsumerStateField()
+	g.atConsumerSessionTimeout(m)
+
+	resp.MemberID = &memberID
+	resp.MemberEpoch = m.memberEpoch
+	g.c.cfg.logger.Logf(LogLevelDebug, "RECONCILE SEND: member=%s epoch=%d partitions=%d", m.memberID, m.memberEpoch, countAssignment(m.lastReconciledSent))
+	resp.Assignment = makeAssignment(m.lastReconciledSent)
+	g.c.cfg.logger.Logf(LogLevelInfo, "consumerJoin: group=%s member=%s epoch=%d sent=%d epochMap=%d members=%d",
+		g.logName(), m.memberID, m.memberEpoch, countAssignment(m.lastReconciledSent), g.countPartitionEpochs(), len(g.consumerMembers))
+	m.updatePartAssignmentEpochs(m.lastReconciledSent)
+	if len(m.partitionsPendingRevocation) > 0 {
+		g.scheduleConsumerRebalanceTimeout(m)
+	}
+	return resp
+}
+
+// updateMemberSubscriptions processes subscription and assignor changes
+// from a heartbeat request. Returns whether the subscription changed
+// and an error code (0 on success).
+func (g *group) updateMemberSubscriptions(m *consumerMember, req *kmsg.ConsumerGroupHeartbeatRequest) (changed bool, errCode int16) {
+	if req.SubscribedTopicNames != nil {
+		sorted := slices.Clone(req.SubscribedTopicNames)
+		slices.Sort(sorted)
+		if !slices.Equal(m.subscribedTopics, sorted) {
+			m.subscribedTopics = sorted
+			changed = true
+		}
+	}
+	if req.SubscribedTopicRegex != nil && *req.SubscribedTopicRegex != m.subscribedRegexSource {
+		re, err := compileSubscribedTopicRegex(*req.SubscribedTopicRegex)
+		if err != nil {
+			return false, kerr.InvalidRequest.Code
+		}
+		m.subscribedTopicRegex = re
+		m.subscribedRegexSource = *req.SubscribedTopicRegex
+		changed = true
+	}
+	if req.ServerAssignor != nil && *req.ServerAssignor != m.serverAssignor {
+		if !validServerAssignor(*req.ServerAssignor) {
+			return false, kerr.UnsupportedAssignor.Code
+		}
+		m.serverAssignor = *req.ServerAssignor
+		g.assignorName = m.serverAssignor
+		changed = true
+	}
+	return changed, 0
+}
+
+// consumerRejoin handles a non-static rejoin: an active member sends
+// epoch 0 to update its subscription without losing partition state.
+// Updates the member in place and runs reconciliation.
+func (g *group) consumerRejoin(creq *clientReq, req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.ConsumerGroupHeartbeatResponse, m *consumerMember) *kmsg.ConsumerGroupHeartbeatResponse {
+	m.clientID = creq.cid
+	m.clientHost = creq.cc.conn.RemoteAddr().String()
+	m.rackID = req.RackID
+	if req.RebalanceTimeoutMillis > 0 {
+		m.rebalanceTimeoutMs = req.RebalanceTimeoutMillis
+	}
+
+	hasSubscriptionChanged, errCode := g.updateMemberSubscriptions(m, req)
+	if errCode != 0 {
+		resp.ErrorCode = errCode
+		return resp
+	}
+	if hasSubscriptionChanged {
+		g.groupEpoch++
+		g.computeTargetAssignment()
+		g.persistMeta848()
+	}
+
+	g.atConsumerSessionTimeout(m)
+	resp.MemberID = &m.memberID
+
+	g.maybeReconcile(m, hasSubscriptionChanged, req.Topics)
+
+	g.c.cfg.logger.Logf(LogLevelDebug, "RECONCILE SEND: member=%s epoch=%d partitions=%d (rejoin)", m.memberID, m.memberEpoch, countAssignment(m.lastReconciledSent))
+	resp.Assignment = makeAssignment(m.lastReconciledSent)
+	resp.MemberEpoch = m.memberEpoch
+	g.updateConsumerStateField()
+	if len(m.partitionsPendingRevocation) > 0 {
+		g.scheduleConsumerRebalanceTimeout(m)
+	} else {
+		g.cancelConsumerRebalanceTimeout(m)
+	}
+	g.c.cfg.logger.Logf(LogLevelInfo, "consumerJoin: group=%s member=%s epoch=%d sent=%d epochMap=%d members=%d (rejoin)",
+		g.logName(), m.memberID, m.memberEpoch, countAssignment(m.lastReconciledSent), g.countPartitionEpochs(), len(g.consumerMembers))
+	return resp
+}
+
+func (g *group) consumerLeave(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.ConsumerGroupHeartbeatResponse) *kmsg.ConsumerGroupHeartbeatResponse {
+	m, ok := g.consumerMembers[req.MemberID]
+	if !ok {
+		resp.ErrorCode = kerr.UnknownMemberID.Code
+		return resp
+	}
+	g.c.cfg.logger.Logf(LogLevelInfo, "consumerLeave: group=%s member=%s epoch=%d sent=%d pending=%d remaining=%d",
+		g.logName(), m.memberID, m.memberEpoch, countAssignment(m.lastReconciledSent), countAssignment(m.partitionsPendingRevocation), len(g.consumerMembers)-1)
+	g.fenceConsumerMember(m)
+	delete(g.consumerMembers, req.MemberID)
+	// Full leave (-1): remove from static membership too.
+	if m.instanceID != nil {
+		delete(g.staticMembers, *m.instanceID)
+		g.persistStaticMember(*m.instanceID, "")
+	}
+
+	g.groupEpoch++
+	g.computeTargetAssignment()
+	g.updateConsumerStateField()
+	g.persistMeta848()
+
+	resp.MemberID = &req.MemberID
+	resp.MemberEpoch = -1
+	return resp
+}
+
+// consumerStaticLeave handles epoch -2: static member leave. Matches
+// Kafka's consumerGroupStaticMemberGroupLeave - the member is NOT
+// removed from consumerMembers. Instead it stays with epoch -2 so its
+// partition epoch entries remain alive (preventing other members from
+// claiming those partitions). On rejoin, the old member is fenced and
+// the new member inherits the assignment.
+func (g *group) consumerStaticLeave(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.ConsumerGroupHeartbeatResponse) *kmsg.ConsumerGroupHeartbeatResponse {
+	m, ok := g.consumerMembers[req.MemberID]
+	if !ok {
+		resp.ErrorCode = kerr.UnknownMemberID.Code
+		return resp
+	}
+	if m.instanceID == nil {
+		// Dynamic member sent MemberEpoch=-2. Java's
+		// GroupMetadataManager silently fences and removes the
+		// member rather than returning UnreleasedInstanceID. Fall
+		// through to the same path consumerLeave uses for full
+		// leave (MemberEpoch=-1).
+		g.c.cfg.logger.Logf(LogLevelInfo, "consumerStaticLeave: dynamic member sent epoch=-2; treating as full leave; group=%s member=%s",
+			g.logName(), m.memberID)
+		g.fenceConsumerMember(m)
+		delete(g.consumerMembers, req.MemberID)
+		g.groupEpoch++
+		g.computeTargetAssignment()
+		g.updateConsumerStateField()
+		g.persistMeta848()
+		return resp
+	}
+	g.c.cfg.logger.Logf(LogLevelInfo, "consumerStaticLeave: group=%s member=%s instance=%s epoch=%d sent=%d remaining=%d",
+		g.logName(), m.memberID, *m.instanceID, m.memberEpoch, countAssignment(m.lastReconciledSent), g.activeConsumerCount()-1)
+
+	// Mark as temporarily departed - do NOT fence, do NOT
+	// delete from consumerMembers, do NOT bump generation.
+	//
+	// Re-stamp epoch map: drop this member's entries, free its
+	// pending revocation partitions, and add its sent entries back
+	// at -2. This keeps lastReconciledSent partitions reserved for
+	// the member until it rejoins.
+	g.removePartitionEpochs(m.lastReconciledSent, m.memberID)
+	g.removePartitionEpochs(m.partitionsPendingRevocation, m.memberID)
+	m.partitionsPendingRevocation = make(map[uuid][]int32)
+	m.memberEpoch = -2
+	g.addPartitionEpochs(m.lastReconciledSent, m.memberID, -2)
+	if m.t != nil {
+		m.t.Stop()
+		m.t = nil
+	}
+	g.cancelConsumerRebalanceTimeout(m)
+	// Keep g.staticMembers[*m.instanceID] intact.
+
+	g.updateConsumerStateField()
+
+	resp.MemberID = &req.MemberID
+	resp.MemberEpoch = -2
+	return resp
+}
+
+func (g *group) consumerRegularHeartbeat(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.ConsumerGroupHeartbeatResponse) *kmsg.ConsumerGroupHeartbeatResponse {
+	m, ok := g.consumerMembers[req.MemberID]
+	if !ok {
+		// If the request carries an instanceID owned by a different
+		// member, return FENCED_INSTANCE_ID per Kafka's
+		// throwIfInstanceIdIsFenced (GroupMetadataManager.java:1647).
+		if req.InstanceID != nil {
+			if ownerID, ok := g.staticMembers[*req.InstanceID]; ok && ownerID != req.MemberID {
+				resp.ErrorCode = kerr.FencedInstanceID.Code
+				return resp
+			}
+		}
+		resp.ErrorCode = kerr.UnknownMemberID.Code
+		return resp
+	}
+
+	full := isFullRequest(req)
+
+	// Previous-epoch recovery: accept the member's previous epoch if
+	// the reported partitions are a subset of the server's
+	// authoritative assigned set (lastReconciledSent).
+	if req.MemberEpoch != m.memberEpoch {
+		matchesPrev := req.MemberEpoch == m.previousMemberEpoch
+		topicsNil := req.Topics == nil
+		isSubset := false
+		if !topicsNil {
+			isSubset = isSubsetAssignment(req.Topics, m.lastReconciledSent)
+		}
+		if !matchesPrev || topicsNil || !isSubset {
+			resp.ErrorCode = kerr.FencedMemberEpoch.Code
+			return resp
+		}
+	}
+
+	if gap := time.Since(m.last); gap > 2*time.Duration(g.c.consumerHeartbeatIntervalMs())*time.Millisecond {
+		g.c.cfg.logger.Logf(LogLevelWarn, "consumerHeartbeatLate: group=%s member=%s gap=%dms interval=%dms",
+			g.logName(), m.memberID, gap.Milliseconds(), g.c.consumerHeartbeatIntervalMs())
+	}
+	g.atConsumerSessionTimeout(m)
+
+	// Process subscription changes.
+	var hasSubscriptionChanged bool
+	if full {
+		var errCode int16
+		hasSubscriptionChanged, errCode = g.updateMemberSubscriptions(m, req)
+		if errCode != 0 {
+			resp.ErrorCode = errCode
+			return resp
+		}
+	}
+
+	if hasSubscriptionChanged {
+		g.groupEpoch++
+		g.computeTargetAssignment()
+		g.persistMeta848()
+	}
+	resp.MemberID = &req.MemberID
+
+	changed := g.maybeReconcile(m, hasSubscriptionChanged, req.Topics)
+
+	// Send the assignment in the response on full requests
+	// or when the reconciled set changed.
+	if full || changed {
+		g.c.cfg.logger.Logf(LogLevelDebug, "RECONCILE SEND: member=%s epoch=%d partitions=%d",
+			m.memberID, m.memberEpoch, countAssignment(m.lastReconciledSent))
+		resp.Assignment = makeAssignment(m.lastReconciledSent)
+	}
+
+	resp.MemberEpoch = m.memberEpoch
+
+	g.updateConsumerStateField()
+
+	// Schedule or cancel the rebalance timeout: active only when
+	// the member has partitions pending revocation. Always
+	// reschedule (not just on first entry) so the timeout
+	// tracks the latest revocation state.
+	if len(m.partitionsPendingRevocation) > 0 {
+		g.scheduleConsumerRebalanceTimeout(m)
+	} else {
+		g.cancelConsumerRebalanceTimeout(m)
+	}
+
+	return resp
+}
+
+// validServerAssignor returns whether the given assignor name is
+// supported for consumer groups. Only "uniform" and "range" are valid
+// ("simple" is for share groups only - KIP-932).
+func validServerAssignor(name string) bool {
+	return name == "uniform" || name == "range"
+}
+
+type assignorTP struct {
+	topic string
+	id    uuid
+	part  int32
+}
+
+// computeTargetAssignment resolves subscriptions against the current
+// topics and dispatches to the appropriate assignor based on
+// g.assignorName. Updates targetAssignment on each consumerMember.
+func (g *group) computeTargetAssignment() {
+	memberSubs := make(map[string]map[string]struct{}, len(g.consumerMembers))
+	var allTPs []assignorTP
+
+	subscribedSet := make(map[string]struct{})
+	for mid, m := range g.consumerMembers {
+		// Skip members with epoch -2 (static leave) - they are
+		// "away" and should not receive new partitions, but their
+		// existing assignment stays reserved via partition epochs.
+		if m.memberEpoch == -2 {
+			continue
+		}
+		subs := make(map[string]struct{}, len(m.subscribedTopics))
+		for _, t := range m.subscribedTopics {
+			subs[t] = struct{}{}
+		}
+		if m.subscribedTopicRegex != nil {
+			for topic := range g.c.data.tps {
+				if m.subscribedTopicRegex.MatchString(topic) {
+					subs[topic] = struct{}{}
+				}
+			}
+		}
+		memberSubs[mid] = subs
+		for t := range subs {
+			subscribedSet[t] = struct{}{}
+		}
+	}
+	for topic := range subscribedSet {
+		id, nparts, ok := g.c.topicInfo(topic)
+		if !ok {
+			continue
+		}
+		for p := int32(0); p < nparts; p++ {
+			allTPs = append(allTPs, assignorTP{topic: topic, id: id, part: p})
+		}
+	}
+
+	// Sort deterministically: by topic name, then partition.
+	slices.SortFunc(allTPs, func(a, b assignorTP) int {
+		if c := cmp.Compare(a.topic, b.topic); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.part, b.part)
+	})
+
+	// Sort members deterministically. For the range assignor, static
+	// members (sorted by instanceID) come before dynamic members
+	// (sorted by memberID), matching Kafka's behavior. Epoch -2
+	// members are excluded (skipped in memberSubs above).
+	memberIDs := slices.Collect(maps.Keys(memberSubs))
+	if g.assignorName == "range" {
+		slices.SortFunc(memberIDs, func(a, b string) int {
+			ma, mb := g.consumerMembers[a], g.consumerMembers[b]
+			aStatic := ma.instanceID != nil
+			bStatic := mb.instanceID != nil
+			if aStatic != bStatic {
+				if aStatic {
+					return -1
+				}
+				return 1
+			}
+			if aStatic {
+				return cmp.Compare(*ma.instanceID, *mb.instanceID)
+			}
+			return cmp.Compare(a, b)
+		})
+	} else {
+		slices.Sort(memberIDs)
+	}
+
+	if len(memberIDs) == 0 {
+		return
+	}
+
+	switch g.assignorName {
+	case "range":
+		// Range is position-based, not sticky - clear and recompute.
+		for _, mid := range memberIDs {
+			g.consumerMembers[mid].targetAssignment = make(map[uuid][]int32)
+		}
+		g.assignRange(allTPs, memberIDs, memberSubs)
+	default: // "uniform" or "" (pre-assignor groups) - validated at heartbeat time
+		// assignUniform is sticky: it preserves existing targets
+		// and only reassigns partitions that need to move.
+		g.assignUniform(allTPs, memberIDs, memberSubs)
+	}
+
+	// Sort partition lists for determinism.
+	for _, mid := range memberIDs {
+		m := g.consumerMembers[mid]
+		for id := range m.targetAssignment {
+			slices.Sort(m.targetAssignment[id])
+		}
+	}
+
+	// Epoch map is NOT rebuilt here; it is managed
+	// incrementally per-member:
+	// - consumerJoin: updateMemberEpochs for new member
+	// - maybeReconcile: updateMemberEpochs on assignment change
+	// - epoch bump: updateMemberEpochs re-stamps at new epoch
+	// - fenceConsumerMember: removePartitionEpochs
+
+	g.targetAssignmentEpoch = g.groupEpoch
+}
+
+// assignUniform distributes partitions across all eligible members using
+// a sticky algorithm: existing assignments are preserved when valid, and
+// only unassigned partitions are redistributed. This minimizes partition
+// movement during cooperative rebalances (KIP-848), where each moved
+// partition requires multiple heartbeat rounds to revoke and reassign.
+func (g *group) assignUniform(allTPs []assignorTP, memberIDs []string, memberSubs map[string]map[string]struct{}) {
+	type tpKey struct {
+		id   uuid
+		part int32
+	}
+	allTPSet := make(map[tpKey]string, len(allTPs))
+	for _, tp := range allTPs {
+		allTPSet[tpKey{tp.id, tp.part}] = tp.topic
+	}
+
+	// Step 1: keep existing assignments that are still valid (member
+	// exists, subscribes to the topic, partition still exists).
+	assigned := make(map[tpKey]bool, len(allTPs))
+	counts := make(map[string]int, len(memberIDs))
+	for _, mid := range memberIDs {
+		m := g.consumerMembers[mid]
+		for id, parts := range m.targetAssignment {
+			var kept []int32
+			for _, p := range parts {
+				k := tpKey{id, p}
+				topic, exists := allTPSet[k]
+				if !exists {
+					continue
+				}
+				if _, ok := memberSubs[mid][topic]; !ok {
+					continue
+				}
+				kept = append(kept, p)
+				assigned[k] = true
+			}
+			if len(kept) > 0 {
+				m.targetAssignment[id] = kept
+			} else {
+				delete(m.targetAssignment, id)
+			}
+		}
+		for _, parts := range m.targetAssignment {
+			counts[mid] += len(parts)
+		}
+	}
+
+	// Step 2: balance - members with too many partitions shed
+	// excess. With N total and M members, each gets floor(N/M)
+	// or floor(N/M)+1.
+	minCount := len(allTPs) / len(memberIDs)
+	extra := len(allTPs) % len(memberIDs)
+
+	// Determine the allowed max per member. Sort members by
+	// current count descending - the top `extra` members are
+	// allowed minCount+1, the rest get minCount. This minimizes
+	// movement by letting the most-loaded members keep an extra
+	// partition when possible.
+	type memberCount struct {
+		mid   string
+		count int
+	}
+	sorted := make([]memberCount, len(memberIDs))
+	for i, mid := range memberIDs {
+		sorted[i] = memberCount{mid, counts[mid]}
+	}
+	slices.SortFunc(sorted, func(a, b memberCount) int {
+		if c := cmp.Compare(b.count, a.count); c != 0 {
+			return c // descending
+		}
+		return cmp.Compare(a.mid, b.mid) // tie-break by member ID
+	})
+	allowed := make(map[string]int, len(memberIDs))
+	for i, mc := range sorted {
+		if i < extra {
+			allowed[mc.mid] = minCount + 1
+		} else {
+			allowed[mc.mid] = minCount
+		}
+	}
+
+	// Shed excess from overloaded members. Only update
+	// m.targetAssignment and remove from assigned; step 3
+	// collects all unassigned partitions in one pass.
+	for _, mid := range memberIDs {
+		m := g.consumerMembers[mid]
+		excess := counts[mid] - allowed[mid]
+		if excess <= 0 {
+			continue
+		}
+		// Remove excess partitions. Iterate topic IDs in sorted
+		// order so the choice is deterministic.
+		ids := slices.Collect(maps.Keys(m.targetAssignment))
+		slices.SortFunc(ids, func(a, b uuid) int { return bytes.Compare(a[:], b[:]) })
+		for _, id := range ids {
+			if excess <= 0 {
+				break
+			}
+			parts := m.targetAssignment[id]
+			remove := min(excess, len(parts))
+			for _, p := range parts[len(parts)-remove:] {
+				delete(assigned, tpKey{id, p})
+			}
+			m.targetAssignment[id] = parts[:len(parts)-remove]
+			if len(m.targetAssignment[id]) == 0 {
+				delete(m.targetAssignment, id)
+			}
+			counts[mid] -= remove
+			excess -= remove
+		}
+	}
+
+	// Step 3: collect all unassigned partitions - from members
+	// that left, partitions never assigned, and excess shed above.
+	var unassigned []assignorTP
+	for _, tp := range allTPs {
+		if !assigned[tpKey{tp.id, tp.part}] {
+			unassigned = append(unassigned, tp)
+		}
+	}
+	if len(unassigned) == 0 {
+		return
+	}
+
+	// Step 4: distribute unassigned partitions to members with
+	// the fewest partitions. unassigned preserves allTPs order
+	// (already sorted by topic, partition).
+	for _, tp := range unassigned {
+		bestMid := ""
+		bestCount := math.MaxInt
+		for _, mid := range memberIDs {
+			if _, ok := memberSubs[mid][tp.topic]; !ok {
+				continue
+			}
+			if counts[mid] < bestCount {
+				bestMid = mid
+				bestCount = counts[mid]
+			}
+		}
+		if bestMid == "" {
+			continue
+		}
+		m := g.consumerMembers[bestMid]
+		m.targetAssignment[tp.id] = append(m.targetAssignment[tp.id], tp.part)
+		counts[bestMid]++
+	}
+}
+
+// assignRange distributes contiguous partition ranges per topic. For
+// each topic, members subscribed to that topic (in sorted order) get
+// a contiguous block. If partitions don't divide evenly, the first
+// members get one extra partition.
+func (g *group) assignRange(allTPs []assignorTP, memberIDs []string, memberSubs map[string]map[string]struct{}) {
+	// Group TPs by topic. allTPs is sorted by (topic, partition),
+	// so partitions for each topic are contiguous.
+	type topicSlice struct {
+		topic      string
+		partitions []assignorTP
+	}
+	var topics []topicSlice
+	for i, tp := range allTPs {
+		if i == 0 || tp.topic != allTPs[i-1].topic {
+			topics = append(topics, topicSlice{topic: tp.topic})
+		}
+		topics[len(topics)-1].partitions = append(topics[len(topics)-1].partitions, tp)
+	}
+
+	for _, ts := range topics {
+		topic := ts.topic
+		partitions := ts.partitions
+
+		// Filter to members subscribed to this topic, preserving
+		// the sorted order from memberIDs.
+		var subs []string
+		for _, mid := range memberIDs {
+			if _, ok := memberSubs[mid][topic]; ok {
+				subs = append(subs, mid)
+			}
+		}
+		if len(subs) == 0 {
+			continue
+		}
+
+		numP := len(partitions)
+		numM := len(subs)
+		minQuota := numP / numM
+		extra := numP % numM
+		nextRange := 0
+
+		for _, mid := range subs {
+			quota := minQuota
+			if extra > 0 {
+				quota++
+				extra--
+			}
+			m := g.consumerMembers[mid]
+			for _, tp := range partitions[nextRange : nextRange+quota] {
+				m.targetAssignment[tp.id] = append(m.targetAssignment[tp.id], tp.part)
+			}
+			nextRange += quota
+		}
+	}
+}
+
+// computeNextAssignment computes the next assignment and pending
+// revocations for a member in a single pass (matching Kafka's
+// CurrentAssignmentBuilder). Processes lastReconciledSent against
+// targetAssignment, computing keep/revoke/assign sets:
+//
+//	a) Has revocations and client owns them - UNREVOKED_PARTITIONS
+//	b) Has new partitions to assign - advance epoch, assign them
+//	c) Has unreleased partitions only - advance epoch, wait
+//	d) Stable - advance epoch, no change needed
+//
+// Sets m.state, m.memberEpoch, and m.previousMemberEpoch. Returns
+// the new assigned and pending maps plus whether the assignment
+// changed.
+func (g *group) computeNextAssignment(m *consumerMember,
+	ownedTopicPartitions []kmsg.ConsumerGroupHeartbeatRequestTopic,
+) (
+	newAssigned, newPending map[uuid][]int32, changed bool,
+) {
+	// Collect all topic IDs from both maps.
+	allTopics := make(map[uuid]struct{})
+	for id := range m.lastReconciledSent {
+		allTopics[id] = struct{}{}
+	}
+	for id := range m.targetAssignment {
+		allTopics[id] = struct{}{}
+	}
+
+	keep := make(map[uuid][]int32)
+	pendingRevocation := make(map[uuid][]int32)
+	pendingAssignment := make(map[uuid][]int32)
+	hasUnreleasedPartitions := false
+	var blockedCount int
+
+	for id := range allTopics {
+		sent := m.lastReconciledSent[id]
+		target := m.targetAssignment[id]
+
+		// keep = sent intersect target; revoke = sent - target.
+		for _, p := range sent {
+			if slices.Contains(target, p) {
+				keep[id] = append(keep[id], p)
+			} else {
+				pendingRevocation[id] = append(pendingRevocation[id], p)
+			}
+		}
+
+		// pendingAssignment = target - sent, filtered by epoch.
+		for _, p := range target {
+			if slices.Contains(sent, p) {
+				continue // already in keep
+			}
+			epoch := g.currentPartitionEpoch(id, p)
+			if epoch == -1 || slices.Contains(m.partitionsPendingRevocation[id], p) {
+				pendingAssignment[id] = append(pendingAssignment[id], p)
+			} else {
+				hasUnreleasedPartitions = true
+				blockedCount++
+			}
+		}
+	}
+
+	// Merge existing pending revocations (from previous rounds,
+	// not yet confirmed by client) with newly computed ones.
+	allPendingRevocation := copyAssignment(m.partitionsPendingRevocation)
+	for id, parts := range pendingRevocation {
+		for _, p := range parts {
+			if !slices.Contains(allPendingRevocation[id], p) {
+				allPendingRevocation[id] = append(allPendingRevocation[id], p)
+			}
+		}
+	}
+
+	hasAnyPendingRevocation := len(allPendingRevocation) > 0
+	hasPendingAssignment := len(pendingAssignment) > 0
+
+	switch {
+	case hasAnyPendingRevocation && ownsRevokedPartitions(allPendingRevocation, ownedTopicPartitions):
+		// Branch a: client still owns revoked partitions.
+		m.state = cmUnrevokedPartitions
+		// Epoch stays unchanged.
+		newAssigned = keep
+		newPending = allPendingRevocation
+		g.c.cfg.logger.Logf(LogLevelDebug, "RECONCILE REVOKE-FIRST: member=%s reconciled=%d sent=%d target=%d pending=%d",
+			m.memberID, countAssignment(keep), countAssignment(m.lastReconciledSent), countAssignment(m.targetAssignment), countAssignment(allPendingRevocation))
+
+	case hasPendingAssignment:
+		// Branch b: new partitions to assign.
+		if hasUnreleasedPartitions {
+			m.state = cmUnreleasedPartitions
+		} else {
+			m.state = cmStable
+		}
+		m.previousMemberEpoch = m.memberEpoch
+		m.memberEpoch = g.targetAssignmentEpoch
+		newAssigned = make(map[uuid][]int32, len(keep)+len(pendingAssignment))
+		maps.Copy(newAssigned, keep)
+		for id, parts := range pendingAssignment {
+			newAssigned[id] = append(newAssigned[id], parts...)
+		}
+		newPending = make(map[uuid][]int32)
+		g.c.cfg.logger.Logf(LogLevelDebug, "RECONCILE SUMMARY: member=%s reconciled=%d target=%d +%d blocked=%d",
+			m.memberID, countAssignment(newAssigned), countAssignment(m.targetAssignment), countAssignment(pendingAssignment), blockedCount)
+
+	default:
+		// Branches c+d: no new partitions.
+		if hasUnreleasedPartitions {
+			m.state = cmUnreleasedPartitions
+			g.c.cfg.logger.Logf(LogLevelDebug, "RECONCILE SUMMARY: member=%s reconciled=%d target=%d +%d blocked=%d",
+				m.memberID, countAssignment(keep), countAssignment(m.targetAssignment), 0, blockedCount)
+		} else {
+			m.state = cmStable
+		}
+		m.previousMemberEpoch = m.memberEpoch
+		m.memberEpoch = g.targetAssignmentEpoch
+		newAssigned = keep
+		newPending = make(map[uuid][]int32)
+	}
+
+	changed = !maps.EqualFunc(m.lastReconciledSent, newAssigned, slices.Equal) || !maps.EqualFunc(m.partitionsPendingRevocation, newPending, slices.Equal)
+
+	return newAssigned, newPending, changed
+}
+
+// updateCurrentAssignment handles subscription changes for a member
+// that is waiting for revocations. It only removes partitions for
+// unsubscribed topics from lastReconciledSent.
+func (g *group) updateCurrentAssignment(m *consumerMember,
+	ownedTopicPartitions []kmsg.ConsumerGroupHeartbeatRequestTopic,
+) (
+	newAssigned, newPending map[uuid][]int32, changed bool,
+) {
+	// Compute subscribed topic IDs from subscriptions + regex.
+	subscribedIDs := make(map[uuid]struct{})
+	for _, topic := range m.subscribedTopics {
+		if id, _, ok := g.c.topicInfo(topic); ok {
+			subscribedIDs[id] = struct{}{}
+		}
+	}
+	if m.subscribedTopicRegex != nil {
+		for topic := range g.c.data.tps {
+			if m.subscribedTopicRegex.MatchString(topic) {
+				subscribedIDs[g.c.data.t2id[topic]] = struct{}{}
+			}
+		}
+	}
+
+	// Remove unsubscribed topics from lastReconciledSent.
+	pendingRevocation := make(map[uuid][]int32)
+	newAssigned = make(map[uuid][]int32, len(m.lastReconciledSent))
+	for id, parts := range m.lastReconciledSent {
+		if _, ok := subscribedIDs[id]; ok {
+			newAssigned[id] = parts
+		} else {
+			pendingRevocation[id] = parts
+		}
+	}
+
+	if len(pendingRevocation) == 0 {
+		return nil, nil, false
+	}
+
+	// Merge with existing pending.
+	newPending = copyAssignment(m.partitionsPendingRevocation)
+	for id, parts := range pendingRevocation {
+		newPending[id] = append(newPending[id], parts...)
+	}
+
+	if ownsRevokedPartitions(newPending, ownedTopicPartitions) {
+		m.state = cmUnrevokedPartitions
+	}
+	// Epoch doesn't change for subscription-only updates.
+
+	changed = true
+	return newAssigned, newPending, changed
+}
+
+// clearConfirmedRevocations removes partitions from
+// m.partitionsPendingRevocation that are no longer reported in
+// ownedTopicPartitions (the client confirmed releasing them).
+// Updates the partition epoch map accordingly.
+func (g *group) clearConfirmedRevocations(m *consumerMember,
+	ownedTopicPartitions []kmsg.ConsumerGroupHeartbeatRequestTopic,
+) {
+	reported := topicsToAssignment(ownedTopicPartitions)
+
+	oldPending := m.partitionsPendingRevocation
+	newPending := make(map[uuid][]int32)
+	for id, parts := range oldPending {
+		for _, p := range parts {
+			if slices.Contains(reported[id], p) {
+				newPending[id] = append(newPending[id], p)
+			}
+		}
+	}
+	m.partitionsPendingRevocation = newPending
+
+	if cleared := countAssignment(oldPending) - countAssignment(newPending); cleared > 0 {
+		g.c.cfg.logger.Logf(LogLevelDebug, "pendingRevoke cleared: member=%s epoch=%d cleared=%d kept=%d",
+			m.memberID, m.memberEpoch, cleared, countAssignment(newPending))
+	}
+
+	// Update epoch map: remove old pending, add new.
+	g.removePartitionEpochs(oldPending, m.memberID)
+	g.addPartitionEpochs(m.partitionsPendingRevocation, m.memberID, m.memberEpoch)
+}
+
+// maybeReconcile dispatches to the appropriate reconciliation path
+// based on the member's current state.
+func (g *group) maybeReconcile(m *consumerMember, hasSubscriptionChanged bool,
+	ownedTopicPartitions []kmsg.ConsumerGroupHeartbeatRequestTopic,
+) bool {
+	// Clear confirmed revocations first.
+	if ownedTopicPartitions != nil {
+		g.clearConfirmedRevocations(m, ownedTopicPartitions)
+	}
+
+	// Early exit if nothing to do.
+	if !hasSubscriptionChanged && m.state == cmStable && m.memberEpoch == g.targetAssignmentEpoch {
+		return false
+	}
+
+	// Save state before computation for epoch map update.
+	oldSent := m.lastReconciledSent
+	oldPending := m.partitionsPendingRevocation
+	oldEpoch := m.memberEpoch
+
+	var newAssigned, newPending map[uuid][]int32
+	var changed bool
+
+	switch m.state {
+	case cmStable:
+		if m.memberEpoch != g.targetAssignmentEpoch {
+			newAssigned, newPending, changed = g.computeNextAssignment(m, ownedTopicPartitions)
+		} else if hasSubscriptionChanged {
+			newAssigned, newPending, changed = g.updateCurrentAssignment(m, ownedTopicPartitions)
+		}
+
+	case cmUnrevokedPartitions:
+		if ownsRevokedPartitions(m.partitionsPendingRevocation, ownedTopicPartitions) {
+			if hasSubscriptionChanged {
+				newAssigned, newPending, changed = g.updateCurrentAssignment(m, ownedTopicPartitions)
+			}
+		} else {
+			newAssigned, newPending, changed = g.computeNextAssignment(m, ownedTopicPartitions)
+		}
+
+	case cmUnreleasedPartitions:
+		newAssigned, newPending, changed = g.computeNextAssignment(m, ownedTopicPartitions)
+	}
+
+	if changed {
+		m.lastReconciledSent = newAssigned
+		m.partitionsPendingRevocation = newPending
+		g.updateMemberEpochs(m, oldSent, oldPending)
+		m.updatePartAssignmentEpochs(newAssigned)
+	} else if m.memberEpoch != oldEpoch {
+		// Epoch advanced but assignment didn't change.
+		// Re-stamp epoch map entries at the new epoch.
+		g.updateMemberEpochs(m, oldSent, oldPending)
+	}
+
+	return changed
+}
+
+// Builds the response assignment from a partition map.
+func makeAssignment(assigned map[uuid][]int32) *kmsg.ConsumerGroupHeartbeatResponseAssignment {
+	a := new(kmsg.ConsumerGroupHeartbeatResponseAssignment)
+	for id, parts := range assigned {
+		t := kmsg.NewConsumerGroupHeartbeatResponseAssignmentTopic()
+		t.TopicID = id
+		t.Partitions = parts
+		a.Topics = append(a.Topics, t)
+	}
+	return a
+}
+
+// Updates the consumer group state based on member reconciliation status.
+// Skips epoch -2 members (static leave) - they are temporarily departed.
+func (g *group) updateConsumerStateField() {
+	var active int
+	for _, m := range g.consumerMembers {
+		if m.memberEpoch == -2 {
+			continue
+		}
+		active++
+		if m.state != cmStable || m.memberEpoch != g.targetAssignmentEpoch {
+			g.state = groupReconciling
+			return
+		}
+	}
+	if active == 0 {
+		g.state = groupEmpty
+		return
+	}
+	g.state = groupStable
+}
+
+func (g *group) meta848Entry() groupLogEntry {
+	return groupLogEntry{
+		Type:       "meta848",
+		Group:      g.name,
+		GroupType:  g.typ,
+		Assignor:   g.assignorName,
+		GroupEpoch: g.groupEpoch,
+	}
+}
+
+func (g *group) persistMeta848() { g.c.persistGroupEntry(g.meta848Entry()) }
+
+func (g *group) classicMetaEntry() groupLogEntry {
+	return groupLogEntry{
+		Type:       "meta",
+		Group:      g.name,
+		GroupType:  g.typ,
+		ProtoType:  g.protocolType,
+		Protocol:   g.protocol,
+		Generation: g.generation,
+	}
+}
+
+func (g *group) persistClassicMeta() { g.c.persistGroupEntry(g.classicMetaEntry()) }
+
+func (g *group) commitEntry(topic string, part int32, oc offsetCommit) groupLogEntry {
+	entry := groupLogEntry{
+		Type:     "commit",
+		Group:    g.name,
+		Topic:    topic,
+		Part:     part,
+		Offset:   oc.offset,
+		Epoch:    oc.leaderEpoch,
+		Metadata: oc.metadata,
+	}
+	if !oc.lastCommit.IsZero() {
+		ms := oc.lastCommit.UnixMilli()
+		entry.LastCommit = &ms
+	}
+	return entry
+}
+
+func (g *group) commitAndPersist(topic string, part int32, oc offsetCommit) {
+	oc.lastCommit = time.Now()
+	g.commits.set(topic, part, oc)
+	g.c.persistGroupEntry(g.commitEntry(topic, part, oc))
+}
+
+func (g *group) deleteCommitAndPersist(topic string, part int32) {
+	g.commits.delp(topic, part)
+	g.c.persistGroupEntry(groupLogEntry{
+		Type:  "delete",
+		Group: g.name,
+		Topic: topic,
+		Part:  part,
+	})
+}
+
+// classicSubscribedTopics returns the set of topics subscribed by any
+// member of a classic consumer group (from join protocol metadata).
+func (g *group) classicSubscribedTopics() map[string]struct{} {
+	sub := make(map[string]struct{})
+	for _, ms := range []map[string]*groupMember{g.members, g.pending} {
+		for _, m := range ms {
+			if m.join == nil {
+				continue
+			}
+			for _, proto := range m.join.Protocols {
+				var meta kmsg.ConsumerMemberMetadata
+				if err := meta.ReadFrom(proto.Metadata); err == nil {
+					for _, topic := range meta.Topics {
+						sub[topic] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	return sub
+}
+
+// expireOffsets removes committed offsets that have exceeded the retention
+// period (KIP-211). Returns true if all offsets expired and the group can
+// be deleted (no members, no pending txn offsets).
+//
+// Must be called from Cluster.run().
+func (g *group) expireOffsets(retentionMs int64, hasUnstableOffsets bool) bool {
+	subscribed := g.offsetExpirationFilter()
+	if subscribed == nil {
+		return false // no expiration applies in this state
+	}
+
+	now := time.Now()
+	retention := time.Duration(retentionMs) * time.Millisecond
+
+	// Collect expired offsets. We can't delete during iteration since
+	// delp may remove the inner map.
+	type tp struct {
+		t string
+		p int32
+	}
+	var expired []tp
+	g.commits.each(func(topic string, part int32, oc *offsetCommit) {
+		if _, ok := subscribed[topic]; ok {
+			return // subscribed - skip
+		}
+		if oc.lastCommit.IsZero() {
+			return // no timestamp (pre-KIP-211 data) - skip
+		}
+		base := oc.lastCommit
+		// For empty classic groups with protocolType, use max(emptyAt, commitTimestamp)
+		if g.protocolType != "" && g.state == groupEmpty && g.emptyAt.After(base) {
+			base = g.emptyAt
+		}
+		if now.Sub(base) >= retention {
+			expired = append(expired, tp{topic, part})
+		}
+	})
+
+	for _, e := range expired {
+		g.deleteCommitAndPersist(e.t, e.p)
+	}
+
+	if hasUnstableOffsets || len(g.commits) > 0 {
+		return false
+	}
+	if g.typ == "consumer" {
+		// A static member parked at epoch -2 is still a member: it
+		// keeps the instance ID mapping it rejoins through, and Kafka
+		// calls the group empty only when it holds no members at all.
+		// Deleting the group here would throw that mapping away while
+		// the member is briefly gone.
+		return len(g.consumerMembers) == 0
+	}
+	return g.state == groupEmpty
+}
+
+// expireAllTopics is a non-nil empty sentinel for offsetExpirationFilter:
+// no topics are subscribed, so all are eligible for expiration.
+var expireAllTopics = map[string]struct{}{}
+
+// offsetExpirationFilter returns the set of subscribed topics whose
+// offsets should NOT be expired, or nil if no expiration applies.
+// A non-nil empty map means all topics are eligible for expiration.
+//
+// Expiration conditions per Kafka (KIP-211):
+//   - Simple group (no protocolType): all topics, any state
+//   - Classic with protocolType, Empty: all topics
+//   - Classic consumer, Stable: unsubscribed topics only
+//   - Classic with protocolType, other states: no expiration
+//   - 848 consumer: unsubscribed topics, any state
+func (g *group) offsetExpirationFilter() map[string]struct{} {
+	switch g.typ {
+	case "consumer":
+		// 848: expire unsubscribed topics in any state
+		var sub map[string]struct{}
+		for _, m := range g.consumerMembers {
+			if m.memberEpoch == -2 {
+				continue
+			}
+			for _, t := range m.subscribedTopics {
+				if sub == nil {
+					sub = make(map[string]struct{})
+				}
+				sub[t] = struct{}{}
+			}
+		}
+		if sub == nil {
+			return expireAllTopics
+		}
+		return sub
+
+	default:
+		// Classic group
+		if g.protocolType == "" {
+			return expireAllTopics // simple group - expire all
+		}
+		switch g.state {
+		case groupEmpty:
+			return expireAllTopics
+		case groupStable:
+			if g.protocolType == "consumer" {
+				return g.classicSubscribedTopics()
+			}
+			return nil
+		case groupPreparingRebalance, groupCompletingRebalance, groupDead, groupReconciling:
+			return nil
+		}
+		return nil
+	}
+}
+
+// staticMemberEntry builds a static member log entry. Empty memberID
+// signals deletion on replay.
+func (g *group) staticMemberEntry(instanceID, memberID string) groupLogEntry {
+	return groupLogEntry{
+		Type:       "static",
+		Group:      g.name,
+		InstanceID: instanceID,
+		MemberID:   memberID,
+	}
+}
+
+func (g *group) persistStaticMember(instanceID, memberID string) {
+	g.c.persistGroupEntry(g.staticMemberEntry(instanceID, memberID))
+}
+
+// evictConsumerMember fences and removes a consumer member, then
+// recomputes the target assignment.
+func (g *group) evictConsumerMember(m *consumerMember) {
+	g.fenceConsumerMember(m)
+	delete(g.consumerMembers, m.memberID)
+	g.groupEpoch++
+	g.computeTargetAssignment()
+	g.updateConsumerStateField()
+	g.persistMeta848()
+}
+
+// atConsumerSessionTimeout sets up the session timeout for a consumer
+// member. The session timeout uses the per-group or server-level config
+// group.consumer.session.timeout.ms and fences the member entirely if
+// no heartbeats are received within the timeout.
+func (g *group) atConsumerSessionTimeout(m *consumerMember) {
+	g.atConsumerSessionTimeoutIn(m, time.Duration(g.c.consumerSessionTimeoutMsForGroup(g.name))*time.Millisecond)
+}
+
+// scheduleConsumerRebalanceTimeout starts a per-member rebalance
+// timeout that fences the member if it does not complete partition
+// revocation within rebalanceTimeoutMs. Only active when the member
+// has partitions to release. If the member is gone or replaced, or its
+// epoch has advanced by the time the timer fires, the timeout is ignored.
+func (g *group) scheduleConsumerRebalanceTimeout(m *consumerMember) {
+	g.cancelConsumerRebalanceTimeout(m)
+	timeout := time.Duration(m.rebalanceTimeoutMs) * time.Millisecond
+	epoch := m.memberEpoch
+	memberID := m.memberID
+	m.tRebal = g.timerWork(timeout, func() {
+		// Check the member is still this one and has not progressed
+		// past the epoch we were watching. Identity is checked as
+		// well as the epoch because a replacement can sit at the same
+		// number: a brand new member and one inheriting from an epoch
+		// -2 static predecessor are both at 0.
+		if g.consumerMembers[memberID] != m || m.memberEpoch != epoch {
+			return
+		}
+		g.c.cfg.logger.Logf(LogLevelWarn, "consumerRebalanceTimeout: group=%s member=%s epoch=%d remaining=%d",
+			g.logName(), memberID, epoch, len(g.consumerMembers)-1)
+		g.evictConsumerMember(m)
+	})
+}
+
+func (*group) cancelConsumerRebalanceTimeout(m *consumerMember) {
+	if m.tRebal != nil {
+		m.tRebal.Stop()
+		m.tRebal = nil
+	}
+}
+
+// activeConsumerCount returns the number of consumer members that are
+// not temporarily departed (epoch -2).
+func (g *group) activeConsumerCount() int {
+	var n int
+	for _, m := range g.consumerMembers {
+		if m.memberEpoch != -2 {
+			n++
+		}
+	}
+	return n
+}
+
+// fenceConsumerMember stops all timers and clears partition epoch
+// entries for the member. The caller must delete the member from
+// consumerMembers separately.
+func (g *group) fenceConsumerMember(m *consumerMember) {
+	if m.t != nil {
+		m.t.Stop()
+	}
+	g.cancelConsumerRebalanceTimeout(m)
+	// Free what this member owns, and only what it owns: another
+	// member may hold a partition this one still has a record of.
+	g.removePartitionEpochs(m.lastReconciledSent, m.memberID)
+	g.removePartitionEpochs(m.partitionsPendingRevocation, m.memberID)
+}
+
+// Handles a commit for consumer groups with relaxed validation per KIP-1251.
+func (g *group) handleConsumerOffsetCommit(creq *clientReq) *kmsg.OffsetCommitResponse {
+	req := creq.kreq.(*kmsg.OffsetCommitRequest)
+	resp := req.ResponseKind().(*kmsg.OffsetCommitResponse)
+
+	if kerr := g.c.validateGroup(creq, req.Group); kerr != nil {
+		fillOffsetCommit(req, resp, kerr.Code)
+		return resp
+	}
+	if e := g.c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.Group}); e != nil && creq.skipsWork(e) {
+		fillOffsetCommit(req, resp, e.Code)
+		return resp
+	}
+
+	// Empty group with negative epoch: accept without validation
+	// (admin / kadm commits). Use activeConsumerCount to skip
+	// epoch -2 (static leave) members. This check must come BEFORE
+	// the version gate so that admin commits on empty groups are
+	// accepted at any OffsetCommit version.
+	var cm *consumerMember
+	if g.activeConsumerCount() == 0 && req.Generation < 0 { //nolint:revive // intentional empty block, falls through to commit
+	} else {
+		// Consumer groups require OffsetCommit v9+ (KIP-848). Older
+		// versions use GenerationID which does not map to member
+		// epochs.
+		if req.Version < 9 {
+			fillOffsetCommit(req, resp, kerr.UnsupportedVersion.Code)
+			return resp
+		}
+		if req.MemberID == "" {
+			fillOffsetCommit(req, resp, kerr.UnknownMemberID.Code)
+			return resp
+		}
+		m, ok := g.consumerMembers[req.MemberID]
+		if !ok {
+			fillOffsetCommit(req, resp, kerr.UnknownMemberID.Code)
+			return resp
+		}
+		if req.Generation > m.memberEpoch {
+			g.c.cfg.logger.Logf(LogLevelWarn, "OffsetCommit STALE: group=%s member=%s reqEpoch=%d memberEpoch=%d",
+				g.logName(), req.MemberID, req.Generation, m.memberEpoch)
+			fillOffsetCommit(req, resp, kerr.StaleMemberEpoch.Code)
+			return resp
+		}
+		g.atConsumerSessionTimeout(m)
+		cm = m
+	}
+
+	allowed := g.fillOffsetCommitWithACL(creq, req, resp)
+	for _, t := range allowed {
+		for _, p := range t.Partitions {
+			// KIP-1251: per-partition assignment epoch check.
+			// Reject if the request epoch is older than when
+			// this partition was assigned to the member.
+			if cm != nil {
+				if id, ok := g.c.data.t2id[t.Topic]; ok {
+					if epochs, ok := cm.partAssignmentEpochs[id]; ok {
+						if assignEpoch, ok := epochs[p.Partition]; ok && req.Generation < assignEpoch {
+							g.c.cfg.logger.Logf(LogLevelWarn, "OffsetCommit STALE: group=%s member=%s topic=%s p=%d reqEpoch=%d assignmentEpoch=%d",
+								g.logName(), req.MemberID, t.Topic[:min(16, len(t.Topic))], p.Partition, req.Generation, assignEpoch)
+							setOffsetCommitPartitionErr(resp, t.Topic, p.Partition, kerr.StaleMemberEpoch.Code)
+							continue
+						}
+					}
+				}
+			}
+			g.commitAndPersist(t.Topic, p.Partition, offsetCommit{
+				offset:      p.Offset,
+				leaderEpoch: p.LeaderEpoch,
+				metadata:    p.Metadata,
+			})
+		}
+	}
+	return resp
+}
+
+func copyAssignment(a map[uuid][]int32) map[uuid][]int32 {
+	c := make(map[uuid][]int32, len(a))
+	for id, parts := range a {
+		c[id] = slices.Clone(parts)
+	}
+	return c
+}
+
+func countAssignment(a map[uuid][]int32) int {
+	var n int
+	for _, parts := range a {
+		n += len(parts)
+	}
+	return n
+}
+
+func (g *group) countPartitionEpochs() int {
+	var n int
+	for _, pm := range g.partitionEpochs {
+		n += len(pm)
+	}
+	return n
+}
+
+func topicsToAssignment(topics []kmsg.ConsumerGroupHeartbeatRequestTopic) map[uuid][]int32 {
+	m := make(map[uuid][]int32, len(topics))
+	for _, t := range topics {
+		m[t.TopicID] = t.Partitions
+	}
+	return m
+}
+
+// updatePartAssignmentEpochs updates per-partition assignment epochs
+// after reconciliation. Retained partitions keep their existing epoch;
+// newly assigned partitions get the member's current epoch.
+func (m *consumerMember) updatePartAssignmentEpochs(reconciled map[uuid][]int32) {
+	newEpochs := make(map[uuid]map[int32]int32, len(reconciled))
+	for id, parts := range reconciled {
+		newEpochs[id] = make(map[int32]int32, len(parts))
+		for _, p := range parts {
+			if existing, ok := m.partAssignmentEpochs[id]; ok {
+				if epoch, ok := existing[p]; ok {
+					newEpochs[id][p] = epoch
+					continue
+				}
+			}
+			newEpochs[id][p] = m.memberEpoch
+		}
+	}
+	m.partAssignmentEpochs = newEpochs
+}
+
+// ownsRevokedPartitions matches Kafka's check: if topics is nil
+// (keepalive), conservatively assume the client still owns the revoked
+// partitions. Otherwise, return true if any pending partition is still
+// reported by the client.
+func ownsRevokedPartitions(pending map[uuid][]int32, topics []kmsg.ConsumerGroupHeartbeatRequestTopic) bool {
+	if topics == nil {
+		return len(pending) > 0
+	}
+	reported := topicsToAssignment(topics)
+	for id, parts := range pending {
+		for _, p := range parts {
+			if slices.Contains(reported[id], p) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Returns true if every partition in owned is present in target.
+func isSubsetAssignment(owned []kmsg.ConsumerGroupHeartbeatRequestTopic, target map[uuid][]int32) bool {
+	for _, t := range owned {
+		tParts, ok := target[t.TopicID]
+		if !ok {
+			return false
+		}
+		for _, p := range t.Partitions {
+			if !slices.Contains(tParts, p) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// currentPartitionEpoch returns the epoch of the member that currently
+// owns the given partition, or -1 if no member owns it.
+func (g *group) currentPartitionEpoch(topicID uuid, partition int32) int32 {
+	if pm := g.partitionEpochs[topicID]; pm != nil {
+		if o, ok := pm[partition]; ok {
+			return o.Epoch
+		}
+	}
+	return -1
+}
+
+// updateMemberEpochs updates the partition epoch map when a member's
+// state changes. Removes the member's old contribution, then adds its
+// new contribution from the member's current fields. Caller must save
+// old state before mutating the member.
+func (g *group) updateMemberEpochs(m *consumerMember, oldSent, oldPending map[uuid][]int32) {
+	g.removePartitionEpochs(oldSent, m.memberID)
+	g.removePartitionEpochs(oldPending, m.memberID)
+	g.addPartitionEpochs(m.lastReconciledSent, m.memberID, m.memberEpoch)
+	g.addPartitionEpochs(m.partitionsPendingRevocation, m.memberID, m.memberEpoch)
+}
+
+// addPartitionEpochs records that a member at the given epoch owns the
+// given partitions. If a partition is already owned by a different
+// member, the caller has a logic bug (double assignment) - we log and
+// skip the update to avoid masking the real owner.
+func (g *group) addPartitionEpochs(a map[uuid][]int32, memberID string, epoch int32) {
+	for id, parts := range a {
+		pm := g.partitionEpochs[id]
+		if pm == nil {
+			pm = make(map[int32]partitionOwner, len(parts))
+			g.partitionEpochs[id] = pm
+		}
+		for _, p := range parts {
+			if o, ok := pm[p]; ok && o.Member != memberID {
+				g.c.cfg.logger.Logf(LogLevelError, "group %s: addPartitionEpochs: partition %d of topic %v is owned by member %s at epoch %d, skipping the claim by %s at epoch %d", g.name, p, id, o.Member, o.Epoch, memberID, epoch)
+				continue
+			}
+			pm[p] = partitionOwner{Member: memberID, Epoch: epoch}
+		}
+	}
+}
+
+// removePartitionEpochs clears the given partitions, but only those the
+// given member owns. Matching on the epoch instead would clear an entry
+// belonging to another member sitting at the same epoch, which then lets
+// a third member claim a partition that is still assigned.
+func (g *group) removePartitionEpochs(a map[uuid][]int32, memberID string) {
+	for id, parts := range a {
+		pm := g.partitionEpochs[id]
+		if pm == nil {
+			continue
+		}
+		for _, p := range parts {
+			if o, ok := pm[p]; ok && o.Member == memberID {
+				delete(pm, p)
+			}
+		}
+		if len(pm) == 0 {
+			delete(g.partitionEpochs, id)
+		}
+	}
+}
+
+// validateMemberGeneration checks that the memberID and generation are
+// valid for this group. Must be called from Cluster.run(). Returns 0 on
+// success or an error code. A consumer protocol member whose epoch does not
+// match gets STALE_MEMBER_EPOCH; callers serving request versions that
+// predate that error map it to ILLEGAL_GENERATION.
+func (g *group) validateMemberGeneration(memberID string, generation int32) int16 {
+	if g.typ == "consumer" {
+		if memberID != "" {
+			m, exists := g.consumerMembers[memberID]
+			if !exists {
+				return kerr.UnknownMemberID.Code
+			}
+			if generation != -1 && generation != m.memberEpoch {
+				return kerr.StaleMemberEpoch.Code
+			}
+		} else if generation != -1 && generation != g.groupEpoch {
+			return kerr.StaleMemberEpoch.Code
+		}
+	} else {
+		if memberID != "" {
+			if _, exists := g.members[memberID]; !exists {
+				return kerr.UnknownMemberID.Code
+			}
+		}
+		if generation != -1 && generation != g.generation {
+			return kerr.IllegalGeneration.Code
+		}
+	}
+	return 0
+}
+
+// restoreClassicMembers restores classic group members from persisted
+// session state. Members whose session has expired (elapsed time since
+// shutdown >= session timeout) are skipped.
+func (g *group) restoreClassicMembers(shutdownAt time.Time, sg sessionClassicGroup) {
+	// Provisionally set state to groupStable while restoring members;
+	// if the persisted sg.State was non-Stable we re-trigger the
+	// rebalance at the end of the function. See comment near the end.
+	g.state = groupStable
+	g.leader = sg.Leader
+	for _, sm := range sg.Members {
+		// Use per-member last heartbeat time if available,
+		// falling back to shutdownAt for old session files.
+		lastHB := sm.LastHeartbeat
+		if lastHB.IsZero() {
+			lastHB = shutdownAt
+		}
+		remaining := time.Duration(sm.SessionTimeoutMs)*time.Millisecond - time.Since(lastHB)
+		if remaining <= 0 {
+			continue
+		}
+		m := &groupMember{
+			memberID:   sm.ID,
+			instanceID: sm.InstanceID,
+			clientID:   sm.ClientID,
+			clientHost: sm.ClientHost,
+			assignment: sm.Assignment,
+			join: &kmsg.JoinGroupRequest{
+				SessionTimeoutMillis:   sm.SessionTimeoutMs,
+				RebalanceTimeoutMillis: sm.RebalanceTimeoutMs,
+			},
+		}
+		for _, p := range sm.Protocols {
+			m.join.Protocols = append(m.join.Protocols, kmsg.JoinGroupRequestProtocol{Name: p.Name, Metadata: p.Metadata})
+			g.protocols[p.Name]++
+		}
+		g.members[m.memberID] = m
+		if m.instanceID != nil {
+			g.staticMembers[*m.instanceID] = m.memberID
+		}
+		g.atSessionTimeoutIn(m, remaining, func() { g.expireSession(m) })
+		// Preserve the real last heartbeat time so that across
+		// repeated restarts, dead members accumulate elapsed time.
+		m.last = lastHB
+	}
+	if len(g.members) == 0 {
+		g.state = groupEmpty
+		g.emptyAt = time.Now()
+		g.leader = ""
+		return
+	}
+	// If the pre-shutdown state was non-Stable, a rebalance was in
+	// progress (e.g. a LeaveGroup had transitioned the group to
+	// PreparingRebalance but the rebalance hadn't completed before
+	// shutdown). Re-trigger rebalance so members rejoin and the
+	// assignment reflects the current member set -- otherwise
+	// partitions owned by departed members stay orphaned. If the
+	// persisted state was Stable, the old assignment is still valid
+	// for the current members; do not force a rebalance.
+	if sg.State != groupStable && sg.State != groupEmpty {
+		g.rebalance()
+	}
+}
+
+// atSessionTimeoutIn starts a session timeout timer with a custom duration.
+// atSessionTimeout is a convenience wrapper that reads the timeout from the
+// member's join request.
+func (g *group) atSessionTimeoutIn(m *groupMember, d time.Duration, fn func()) {
+	if m.t != nil {
+		m.t.Stop()
+	}
+	m.last = time.Now()
+	m.t = g.timerWork(d, func() {
+		if time.Since(m.last) >= d {
+			fn()
+		}
+	})
+}
+
+// restoreConsumerMembers restores 848 consumer group members from persisted
+// session state. If all sessions have expired, no members are restored.
+func (g *group) restoreConsumerMembers(shutdownAt time.Time, sg sessionConsumerGroup) {
+	sessionTimeout := time.Duration(g.c.consumerSessionTimeoutMsForGroup(g.name)) * time.Millisecond
+
+	g.partitionEpochs = sg.PartitionEpochs
+	g.targetAssignmentEpoch = sg.TargetAssignmentEpoch
+
+	for _, sm := range sg.Members {
+		// Use per-member last heartbeat time if available,
+		// falling back to shutdownAt for old session files.
+		lastHB := sm.LastHeartbeat
+		if lastHB.IsZero() {
+			lastHB = shutdownAt
+		}
+		remaining := sessionTimeout - time.Since(lastHB)
+		if remaining <= 0 {
+			g.c.cfg.logger.Logf(LogLevelDebug, "restoreConsumerMembers: group=%s member=%s expired (lastHB=%v ago)",
+				g.logName(), sm.ID, time.Since(lastHB))
+			continue
+		}
+
+		m := &consumerMember{
+			memberID:                    sm.ID,
+			instanceID:                  sm.InstanceID,
+			clientID:                    sm.ClientID,
+			clientHost:                  sm.ClientHost,
+			memberEpoch:                 sm.Epoch,
+			previousMemberEpoch:         sm.PrevEpoch,
+			state:                       consumerMemberState(sm.CmState),
+			subscribedTopics:            sm.Topics,
+			lastReconciledSent:          sm.Reconciled,
+			partitionsPendingRevocation: sm.PendingRevoke,
+			targetAssignment:            sm.Target,
+			partAssignmentEpochs:        sm.PartAssignmentEpochs,
+			rackID:                      sm.Rack,
+			serverAssignor:              sm.Assignor,
+			rebalanceTimeoutMs:          sm.RebalanceTimeoutMs,
+		}
+		if m.instanceID != nil {
+			g.staticMembers[*m.instanceID] = m.memberID
+		}
+		g.consumerMembers[m.memberID] = m
+		g.atConsumerSessionTimeoutIn(m, remaining)
+		// Preserve the real last heartbeat time so that across
+		// repeated restarts, dead members accumulate elapsed time
+		// instead of resetting to "just now" each restore.
+		m.last = lastHB
+	}
+	if len(g.consumerMembers) == 0 {
+		return
+	}
+	g.updateConsumerStateField()
+}
+
+// atConsumerSessionTimeoutIn starts a consumer session timeout timer with a
+// custom initial duration. Used after loading session state.
+func (g *group) atConsumerSessionTimeoutIn(m *consumerMember, d time.Duration) {
+	if m.t != nil {
+		m.t.Stop()
+	}
+	m.last = time.Now()
+	m.t = g.timerWork(d, func() {
+		// A timer that already fired cannot be retracted. Member IDs
+		// are client supplied, and a static member that leaves and
+		// rejoins is a new object at the same key, so identity has to
+		// be checked as well as staleness.
+		if g.consumerMembers[m.memberID] != m || time.Since(m.last) < d {
+			return
+		}
+		g.c.cfg.logger.Logf(LogLevelWarn, "consumerSessionTimeout: group=%s member=%s epoch=%d remaining=%d",
+			g.logName(), m.memberID, m.memberEpoch, len(g.consumerMembers)-1)
+		g.evictConsumerMember(m)
+	})
+}
+
+// compileSubscribedTopicRegex compiles a KIP-848 subscription regex. Kafka
+// matches the regex against the entire topic name, so we anchor it.
+func compileSubscribedTopicRegex(pattern string) (*regexp.Regexp, error) {
+	return regexp.Compile("^(?:" + pattern + ")$")
 }

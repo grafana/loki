@@ -5,16 +5,28 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// DescribeUserSCRAMCredentials: v0
+//
+// Behavior:
+// * Returns SCRAM credential info for requested users
+// * If Users is null, returns all users with SCRAM credentials
+// * Supports SCRAM-SHA-256 (mechanism 1) and SCRAM-SHA-512 (mechanism 2)
+
 func init() { regKey(50, 0, 0) }
 
-func (c *Cluster) handleDescribeUserSCRAMCredentials(kreq kmsg.Request) (kmsg.Response, error) {
+func (c *Cluster) handleDescribeUserSCRAMCredentials(creq *clientReq) (kmsg.Response, error) {
 	var (
-		req  = kreq.(*kmsg.DescribeUserSCRAMCredentialsRequest)
+		req  = creq.kreq.(*kmsg.DescribeUserSCRAMCredentialsRequest)
 		resp = req.ResponseKind().(*kmsg.DescribeUserSCRAMCredentialsResponse)
 	)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
+	}
+
+	if e := c.denyCluster(creq, kmsg.ACLOperationDescribe, faultKey{}); e != nil {
+		resp.ErrorCode = e.Code
+		return resp, nil
 	}
 
 	describe := make(map[string]bool) // if false, user was duplicated
@@ -43,6 +55,10 @@ func (c *Cluster) handleDescribeUserSCRAMCredentials(kreq kmsg.Request) (kmsg.Re
 
 	for u, duplicated := range describe {
 		sr := addr(u)
+		if e := creq.faults.check(faultKey{resource: u}); e != nil {
+			sr.ErrorCode = e.Code
+			continue
+		}
 		if duplicated {
 			sr.ErrorCode = kerr.DuplicateResource.Code
 			continue
