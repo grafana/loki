@@ -671,6 +671,9 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 	start := c.clock()
 	entries, ok := c.tenantEntries(ctx, tenant, window)
 	if !ok {
+		if ctx.Err() != nil {
+			return phaseOutcomeInterrupted
+		}
 		return phaseOutcomeError
 	}
 
@@ -709,7 +712,8 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 
 // tenantEntries reads the tenant's ToC for the window and returns its entries.
 // A missing ToC yields (nil, true) — no work, not an error. Any other read
-// error yields (nil, false).
+// error yields (nil, false). It logs no warning when ctx is done, because the
+// caller treats that case as a shutdown.
 func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window time.Time) ([]indexEntry, bool) {
 	entries, err := loadTenantIndexes(ctx, c.bucket, window, tenant)
 	if err != nil {
@@ -717,6 +721,9 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 			level.Debug(c.logger).Log("msg", "no ToC for window",
 				"tenant", tenant, "window", window, "err", err)
 			return nil, true
+		}
+		if ctx.Err() != nil {
+			return nil, false
 		}
 		level.Warn(c.logger).Log("msg", "phase: load tenant indexes failed",
 			"tenant", tenant, "window", window, "err", err)
@@ -848,7 +855,7 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 			}
 			if err != nil {
 				if ctx.Err() != nil {
-					level.Debug(c.logger).Log("msg", "log-merge phase: planning stopped by shutdown",
+					level.Info(c.logger).Log("msg", "log-merge phase: planning stopped by shutdown",
 						"tenant", tenant, "window", window, "index", entry.Path, "err", err)
 					return plans, true
 				}

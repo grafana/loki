@@ -1563,6 +1563,25 @@ func TestRunIndexMergePhase(t *testing.T) {
 		require.Empty(t, replacer.snapshot())
 		require.Zero(t, testutil.CollectAndCount(c.metrics.tenantCyclesTotal))
 	})
+
+	t.Run("returns an error when the ToC cannot be read", func(t *testing.T) {
+		window := imWindow()
+		c := newTestCoordinator(t, errBucket{objstore.NewInMemBucket()}, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(t.Context(), "acme", window))
+	})
+
+	t.Run("returns interrupted and records no cycle when the ToC read fails after a cancel", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		window := imWindow()
+		runner := &fakeRunner{}
+		c := newTestCoordinator(t, errBucket{objstore.NewInMemBucket()}, runner, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window))
+		require.Empty(t, runner.snapshot())
+		require.Zero(t, testutil.CollectAndCount(c.metrics.tenantCyclesTotal))
+	})
 }
 
 // concurrentRemovalReplacer acts as another writer that wins the race for one
