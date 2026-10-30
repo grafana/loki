@@ -139,6 +139,7 @@ func Benchmark_EncodeChunk(b *testing.B) {
 			chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
+			0,
 		)
 		require.NoError(b, ing.encodeChunk(ctx, &ch, desc))
 	}
@@ -208,6 +209,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 				chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
 				firstTime,
 				lastTime,
+				0,
 			)
 
 			if lockDuringEncode {
@@ -236,7 +238,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki")
+		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki", time.Time{})
 		recordPool.PutRecord(rec)
 		if err != nil {
 			b.Fatal(err)
@@ -371,12 +373,13 @@ func TestBackfillChunkChecksumIsSameOnReplicas(t *testing.T) {
 	checksum := func(recordTime time.Time) uint32 {
 		desc := buildChunkDesc(t)
 		from, through := util.RoundToMilliseconds(desc.chunk.Bounds())
+		metric := labels.FromStrings("app", "foo", constants.BackfillLabel, "true")
 		ch := chunk.NewChunk(
-			"foo", 1, labels.FromStrings("app", "foo", constants.BackfillLabel, "true"),
+			"foo", 1, metric,
 			chunkenc.NewFacade(desc.chunk, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 			from, through,
+			i.chunkIngestedAt(metric, from, through, recordTime),
 		)
-		i.maybeSetIngestedAt(&ch, from, recordTime)
 		require.NoError(t, ch.Encode())
 		return ch.Checksum
 	}

@@ -147,7 +147,7 @@ func (s *testingChunkStore) flushChunk(t *testing.T, memChunk *chunkenc.MemChunk
 	fp := client.Fingerprint(lbs)
 
 	firstTime, lastTime := util.RoundToMilliseconds(memChunk.Bounds())
-	c := chunk.NewChunk(tenant, fp, metric, chunkenc.NewFacade(memChunk, 0, 0), firstTime, lastTime)
+	c := chunk.NewChunk(tenant, fp, metric, chunkenc.NewFacade(memChunk, 0, 0), firstTime, lastTime, 0)
 	require.NoError(t, c.Encode())
 	require.NoError(t, s.store.Put(context.Background(), []chunk.Chunk{c}))
 }

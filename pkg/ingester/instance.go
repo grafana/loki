@@ -231,10 +231,13 @@ func newInstance(
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
-	// Persist the timestamp of the record the push comes from, so a replay of the WAL restores it.
-	if ts, ok := recordTimestamp(ctx); ok {
-		record.IngestedAt = ts
+	// The timestamp of the record (e.g. Kafka) the push comes from, if it has a usable one. It is
+	// persisted in the WAL record, so a replay restores it.
+	var recordTime time.Time
+	if ts := time.UnixMilli(req.IngestedAtMs); validRecordTimestamp(ts, util_log.Logger) {
+		recordTime = ts
 	}
+	record.IngestedAt = recordTime
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
@@ -261,7 +264,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker, req.Format)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker, req.Format, recordTime)
 		s.chunkMtx.Unlock()
 	}
 

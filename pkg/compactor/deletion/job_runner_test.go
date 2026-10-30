@@ -83,7 +83,7 @@ func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, throu
 	}
 
 	require.NoError(t, chunkEnc.Close())
-	c := storage_chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
+	c := storage_chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through, 0)
 	require.NoError(t, c.Encode())
 	return c
 }

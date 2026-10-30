@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -607,17 +608,14 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
+			i.chunkIngestedAt(metric, firstTime, lastTime, c.ingestedAt),
 		)
 
-		// encodeChunk mutates the chunk (writes block offsets) and maybeSetIngestedAt reads its
-		// ingestedAt, so hold chunkMtx for both. Store Put remains unlocked.
+		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
+		// for the duration of encode. Store Put remains unlocked.
 		if err := func() error {
 			chunkMtx.Lock()
 			defer chunkMtx.Unlock()
-			// For backfilled chunks, stamp IngestedAt (the time the records were ingested, or the
-			// flush time if there is none) so retention can be measured from ingestion rather than
-			// from the log timestamps. It is part of the encoded chunk, so it goes before encodeChunk.
-			i.maybeSetIngestedAt(&ch, firstTime, c.ingestedAt)
 			return i.encodeChunk(ctx, &ch, c)
 		}(); err != nil {
 			return err
@@ -648,18 +646,39 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	desc.flushed = time.Now()
 }
 
-// maybeSetIngestedAt stamps the chunk's IngestedAt for chunks belonging to backfilled
-// streams (those carrying the __backfill__ label), so that under TSDB FormatV4 (schema v14)
-// retention can be measured from ingestion rather than from the log timestamps. Chunks of
-// streams without the __backfill__ label keep the zero value. So do chunks whose period does
-// not support FormatV4, which fall back to Through-based retention.
+// maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
+// ones are ignored since UnixNano overflows after it.
+var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
+
+// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested record.
+// Records without a timestamp come with a zero time, or with a timestamp at or before the epoch
+// (e.g. Kafka's NoTimestamp, -1). Those would end up as an IngestedAt of zero, which means "not
+// set" and makes the chunk fall back to Through-based retention. Timestamps after
+// maxRecordTimestamp are ignored too, and logged since they mean something is very wrong (e.g. a
+// producer's clock).
+func validRecordTimestamp(ts time.Time, logger log.Logger) bool {
+	if ts.UnixMilli() <= 0 {
+		return false
+	}
+	if !ts.Before(maxRecordTimestamp) {
+		level.Error(logger).Log("msg", "ignoring record timestamp after the supported range", "record_timestamp", ts, "max", maxRecordTimestamp)
+		return false
+	}
+	return true
+}
+
+// chunkIngestedAt returns the IngestedAt to stamp on a chunk being flushed. Chunks belonging to
+// backfilled streams (those carrying the __backfill__ label) get one, so that under TSDB FormatV4
+// (schema v14) retention can be measured from ingestion rather than from the log timestamps.
+// Chunks of streams without the __backfill__ label get zero. So do chunks whose period does not
+// support FormatV4, which fall back to Through-based retention.
 //
 // recordTime is the highest timestamp of the ingested (e.g. Kafka) records that fed the chunk.
 // It is used as the ingestion time as is if it is valid, see validRecordTimestamp. Otherwise
 // the flush time, rounded up to the next UTC day, is used.
-func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, recordTime time.Time) {
-	if ch.Metric.Get(constants.BackfillLabel) != "true" {
-		return
+func (i *Ingester) chunkIngestedAt(metric labels.Labels, from, through model.Time, recordTime time.Time) model.Time {
+	if metric.Get(constants.BackfillLabel) != "true" {
+		return 0
 	}
 
 	// Resolve the schema from the chunk's own time (its From). That's deliberate:
@@ -670,15 +689,14 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, rec
 	// to a v14+ period and this passes; the check still guards against ever
 	// stamping IngestedAt onto a non-FormatV4 index.
 	schemaCfg := config.SchemaConfig{Configs: i.periodicConfigs}
-	if !schemaCfg.SupportsIngestedAtForTime(chunkTime) {
-		return
+	if !schemaCfg.SupportsIngestedAtForTime(from) {
+		return 0
 	}
 
 	// Replicas of a partition consume the same records, so the record timestamp is the same on
 	// all of them and is used as is.
-	if validRecordTimestamp(recordTime) {
-		ch.IngestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
-		return
+	if validRecordTimestamp(recordTime, i.logger) {
+		return model.TimeFromUnixNano(recordTime.UnixNano())
 	}
 
 	// We are not using Kafka records, so fall back to the current time, adjusted to the beginning
@@ -693,7 +711,7 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, rec
 	// not deduplicated. We accept that: Kafka ingestion normally never gets here (every record has a
 	// timestamp), and for the rest only the chunks whose flushes fall on either side of UTC
 	// midnight are affected, a small fraction.
-	ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(ch.Through)))
+	return model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(through)))
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.

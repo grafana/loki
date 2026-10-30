@@ -2087,7 +2087,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 
 		require.NoError(t, chunkEnc.Close())
 		from, to := chunkEnc.Bounds()
-		c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
+		c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()), 0)
 		if err := c.Encode(); err != nil {
 			panic(err)
 		}

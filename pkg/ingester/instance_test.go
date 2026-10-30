@@ -2100,27 +2100,43 @@ func (w *recordingWAL) Log(rec *wal.Record) error {
 	return nil
 }
 
-// The timestamp of the record a push comes from is logged to the WAL, so it is restored on replay.
-func TestPushLogsRecordTimestampToWAL(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
-	tenantsRetention := retention.NewTenantsRetention(limits)
-
-	w := &recordingWAL{}
-	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), w, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
-	require.NoError(t, err)
-
-	tt := time.Now().Add(-5 * time.Minute)
-	req := func(app string) *logproto.PushRequest {
-		return &logproto.PushRequest{Streams: []logproto.Stream{{Labels: `{app="` + app + `"}`, Entries: entries(1, tt)}}}
-	}
-
+// The timestamp of the record a push comes from is stamped on the chunk and logged to the WAL, so
+// it is restored on replay. Timestamps that can't be used are ignored.
+func TestPushRecordTimestamp(t *testing.T) {
 	recordTime := time.UnixMilli(1_700_000_000_000)
-	require.NoError(t, i.Push(withRecordTimestamp(context.Background(), recordTime), req("a")))
-	require.NoError(t, i.Push(context.Background(), req("b")))
 
-	require.Len(t, w.ingestedAt, 2)
-	require.True(t, recordTime.Equal(w.ingestedAt[0]))
-	require.True(t, w.ingestedAt[1].IsZero())
+	for _, tc := range []struct {
+		name         string
+		ingestedAtMs int64
+		want         time.Time
+	}{
+		{"record timestamp", recordTime.UnixMilli(), recordTime},
+		{"no record timestamp", 0, time.Time{}},
+		{"Kafka NoTimestamp", -1, time.Time{}},
+		{"far future", time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli(), time.Time{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+			tenantsRetention := retention.NewTenantsRetention(limits)
+
+			w := &recordingWAL{}
+			i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), w, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+			require.NoError(t, err)
+
+			req := &logproto.PushRequest{
+				Streams:      []logproto.Stream{{Labels: `{app="a"}`, Entries: entries(1, time.Now().Add(-5*time.Minute))}},
+				IngestedAtMs: tc.ingestedAtMs,
+			}
+			require.NoError(t, i.Push(context.Background(), req))
+
+			require.Len(t, w.ingestedAt, 1)
+			require.True(t, tc.want.Equal(w.ingestedAt[0]), "WAL: got %s, want %s", w.ingestedAt[0], tc.want)
+			require.NoError(t, i.forAllStreams(context.Background(), func(s *stream) error {
+				require.True(t, tc.want.Equal(s.chunks[0].ingestedAt), "chunk: got %s, want %s", s.chunks[0].ingestedAt, tc.want)
+				return nil
+			}))
+		})
+	}
 }

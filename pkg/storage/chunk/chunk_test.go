@@ -50,6 +50,7 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Ch
 		c,
 		chunkStart,
 		now,
+		0,
 	)
 	// Force checksum calculation.
 	err := chunk.Encode()
