@@ -932,6 +932,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			return h.next.Do(ctx, req)
 		}
 		if mode == ModeLive {
+			// The detected fields handler rejects a metric query, so the lookup
+			// would finish after the request has already failed.
+			if _, isDetectedFields := req.(*queryrange.DetectedFieldsRequest); isDetectedFields {
+				return h.next.Do(ctx, req)
+			}
 			// Left unhinted until a later PR. An empty result would drop the 1
 			// an empty window returns.
 			if isAbsentOverTimeAgg(expr) {
