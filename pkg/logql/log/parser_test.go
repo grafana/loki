@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/grafana/loki/v4/pkg/logqlmodel"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 )
 
 func Test_jsonParser_Parse(t *testing.T) {
@@ -661,7 +661,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				logqlmodel.ErrorLabel, errJSON,
+				logqlerr.ErrorLabel, errJSON,
 			),
 			NoParserHints(),
 			nil,
@@ -674,7 +674,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				logqlmodel.ErrorLabel, errJSON,
+				logqlerr.ErrorLabel, errJSON,
 			),
 			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 			nil,

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v4/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
@@ -830,7 +830,7 @@ func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadata
 		// cluster is a stream label outside the grouping, so its absence from the fallback's result
 		// is what proves the grouping was applied and not bypassed.
 		streamLabels = labels.FromStrings("namespace", "dev", "cluster", "us-central1")
-		errLabel     = labels.FromStrings(logqlmodel.ErrorLabel, "SampleExtractionErr")
+		errLabel     = labels.FromStrings(logqlerr.ErrorLabel, "SampleExtractionErr")
 		// The fallback groups like any other line and carries the error labels on top.
 		groupedWithErr = appendLabels(labels.FromStrings("namespace", "dev"), errLabel)
 	)
@@ -1002,8 +1002,8 @@ func TestBinaryLabelFilter_Hints(t *testing.T) {
 	safe := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "a", "1")) // reads only
 	unsafeFilter := NewBytesLabelFilter(LabelFilterGreaterThan, "size", 5)           // sets __error__ on parse failure
 
-	dropsError := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, ""))
-	keepsError := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, ""))
+	dropsError := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, ""))
+	keepsError := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlerr.ErrorLabel, ""))
 
 	t.Run("can modify labels when either leg can", func(t *testing.T) {
 		require.True(t, NewAndLabelFilter(safe, unsafeFilter).Hints().CanModifyLabels)
@@ -1034,10 +1034,10 @@ func TestBinaryLabelFilter_Hints(t *testing.T) {
 
 func TestStages_KeepsErroredLines(t *testing.T) {
 	errorFilter := func(typ labels.MatchType, value string) LabelFilterer {
-		return NewStringLabelFilter(labels.MustNewMatcher(typ, logqlmodel.ErrorLabel, value))
+		return NewStringLabelFilter(labels.MustNewMatcher(typ, logqlerr.ErrorLabel, value))
 	}
 	renameError := func() Stage {
-		f, err := NewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("e", logqlmodel.ErrorLabel)})
+		f, err := NewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("e", logqlerr.ErrorLabel)})
 		require.NoError(t, err)
 		return f
 	}
@@ -1130,7 +1130,7 @@ func TestStages_KeepsErroredLines(t *testing.T) {
 		},
 		{
 			name:   `a filter on __error_details__ does not keep the errored lines`,
-			stages: Stages{NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, ".*"))},
+			stages: Stages{NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, logqlerr.ErrorDetailsLabel, ".*"))},
 			want:   false,
 		},
 		{
