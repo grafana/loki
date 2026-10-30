@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,7 +70,7 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 		step:        time.Minute,
 		hintRanges:  hintRanges,
 	}
-	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, true)
+	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, RootContext(sampleExpr))
 	require.NoError(t, err)
 	require.NoError(t, stepEvaluator.Close())
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
@@ -97,7 +98,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 			options := &logproto.DataObjOptions{Eligible: true}
 			params := newParams(t, query).WithDataObjOptions(options)
 
-			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr)))
 			require.NoError(t, err)
 			require.NoError(t, stepEvaluator.Close())
 
@@ -110,7 +111,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
 		params := newParams(t, queries["a sum of a range aggregation"])
 
-		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr)))
 		require.NoError(t, err)
 		require.NoError(t, stepEvaluator.Close())
 
@@ -679,13 +680,42 @@ func TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace(t *testing.T) {
 		Grouping:  &syntax.Grouping{Groups: []string{"b", "a"}},
 	}
 
-	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ bool) (StepEvaluator, error) {
+	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ NodeContext) (StepEvaluator, error) {
 		return &emptyEvaluator{}, nil
 	})
 
-	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0)
+	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0, NodeContext{})
 	require.NoError(t, err)
 	require.Equal(t, []string{"b", "a"}, expr.Grouping.Groups)
+}
+
+// TestNewVectorAggEvaluator_SumOfRangeAggregation checks the context handed to the operand of
+// sum(rate(X)). DefaultEvaluator swaps the factory for that shape, so the operand's context is
+// only visible where newVectorAggEvaluator derives it.
+func TestNewVectorAggEvaluator_SumOfRangeAggregation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{"sum", `sum(rate({app="a"}[1m]))`},
+		{"sum by", `sum by (app) (rate({app="a"}[1m]))`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+
+			var got NodeContext
+			nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, nc NodeContext) (StepEvaluator, error) {
+				got = nc
+				return &emptyEvaluator{}, nil
+			})
+
+			_, err = newVectorAggEvaluator(context.Background(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr))
+			require.NoError(t, err)
+			require.False(t, got.IsRoot())
+			require.False(t, got.OutputPreserving())
+		})
+	}
 }
 
 type emptyEvaluator struct{}
@@ -1030,6 +1060,87 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 	})
 }
 
+func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
+	const (
+		a = `rate({app="a"}[1m])`
+		b = `rate({app="b"}[1m])`
+	)
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  map[string]bool
+	}{
+		{"root", a, map[string]bool{`{app="a"}`: true}},
+		{"sort", `sort(` + a + `)`, map[string]bool{`{app="a"}`: true}},
+		{"sort_desc", `sort_desc(` + a + `)`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal on the right", a + ` * 2`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal on the left", `2 - ` + a, map[string]bool{`{app="a"}`: true}},
+		{"bool comparison with a literal on the right", a + ` > bool 1`, map[string]bool{`{app="a"}`: true}},
+		{"bool comparison with a literal on the left", `1 < bool ` + a, map[string]bool{`{app="a"}`: true}},
+		{"filtering comparison with a literal on the right", a + ` > 1`, map[string]bool{`{app="a"}`: false}},
+		{"filtering comparison with a literal on the left", `1 == ` + a, map[string]bool{`{app="a"}`: false}},
+		{"or", a + ` or ` + b, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+		{"or ignoring no labels", a + ` or ignoring() ` + b, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+		{"or on labels", a + ` or on(app) ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or on no labels", a + ` or on() ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or ignoring labels", a + ` or ignoring(app) ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"and", a + ` and ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"unless", a + ` unless ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"arithmetic between vectors", a + ` + ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"bool comparison between vectors", a + ` > bool ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"group_left", a + ` * on(app) group_left ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"group_right", a + ` * on(app) group_right ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or ignoring no labels with group_left", a + ` or ignoring() group_left ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"arithmetic with a literal and group_right", a + ` * ignoring() group_right 2`, map[string]bool{`{app="a"}`: false}},
+		{"arithmetic with a literal and group_left", a + ` * on(app) group_left 2`, map[string]bool{`{app="a"}`: false}},
+		{"label_replace", `label_replace(` + a + `, "dst", "$1", "app", "(.*)")`, map[string]bool{`{app="a"}`: false}},
+		{"sum", `sum(` + a + ` * 2)`, map[string]bool{`{app="a"}`: false}},
+		{"avg by", `avg by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"count", `count(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"max without", `max without (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"max", `max(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"min by", `min by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"stddev", `stddev(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"stdvar by", `stdvar by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"topk", `topk(1, ` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"bottomk", `bottomk(1, ` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"sort of arithmetic with a literal", `sort(` + a + ` * 2)`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal of sort", `sort(` + a + `) * 2`, map[string]bool{`{app="a"}`: true}},
+		{"sort of label_replace", `sort(label_replace(` + a + `, "dst", "$1", "app", "(.*)"))`, map[string]bool{`{app="a"}`: false}},
+		{"sort of a filtering comparison", `sort(` + a + ` > 1)`, map[string]bool{`{app="a"}`: false}},
+		{"sort of topk", `sort(topk(1, ` + a + `))`, map[string]bool{`{app="a"}`: false}},
+		{"or of a filtering comparison", a + ` or (` + b + ` > 1)`, map[string]bool{`{app="a"}`: true, `{app="b"}`: false}},
+		{"or under a filtering comparison", `(` + a + ` or ` + b + `) > 1`, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or under and", `(` + a + ` or ` + b + `) and rate({app="c"}[1m])`, map[string]bool{`{app="a"}`: false, `{app="b"}`: false, `{app="c"}`: false}},
+		{"arithmetic with a literal of or", `(` + a + ` or ` + b + `) / 2`, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			params, err := NewLiteralParams(tc.query, time.Unix(0, 0), time.Unix(60, 0), time.Minute, 0, logproto.FORWARD, 0, nil, nil)
+			require.NoError(t, err)
+
+			var mu sync.Mutex
+			got := map[string]bool{}
+			ev := NewDefaultEvaluator(nil, 0, 0, NoLimits)
+			var factory SampleEvaluatorFunc
+			factory = func(ctx context.Context, _ SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, nc NodeContext) (StepEvaluator, error) {
+				if e, ok := expr.(*syntax.RangeAggregationExpr); ok {
+					mu.Lock()
+					defer mu.Unlock()
+					got[e.Left.Left.String()] = nc.OutputPreserving()
+					return newReturnVectorEvaluator(nil), nil
+				}
+				return ev.NewStepEvaluator(ctx, factory, expr, p, nc)
+			}
+
+			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, RootContext(expr))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // TestVectorAggEvaluator_Precision checks that the sum() and avg()
 // aggregations of VectorAggEvaluator use Kahan summation, and that avg()
 // switches to an incremental mean when the sum overflows float64.
@@ -1043,10 +1154,10 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 			Operation: op,
 			Grouping:  grouping,
 		}
-		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
 			return next, nil
 		})
-		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0)
+		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0, NodeContext{})
 		require.NoError(t, err)
 		return ev
 	}
@@ -1136,4 +1247,106 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 			require.Equal(t, 2.0, got["steady"])
 		})
 	})
+}
+
+func TestRangeAggPreservesSeries(t *testing.T) {
+	for op, want := range map[string]bool{
+		syntax.OpRangeTypeCount:              true,
+		syntax.OpRangeTypeRate:               true,
+		syntax.OpRangeTypeRateCounter:        true,
+		syntax.OpRangeTypeBytes:              true,
+		syntax.OpRangeTypeBytesRate:          true,
+		syntax.OpRangeTypeAvg:                true,
+		syntax.OpRangeTypeSum:                true,
+		syntax.OpRangeTypeMin:                true,
+		syntax.OpRangeTypeMax:                true,
+		syntax.OpRangeTypeStdvar:             true,
+		syntax.OpRangeTypeStddev:             true,
+		syntax.OpRangeTypeQuantile:           true,
+		syntax.OpRangeTypeFirst:              true,
+		syntax.OpRangeTypeLast:               true,
+		syntax.OpRangeTypeQuantileSketch:     true,
+		syntax.OpRangeTypeFirstWithTimestamp: true,
+		syntax.OpRangeTypeLastWithTimestamp:  true,
+		syntax.OpRangeTypeAbsent:             false,
+	} {
+		t.Run(op, func(t *testing.T) {
+			require.Equal(t, want, rangeAggPreservesSeries(op))
+		})
+	}
+}
+
+func TestNodeContext(t *testing.T) {
+	parse := func(t *testing.T, query string) syntax.SampleExpr {
+		t.Helper()
+		expr, err := syntax.ParseSampleExpr(query)
+		require.NoError(t, err)
+		return expr
+	}
+	const rate = `rate({app="a"}[1m])`
+
+	t.Run("zero value is neither root nor preserving", func(t *testing.T) {
+		var nc NodeContext
+		require.False(t, nc.IsRoot())
+		require.False(t, nc.OutputPreserving())
+		require.Equal(t, NodeContext{}, nc.child(true))
+	})
+
+	t.Run("root of a query that returns series is preserving", func(t *testing.T) {
+		nc := RootContext(parse(t, `sum by (app) (`+rate+`)`))
+		require.True(t, nc.IsRoot())
+		require.True(t, nc.OutputPreserving())
+	})
+
+	t.Run("child is never the root", func(t *testing.T) {
+		nc := RootContext(parse(t, rate))
+
+		preserving := nc.child(true)
+		require.False(t, preserving.IsRoot())
+		require.True(t, preserving.OutputPreserving())
+		require.True(t, preserving.child(true).OutputPreserving())
+
+		require.Equal(t, NodeContext{}, nc.child(false))
+		require.Equal(t, NodeContext{}, preserving.child(false))
+		require.Equal(t, NodeContext{}, nc.child(false).child(true))
+	})
+
+	sketches := map[string]func(t *testing.T) syntax.SampleExpr{
+		"count min sketch": func(t *testing.T) syntax.SampleExpr {
+			expr := parse(t, `sum by (app) (`+rate+`)`).(*syntax.VectorAggregationExpr)
+			expr.Operation = syntax.OpTypeCountMinSketch
+			return expr
+		},
+		"quantile sketch": func(t *testing.T) syntax.SampleExpr {
+			expr := parse(t, `quantile_over_time(0.5, {app="a"} | unwrap x [1m])`).(*syntax.RangeAggregationExpr)
+			expr.Operation = syntax.OpRangeTypeQuantileSketch
+			return expr
+		},
+		"count distinct sketch": func(t *testing.T) syntax.SampleExpr {
+			rangeExpr := parse(t, rate).(*syntax.RangeAggregationExpr)
+			return syntax.NewCountDistinctSketchExpr("x", rangeExpr.Left, nil)
+		},
+		"count min sketch eval": func(t *testing.T) syntax.SampleExpr {
+			return &CountMinSketchEvalExpr{SampleExpr: parse(t, rate)}
+		},
+		"quantile sketch eval": func(t *testing.T) syntax.SampleExpr {
+			return &QuantileSketchEvalExpr{SampleExpr: parse(t, rate)}
+		},
+		"count distinct sketch eval": func(_ *testing.T) syntax.SampleExpr {
+			return &CountDistinctSketchEvalExpr{}
+		},
+		"sketch in the left leg of a binary operation": func(t *testing.T) syntax.SampleExpr {
+			expr := parse(t, rate+` or `+rate).(*syntax.BinOpExpr)
+			expr.SampleExpr.(*syntax.RangeAggregationExpr).Operation = syntax.OpRangeTypeQuantileSketch
+			return expr
+		},
+	}
+	for name, build := range sketches {
+		t.Run("root of a sketch is not preserving: "+name, func(t *testing.T) {
+			nc := RootContext(build(t))
+			require.True(t, nc.IsRoot())
+			require.False(t, nc.OutputPreserving())
+			require.False(t, nc.child(true).OutputPreserving())
+		})
+	}
 }
