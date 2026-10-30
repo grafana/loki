@@ -40,7 +40,7 @@ import (
 // 3. Build an instance of TableCompactor using IndexCompactor.NewIndexCompactor, with all the required information to do a compaction.
 // 4. Run the compaction using TableCompactor.Compact, which would set the new/updated CompactedIndex for each IndexSet.
 // 5. If retention is enabled, run retention on the CompactedIndex using its retention.IndexProcessor implementation.
-// 6. Convert the CompactedIndex to a file using the IndexCompactor.ToIndexFiles for uploading.
+// 6. Convert the CompactedIndex to a file using the IndexCompactor.ToIndexFile for uploading.
 // 7. If we uploaded successfully, delete the old index files.
 
 const (

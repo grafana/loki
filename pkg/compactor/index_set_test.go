@@ -391,7 +391,7 @@ type multiOutputIndex struct {
 	files []index.Index
 }
 
-func (m multiOutputIndex) ToIndexFiles() ([]index.Index, error) { return m.files, nil }
+func (m multiOutputIndex) ToShardedIndexFiles(int) ([]index.Index, error) { return m.files, nil }
 
 type outputFile struct {
 	path   string
@@ -403,19 +403,6 @@ func (f *outputFile) Path() string                       { return f.path }
 func (f *outputFile) Close() error                       { f.closed = true; return nil }
 func (f *outputFile) Reader() (io.ReadSeekCloser, error) { return os.Open(f.path) }
 
-type uploadRecorder struct {
-	storage.IndexSet
-	names  []string
-	failAt int
-}
-
-func (r *uploadRecorder) PutFile(_ context.Context, _, _, name string, _ io.ReadSeeker) error {
-	r.names = append(r.names, name)
-	if len(r.names) == r.failAt {
-		return errors.New("upload failed")
-	}
-	return nil
-}
 func TestIndexSetMultiOutputCleanup(t *testing.T) {
 	for _, failAt := range []int{0, 1, 2} {
 		t.Run(fmt.Sprintf("failAt=%d", failAt), func(t *testing.T) {
@@ -425,15 +412,16 @@ func TestIndexSetMultiOutputCleanup(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, []byte("index"), 0600))
 				files = append(files, &outputFile{path: path})
 			}
-			storage := &uploadRecorder{failAt: failAt}
-			set := &indexSet{ctx: context.Background(), baseIndexSet: storage, compactedIndex: multiOutputIndex{files: files}, logger: log.NewNopLogger()}
-			err := set.upload()
+			sharded := newMemIndexSet()
+			sharded.putFailAt = failAt
+			set := &indexSet{ctx: context.Background(), shardedIndexSet: sharded, compactedIndex: multiOutputIndex{files: files}, uploadCompactedDB: true, logger: log.NewNopLogger()}
+			err := set.updateShardedCopy()
 			if failAt == 0 {
 				require.NoError(t, err)
-				require.Len(t, storage.names, 3)
+				require.Len(t, sharded.names(), 3)
 			} else {
 				require.ErrorContains(t, err, "upload failed")
-				require.Len(t, storage.names, failAt)
+				require.Equal(t, failAt, sharded.puts)
 			}
 			for _, f := range files {
 				require.True(t, f.(*outputFile).closed)
@@ -498,8 +486,12 @@ type shardedOutputIndex struct {
 	shardFactor *int
 }
 
-func (s shardedOutputIndex) ToIndexFiles() ([]index.Index, error) {
-	return s.files("compacted")
+func (s shardedOutputIndex) ToIndexFile() (index.Index, error) {
+	files, err := s.files("compacted")
+	if err != nil {
+		return nil, err
+	}
+	return files[0], nil
 }
 
 func (s shardedOutputIndex) ToShardedIndexFiles(shardFactor int) ([]index.Index, error) {

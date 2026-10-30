@@ -184,8 +184,8 @@ func (c compactedIndex) Cleanup() {
 	_ = c.indexFile.Close()
 }
 
-func (c compactedIndex) ToIndexFiles() ([]index.Index, error) {
-	return []index.Index{c}, nil
+func (c compactedIndex) ToIndexFile() (index.Index, error) {
+	return c, nil
 }
 
 func (c compactedIndex) ToShardedIndexFiles(_ int) ([]index.Index, error) {

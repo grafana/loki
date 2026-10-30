@@ -161,7 +161,7 @@ func (t *table) compact() error {
 		if err != nil {
 			return err
 		}
-		t.setShardedCopy(t.indexSets[userID])
+		t.setShardedIndexSet(t.indexSets[userID])
 		userIndexSets[userID] = t.indexSets[userID]
 	}
 
@@ -175,7 +175,7 @@ func (t *table) compact() error {
 		if err != nil {
 			return nil, err
 		}
-		t.setShardedCopy(indexSet)
+		t.setShardedIndexSet(indexSet)
 		t.indexSets[userID] = indexSet
 		return indexSet, nil
 	}, t.periodConfig)
@@ -392,7 +392,7 @@ func unsafeGetBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
-func (t *table) setShardedCopy(is *indexSet) {
+func (t *table) setShardedIndexSet(is *indexSet) {
 	is.shardedIndexSet = t.shardedUserIndexSet
 	if t.shardedIndexLimits != nil {
 		is.shardFactor = t.shardedIndexLimits.TSDBShardedIndexShardFactor(is.userID)
