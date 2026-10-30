@@ -79,6 +79,8 @@ func (v *LokiStackValidator) validate(ctx context.Context, currentStack, newStac
 			// Only need to validate custom OTLP configuration
 			allErrs = append(allErrs, v.validateOTLPConfiguration(&newStack.Spec)...)
 		}
+
+		allErrs = append(allErrs, v.validateTenantLimits(newStack.Spec.Limits)...)
 	}
 
 	if v.ExtendedValidator != nil {
@@ -266,6 +268,30 @@ func (v *LokiStackValidator) checkOTLPInvalidDropReference(basePath *field.Path,
 	}
 
 	return errList
+}
+
+// validateTenantLimits ensures that every tenant defines at least one limit.
+// Empty entries become null overrides that crash the index gateway and compactor.
+func (v *LokiStackValidator) validateTenantLimits(limits *lokiv1.LimitsSpec) field.ErrorList {
+	if limits == nil {
+		return nil
+	}
+
+	var allErrs field.ErrorList
+	for tenant, tenantLimits := range limits.Tenants {
+		if tenantLimits.IngestionLimits == nil &&
+			tenantLimits.QueryLimits == nil &&
+			tenantLimits.OTLP == nil &&
+			tenantLimits.Retention == nil {
+			allErrs = append(allErrs, field.Invalid(
+				field.NewPath("spec", "limits", "tenants", tenant),
+				tenant,
+				lokiv1.ErrTenantLimitsEmpty.Error(),
+			))
+		}
+	}
+
+	return allErrs
 }
 
 func (v *LokiStackValidator) validateHashRingSpec(s lokiv1.LokiStackSpec) field.ErrorList {
