@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -61,6 +62,9 @@ func NewStructArrayWithFieldsAndNulls(cols []arrow.Array, fields []arrow.Field, 
 	}
 
 	length := cols[0].Len()
+	if err := validateStructArrayOffset(offset, length); err != nil {
+		return nil, err
+	}
 	children := make([]arrow.ArrayData, len(cols))
 	for i, c := range cols {
 		if length != c.Len() {
@@ -97,6 +101,9 @@ func NewStructArrayWithNulls(cols []arrow.Array, names []string, nullBitmap *mem
 		return nil, fmt.Errorf("%w: can't infer struct array length with 0 child arrays", arrow.ErrInvalid)
 	}
 	length := cols[0].Len()
+	if err := validateStructArrayOffset(offset, length); err != nil {
+		return nil, err
+	}
 	children := make([]arrow.ArrayData, len(cols))
 	fields := make([]arrow.Field, len(cols))
 	for i, c := range cols {
@@ -108,9 +115,22 @@ func NewStructArrayWithNulls(cols []arrow.Array, names []string, nullBitmap *mem
 		fields[i].Type = c.DataType()
 		fields[i].Nullable = true
 	}
-	data := NewData(arrow.StructOf(fields...), length, []*memory.Buffer{nullBitmap}, children, nullCount, offset)
+	if nullBitmap == nil {
+		if nullCount > 0 {
+			return nil, fmt.Errorf("%w: null count is greater than 0 but null bitmap is nil", arrow.ErrInvalid)
+		}
+		nullCount = 0
+	}
+	data := NewData(arrow.StructOf(fields...), length-offset, []*memory.Buffer{nullBitmap}, children, nullCount, offset)
 	defer data.Release()
 	return NewStructData(data), nil
+}
+
+func validateStructArrayOffset(offset, length int) error {
+	if offset < 0 || offset > length {
+		return fmt.Errorf("%w: invalid offset %d for length %d", arrow.ErrInvalid, offset, length)
+	}
+	return nil
 }
 
 // NewStructData returns a new Struct array value from data.
@@ -123,6 +143,22 @@ func NewStructData(data arrow.ArrayData) *Struct {
 
 func (a *Struct) NumField() int           { return len(a.fields) }
 func (a *Struct) Field(i int) arrow.Array { return a.fields[i] }
+
+func (a *Struct) Validate() error {
+	if a.data.offset < 0 || a.data.length < 0 || int64(a.data.offset) > math.MaxInt64-int64(a.data.length) {
+		return fmt.Errorf("%w: arrow/array: struct offset and length overflow", arrow.ErrInvalid)
+	}
+	expectedLength := a.data.offset + a.data.length
+	for i, child := range a.data.childData {
+		if child.Len() < expectedLength {
+			return fmt.Errorf("%w: arrow/array: struct child array #%d has length smaller than expected for struct array (%d < %d)",
+				arrow.ErrInvalid, i, child.Len(), expectedLength)
+		}
+	}
+	return nil
+}
+
+func (a *Struct) ValidateFull() error { return a.Validate() }
 
 // ValueStr returns the string representation (as json) of the value at index i.
 func (a *Struct) ValueStr(i int) string {
@@ -149,7 +185,7 @@ func (a *Struct) String() string {
 		if arrow.IsUnion(v.DataType().ID()) {
 			fmt.Fprintf(o, "%v", v)
 			continue
-		} else if !bytes.Equal(structBitmap, v.NullBitmapBytes()) {
+		} else if a.Offset() != v.Data().Offset() || !bytes.Equal(structBitmap, v.NullBitmapBytes()) {
 			masked := a.newStructFieldWithParentValidityMask(i)
 			fmt.Fprintf(o, "%v", masked)
 			masked.Release()
@@ -169,20 +205,31 @@ func (a *Struct) String() string {
 func (a *Struct) newStructFieldWithParentValidityMask(fieldIndex int) arrow.Array {
 	field := a.Field(fieldIndex)
 	nullBitmapBytes := field.NullBitmapBytes()
-	maskedNullBitmapBytes := make([]byte, len(nullBitmapBytes))
-	copy(maskedNullBitmapBytes, nullBitmapBytes)
+	fieldOffset := field.Data().Offset()
+	var maskedNullBitmapBytes []byte
+	if len(nullBitmapBytes) == 0 {
+		fieldEnd := int64(fieldOffset + field.Len())
+		maskedNullBitmapBytes = make([]byte, int(bitutil.BytesForBits(fieldEnd)))
+		bitutil.SetBitsTo(maskedNullBitmapBytes, 0, fieldEnd, true)
+	} else {
+		maskedNullBitmapBytes = make([]byte, len(nullBitmapBytes))
+		copy(maskedNullBitmapBytes, nullBitmapBytes)
+	}
 	for i := 0; i < field.Len(); i++ {
 		if a.IsNull(i) {
-			bitutil.ClearBit(maskedNullBitmapBytes, i)
+			bitutil.ClearBit(maskedNullBitmapBytes, fieldOffset+i)
 		}
 	}
 	data := NewSliceData(field.Data(), 0, int64(field.Len())).(*Data)
 	defer data.Release()
 	bufs := make([]*memory.Buffer, len(data.Buffers()))
 	copy(bufs, data.buffers)
-	bufs[0].Release()
+	if bufs[0] != nil {
+		bufs[0].Release()
+	}
 	bufs[0] = memory.NewBufferBytes(maskedNullBitmapBytes)
 	data.buffers = bufs
+	data.SetNullN(UnknownNullCount)
 	maskedField := MakeFromData(data)
 	return maskedField
 }
@@ -192,7 +239,26 @@ func (a *Struct) setData(data *Data) {
 	a.fields = make([]arrow.Array, len(data.childData))
 	for i, child := range data.childData {
 		if data.offset != 0 || child.Len() != data.length {
-			sub := NewSliceData(child, int64(data.offset), int64(data.offset+data.length))
+			childLen := int64(child.Len())
+			start := max(int64(data.offset), int64(0))
+			if start > childLen {
+				start = childLen
+			}
+			var end int64
+			offset, length := int64(data.offset), int64(data.length)
+			switch {
+			case length > 0 && offset > math.MaxInt64-length:
+				end = math.MaxInt64
+			case length < 0 && offset < math.MinInt64-length:
+				end = math.MinInt64
+			default:
+				end = offset + length
+			}
+			end = max(end, start)
+			if end > childLen {
+				end = childLen
+			}
+			sub := NewSliceData(child, start, end)
 			a.fields[i] = MakeFromData(sub)
 			sub.Release()
 		} else {
@@ -212,6 +278,18 @@ func (a *Struct) GetOneForMarshal(i int) interface{} {
 		tmp[fieldList[j].Name] = d.GetOneForMarshal(i)
 	}
 	return tmp
+}
+
+func (a *Struct) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	fieldList := a.data.dtype.(*arrow.StructType).Fields()
+	out := make([]any, len(a.fields))
+	for j, d := range a.fields {
+		out[j] = []any{fieldList[j].Name, ValueAsAny(d, i)}
+	}
+	return out
 }
 
 func (a *Struct) MarshalJSON() ([]byte, error) {
@@ -329,8 +407,16 @@ func (b *StructBuilder) AppendValues(valids []bool) {
 func (b *StructBuilder) AppendNull() { b.Append(false) }
 
 func (b *StructBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
+	}
+
+	b.Reserve(n)
+	bitutil.SetBitsTo(b.nullBitmap.Bytes(), int64(b.length), int64(n), false)
+	b.length += n
+	b.nulls += n
+	for _, f := range b.fields {
+		f.AppendNulls(n)
 	}
 }
 
@@ -342,8 +428,14 @@ func (b *StructBuilder) AppendEmptyValue() {
 }
 
 func (b *StructBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
+	}
+
+	b.Reserve(n)
+	b.unsafeAppendBoolsToBitmap(nil, n)
+	for _, f := range b.fields {
+		f.AppendEmptyValues(n)
 	}
 }
 
@@ -520,6 +612,7 @@ func (b *StructBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *StructBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

@@ -851,6 +851,10 @@ func (v *validityBuilder) Finish() (buf *memory.Buffer) {
 	return
 }
 
+func (v *validityBuilder) reset() {
+	v.bitLength, v.falseCount = 0, 0
+}
+
 type execBufBuilder struct {
 	mem    memory.Allocator
 	buffer *memory.Buffer
@@ -876,6 +880,10 @@ func (bldr *execBufBuilder) unsafeAppend(data []byte) {
 	bldr.sz += len(data)
 }
 
+func (bldr *execBufBuilder) reset() {
+	bldr.sz = 0
+}
+
 func (bldr *execBufBuilder) finish() (buf *memory.Buffer) {
 	if bldr.buffer == nil {
 		buf = memory.NewBufferBytes(nil)
@@ -883,7 +891,7 @@ func (bldr *execBufBuilder) finish() (buf *memory.Buffer) {
 	}
 	bldr.buffer.Resize(bldr.sz)
 	buf = bldr.buffer
-	bldr.buffer, bldr.sz = nil, 0
+	bldr.buffer, bldr.data, bldr.sz = nil, nil, 0
 	return
 }
 

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -56,6 +57,9 @@ func (a *String) Reset(data arrow.ArrayData) {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *String) Value(i int) string {
+	if i < 0 || i >= a.data.length {
+		panic("arrow/array: index out of range")
+	}
 	i = i + a.data.offset
 	return a.values[a.offsets[i]:a.offsets[i+1]]
 }
@@ -157,6 +161,13 @@ func (a *String) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *String) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *String) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {
@@ -169,16 +180,80 @@ func (a *String) MarshalJSON() ([]byte, error) {
 	return json.Marshal(vals)
 }
 
-func arrayEqualString(left, right *String) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
+// Validate performs a basic, O(1) consistency check on the array data.
+// It returns an error if:
+//   - The offset buffer is too small for the array length and offset
+//   - The last offset exceeds the data buffer length
+//
+// This is useful for detecting corrupted data from untrusted sources (e.g.
+// Arrow Flight / Flight SQL servers) before accessing values, which may
+// otherwise cause a runtime panic.
+func (a *String) Validate() error {
+	if a.data.length == 0 {
+		return nil
+	}
+	if a.data.buffers[1] == nil {
+		return fmt.Errorf("arrow/array: non-empty string array has no offsets buffer")
+	}
+	expNumOffsets := a.data.offset + a.data.length + 1
+	if len(a.offsets) < expNumOffsets {
+		return fmt.Errorf("arrow/array: string offset buffer must have at least %d values, got %d", expNumOffsets, len(a.offsets))
+	}
+	firstOffset := int(a.offsets[a.data.offset])
+	if firstOffset > len(a.values) {
+		return fmt.Errorf("arrow/array: string offset %d out of bounds of data buffer (length %d)", firstOffset, len(a.values))
+	}
+	lastOffset := int(a.offsets[expNumOffsets-1])
+	if lastOffset > len(a.values) {
+		return fmt.Errorf("arrow/array: string offset %d out of bounds of data buffer (length %d)", lastOffset, len(a.values))
+	}
+	return nil
+}
+
+// ValidateFull performs a full O(n) consistency check on the array data.
+// In addition to the checks performed by Validate, it also verifies that
+// all offsets are non-negative and monotonically non-decreasing.
+func (a *String) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	if a.data.length == 0 {
+		return nil
+	}
+	offsets := a.offsets[a.data.offset : a.data.offset+a.data.length+1]
+	if offsets[0] < 0 {
+		return fmt.Errorf("arrow/array: string offset at index %d is negative: %d", a.data.offset, offsets[0])
+	}
+	for i := 1; i < len(offsets); i++ {
+		if offsets[i] < offsets[i-1] {
+			return fmt.Errorf("arrow/array: string offsets are not monotonically non-decreasing at index %d: %d < %d",
+				a.data.offset+i, offsets[i], offsets[i-1])
 		}
-		if left.Value(i) != right.Value(i) {
-			return false
+		value := a.values[offsets[i-1]:offsets[i]]
+		if !utf8.ValidString(value) {
+			return fmt.Errorf("arrow/array: string at index %d is not valid utf8: %s", a.data.offset+i-1, value)
 		}
 	}
-	return true
+
+	return nil
+}
+
+func arrayEqualString(left, right *String) bool {
+	if useScalarVariableWidthEquality(left) {
+		for i := range left.Len() {
+			if !left.IsNull(i) && left.Value(i) != right.Value(i) {
+				return false
+			}
+		}
+		return true
+	}
+	return arrayEqualVariableWidth(
+		left.offsets, right.offsets,
+		left.values, right.values,
+		left.Offset(), right.Offset(), left.Len(),
+		left.NullN(), left.NullBitmapBytes(),
+		equalStrings,
+	)
 }
 
 // String represents an immutable sequence of variable-length UTF-8 strings.
@@ -203,6 +278,9 @@ func (a *LargeString) Reset(data arrow.ArrayData) {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *LargeString) Value(i int) string {
+	if i < 0 || i >= a.data.length {
+		panic("arrow/array: index out of range")
+	}
 	i = i + a.data.offset
 	return a.values[a.offsets[i]:a.offsets[i+1]]
 }
@@ -304,6 +382,13 @@ func (a *LargeString) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *LargeString) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *LargeString) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {
@@ -312,16 +397,84 @@ func (a *LargeString) MarshalJSON() ([]byte, error) {
 	return json.Marshal(vals)
 }
 
-func arrayEqualLargeString(left, right *LargeString) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
+// Validate performs a basic, O(1) consistency check on the array data.
+// It returns an error if:
+//   - The offset buffer is too small for the array length and offset
+//   - The last offset exceeds the data buffer length
+//
+// This is useful for detecting corrupted data from untrusted sources (e.g.
+// Arrow Flight / Flight SQL servers) before accessing values, which may
+// otherwise cause a runtime panic.
+func (a *LargeString) Validate() error {
+	if a.data.length == 0 {
+		return nil
+	}
+	if a.data.buffers[1] == nil {
+		return fmt.Errorf("arrow/array: non-empty large string array has no offsets buffer")
+	}
+	expNumOffsets := a.data.offset + a.data.length + 1
+	if len(a.offsets) < expNumOffsets {
+		return fmt.Errorf("arrow/array: large string offset buffer must have at least %d values, got %d", expNumOffsets, len(a.offsets))
+	}
+	firstOffset := int(a.offsets[a.data.offset])
+	if firstOffset > len(a.values) {
+		return fmt.Errorf("arrow/array: large string offset %d out of bounds of data buffer (length %d)", firstOffset, len(a.values))
+	}
+
+	lastOffset := int(a.offsets[expNumOffsets-1])
+	if lastOffset > len(a.values) {
+		return fmt.Errorf("arrow/array: large string offset %d out of bounds of data buffer (length %d)", lastOffset, len(a.values))
+	}
+	return nil
+}
+
+// ValidateFull performs a full O(n) consistency check on the array data.
+// In addition to the checks performed by Validate, it also verifies that
+// all offsets are non-negative and monotonically non-decreasing.
+func (a *LargeString) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	if a.data.length == 0 {
+		return nil
+	}
+	offsets := a.offsets[a.data.offset : a.data.offset+a.data.length+1]
+	if offsets[0] < 0 {
+		return fmt.Errorf("arrow/array: large string offset at index %d is negative: %d", a.data.offset, offsets[0])
+	}
+	for i := 1; i < len(offsets); i++ {
+		if offsets[i] < offsets[i-1] {
+			return fmt.Errorf("arrow/array: large string offsets are not monotonically non-decreasing at index %d: %d < %d",
+				a.data.offset+i, offsets[i], offsets[i-1])
 		}
-		if left.Value(i) != right.Value(i) {
-			return false
+		value := a.values[offsets[i-1]:offsets[i]]
+		if !utf8.ValidString(value) {
+			return fmt.Errorf("arrow/array: string at index %d is not valid utf8: %s", a.data.offset+i-1, value)
 		}
 	}
-	return true
+	return nil
+}
+
+func arrayEqualLargeString(left, right *LargeString) bool {
+	if useScalarVariableWidthEquality(left) {
+		for i := range left.Len() {
+			if !left.IsNull(i) && left.Value(i) != right.Value(i) {
+				return false
+			}
+		}
+		return true
+	}
+	return arrayEqualVariableWidth(
+		left.offsets, right.offsets,
+		left.values, right.values,
+		left.Offset(), right.Offset(), left.Len(),
+		left.NullN(), left.NullBitmapBytes(),
+		equalStrings,
+	)
+}
+
+func equalStrings(left, right string) bool {
+	return left == right
 }
 
 type StringView struct {
@@ -378,6 +531,22 @@ func (a *StringView) ValueLen(i int) int {
 	return s.Len()
 }
 
+func (a *StringView) Validate() error {
+	return validateViewLayout(a, "string view")
+}
+
+func (a *StringView) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	return validateViewValues(a, a.dataBuffers, func(i int, value []byte) error {
+		if !utf8.Valid(value) {
+			return fmt.Errorf("arrow/array: string view at slot %d is not valid utf8", i)
+		}
+		return nil
+	})
+}
+
 func (a *StringView) String() string {
 	var o strings.Builder
 	o.WriteString("[")
@@ -404,6 +573,13 @@ func (a *StringView) ValueStr(i int) string {
 }
 
 func (a *StringView) GetOneForMarshal(i int) interface{} {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
+func (a *StringView) ValueAsAny(i int) any {
 	if a.IsNull(i) {
 		return nil
 	}
@@ -512,6 +688,7 @@ func (b *StringBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *StringBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -605,6 +782,7 @@ func (b *LargeStringBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *LargeStringBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -653,7 +831,7 @@ func (b *StringViewBuilder) UnmarshalOne(dec *json.Decoder) error {
 	default:
 		return &json.UnmarshalTypeError{
 			Value:  fmt.Sprint(t),
-			Type:   reflect.TypeOf([]byte{}),
+			Type:   reflect.TypeOf(string("")),
 			Offset: dec.InputOffset(),
 		}
 	}
@@ -671,13 +849,14 @@ func (b *StringViewBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *StringViewBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
 	}
 
 	if delim, ok := t.(json.Delim); !ok || delim != '[' {
-		return fmt.Errorf("binary view builder must unpack from json array, found %s", delim)
+		return fmt.Errorf("string view builder must unpack from json array, found %s", delim)
 	}
 
 	return b.Unmarshal(dec)

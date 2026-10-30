@@ -20,9 +20,9 @@ const _BasicType_name = "UnknownPrimitiveShortStringObjectArray"
 var _BasicType_index = [...]uint8{0, 7, 16, 27, 33, 38}
 
 func (i BasicType) String() string {
-	i -= -1
-	if i < 0 || i >= BasicType(len(_BasicType_index)-1) {
-		return "BasicType(" + strconv.FormatInt(int64(i+-1), 10) + ")"
+	idx := int(i) - -1
+	if i < -1 || idx >= len(_BasicType_index)-1 {
+		return "BasicType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _BasicType_name[_BasicType_index[i]:_BasicType_index[i+1]]
+	return _BasicType_name[_BasicType_index[idx]:_BasicType_index[idx+1]]
 }

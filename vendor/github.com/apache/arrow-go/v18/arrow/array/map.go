@@ -233,9 +233,12 @@ func (b *MapBuilder) AppendNull() {
 
 // AppendNulls adds null map entry to the array.
 func (b *MapBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+
+	b.adjustStructBuilderLen()
+	b.listBuilder.AppendNulls(n)
 }
 
 func (b *MapBuilder) SetNull(i int) {
@@ -247,9 +250,12 @@ func (b *MapBuilder) AppendEmptyValue() {
 }
 
 func (b *MapBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+
+	b.adjustStructBuilderLen()
+	b.listBuilder.AppendEmptyValues(n)
 }
 
 // Reserve enough space for n maps
@@ -258,6 +264,8 @@ func (b *MapBuilder) Reserve(n int) { b.listBuilder.Reserve(n) }
 // Resize adjust the space allocated by b to n map elements. If n is greater than
 // b.Cap(), additional memory will be allocated. If n is smaller, the allocated memory may be reduced.
 func (b *MapBuilder) Resize(n int) { b.listBuilder.Resize(n) }
+
+func (b *MapBuilder) truncate(n int) { b.listBuilder.truncate(n) }
 
 // AppendValues is for bulk appending a group of elements with offsets provided
 // and validity booleans provided.
@@ -274,13 +282,33 @@ func (b *MapBuilder) init(capacity int)                  { b.listBuilder.init(ca
 func (b *MapBuilder) resize(newBits int, init func(int)) { b.listBuilder.resize(newBits, init) }
 
 func (b *MapBuilder) adjustStructBuilderLen() {
+	keyLen, itemLen := b.keyBuilder.Len(), b.itemBuilder.Len()
+	if keyLen != itemLen {
+		panic(fmt.Errorf("%w: arrow/array: map key and item builders must have equal lengths (keys=%d, items=%d)",
+			arrow.ErrInvalid, keyLen, itemLen))
+	}
+
 	sb := b.listBuilder.ValueBuilder().(*StructBuilder)
-	if sb.Len() < b.keyBuilder.Len() {
-		valids := make([]bool, b.keyBuilder.Len()-sb.Len())
-		for i := range valids {
-			valids[i] = true
-		}
-		sb.AppendValues(valids)
+	if sb.Len() > keyLen {
+		panic(fmt.Errorf("%w: arrow/array: map struct builder length exceeds key and item length (struct=%d, entries=%d)",
+			arrow.ErrInvalid, sb.Len(), keyLen))
+	}
+	if sb.Len() < keyLen {
+		missing := keyLen - sb.Len()
+		sb.Reserve(missing)
+		sb.unsafeAppendBoolsToBitmap(nil, missing)
+	}
+}
+
+func (b *MapBuilder) validateOffsets(entryLen int) {
+	offsets := b.listBuilder.offsets.(*Int32Builder)
+	if offsets.Len() != b.Len() && offsets.Len() != b.Len()+1 {
+		panic(fmt.Errorf("%w: arrow/array: map offset count must equal map length or map length plus one (offsets=%d, maps=%d)",
+			arrow.ErrInvalid, offsets.Len(), b.Len()))
+	}
+	if offsets.Len() == b.Len()+1 && int(offsets.Value(b.Len())) != entryLen {
+		panic(fmt.Errorf("%w: arrow/array: map final offset must match key and item length (offset=%d, entries=%d)",
+			arrow.ErrInvalid, offsets.Value(b.Len()), entryLen))
 	}
 }
 
@@ -305,6 +333,7 @@ func (b *MapBuilder) NewMapArray() (a *Map) {
 
 func (b *MapBuilder) newData() (data *Data) {
 	b.adjustStructBuilderLen()
+	b.validateOffsets(b.keyBuilder.Len())
 	values := b.listBuilder.NewListArray()
 	defer values.Release()
 
@@ -342,6 +371,7 @@ func (b *MapBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *MapBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

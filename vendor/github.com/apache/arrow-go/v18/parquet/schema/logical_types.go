@@ -73,6 +73,10 @@ func getLogicalType(l *format.LogicalType) LogicalType {
 		return Float16LogicalType{}
 	case l.IsSetVARIANT():
 		return VariantLogicalType{}
+	case l.IsSetGEOGRAPHY():
+		return geographyLogicalTypeFromThrift(l.GEOGRAPHY)
+	case l.IsSetGEOMETRY():
+		return geometryLogicalTypeFromThrift(l.GEOMETRY)
 	case l == nil:
 		return NoLogicalType{}
 	default:
@@ -1228,3 +1232,257 @@ func (NoLogicalType) Equals(rhs LogicalType) bool {
 }
 
 func (NoLogicalType) IsNone() bool { return true }
+
+// GeometryLogicalType represents geospatial features in WKB format.
+type GeometryLogicalType struct {
+	baseLogicalType
+	// Crs optionally identifies the coordinate reference system. If empty,
+	// it defaults to OGC:CRS84.
+	Crs string
+}
+
+func geometryLogicalTypeFromThrift(t *format.GeometryType) GeometryLogicalType {
+	if t == nil || !t.IsSetCrs() {
+		return GeometryLogicalType{}
+	}
+	return GeometryLogicalType{Crs: t.GetCrs()}
+}
+
+// CRS returns the coordinate reference system, or OGC:CRS84 when unset.
+func (t GeometryLogicalType) CRS() string {
+	if !t.IsCRSSet() {
+		return defaultGeospatialCRS
+	}
+	return t.Crs
+}
+
+// IsCRSSet returns whether the coordinate reference system was explicitly set.
+func (t GeometryLogicalType) IsCRSSet() bool {
+	return t.Crs != ""
+}
+
+func (t GeometryLogicalType) Equals(rhs LogicalType) bool {
+	other, ok := rhs.(GeometryLogicalType)
+	return ok && t.Crs == other.Crs
+}
+
+func (GeometryLogicalType) IsCompatible(c ConvertedType, dec DecimalMetadata) bool {
+	if dec.IsSet {
+		return false
+	}
+	switch c {
+	case ConvertedTypes.None, ConvertedTypes.NA:
+		return true
+	}
+	return false
+}
+
+func (t GeometryLogicalType) MarshalJSON() ([]byte, error) {
+	values := map[string]interface{}{"Type": "Geometry"}
+	if t.IsCRSSet() {
+		values["crs"] = t.CRS()
+	}
+	return json.Marshal(values)
+}
+
+func (t GeometryLogicalType) String() string {
+	if t.IsCRSSet() {
+		return fmt.Sprintf("Geometry(crs=%s)", t.CRS())
+	}
+	return "Geometry"
+}
+
+func (GeometryLogicalType) SortOrder() SortOrder {
+	return SortUNKNOWN
+}
+
+func (GeometryLogicalType) ToConvertedType() (ConvertedType, DecimalMetadata) {
+	return ConvertedTypes.None, DecimalMetadata{}
+}
+
+func (GeometryLogicalType) IsApplicable(t parquet.Type, _ int32) bool {
+	return t == parquet.Types.ByteArray
+}
+
+func (t GeometryLogicalType) toThrift() *format.LogicalType {
+	typ := format.NewGeometryType()
+	if t.IsCRSSet() {
+		typ.Crs = thrift.StringPtr(t.Crs)
+	}
+	return &format.LogicalType{GEOMETRY: typ}
+}
+
+// GeographyLogicalType represents geospatial features in WKB format with a
+// non-linear edge interpolation algorithm.
+type GeographyLogicalType struct {
+	baseLogicalType
+	// Crs optionally identifies the coordinate reference system. If empty,
+	// it defaults to OGC:CRS84.
+	Crs string
+	// Algorithm optionally identifies the edge interpolation algorithm. If
+	// empty, it defaults to spherical.
+	Algorithm GeographyEdgeInterpolationAlgorithm
+}
+
+const defaultGeospatialCRS = "OGC:CRS84"
+
+func geographyLogicalTypeFromThrift(t *format.GeographyType) GeographyLogicalType {
+	if t == nil {
+		return GeographyLogicalType{}
+	}
+
+	ret := GeographyLogicalType{}
+	if t.IsSetCrs() {
+		ret.Crs = t.GetCrs()
+	}
+	if t.IsSetAlgorithm() {
+		ret.Algorithm.fromThrift(t.GetAlgorithm())
+	}
+	return ret
+}
+
+// CRS returns the coordinate reference system, or OGC:CRS84 when unset.
+func (t GeographyLogicalType) CRS() string {
+	if !t.IsCRSSet() {
+		return defaultGeospatialCRS
+	}
+	return t.Crs
+}
+
+// IsCRSSet returns whether the coordinate reference system was explicitly set.
+func (t GeographyLogicalType) IsCRSSet() bool {
+	return t.Crs != ""
+}
+
+// EdgeInterpolationAlgorithm returns the edge interpolation algorithm. If
+// unset, it returns GeographyEdgeSpherical.
+func (t GeographyLogicalType) EdgeInterpolationAlgorithm() GeographyEdgeInterpolationAlgorithm {
+	if !t.IsEdgeInterpolationAlgorithmSet() {
+		return GeographyEdgeSpherical
+	}
+	return t.Algorithm
+}
+
+// IsEdgeInterpolationAlgorithmSet returns whether the edge interpolation
+// algorithm was explicitly set.
+func (t GeographyLogicalType) IsEdgeInterpolationAlgorithmSet() bool {
+	return t.Algorithm != ""
+}
+
+func (t GeographyLogicalType) Equals(rhs LogicalType) bool {
+	other, ok := rhs.(GeographyLogicalType)
+	return ok && t.Crs == other.Crs && t.Algorithm == other.Algorithm
+}
+
+func (GeographyLogicalType) IsCompatible(c ConvertedType, dec DecimalMetadata) bool {
+	if dec.IsSet {
+		return false
+	}
+	switch c {
+	case ConvertedTypes.None, ConvertedTypes.NA:
+		return true
+	}
+	return false
+}
+
+func (t GeographyLogicalType) MarshalJSON() ([]byte, error) {
+	values := map[string]any{"Type": "Geography"}
+	if t.IsCRSSet() {
+		values["crs"] = t.CRS()
+	}
+	if t.IsEdgeInterpolationAlgorithmSet() {
+		values["algorithm"] = t.EdgeInterpolationAlgorithm().String()
+	}
+	return json.Marshal(values)
+}
+
+func (t GeographyLogicalType) String() string {
+	if !t.IsCRSSet() && !t.IsEdgeInterpolationAlgorithmSet() {
+		return "Geography"
+	}
+	return fmt.Sprintf("Geography(crs=%s, algorithm=%s)", t.CRS(), t.EdgeInterpolationAlgorithm())
+}
+
+func (GeographyLogicalType) SortOrder() SortOrder {
+	return SortUNKNOWN
+}
+
+func (GeographyLogicalType) ToConvertedType() (ConvertedType, DecimalMetadata) {
+	return ConvertedTypes.None, DecimalMetadata{}
+}
+
+func (GeographyLogicalType) IsApplicable(t parquet.Type, _ int32) bool {
+	return t == parquet.Types.ByteArray
+}
+
+func (t GeographyLogicalType) toThrift() *format.LogicalType {
+	typ := format.NewGeographyType()
+	if t.IsCRSSet() {
+		typ.Crs = thrift.StringPtr(t.Crs)
+	}
+	if t.IsEdgeInterpolationAlgorithmSet() {
+		alg := t.Algorithm.toThrift()
+		typ.Algorithm = &alg
+	}
+	return &format.LogicalType{GEOGRAPHY: typ}
+}
+
+// GeographyEdgeInterpolationAlgorithm describes how geography edges are
+// interpolated between points.
+type GeographyEdgeInterpolationAlgorithm string
+
+// Constants for the GeographyEdgeInterpolationAlgorithm.
+const (
+	GeographyEdgeSpherical GeographyEdgeInterpolationAlgorithm = "spherical"
+	GeographyEdgeVincenty  GeographyEdgeInterpolationAlgorithm = "vincenty"
+	GeographyEdgeThomas    GeographyEdgeInterpolationAlgorithm = "thomas"
+	GeographyEdgeAndoyer   GeographyEdgeInterpolationAlgorithm = "andoyer"
+	GeographyEdgeKarney    GeographyEdgeInterpolationAlgorithm = "karney"
+)
+
+func (alg *GeographyEdgeInterpolationAlgorithm) fromThrift(thriftAlg format.EdgeInterpolationAlgorithm) {
+	switch thriftAlg {
+	case format.EdgeInterpolationAlgorithm_VINCENTY:
+		*alg = GeographyEdgeVincenty
+	case format.EdgeInterpolationAlgorithm_THOMAS:
+		*alg = GeographyEdgeThomas
+	case format.EdgeInterpolationAlgorithm_ANDOYER:
+		*alg = GeographyEdgeAndoyer
+	case format.EdgeInterpolationAlgorithm_KARNEY:
+		*alg = GeographyEdgeKarney
+	case format.EdgeInterpolationAlgorithm_SPHERICAL:
+		fallthrough
+	default:
+		*alg = GeographyEdgeSpherical
+	}
+}
+
+func (alg GeographyEdgeInterpolationAlgorithm) toThrift() format.EdgeInterpolationAlgorithm {
+	switch alg {
+	case GeographyEdgeVincenty:
+		return format.EdgeInterpolationAlgorithm_VINCENTY
+	case GeographyEdgeThomas:
+		return format.EdgeInterpolationAlgorithm_THOMAS
+	case GeographyEdgeAndoyer:
+		return format.EdgeInterpolationAlgorithm_ANDOYER
+	case GeographyEdgeKarney:
+		return format.EdgeInterpolationAlgorithm_KARNEY
+	case GeographyEdgeSpherical:
+		fallthrough
+	default:
+		return format.EdgeInterpolationAlgorithm_SPHERICAL
+	}
+}
+
+func (alg GeographyEdgeInterpolationAlgorithm) String() string {
+	switch alg {
+	case GeographyEdgeVincenty,
+		GeographyEdgeThomas,
+		GeographyEdgeAndoyer,
+		GeographyEdgeKarney,
+		GeographyEdgeSpherical:
+		return string(alg)
+	default:
+		return string(GeographyEdgeSpherical)
+	}
+}
