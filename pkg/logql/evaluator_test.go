@@ -1249,6 +1249,33 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 	})
 }
 
+func TestRangeAggPreservesSeries(t *testing.T) {
+	for op, want := range map[string]bool{
+		syntax.OpRangeTypeCount:              true,
+		syntax.OpRangeTypeRate:               true,
+		syntax.OpRangeTypeRateCounter:        true,
+		syntax.OpRangeTypeBytes:              true,
+		syntax.OpRangeTypeBytesRate:          true,
+		syntax.OpRangeTypeAvg:                true,
+		syntax.OpRangeTypeSum:                true,
+		syntax.OpRangeTypeMin:                true,
+		syntax.OpRangeTypeMax:                true,
+		syntax.OpRangeTypeStdvar:             true,
+		syntax.OpRangeTypeStddev:             true,
+		syntax.OpRangeTypeQuantile:           true,
+		syntax.OpRangeTypeFirst:              true,
+		syntax.OpRangeTypeLast:               true,
+		syntax.OpRangeTypeQuantileSketch:     true,
+		syntax.OpRangeTypeFirstWithTimestamp: true,
+		syntax.OpRangeTypeLastWithTimestamp:  true,
+		syntax.OpRangeTypeAbsent:             false,
+	} {
+		t.Run(op, func(t *testing.T) {
+			require.Equal(t, want, rangeAggPreservesSeries(op))
+		})
+	}
+}
+
 func TestNodeContext(t *testing.T) {
 	parse := func(t *testing.T, query string) syntax.SampleExpr {
 		t.Helper()
