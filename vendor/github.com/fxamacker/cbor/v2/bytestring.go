@@ -22,17 +22,9 @@ func (bs ByteString) Bytes() []byte {
 
 // MarshalCBOR encodes ByteString as CBOR byte string (major type 2).
 func (bs ByteString) MarshalCBOR() ([]byte, error) {
-	e := getEncodeBuffer()
-	defer putEncodeBuffer(e)
-
-	// Encode length
-	encodeHead(e, byte(cborTypeByteString), uint64(len(bs)))
-
-	// Encode data
-	buf := make([]byte, e.Len()+len(bs))
-	n := copy(buf, e.Bytes())
-	copy(buf[n:], bs)
-
+	buf := make([]byte, 0, encodedHeadLength(uint64(len(bs)))+len(bs))
+	buf = appendHead(buf, byte(cborTypeByteString), uint64(len(bs)))
+	buf = append(buf, bs...)
 	return buf, nil
 }
 

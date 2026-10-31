@@ -891,8 +891,8 @@ github.com/fsouza/fake-gcs-server/internal/backend
 github.com/fsouza/fake-gcs-server/internal/checksum
 github.com/fsouza/fake-gcs-server/internal/notification
 github.com/fsouza/fake-gcs-server/internal/urlhelper
-# github.com/fxamacker/cbor/v2 v2.9.6
-## explicit; go 1.20
+# github.com/fxamacker/cbor/v2 v2.10.0
+## explicit; go 1.24
 github.com/fxamacker/cbor/v2
 # github.com/gabriel-vasile/mimetype v1.4.16
 ## explicit; go 1.24
