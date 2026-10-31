@@ -26,7 +26,7 @@ cloud.google.com/go/auth/internal/retry
 cloud.google.com/go/auth/internal/transport
 cloud.google.com/go/auth/internal/transport/cert
 cloud.google.com/go/auth/internal/transport/headers
-# cloud.google.com/go/auth/oauth2adapt v0.3.0
+# cloud.google.com/go/auth/oauth2adapt v0.3.1
 ## explicit; go 1.26.0
 cloud.google.com/go/auth/oauth2adapt
 # cloud.google.com/go/compute/metadata v0.10.0
