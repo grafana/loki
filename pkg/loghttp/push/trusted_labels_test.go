@@ -159,15 +159,6 @@ func TestParseRequest_TrustedLabels(t *testing.T) {
 		})
 	}
 
-	t.Run("malformed header rejects the whole push", func(t *testing.T) {
-		body := `{"streams":[{"stream":{"app":"payment"},"values":[["1570818238000000000","fizzbuzz"]]}]}`
-		r := newTrustedLabelsRequest("/loki/api/v1/push", strings.NewReader(body), "username=userA")
-		req, err := parse(r, ParseLokiRequest, &fakeLimits{enabled: true})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), HTTPHeaderTrustedLabelsKey)
-		require.Nil(t, req)
-	})
-
 	t.Run("otlp: overrides an indexed resource attribute", func(t *testing.T) {
 		ld := singleResourceLogs("service.name", "service-1", "username", "userB")
 		body, err := (&plog.JSONMarshaler{}).MarshalLogs(ld)

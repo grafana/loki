@@ -4639,8 +4639,8 @@ otlp_config:
 # {username="userA"}, to every stream in the request. A label from the header
 # overrides a stream label with the same name, or is added if the stream doesn't
 # have it. Only enable this when an authenticating gateway in front of Loki sets
-# the header and strips any value sent by clients. When disabled, the header is
-# ignored. Experimental.
+# the header and replaces any value sent by clients. When disabled, the header
+# is ignored. Experimental.
 # CLI flag: -validation.trusted-labels-header-enabled
 [trusted_labels_header_enabled: <boolean> | default = false]
 

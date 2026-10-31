@@ -343,14 +343,13 @@ func TestPushHandlerTrustedLabelsHeader(t *testing.T) {
 		enabled      bool
 		header       string
 		wantCode     int
-		wantParsed   bool
 		wantInjected labels.Labels
 	}{
-		{name: "enabled with valid header", enabled: true, header: `{username="userA"}`, wantCode: http.StatusNoContent, wantParsed: true, wantInjected: labels.FromStrings("username", "userA")},
-		{name: "enabled without header", enabled: true, wantCode: http.StatusNoContent, wantParsed: true, wantInjected: labels.EmptyLabels()},
+		{name: "enabled with valid header", enabled: true, header: `{username="userA"}`, wantCode: http.StatusNoContent, wantInjected: labels.FromStrings("username", "userA")},
+		{name: "enabled without header", enabled: true, wantCode: http.StatusNoContent, wantInjected: labels.EmptyLabels()},
 		{name: "enabled with malformed header", enabled: true, header: "username=userA", wantCode: http.StatusBadRequest},
-		{name: "disabled ignores valid header", header: `{username="userA"}`, wantCode: http.StatusNoContent, wantParsed: true, wantInjected: labels.EmptyLabels()},
-		{name: "disabled ignores malformed header", header: "username=userA", wantCode: http.StatusNoContent, wantParsed: true, wantInjected: labels.EmptyLabels()},
+		{name: "disabled ignores valid header", header: `{username="userA"}`, wantCode: http.StatusNoContent, wantInjected: labels.EmptyLabels()},
+		{name: "disabled ignores malformed header", header: "username=userA", wantCode: http.StatusNoContent, wantInjected: labels.EmptyLabels()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			limits := &validation.Limits{}
@@ -380,11 +379,11 @@ func TestPushHandlerTrustedLabelsHeader(t *testing.T) {
 			require.Equal(t, tc.wantCode, rec.Code, rec.Body.String())
 			if tc.wantCode == http.StatusBadRequest {
 				require.Contains(t, rec.Body.String(), push.HTTPHeaderTrustedLabelsKey)
+				require.False(t, parsed)
+				return
 			}
-			require.Equal(t, tc.wantParsed, parsed)
-			if tc.wantParsed {
-				require.Equal(t, tc.wantInjected, injected)
-			}
+			require.True(t, parsed)
+			require.Equal(t, tc.wantInjected, injected)
 		})
 	}
 }
