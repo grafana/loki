@@ -16,7 +16,7 @@
   },
   "overrides": {
     "minimatch": "^10.2.2",
-    "glob": "^13.0.6"
+    "glob": "^14.0.0"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.1",
