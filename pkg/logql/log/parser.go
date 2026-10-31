@@ -622,11 +622,18 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			val = nil
 		}
 
+		// Only extract keys that are the source of an expression, so a line key
+		// sharing a renamed label's name can't overwrite it.
+		matched := false
 		for id, orig := range keys {
 			if key == orig {
 				key = id
+				matched = true
 				break
 			}
+		}
+		if !matched {
+			continue
 		}
 
 		if _, ok := l.expressions[key]; ok {
