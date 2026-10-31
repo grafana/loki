@@ -225,6 +225,32 @@ func (b *BinaryMemoTable) Exists(val []byte) bool {
 	return ok
 }
 
+// ExistsDirect checks if val exists in the table by inlining the hash
+// table probe loop directly. This avoids the closure allocation that
+// occurs in the normal Exists -> lookup -> HashTable.Lookup path,
+// where the comparison closure captures val and causes it to escape
+// to the heap.
+func (b *BinaryMemoTable) ExistsDirect(val []byte) bool {
+	const perturbShift uint8 = 5
+
+	h := Hash(val, 0)
+	v := b.tbl.fixHash(h)
+	idx := v & b.tbl.capMask
+	perturb := (v >> uint64(perturbShift)) + 1
+
+	for {
+		e := &b.tbl.entries[idx]
+		if e.h == v && bytes.Equal(val, b.builder.Value(int(e.payload.val))) {
+			return true
+		}
+		if e.h == sentinel {
+			return false
+		}
+		idx = (idx + perturb) & b.tbl.capMask
+		perturb = (perturb >> uint64(perturbShift)) + 1
+	}
+}
+
 // Get returns the index of the specified value in the table or KeyNotFound,
 // and a boolean indicating whether it was found in the table.
 func (b *BinaryMemoTable) Get(val interface{}) (int, bool) {

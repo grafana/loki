@@ -19,6 +19,7 @@
 package compute
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -30,7 +31,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/internal/utils"
-	"golang.org/x/xerrors"
 )
 
 type bufferWriteSeeker struct {
@@ -84,7 +84,7 @@ func (b *bufferWriteSeeker) Seek(offset int64, whence int) (int64, error) {
 		newpos = b.buf.Len() + offs
 	}
 	if newpos < 0 {
-		return 0, xerrors.New("negative result pos")
+		return 0, errors.New("negative result pos")
 	}
 	b.pos = newpos
 	return int64(newpos), nil
