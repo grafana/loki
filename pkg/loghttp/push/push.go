@@ -316,9 +316,6 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			return nil, nil, errReservedBackfillLabels()
 		}
 
-		// Applied before service name discovery, so a trusted service_name label takes precedence.
-		lbs = applyTrustedLabels(lbs, trustedLabels)
-
 		isInternalStream := constants.IsInternalStream(lbs.Has)
 		if isInternalStream {
 			pushStats.HasInternalStreams = true
@@ -341,6 +338,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			lb := labels.NewBuilder(lbs)
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
 		}
+
+		// Applied after service name discovery, as in the OTLP parser, so header labels override every
+		// stream label, including a discovered service_name.
+		lbs = applyTrustedLabels(lbs, trustedLabels)
 
 		if backfillShard != "" {
 			lbs = labels.NewBuilder(lbs).

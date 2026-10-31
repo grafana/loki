@@ -138,7 +138,7 @@ func TestParseRequest_TrustedLabels(t *testing.T) {
 			wantLabels: []labels.Labels{labels.FromStrings("app", "payment", "username", "userB")},
 		},
 		{
-			name:                "trusted service_name skips service name discovery",
+			name:                "trusted service_name overrides the discovered one",
 			body:                `{"streams":[{"stream":{"app":"payment"},"values":[["1570818238000000000","fizzbuzz"]]}]}`,
 			header:              `{service_name="gateway-set"}`,
 			discoverServiceName: true,
@@ -194,6 +194,38 @@ func TestParseRequest_TrustedLabels(t *testing.T) {
 
 // TestOTLPTrustedLabelsOnCombinedStreams covers the per-log-record stream path, where a log attribute
 // promoted to an index label is merged into the stream labels. It must not override a trusted label.
+// TestTrustedLabelsAfterServiceNameDiscovery pins that both parsers apply trusted labels after service
+// name discovery: a trusted label overrides the stream label, but service_name is still discovered
+// from the request's own labels unless the header sets it.
+func TestTrustedLabelsAfterServiceNameDiscovery(t *testing.T) {
+	limits := &fakeLimits{enabled: true, labels: []string{"app"}, indexAttributes: []string{"app"}}
+	trusted := labels.FromStrings("app", "gateway-set")
+	want := labels.FromStrings("app", "gateway-set", LabelServiceName, "client-set")
+
+	parse := func(t *testing.T, r *http.Request, parser RequestParser) labels.Labels {
+		r = r.WithContext(InjectTrustedLabelsContext(r.Context(), trusted))
+		req, _, err := parser("fake", r, limits, nil, 100<<20, 100<<20, NewMockTracker(), newMockStreamResolver("fake", limits), util_log.Logger)
+		require.NoError(t, err)
+		require.Len(t, req.Streams, 1)
+		got, err := syntax.ParseLabels(req.Streams[0].Labels)
+		require.NoError(t, err)
+		return got
+	}
+
+	t.Run("loki", func(t *testing.T) {
+		body := `{"streams":[{"stream":{"app":"client-set"},"values":[["1570818238000000000","fizzbuzz"]]}]}`
+		got := parse(t, newTrustedLabelsRequest("/loki/api/v1/push", strings.NewReader(body), ""), ParseLokiRequest)
+		require.Equal(t, want, got)
+	})
+
+	t.Run("otlp", func(t *testing.T) {
+		body, err := (&plog.JSONMarshaler{}).MarshalLogs(singleResourceLogs("app", "client-set"))
+		require.NoError(t, err)
+		got := parse(t, newTrustedLabelsRequest("/otlp/v1/logs", strings.NewReader(string(body)), ""), NewOTLPRequestParser(false))
+		require.Equal(t, want, got)
+	})
+}
+
 func TestOTLPTrustedLabelsOnCombinedStreams(t *testing.T) {
 	cfg := DefaultOTLPConfig(GlobalOTLPConfig{DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"}})
 	cfg.LogAttributes = []AttributesConfig{{Action: IndexLabel, Attributes: []string{"username", "detected_level"}}}
