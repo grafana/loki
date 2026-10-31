@@ -83,7 +83,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
-	github.com/prometheus/common v0.72.1
+	github.com/prometheus/common v0.73.0
 	github.com/prometheus/prometheus v0.312.1-0.20260612131846-2ad3a8717015
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/segmentio/fasthash v1.0.3
@@ -267,6 +267,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.164.1 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.153.0 // indirect
 	github.com/oschwald/maxminddb-golang/v2 v2.8.0 // indirect
+	github.com/pandatix/go-abnf v0.5.1 // indirect
 	github.com/parquet-go/bitpack v1.0.1 // indirect
 	github.com/parquet-go/jsonlite v1.5.5 // indirect
 	github.com/pb33f/go-yaml v0.1.1 // indirect
