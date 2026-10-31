@@ -2324,12 +2324,12 @@ gotest.tools/assert/cmp
 gotest.tools/internal/difflib
 gotest.tools/internal/format
 gotest.tools/internal/source
-# k8s.io/apimachinery v0.37.1
+# k8s.io/apimachinery v0.37.2
 ## explicit; go 1.26.0
 k8s.io/apimachinery/pkg/util/net
 k8s.io/apimachinery/pkg/util/runtime
 k8s.io/apimachinery/pkg/util/sets
-# k8s.io/client-go v0.37.1
+# k8s.io/client-go v0.37.2
 ## explicit; go 1.26.0
 k8s.io/client-go/tools/metrics
 k8s.io/client-go/util/workqueue
