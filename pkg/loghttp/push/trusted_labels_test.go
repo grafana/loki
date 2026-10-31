@@ -38,6 +38,7 @@ func TestExtractAndValidateTrustedLabels(t *testing.T) {
 		{name: "empty label set", setHeader: true, value: "{}", wantErr: "at least one label"},
 		{name: "empty value", setHeader: true, value: `{username=""}`, wantErr: "non-empty value"},
 		{name: "duplicate name", setHeader: true, value: `{username="userA", username="userB"}`, wantErr: "duplicate label name"},
+		{name: "invalid name", setHeader: true, value: `{"\xff"="a"}`, wantErr: "not valid"},
 		{name: "reserved name", setHeader: true, value: `{__name__="foo"}`, wantErr: "reserved"},
 		{name: "reserved backfill label", setHeader: true, value: `{` + constants.BackfillLabel + `="true"}`, wantErr: "reserved"},
 		{name: "too long", setHeader: true, value: `{username="` + strings.Repeat("a", maxTrustedLabelsLen) + `"}`, wantErr: "exceeds limit"},

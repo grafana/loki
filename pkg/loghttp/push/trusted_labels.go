@@ -52,23 +52,25 @@ func ExtractAndValidateTrustedLabels(r *http.Request) (labels.Labels, bool, erro
 
 	lbs, err := syntax.ParseMetric(value)
 	if err != nil {
-		return labels.EmptyLabels(), false, fmt.Errorf("invalid %s header %q: must be a label set such as {name=\"value\"}: %w", HTTPHeaderTrustedLabelsKey, value, err)
+		return labels.EmptyLabels(), false, fmt.Errorf("invalid %s header: must be a label set such as {name=\"value\"}: %w", HTTPHeaderTrustedLabelsKey, err)
 	}
 	if lbs.IsEmpty() {
-		return labels.EmptyLabels(), false, fmt.Errorf("invalid %s header %q: must set at least one label", HTTPHeaderTrustedLabelsKey, value)
+		return labels.EmptyLabels(), false, fmt.Errorf("invalid %s header: must set at least one label", HTTPHeaderTrustedLabelsKey)
 	}
 	if name, dup := lbs.HasDuplicateLabelNames(); dup {
-		return labels.EmptyLabels(), false, fmt.Errorf("invalid %s header %q: duplicate label name %q", HTTPHeaderTrustedLabelsKey, value, name)
+		return labels.EmptyLabels(), false, fmt.Errorf("invalid %s header: duplicate label name %q", HTTPHeaderTrustedLabelsKey, name)
 	}
 
 	err = lbs.Validate(func(l labels.Label) error {
 		switch {
+		case !model.UTF8Validation.IsValidLabelName(l.Name):
+			return fmt.Errorf("invalid %s header: label name %q is not valid", HTTPHeaderTrustedLabelsKey, l.Name)
 		case strings.HasPrefix(l.Name, "__"):
-			return fmt.Errorf("invalid %s header %q: label name %q is reserved", HTTPHeaderTrustedLabelsKey, value, l.Name)
+			return fmt.Errorf("invalid %s header: label name %q is reserved", HTTPHeaderTrustedLabelsKey, l.Name)
 		case l.Value == "":
-			return fmt.Errorf("invalid %s header %q: label %q must have a non-empty value", HTTPHeaderTrustedLabelsKey, value, l.Name)
+			return fmt.Errorf("invalid %s header: label %q must have a non-empty value", HTTPHeaderTrustedLabelsKey, l.Name)
 		case !model.LabelValue(l.Value).IsValid():
-			return fmt.Errorf("invalid %s header %q: label %q must have a valid label value", HTTPHeaderTrustedLabelsKey, value, l.Name)
+			return fmt.Errorf("invalid %s header: label %q must have a valid label value", HTTPHeaderTrustedLabelsKey, l.Name)
 		}
 		return nil
 	})
