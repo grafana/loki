@@ -304,13 +304,15 @@ If [`trusted_labels_header_enabled`](/docs/loki/<LOKI_VERSION>/configuration/#li
 The header value is a label set, for example `{username="userA", team="payments"}`.
 
 A label from the header overrides a stream label with the same name, or is added if the stream doesn't have it. All other labels are left unchanged.
-The header applies to both `/loki/api/v1/push` and `/otlp/v1/logs`.
+The header applies to the HTTP push endpoints `/loki/api/v1/push`, `/api/prom/push`, and `/otlp/v1/logs`.
 
-Loki rejects the push request with HTTP 400 if the header isn't a valid label set, has an empty label value, or sets a reserved label whose name starts with `__`.
-If `trusted_labels_header_enabled` is disabled, Loki ignores the header.
+Loki rejects the push request with HTTP 400 if the header is set more than once, is longer than 4096 bytes, isn't a valid label set, repeats a label name, has an empty label value, or sets a reserved label whose name starts with `__`.
+If `trusted_labels_header_enabled` is disabled, or the header isn't set, Loki stores the stream labels from the request body unchanged.
 
 {{< admonition type="caution" >}}
-Loki trusts the `X-Loki-Labels` header as it is, in the same way as `X-Scope-OrgID`. Your gateway must strip any `X-Loki-Labels` header sent by clients and set its own value. Otherwise, clients can set any labels they want.
+Loki trusts the `X-Loki-Labels` header as it is, in the same way as `X-Scope-OrgID`. Your gateway must replace any `X-Loki-Labels` header sent by clients with its own value, not append to it. Otherwise, clients can set any labels they want.
+
+The header only applies to HTTP push requests. Clients must not be able to reach the distributor's gRPC push endpoint directly, because it doesn't apply trusted labels.
 {{< /admonition >}}
 
 ### Examples

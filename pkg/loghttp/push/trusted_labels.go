@@ -32,9 +32,15 @@ const trustedLabelsKey trustedLabelsContextKey = 1
 
 // ExtractAndValidateTrustedLabels reads the X-Loki-Labels header from r.
 // It returns (empty, false, nil) when the header is absent or empty. When the header is set it must
-// be a non-empty Prometheus label set with valid, non-empty values and no reserved (`__`-prefixed)
-// label names; otherwise it returns an error so the push is rejected with HTTP 400.
+// be set once, and be a non-empty Prometheus label set with valid, non-empty values and no reserved
+// (`__`-prefixed) label names; otherwise it returns an error so the push is rejected with HTTP 400.
 func ExtractAndValidateTrustedLabels(r *http.Request) (labels.Labels, bool, error) {
+	// Reject repeated headers: a gateway that appends its value instead of replacing the client's
+	// would otherwise let the client's value through.
+	if values := r.Header.Values(HTTPHeaderTrustedLabelsKey); len(values) > 1 {
+		return labels.EmptyLabels(), false, fmt.Errorf("invalid %s header: set %d times, must be set at most once", HTTPHeaderTrustedLabelsKey, len(values))
+	}
+
 	value := r.Header.Get(HTTPHeaderTrustedLabelsKey)
 	if value == "" {
 		return labels.EmptyLabels(), false, nil

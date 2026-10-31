@@ -64,6 +64,20 @@ func TestExtractAndValidateTrustedLabels(t *testing.T) {
 	}
 }
 
+func TestExtractAndValidateTrustedLabels_RepeatedHeader(t *testing.T) {
+	// A gateway that appends its value instead of replacing the client's must not let the client's
+	// value through.
+	r := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", nil)
+	r.Header.Add(HTTPHeaderTrustedLabelsKey, `{username="admin"}`)
+	r.Header.Add(HTTPHeaderTrustedLabelsKey, `{username="userA"}`)
+
+	lbs, ok, err := ExtractAndValidateTrustedLabels(r)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "at most once")
+	require.False(t, ok)
+	require.True(t, lbs.IsEmpty())
+}
+
 func TestTrustedLabelsContext(t *testing.T) {
 	require.True(t, ExtractTrustedLabelsContext(context.Background()).IsEmpty())
 
