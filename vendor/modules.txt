@@ -2182,7 +2182,7 @@ go.opencensus.io/tag
 ## explicit; go 1.24.0
 go.opentelemetry.io/auto/sdk
 go.opentelemetry.io/auto/sdk/internal/telemetry
-# go.opentelemetry.io/collector/component v1.69.0
+# go.opentelemetry.io/collector/component v1.70.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/component
 # go.opentelemetry.io/collector/confmap v1.59.0
@@ -2202,8 +2202,8 @@ go.opentelemetry.io/collector/consumer/internal
 # go.opentelemetry.io/collector/featuregate v1.70.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/featuregate
-# go.opentelemetry.io/collector/internal/componentalias v0.153.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/internal/componentalias v0.164.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/internal/componentalias
 # go.opentelemetry.io/collector/pdata v1.70.0
 ## explicit; go 1.26.0
@@ -2222,12 +2222,12 @@ go.opentelemetry.io/collector/pdata/ptrace
 # go.opentelemetry.io/collector/pdata/xpdata v0.164.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/xpdata/xhash
-# go.opentelemetry.io/collector/pipeline v1.59.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/pipeline v1.70.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/pipeline
 go.opentelemetry.io/collector/pipeline/internal/globalsignal
-# go.opentelemetry.io/collector/processor v1.59.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/processor v1.70.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor
 # go.opentelemetry.io/contrib/bridges/prometheus v0.72.0
 ## explicit; go 1.26.0
