@@ -34,8 +34,37 @@ import (
 )
 
 const directPathInterconnectInfix = "-direct."
+const directPathInterconnectStorageHost = "storage-direct.googleapis.com"
+const directPathInterconnectStoragePreprodHost = "storage-preprod-direct.sandbox.googleapis.com"
 
 var logRateLimiter = rate.Sometimes{Interval: 1 * time.Second}
+
+// interconnectHostAndAuthority returns the DirectPath over Interconnect host
+// for host and the :authority override to apply, or "" to keep the authority
+// gRPC derives from the target.
+//
+// Cloud Storage identifies Interconnect traffic by the
+// storage-direct.googleapis.com (or, in preprod,
+// storage-preprod-direct.sandbox.googleapis.com) :authority and treats RPCs
+// sent with the non-direct host as regular traffic, so no override is
+// returned for those hosts. Other hosts keep their non-direct authority.
+func interconnectHostAndAuthority(host string) (targetHost, authorityOverride string) {
+	switch {
+	case strings.HasSuffix(host, ".googleapis.com") && !strings.Contains(host, directPathInterconnectInfix):
+		targetHost = strings.Replace(host, ".", directPathInterconnectInfix, 1)
+		authorityOverride = host
+	case strings.Contains(host, directPathInterconnectInfix):
+		targetHost = host
+		authorityOverride = strings.Replace(host, directPathInterconnectInfix, ".", 1)
+	default:
+		return host, ""
+	}
+	switch targetHost {
+	case directPathInterconnectStorageHost, directPathInterconnectStoragePreprodHost:
+		return targetHost, ""
+	}
+	return targetHost, authorityOverride
+}
 
 func parseTarget(endpoint string) (host string, query url.Values, err error) {
 	raw := endpoint
@@ -267,13 +296,10 @@ func configureDirectPath(grpcOpts []grpc.DialOption, opts *Options, endpoint str
 			return nil, "", err
 		}
 		if interconnect {
-			if strings.HasSuffix(cleanAddr, ".googleapis.com") && !strings.Contains(cleanAddr, directPathInterconnectInfix) {
-				authority := cleanAddr
-				cleanAddr = strings.TrimSuffix(cleanAddr, ".googleapis.com") + directPathInterconnectInfix + "googleapis.com"
-				grpcOpts = append(grpcOpts, grpc.WithAuthority(authority))
-			} else if strings.Contains(cleanAddr, directPathInterconnectInfix) {
-				authority := strings.Replace(cleanAddr, directPathInterconnectInfix, ".", 1)
-				grpcOpts = append(grpcOpts, grpc.WithAuthority(authority))
+			var authorityOverride string
+			cleanAddr, authorityOverride = interconnectHostAndAuthority(cleanAddr)
+			if authorityOverride != "" {
+				grpcOpts = append(grpcOpts, grpc.WithAuthority(authorityOverride))
 			}
 		}
 		// Check if google-c2p resolver is enabled for DirectPath
