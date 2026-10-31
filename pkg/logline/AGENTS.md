@@ -18,9 +18,11 @@ review.
 | --- | --- | --- | --- |
 | v3 | Current (`CurrentVersion`) | footer 4 | v3 |
 | v4 | Supported | v3 bytes | packed numeric terms |
-| v5 | In development. Do not set `-logline-index.version=v5` | v3 layout; documents split by `document_shard_bits`, recorded in the footer | v4's extractor, forked into `internal/v5` |
+| v5 | In development. Do not set `-logline-index.version=v5` | footer 5; postings hold cells of the index's day and there is no document table | v4's extractor, forked into `internal/v5` |
 
 v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v3"` so a binary upgrade does not write it.
+
+A v5 document ID is a cell of the index's day: `bucket << document_shard_bits | document shard`. The footer records the document interval, the shard bits, and the day start, and `DocumentLayout(reader)` maps a cell to its bucket's time range. `Reader.Documents()` is nil for v5, so code that maps document IDs to time must check `VersionHasDocumentTable` or `DocumentLayout` first. v5 indexes written before day-relative cells have footer 4: the v5 reader refuses them, and `ValidateIndexHeader` reports them from `meta.json` without opening the file.
 
 ## Document shards
 
@@ -71,11 +73,12 @@ a frozen algorithm: revert. Do not update the expected values.
 ## Other helpers
 
 - `version.go` — Reader/Writer/Merger interfaces, `CurrentVersion`, `AllVersions`,
-  `ValidateVersion`, factory functions
+  `ValidateVersion`, `ValidateIndexHeader`, `DocumentLayout`, factory functions
 - `ngrams.go` — `ExtractorForVersion` and `FormatterForVersion` shims that return the
   matching `vN` extractor and term formatter
 - `index_config.go` — `IndexConfig`, the shared `logline.index` section (see below)
-- `document_shard.go` — `StreamFingerprint`, `DocumentShard`, and `VersionHasDocumentShards`
+- `document_shard.go` — `StreamFingerprint`, `DocumentShard`, `VersionHasDocumentShards`,
+  and `VersionHasDocumentTable`
 - `compaction_config.go` — `CompactionConfig`, the `logline.compaction` section
 - `retention_config.go` — `RetentionConfig`, the `logline.retention` section
 
@@ -84,4 +87,13 @@ a frozen algorithm: revert. Do not update the expected values.
 The scheduler groups sources by resolved `Version` (and shard settings, document
 interval, and document shard bits), and the compactor verifies it again before merging.
 Mixed-version merges would require re-indexing under one canonical version. The scheduler
-skips v5 indexes with document shard bits until the v5 merge supports them.
+skips indexes whose `meta.json` index_header fails `ValidateIndexHeader` (v5 indexes with
+footer 4), because their jobs would fail on every pass. A v5 meta is also skipped when it
+has no index_header at all (its footer version cannot be checked, and for a version whose
+document IDs are cells of a day that is not safe to assume) or no document_interval (the
+key would group it with any other such meta whatever its footer says, and the merge would
+then reject the layout on every pass). v3 and v4 metas predate index_header and are
+grouped without it. Such indexes never become compactable, so the scheduler counts them in
+`logline_index_scheduler_indexes_unreadable` and logs the first reason, separately from
+the oversized-skip counter. The compactor passes the sources' date as
+`WriterConfig.DayStart`, and the v5 merge refuses inputs whose footer covers another day.

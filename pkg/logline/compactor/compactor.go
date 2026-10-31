@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -66,11 +65,20 @@ func (s *Service) compact(ctx context.Context, job *schedulerapi.JobResponse) er
 
 	// Phase 3: streaming merge + upload. The merge writes directly into the
 	// object-storage upload pipe; hash and size are computed from the stream.
+	// A v5 merge checks DayStart against its inputs' footers. The parse is
+	// unconditional, so a malformed meta date fails the job for any version;
+	// buildMergedMetaSkeleton takes the merged index's date from the same
+	// field, so the footer day and meta.Date cannot disagree.
+	dayStart, err := time.Parse(time.DateOnly, sourceMetas[0].Date)
+	if err != nil {
+		return fmt.Errorf("parse source date %q: %w", sourceMetas[0].Date, err)
+	}
 	writerCfg := &format.WriterConfig{
 		Encoding:          s.postingsEncoding,
 		DensityThreshold:  float32(s.cfg.DensityThreshold),
 		DocumentInterval:  sourceMetas[0].DocumentInterval,
 		DocumentShardBits: sourceMetas[0].DocumentShardBits,
+		DayStart:          dayStart,
 	}
 	merger, err := logline.NewMerger(sourceMetas[0].Version, writerCfg)
 	if err != nil {
@@ -116,8 +124,8 @@ func (s *Service) compact(ctx context.Context, job *schedulerapi.JobResponse) er
 	return nil
 }
 
-// verifyCompactionJob checks that all source metas share the same shard
-// configuration and resolved format version. The scheduler guarantees this
+// verifyCompactionJob checks that all source metas share the same date, shard
+// configuration, and resolved format version. The scheduler guarantees this
 // via the compaction key, but we verify defensively — merging indexes with
 // different parameters would produce a corrupt index.
 func verifyCompactionJob(metas []store.Meta) error {
@@ -134,6 +142,9 @@ func verifyCompactionJob(metas []store.Meta) error {
 		}
 		if m.Version != first.Version {
 			return fmt.Errorf("source %d version=%q differs from source 0 version=%q", i+1, m.Version, first.Version)
+		}
+		if m.Date != first.Date {
+			return fmt.Errorf("source %d date=%q differs from source 0 date=%q", i+1, m.Date, first.Date)
 		}
 		if m.ShardCount != first.ShardCount {
 			return fmt.Errorf("source %d shard_count=%d differs from source 0 shard_count=%d", i+1, m.ShardCount, first.ShardCount)
@@ -200,9 +211,11 @@ func (s *Service) prepareSourceReaders(ctx context.Context, job *schedulerapi.Jo
 // in by PutIndexStreaming (Hash/SizeBytes) and the merge callback (IndexHeader).
 // Time bounds are the union of all source metas.
 func (s *Service) buildMergedMetaSkeleton(storageID string, sourceIDs []string, sourceMetas []store.Meta) (store.Meta, error) {
-	// Extract date from the first source ID — the scheduler guarantees all
-	// sources share the same partition date.
-	date := strings.SplitN(sourceIDs[0], "/", 2)[0]
+	// Take the date from the first source meta, the same field the v5 merge's
+	// DayStart is parsed from, so the merged index's footer day and its
+	// meta.Date cannot disagree. verifyCompactionJob has already checked that
+	// every source shares it.
+	date := sourceMetas[0].Date
 
 	// Union time bounds across all sources.
 	minLogTs := sourceMetas[0].MinLogTs

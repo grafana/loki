@@ -67,7 +67,7 @@ func TestTwoRequestQuery(t *testing.T) {
 	cases := []testCase{
 		{
 			name:   "fast_deltavarint",
-			config: DefaultFastIndexWriteConfig(),
+			config: testWriteConfig(),
 		},
 	}
 
@@ -84,8 +84,9 @@ func TestTwoRequestQuery(t *testing.T) {
 			// Simulate header/directory cache warmup.
 			tracker.Reset()
 
-			got, err := index.query(queryTerm)
+			got, matchesAll, err := index.query(queryTerm)
 			require.NoError(t, err)
+			require.False(t, matchesAll)
 			require.Equal(t, expectedDocIDs, got)
 
 			reads := tracker.Reads()
@@ -107,18 +108,8 @@ func buildQueryTestIndex(t *testing.T, cfg IndexWriteConfig) ([]byte, string, []
 
 	path := fmt.Sprintf("%s/test-%d.lidx", t.TempDir(), os.Getpid())
 	cfg.DensityThreshold = 0 // disable density filter for test
-	writer, err := newStreamingIndexWriter(path, cfg, docCount)
+	writer, err := newStreamingIndexWriter(path, cfg)
 	require.NoError(t, err)
-
-	docs := make([]format.DocumentMetadata, 0, docCount)
-	for i := range docCount {
-		docs = append(docs, format.DocumentMetadata{
-			ID:          uint32(i),
-			MinTimeUnix: int64(i),
-			MaxTimeUnix: int64(i),
-		})
-	}
-	writer.AddDocuments(docs)
 
 	// Terms formatted as T%05d sort lexicographically, matching StreamingIndexWriter's
 	// ascending order requirement.

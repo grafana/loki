@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"sort"
 	"testing"
-	"time"
 
 	"github.com/RoaringBitmap/roaring"
 
@@ -107,23 +106,15 @@ func BenchmarkStreamingMerge_LargeLarge(b *testing.B) {
 
 // buildSyntheticIndex creates an index file with the given number of documents
 // and terms. Terms are sorted 6-byte ngrams; each term appears in ~10% of docs.
+// Each file's documents are distinct cells, starting at fileIdx×numDocs.
 func buildSyntheticIndex(b *testing.B, dir string, fileIdx, numDocs, numTerms int) string {
 	b.Helper()
 	path := filepath.Join(dir, fmt.Sprintf("input-%d.idx", fileIdx))
-	cfg := DefaultFastIndexWriteConfig()
+	cfg := testWriteConfig()
 	cfg.DensityThreshold = 0 // disable for benchmarks
-	w, err := newStreamingIndexWriter(path, cfg, uint32(numDocs))
+	w, err := newStreamingIndexWriter(path, cfg)
 	if err != nil {
 		b.Fatal(err)
-	}
-
-	baseTime := time.Date(2026, 2, 25, 0, 0, 0, 0, time.UTC)
-	for i := range numDocs {
-		w.AddDocument(format.DocumentMetadata{
-			ID:          uint32(i),
-			MinTimeUnix: baseTime.Add(time.Duration(fileIdx*numDocs+i) * time.Minute).UnixMilli(),
-			MaxTimeUnix: baseTime.Add(time.Duration(fileIdx*numDocs+i+1) * time.Minute).UnixMilli(),
-		})
 	}
 
 	// Build sorted terms. The encoding guarantees ascending order.
@@ -142,7 +133,7 @@ func buildSyntheticIndex(b *testing.B, dir string, fileIdx, numDocs, numTerms in
 		term[5] = byte('A' + ((t / 676) % 26))
 		var ids []uint32
 		for d := t % 10; d < numDocs; d += 10 {
-			ids = append(ids, uint32(d))
+			ids = append(ids, uint32(fileIdx*numDocs+d))
 		}
 		terms[t] = termBM{term: term, ids: ids}
 	}

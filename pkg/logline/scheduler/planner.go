@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -21,18 +22,35 @@ type compactionKey struct {
 	documentShardBits int           // v5 document shard bits; zero is one shard
 }
 
-// compactionKeyFor returns the grouping key and true, or a zero key and false
-// when the meta cannot be merged: its version is unrecognised, or it has
-// document shards. Callers should skip metas that return false so that they
-// do not block all compaction.
-func compactionKeyFor(m store.Meta) (compactionKey, bool) {
+// compactionKeyFor returns the grouping key, or an error when the meta cannot
+// be merged: its version is unrecognised, or this binary cannot read its footer
+// (v5 indexes written before day-relative cells). Callers should skip metas
+// that return an error so that they do not block all compaction, and should
+// report the error — such an index is excluded from compaction permanently, so
+// silence would leave its index count quietly stuck.
+func compactionKeyFor(m store.Meta) (compactionKey, error) {
 	if err := logline.ValidateVersion(m.Version); err != nil {
-		return compactionKey{}, false
+		return compactionKey{}, err
 	}
-	// The v5 merge rejects indexes with document shards, so their jobs would
-	// fail and be planned again on every pass.
-	if m.DocumentShardBits > 0 {
-		return compactionKey{}, false
+	// The merge cannot open such an index, so its jobs would fail and be
+	// planned again on every pass. A version whose document IDs are cells of a
+	// day (v5) depends on the footer version for correctness, so an absent
+	// index_header is treated as unreadable rather than assumed good; v3 and v4
+	// metas predate the field and are grouped without it.
+	if m.IndexHeader == nil {
+		if !logline.VersionHasDocumentTable(m.Version) {
+			return compactionKey{}, fmt.Errorf("meta.json has no index_header, so its footer version cannot be checked")
+		}
+	} else if err := logline.ValidateIndexHeader(m.Version, *m.IndexHeader); err != nil {
+		return compactionKey{}, err
+	}
+	// The key groups on the meta's layout, but the merge compares the inputs'
+	// footers. A v5 meta that records no document interval would key as 0 and
+	// group with any other such meta whatever its footer says, and the job
+	// would then fail in commonDocumentLayout on every pass — the same forever
+	// loop as an unreadable footer, so report it the same way.
+	if !logline.VersionHasDocumentTable(m.Version) && m.DocumentInterval <= 0 {
+		return compactionKey{}, fmt.Errorf("meta.json records no document_interval, so its document layout cannot be grouped")
 	}
 	return compactionKey{
 		date:              m.Date,
@@ -42,7 +60,27 @@ func compactionKeyFor(m store.Meta) (compactionKey, bool) {
 		version:           m.Version,
 		documentInterval:  m.DocumentInterval,
 		documentShardBits: m.DocumentShardBits,
-	}, true
+	}, nil
+}
+
+// groupByCompactionKey groups metas that can be merged, and returns how many
+// could not along with the first reason, for the caller to report. Only
+// newOverlapPlanner, the planner the scheduler actually runs, reports them;
+// newDateGroupPlanner discards both because nothing surfaces its counters.
+func groupByCompactionKey(metas []store.Meta) (byKey map[compactionKey][]store.Meta, unreadable int, reason error) {
+	byKey = make(map[compactionKey][]store.Meta)
+	for _, m := range metas {
+		k, err := compactionKeyFor(m)
+		if err != nil {
+			unreadable++
+			if reason == nil {
+				reason = fmt.Errorf("index %s (version %s): %w", m.ID(), m.Version, err)
+			}
+			continue
+		}
+		byKey[k] = append(byKey[k], m)
+	}
+	return byKey, unreadable, reason
 }
 
 // CompactionPlanner selects groups of indexes to compact.
@@ -70,14 +108,7 @@ type dateGroupPlanner struct {
 }
 
 func newDateGroupPlanner(metas []store.Meta, maxJobSizeBytes int64) CompactionPlanner {
-	byKey := make(map[compactionKey][]store.Meta)
-	for _, m := range metas {
-		k, ok := compactionKeyFor(m)
-		if !ok {
-			continue // skip metas that cannot be merged
-		}
-		byKey[k] = append(byKey[k], m)
-	}
+	byKey, _, _ := groupByCompactionKey(metas)
 
 	// Sort keys for deterministic output order.
 	keys := make([]compactionKey, 0, len(byKey))

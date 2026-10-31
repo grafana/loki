@@ -40,11 +40,20 @@ func shardOf(fn shard.Func, term [8]byte, shardCount int) int {
 // purpose: Validate floors postings_buffer_pairs at 1<<16, which would take
 // megabytes of input to exercise the same paths.
 func roundTripConfig(t *testing.T, shardCount, bufferPairs int) Config {
+	return roundTripConfigForVersion(t, "v3", shardCount, bufferPairs)
+}
+
+// roundTripConfigForVersion is roundTripConfig at an explicit index version.
+// Document shard bits stay 0: the 100ms interval this config uses to force
+// many buckets from few entries would, with the default 5 bits, exhaust the
+// fixed-epoch docID window that validateIndexSettings guards. The cell
+// numbering with shard bits set is covered by document_shards_test.go.
+func roundTripConfigForVersion(t *testing.T, version string, shardCount, bufferPairs int) Config {
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
-			Version:          "v3",
+			Version:          version,
 			DensityThreshold: -1, // disable the MatchesAll sentinel so every term lists docs
 			ShardCount:       shardCount,
 			NgramLength:      6,
@@ -116,71 +125,77 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		})
 	}
 
-	extractFn, err := logline.ExtractorForVersion("v3")
-	require.NoError(t, err)
-
-	// 256 is the builder's shard ceiling (shard values travel as uint8); the
-	// boundary must round-trip, not just validate.
-	for _, shardCount := range []int{1, 4, 256} {
-		t.Run(fmt.Sprintf("shard%d", shardCount), func(t *testing.T) {
-			shardFn := shard.Noop
-			if shardCount > 1 {
-				shardFn, err = shard.New("murmur3_mix")
+	// Every version, so the v5 day-relative cell conversion in
+	// shardMerger.emitTerm is covered by the same spill/midnight/sharding
+	// matrix as the v3 and v4 dense-rank path. referenceRanges is numbering-
+	// agnostic: it expects each document's bucket time range, which both
+	// numberings resolve to (readTermRanges maps v5 cells through the layout).
+	// This is the only test that exercises the v5 cell math across a midnight
+	// split with spills and cross-run dedup at several n-gram shard counts.
+	for _, version := range logline.AllVersions() {
+		for _, shardCount := range []int{1, 4, 256} {
+			t.Run(fmt.Sprintf("%s/shard%d", version, shardCount), func(t *testing.T) {
+				extractFn, err := logline.ExtractorForVersion(version)
 				require.NoError(t, err)
-			}
-			want := referenceRanges(entries, extractFn, shardFn, shardCount)
+				shardFn := shard.Noop
+				if shardCount > 1 {
+					shardFn, err = shard.New("murmur3_mix")
+					require.NoError(t, err)
+				}
+				want := referenceRanges(entries, extractFn, shardFn, shardCount)
 
-			cfg := roundTripConfig(t, shardCount, 32)
-			reg := prometheus.NewRegistry()
-			b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(reg))
-			require.NoError(t, err)
-			require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+				cfg := roundTripConfigForVersion(t, version, shardCount, 32)
+				reg := prometheus.NewRegistry()
+				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(reg))
+				require.NoError(t, err)
+				require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
 
-			files, err := b.prepareIndexes()
-			require.NoError(t, err)
-			defer b.clear()
+				files, err := b.prepareIndexes()
+				require.NoError(t, err)
+				defer b.clear()
 
-			got := map[string]map[string]map[docRange]bool{}
-			for _, f := range files {
-				key := fmt.Sprintf("%s_s%d", f.date, f.shardValue)
-				got[key] = readTermRanges(t, f.file.Name())
-			}
+				got := map[string]map[string]map[docRange]bool{}
+				for _, f := range files {
+					key := fmt.Sprintf("%s_s%d", f.date, f.shardValue)
+					got[key] = readTermRanges(t, f.file.Name())
+				}
 
-			require.Equal(t, sortedKeys(want), sortedKeys(got), "(date,shard) file set mismatch")
-			for key, wantTerms := range want {
-				gotTerms := got[key]
-				require.Equal(t, len(wantTerms), len(gotTerms), "term count for %s", key)
-				for term, wantSet := range wantTerms {
-					gotSet := gotTerms[term]
-					require.Equal(t, len(wantSet), len(gotSet), "range count for term %s in %s", term, key)
-					for r := range wantSet {
-						require.True(t, gotSet[r], "missing range %v for term %s in %s", r, term, key)
+				require.Equal(t, sortedKeys(want), sortedKeys(got), "(date,shard) file set mismatch")
+				for key, wantTerms := range want {
+					gotTerms := got[key]
+					require.Equal(t, len(wantTerms), len(gotTerms), "term count for %s", key)
+					for term, wantSet := range wantTerms {
+						gotSet := gotTerms[term]
+						require.Equal(t, len(wantSet), len(gotSet), "range count for term %s in %s", term, key)
+						for r := range wantSet {
+							require.True(t, gotSet[r], "missing range %v for term %s in %s", r, term, key)
+						}
 					}
 				}
-			}
 
-			// The per-file cardinality metrics must agree with the reference:
-			// terms per file = distinct terms; docs per file = distinct doc
-			// ranges across its terms. A regression stamping zeros would pass
-			// the range checks above and only surface on dashboards.
-			wantTermsTotal, wantDocsTotal := 0, 0
-			for _, wantTerms := range want {
-				wantTermsTotal += len(wantTerms)
-				union := map[docRange]bool{}
-				for _, set := range wantTerms {
-					for r := range set {
-						union[r] = true
+				// The per-file cardinality metrics must agree with the reference:
+				// terms per file = distinct terms; docs per file = distinct doc
+				// ranges across its terms. A regression stamping zeros would pass
+				// the range checks above and only surface on dashboards.
+				wantTermsTotal, wantDocsTotal := 0, 0
+				for _, wantTerms := range want {
+					wantTermsTotal += len(wantTerms)
+					union := map[docRange]bool{}
+					for _, set := range wantTerms {
+						for r := range set {
+							union[r] = true
+						}
 					}
+					wantDocsTotal += len(union)
 				}
-				wantDocsTotal += len(union)
-			}
-			termsCount, termsSum := histogramTotals(t, reg, "logline_index_builder_index_file_terms_count")
-			require.Equal(t, uint64(len(files)), termsCount)
-			require.Equal(t, float64(wantTermsTotal), termsSum, "terms histogram must sum to the reference term count")
-			docsCount, docsSum := histogramTotals(t, reg, "logline_index_builder_index_file_documents_count")
-			require.Equal(t, uint64(len(files)), docsCount)
-			require.Equal(t, float64(wantDocsTotal), docsSum, "documents histogram must sum to the reference document count")
-		})
+				termsCount, termsSum := histogramTotals(t, reg, "logline_index_builder_index_file_terms_count")
+				require.Equal(t, uint64(len(files)), termsCount)
+				require.Equal(t, float64(wantTermsTotal), termsSum, "terms histogram must sum to the reference term count")
+				docsCount, docsSum := histogramTotals(t, reg, "logline_index_builder_index_file_documents_count")
+				require.Equal(t, uint64(len(files)), docsCount)
+				require.Equal(t, float64(wantDocsTotal), docsSum, "documents histogram must sum to the reference document count")
+			})
+		}
 	}
 }
 
@@ -200,15 +215,37 @@ func histogramTotals(t *testing.T, reg *prometheus.Registry, name string) (uint6
 }
 
 // readTermRanges reads a .lidx into term(hex) → set of document time-ranges.
+// Document IDs map to time through the document table, or for v5 through the
+// document layout.
 func readTermRanges(t *testing.T, path string) map[string]map[docRange]bool {
 	t.Helper()
 	reader, _, err := logline.OpenFile(path)
 	require.NoError(t, err)
 	defer reader.Close()
 
+	// Map a document ID to its time range: through the document table for v3
+	// and v4, or through the layout for v5. The layout is resolved per cell
+	// rather than materialised for the whole day — a day holds CellsPerDay()
+	// cells (172,800 at the 16s default, far more at a finer interval), and
+	// only the handful the postings reference are ever asked for.
 	idToRange := map[uint32]docRange{}
 	for _, d := range reader.Documents() {
 		idToRange[d.ID] = docRange{d.MinTimeUnix, d.MaxTimeUnix}
+	}
+	rangeOf := func(id uint32) (docRange, bool) {
+		r, ok := idToRange[id]
+		return r, ok
+	}
+	if layout, ok := logline.DocumentLayout(reader); ok {
+		require.Empty(t, idToRange, "a v5 index has no document table")
+		cellsPerDay := layout.CellsPerDay()
+		rangeOf = func(cell uint32) (docRange, bool) {
+			if uint64(cell) >= cellsPerDay {
+				return docRange{}, false
+			}
+			start, end := layout.TimeRange(cell)
+			return docRange{start.UnixMilli(), end.UnixMilli()}, true
+		}
 	}
 
 	out := map[string]map[docRange]bool{}
@@ -218,7 +255,7 @@ func readTermRanges(t *testing.T, path string) map[string]map[docRange]bool {
 		require.False(t, it.Bitmap().MatchesAll, "density must be disabled in this test")
 		set := map[docRange]bool{}
 		for _, id := range it.Bitmap().Roaring.ToArray() {
-			r, ok := idToRange[id]
+			r, ok := rangeOf(id)
 			require.True(t, ok, "docID %d missing metadata in %s", id, path)
 			set[r] = true
 		}

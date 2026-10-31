@@ -16,6 +16,7 @@ type Metrics struct {
 	jobRequestsTotal           prometheus.Counter
 	tickDuration               prometheus.Histogram
 	jobsSkippedOversized       prometheus.Gauge
+	indexesUnreadable          prometheus.Gauge
 	indexesDeletedTotal        prometheus.Counter
 	indexesDeleteFailuresTotal prometheus.Counter
 }
@@ -59,6 +60,10 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		jobsSkippedOversized: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "logline_index_scheduler_jobs_skipped_oversized",
 			Help: "Number of indexes in the current plan that could not be compacted because no valid group fits max_job_size_bytes",
+		}),
+		indexesUnreadable: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "logline_index_scheduler_indexes_unreadable",
+			Help: "Number of indexes excluded from compaction because this binary cannot read their format: an unrecognised version, a footer version it refuses, or a v5 meta.json missing the index_header or document_interval needed to group it. Unlike skipped_oversized these never become compactable, so a non-zero value needs operator attention",
 		}),
 		indexesDeletedTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "logline_index_scheduler_indexes_deleted_total",

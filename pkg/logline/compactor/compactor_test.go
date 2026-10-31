@@ -967,15 +967,38 @@ func TestVerifyCompactionJob_MismatchDocumentShardBits(t *testing.T) {
 	require.ErrorContains(t, err, "document_shard_bits")
 }
 
+func TestVerifyCompactionJob_MismatchDate(t *testing.T) {
+	metas := []store.Meta{
+		{Version: "v5", Date: "2026-03-20", DocumentInterval: 16 * time.Second},
+		{Version: "v5", Date: "2026-03-21", DocumentInterval: 16 * time.Second},
+	}
+	err := verifyCompactionJob(metas)
+	require.ErrorContains(t, err, `source 1 date="2026-03-21" differs from source 0 date="2026-03-20"`)
+}
+
 func TestBuildMergedMetaSkeleton_CopiesDocumentLayout(t *testing.T) {
 	metas := []store.Meta{
-		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
-		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
+		{Version: "v5", Date: "2026-03-20", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
+		{Version: "v5", Date: "2026-03-20", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
 	}
 	m, err := (&Service{}).buildMergedMetaSkeleton("id", []string{"2026-03-20/a", "2026-03-20/b"}, metas)
 	require.NoError(t, err)
 	require.Equal(t, 16*time.Second, m.DocumentInterval)
 	require.Equal(t, 5, m.DocumentShardBits)
+	require.Equal(t, "2026-03-20", m.Date)
+}
+
+// The merged date must come from the source metas, the same field compact()
+// parses DayStart from, so a v5 index's footer day and its meta.Date cannot
+// disagree. A source ID prefix that differs must not be what wins.
+func TestBuildMergedMetaSkeleton_DateComesFromTheSourceMetas(t *testing.T) {
+	metas := []store.Meta{
+		{Version: "v5", Date: "2026-03-20", DocumentInterval: 16 * time.Second},
+		{Version: "v5", Date: "2026-03-20", DocumentInterval: 16 * time.Second},
+	}
+	m, err := (&Service{}).buildMergedMetaSkeleton("id", []string{"2026-03-99/a", "2026-03-99/b"}, metas)
+	require.NoError(t, err)
+	require.Equal(t, "2026-03-20", m.Date)
 }
 
 func TestVerifyCompactionJob_UnsupportedVersion(t *testing.T) {
