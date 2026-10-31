@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 )
 
 // ---------------------------------------------------------------------------
@@ -3052,11 +3053,13 @@ func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 func TestDryRun_MetricRange_StepExtendsLookup(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	reqStart := now.Add(-1 * time.Hour)
-	step := time.Minute
-	interval := 5 * time.Minute
-	alignedStart, alignedEnd := alignMetricStep(reqStart, now, step.Milliseconds())
-	lookupFrom := alignedStart.Add(-interval)
-	lookupThrough := alignedEnd
+	query := `sum(count_over_time({app="api"} |= "timeout" [5m]))`
+	req := newTestLokiRequest(query, reqStart, now)
+	req.Step = time.Minute.Milliseconds()
+	expr, err := syntax.ParseExpr(query)
+	require.NoError(t, err)
+	qb := querybounds.GetQueryBounds(req.GetStart(), req.GetEnd(), req.GetStep(), expr, querybounds.QueryTypeMetricRange, false)
+	lookupFrom, lookupThrough := qb.ReadStart, qb.ReadEnd
 
 	var statsFrom, statsThrough model.Time
 	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -3076,9 +3079,7 @@ func TestDryRun_MetricRange_StepExtendsLookup(t *testing.T) {
 		},
 	}
 	handler := buildStack(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 1})
-	req := newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now)
-	req.Step = step.Milliseconds()
-	_, err := handler.Do(testTenantContext(), req)
+	_, err = handler.Do(testTenantContext(), req)
 	require.NoError(t, err)
 
 	require.Equal(t, model.Time(lookupFrom.UnixMilli()), statsFrom)
