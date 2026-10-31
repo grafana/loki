@@ -4,7 +4,6 @@
 The Delta to Cumulative Processor (`deltatocumulativeprocessor`) converts metrics from delta temporality to
 cumulative, by accumulating samples in memory.
 
-
 | Status        |           |
 | ------------- |-----------|
 | Stability     | [alpha]: metrics   |
@@ -24,7 +23,7 @@ cumulative, by accumulating samples in memory.
 
 ``` yaml
 processors:
-    deltatocumulative:
+    delta_to_cumulative:
         # how long until a series not receiving new samples is removed
         [ max_stale: <duration> | default = 5m ]
  
