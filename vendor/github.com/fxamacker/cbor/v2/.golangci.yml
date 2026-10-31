@@ -1,25 +1,51 @@
+# .golangci.yml for https://github.com/fxamacker/cbor
+# Updated on May 10, 2026.
 version: "2"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/fxamacker/cbor
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 linters:
   default: none
   enable:
     - asciicheck
     - bidichk
     - depguard
+    - dogsled
+    - dupword
     - errcheck
+    - exptostd
     - forbidigo
     - goconst
     - gocritic
     - gocyclo
+    - godoclint
     - goprintffuncname
     - gosec
     - govet
     - ineffassign
+    - intrange
     - misspell
-    - nilerr
+    - nilnesserr
+    - perfsprint
+    - predeclared
+    - reassign
     - revive
     - staticcheck
     - unconvert
     - unused
+    - usestdlibvars
+    - wastedassign
   settings:
     depguard:
       rules:
@@ -31,9 +57,6 @@ linters:
           allow:
             - $gostd
             - github.com/x448/float16
-          deny:
-            - pkg: io/ioutil
-              desc: 'replaced by io and os packages since Go 1.16: https://tip.golang.org/doc/go1.16#ioutil'
     dupl:
       threshold: 100
     funlen:
@@ -42,6 +65,10 @@ linters:
     goconst:
       min-len: 2
       min-occurrences: 3
+      ignore-string-values:
+        - '^cbor$'
+        - '^json$'
+        - '^cbor: invalid UTF-8 string$'
     gocritic:
       disabled-checks:
         - commentedOutCode
@@ -58,7 +85,12 @@ linters:
         - style
     govet:
       enable:
+        - deepequalerrors
+        - nilness
+        - reflectvaluecompare
         - shadow
+        - sortslice
+        - unusedwrite
     lll:
       line-length: 140
     misspell:
@@ -91,26 +123,12 @@ linters:
       - linters:
           - goconst
         path: (.+)_test\.go
+      - linters:
+          - gocritic
+        path: (.+)_test\.go
+        text: 'rangeValCopy:'
     paths:
       - third_party$
       - builtin$
       - examples$
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
-formatters:
-  enable:
-    - gofmt
-    - goimports
-  settings:
-    gofmt:
-      simplify: false
-    goimports:
-      local-prefixes:
-        - github.com/fxamacker/cbor
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
+

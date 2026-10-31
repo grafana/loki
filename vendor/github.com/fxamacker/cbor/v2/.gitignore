@@ -1,12 +1,88 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# .gitignore for github.com/fxamacker/cbor
+# This file doesn't rely on users creating and enabling ~/.gitignore.
+# Many sensitive filenames (id_ed25519, config.json, *.env, etc.) and
+# artifacts from editors, IDEs, toolchains, OS, etc. are ignored by
+# this file without specifying individual rules for each.
+# NOTE: Use pre-commit hooks that check file content as another layer.
+# -----------------------------------------------------------------------
+# The following command must print nothing (no tracked files ignored):
+#   git -c core.excludesFile=/dev/null ls-files -ci --exclude-standard :/
+# -----------------------------------------------------------------------
 
-# Test binary, build with `go test -c`
-*.test
+# ignore: all files and all dirs (keep this as the first rule)
+/**/*
 
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
+# allow: dirs used by this repo (keep this as the second set of rules)
+# Dirs not listed here are ignored. Public repo layout is currently flat, per:
+#   https://go.dev/doc/modules/layout
+!/.github/
+!/.github/actions/
+!/.github/actions/**/
+!/.github/ISSUE_TEMPLATE/
+!/.github/workflows/
+
+# allow: src files *.go, go.mod, go.sum (keep this as the third set of rules).
+# These are currently limited to the top-level dir to prevent committing in-progress work.
+!/*.go
+!/go.mod
+!/go.sum
+
+# allow: configuration and build files in the top-level dir
+!/.golangci.yml
+
+# These sections document project conventions and some rules intentionally overlap.
+# ---------------------------------------------------------------------------------
+
+# ignore: incompatible files and dirs used by nonpublic version of go compiler.
+# These are not yet public, but the existing public tests are already above 97% coverage.
+*[Ff][Uu][Zz][Zz]*.go
+fuzz/
+internal/
+test/
+testdata/
+
+# ignore: files and dirs (at any depth) that use 2 underscores as prefix (personal files).
+__*
+
+# ignore: dirs (at any depth) typically used for binaries and output (bin, build, out, output).
+bin/
+build/
+out/
+output/
+
+# ignore: dirs (at any depth) that are typically used for local, private, and temporary files.
+local/
+private/
+tmp/
+.local/
+.private/
+.tmp/
+
+# This section allows essential (well-known) files in the top-level dir.
+# ----------------------------------------------------------------------
+
+# allow: top-level files that are considered essential on GitHub.
+!/.gitignore
+!/CODE_OF_CONDUCT.md
+!/CONTRIBUTING.md
+!/LICENSE
+!/README.md
+!/SECURITY.md
+
+# This section sets rules for files and folders in .github/.
+# ----------------------------------------------------------
+
+# allow: several file types inside .github/
+!/.github/*.md
+!/.github/*.yml
+!/.github/actions/**/*.yml
+!/.github/ISSUE_TEMPLATE/*.md
+!/.github/ISSUE_TEMPLATE/*.yml
+!/.github/workflows/*.js
+!/.github/workflows/*.md
+!/.github/workflows/*.yml
+
+# ignore: files in .github/**/* that got allowed (e.g., __*.yml, secrets.yml and credentials.yml)
+/.github/**/__*
+/.github/**/credentials.*
+/.github/**/secrets.*

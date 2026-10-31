@@ -66,7 +66,7 @@ func (t *RawTag) unmarshalCBOR(data []byte) error {
 	d := decoder{data: data, dm: defaultDecMode}
 
 	// Unmarshal tag number.
-	typ, _, num := d.getHead()
+	typ, _, num := d.readHead()
 	if typ != cborTypeTag {
 		return &UnmarshalTypeError{CBORType: typ.String(), GoType: typeRawTag.String()}
 	}
@@ -83,25 +83,18 @@ func (t *RawTag) unmarshalCBOR(data []byte) error {
 func (t RawTag) MarshalCBOR() ([]byte, error) {
 	if t.Number == 0 && len(t.Content) == 0 {
 		// Marshal uninitialized cbor.RawTag
-		b := make([]byte, len(cborNil))
-		copy(b, cborNil)
-		return b, nil
+		return []byte{cborNil}, nil
 	}
-
-	e := getEncodeBuffer()
-
-	encodeHead(e, byte(cborTypeTag), t.Number)
 
 	content := t.Content
 	if len(content) == 0 {
-		content = cborNil
+		content = []byte{cborNil}
 	}
 
-	buf := make([]byte, len(e.Bytes())+len(content))
-	n := copy(buf, e.Bytes())
-	copy(buf[n:], content)
+	buf := make([]byte, 0, encodedHeadLength(t.Number)+len(content))
+	buf = appendHead(buf, byte(cborTypeTag), t.Number)
+	buf = append(buf, content...)
 
-	putEncodeBuffer(e)
 	return buf, nil
 }
 
@@ -183,7 +176,7 @@ func (t *tagItem) equalTagNum(num []uint64) bool {
 		return false
 	}
 
-	for i := 0; i < len(t.num); i++ {
+	for i := range len(t.num) {
 		if t.num[i] != num[i] {
 			return false
 		}
@@ -306,20 +299,21 @@ func newTagItem(opts TagOptions, contentType reflect.Type, num uint64, nestedNum
 	te.num = append(te.num, nestedNum...)
 
 	// Cache encoded tag numbers
-	e := getEncodeBuffer()
+	headSize := 0
 	for _, n := range te.num {
-		encodeHead(e, byte(cborTypeTag), n)
+		headSize += encodedHeadLength(n)
 	}
-	te.cborTagNum = make([]byte, e.Len())
-	copy(te.cborTagNum, e.Bytes())
-	putEncodeBuffer(e)
+	te.cborTagNum = make([]byte, 0, headSize)
+	for _, n := range te.num {
+		te.cborTagNum = appendHead(te.cborTagNum, byte(cborTypeTag), n)
+	}
 
 	return &te, nil
 }
 
 var (
-	typeTag    = reflect.TypeOf(Tag{})
-	typeRawTag = reflect.TypeOf(RawTag{})
+	typeTag    = reflect.TypeFor[Tag]()
+	typeRawTag = reflect.TypeFor[RawTag]()
 )
 
 // WrongTagError describes mismatch between CBOR tag and registered tag.

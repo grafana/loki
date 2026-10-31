@@ -170,7 +170,7 @@ func Diagnose(data []byte) (string, error) {
 	return defaultDiagMode.Diagnose(data)
 }
 
-// Diagnose returns extended diagnostic notation (EDN) of the first CBOR data item using the DiagMode. Any remaining bytes are returned in rest.
+// DiagnoseFirst returns extended diagnostic notation (EDN) of the first CBOR data item using the DiagMode. Any remaining bytes are returned in rest.
 func DiagnoseFirst(data []byte) (diagNotation string, rest []byte, err error) {
 	return defaultDiagMode.DiagnoseFirst(data)
 }
@@ -324,12 +324,12 @@ func (di *diagnose) item() error { //nolint:gocyclo
 	t := di.d.nextCBORType()
 	switch t {
 	case cborTypePositiveInt:
-		_, _, val := di.d.getHead()
+		_, _, val := di.d.readHead()
 		di.w.WriteString(strconv.FormatUint(val, 10))
 		return nil
 
 	case cborTypeNegativeInt:
-		_, _, val := di.d.getHead()
+		_, _, val := di.d.readHead()
 		if val > math.MaxInt64 {
 			// CBOR negative integer overflows int64, use big.Int to store value.
 			bi := new(big.Int)
@@ -356,11 +356,11 @@ func (di *diagnose) item() error { //nolint:gocyclo
 		return di.encodeTextString(string(b), '"')
 
 	case cborTypeArray:
-		_, _, val := di.d.getHead()
+		_, _, val := di.d.readHead()
 		count := int(val) //nolint:gosec
 		di.w.WriteByte('[')
 
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if i > 0 {
 				di.w.WriteString(", ")
 			}
@@ -372,11 +372,11 @@ func (di *diagnose) item() error { //nolint:gocyclo
 		return nil
 
 	case cborTypeMap:
-		_, _, val := di.d.getHead()
+		_, _, val := di.d.readHead()
 		count := int(val) //nolint:gosec
 		di.w.WriteByte('{')
 
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if i > 0 {
 				di.w.WriteString(", ")
 			}
@@ -394,7 +394,7 @@ func (di *diagnose) item() error { //nolint:gocyclo
 		return nil
 
 	case cborTypeTag:
-		_, _, tagNum := di.d.getHead()
+		_, _, tagNum := di.d.readHead()
 		switch tagNum {
 		case tagNumUnsignedBignum:
 			if nt := di.d.nextCBORType(); nt != cborTypeByteString {
@@ -436,7 +436,7 @@ func (di *diagnose) item() error { //nolint:gocyclo
 		}
 
 	case cborTypePrimitives:
-		_, ai, val := di.d.getHead()
+		_, ai, val := di.d.readHead()
 		switch ai {
 		case additionalInformationAsFalse:
 			di.w.WriteString("false")

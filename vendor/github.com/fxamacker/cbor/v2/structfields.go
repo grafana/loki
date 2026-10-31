@@ -4,13 +4,14 @@
 package cbor
 
 import (
+	"cmp"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
 
-// field holds shared struct field metadata returned by getFields().
+// field holds shared struct field metadata returned by collectFields().
 type field struct {
 	name      string
 	nameAsInt int64 // used to match field name with CBOR int
@@ -44,62 +45,43 @@ type decodingField struct {
 
 type decodingFields []*decodingField
 
-// indexFieldSorter sorts fields by field idx at each level, breaking ties with idx depth.
-type indexFieldSorter struct {
-	fields fields
-}
-
-func (x *indexFieldSorter) Len() int {
-	return len(x.fields)
-}
-
-func (x *indexFieldSorter) Swap(i, j int) {
-	x.fields[i], x.fields[j] = x.fields[j], x.fields[i]
-}
-
-func (x *indexFieldSorter) Less(i, j int) bool {
-	iIdx, jIdx := x.fields[i].idx, x.fields[j].idx
+// indexFieldCmp compares fields by field idx at each level, breaking ties with idx depth.
+func indexFieldCmp(fi, fj *field) int {
+	iIdx, jIdx := fi.idx, fj.idx
 	for k := 0; k < len(iIdx) && k < len(jIdx); k++ {
 		if iIdx[k] != jIdx[k] {
-			return iIdx[k] < jIdx[k]
+			return cmp.Compare(iIdx[k], jIdx[k])
 		}
 	}
-	return len(iIdx) < len(jIdx)
+	return cmp.Compare(len(iIdx), len(jIdx))
 }
 
-// nameLevelAndTagFieldSorter sorts fields by field name, idx depth, and presence of tag.
-type nameLevelAndTagFieldSorter struct {
-	fields fields
-}
-
-func (x *nameLevelAndTagFieldSorter) Len() int {
-	return len(x.fields)
-}
-
-func (x *nameLevelAndTagFieldSorter) Swap(i, j int) {
-	x.fields[i], x.fields[j] = x.fields[j], x.fields[i]
-}
-
-func (x *nameLevelAndTagFieldSorter) Less(i, j int) bool {
-	fi, fj := x.fields[i], x.fields[j]
+// nameLevelAndTagFieldCmp compares fields by field name, idx depth, and presence of tag.
+func nameLevelAndTagFieldCmp(fi, fj *field) int {
 	if fi.name != fj.name {
-		return fi.name < fj.name
+		return cmp.Compare(fi.name, fj.name)
 	}
 	// Fields with the same name but different keyAsInt are in separate namespaces.
 	if fi.keyAsInt != fj.keyAsInt {
-		return fi.keyAsInt
+		if fi.keyAsInt {
+			return -1
+		}
+		return 1
 	}
 	if len(fi.idx) != len(fj.idx) {
-		return len(fi.idx) < len(fj.idx)
+		return cmp.Compare(len(fi.idx), len(fj.idx))
 	}
 	if fi.tagged != fj.tagged {
-		return fi.tagged
+		if fi.tagged {
+			return -1
+		}
+		return 1
 	}
-	return i < j // Field i and j have the same name, depth, and tagged status. Nothing else matters.
+	return slices.Compare(fi.idx, fj.idx) // Break ties with field index.
 }
 
-// getFields returns visible fields of struct type t following visibility rules for JSON encoding.
-func getFields(t reflect.Type) (flds fields, structOptions string) {
+// collectFields returns visible fields of struct type t following visibility rules for JSON encoding.
+func collectFields(t reflect.Type) (flds fields, structOptions string) {
 	// Get special field "_" tag options
 	if f, ok := t.FieldByName("_"); ok {
 		tag := f.Tag.Get("cbor")
@@ -151,7 +133,7 @@ func getFields(t reflect.Type) (flds fields, structOptions string) {
 		}
 	}
 
-	sort.Sort(&nameLevelAndTagFieldSorter{flds})
+	slices.SortFunc(flds, nameLevelAndTagFieldCmp)
 
 	// Keep visible fields.
 	j := 0 // index of next unique field
@@ -175,7 +157,7 @@ func getFields(t reflect.Type) (flds fields, structOptions string) {
 	}
 
 	// Sort fields by field index
-	sort.Sort(&indexFieldSorter{flds})
+	slices.SortFunc(flds, indexFieldCmp)
 
 	return flds, structOptions
 }
@@ -190,7 +172,7 @@ func appendFields(
 	_flds fields,
 	_nTypes map[reflect.Type][][]int,
 ) {
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		f := t.Field(i)
 
 		ft := f.Type
@@ -202,11 +184,9 @@ func appendFields(
 			continue
 		}
 
-		cborTag := true
 		tag := f.Tag.Get("cbor")
 		if tag == "" {
 			tag = f.Tag.Get("json")
-			cborTag = false
 		}
 		if tag == "-" {
 			continue
@@ -219,11 +199,11 @@ func appendFields(
 		var omitempty, omitzero, keyasint bool
 		for j := 0; tag != ""; j++ {
 			var token string
-			idx := strings.IndexByte(tag, ',')
-			if idx == -1 {
+			before, after, ok := strings.Cut(tag, ",")
+			if !ok {
 				token, tag = tag, ""
 			} else {
-				token, tag = tag[:idx], tag[idx+1:]
+				token, tag = before, after
 			}
 			if j == 0 {
 				tagFieldName = token
@@ -232,9 +212,7 @@ func appendFields(
 				case "omitempty":
 					omitempty = true
 				case "omitzero":
-					if cborTag || jsonStdlibSupportsOmitzero {
-						omitzero = true
-					}
+					omitzero = true
 				case "keyasint":
 					keyasint = true
 				}
