@@ -87,6 +87,21 @@ func (g *defaultLogCacheKeyGenerator) GenerateCacheKey(ctx context.Context, tena
 	return cacheKey
 }
 
+type logCacheKeyNamespaceKey struct{}
+
+// WithLogCacheKeyNamespace returns a context whose log result cache keys are
+// prefixed with namespace. Middlewares below the cache that can turn a
+// non-empty result into an empty one (e.g. logline index narrowing) must set
+// it, so their empty results are never served to requests that bypass them.
+func WithLogCacheKeyNamespace(ctx context.Context, namespace string) context.Context {
+	return context.WithValue(ctx, logCacheKeyNamespaceKey{}, namespace)
+}
+
+func logCacheKeyNamespace(ctx context.Context) string {
+	namespace, _ := ctx.Value(logCacheKeyNamespaceKey{}).(string)
+	return namespace
+}
+
 // NewDefaultLogCacheKeyGenerator creates the standard key generator using QuerySplitDuration.
 func NewDefaultLogCacheKeyGenerator(limits Limits, transformer UserIDTransformer) LogCacheKeyGenerator {
 	return &defaultLogCacheKeyGenerator{limits: limits, transformer: transformer}
@@ -181,6 +196,9 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	cacheKey := l.keyGen.GenerateCacheKey(ctx, tenantIDs, lokiReq)
 	if cacheKey == "" {
 		return l.next.Do(ctx, req)
+	}
+	if namespace := logCacheKeyNamespace(ctx); namespace != "" {
+		cacheKey = namespace + ":" + cacheKey
 	}
 
 	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
