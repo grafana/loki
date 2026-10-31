@@ -15,7 +15,7 @@
     "thulite": "^3.0.3"
   },
   "overrides": {
-    "minimatch": "^10.2.2",
+    "minimatch": "^11.0.0",
     "glob": "^13.0.6"
   },
   "devDependencies": {
