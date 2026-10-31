@@ -57,7 +57,7 @@ require (
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
+	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
