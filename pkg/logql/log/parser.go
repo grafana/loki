@@ -532,6 +532,9 @@ type LogfmtExpressionParser struct {
 	dec         *logfmt.Decoder
 	keys        parserFieldCache
 	strict      bool
+
+	// origKeys maps the identifier of each expression to the key that it reads from the line.
+	origKeys map[string]string
 }
 
 func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (*LogfmtExpressionParser, error) {
@@ -551,12 +554,49 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 		}
 		paths[exp.Identifier] = path
 	}
+
+	// The keys depend only on the expressions, so build them once instead of for each line.
+	origKeys := make(map[string]string, len(paths))
+	for id, path := range paths {
+		origKeys[id] = fmt.Sprintf("%v", path...)
+	}
 	return &LogfmtExpressionParser{
 		expressions: paths,
+		origKeys:    origKeys,
 		dec:         logfmt.NewDecoder(nil),
 		keys:        parserFieldCache{},
 		strict:      strict,
 	}, nil
+}
+
+// wantsOtherName reports whether a name of an expression other than current may still be wanted: the
+// name, or its renamed form when a stream label or structured metadata holds it, passes the hints. A
+// renamed name that something extracted is done, because a renamed key never overwrites a value. Any
+// other name stays wanted, because a key of this line overwrites its value. The parser stops reading
+// a line when this is false.
+func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current string) bool {
+	// The common query has one expression, so there is no other name.
+	if len(l.expressions) == 1 {
+		return false
+	}
+	hints := lbs.ParserLabelHints()
+	for id := range l.expressions {
+		if id == current {
+			continue
+		}
+		name := id
+		renamed := lbs.BaseHas(id) || lbs.HasInCategory(id, StructuredMetadataLabel)
+		if renamed {
+			name = id + DuplicateSuffix
+		}
+		if renamed && hints.Extracted(name) {
+			continue
+		}
+		if hints.ShouldExtract(name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -570,21 +610,11 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		return line, true
 	}
 
-	// Create a map of every renamed label and its original name
-	// in order to retrieve it later in the extraction phase
-	keys := make(map[string]string, len(l.expressions))
-	for id, paths := range l.expressions {
-		keys[id] = fmt.Sprintf("%v", paths...)
-		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
-			lbs.Set(ParsedLabel, id, "")
-		}
-	}
-
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
 	alwaysExtract := func(key string) bool {
 		// Any key in the expression list should always be extracted.
-		_, ok := keys[key]
+		_, ok := l.origKeys[key]
 		return ok
 	}
 
@@ -622,7 +652,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			val = nil
 		}
 
-		for id, orig := range keys {
+		for id, orig := range l.origKeys {
 			if key == orig {
 				key = id
 				break
@@ -631,10 +661,15 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 		if _, ok := l.expressions[key]; ok {
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+				id := key
 				key = key + DuplicateSuffix
 				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
-					// Don't extract duplicates if we don't have to
-					break
+					// Don't extract duplicates if we don't have to. The next key of the line may
+					// still be needed, so stop only when no other name is left to read.
+					if !l.wantsOtherName(lbs, id) {
+						break
+					}
+					continue
 				}
 			}
 
@@ -643,6 +678,20 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
 			}
+		}
+	}
+
+	// Every name of an expression gets a label, empty when the line has no such key. This happens
+	// after the loop: an empty label that the loop had set in advance would count as extracted, so
+	// it would block a renamed key and make AllRequiredExtracted stop the loop too early. A name
+	// that a stream label or structured metadata holds, or that a parser stage already extracted,
+	// gets no label.
+	for id := range l.expressions {
+		if lbs.ParserLabelHints().Extracted(id) {
+			continue
+		}
+		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
+			lbs.Set(ParsedLabel, id, "")
 		}
 	}
 
