@@ -24,9 +24,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -331,6 +333,178 @@ func TestPushHandlerAllLogsFilteredNilStats(t *testing.T) {
 		d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
 	})
 	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+// TestPushHandlerTrustedLabelsHeader verifies the X-Loki-Labels header is only validated and passed
+// on to the format parsers for tenants that enable it.
+func TestPushHandlerTrustedLabelsHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		enabled      bool
+		header       string
+		wantCode     int
+		wantInjected labels.Labels
+	}{
+		{name: "enabled with valid header", enabled: true, header: `{username="userA"}`, wantCode: http.StatusNoContent, wantInjected: labels.FromStrings("username", "userA")},
+		{name: "enabled without header", enabled: true, wantCode: http.StatusNoContent, wantInjected: labels.EmptyLabels()},
+		{name: "enabled with malformed header", enabled: true, header: "username=userA", wantCode: http.StatusBadRequest},
+		{name: "disabled ignores valid header", header: `{username="userA"}`, wantCode: http.StatusNoContent, wantInjected: labels.EmptyLabels()},
+		{name: "disabled ignores malformed header", header: "username=userA", wantCode: http.StatusNoContent, wantInjected: labels.EmptyLabels()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.TrustedLabelsHeader = tc.enabled
+			distributors, _ := prepare(t, 1, 3, limits, nil)
+			d := distributors[0]
+
+			parsed := false
+			injected := labels.EmptyLabels()
+			var mockParser push.RequestParser = func(_ string, r *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.InternalPushRequest, *push.Stats, error) {
+				parsed = true
+				injected = push.ExtractTrustedLabelsContext(r.Context())
+				return nil, nil, push.ErrAllLogsFiltered
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", "application/json")
+			if tc.header != "" {
+				req.Header.Set(push.HTTPHeaderTrustedLabelsKey, tc.header)
+			}
+
+			rec := httptest.NewRecorder()
+			d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+
+			require.Equal(t, tc.wantCode, rec.Code, rec.Body.String())
+			if tc.wantCode == http.StatusBadRequest {
+				require.Contains(t, rec.Body.String(), push.HTTPHeaderTrustedLabelsKey)
+				require.False(t, parsed)
+				return
+			}
+			require.True(t, parsed)
+			require.Equal(t, tc.wantInjected, injected)
+		})
+	}
+}
+
+// TestPushHandlerTrustedLabelsEndToEnd pushes through the real handlers and parsers and checks the
+// labels of the streams that reach the ingesters.
+func TestPushHandlerTrustedLabelsEndToEnd(t *testing.T) {
+	protoBody := func(t *testing.T) []byte {
+		b, err := proto.Marshal(&logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels:  `{app="payment", username="userB"}`,
+			Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
+		}}})
+		require.NoError(t, err)
+		return snappy.Encode(nil, b)
+	}
+	otlpBody := func(t *testing.T) []byte {
+		ld := plog.NewLogs()
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "payment")
+		rec := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+		rec.Body().SetStr("hello")
+		rec.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+		b, err := (&plog.JSONMarshaler{}).MarshalLogs(ld)
+		require.NoError(t, err)
+		return b
+	}
+
+	for _, tc := range []struct {
+		name           string
+		otlp           bool
+		contentType    string
+		body           func(*testing.T) []byte
+		enabled        bool
+		deferExpansion bool
+		wantUser       string
+	}{
+		{name: "loki protobuf, enabled", contentType: "application/x-protobuf", body: protoBody, enabled: true, wantUser: "userA"},
+		{name: "loki protobuf, disabled", contentType: "application/x-protobuf", body: protoBody, wantUser: "userB"},
+		{name: "otlp, enabled", otlp: true, contentType: "application/json", body: otlpBody, enabled: true, wantUser: "userA"},
+		{name: "otlp, deferred expansion, enabled", otlp: true, contentType: "application/json", body: otlpBody, enabled: true, deferExpansion: true, wantUser: "userA"},
+		{name: "otlp, disabled", otlp: true, contentType: "application/json", body: otlpBody, wantUser: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.TrustedLabelsHeader = tc.enabled
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+			limits.SetGlobalOTLPConfig(cfg.OTLPConfig)
+			distributors, ingesters := prepare(t, 1, 3, limits, nil)
+			distributors[0].cfg.OTLPConfig.DeferAttributeExpansion = tc.deferExpansion
+
+			target := "/loki/api/v1/push"
+			if tc.otlp {
+				target = "/otlp/v1/logs"
+			}
+			req := httptest.NewRequest(http.MethodPost, target, bytes.NewReader(tc.body(t)))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", tc.contentType)
+			req.Header.Set(push.HTTPHeaderTrustedLabelsKey, `{username="userA"}`)
+
+			rec := httptest.NewRecorder()
+			if tc.otlp {
+				distributors[0].OTLPPushHandler(rec, req)
+			} else {
+				distributors[0].PushHandler(rec, req)
+			}
+			require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+
+			require.Eventually(t, func() bool { return len(pushedStreamLabels(ingesters)) > 0 },
+				time.Second, 10*time.Millisecond, "expected streams to reach the ingesters")
+			for _, ls := range pushedStreamLabels(ingesters) {
+				lbs, err := syntax.ParseLabels(ls)
+				require.NoError(t, err)
+				require.Equal(t, tc.wantUser, lbs.Get("username"), ls)
+			}
+		})
+	}
+}
+
+// TestPushHandlerTrustedLabelsExceedMaxLabelNames checks that header labels count towards the
+// tenant's label limits and that the error shows them.
+func TestPushHandlerTrustedLabelsExceedMaxLabelNames(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.TrustedLabelsHeader = true
+	limits.MaxLabelNamesPerSeries = 2
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	// The body stream is at the limit; the header label pushes it over.
+	b, err := proto.Marshal(&logproto.PushRequest{Streams: []logproto.Stream{{
+		Labels:  `{app="payment", env="prod"}`,
+		Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
+	}}})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(snappy.Encode(nil, b)))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	req.Header.Set(push.HTTPHeaderTrustedLabelsKey, `{username="userA"}`)
+
+	rec := httptest.NewRecorder()
+	distributors[0].PushHandler(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "label names")
+	require.Contains(t, rec.Body.String(), `username="userA"`)
+	require.Empty(t, pushedStreamLabels(ingesters))
+}
+
+// pushedStreamLabels returns the labels of every stream the mock ingesters received.
+func pushedStreamLabels(ingesters []mockIngester) []string {
+	var out []string
+	for i := range ingesters {
+		ingesters[i].mu.Lock()
+		for _, pr := range ingesters[i].pushed {
+			for _, s := range pr.Streams {
+				out = append(out, s.Labels)
+			}
+		}
+		ingesters[i].mu.Unlock()
+	}
+	return out
 }
 
 func TestPushHandlerRecordsIngestMetrics(t *testing.T) {

@@ -201,6 +201,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	// config cannot drop them.
 	backfillShard := ExtractBackfillShardContext(ctx)
 
+	// If the tenant allows it and the X-Loki-Labels header is set, every stream gets these labels,
+	// overriding labels with the same name. Like the backfill labels, they are added after OTLP
+	// attribute promotion so a tenant's OTLP config cannot drop them.
+	trustedLabels := ExtractTrustedLabelsContext(ctx)
+
 	mostRecentEntryTimestamp := time.Time{}
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
@@ -226,6 +231,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			streamLabels[constants.BackfillLabel] = "true"
 			streamLabels[constants.BackfillShardLabel] = model.LabelValue(backfillShard)
 		}
+
+		applyTrustedLabelSet(streamLabels, trustedLabels)
 
 		var pushedLabels model.LabelSet
 		if logServiceNameDiscovery {
@@ -337,6 +344,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					for k, v := range logLabels {
 						combinedLabels[k] = v
 					}
+					// Log attributes promoted to index labels must not override the trusted labels.
+					applyTrustedLabelSet(combinedLabels, trustedLabels)
 
 					if err := combinedLabels.Validate(); err != nil {
 						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))

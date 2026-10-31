@@ -1609,3 +1609,16 @@ func TestOverrides_ShardLayout(t *testing.T) {
 		require.Equal(t, streams.DefaultShardLayout(), ov.DataObjShardLayout("custom"))
 	})
 }
+
+func TestTrustedLabelsHeaderEnabled_PerTenantOverride(t *testing.T) {
+	var defaults Limits
+	require.NoError(t, yaml.Unmarshal([]byte(`{}`), &defaults))
+
+	var tenantA Limits
+	require.NoError(t, yaml.Unmarshal([]byte("trusted_labels_header_enabled: true"), &tenantA))
+
+	o, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"tenant-a": &tenantA}))
+	require.NoError(t, err)
+	require.True(t, o.TrustedLabelsHeaderEnabled("tenant-a"))
+	require.False(t, o.TrustedLabelsHeaderEnabled("tenant-b"))
+}

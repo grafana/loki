@@ -67,6 +67,8 @@ sequenceDiagram
 
 Label-based access control is not enforced on write (push) requests. It only restricts what a tenant can read. A tenant that is allowed to write can push log lines with any labels, regardless of the label policy that applies to its queries.
 
+To control the labels that are written, enable the experimental [`trusted_labels_header_enabled`](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#limits_config) limit for the tenant. Your gateway can then set the `X-Loki-Labels` header on push requests, for example `{username="userA"}`, and Loki applies those labels to every stream in the request, overriding labels with the same name. This applies to HTTP push requests only. For more information, refer to [Trusted labels](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#trusted-labels).
+
 ### LBAC and alertmanager and ruler
 
 Label policies are not enforced by the Alertmanager or ruler HTTP endpoints. This means that the requests they serve contain everything for a particular tenant without applying label-based access control. For example, listing all rule groups in the ruler returns all rule groups for the tenant, even if a label selector in the policy would exclude some of the labels on the rules. However it does apply when you query the metrics those components generate, such as `ALERTS`.

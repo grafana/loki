@@ -4635,6 +4635,15 @@ otlp_config:
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
 
+# Apply the labels set in the X-Loki-Labels header of push requests, for example
+# {username="userA"}, to every stream in the request. A label from the header
+# overrides a stream label with the same name, or is added if the stream doesn't
+# have it. Only enable this when an authenticating gateway in front of Loki sets
+# the header and replaces any value sent by clients. When disabled, the header
+# is ignored. Experimental.
+# CLI flag: -validation.trusted-labels-header-enabled
+[trusted_labels_header_enabled: <boolean> | default = false]
+
 # Map of policies to enforced labels. The policy '*' is the global policy, which
 # is applied to all streams and can be extended by other policies. Example:
 #  policy_enforced_labels: 
