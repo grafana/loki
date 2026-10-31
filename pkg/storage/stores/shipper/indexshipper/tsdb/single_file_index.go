@@ -94,6 +94,24 @@ type TSDBFile struct {
 
 	// to sastisfy Reader() and Close() methods
 	getRawFileReader GetRawFileReaderFunc
+
+	// shard is the fingerprint range of the file when its name says it is one
+	// of several shards of its table (see SingleTenantTSDBIdentifier.Shard).
+	shard index.ShardAnnotation
+}
+
+// FingerprintBounds returns the [from, through) fingerprint range the file
+// holds. An unsharded file holds every fingerprint.
+func (f *TSDBFile) FingerprintBounds() (model.Fingerprint, model.Fingerprint) {
+	if f.shard.IsSharded() {
+		return f.shard.GetFromThrough()
+	}
+	return 0, model.Fingerprint(math.MaxUint64)
+}
+
+func shardOfIdentifier(id Identifier) index.ShardAnnotation {
+	parsed, _ := ParseSingleTenantTSDBPath(filepath.Base(id.Name()))
+	return parsed.Shard
 }
 
 func NewShippableTSDBFile(id Identifier, opts index.ReaderOptions) (*TSDBFile, error) {
@@ -146,6 +164,7 @@ func newShippableTSDBFile(id Identifier, opts index.ReaderOptions, postingsCache
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
 	}
+	file.shard = shardOfIdentifier(id)
 	return file, err
 }
 
