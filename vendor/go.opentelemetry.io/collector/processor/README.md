@@ -27,11 +27,11 @@ In addition, it is important to note that the order of processors matters. The
 order in each section below is the best practice. Refer to the individual
 processor documentation for more information.
 
-1. [memory_limiter](memorylimiterprocessor/README.md)
-2. Any sampling or initial filtering processors
-3. Any processor relying on sending source from `Context` (e.g. `k8sattributes`)
-3. [batch](batchprocessor/README.md), although prefer using the exporter's batching capabilities
-4. Any other processors
+1. [memory_limiter](memorylimiterprocessor/README.md) — must be first so it can shed load before downstream processors accumulate data that cannot be flushed
+2. Any sampling or filtering processors that drop data — drop unwanted data early to avoid processing it further
+3. Any processor relying on sending source from `Context` (e.g. `k8sattributes`) — must run before batching because batching clears the request context
+4. Any processors that transform or enrich telemetry data (e.g. `attributes`, `transform`) — enrich only the data that will actually be exported
+5. [batch](batchprocessor/README.md) — batching after filtering and transformation ensures you are not batching data that will be discarded or mutated further; prefer using the exporter's batching capabilities when available
 
 ## Data Ownership
 
@@ -106,6 +106,8 @@ data cloning described in Exclusive Ownership section.
 
 The order processors are specified in a pipeline is important as this is the
 order in which each processor is applied.
+
+Processors that drop, transform, or enrich telemetry should run before batching. This avoids batching telemetry that may later be discarded. Processors that rely on request context, such as `k8sattributes`, should also run before batching so they can access the context they need.
 
 ## Creating Custom Processors
 
