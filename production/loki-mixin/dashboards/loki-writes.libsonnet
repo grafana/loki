@@ -180,6 +180,19 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector,
                             )
                           )
+                        )
+                        // Autoscaling rows are grouped at the bottom so they don't interleave with the request-path rows.
+                        .addRowIf(
+                          $._config.internal_components && $._config.autoscaling.gateway.enabled,
+                          $.autoscalingRow('Gateway', 'gateway')
+                        )
+                        .addRowIf(
+                          $._config.autoscaling.distributor.enabled,
+                          $.autoscalingRow('Distributor', 'distributor')
+                        )
+                        .addRowIf(
+                          $._config.autoscaling.ingester.enabled,
+                          $.autoscalingRow('Ingester', 'ingester')
                         ),
   },
 }

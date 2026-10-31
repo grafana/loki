@@ -1,3 +1,5 @@
+local vendor_config = import 'github.com/grafana/mimir/operations/mimir-mixin/config.libsonnet';
+local vendor_utils = import 'github.com/grafana/mimir/operations/mimir-mixin/dashboards/dashboard-utils.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'grafana-builder/grafana.libsonnet') {
@@ -465,6 +467,136 @@ local utils = import 'mixin-utils/utils.libsonnet';
         panels: [$.minReplicasPanel(component), $.maxReplicasPanel(component)],
         spans: [2, 2],
       },
+
+  //
+  // HPA/KEDA autoscaling rows for the Reads and Writes dashboards.
+  //
+
+  // Mimir's dashboard helpers configured with the Loki config, so the HPA
+  // replicas panel is shared with Mimir rather than copied.
+  //
+  // The KEDA panels are Loki's own: Loki's ScaledObject triggers are unnamed,
+  // so KEDA reports all of them as scaler="prometheusScaler" and Mimir's
+  // per-scaler (cpu/memory) panels would show nothing useful. They group by
+  // ScaledObject and trigger metric (s0-prometheus, s1-cron-..., ...) instead.
+  local mimirUtils = vendor_utils {
+    _config:: vendor_config._config + $._config {
+      alert_aggregation_labels: $._config.group_by_cluster,
+    },
+  },
+
+  // autoscalingDesiredReplicasPanel shows the replicas each trigger asks for,
+  // before the HPA min/max bounds are applied. AverageValue triggers want
+  // value / target replicas; Value triggers (e.g. the partition ingesters)
+  // want value / target * current replicas.
+  autoscalingDesiredReplicasPanel(component)::
+    local params = {
+      ns: $.namespaceMatcher(),
+      cluster_label: $._config.per_cluster_label,
+      group_by: $._config.group_by_cluster,
+      hpa_name: $._config.autoscaling[component].hpa_name,
+      hpa_prefix: $._config.autoscaling_hpa_prefix,
+    };
+    local desiredReplicas(targetType, multiplier) = |||
+      sum by (scaledObject, metric) (
+        # Using `max by ()` so that series churn doesn't break the promQL join
+        max by (%(group_by)s, scaledObject, metric) (
+          label_replace(
+            keda_scaler_metrics_value{%(cluster_label)s=~"$cluster", exported_namespace=~"$namespace"},
+            "namespace", "$1", "exported_namespace", "(.*)"
+          )
+        )
+        / on (%(group_by)s, scaledObject, metric) group_left
+        max by (%(group_by)s, scaledObject, metric) (
+          label_replace(
+            label_replace(
+              kube_horizontalpodautoscaler_spec_target_metric{%(ns)s, horizontalpodautoscaler=~"%(hpa_name)s", metric_target_type="%(target_type)s"},
+              "metric", "$1", "metric_name", "(.+)"
+            ),
+            "scaledObject", "$1", "horizontalpodautoscaler", "%(hpa_prefix)s(.*)"
+          )
+        )%(multiplier)s
+      )
+    ||| % (params { target_type: targetType, multiplier: multiplier });
+    local timesCurrentReplicas = |||
+      * on (%(group_by)s, scaledObject) group_left
+      max by (%(group_by)s, scaledObject) (
+        label_replace(
+          kube_horizontalpodautoscaler_status_current_replicas{%(ns)s, horizontalpodautoscaler=~"%(hpa_name)s"},
+          "scaledObject", "$1", "horizontalpodautoscaler", "%(hpa_prefix)s(.*)"
+        )
+      )
+    ||| % params;
+
+    $.newQueryPanel('Desired replicas') +
+    $.queryPanel(
+      '(\n%s)\nor\n(\n%s)' % [
+        desiredReplicas('average', ''),
+        desiredReplicas('value', std.strReplace('\n' + std.rstripChars(timesCurrentReplicas, '\n'), '\n', '\n  ')),
+      ],
+      '{{scaledObject}} {{metric}}',
+    ) +
+    mimirUtils.panelDescription(
+      'Desired replicas',
+      |||
+        The number of replicas each autoscaling trigger asks for: the scaling metric exposed by KEDA
+        divided by its target. It ignores the min/max replicas constraints applied later by the HPA.
+      |||
+    ),
+
+  // autoscalingFailuresPanel shows the rate at which KEDA fails to read the
+  // scaling metrics, during which the autoscaler can't work properly. KEDA
+  // 2.16 renamed keda_scaler_errors to keda_scaler_detail_errors_total, so
+  // match both.
+  autoscalingFailuresPanel(component)::
+    $.newQueryPanel('Autoscaler failures rate') +
+    $.queryPanel(
+      |||
+        sum by (scaledObject, metric) (
+          # Using `max by ()` so duplicate series for the same trigger (both metric
+          # names, or several KEDA operator replicas) aren't counted twice.
+          max by (%(group_by)s, scaledObject, metric) (
+            label_replace(
+              rate({__name__=~"keda_scaler_detail_errors_total|keda_scaler_errors", %(cluster_label)s=~"$cluster", exported_namespace=~"$namespace"}[$__rate_interval]),
+              "namespace", "$1", "exported_namespace", "(.+)"
+            )
+          )
+          + on (%(group_by)s, scaledObject, metric) group_left
+          # Using `max by ()` so that series churn doesn't break the promQL join
+          max by (%(group_by)s, scaledObject, metric) (
+            label_replace(
+              label_replace(
+                kube_horizontalpodautoscaler_spec_target_metric{%(ns)s, horizontalpodautoscaler=~"%(hpa_name)s"} * 0,
+                "metric", "$1", "metric_name", "(.+)"
+              ),
+              "scaledObject", "$1", "horizontalpodautoscaler", "%(hpa_prefix)s(.*)"
+            )
+          )
+        )
+      ||| % {
+        ns: $.namespaceMatcher(),
+        cluster_label: $._config.per_cluster_label,
+        group_by: $._config.group_by_cluster,
+        hpa_name: $._config.autoscaling[component].hpa_name,
+        hpa_prefix: $._config.autoscaling_hpa_prefix,
+      },
+      '{{scaledObject}} {{metric}} failures',
+    ) +
+    mimirUtils.panelDescription(
+      'Autoscaler failures rate',
+      |||
+        The rate of failures in the KEDA custom metrics API server. Whenever an error occurs, the KEDA custom
+        metrics server is unable to query the scaling metric from Prometheus so the autoscaler wouldn't work properly.
+      |||
+    ),
+
+  // autoscalingRow builds the "<title> - autoscaling" row for one of the
+  // components defined in $._config.autoscaling.
+  autoscalingRow(title, component)::
+    $.row('%s - autoscaling' % title)
+    .addPanel(mimirUtils.autoScalingActualReplicas(component))
+    .addPanel($.autoscalingDesiredReplicasPanel(component))
+    .addPanel($.autoscalingFailuresPanel(component)),
 
   diskWritesPanel(matcher)::
     $.newQueryPanel('Disk Writes', 'Bps') +

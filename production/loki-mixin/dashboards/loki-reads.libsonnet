@@ -299,6 +299,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
                              '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector
                            )
                          )
+                       )
+                       // Autoscaling rows are grouped at the bottom so they don't interleave with the request-path rows.
+                       .addRowIf(
+                         $._config.autoscaling.querier.enabled,
+                         $.autoscalingRow('Querier', 'querier')
+                       )
+                       .addRowIf(
+                         $._config.autoscaling.index_gateway.enabled,
+                         $.autoscalingRow('Index Gateway', 'index_gateway')
                        ),
   },
 }
