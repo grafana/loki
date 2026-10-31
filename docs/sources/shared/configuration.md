@@ -1097,10 +1097,11 @@ dataobj:
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
 
-  # Caches the metadata of the data objects the querier reads. The cache is
-  # enabled when a backend is configured. Entries are keyed by object path, so
-  # the cache cannot differentiate entries between different buckets and
-  # clusters. Multiple installations must not share the same cache backend.
+  # Caches the metadata region of the log objects and index objects the querier
+  # reads, or the entire object if it is tiny. The cache is enabled when a
+  # backend is configured. Entries are keyed by object path, so the cache cannot
+  # differentiate entries between different buckets and clusters. Multiple
+  # installations must not share the same cache backend.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
