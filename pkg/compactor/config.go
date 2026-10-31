@@ -136,6 +136,12 @@ func (cfg *Config) Validate() error {
 	return cfg.WorkerConfig.Validate()
 }
 
+// markersOnLocalDisk returns true when chunk deletion markers are stored on the local
+// disk of each compactor instance rather than in a shared object store prefix.
+func (cfg *Config) markersOnLocalDisk() bool {
+	return cfg.DeletionMarkerObjectStorePrefix == ""
+}
+
 type JobsConfig struct {
 	Deletion DeletionJobsConfig `yaml:"deletion"`
 }
