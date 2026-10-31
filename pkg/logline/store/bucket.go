@@ -75,8 +75,10 @@ func NewBucket(
 		clientName = DefaultClientName
 	}
 
+	const defaultHintParallel = 64 // FIXME: find a better place for this to live. Copy-paste from pkg/logline/hintprovider/logline.go
+
 	var bkt objstore.Bucket
-	bkt, err = bucket.NewClient(ctx, backend, objectStoreCfg.Config, clientName, logger, nil)
+	bkt, err = bucket.NewClient(ctx, backend, objectStoreCfg.Config, clientName, logger, defaultHintParallel, nil)
 	if err != nil {
 		return nil, err
 	}
