@@ -192,8 +192,6 @@ func TestParseRequest_TrustedLabels(t *testing.T) {
 	})
 }
 
-// TestOTLPTrustedLabelsOnCombinedStreams covers the per-log-record stream path, where a log attribute
-// promoted to an index label is merged into the stream labels. It must not override a trusted label.
 // TestTrustedLabelsAfterServiceNameDiscovery pins that both parsers apply trusted labels after service
 // name discovery: a trusted label overrides the stream label, but service_name is still discovered
 // from the request's own labels unless the header sets it.
@@ -226,6 +224,8 @@ func TestTrustedLabelsAfterServiceNameDiscovery(t *testing.T) {
 	})
 }
 
+// TestOTLPTrustedLabelsOnCombinedStreams covers the per-log-record stream path, where a log attribute
+// promoted to an index label is merged into the stream labels. It must not override a trusted label.
 func TestOTLPTrustedLabelsOnCombinedStreams(t *testing.T) {
 	cfg := DefaultOTLPConfig(GlobalOTLPConfig{DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"}})
 	cfg.LogAttributes = []AttributesConfig{{Action: IndexLabel, Attributes: []string{"username", "detected_level"}}}

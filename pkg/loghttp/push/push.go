@@ -339,8 +339,8 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
 		}
 
-		// Applied after service name discovery, as in the OTLP parser, so header labels override every
-		// stream label, including a discovered service_name.
+		// Applied after service name discovery, as in the OTLP parser, so a header label also overrides
+		// a discovered service_name, and header labels never feed discovery.
 		lbs = applyTrustedLabels(lbs, trustedLabels)
 
 		if backfillShard != "" {

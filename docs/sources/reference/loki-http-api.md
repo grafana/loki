@@ -304,10 +304,10 @@ If [`trusted_labels_header_enabled`](/docs/loki/<LOKI_VERSION>/configuration/#li
 The header value is a label set, for example `{username="userA", team="payments"}`.
 
 A label from the header overrides a stream label with the same name, or is added if the stream doesn't have it. All other labels are left unchanged.
+Header labels are applied after service name discovery, so they don't change the discovered `service_name` unless the header sets `service_name` itself. They count toward the tenant's label limits, such as `max_label_names_per_series`.
 The header applies to the HTTP push endpoints `/loki/api/v1/push`, `/api/prom/push`, and `/otlp/v1/logs`.
 
-Loki rejects the push request with HTTP 400 if the header is set more than once, is longer than 4096 bytes, isn't a valid label set, repeats a label name, has an empty label value, or sets a reserved label whose name starts with `__`.
-If `trusted_labels_header_enabled` is disabled, or the header isn't set, Loki stores the stream labels from the request body unchanged.
+If `trusted_labels_header_enabled` is disabled for the tenant, Loki ignores the header. If it's enabled, Loki rejects the push request with HTTP 400 if the header is set more than once, is longer than 4096 bytes, isn't a valid label set, sets no labels, repeats a label name, has an empty label value, or sets a reserved label whose name starts with `__`.
 
 {{< admonition type="caution" >}}
 Loki trusts the `X-Loki-Labels` header as it is, in the same way as `X-Scope-OrgID`. Your gateway must replace any `X-Loki-Labels` header sent by clients with its own value, not append to it. Otherwise, clients can set any labels they want.
@@ -325,7 +325,7 @@ curl -H "Content-Type: application/json" \
   --data-raw '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
 
-The following cURL command pushes the same stream with the trusted label `username="userA"`, for a tenant that has `trusted_labels_header_enabled` set. The stream is stored with the labels `{foo="bar2", username="userA"}`:
+The following cURL command pushes the same stream with the trusted label `username="userA"`, for a tenant that has `trusted_labels_header_enabled` set. Loki adds the label `username="userA"` to the stream:
 
 ```bash
 curl -H "Content-Type: application/json" \

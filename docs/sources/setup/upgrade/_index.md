@@ -89,7 +89,7 @@ Disabling this option restores expansion during parsing and the previous format 
 
 Push requests can carry an `X-Loki-Labels` header, for example `{username="userA"}`, whose labels Loki applies to every stream in the request. This lets an authenticating gateway control the labels a tenant writes without rewriting request bodies.
 
-The header is only honored for tenants with the experimental per-tenant limit `limits_config.trusted_labels_header_enabled` (`-validation.trusted-labels-header-enabled`) set to `true`. The limit defaults to `false`, so existing deployments are unaffected. Before enabling it, make sure your gateway strips any `X-Loki-Labels` header sent by clients.
+The header is only honored for tenants with the experimental per-tenant limit `limits_config.trusted_labels_header_enabled` (`-validation.trusted-labels-header-enabled`) set to `true`. The limit defaults to `false`, so existing deployments are unaffected. Before enabling it, make sure your gateway replaces any `X-Loki-Labels` header sent by clients, and that clients can't reach the distributor's gRPC push endpoint, which doesn't apply trusted labels.
 
 ### Stricter JSON payload validation
 
