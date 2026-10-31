@@ -297,6 +297,11 @@ type topicPartitions struct {
 	partsMu     xsync.Mutex
 	partitioner TopicPartitioner
 	lb          *leastBackupInput // for partitioning if the partitioner is a LoadTopicPartitioner
+
+	// For RackAwarePartitioning: the writable partitions of rackData
+	// whose leader is in our rack, filtered once per metadata update.
+	rackData  *topicPartitionsData
+	rackParts []*topicPartition
 }
 
 func (t *topicPartitions) load() *topicPartitionsData { return t.v.Load().(*topicPartitionsData) }
@@ -537,7 +542,14 @@ type topicPartitionsData struct {
 	topic              string
 	id                 [16]byte
 	when               int64
+
+	// recreatedFrom is the ID our cursors and record buffers hold once we
+	// know the topic was deleted and recreated; see mergeTopicPartitions.
+	recreatedFrom [16]byte
 }
+
+// noID is the zero topic ID. Brokers below Kafka 2.8 have no topic IDs.
+var noID [16]byte
 
 type topicID [16]byte
 
@@ -657,9 +669,14 @@ func (old *topicPartition) migrateProductionTo(new *topicPartition) { //nolint:r
 // This is a little bit different from above, in that we do this logic only
 // after stopping a consumer session. With the consumer session stopped, we
 // have fewer concurrency issues to worry about.
+//
+// A recreated topic's cursor is not validated: its offset and epoch belong to
+// the old topic, and validating them against the new one could report a data
+// loss that never happened.
 func (old *topicPartition) migrateCursorTo( //nolint:revive // old/new naming makes this clearer
 	new *topicPartition,
 	css *consumerSessionStopper,
+	wasRecreated bool,
 ) {
 	css.stop()
 
@@ -679,7 +696,7 @@ func (old *topicPartition) migrateCursorTo( //nolint:revive // old/new naming ma
 	// rather than ever migrating us to the -1 "no leader" sentinel (see
 	// mergeTopicPartitions), so a negative epoch here means we genuinely
 	// have nothing to validate against and must skip validation.
-	if new.leaderEpoch >= 0 && old.cursor.lastConsumedEpoch >= 0 {
+	if !wasRecreated && new.leaderEpoch >= 0 && old.cursor.lastConsumedEpoch >= 0 {
 		// Since the cursor consumed messages, it is definitely usable.
 		// We use it so that the epoch load can finish using it
 		// properly.
@@ -687,9 +704,9 @@ func (old *topicPartition) migrateCursorTo( //nolint:revive // old/new naming ma
 		css.reloadOffsets.addLoad(old.cursor.topic, old.cursor.partition, loadTypeEpoch, offsetLoad{
 			replica: -1,
 			// If the validation answers UNDEFINED_EPOCH_OFFSET, the reset it
-			// issues is by the last consumed timestamp; see
+			// issues follows ConsumeResetOffset; see
 			// loadEpochsForBrokerLoad.
-			ooorMilli: old.cursor.lastConsumedMilli(),
+			lastConsumedMilli: old.cursor.lastConsumedMilli(),
 			Offset: Offset{
 				at:    old.cursor.offset,
 				epoch: old.cursor.lastConsumedEpoch,
@@ -1066,6 +1083,11 @@ func (k *kip951move) doMove(cl *Client) {
 			if !ok {
 				continue // perhaps concurrently purged
 			}
+			if lr.r.recreatedFrom != noID {
+				// The buffers are abandoned and out of every sink;
+				// moving one would add it back.
+				continue
+			}
 			old, new, modified := modifyP(lr.r, recBuf.partition, td, func(tp *topicPartition) bool { return tp.records == recBuf })
 			if modified {
 				cl.cfg.logger.Log(LogLevelInfo, "moving producing partition due to kip-951 not_leader_for_partition",
@@ -1107,7 +1129,7 @@ func (k *kip951move) doMove(cl *Client) {
 					"old_leader", old.leader,
 					"old_leader_epoch", old.leaderEpoch,
 				)
-				old.migrateCursorTo(new, css)
+				old.migrateCursorTo(new, css, lr.r.recreatedFrom != noID)
 			}
 		}
 	}

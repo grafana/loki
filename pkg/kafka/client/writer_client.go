@@ -185,6 +185,10 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 
 		kgo.WithLogger(newLogger(logger)),
 
+		// Cap the ApiVersions request version so Kafka-compatible backends like WarpStream accept the
+		// connection. See MaxVersions for details.
+		kgo.MaxVersions(MaxVersions()),
+
 		kgo.RetryTimeoutFn(func(key int16) time.Duration {
 			switch key {
 			case ((*kmsg.ListOffsetsRequest)(nil)).Key():

@@ -40,6 +40,12 @@ func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger,
 		// Kafka. This is a safety measure to avoid OOMing on invalid responses.
 		// franz-go recommendation is to set it 2x FetchMaxBytes.
 		kgo.BrokerMaxReadBytes(2*fetchMaxBytes),
+		// On data loss the client cannot locate (see kgo.ConsumeResetOffset), resume from the start of
+		// the partition. This was franz-go's default before v1.22.0, which changed it to resume at the
+		// first record stamped one minute before the last consumed one. Callers can override it via
+		// opts. Note that a caller's ConsumeResetOffset also becomes the start offset unless the caller
+		// sets ConsumeStartOffset too.
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 	)
 	clientOpts = append(clientOpts, opts...)
 

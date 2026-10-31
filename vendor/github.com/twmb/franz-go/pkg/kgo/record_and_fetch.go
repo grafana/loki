@@ -67,6 +67,49 @@ func (a RecordAttrs) IsControl() bool {
 	return a.attrs&0b0010_0000 != 0
 }
 
+// RecordAttrsOpts contains the fields of a [RecordAttrs]. The zero value is an
+// uncompressed, non-transactional, non-control record with a client-generated
+// timestamp.
+type RecordAttrsOpts struct {
+	// Codec is the codec the record was compressed with, overriding the
+	// default of no compression. The codec is stored in three bits; a
+	// codec that does not fit is ignored.
+	Codec CompressionCodecType
+
+	// TimestampType is how the record's timestamp was determined; see
+	// [RecordAttrs.TimestampType] for what the values mean.
+	TimestampType int8
+
+	// Transactional sets the record as a part of a transaction.
+	Transactional bool
+
+	// Control sets the record as a control record (ABORT or COMMIT).
+	Control bool
+}
+
+// NewRecordAttrs returns the attrs corresponding to opts. This exists so you
+// can populate [Record.Attrs] yourself; the client sets that field for you
+// when producing and consuming.
+func NewRecordAttrs(opts RecordAttrsOpts) RecordAttrs {
+	var attrs uint8
+	if c := uint8(opts.Codec); c <= 0b0000_0111 {
+		attrs |= c
+	}
+	switch {
+	case opts.TimestampType < 0:
+		attrs |= 0b1000_0000 // no timestamp type
+	case opts.TimestampType > 0:
+		attrs |= 0b0000_1000 // LogAppendTime
+	}
+	if opts.Transactional {
+		attrs |= 0b0001_0000
+	}
+	if opts.Control {
+		attrs |= 0b0010_0000
+	}
+	return RecordAttrs{attrs}
+}
+
 // Record is a record to write to Kafka.
 type Record struct {
 	// Key is an optional field that can be used for partition assignment.
@@ -667,7 +710,7 @@ func (fs Fetches) EachTopic(fn func(FetchTopic)) {
 	for _, fetch := range fs {
 		for _, topic := range fetch.Topics {
 			topics[topic.Topic] = append(topics[topic.Topic], topic.Partitions...)
-			if topic.TopicID != ([16]byte{}) {
+			if topic.TopicID != noID {
 				ids[topic.Topic] = topic.TopicID
 			}
 		}

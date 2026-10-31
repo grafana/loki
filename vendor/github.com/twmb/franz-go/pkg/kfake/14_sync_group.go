@@ -23,8 +23,8 @@ func (c *Cluster) handleSyncGroup(creq *clientReq) (kmsg.Response, error) {
 		return nil, err
 	}
 
-	if c.groups.handleSync(creq) {
-		return nil, nil
+	if kresp, ok := c.groups.handleSync(creq); ok {
+		return kresp, nil
 	}
 	resp.ErrorCode = kerr.GroupIDNotFound.Code
 	return resp, nil

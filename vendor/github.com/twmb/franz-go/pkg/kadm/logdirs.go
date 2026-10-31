@@ -396,6 +396,10 @@ type DescribedLogDir struct {
 	Dir    string                // Dir is the described directory.
 	Topics DescribedLogDirTopics // Topics contains the topics with partitions in this directory.
 	Err    error                 // Err is non-nil if this directory could not be described.
+
+	TotalBytes  int64 // TotalBytes is the total size of the volume this directory is in; -1 if unreported (brokers below Kafka 3.3, or remote storage). Sizes of data in remote storage are not included.
+	UsableBytes int64 // UsableBytes is the usable size of the volume this directory is in; -1 if unreported (brokers below Kafka 3.3, or remote storage). Sizes of data in remote storage are not included.
+	IsCordoned  bool  // IsCordoned is whether this log directory is cordoned; requires Kafka 4.3+ (KIP-1066), false otherwise.
 }
 
 // Size returns the total size of all partitions in this directory. This is
@@ -528,6 +532,10 @@ func newDescribeLogDirsResp(node int32, resp *kmsg.DescribeLogDirsResponse) Desc
 			Dir:    rd.Dir,
 			Topics: make(DescribedLogDirTopics),
 			Err:    kerr.ErrorForCode(rd.ErrorCode),
+
+			TotalBytes:  rd.TotalBytes,
+			UsableBytes: rd.UsableBytes,
+			IsCordoned:  rd.IsCordoned,
 		}
 		for _, rt := range rd.Topics {
 			t := make(map[int32]DescribedLogDirPartition)

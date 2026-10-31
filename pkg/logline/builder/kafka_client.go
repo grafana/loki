@@ -10,6 +10,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+
+	kafkaclient "github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 // createKafkaClient builds the consumer-group Kafka client.
@@ -54,6 +56,8 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 		kgo.SeedBrokers(seedBrokers...),
 		kgo.ClientID(s.cfg.Kafka.ClientID),
 		kgo.DialTimeout(s.cfg.Kafka.DialTimeout),
+		// Cap ApiVersions so WarpStream accepts the connection; see kafkaclient.MaxVersions.
+		kgo.MaxVersions(kafkaclient.MaxVersions()),
 		kgo.MetadataMinAge(10 * time.Second),
 		kgo.MetadataMaxAge(10 * time.Second),
 		kgo.FetchMinBytes(1 * 1024 * 1024),
