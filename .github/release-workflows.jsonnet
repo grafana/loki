@@ -119,11 +119,14 @@ local weeklyImageJobs = {
   ),
   'check.yml': std.manifestYamlDoc({
     name: 'check',
+    // Commits on main are checked by images.yml, which gates the weekly
+    // images on the same check.
     on: {
       pull_request: {},
-      push: {
-        branches: ['main'],
-      },
+    },
+    concurrency: {
+      group: 'check-pr-${{ github.event.pull_request.number }}',
+      'cancel-in-progress': true,
     },
     permissions: {
       contents: 'read',

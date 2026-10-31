@@ -1,3 +1,6 @@
+"concurrency":
+  "cancel-in-progress": true
+  "group": "check-pr-${{ github.event.pull_request.number }}"
 "jobs":
   "check":
     "uses": "grafana/loki-release/.github/workflows/check.yml@ba2e119ef225396a0eb8425811f44914dc446963"
@@ -10,9 +13,6 @@
 "name": "check"
 "on":
   "pull_request": {}
-  "push":
-    "branches":
-    - "main"
 "permissions":
   "contents": "read"
   "pull-requests": "read"
