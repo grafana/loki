@@ -76,7 +76,7 @@ Query-shape support and hint lookup for logline index lookups.
      without ranges and hide their matches.
 13. **A regex contributes only the literals every match contains**
     - `|~` and `=~` (line, pre-parser and post-parser filters alike) go through
-      `regexliteral.Required`, never a local AST walk. It owns the rules that
+      `regexliteral.Literals`, never a local AST walk. It owns the rules that
       keep regex needles free of false negatives, including `(?i)` handling.
     - Anchoring is irrelevant here. Label regexes are anchored, line regexes are
       not, and both only need "contains".
