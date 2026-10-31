@@ -28,17 +28,21 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(creq *clientReq) (kmsg.Respons
 		return nil, err
 	}
 
-	if !c.allowedClusterACL(creq, kmsg.ACLOperationAlter) {
+	// Faults fire only on the controller; elsewhere we answer
+	// NOT_CONTROLLER below. A timed-out change still changes the
+	// credentials, and every user is answered with the fault.
+	clusterFault := c.denyCluster(creq, kmsg.ACLOperationAlter, faultKey{misrouted: b != c.controller})
+	if e := clusterFault; e != nil && creq.skipsWork(e) {
 		for _, d := range req.Deletions {
 			sr := kmsg.NewAlterUserSCRAMCredentialsResponseResult()
 			sr.User = d.Name
-			sr.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+			sr.ErrorCode = e.Code
 			resp.Results = append(resp.Results, sr)
 		}
 		for _, u := range req.Upsertions {
 			sr := kmsg.NewAlterUserSCRAMCredentialsResponseResult()
 			sr.User = u.Name
-			sr.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+			sr.ErrorCode = e.Code
 			resp.Results = append(resp.Results, sr)
 		}
 		return resp, nil
@@ -50,7 +54,13 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(creq *clientReq) (kmsg.Respons
 		resp.Results = append(resp.Results, sr)
 		return &resp.Results[len(resp.Results)-1]
 	}
+	// A fault can answer a user before the work runs. The work's own answer
+	// for that user must not add an entry or replace the code.
+	answered := make(map[string]bool)
 	doneu := func(u string, code int16) {
+		if answered[u] {
+			return
+		}
 		sr := addr(u)
 		sr.ErrorCode = code
 	}
@@ -91,6 +101,23 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(creq *clientReq) (kmsg.Respons
 			doneu(u, kerr.NotController.Code)
 		}
 		return resp, nil
+	}
+
+	// A timed-out change still changes the credential, and its user is
+	// answered with the fault.
+	fault := func(u string, e *kerr.Error) {
+		doneu(u, e.Code)
+		answered[u] = true
+		if creq.skipsWork(e) {
+			users[u] = e.Code
+		}
+	}
+	for u := range users {
+		if clusterFault != nil {
+			fault(u, clusterFault)
+		} else if e := creq.faults.check(faultKey{resource: u}); e != nil {
+			fault(u, e)
+		}
 	}
 
 	// Add anything that failed validation.

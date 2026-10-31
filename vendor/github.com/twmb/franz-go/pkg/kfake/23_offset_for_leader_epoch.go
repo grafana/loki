@@ -50,14 +50,14 @@ func (c *Cluster) handleOffsetForLeaderEpoch(creq *clientReq) (kmsg.Response, er
 	}
 
 	for _, rt := range req.Topics {
-		if !c.allowedACL(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
-			for _, rp := range rt.Partitions {
-				donep(rt.Topic, rp.Partition, kerr.TopicAuthorizationFailed.Code)
-			}
-			continue
-		}
 		ps, ok := c.data.tps.gett(rt.Topic)
 		for _, rp := range rt.Partitions {
+			pd, exists := ps[rp.Partition]
+			k := faultKey{topic: rt.Topic, misrouted: exists && pd.leader != b}
+			if e := c.deny(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe, k.part(rp.Partition)); e != nil {
+				donep(rt.Topic, rp.Partition, e.Code)
+				continue
+			}
 			if req.ReplicaID >= 0 {
 				donep(rt.Topic, rp.Partition, kerr.UnknownServerError.Code)
 				continue
@@ -94,15 +94,10 @@ func (c *Cluster) handleOffsetForLeaderEpoch(creq *clientReq) (kmsg.Response, er
 				continue
 			}
 
-			// If our epoch was bumped before anything was
-			// produced, return the epoch and a start offset of 0.
-			if !pd.hasBatches() {
-				sp.LeaderEpoch = pd.epoch
-				sp.EndOffset = 0
-				if rp.LeaderEpoch > pd.epoch {
-					sp.LeaderEpoch = -1
-					sp.EndOffset = -1
-				}
+			// Requested epoch is not yet known: keep -1 returns.
+			if rp.LeaderEpoch > pd.epoch {
+				sp.LeaderEpoch = -1
+				sp.EndOffset = -1
 				continue
 			}
 
@@ -110,10 +105,18 @@ func (c *Cluster) handleOffsetForLeaderEpoch(creq *clientReq) (kmsg.Response, er
 			nextEpoch := rp.LeaderEpoch + 1
 			si, mi, cur := pd.findBatchMeta(int64(nextEpoch), func(m *batchMeta) int64 { return int64(m.epoch) })
 
-			// Requested epoch is not yet known: keep -1 returns.
+			// No batch is after the requested epoch, so it ends at
+			// the log end. As in Kafka, we return the last batch's
+			// epoch, or the requested epoch if the log is empty.
 			if cur == nil {
-				sp.LeaderEpoch = -1
-				sp.EndOffset = -1
+				sp.LeaderEpoch = rp.LeaderEpoch
+				sp.EndOffset = pd.highWatermark
+				for i := len(pd.segments) - 1; i >= 0; i-- {
+					if idx := pd.segments[i].index; len(idx) > 0 {
+						sp.LeaderEpoch = idx[len(idx)-1].epoch
+						break
+					}
+				}
 				continue
 			}
 
