@@ -86,6 +86,9 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	if parserHints.NoLabels() {
 		return line, true
 	}
+	if !lbs.LabelFilterHints().ShouldParseLine(line, lbs) {
+		return line, false
+	}
 
 	// reset the state.
 	j.prefixBuffer = j.prefixBuffer[:0]
@@ -346,6 +349,9 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if parserHints.NoLabels() {
 		return line, true
 	}
+	if !labelFilterHints.ShouldParseLine(line, lbs) {
+		return line, false
+	}
 
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
@@ -404,6 +410,9 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
 		return line, true
+	}
+	if !labelFilterHints.ShouldParseLine(line, lbs) {
+		return line, false
 	}
 
 	l.dec.Reset(line)
@@ -499,6 +508,9 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
 		return line, true
+	}
+	if !labelFilterHints.ShouldParseLine(line, lbs) {
+		return line, false
 	}
 	matches := l.matcher.Matches(line)
 	names := l.names[:len(matches)]

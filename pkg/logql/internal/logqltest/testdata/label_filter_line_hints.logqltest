@@ -1,0 +1,253 @@
+# LabelFilterHints (pkg/logql/log/parser_hints.go) also let a parser skip a line without parsing
+# it, when the line does not contain the strings that a label filter after the parser needs: for
+# `| json | foo="bar"`, the key foo and the value bar. Each trap below is a line that does not
+# contain them, but the filter keeps it:
+# - The stream or the structured metadata has the label. The parser puts the value from the line
+#   under the name with the _extracted suffix.
+# - The line has an escape. json and logfmt decode "b\u0061r" to "bar", and keys too.
+# - json and logfmt make the label name from the key: they trim spaces, replace other characters
+#   than [A-Za-z0-9_] with an underscore, and join nested keys with an underscore.
+# - json and logfmt replace U+FFFD in a value with a space.
+# - A stage before the parser sets the label.
+# A parser that skips a trap gives an incorrect result.
+
+# json: the value is in the stream, the structured metadata or an escape
+clear
+load
+  {app="a"}            `{"foo":"bar"}`           @ 20s [repeat every 20s for 3]
+  {app="a"}            `{"foo":"baz","x":"bar"}` @ 10s                                # noise: "bar" is in a different field
+  {app="b", foo="bar"} `{"foo":"baz"}`           @ 20s [repeat every 20s for 3]       # trap: stream label
+  {app="b", foo="qux"} `{"foo":"baz"}`           @ 10s                                # noise
+  {app="c"}            `{"foo":"baz"}`           @ 20s [repeat every 20s for 3] [metadata foo="bar"] # trap: structured metadata
+  {app="c"}            `{"foo":"baz"}`           @ 10s [metadata foo="qux"]           # noise
+  {app="d"}            `{"foo":"b\u0061r"}`      @ 20s [repeat every 20s for 3]       # trap: escape
+  {app="d"}            `{"foo":"b\u0061z"}`      @ 10s                                # noise
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c|d"} | json | foo="bar" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+  {app="c"} 3
+  {app="d"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b|c|d"} | json | foo="bar" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+  {app="c"} 2 3
+  {app="d"} 2 3
+eval select from 0 to 25s forward {app=~"a|b|c|d"} | json | foo="bar"
+  {app="a"} `{"foo":"bar"}` @ 20s [parsed foo="bar"]
+  {app="b", foo="bar"} `{"foo":"baz"}` @ 20s [parsed foo_extracted="baz"]
+  {app="c"} `{"foo":"baz"}` @ 20s [metadata foo="bar"] [parsed foo_extracted="baz"]
+  {app="d"} `{"foo":"b\u0061r"}` @ 20s [parsed foo="bar"]
+
+# json: the key is escaped, has spaces around it, is nested, or has a character the name replaces
+clear
+load
+  {app="a"} `{"tenant\u0049d":"abc123"}`      @ 20s [repeat every 20s for 3]   # trap: escaped key
+  {app="a"} `{"tenantId":"zzz","x":"abc123"}` @ 10s                            # noise: "abc123" is in a different field
+  {app="b"} `{" tenantId ":"abc123"}`         @ 20s [repeat every 20s for 3]   # the name trims the spaces
+  {app="b"} `{"tenant":"abc123"}`             @ 10s                            # noise: a different key
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | json | tenantId="abc123" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b"} | json | tenantId="abc123" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+
+clear
+load
+  {app="a"}                  `{"tenant":{"id":"abc123"}}`   @ 20s [repeat every 20s for 3]   # nested keys join with an underscore
+  {app="a"}                  `{"tenant":{"name":"abc123"}}` @ 10s                            # noise: a different nested key
+  {app="b"}                  `{"tenant-id":"abc123"}`       @ 20s [repeat every 20s for 3]   # the dash becomes an underscore
+  {app="b"}                  `{"tenant-id":"zzz"}`          @ 10s                            # noise
+  {app="c", tenant_id="zzz"} `{"tenant_id":"abc123"}`       @ 20s [repeat every 20s for 3]   # the stream takes the name, so the key gets the suffix
+  {app="c", tenant_id="zzz"} `{"tenant_id":"qqq"}`          @ 10s                            # noise
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | json | tenant_id="abc123" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b"} | json | tenant_id="abc123" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+eval instant at 60s sum by (app) (count_over_time({app="c"} | json | tenant_id_extracted="abc123" [1m]))
+  {app="c"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app="c"} | json | tenant_id_extracted="abc123" [1m])) # overlapping
+  {app="c"} 2 3
+
+# json: an escaped slash
+clear
+load
+  {app="a"} `{"path":"\/api\/v1"}` @ 20s [repeat every 20s for 3]   # trap: escape
+  {app="a"} `{"path":"\/api\/v2"}` @ 10s                            # noise
+
+eval instant at 60s sum(count_over_time({app="a"} | json | path="/api/v1" [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | json | path="/api/v1" [1m])) # overlapping
+  {} 2 3
+
+# U+FFFD: a parser replaces U+FFFD in a value with a space, so foo="a b" keeps "a�b".
+# The json parser also decodes "\ufffd" to U+FFFD.
+clear
+load
+  {app="a"} `{"foo":"a b"}`      @ 20s [repeat every 20s for 3]
+  {app="a"} `{"foo":"a-b"}`      @ 10s                            # noise
+  {app="b"} `{"foo":"a�b"}`      @ 20s [repeat every 20s for 3]   # trap: U+FFFD
+  {app="c"} `{"foo":"a\ufffdb"}` @ 20s [repeat every 20s for 3]   # trap: escaped U+FFFD
+  {app="d"} "foo=a�b"            @ 20s [repeat every 20s for 3]   # trap: U+FFFD
+  {app="d"} "foo=a-b"            @ 10s                            # noise
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | json | foo="a b" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+  {app="c"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b|c"} | json | foo="a b" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+  {app="c"} 2 3
+eval instant at 60s sum by (app) (count_over_time({app="d"} | logfmt | foo="a b" [1m]))
+  {app="d"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app="d"} | logfmt | foo="a b" [1m])) # overlapping
+  {app="d"} 2 3
+eval select from 0 to 25s forward {app=~"a|b|c"} | json | foo="a b"
+  {app="a"} `{"foo":"a b"}` @ 20s [parsed foo="a b"]
+  {app="b"} `{"foo":"a�b"}` @ 20s [parsed foo="a b"]
+  {app="c"} `{"foo":"a\ufffdb"}` @ 20s [parsed foo="a b"]
+
+# logfmt: the value is in the stream, the structured metadata or an escape
+clear
+load
+  {app="a"}            "foo=bar"            @ 20s [repeat every 20s for 3]
+  {app="a"}            "foo=baz x=bar"      @ 10s                            # noise: "bar" is in a different field
+  {app="b", foo="bar"} "foo=baz"            @ 20s [repeat every 20s for 3]   # trap: stream label
+  {app="b", foo="qux"} "foo=baz"            @ 10s                            # noise
+  {app="c"}            "foo=baz"            @ 20s [repeat every 20s for 3] [metadata foo="bar"] # trap: structured metadata
+  {app="c"}            "foo=baz"            @ 10s [metadata foo="qux"]       # noise
+  {app="d"}            `foo="b\u0061r"`     @ 20s [repeat every 20s for 3]   # trap: escape
+  {app="d"}            `foo="b\u0061z"`     @ 10s                            # noise
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c|d"} | logfmt | foo="bar" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+  {app="c"} 3
+  {app="d"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b|c|d"} | logfmt | foo="bar" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+  {app="c"} 2 3
+  {app="d"} 2 3
+
+# logfmt: an escaped apostrophe
+clear
+load
+  {app="a"} `name="o\'brien"` @ 20s [repeat every 20s for 3]   # trap: escape
+  {app="a"} `name="o\'neil"`  @ 10s                            # noise
+
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | name="o'brien" [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | logfmt | name="o'brien" [1m])) # overlapping
+  {} 2 3
+
+# A stage before the parser sets the label.
+clear
+load
+  {app="a"} `{"other":"x"}` @ 20s [repeat every 20s for 3]   # trap: label_format sets tenantId
+  {app="b"} `{"other":"x"}` @ 10s                            # noise: label_format sets another value
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | label_format tenantId="{{.app}}" | json | tenantId="a" [1m]))
+  {app="a"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b"} | label_format tenantId="{{.app}}" | json | tenantId="a" [1m])) # overlapping
+  {app="a"} 2 3
+
+# Regular expressions: a case-insensitive literal, an alternation, and a character class that
+# does not simplify, which leaves only the key to check.
+clear
+load
+  {app="a"}               `{"level":"ERROR"}`           @ 20s [repeat every 20s for 3]
+  {app="a"}               `{"level":"info","msg":"err"}` @ 10s                           # noise: "err" is in a different field
+  {app="b"}               `{"level":"\u0045rror"}`      @ 20s [repeat every 20s for 3]   # trap: escape
+  {app="b"}               `{"level":"\u0049nfo"}`       @ 10s                            # noise
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | json | level=~"(?i)err.*" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b"} | json | level=~"(?i)err.*" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+
+clear
+load
+  {app="a"}               `{"level":"warn"}`                    @ 20s [repeat every 20s for 3]
+  {app="a"}               `{"level":"info","msg":"warn error"}` @ 10s                           # noise: the values are in a different field
+  {app="b", level="warn"} `{"level":"info"}`                    @ 20s [repeat every 20s for 3]  # trap: stream label
+  {app="b", level="info"} `{"level":"info"}`                    @ 10s                           # noise
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | json | level=~"warn|error" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b"} | json | level=~"warn|error" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+
+clear
+load
+  {app="a"} `{"level":"error"}` @ 20s [repeat every 20s for 3]
+  {app="a"} `{"msg":"error"}`   @ 10s                            # noise: no level key
+
+eval instant at 60s sum(count_over_time({app="a"} | json | level=~"e[rx]ror" [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | json | level=~"e[rx]ror" [1m])) # overlapping
+  {} 2 3
+
+# regexp: the value is a slice of the line, unless the stream or the structured metadata has the
+# label. A value with a quote is a slice of the line too.
+clear
+load
+  {app="a"}                   "tenant=abc123 msg=hi"  @ 20s [repeat every 20s for 3]
+  {app="a"}                   "tenant=zzz msg=abc123" @ 10s                            # noise: "abc123" is in a different field
+  {app="b", tenant="abc123"}  "tenant=zzz"            @ 20s [repeat every 20s for 3]   # trap: stream label
+  {app="b", tenant="qqq"}     "tenant=zzz"            @ 10s                            # noise
+  {app="c"}                   "tenant=zzz"            @ 20s [repeat every 20s for 3] [metadata tenant="abc123"] # trap: structured metadata
+  {app="c"}                   "tenant=zzz"            @ 10s [metadata tenant="qqq"]    # noise
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | regexp `tenant=(?P<tenant>\w+)` | tenant="abc123" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+  {app="c"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b|c"} | regexp `tenant=(?P<tenant>\w+)` | tenant="abc123" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+  {app="c"} 2 3
+eval select from 0 to 25s forward {app=~"a|b|c"} | regexp `tenant=(?P<tenant>\w+)` | tenant="abc123"
+  {app="a"} "tenant=abc123 msg=hi" @ 20s [parsed tenant="abc123"]
+  {app="b", tenant="abc123"} "tenant=zzz" @ 20s [parsed tenant_extracted="zzz"]
+  {app="c"} "tenant=zzz" @ 20s [metadata tenant="abc123"] [parsed tenant_extracted="zzz"]
+
+clear
+load
+  {app="a"} `msg=say "hi"` @ 20s [repeat every 20s for 3]
+  {app="a"} `msg=say hi`   @ 10s                            # noise
+
+eval instant at 60s sum(count_over_time({app="a"} | regexp `msg=(?P<msg>.*)` | msg=`say "hi"` [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | regexp `msg=(?P<msg>.*)` | msg=`say "hi"` [1m])) # overlapping
+  {} 2 3
+
+# pattern: the value is a slice of the line, unless the stream or the structured metadata has the
+# label.
+clear
+load
+  {app="a"}                  "GET /api tenant=abc123" @ 20s [repeat every 20s for 3]
+  {app="a"}                  "GET /abc123 tenant=zzz" @ 10s                            # noise: "abc123" is in a different field
+  {app="b", tenant="abc123"} "GET /api tenant=zzz"    @ 20s [repeat every 20s for 3]   # trap: stream label
+  {app="b", tenant="qqq"}    "GET /api tenant=zzz"    @ 10s                            # noise
+  {app="c"}                  "GET /api tenant=zzz"    @ 20s [repeat every 20s for 3] [metadata tenant="abc123"] # trap: structured metadata
+  {app="c"}                  "GET /api tenant=zzz"    @ 10s [metadata tenant="qqq"]    # noise
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | pattern `<method> <path> tenant=<tenant>` | tenant="abc123" [1m]))
+  {app="a"} 3
+  {app="b"} 3
+  {app="c"} 3
+eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b|c"} | pattern `<method> <path> tenant=<tenant>` | tenant="abc123" [1m])) # overlapping
+  {app="a"} 2 3
+  {app="b"} 2 3
+  {app="c"} 2 3

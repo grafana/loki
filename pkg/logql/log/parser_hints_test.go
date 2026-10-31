@@ -493,7 +493,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 }
 
 // stagesFor parses a plain log-selector query and returns its stages list
-func stagesFor(t *testing.T, query string) []log.Stage {
+func stagesFor(t testing.TB, query string) []log.Stage {
 	t.Helper()
 	expr, err := syntax.ParseLogSelector(query, true)
 	require.NoError(t, err)
@@ -574,7 +574,6 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 			`{app="foo"} | logfmt | unpack | foo="bar"`,
 
 			// multi-label filters are not supported
-			`{app="foo"} | logfmt | foo > 5 and bar="baz"`,
 			`{app="foo"} | logfmt | foo > 5 and bar > 3`,
 			`{app="foo"} | logfmt | foo > 5 or bar < 3`,
 		} {
@@ -583,6 +582,20 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 				require.Equal(t, log.NoLabelFilterHints(), h, "expected the optimization to be disabled for %q", query)
 			})
 		}
+	})
+
+	t.Run("a multi-label filter only lets the parser skip lines", func(t *testing.T) {
+		h := log.NewLabelFilterHints(stagesFor(t, `{app="foo"} | logfmt | foo > 5 and bar="baz"`))
+
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("app", "foo"), 0)
+		lb.Set(log.ParsedLabel, "foo", "1")
+		lb.Set(log.ParsedLabel, "bar", "nope")
+		require.True(t, h.ShouldContinueParsingLine("foo", lb))
+		require.True(t, h.ShouldContinueParsingLine("bar", lb))
+
+		lb.Reset()
+		require.False(t, h.ShouldParseLine([]byte("foo=1 bar=nope"), lb))
+		require.True(t, h.ShouldParseLine([]byte("foo=1 bar=baz"), lb))
 	})
 }
 
