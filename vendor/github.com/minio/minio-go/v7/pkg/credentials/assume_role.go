@@ -19,6 +19,7 @@ package credentials
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
@@ -98,7 +99,7 @@ type STSAssumeRoleOptions struct {
 	Policy       string // Optional to assign a policy to the assumed role
 
 	Location        string // Optional commonly needed with AWS STS.
-	DurationSeconds int    // Optional defaults to 1 hour.
+	DurationSeconds int    // Optional, omitted when zero so the server applies its default.
 
 	// Optional only valid if using with AWS STS
 	RoleARN         string
@@ -120,8 +121,6 @@ func NewSTSAssumeRole(stsEndpoint string, opts STSAssumeRoleOptions) (*Credentia
 	}), nil
 }
 
-const defaultDurationSeconds = 3600
-
 // closeResponse close non nil response with any response Body.
 // convenient wrapper to drain any remaining data on response body.
 //
@@ -142,7 +141,7 @@ func closeResponse(resp *http.Response) {
 	}
 }
 
-func getAssumeRoleCredentials(clnt *http.Client, endpoint string, opts STSAssumeRoleOptions) (AssumeRoleResponse, error) {
+func getAssumeRoleCredentials(ctx context.Context, clnt *http.Client, endpoint string, opts STSAssumeRoleOptions) (AssumeRoleResponse, error) {
 	v := url.Values{}
 	v.Set("Action", "AssumeRole")
 	v.Set("Version", STSVersion)
@@ -152,10 +151,8 @@ func getAssumeRoleCredentials(clnt *http.Client, endpoint string, opts STSAssume
 	if opts.RoleSessionName != "" {
 		v.Set("RoleSessionName", opts.RoleSessionName)
 	}
-	if opts.DurationSeconds > defaultDurationSeconds {
+	if opts.DurationSeconds != 0 {
 		v.Set("DurationSeconds", strconv.Itoa(opts.DurationSeconds))
-	} else {
-		v.Set("DurationSeconds", strconv.Itoa(defaultDurationSeconds))
 	}
 	if opts.Policy != "" {
 		v.Set("Policy", opts.Policy)
@@ -180,7 +177,7 @@ func getAssumeRoleCredentials(clnt *http.Client, endpoint string, opts STSAssume
 	}
 	postBody.Seek(0, 0)
 
-	req, err := http.NewRequest(http.MethodPost, u.String(), postBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), postBody)
 	if err != nil {
 		return AssumeRoleResponse{}, err
 	}
@@ -245,7 +242,7 @@ func (m *STSAssumeRole) RetrieveWithCredContext(cc *CredContext) (Value, error) 
 		return Value{}, errors.New("STS endpoint unknown")
 	}
 
-	a, err := getAssumeRoleCredentials(client, stsEndpoint, m.Options)
+	a, err := getAssumeRoleCredentials(cc.requestContext(), client, stsEndpoint, m.Options)
 	if err != nil {
 		return Value{}, err
 	}

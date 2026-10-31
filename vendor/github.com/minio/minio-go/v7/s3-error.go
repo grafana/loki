@@ -62,6 +62,7 @@ const (
 	InvalidDuration                   = "InvalidDuration"
 	XAmzContentSHA256Mismatch         = "XAmzContentSHA256Mismatch"
 	XMinioInvalidObjectName           = "XMinioInvalidObjectName"
+	XMinioPaidTierLicenseRequired     = "XMinioPaidTierLicenseRequired"
 	NoSuchCORSConfiguration           = "NoSuchCORSConfiguration"
 	BucketAlreadyExists               = "BucketAlreadyExists"
 	NoSuchVersion                     = "NoSuchVersion"

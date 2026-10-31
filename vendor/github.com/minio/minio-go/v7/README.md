@@ -1,4 +1,4 @@
-MinIO Go Client SDK for Amazon S3 Compatible Cloud Storage [![Slack](https://slack.min.io/slack?type=svg)](https://slack.min.io) [![Sourcegraph](https://sourcegraph.com/github.com/minio/minio-go/-/badge.svg)](https://sourcegraph.com/github.com/minio/minio-go?badge) [![Apache V2 License](https://img.shields.io/badge/license-Apache%20V2-blue.svg)](https://github.com/minio/minio-go/blob/master/LICENSE)
+MinIO Go Client SDK for Amazon S3 Compatible Cloud Storage [![Sourcegraph](https://sourcegraph.com/github.com/minio/minio-go/-/badge.svg)](https://sourcegraph.com/github.com/minio/minio-go?badge) [![Apache V2 License](https://img.shields.io/badge/license-Apache%20V2-blue.svg)](https://github.com/minio/minio-go/blob/master/LICENSE)
 ==================================================================================================================================================================================================================================================================================================================================================================================================================
 
 The MinIO Go Client SDK provides straightforward APIs to access any Amazon S3 compatible object storage.
@@ -214,6 +214,10 @@ The full API Reference is available here.
 -	[`RemoveObjects`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveObjects)
 -	[`RemoveIncompleteUpload`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveIncompleteUpload)
 -	[`SelectObjectContent`](https://min.io/docs/minio/linux/developers/go/API.html#SelectObjectContent)
+-	[`PutObjectAnnotation`](https://min.io/docs/minio/linux/developers/go/API.html#PutObjectAnnotation)
+-	[`GetObjectAnnotation`](https://min.io/docs/minio/linux/developers/go/API.html#GetObjectAnnotation)
+-	[`ListObjectAnnotations`](https://min.io/docs/minio/linux/developers/go/API.html#ListObjectAnnotations)
+-	[`RemoveObjectAnnotation`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveObjectAnnotation)
 
 ### API Reference : Presigned Operations
 
@@ -286,6 +290,10 @@ Full Examples
 -	[removeobject.go](https://github.com/minio/minio-go/blob/master/examples/s3/removeobject.go)
 -	[removeincompleteupload.go](https://github.com/minio/minio-go/blob/master/examples/s3/removeincompleteupload.go)
 -	[removeobjects.go](https://github.com/minio/minio-go/blob/master/examples/s3/removeobjects.go)
+-	[putobjectannotation.go](https://github.com/minio/minio-go/blob/master/examples/s3/putobjectannotation.go)
+-	[getobjectannotation.go](https://github.com/minio/minio-go/blob/master/examples/s3/getobjectannotation.go)
+-	[listobjectannotations.go](https://github.com/minio/minio-go/blob/master/examples/s3/listobjectannotations.go)
+-	[removeobjectannotation.go](https://github.com/minio/minio-go/blob/master/examples/s3/removeobjectannotation.go)
 
 ### Full Examples : Encrypted Object Operations
 

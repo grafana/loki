@@ -12,7 +12,11 @@
     <filename>*.rbx</filename>
     <filename>*.duby</filename>
     <filename>Gemfile</filename>
+    <filename>*.gemfile</filename>
     <filename>Vagrantfile</filename>
+    <filename>Appraisals</filename>
+    <filename>.pryrc</filename>
+    <filename>*.json.jbuilder</filename>
     <mime_type>text/x-ruby</mime_type>
     <mime_type>application/x-ruby</mime_type>
     <dot_all>true</dot_all>
