@@ -2,6 +2,8 @@ package ingester
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -156,4 +158,21 @@ func encodeNested(t *testing.T, stream logproto.Stream) []*kgo.Record {
 	data, err := nested.Marshal()
 	require.NoError(t, err)
 	return []*kgo.Record{{Key: []byte(tenantID), Value: data}}
+}
+
+func TestCanRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{name: "read only", err: ErrReadOnly, expected: true},
+		{name: "disk throttled", err: ErrDiskThrottled, expected: true},
+		{name: "wrapped disk throttled", err: fmt.Errorf("push: %w", ErrDiskThrottled), expected: true},
+		{name: "other error", err: errors.New("boom"), expected: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, canRetry(tc.err))
+		})
+	}
 }
