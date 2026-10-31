@@ -20,6 +20,7 @@ type mysqlStmt struct {
 	mc         *mysqlConn
 	id         uint32
 	paramCount int
+	columns    []mysqlField
 }
 
 func (stmt *mysqlStmt) Close() error {
@@ -64,19 +65,26 @@ func (stmt *mysqlStmt) Exec(args []driver.Value) (driver.Result, error) {
 	handleOk := stmt.mc.clearResult()
 
 	// Read Result
-	resLen, err := handleOk.readResultSetHeaderPacket()
+	resLen, metadataFollows, err := handleOk.readResultSetHeaderPacket()
 	if err != nil {
 		return nil, err
 	}
 
 	if resLen > 0 {
 		// Columns
-		if err = mc.readUntilEOF(); err != nil {
-			return nil, err
+		if metadataFollows && stmt.mc.extCapabilities&clientCacheMetadata != 0 {
+			// we can not skip column metadata because next stmt.Query() may use it.
+			if stmt.columns, err = mc.readColumns(resLen, stmt.columns); err != nil {
+				return nil, err
+			}
+		} else {
+			if err = mc.skipColumns(resLen); err != nil {
+				return nil, err
+			}
 		}
 
 		// Rows
-		if err := mc.readUntilEOF(); err != nil {
+		if err = mc.skipRows(); err != nil {
 			return nil, err
 		}
 	}
@@ -107,7 +115,7 @@ func (stmt *mysqlStmt) query(args []driver.Value) (*binaryRows, error) {
 
 	// Read Result
 	handleOk := stmt.mc.clearResult()
-	resLen, err := handleOk.readResultSetHeaderPacket()
+	resLen, metadataFollows, err := handleOk.readResultSetHeaderPacket()
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +124,17 @@ func (stmt *mysqlStmt) query(args []driver.Value) (*binaryRows, error) {
 
 	if resLen > 0 {
 		rows.mc = mc
-		rows.rs.columns, err = mc.readColumns(resLen)
+		if metadataFollows {
+			if rows.rs.columns, err = mc.readColumns(resLen, stmt.columns); err != nil {
+				return nil, err
+			}
+			stmt.columns = rows.rs.columns
+		} else {
+			if err = mc.skipEof(); err != nil {
+				return nil, err
+			}
+			rows.rs.columns = stmt.columns
+		}
 	} else {
 		rows.rs.done = true
 
@@ -131,7 +149,7 @@ func (stmt *mysqlStmt) query(args []driver.Value) (*binaryRows, error) {
 	return rows, err
 }
 
-var jsonType = reflect.TypeOf(json.RawMessage{})
+var jsonType = reflect.TypeFor[json.RawMessage]()
 
 type converter struct{}
 
@@ -193,7 +211,7 @@ func (c converter) ConvertValue(v any) (driver.Value, error) {
 	return nil, fmt.Errorf("unsupported type %T, a %s", v, rv.Kind())
 }
 
-var valuerReflectType = reflect.TypeOf((*driver.Valuer)(nil)).Elem()
+var valuerReflectType = reflect.TypeFor[driver.Valuer]()
 
 // callValuerValue returns vr.Value(), with one exception:
 // If vr.Value is an auto-generated method on a pointer type and the
