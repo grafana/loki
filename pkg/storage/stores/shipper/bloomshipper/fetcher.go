@@ -310,7 +310,8 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			return results, err
 		case res := <-responses:
 			found++
-			key := f.client.Block(refs[res.idx]).Addr()
+			// Release with the same key the block was put into the cache with.
+			key := res.key
 			results[res.idx] = res.item.BlockQuerier(
 				cfg.usePool,
 				func() error {
