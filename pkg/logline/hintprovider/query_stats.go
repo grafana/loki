@@ -46,11 +46,9 @@ type QueryStats struct {
 	totalIOWaitNanos atomic.Int64
 	totalIOBytes     atomic.Int64
 
-	activeWorkers        atomic.Int32
-	peakConcurrency      atomic.Int32
-	totalWorkNanos       atomic.Int64
-	wallTimeNanos        atomic.Int64
-	effectiveConcurrency atomic.Float64
+	activeWorkers   atomic.Int32
+	peakConcurrency atomic.Int32
+	wallTimeNanos   atomic.Int64
 
 	prefetchCalls    atomic.Int32
 	prefetchTimeouts atomic.Int32
@@ -142,13 +140,10 @@ func (s *QueryStats) WorkerStarted() {
 	}
 }
 
-// WorkerFinished records worker execution time and decrements active count.
-func (s *QueryStats) WorkerFinished(startedAt time.Time) {
+// WorkerFinished decrements the active worker count.
+func (s *QueryStats) WorkerFinished() {
 	if s == nil {
 		return
-	}
-	if !startedAt.IsZero() {
-		s.totalWorkNanos.Add(time.Since(startedAt).Nanoseconds())
 	}
 	s.activeWorkers.Add(-1)
 }
@@ -177,7 +172,6 @@ func (s *QueryStats) Merge(other *QueryStats) {
 
 	s.totalIOWaitNanos.Add(other.totalIOWaitNanos.Load())
 	s.totalIOBytes.Add(other.totalIOBytes.Load())
-	s.totalWorkNanos.Add(other.totalWorkNanos.Load())
 	s.prefetchCalls.Add(other.prefetchCalls.Load())
 	s.prefetchTimeouts.Add(other.prefetchTimeouts.Load())
 	if v, ok := other.hintCacheResult.Load().(string); ok && v != "" {
@@ -198,28 +192,6 @@ func (s *QueryStats) Merge(other *QueryStats) {
 			break
 		}
 		if s.peakConcurrency.CompareAndSwap(peak, otherPeak) {
-			break
-		}
-	}
-
-	otherWall := other.wallTimeNanos.Load()
-	for {
-		wall := s.wallTimeNanos.Load()
-		if otherWall <= wall {
-			break
-		}
-		if s.wallTimeNanos.CompareAndSwap(wall, otherWall) {
-			break
-		}
-	}
-
-	otherEffective := other.effectiveConcurrency.Load()
-	for {
-		effective := s.effectiveConcurrency.Load()
-		if otherEffective <= effective {
-			break
-		}
-		if s.effectiveConcurrency.CompareAndSwap(effective, otherEffective) {
 			break
 		}
 	}
@@ -266,11 +238,11 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	indexQueriesPositive := s.indexQueriesPositive.Load()
 	totalTermBatchesProcessed := s.totalTermBatchesProcessed.Load()
 
-	totalWorkNanos := s.totalWorkNanos.Load()
+	totalIOWaitNanos := s.totalIOWaitNanos.Load()
 	wallTimeNanos := s.wallTimeNanos.Load()
-	effective := s.effectiveConcurrency.Load()
-	if totalWorkNanos > 0 && wallTimeNanos > 0 {
-		effective = float64(totalWorkNanos) / float64(wallTimeNanos)
+	effective := 0.0
+	if wallTimeNanos > 0 {
+		effective = float64(totalIOWaitNanos) / float64(wallTimeNanos)
 	}
 
 	hintCacheResult, _ := s.hintCacheResult.Load().(string)
@@ -315,7 +287,6 @@ func FromProtoStats(p *logproto.HintQueryStats) *QueryStats {
 	s.totalIOWaitNanos.Store(p.TotalIOWait.Nanoseconds())
 	s.totalIOBytes.Store(p.TotalIOBytes)
 	s.peakConcurrency.Store(p.PeakConcurrency)
-	s.effectiveConcurrency.Store(p.EffectiveConcurrency)
 	s.prefetchCalls.Store(p.PrefetchCalls)
 	s.prefetchTimeouts.Store(p.PrefetchTimeouts)
 	s.indexQueriesTotal.Store(p.IndexQueriesTotal)
@@ -397,7 +368,7 @@ func (r *trackingReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	start := time.Now()
 	n, err := r.reader.ReadAt(p, off)
 	waited := time.Since(start)
-	r.stats.WorkerFinished(start)
+	r.stats.WorkerFinished()
 
 	readType := r.classify(off, int64(len(p)))
 	r.stats.observeRead(readType, n, waited)
