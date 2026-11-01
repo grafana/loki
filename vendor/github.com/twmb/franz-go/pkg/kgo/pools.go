@@ -11,7 +11,7 @@ import (
 
 ////////////////////////////////////////////////////////////////
 // NOTE:                                                      //
-// NOTE: Make sure new hooks are checked in implementsAnyPool //
+// NOTE: Make sure new pools are checked in implementsAnyPool //
 // NOTE:                                                      //
 ////////////////////////////////////////////////////////////////
 
@@ -42,7 +42,9 @@ func (ps pools) each(fn func(Pool) bool) {
 type PoolDecompressBytes interface {
 	// GetDecompressBytes returns a slice to decompress into. This
 	// interface is given the compressed data and the codec that will be
-	// used for decompressing.
+	// used for decompressing. Only the returned slice's capacity is used;
+	// data is written starting at index 0 regardless of the slice's
+	// length.
 	//
 	// For many decompression algorithms, it is not possible to accurately
 	// know the size that data will be once decompressed. You can guess a
@@ -105,6 +107,14 @@ func recordPoolsCtx(pools []Pool, decompressBytes []byte, recs []Record) (*recor
 //
 // This method is only relevant if you are using the [WithPools] option.
 //
+// For share group records (KIP-932): Recycle releases the record's
+// backing memory but does NOT by itself ack. Any record not explicitly
+// acked is auto-accepted on the next [Client.PollRecords] via the
+// standard share-consumer next-poll auto-accept pass; this is true
+// regardless of whether the record was Recycled. If you need a
+// non-Accept outcome (Release/Reject/Renew), call [Record.Ack] with
+// the appropriate status BEFORE Recycle.
+//
 // NOTE: It is invalid to continue using the record after calling recycle;
 // doing so may result in corruption and data races. If you use
 // PoolDecompressBytes, you cannot continue to use a shallow copy of any
@@ -135,6 +145,13 @@ func (r *Record) Recycle() {
 		return
 	}
 
+	ps.release()
+}
+
+// release zeroes and puts the pooled slices back. Called by a batch's last
+// Recycle, or directly by the fetch processor when a batch kept no records
+// (so no Recycle will ever run).
+func (ps *recordPools) release() {
 	// Reset the length of slices to max to ensure we zero things and so
 	// that users can avoid this resetting.
 	ps.decompressBytes = ps.decompressBytes[:cap(ps.decompressBytes)]
@@ -184,6 +201,10 @@ func implementsAnyPool(p Pool) bool {
 	return false
 }
 
+// ensureLen returns s reset to exactly length n, growing it if needed. n
+// must be >= 0: a negative n panics on the s[:n] slice expression. Callers
+// pass a record count read off the wire, which is rejected for < 0 before
+// reaching here (see processRecordBatch's negative-count guard).
 func ensureLen[S ~[]E, E any](s S, n int) S {
 	s = s[:cap(s)]
 	if len(s) >= n {

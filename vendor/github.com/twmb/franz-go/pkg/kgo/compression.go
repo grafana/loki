@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math"
 	"runtime"
 	"slices"
 	"sync"
@@ -16,6 +17,24 @@ import (
 )
 
 var byteBuffers = sync.Pool{New: func() any { return bytes.NewBuffer(make([]byte, 8<<10)) }}
+
+// maxDecompressedSize caps how much one batch may decompress to. Fetch
+// limits bound only the COMPRESSED bytes on the wire; nothing in the
+// protocol bounds the decompressed size, and the whole batch is
+// materialized contiguously while decompressing. Without a cap, a few-KB
+// malicious or corrupt batch can demand tens of GiB: zstd frames declare a
+// content size that is honored up to the decoder's configured limit (the
+// library default is 64 GiB), gzip expands up to ~1032x, lz4 up to ~255x,
+// and snappy headers claim up to 4 GiB. No legitimate batch can exceed
+// math.MaxInt32 decompressed: every known producer serializes a batch's
+// records into an int32-indexed buffer before compressing (this client's
+// own appendTo, Java's MemoryRecordsBuilder over a ByteBuffer, librdkafka),
+// so a batch claiming more is corrupt or hostile and is rejected like any
+// other corrupt batch: a loud, repeated fetch error with no offset advance.
+// A var only so tests can shrink it.
+var maxDecompressedSize = int64(math.MaxInt32)
+
+var errDecompressedTooLarge = errors.New("decompressed data exceeds the maximum allowed decompressed batch size (corrupt or malicious batch)")
 
 // CompressionCodecType is a bitfield specifying a Kafka-defined compression
 // codec. Per spec, only four compression codecs are supported. However, if
@@ -35,8 +54,9 @@ const (
 	// CodecZstd is a compression codec signifying zstd compression.
 	CodecZstd
 
-	// CodecError is returned from compressing or decompressing if an error
-	// occurred.
+	// CodecError is returned as the used-codec from Compress if an error
+	// occurred while compressing (Decompress reports errors via its error
+	// return instead).
 	CodecError = -1
 )
 
@@ -176,7 +196,7 @@ out:
 		case CodecGzip:
 			level := gzip.DefaultCompression
 			if codec.level != 0 {
-				if _, err := gzip.NewWriterLevel(nil, codec.level); err != nil {
+				if _, err := gzip.NewWriterLevel(nil, codec.level); err == nil {
 					level = codec.level
 				}
 			}
@@ -322,6 +342,7 @@ func DefaultDecompressor(pools ...Pool) Decompressor {
 				zstdDec, _ := zstd.NewReader(nil,
 					zstd.WithDecoderLowmem(true),
 					zstd.WithDecoderConcurrency(1),
+					zstd.WithDecoderMaxMemory(uint64(maxDecompressedSize)),
 				)
 				r := &zstdDecoder{zstdDec}
 				runtime.SetFinalizer(r, func(r *zstdDecoder) {
@@ -352,7 +373,12 @@ func (d *decompressor) Decompress(src []byte, codecType CompressionCodecType) ([
 	d.pools.each(func(p Pool) bool {
 		if pdecompressBytes, ok := p.(PoolDecompressBytes); ok {
 			s := pdecompressBytes.GetDecompressBytes(src, codecType)
-			out = bytes.NewBuffer(s)
+			// Only the slice's capacity is used: decompressed data
+			// must start at index 0, while a buffer initialized with
+			// len(s) > 0 (a pool returning make([]byte, sizeGuess))
+			// would have the copy/append based codecs write AFTER the
+			// existing length, prefixing the output with stale bytes.
+			out = bytes.NewBuffer(s[:0])
 			rfn = out.Bytes
 			userPooled = true
 			return true
@@ -382,13 +408,30 @@ func (d *decompressor) Decompress(src []byte, codecType CompressionCodecType) ([
 		if err := ungz.Reset(bytes.NewReader(src)); err != nil {
 			return nil, err
 		}
-		if _, err := io.Copy(out, ungz); err != nil {
+		if n, err := io.Copy(out, io.LimitReader(ungz, maxDecompressedSize+1)); err != nil {
 			return nil, err
+		} else if n > maxDecompressedSize {
+			return nil, errDecompressedTooLarge
 		}
 		return rfn(), nil
 	case CodecSnappy:
 		if len(src) > 16 && bytes.HasPrefix(src, xerialPfx) {
-			return xerialDecode(src)
+			// Decode into the pooled destination when one exists;
+			// this path previously ignored the pool's Get entirely
+			// (fresh allocation every batch, and the Get'd slice was
+			// orphaned: never used, never put back).
+			var xdst []byte
+			if userPooled {
+				xdst = out.Bytes()
+			}
+			return xerialDecode(xdst, src)
+		}
+		// The decoded length is read from the header and allocated up
+		// front; check the claim before decoding.
+		if l, err := s2.DecodedLen(src); err != nil {
+			return nil, err
+		} else if int64(l) > maxDecompressedSize {
+			return nil, errDecompressedTooLarge
 		}
 		decoded, err := s2.Decode(out.Bytes(), src)
 		if err != nil {
@@ -402,8 +445,10 @@ func (d *decompressor) Decompress(src []byte, codecType CompressionCodecType) ([
 		unlz4 := d.unlz4Pool.Get().(*lz4.Reader)
 		defer d.unlz4Pool.Put(unlz4)
 		unlz4.Reset(bytes.NewReader(src))
-		if _, err := io.Copy(out, unlz4); err != nil {
+		if n, err := io.Copy(out, io.LimitReader(unlz4, maxDecompressedSize+1)); err != nil {
 			return nil, err
+		} else if n > maxDecompressedSize {
+			return nil, errDecompressedTooLarge
 		}
 		return rfn(), nil
 	case CodecZstd:
@@ -426,13 +471,15 @@ var xerialPfx = []byte{130, 83, 78, 65, 80, 80, 89, 0}
 
 var errMalformedXerial = errors.New("malformed xerial framing")
 
-func xerialDecode(src []byte) ([]byte, error) {
+// xerialDecode appends the decoded chunks to dst (commonly a len-0 pooled
+// slice, or nil) and returns the result.
+func xerialDecode(dst, src []byte) ([]byte, error) {
 	// bytes 0-8: xerial header
 	// bytes 8-16: xerial version
 	// everything after: uint32 chunk size, snappy chunk
 	// we come into this function knowing src is at least 16
 	src = src[16:]
-	var dst, chunk []byte
+	var chunk []byte
 	var err error
 	for len(src) > 0 {
 		if len(src) < 4 {
@@ -442,6 +489,13 @@ func xerialDecode(src []byte) ([]byte, error) {
 		src = src[4:]
 		if size < 0 || len(src) < int(size) {
 			return nil, errMalformedXerial
+		}
+		// Chunks accumulate; bound the cumulative claimed output before
+		// decoding each chunk.
+		if l, err := s2.DecodedLen(src[:size]); err != nil {
+			return nil, err
+		} else if int64(l) > maxDecompressedSize-int64(len(dst)) {
+			return nil, errDecompressedTooLarge
 		}
 		if chunk, err = s2.Decode(chunk[:cap(chunk)], src[:size]); err != nil {
 			return nil, err
