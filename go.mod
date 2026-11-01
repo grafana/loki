@@ -149,7 +149,7 @@ require (
 	github.com/prometheus/sigv4 v0.4.1
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.19.1
-	github.com/shirou/gopsutil/v4 v4.26.9
+	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/thanos-io/objstore v0.0.0-20261009124658-72d3b9ff63af
 	github.com/tjhop/slog-gokit v0.1.6
 	github.com/twmb/franz-go v1.21.0
@@ -213,7 +213,7 @@ require (
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
-	github.com/ebitengine/purego v0.11.1 // indirect
+	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.39.1-0.20260819172001-e6e3fd93e4be // indirect
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
