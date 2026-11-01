@@ -4579,6 +4579,11 @@ shard_streams:
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = true]
 
+# Honor the X-Loki-Labels header on HTTP push requests and force its labels onto
+# every stream.
+# CLI flag: -validation.trusted-labels-header-enabled
+[trusted_labels_header_enabled: <boolean> | default = false]
+
 # Maximum size accepted for structured metadata per log line.
 # CLI flag: -limits.max-structured-metadata-size
 [max_structured_metadata_size: <int> | default = 64KB]

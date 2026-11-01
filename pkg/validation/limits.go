@@ -226,7 +226,9 @@ type Limits struct {
 	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size"`
 	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size"`
 
-	AllowStructuredMetadata           bool                  `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
+	AllowStructuredMetadata bool `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
+	// TODO(naming): Rename after maintainer feedback.
+	TrustedLabelsHeaderEnabled        bool                  `yaml:"trusted_labels_header_enabled,omitempty" json:"trusted_labels_header_enabled,omitempty" doc:"description=Honor the X-Loki-Labels header on HTTP push requests and force its labels onto every stream."`
 	MaxStructuredMetadataSize         flagext.ByteSize      `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int                   `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
 	OTLPConfig                        *push.OTLPConfig      `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
@@ -582,6 +584,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
 
 	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", true, "Allow user to send structured metadata (non-indexed labels) in push payload.")
+	f.BoolVar(&l.TrustedLabelsHeaderEnabled, "validation.trusted-labels-header-enabled", false, "Honor the X-Loki-Labels header on HTTP push requests and force its labels onto every stream.")
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
@@ -1266,6 +1269,10 @@ func (o *Overrides) BloomBlockEncoding(userID string) string {
 
 func (o *Overrides) AllowStructuredMetadata(userID string) bool {
 	return o.getOverridesForUser(userID).AllowStructuredMetadata
+}
+
+func (o *Overrides) TrustedLabelsHeaderEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).TrustedLabelsHeaderEnabled
 }
 
 func (o *Overrides) MaxStructuredMetadataSize(userID string) int {

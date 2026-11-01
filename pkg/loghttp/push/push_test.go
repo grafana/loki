@@ -508,6 +508,136 @@ func Test_ServiceDetection(t *testing.T) {
 	})
 }
 
+func TestParseLokiRequestTrustedLabels(t *testing.T) {
+	tests := []struct {
+		name           string
+		path           string
+		contentType    string
+		body           []byte
+		trustedLabels  string
+		discoverLabels []string
+		expectedLabels []string
+	}{
+		{
+			name:          "v1 JSON replaces matching labels and adds missing labels",
+			path:          "/loki/api/v1/push",
+			contentType:   "application/json",
+			body:          []byte(`{"streams":[{"stream":{"app":"body","keep":"value"},"values":[["1570818238000000000","line"]]}]}`),
+			trustedLabels: `{app="gateway", team="payments"}`,
+			expectedLabels: []string{
+				labels.FromStrings("app", "gateway", "keep", "value", "team", "payments").String(),
+			},
+		},
+		{
+			name:           "v1 JSON injects labels into stream with empty body labels",
+			path:           "/loki/api/v1/push",
+			contentType:    "application/json",
+			body:           []byte(`{"streams":[{"stream":{},"values":[["1570818238000000000","line"]]}]}`),
+			trustedLabels:  `{team="payments"}`,
+			expectedLabels: []string{labels.FromStrings("team", "payments").String()},
+		},
+		{
+			name:          "v0 JSON adds labels",
+			path:          "/api/prom/push",
+			contentType:   "application/json",
+			body:          []byte(`{"streams":[{"labels":"{app=\"body\"}","entries":[{"ts":"2019-09-13T18:32:22.380001319Z","line":"line"}]}]}`),
+			trustedLabels: `{team="payments"}`,
+			expectedLabels: []string{
+				labels.FromStrings("app", "body", "team", "payments").String(),
+			},
+		},
+		{
+			name:        "protobuf replaces matching labels and adds missing labels",
+			path:        "/loki/api/v1/push",
+			contentType: "application/x-protobuf",
+			body: []byte(snappyString(marshalProto(&logproto.PushRequest{
+				Streams: []logproto.Stream{{
+					Labels:  `{app="body", keep="value"}`,
+					Entries: []logproto.Entry{{Timestamp: time.Unix(0, 1570818238000000000), Line: "line"}},
+				}},
+			}))),
+			trustedLabels: `{app="gateway", team="payments"}`,
+			expectedLabels: []string{
+				labels.FromStrings("app", "gateway", "keep", "value", "team", "payments").String(),
+			},
+		},
+		{
+			name:        "multiple streams",
+			path:        "/loki/api/v1/push",
+			contentType: "application/json",
+			body: []byte(`{"streams":[
+				{"stream":{"app":"first","keep":"one"},"values":[["1570818238000000000","line1"]]},
+				{"stream":{"app":"second","other":"two"},"values":[["1570818238000000000","line2"]]}
+			]}`),
+			trustedLabels: `{app="gateway", team="payments"}`,
+			expectedLabels: []string{
+				labels.FromStrings("app", "gateway", "keep", "one", "team", "payments").String(),
+				labels.FromStrings("app", "gateway", "other", "two", "team", "payments").String(),
+			},
+		},
+		{
+			name:        "no trusted labels in context is a no-op",
+			path:        "/loki/api/v1/push",
+			contentType: "application/json",
+			body:        []byte(`{"streams":[{"stream":{"app":"body"},"values":[["1570818238000000000","line"]]}]}`),
+			expectedLabels: []string{
+				labels.FromStrings("app", "body").String(),
+			},
+		},
+		{
+			name:           "empty request contains no streams",
+			path:           "/loki/api/v1/push",
+			contentType:    "application/json",
+			body:           []byte(`{"streams":[]}`),
+			trustedLabels:  `{team="payments"}`,
+			expectedLabels: []string{},
+		},
+		{
+			name:           "trusted labels participate in service name discovery",
+			path:           "/loki/api/v1/push",
+			contentType:    "application/json",
+			body:           []byte(`{"streams":[{"stream":{"keep":"value"},"values":[["1570818238000000000","line"]]}]}`),
+			trustedLabels:  `{app="gateway"}`,
+			discoverLabels: []string{"app"},
+			expectedLabels: []string{
+				labels.FromStrings("app", "gateway", "keep", "value", LabelServiceName, "gateway").String(),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, test.path, bytes.NewReader(test.body))
+			request.Header.Set("Content-Type", test.contentType)
+			if test.trustedLabels != "" {
+				request.Header.Set(HTTPHeaderTrustedLabelsKey, test.trustedLabels)
+				forcedLabels, ok, err := ExtractAndValidateTrustedLabels(request)
+				require.NoError(t, err)
+				require.True(t, ok)
+				request = request.WithContext(InjectTrustedLabelsContext(request.Context(), forcedLabels))
+			}
+
+			limits := &fakeLimits{enabled: len(test.discoverLabels) > 0, labels: test.discoverLabels}
+			data, _, err := ParseLokiRequest(
+				"fake",
+				request,
+				limits,
+				nil,
+				100<<20,
+				100<<20,
+				nil,
+				nil,
+				util_log.Logger,
+			)
+			require.NoError(t, err)
+			require.Len(t, data.Streams, len(test.expectedLabels))
+			for i, expected := range test.expectedLabels {
+				require.Equal(t, expected, data.Streams[i].Labels)
+			}
+		})
+	}
+}
+
 func BenchmarkRetentionPeriodToString(b *testing.B) {
 	testCases := []struct {
 		name            string

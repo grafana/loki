@@ -122,6 +122,19 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		r = r.Clone(loghttppush.InjectBackfillShardContext(r.Context(), shard))
 	}
 
+	// The trusted labels header is intentionally ignored unless enabled for this tenant.
+	if d.validator.TrustedLabelsHeaderEnabled(tenantID) {
+		forcedLabels, ok, labelsErr := loghttppush.ExtractAndValidateTrustedLabels(r)
+		if labelsErr != nil {
+			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", labelsErr))
+			recordFail(http.StatusBadRequest, labelsErr.Error())
+			return
+		}
+		if ok {
+			r = r.Clone(loghttppush.InjectTrustedLabelsContext(r.Context(), forcedLabels))
+		}
+	}
+
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
 	// across all parsers for this HTTP request.
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)

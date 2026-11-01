@@ -106,12 +106,6 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 		StructuredMetadata: make(push.LabelsAdapter, 0, attrs.Len()),
 	}
 
-	shouldDiscoverServiceName := len(discoverServiceName) > 0
-	hasServiceName := false
-	if v, ok := attrs.Get(AttrServiceName); ok && v.AsString() != "" {
-		hasServiceName = true
-	}
-
 	var rangeErr error
 	attrs.Range(func(k string, v pcommon.Value) bool {
 		action := otlpConfig.ActionForResourceAttribute(k)
@@ -140,10 +134,24 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 		return nil, rangeErr
 	}
 
+	DiscoverServiceName(attrs, result.StreamLabels, discoverServiceName)
+
+	return result, nil
+}
+
+// DiscoverServiceName promotes an indexed resource label to service_name when
+// the resource does not have an explicit service.name attribute.
+func DiscoverServiceName(attrs pcommon.Map, streamLabels model.LabelSet, discoverServiceName []string) {
+	shouldDiscoverServiceName := len(discoverServiceName) > 0
+	hasServiceName := false
+	if v, ok := attrs.Get(AttrServiceName); ok && v.AsString() != "" {
+		hasServiceName = true
+	}
+
 	if !hasServiceName && shouldDiscoverServiceName {
 		for _, labelName := range discoverServiceName {
-			if v, ok := result.StreamLabels[model.LabelName(labelName)]; ok && v != "" {
-				result.StreamLabels[model.LabelName(LabelServiceName)] = v
+			if v, ok := streamLabels[model.LabelName(labelName)]; ok && v != "" {
+				streamLabels[model.LabelName(LabelServiceName)] = v
 				hasServiceName = true
 				break
 			}
@@ -151,10 +159,8 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 	}
 
 	if !hasServiceName && shouldDiscoverServiceName {
-		result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
+		streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
 	}
-
-	return result, nil
 }
 
 // ScopeAttrsResult holds the output of ScopeAttrsToStructuredMetadata.
