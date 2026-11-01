@@ -309,7 +309,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20260702190614-8ae5a48058df // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20260916203055-22a1a467d9f0 // indirect
-	github.com/prometheus/alertmanager v0.34.1 // indirect
+	github.com/prometheus/alertmanager v0.34.2 // indirect
 	github.com/prometheus/exporter-toolkit v0.20.0 // indirect
 	github.com/prometheus/procfs v0.23.0 // indirect
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
