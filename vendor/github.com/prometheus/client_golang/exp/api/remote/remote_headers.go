@@ -82,15 +82,99 @@ func (m MessageTypes) Contains(mType WriteMessageType) bool {
 	return slices.Contains(m, mType)
 }
 
+// WriteMode represents the Remote-Write 2.0 mode (`;mode=<mode>` parameter in Content-Type).
+// See https://prometheus.io/docs/specs/prw/remote_write_spec_2_0/#modes.
+type WriteMode string
+
+const (
+	// WriteModeNone is the default baseline Remote-Write 2.0 mode (omitting `;mode=` or `;mode=none`).
+	WriteModeNone WriteMode = ""
+	// WriteModeStateless is the `stateless` Remote-Write 2.0 mode (`;mode=stateless`).
+	WriteModeStateless WriteMode = "stateless"
+	// WriteModeStatelessST is the `stateless-st` Remote-Write 2.0 mode (`;mode=stateless-st`).
+	WriteModeStatelessST WriteMode = "stateless-st"
+
+	writeModeNoneParam = "none"
+)
+
+// AllWriteModes lists all supported Remote-Write 2.0 modes.
+var AllWriteModes = WriteModes{WriteModeNone, WriteModeStateless, WriteModeStatelessST}
+
+// Validate checks that the WriteMode is valid for the given WriteMessageType.
+func (m WriteMode) Validate(msgType WriteMessageType) error {
+	switch m {
+	case WriteModeNone:
+		return nil
+	case writeModeNoneParam, WriteModeStateless, WriteModeStatelessST:
+		if msgType != WriteV2MessageType {
+			return fmt.Errorf("mode %q is only supported with protobuf message %q, got %q", m, WriteV2MessageType, msgType)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown remote write mode %q, supported: %v", m, AllWriteModes.String())
+	}
+}
+
+// String returns the human-readable name of the mode (`"none"` for WriteModeNone).
+func (m WriteMode) String() string {
+	if m == WriteModeNone {
+		return writeModeNoneParam
+	}
+	return string(m)
+}
+
+// Normalize returns the canonical WriteMode representation (mapping `"none"` to WriteModeNone).
+func (m WriteMode) Normalize() WriteMode {
+	if m == writeModeNoneParam {
+		return WriteModeNone
+	}
+	return m
+}
+
+// WriteModes represents a set of supported WriteMode values.
+type WriteModes []WriteMode
+
+// Strings returns the string representations of the modes.
+func (m WriteModes) Strings() []string {
+	ret := make([]string, 0, len(m))
+	for _, mode := range m {
+		ret = append(ret, mode.String())
+	}
+	return ret
+}
+
+// String returns a comma-separated list of the modes.
+func (m WriteModes) String() string {
+	return strings.Join(m.Strings(), ", ")
+}
+
+// Contains reports whether m contains mode (treating `""` and `"none"` as equivalent).
+func (m WriteModes) Contains(mode WriteMode) bool {
+	target := mode.Normalize()
+	for _, candidate := range m {
+		if candidate.Normalize() == target {
+			return true
+		}
+	}
+	return false
+}
+
 var contentTypeHeaders = map[WriteMessageType]string{
 	WriteV1MessageType: appProtoContentType, // Also application/x-protobuf;proto=prometheus.WriteRequest but simplified for compatibility with 1.x spec.
 	WriteV2MessageType: appProtoContentType + ";proto=io.prometheus.write.v2.Request",
 }
 
-// ContentTypeHeader returns content type header value for the given proto message
-// or empty string for unknown proto message.
-func contentTypeHeader(m WriteMessageType) string {
-	return contentTypeHeaders[m]
+// ContentTypeHeader returns the Content-Type header value for the given proto message and mode,
+// or an empty string for an unknown proto message.
+func ContentTypeHeader(m WriteMessageType, mode WriteMode) string {
+	base := contentTypeHeaders[m]
+	if base == "" {
+		return ""
+	}
+	if m == WriteV2MessageType && mode.Normalize() != WriteModeNone {
+		return base + ";mode=" + string(mode.Normalize())
+	}
+	return base
 }
 
 const (
@@ -120,13 +204,20 @@ func (w *WriteResponse) Stats() WriteResponseStats {
 	return w.WriteResponseStats
 }
 
+// Add adds the given WriteResponseStats to this WriteResponse and marks the statistics as confirmed.
+func (w *WriteResponse) Add(rs WriteResponseStats) {
+	w.WriteResponseStats.Add(rs)
+	w.confirmed = true
+}
+
 // SetStatusCode sets the HTTP status code for the response. http.StatusNoContent is the default.
 // If Store returns an error, a status code below 400 is replaced with http.StatusInternalServerError.
 func (w *WriteResponse) SetStatusCode(code int) {
 	w.statusCode = code
+	w.Async = code == http.StatusAccepted
 }
 
-// SetExtraHeader adds additional headers to be set in the response (apart from stats headers)
+// SetExtraHeader adds additional headers to be set in the response (apart from stats headers).
 func (w *WriteResponse) SetExtraHeader(key, value string) {
 	w.extraHeaders.Set(key, value)
 }
@@ -136,10 +227,9 @@ func (w *WriteResponse) SetExtraHeader(key, value string) {
 func (w *WriteResponse) writeHeaders(msgType WriteMessageType, rw http.ResponseWriter) {
 	h := rw.Header()
 
-	// TODO make it easier to indicate if the stats are valid before adding the headers. WriteResponseStats.confirmed
-	//  could be used if there was a reliable way for it to be set without parsing headers. For now ensure we don't
-	//  add stats headers for v1 messages which can cause confusion/false positive errors logs.
-	if msgType != WriteV1MessageType {
+	// Asynchronous receivers returning 202 Accepted may omit written headers when counts are not
+	// calculated synchronously (i.e. when Add was not called to confirm stats).
+	if msgType != WriteV1MessageType && (w.statusCode != http.StatusAccepted || w.confirmed) {
 		h.Set(writtenSamplesHeader, strconv.Itoa(w.Samples))
 		h.Set(writtenHistogramsHeader, strconv.Itoa(w.Histograms))
 		h.Set(writtenExemplarsHeader, strconv.Itoa(w.Exemplars))
@@ -154,18 +244,27 @@ func (w *WriteResponse) writeHeaders(msgType WriteMessageType, rw http.ResponseW
 
 // WriteResponseStats represents the response, remote write statistics.
 type WriteResponseStats struct {
-	// Samples represents X-Prometheus-Remote-Write-Written-Samples
+	// Samples represents X-Prometheus-Remote-Write-Samples-Written.
 	Samples int
-	// Histograms represents X-Prometheus-Remote-Write-Written-Histograms
+	// Histograms represents X-Prometheus-Remote-Write-Histograms-Written.
 	Histograms int
-	// Exemplars represents X-Prometheus-Remote-Write-Written-Exemplars
+	// Exemplars represents X-Prometheus-Remote-Write-Exemplars-Written.
 	Exemplars int
+	// Async is true when the Receiver responded with 202 HTTP Accepted, indicating asynchronous
+	// processing where written headers may be omitted because validation is deferred.
+	Async bool
 
-	// Confirmed means we can trust those statistics from the point of view
+	// confirmed means we can trust those statistics from the point of view
 	// of the PRW 2.0 spec. When parsed from headers, it means we got at least one
 	// response header from the Receiver to confirm those numbers, meaning it must
-	// be at least 2.0 Receiver. See ParseWriteResponseStats for details.
+	// be at least a 2.0 Receiver. See parseWriteResponseStats for details.
 	confirmed bool
+}
+
+// Confirmed returns true if at least one X-Prometheus-Remote-Write-*-Written response header was
+// received or statistics were explicitly set on a WriteResponse.
+func (s WriteResponseStats) Confirmed() bool {
+	return s.confirmed
 }
 
 // NoDataWritten returns true if statistics indicate no data was written.
@@ -181,7 +280,8 @@ func (s WriteResponseStats) AllSamples() int {
 // Add adds the given WriteResponseStats to this WriteResponseStats.
 // If this WriteResponseStats is empty, it will be replaced by the given WriteResponseStats.
 func (s *WriteResponseStats) Add(rs WriteResponseStats) {
-	s.confirmed = rs.confirmed
+	s.confirmed = s.confirmed || rs.confirmed
+	s.Async = s.Async || rs.Async
 	s.Samples += rs.Samples
 	s.Histograms += rs.Histograms
 	s.Exemplars += rs.Exemplars
@@ -189,17 +289,18 @@ func (s *WriteResponseStats) Add(rs WriteResponseStats) {
 
 // parseWriteResponseStats returns WriteResponseStats parsed from the response headers.
 //
-// As per 2.0 spec, missing header means 0. However, abrupt HTTP errors, 1.0 Receivers
-// or buggy 2.0 Receivers might result in no response headers specified and that
+// As per 2.0 spec, missing header means 0. However, abrupt HTTP errors, 202 Accepted responses,
+// 1.0 Receivers, or buggy 2.0 Receivers might result in no response headers specified and that
 // might NOT necessarily mean nothing was written. To represent that we set
-// s.Confirmed = true only when see at least on response header.
+// s.confirmed = true only when we see at least one response header.
 //
-// Error is returned when any of the header fails to parse as int64.
+// Error is returned when any of the headers fails to parse as int.
 func parseWriteResponseStats(r *http.Response) (s WriteResponseStats, err error) {
 	var (
 		errs []error
 		h    = r.Header
 	)
+	s.Async = r.StatusCode == http.StatusAccepted
 	if v := h.Get(writtenSamplesHeader); v != "" { // Empty means zero.
 		s.confirmed = true
 		if s.Samples, err = strconv.Atoi(v); err != nil {
