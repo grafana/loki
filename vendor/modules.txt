@@ -1020,7 +1020,6 @@ github.com/hashicorp/go-rootcerts
 github.com/hashicorp/go-sockaddr
 # github.com/hashicorp/go-uuid v1.0.4
 ## explicit; go 1.25.13
-github.com/hashicorp/go-uuid
 # github.com/hashicorp/go-version v1.9.0
 ## explicit
 github.com/hashicorp/go-version
@@ -1279,8 +1278,8 @@ github.com/oschwald/maxminddb-golang/v2/internal/decoder
 github.com/oschwald/maxminddb-golang/v2/internal/maxminddbtag
 github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors
 github.com/oschwald/maxminddb-golang/v2/mmdbdata
-# github.com/pandatix/go-abnf v0.5.1
-## explicit; go 1.24.4
+# github.com/pandatix/go-abnf v0.5.3
+## explicit; go 1.26.0
 github.com/pandatix/go-abnf
 # github.com/parquet-go/bitpack v1.1.0
 ## explicit; go 1.24.0
