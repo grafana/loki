@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -206,18 +207,21 @@ type gogoProtoEnabled interface {
 //     will be used
 //   - If neither is supported, it will marshaled using generic google.golang.org/protobuf methods and
 //     error out on unknown scheme.
-func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any, opts ...WriteOption) (_ WriteResponseStats, err error) {
+func (r *API) Write(ctx context.Context, msgType WriteMessageType, mode WriteMode, msg any, opts ...WriteOption) (_ WriteResponseStats, err error) {
 	// Parse write options.
 	var writeOpts writeOpts
 	for _, opt := range opts {
 		opt(&writeOpts)
 	}
 
-	buf := r.bufPool.Get().(*[]byte)
-
 	if err := msgType.Validate(); err != nil {
 		return WriteResponseStats{}, err
 	}
+	if err := mode.Validate(msgType); err != nil {
+		return WriteResponseStats{}, err
+	}
+
+	buf := r.bufPool.Get().(*[]byte)
 
 	// Encode the payload.
 	switch m := msg.(type) {
@@ -247,7 +251,7 @@ func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any, opts
 		}
 	case proto.Message:
 		// Generic proto.
-		*buf, err = (proto.MarshalOptions{}).MarshalAppend(*buf, m)
+		*buf, err = (proto.MarshalOptions{}).MarshalAppend((*buf)[:0], m)
 		if err != nil {
 			return WriteResponseStats{}, fmt.Errorf("encoding request %w", err)
 		}
@@ -273,12 +277,13 @@ func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any, opts
 		MaxRetries: r.opts.backoffConfig.MaxRetries,
 	})
 	for {
-		rs, err := r.attemptWrite(ctx, r.opts.compression, msgType, payload, b.NumRetries())
+		rs, err := r.attemptWrite(ctx, r.opts.compression, msgType, mode, payload, b.NumRetries())
 		accumulatedStats.Add(rs)
 		if err == nil {
 			// Check the case mentioned in PRW 2.0.
 			// https://prometheus.io/docs/specs/remote_write_spec_2_0/#required-written-response-headers.
-			if msgType == WriteV2MessageType && !accumulatedStats.confirmed && accumulatedStats.NoDataWritten() {
+			// Asynchronous receivers returning 202 Accepted may omit written response headers.
+			if msgType == WriteV2MessageType && !accumulatedStats.Async && !accumulatedStats.confirmed && accumulatedStats.NoDataWritten() {
 				// TODO(bwplotka): Allow users to disable this check or provide their stats for us to know if it's empty.
 				return accumulatedStats, fmt.Errorf("sent v2 request; "+
 					"got 2xx, but PRW 2.0 response header statistics indicate %v samples, %v histograms "+
@@ -334,7 +339,7 @@ func compressPayload(tmpbuf *[]byte, enc Compression, inp []byte) (compressed []
 	}
 }
 
-func (r *API) attemptWrite(ctx context.Context, compr Compression, msgType WriteMessageType, payload []byte, attempt int) (WriteResponseStats, error) {
+func (r *API) attemptWrite(ctx context.Context, compr Compression, msgType WriteMessageType, mode WriteMode, payload []byte, attempt int) (WriteResponseStats, error) {
 	req, err := http.NewRequest(http.MethodPost, r.baseURL.String(), bytes.NewReader(payload))
 	if err != nil {
 		// Errors from NewRequest are from unparsable URLs, so are not
@@ -343,7 +348,7 @@ func (r *API) attemptWrite(ctx context.Context, compr Compression, msgType Write
 	}
 
 	req.Header.Add("Content-Encoding", string(compr))
-	req.Header.Set("Content-Type", contentTypeHeader(msgType))
+	req.Header.Set("Content-Type", ContentTypeHeader(msgType, mode))
 	if msgType == WriteV1MessageType {
 		// Compatibility mode for 1.0.
 		req.Header.Set(versionHeader, version1HeaderValue)
@@ -405,14 +410,14 @@ func retryAfterDuration(t string) time.Duration {
 // writeStorage represents the storage for RemoteWriteHandler.
 // This interface is intentionally private due its experimental state.
 type writeStorage interface {
-	// Store stores remote write metrics encoded in the given WriteContentType.
+	// Store stores remote write metrics encoded in the given WriteMessageType and WriteMode.
 	// Provided http.Request contains the encoded bytes in the req.Body with all the HTTP information,
-	// except "Content-Type" header which is provided in a separate, validated ctype.
+	// except "Content-Type" header which is provided in separate, validated msgType and mode arguments.
 	//
 	// Other headers might be trimmed, depending on the configured middlewares
 	// e.g. a default SnappyMiddleware trims "Content-Encoding" and ensures that
 	// encoded body bytes are already decompressed.
-	Store(req *http.Request, msgType WriteMessageType) (_ *WriteResponse, _ error)
+	Store(req *http.Request, msgType WriteMessageType, mode WriteMode) (_ *WriteResponse, _ error)
 }
 
 type writeHandler struct {
@@ -422,8 +427,9 @@ type writeHandler struct {
 }
 
 type writeHandlerOpts struct {
-	logger      *slog.Logger
-	middlewares []func(http.Handler) http.Handler
+	logger        *slog.Logger
+	middlewares   []func(http.Handler) http.Handler
+	acceptedModes WriteModes
 }
 
 // WriteHandlerOption represents an option for the write handler.
@@ -434,6 +440,14 @@ type WriteHandlerOption func(o *writeHandlerOpts)
 func WithWriteHandlerLogger(logger *slog.Logger) WriteHandlerOption {
 	return func(o *writeHandlerOpts) {
 		o.logger = logger
+	}
+}
+
+// WithWriteHandlerAcceptedModes returns WriteHandlerOption that restricts which Remote-Write 2.0
+// modes are accepted for WriteV2MessageType requests. By default, AllWriteModes are accepted.
+func WithWriteHandlerAcceptedModes(modes WriteModes) WriteHandlerOption {
+	return func(o *writeHandlerOpts) {
+		o.acceptedModes = modes
 	}
 }
 
@@ -464,6 +478,7 @@ func SnappyDecodeMiddleware(logger *slog.Logger) func(http.Handler) http.Handler
 			if enc != "" && enc != string(SnappyBlockCompression) {
 				err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, SnappyBlockCompression)
 				logger.Error("Error decoding remote write request", "err", err)
+				w.Header().Set("Accept-Encoding", string(SnappyBlockCompression))
 				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 				return
 			}
@@ -512,8 +527,9 @@ func SnappyDecodeMiddleware(logger *slog.Logger) func(http.Handler) http.Handler
 // (https://prometheus.io/docs/specs/remote_write_spec_2_0/) protocol.
 func NewWriteHandler(store writeStorage, acceptedMessageTypes MessageTypes, opts ...WriteHandlerOption) http.Handler {
 	o := writeHandlerOpts{
-		logger:      slog.New(nopSlogHandler{}),
-		middlewares: []func(http.Handler) http.Handler{SnappyDecodeMiddleware(slog.New(nopSlogHandler{}))},
+		logger:        slog.New(nopSlogHandler{}),
+		middlewares:   []func(http.Handler) http.Handler{SnappyDecodeMiddleware(slog.New(nopSlogHandler{}))},
+		acceptedModes: AllWriteModes,
 	}
 	for _, opt := range opts {
 		opt(&o)
@@ -536,34 +552,85 @@ func NewWriteHandler(store writeStorage, acceptedMessageTypes MessageTypes, opts
 // ParseProtoMsg parses the content-type header and returns the proto message type.
 //
 // The expected content-type will be of the form,
-//   - `application/x-protobuf;proto=io.prometheus.write.v2.Request` which will be treated as RW2.0 request,
+//   - `application/x-protobuf;proto=io.prometheus.write.v2.Request` (optionally with `;mode=<mode>`) which will be treated as RW2.0 request,
 //   - `application/x-protobuf;proto=prometheus.WriteRequest` which will be treated as RW1.0 request,
 //   - `application/x-protobuf` which will be treated as RW1.0 request.
 //
 // If the content-type is not of the above forms, it will return an error.
 func ParseProtoMsg(contentType string) (WriteMessageType, error) {
-	contentType = strings.TrimSpace(contentType)
+	msgType, _, err := ParseContentType(contentType)
+	return msgType, err
+}
 
-	parts := strings.Split(contentType, ";")
-	if parts[0] != appProtoContentType {
-		return "", fmt.Errorf("expected %v as the first (media) part, got %v content-type", appProtoContentType, contentType)
+// ParseContentType parses the Content-Type header and returns the validated WriteMessageType and WriteMode.
+//
+// See https://prometheus.io/docs/specs/prw/remote_write_spec_2_0/#content-type.
+func ParseContentType(contentType string) (WriteMessageType, WriteMode, error) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if mediaType != appProtoContentType {
+		return "", WriteModeNone, fmt.Errorf("expected %v as the first (media) part, got %v content-type", appProtoContentType, contentType)
 	}
-	// Parse potential https://www.rfc-editor.org/rfc/rfc9110#parameter
-	for _, p := range parts[1:] {
-		pair := strings.Split(p, "=")
-		if len(pair) != 2 {
-			return "", fmt.Errorf("as per https://www.rfc-editor.org/rfc/rfc9110#parameter expected parameters to be key-values, got %v in %v content-type", p, contentType)
-		}
-		if pair[0] == "proto" {
-			ret := WriteMessageType(pair[1])
-			if err := ret.Validate(); err != nil {
-				return "", fmt.Errorf("got %v content type; %w", contentType, err)
+	if err != nil {
+		return "", WriteModeNone, fmt.Errorf("as per https://www.rfc-editor.org/rfc/rfc9110#parameter expected valid media parameters in %v content-type: %w", contentType, err)
+	}
+
+	var (
+		msgType = WriteV1MessageType
+		rawMode WriteMode
+		hasMode bool
+	)
+	// Parse potential https://www.rfc-editor.org/rfc/rfc9110#parameter.
+	for key, val := range params {
+		switch key {
+		case "proto":
+			msgType = WriteMessageType(val)
+			if err := msgType.Validate(); err != nil {
+				return "", WriteModeNone, fmt.Errorf("got %v content type; %w", contentType, err)
 			}
-			return ret, nil
+		case "mode":
+			hasMode = true
+			rawMode = WriteMode(val)
+			if rawMode == WriteModeNone {
+				return "", WriteModeNone, fmt.Errorf("empty mode parameter in %v content-type", contentType)
+			}
+		default:
+			return "", WriteModeNone, fmt.Errorf("unexpected parameter %q in %v content-type", key, contentType)
 		}
 	}
-	// No "proto=" parameter, assuming v1.
-	return WriteV1MessageType, nil
+
+	if hasMode {
+		if err := rawMode.Validate(msgType); err != nil {
+			return "", WriteModeNone, fmt.Errorf("got %v content type; %w", contentType, err)
+		}
+	}
+	return msgType, rawMode.Normalize(), nil
+}
+
+// acceptHeaderValue returns the RFC 7694 Accept response header value listing all supported Content-Type values.
+func (h *writeHandler) acceptHeaderValue() string {
+	var accepted []string
+	if h.acceptedMessageTypes.Contains(WriteV1MessageType) {
+		accepted = append(accepted, appProtoContentType, appProtoContentType+";proto="+string(WriteV1MessageType))
+	}
+	if h.acceptedMessageTypes.Contains(WriteV2MessageType) {
+		for _, mode := range h.opts.acceptedModes {
+			switch mode.Normalize() {
+			case WriteModeNone:
+				base := ContentTypeHeader(WriteV2MessageType, WriteModeNone)
+				accepted = append(accepted, base, base+";mode="+writeModeNoneParam)
+			case WriteModeStateless, WriteModeStatelessST:
+				accepted = append(accepted, ContentTypeHeader(WriteV2MessageType, mode.Normalize()))
+			}
+		}
+	}
+	return strings.Join(accepted, ", ")
+}
+
+func (h *writeHandler) writeUnsupportedMediaType(w http.ResponseWriter, err error) {
+	if accept := h.acceptHeaderValue(); accept != "" {
+		w.Header().Set("Accept", accept)
+	}
+	http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 }
 
 func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -577,21 +644,28 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		contentType = appProtoContentType
 	}
 
-	msgType, err := ParseProtoMsg(contentType)
+	msgType, mode, err := ParseContentType(contentType)
 	if err != nil {
 		h.opts.logger.Error("Error decoding remote write request", "err", err)
-		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+		h.writeUnsupportedMediaType(w, err)
 		return
 	}
 
 	if !h.acceptedMessageTypes.Contains(msgType) {
 		err := fmt.Errorf("%v protobuf message is not accepted by this server; only accepts %v", msgType, h.acceptedMessageTypes.String())
 		h.opts.logger.Error("Unaccepted message type", "msgType", msgType, "err", err)
-		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+		h.writeUnsupportedMediaType(w, err)
 		return
 	}
 
-	writeResponse, storeErr := h.store.Store(r, msgType)
+	if msgType == WriteV2MessageType && !h.opts.acceptedModes.Contains(mode) {
+		err := fmt.Errorf("mode %q is not accepted by this server; only accepts %v", mode.String(), h.opts.acceptedModes.String())
+		h.opts.logger.Error("Unaccepted remote write mode", "mode", mode.String(), "err", err)
+		h.writeUnsupportedMediaType(w, err)
+		return
+	}
+
+	writeResponse, storeErr := h.store.Store(r, msgType, mode)
 	if writeResponse == nil {
 		// User could forget to return write response; in this case we assume 0 samples
 		// were written.
@@ -602,7 +676,10 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeResponse.writeHeaders(msgType, w)
 
 	if storeErr != nil {
-		if writeResponse.statusCode == 0 {
+		// A storage error must never be reported as success, otherwise the
+		// sender drops the data. NewWriteResponse defaults to 204, so any
+		// non-error status is replaced.
+		if writeResponse.statusCode < 400 {
 			writeResponse.SetStatusCode(http.StatusInternalServerError)
 		}
 		if writeResponse.statusCode/100 == 5 { // 5xx
@@ -610,6 +687,9 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, storeErr.Error(), writeResponse.statusCode)
 		return
+	}
+	if writeResponse.statusCode == 0 {
+		writeResponse.SetStatusCode(http.StatusNoContent)
 	}
 	w.WriteHeader(writeResponse.statusCode)
 }
