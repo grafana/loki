@@ -553,14 +553,16 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
 	// data-object store.
 	var (
-		dataObjStore         querier.Store
-		dataObjMetadataCache *metadatacache.Cache
+		dataObjStore          querier.Store
+		dataObjMetadataCaches []*metadatacache.Cache
 	)
 
-	// A failed init returns no service, so nothing else stops the cache.
+	// A failed init returns no service, so nothing else stops the caches.
 	defer func() {
-		if returnErr != nil && dataObjMetadataCache != nil {
-			dataObjMetadataCache.Stop()
+		if returnErr != nil {
+			for _, c := range dataObjMetadataCaches {
+				c.Stop()
+			}
 		}
 	}()
 
@@ -569,21 +571,32 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 		if err != nil {
 			return nil, err
 		}
-		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-
-		var storeOpts []querier.DataObjStoreOption
+		var (
+			storeOpts     []querier.DataObjStoreOption
+			metastoreOpts []metastore.ObjectMetastoreOption
+		)
 
 		if t.lbacChunkFilterer != nil {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
 		}
 
 		if cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
-			dataObjMetadataCache, err = metadatacache.NewFromConfig(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+			backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
 			if err != nil {
 				return nil, fmt.Errorf("creating data object metadata cache: %w", err)
 			}
-			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(dataObjMetadataCache))
+
+			// The two caches share one backend. It ignores a repeated Stop, so each cache can stop it.
+			cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
+			logsCache := metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
+			indexCache := metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
+			dataObjMetadataCaches = []*metadatacache.Cache{logsCache, indexCache}
+
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(logsCache))
+			metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(indexCache))
 		}
+
+		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics, metastoreOpts...)
 
 		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
@@ -781,8 +794,8 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 
 	if svc != nil {
 		svc.AddListener(newStopListener(deleteStore.Stop))
-		if dataObjMetadataCache != nil {
-			svc.AddListener(newStopListener(dataObjMetadataCache.Stop))
+		for _, c := range dataObjMetadataCaches {
+			svc.AddListener(newStopListener(c.Stop))
 		}
 	}
 	return withLoglineStorePolling(loglineStore, svc)
