@@ -1034,17 +1034,27 @@ github.com/gobwas/glob/syntax/ast
 github.com/gobwas/glob/syntax/lexer
 github.com/gobwas/glob/util/runes
 github.com/gobwas/glob/util/strings
-# github.com/goccy/go-json v0.10.6
-## explicit; go 1.19
+# github.com/goccy/go-json v0.12.0
+## explicit; go 1.23
 github.com/goccy/go-json
 github.com/goccy/go-json/internal/decoder
 github.com/goccy/go-json/internal/encoder
+github.com/goccy/go-json/internal/encoder/run
 github.com/goccy/go-json/internal/encoder/vm
 github.com/goccy/go-json/internal/encoder/vm_color
 github.com/goccy/go-json/internal/encoder/vm_color_indent
 github.com/goccy/go-json/internal/encoder/vm_indent
 github.com/goccy/go-json/internal/errors
+github.com/goccy/go-json/internal/floatfmt
+github.com/goccy/go-json/internal/intfmt
+github.com/goccy/go-json/internal/jsonfields
+github.com/goccy/go-json/internal/jsonnum
+github.com/goccy/go-json/internal/jsonstring
+github.com/goccy/go-json/internal/jsonsyntax
+github.com/goccy/go-json/internal/options
 github.com/goccy/go-json/internal/runtime
+github.com/goccy/go-json/internal/textcoder
+github.com/goccy/go-json/jsontext
 # github.com/gofrs/flock v0.13.1
 ## explicit; go 1.25.0
 github.com/gofrs/flock
