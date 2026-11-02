@@ -13,9 +13,9 @@ require (
 	github.com/grafana/loki/operator/api/loki v0.0.0-20260827121917-dd170be07101
 	github.com/grafana/loki/v3 v3.7.8
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.14.0
-	github.com/openshift/api v0.0.0-20260827103138-252412308277 // release-5.0
+	github.com/openshift/api v0.0.0-20261023091600-9809689a2448 // release-5.0
 	github.com/openshift/cloud-credential-operator v0.0.0-20260923223624-82a5b4459331 // release-5.0
-	github.com/openshift/library-go v0.0.0-20260814122159-7b930c0d20a6 // release-5.0
+	github.com/openshift/library-go v0.0.0-20261030161254-298cf2d19148 // release-5.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.93.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.72.0
