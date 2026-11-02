@@ -336,18 +336,12 @@ func dropStreamsOutsideRange(byID map[int64]streams.Stream, layout streams.Layou
 // sourcesLayout returns the layout that every source shares. It returns an
 // error if two sources have different layouts, because their stream IDs and
 // row orders are not comparable.
-//
-// sourcesLayout also returns an error if the shared shard layout is not the
-// default one.
 func sourcesLayout(sources []*logSource) (streams.Layout, error) {
 	layout := sources[0].layout
 	for _, src := range sources[1:] {
 		if !src.layout.Equal(layout) {
 			return streams.Layout{}, fmt.Errorf("source object %q has a different stream layout than %q", src.path, sources[0].path)
 		}
-	}
-	if layout.ShardLayout() != streams.DefaultShardLayout() {
-		return streams.Layout{}, fmt.Errorf("source objects have %d shard buckets, but LogMerge supports only %d", layout.ShardLayout().Buckets(), streams.DefaultShardLayout().Buckets())
 	}
 	return layout, nil
 }

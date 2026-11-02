@@ -1390,6 +1390,9 @@ func (r *Runner) forwardcharnext() rune {
 	return ch
 }
 
+// Bound each vectorized comparison to preserve fast rejection near the end.
+const runeComparisonChunkSize = 32
+
 func (r *Runner) runematch(str []rune) bool {
 	var pos int
 
@@ -1409,10 +1412,11 @@ func (r *Runner) runematch(str []rune) bool {
 	}
 
 	if !r.caseInsensitive {
-		for c != 0 {
-			c--
-			pos--
-			if str[c] != r.Runtext[pos] {
+		for c > 0 {
+			length := min(c, runeComparisonChunkSize)
+			c -= length
+			pos -= length
+			if !helpers.Equals(r.Runtext, pos, length, str[c:c+length]) {
 				return false
 			}
 		}
@@ -1435,54 +1439,53 @@ func (r *Runner) runematch(str []rune) bool {
 	return true
 }
 
-func (r *Runner) refmatch(index, len int) bool {
-	var c, pos, cmpos int
-
-	if !r.rightToLeft {
-		if r.Runtextend-r.Runtextpos < len {
+func (r *Runner) refmatch(index, length int) bool {
+	pos := r.Runtextpos
+	if r.rightToLeft {
+		if pos < length {
 			return false
 		}
-
-		pos = r.Runtextpos + len
-	} else {
-		if r.Runtextpos-0 < len {
-			return false
-		}
-
-		pos = r.Runtextpos
+		pos -= length
+	} else if r.Runtextend-pos < length {
+		return false
 	}
-	cmpos = index + len
 
-	c = len
-
-	if !r.caseInsensitive {
-		for c != 0 {
-			c--
-			cmpos--
-			pos--
-			if r.Runtext[cmpos] != r.Runtext[pos] {
+	candidate := r.Runtext[pos : pos+length]
+	options := syntax.RegexOptions(r.re.options)
+	// Compare bounded chunks from the end, preserving fast rejection near the
+	// end while allowing exact spans to use vectorized slice comparisons.
+	for end := length; end > 0; {
+		start := max(0, end-runeComparisonChunkSize)
+		if !helpers.Equals(r.Runtext, index+start, end-start, candidate[start:end]) {
+			if !r.caseInsensitive {
 				return false
 			}
-
-		}
-	} else {
-		for c != 0 {
-			c--
-			cmpos--
-			pos--
-
-			if !syntax.IsCaseEquivalent(r.Runtext[cmpos], r.Runtext[pos], syntax.RegexOptions(r.re.options)) {
-				return false
+			for i := end - 1; i >= start; i-- {
+				captured, ch := r.Runtext[index+i], candidate[i]
+				if captured == ch {
+					continue
+				}
+				// ASCII letters fold identically in every mode; other runes
+				// require the mode-aware Unicode comparison.
+				if uint32(captured|ch) <= unicode.MaxASCII {
+					folded := captured | 0x20
+					if folded < 'a' || folded > 'z' || folded != ch|0x20 {
+						return false
+					}
+					continue
+				}
+				if !syntax.IsCaseEquivalent(captured, ch, options) {
+					return false
+				}
 			}
 		}
+		end = start
 	}
 
 	if !r.rightToLeft {
-		pos += len
+		pos += length
 	}
-
 	r.Runtextpos = pos
-
 	return true
 }
 

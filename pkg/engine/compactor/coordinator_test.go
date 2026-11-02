@@ -304,11 +304,12 @@ func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objsto
 		})
 	}
 	buildIndex(ctx, t, bucket, testIndexObject{
-		tenant:      tenant,
-		path:        path,
-		sectionSize: 1 << 21,
-		stats:       rows,
-		postings:    postingRows,
+		tenant:       tenant,
+		path:         path,
+		sectionSize:  1 << 21,
+		shardBuckets: streams.DefaultShardBuckets,
+		stats:        rows,
+		postings:     postingRows,
 	})
 	writeToCReferencing(ctx, t, bucket, tenant, imWindow(), path)
 }
@@ -677,9 +678,10 @@ func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
 		for i := range 2 {
 			path := fmt.Sprintf("indexes/%s/%d", schema, i)
 			buildIndex(ctx, t, bucket, testIndexObject{
-				tenant:      "acme",
-				path:        path,
-				sectionSize: 1 << 20,
+				tenant:       "acme",
+				path:         path,
+				sectionSize:  1 << 20,
+				shardBuckets: streams.DefaultShardBuckets,
 				stats: []stats.Stat{{
 					ObjectPath:       path + "/logs",
 					SectionIndex:     0,
@@ -749,6 +751,96 @@ func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
 		require.Len(t, schemas, 1, "one IndexMerge task must contain only one sort schema")
 	}
 	require.Len(t, replacer.snapshot(), 2, "each schema group is swapped independently")
+}
+
+func TestCompactTenant_DoesNotMergeIndexesAcrossShardLayouts(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	type layoutGroup struct {
+		name         string
+		shardBuckets uint32
+		hasStats     bool
+	}
+	buckets8 := layoutGroup{name: "buckets-8", shardBuckets: 8, hasStats: true}
+	buckets32 := layoutGroup{name: "buckets-32", shardBuckets: streams.DefaultShardBuckets, hasStats: true}
+	noStats := layoutGroup{name: "no-stats", shardBuckets: streams.DefaultShardBuckets, hasStats: false}
+
+	tests := []struct {
+		name   string
+		groups []layoutGroup
+	}{
+		{name: "merges two groups of indexes with different shard bucket counts separately", groups: []layoutGroup{buckets8, buckets32}},
+		{name: "merges a group of indexes without stats separately from a group with stats", groups: []layoutGroup{buckets32, noStats}},
+		{name: "merges three groups of indexes with different layouts separately", groups: []layoutGroup{buckets8, buckets32, noStats}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bucket := objstore.NewInMemBucket()
+			var entries []indexEntry
+			for _, group := range test.groups {
+				for i := range 2 {
+					indexPath := fmt.Sprintf("indexes/%s/%d", group.name, i)
+					object := testIndexObject{
+						tenant:       "acme",
+						path:         indexPath,
+						sectionSize:  1 << 20,
+						shardBuckets: group.shardBuckets,
+						postings: []postings.Row{
+							{
+								Kind: postings.KindLabel, ObjectPath: indexPath + "/logs", ColumnName: "common", LabelValue: "a",
+								MinTimestamp: 10, MaxTimestamp: 20,
+								ShardBuckets: int64(group.shardBuckets), MinShardBucket: 0, MaxShardBucket: group.shardBuckets - 1,
+							},
+							{
+								Kind: postings.KindLabel, ObjectPath: indexPath + "/logs", ColumnName: "common", LabelValue: "z",
+								MinTimestamp: 30, MaxTimestamp: 40,
+								ShardBuckets: int64(group.shardBuckets), MinShardBucket: 0, MaxShardBucket: group.shardBuckets - 1,
+							},
+						},
+					}
+					if group.hasStats {
+						object.stats = []stats.Stat{{
+							ObjectPath: indexPath + "/logs", SortSchema: "label:service_name", Labels: map[string]string{},
+							MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100,
+						}}
+					}
+					buildIndex(t.Context(), t, bucket, object)
+					entries = append(entries, indexEntry{Path: indexPath, Start: window, End: window.Add(time.Hour)})
+				}
+			}
+
+			runner := &fakeRunner{}
+			replacer := &fakeReplacer{swapped: true}
+			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+			result, err := c.compactTenantIndexes(t.Context(), "acme", window, entries)
+			require.NoError(t, err)
+			require.Equal(t, compactionStats{removed: len(entries), added: len(test.groups), dispatched: len(test.groups)}, result)
+
+			calls := runner.snapshot()
+			require.Len(t, calls, len(test.groups))
+			for _, call := range calls {
+				root, err := call.plan.Root()
+				require.NoError(t, err)
+				node, ok := root.(*physical.IndexMerge)
+				require.True(t, ok)
+				mergedGroups := make(map[string]bool)
+				for _, run := range node.Runs {
+					for _, section := range run.Sections {
+						mergedGroups[section.ObjectPath[:strings.LastIndex(section.ObjectPath, "/")]] = true
+					}
+				}
+				require.Len(t, mergedGroups, 1, "one IndexMerge task must contain only one layout group")
+			}
+			swaps := replacer.snapshot()
+			require.Len(t, swaps, len(test.groups), "each layout group is swapped independently")
+			for _, swap := range swaps {
+				swappedGroups := make(map[string]bool)
+				for _, oldPath := range swap.oldPaths {
+					swappedGroups[oldPath[:strings.LastIndex(oldPath, "/")]] = true
+				}
+				require.Len(t, swappedGroups, 1, "one swap must replace the indexes of only one layout group")
+			}
+		})
+	}
 }
 
 func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
@@ -1050,6 +1142,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 
 	tests := []struct {
 		name         string
+		k            int
 		rows         []stats.Stat
 		wantMerges   [][]string
 		wantFiltered []string
@@ -1059,10 +1152,12 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 	}{
 		{
 			name: "skips overlapping runs when no size level holds k runs",
+			k:    2,
 			rows: []stats.Stat{stat("logs/small", 0, 10, 30, 100), stat("logs/large", 0, 10, 30, 20<<30)},
 		},
 		{
 			name: "merges the full level and filters the source index for a lone run",
+			k:    2,
 			rows: []stats.Stat{
 				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
 				stat("logs/large", 0, 20, 50, 20<<30),
@@ -1073,6 +1168,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 		},
 		{
 			name: "filters a lone object once and spans all its sections",
+			k:    2,
 			rows: []stats.Stat{
 				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
 				stat("logs/large", 0, 20, 30, 10<<30), stat("logs/large", 1, 25, 60, 10<<30),
@@ -1083,6 +1179,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 		},
 		{
 			name: "keeps the unmerged runs of every level in one index filter",
+			k:    2,
 			rows: []stats.Stat{
 				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
 				stat("logs/small-c", 0, 5, 15, 100), stat("logs/large", 0, 40, 70, 20<<30),
@@ -1090,6 +1187,18 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 			wantMerges:      [][]string{{"logs/small-a", "logs/small-b"}},
 			wantFiltered:    []string{"logs/large", "logs/small-c"},
 			wantFilterRange: [2]int64{5, 70},
+		},
+		{
+			name: "merges only the full level and filters a level with fewer than k runs",
+			k:    3,
+			rows: []stats.Stat{
+				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
+				stat("logs/small-c", 0, 10, 30, 100),
+				stat("logs/large-a", 0, 40, 70, 20<<30), stat("logs/large-b", 0, 45, 80, 20<<30),
+			},
+			wantMerges:      [][]string{{"logs/small-a", "logs/small-b", "logs/small-c"}},
+			wantFiltered:    []string{"logs/large-a", "logs/large-b"},
+			wantFilterRange: [2]int64{40, 80},
 		},
 	}
 	for _, test := range tests {
@@ -1101,6 +1210,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 			defer runner.assertUniqueObjects(t)
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+			c.logMergePlanningStrategy = newTestLogMergePlanningStrategy(t, test.k)
 
 			got, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: sourcePath})
 			require.NoError(t, err)
@@ -1634,9 +1744,10 @@ func seedLogMergeIndexesAt(ctx context.Context, t *testing.T, bucket objstore.Bu
 	entries := make([]testIndex, 0, len(paths))
 	for _, p := range paths {
 		buildIndex(ctx, t, bucket, testIndexObject{
-			tenant:      tenant,
-			path:        p,
-			sectionSize: 1 << 20,
+			tenant:       tenant,
+			path:         p,
+			sectionSize:  1 << 20,
+			shardBuckets: streams.DefaultShardBuckets,
 			stats: []stats.Stat{
 				{ObjectPath: p + ".log-0", SectionIndex: 0, SortSchema: "label:service_name",
 					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: ts(0), MaxTimestamp: ts(20), RowCount: 1, UncompressedSize: 100},

@@ -22,6 +22,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_LogMerge{}
 	case *physical.IndexFilter:
 		n.Kind = &Node_IndexFilter{}
+	case *physical.DeletionSweep:
+		n.Kind = &Node_DeletionSweep{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -103,5 +105,24 @@ func (n *IndexFilter) UnmarshalPhysical(from physical.Node) error {
 		SourceIndexPath: indexFilter.SourceIndexPath,
 		ObjectPaths:     slices.Clone(indexFilter.ObjectPaths),
 	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_DeletionSweep) UnmarshalPhysical(from physical.Node) error {
+	n.DeletionSweep = new(DeletionSweep)
+	return n.DeletionSweep.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *DeletionSweep) UnmarshalPhysical(from physical.Node) error {
+	deletionSweep, ok := from.(*physical.DeletionSweep)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = DeletionSweep{Tenant: deletionSweep.Tenant}
 	return nil
 }

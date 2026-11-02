@@ -1,3 +1,9 @@
+# v1.12.0 (2026-10-27)
+
+* **Feature**: Enable schema-based (de)serialization for this service.
+* **Dependency Update**: Update to smithy-go v1.28.7.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.11.0 (2026-10-26)
 
 * **Feature**: Adds support for the OAuth 2.0 Token Exchange grant (RFC 8693), enabling applications to exchange identity provider issued JSON Web Tokens (JWTs) for short-lived OAuth access tokens to access supported AWS services without managing separate AWS credentials.

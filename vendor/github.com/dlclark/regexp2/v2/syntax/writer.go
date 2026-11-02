@@ -195,8 +195,12 @@ func (w *writer) codeFromTree(tree *RegexTree) (*Code, error) {
 	//TODO: benchmark string prefixes
 	if prefix != nil && len(prefix.PrefixStr) > 0 && MaxPrefixSize > 0 {
 		if len(prefix.PrefixStr) > MaxPrefixSize {
-			// limit prefix changes to 10k
-			prefix.PrefixStr = prefix.PrefixStr[:MaxPrefixSize]
+			// Keep the portion encountered first in the search direction.
+			if rtl {
+				prefix.PrefixStr = prefix.PrefixStr[len(prefix.PrefixStr)-MaxPrefixSize:]
+			} else {
+				prefix.PrefixStr = prefix.PrefixStr[:MaxPrefixSize]
+			}
 		}
 		bmPrefix = newBmPrefix(prefix.PrefixStr, prefix.CaseInsensitive, rtl)
 	} else {

@@ -31,17 +31,22 @@ type Category struct {
 	Cat    string
 }
 
-// Keep the public Category representation unchanged. Shared ECMAScript sets
-// are immutable and can be retained when a character set is copied or merged.
+// Keep the public Category representation and serialized form unchanged.
+// Resolve membership data when constructing or deserializing a category so
+// matching does not need a name lookup. Both tables and ECMAScript sets are
+// immutable and can be shared when a character set is copied or merged.
 type charCategory struct {
 	Category
-	set *CharSet
+	set   *CharSet
+	table *unicode.RangeTable
 }
 
 func newCharCategory(category Category) charCategory {
 	ct := charCategory{Category: category}
 	if strings.HasPrefix(category.Cat, ecmaPropertyPrefix) {
 		ct.set = ecmaPropertySet(category.Cat)
+	} else if category.Cat != WordCategoryText && category.Cat != SpaceCategoryText {
+		ct.table, _ = lookupUnicodeCategory(category.Cat)
 	}
 	return ct
 }
@@ -88,26 +93,25 @@ var (
 	NotNewLineClass = getCharSetFromOldString([]rune{0x0a, 0x0b}, true)
 )
 
-var unicodeCategories = func() map[string]*unicode.RangeTable {
-	retVal := make(map[string]*unicode.RangeTable)
-	for k, v := range unicode.Scripts {
-		retVal[k] = v
+// lookupUnicodeCategory searches the source tables without building a merged
+// map at startup. Preserve the old map's overwrite precedence: generated
+// properties override Go properties, category aliases, categories, and scripts.
+func lookupUnicodeCategory(name string) (*unicode.RangeTable, bool) {
+	if table, ok := unicodeAliasCategories[name]; ok {
+		return table, true
 	}
-	for k, v := range unicode.Categories {
-		retVal[k] = v
+	if table, ok := unicode.Properties[name]; ok {
+		return table, true
 	}
-	// aliases are just pointers to the original keys
-	for k, v := range unicode.CategoryAliases {
-		retVal[k] = unicode.Categories[v]
+	if canonical, ok := unicode.CategoryAliases[name]; ok {
+		return unicode.Categories[canonical], true
 	}
-	for k, v := range unicode.Properties {
-		retVal[k] = v
+	if table, ok := unicode.Categories[name]; ok {
+		return table, true
 	}
-	for k, v := range unicodeAliasCategories {
-		retVal[k] = v
-	}
-	return retVal
-}()
+	table, ok := unicode.Scripts[name]
+	return table, ok
+}
 
 func getCharSetFromCategoryString(negateSet bool, negateCat bool, cats ...string) func() *CharSet {
 	if negateCat && negateSet {
@@ -416,7 +420,7 @@ func (c *CharSet) charInCategories(ch rune) bool {
 			} else if ct.Negate {
 				return true
 			}
-		} else if unicode.Is(unicodeCategories[ct.Cat], ch) {
+		} else if unicode.Is(ct.table, ch) {
 			// if we're in this unicode category then we're done
 			// if negate=true on this category then we "failed" our test
 			// otherwise we're good that we found it
@@ -448,7 +452,7 @@ func (c Category) String() string {
 		}
 		return "\\w"
 	}
-	if _, ok := unicodeCategories[c.Cat]; ok {
+	if _, ok := lookupUnicodeCategory(c.Cat); ok {
 
 		if c.Negate {
 			return "\\P{" + c.Cat + "}"
@@ -723,7 +727,7 @@ func normalizeUnicodeCategoryAlias(catName string) string {
 }
 
 func canonicalUnicodeCatName(catName string) (string, bool) {
-	if _, ok := unicodeCategories[catName]; ok {
+	if _, ok := lookupUnicodeCategory(catName); ok {
 		return catName, true
 	}
 
@@ -751,7 +755,7 @@ func canonicalUnicodeCatName(catName string) (string, bool) {
 			return "", false
 		}
 		canonical := prop + "=" + value
-		if _, ok := unicodeCategories[canonical]; ok {
+		if _, ok := lookupUnicodeCategory(canonical); ok {
 			return canonical, true
 		}
 	}
