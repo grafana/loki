@@ -36,13 +36,16 @@ import (
 )
 
 // sortSchemaOverrides is a logsobj.TenantOverrides stub returning a fixed sort
-// schema (ordered FQN sort keys) and the default shard layout for every tenant.
-type sortSchemaOverrides []string
+// schema (ordered FQN sort keys) and shard layout for every tenant.
+type sortSchemaOverrides struct {
+	sortSchema  []string
+	shardLayout streams.ShardLayout
+}
 
-func (s sortSchemaOverrides) SortSchemaLabels(_ string) []string { return s }
+func (s sortSchemaOverrides) SortSchemaLabels(_ string) []string { return s.sortSchema }
 
 func (s sortSchemaOverrides) DataObjShardLayout(_ string) streams.ShardLayout {
-	return streams.DefaultShardLayout()
+	return s.shardLayout
 }
 
 // testStream is a labeled set of entries appended to a source log object.
@@ -86,42 +89,23 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 
 func buildSourceLogObjectWithSectionSize(t *testing.T, bucket objstore.Bucket, path string, sortSchema []string, byTenant map[string][]testStream, sectionSize flagext.Bytes) {
 	t.Helper()
-
-	cfg := logsobj.BuilderBaseConfig{
-		TargetPageSize:            2048,
-		MaxPageRows:               10000,
-		TargetObjectSize:          1 << 22, // 4 MiB
-		TargetSectionSize:         sectionSize,
-		BufferSize:                2048 * 8,
-		SectionStripeMergeLimit:   2,
-		EstimatedCompressionRatio: 8,
-	}
-	buildSourceLogObjectWithConfig(t, bucket, path, cfg, sortSchema, byTenant)
+	buildSourceLogObjectWithConfig(t, bucket, path, testLogsBuilderConfig(2048, sectionSize), streams.DefaultShardLayout(), sortSchema, byTenant)
 }
 
-// buildMultiSectionSourceLogObject builds a single log object that holds several
-// logs sections per tenant by cutting sections at a tiny TargetSectionSize while
-// keeping TargetObjectSize large enough to stay within one object. This lets a
-// test partition one object's sections across tasks.
+// buildMultiSectionSourceLogObject builds one log object that holds several
+// logs sections per tenant, then uploads it to the bucket.
 func buildMultiSectionSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sortSchema []string, byTenant map[string][]testStream) {
 	t.Helper()
-
-	cfg := logsobj.BuilderBaseConfig{
-		TargetPageSize:            128,
-		MaxPageRows:               10000,
-		TargetObjectSize:          1 << 22, // 4 MiB: stays one object
-		TargetSectionSize:         256,     // tiny: forces many logs sections
-		BufferSize:                2048 * 8,
-		SectionStripeMergeLimit:   2,
-		EstimatedCompressionRatio: 8,
-	}
-	buildSourceLogObjectWithConfig(t, bucket, path, cfg, sortSchema, byTenant)
+	// A tiny page size and section size force many logs sections.
+	buildSourceLogObjectWithConfig(t, bucket, path, testLogsBuilderConfig(128, 256), streams.DefaultShardLayout(), sortSchema, byTenant)
 }
 
-func buildSourceLogObjectWithConfig(t testing.TB, bucket objstore.Bucket, path string, cfg logsobj.BuilderBaseConfig, sortSchema []string, byTenant map[string][]testStream) {
+// buildSourceLogObjectWithConfig builds a log data object that divides its
+// streams into the buckets of shardLayout, then uploads it to the bucket.
+func buildSourceLogObjectWithConfig(t testing.TB, bucket objstore.Bucket, path string, cfg logsobj.BuilderBaseConfig, shardLayout streams.ShardLayout, sortSchema []string, byTenant map[string][]testStream) {
 	t.Helper()
 
-	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
+	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides{sortSchema: sortSchema, shardLayout: shardLayout})
 	require.NoError(t, err)
 
 	for tenant, streamSet := range byTenant {
@@ -134,11 +118,11 @@ func buildSourceLogObjectWithConfig(t testing.TB, bucket objstore.Bucket, path s
 		}
 	}
 
-	sorted, sortedCloser, err := b.FlushAndSort(context.Background())
+	sorted, sortedCloser, err := b.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	defer sortedCloser.Close()
 
-	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, sorted))
+	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, sorted))
 }
 
 // sourceLogRuns gives each object its own run; overlapping objects cannot be
@@ -1087,18 +1071,18 @@ func TestDoLogObjectMerge_HonorsPerTaskSectionSelection(t *testing.T) {
 	require.Equal(t, whole, union, "union of per-task outputs must equal the whole source")
 }
 
-// appSortPrefix returns the sort prefix of the stream {app="<app>"} under the
-// default shard layout and sortSchema.
-func appSortPrefix(t *testing.T, app string, sortSchema []string) streams.SortPrefix {
+// appSortPrefix returns the sort prefix of the stream {app="<app>"} under
+// layout.
+func appSortPrefix(t *testing.T, app string, layout streams.Layout) streams.SortPrefix {
 	t.Helper()
-	prefix, err := logsobj.StreamSortPrefix(labels.FromStrings("app", app), streams.NewLayout(streams.DefaultShardLayout(), sortSchema))
+	prefix, err := logsobj.StreamSortPrefix(labels.FromStrings("app", app), layout)
 	require.NoError(t, err)
 	return prefix
 }
 
-func appSortPrefixProto(t *testing.T, app string, sortSchema []string) *compactionv2pb.KeyRangePrefix {
+func appSortPrefixProto(t *testing.T, app string, layout streams.Layout) *compactionv2pb.KeyRangePrefix {
 	t.Helper()
-	return &compactionv2pb.KeyRangePrefix{ShardBucket: appSortPrefix(t, app, sortSchema).ShardBucket, SchemaValues: []string{app}}
+	return &compactionv2pb.KeyRangePrefix{ShardBucket: appSortPrefix(t, app, layout).ShardBucket, SchemaValues: []string{app}}
 }
 
 var (
@@ -1117,6 +1101,7 @@ func TestDoLogObjectMerge(t *testing.T) {
 	ctx := context.Background()
 	const tenant = "T"
 	sortSchema := []string{"label:app"}
+	defaultLayout := streams.NewLayout(streams.DefaultShardLayout(), sortSchema)
 
 	mergeRecords := func(t *testing.T, dataBucket objstore.Bucket, node *physical.LogMerge) map[appTS]int {
 		t.Helper()
@@ -1136,55 +1121,61 @@ func TestDoLogObjectMerge(t *testing.T) {
 		return got
 	}
 
-	t.Run("splits shared sections across tasks without losing or duplicating records", func(t *testing.T) {
-		dataBucket := objstore.NewInMemBucket()
-		baseDay := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		apps := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
-		streamSet := make([]testStream, 0, len(apps))
-		for i, app := range apps {
-			streamSet = append(streamSet, testStream{
-				labels:  fmt.Sprintf(`{app=%q}`, app),
-				entries: wideLinesAt(baseDay.Add(time.Duration(i)*24*time.Hour), 6),
+	for _, buckets := range []uint32{1, 8, streams.DefaultShardBuckets, 256} {
+		t.Run(fmt.Sprintf("splits shared sections across tasks without losing or duplicating records with a shard bucket count of %d", buckets), func(t *testing.T) {
+			layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(buckets), sortSchema)
+			dataBucket := objstore.NewInMemBucket()
+			baseDay := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			apps := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"}
+			streamSet := make([]testStream, 0, len(apps))
+			for i, app := range apps {
+				streamSet = append(streamSet, testStream{
+					labels:  fmt.Sprintf(`{app=%q}`, app),
+					entries: wideLinesAt(baseDay.Add(time.Duration(i)*24*time.Hour), 6),
+				})
+			}
+			// A tiny page size and section size force many logs sections.
+			buildSourceLogObjectWithConfig(t, dataBucket, "obj", testLogsBuilderConfig(128, 256), layout.ShardLayout(), sortSchema, map[string][]testStream{tenant: streamSet})
+
+			slices.SortFunc(apps, func(a, b string) int {
+				return appSortPrefix(t, a, layout).Compare(appSortPrefix(t, b, layout))
 			})
-		}
-		buildMultiSectionSourceLogObject(t, dataBucket, "obj", sortSchema, map[string][]testStream{tenant: streamSet})
+			cutApp := apps[len(apps)/2]
+			cut := appSortPrefix(t, cutApp, layout)
+			runs := sourceLogRuns(t, dataBucket, tenant, "obj")
 
-		slices.SortFunc(apps, func(a, b string) int {
-			return appSortPrefix(t, a, sortSchema).Compare(appSortPrefix(t, b, sortSchema))
+			below := mergeRecords(t, dataBucket, &physical.LogMerge{
+				Tenant:   tenant,
+				Runs:     runs,
+				KeyRange: &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, cutApp, layout)},
+			})
+			above := mergeRecords(t, dataBucket, &physical.LogMerge{
+				Tenant:   tenant,
+				Runs:     runs,
+				KeyRange: &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, cutApp, layout), End: sortPrefixLimitProto},
+			})
+
+			require.NotEmpty(t, below, "the task below the cut must keep records")
+			require.NotEmpty(t, above, "the task above the cut must keep records")
+			for k := range below {
+				require.Negative(t, appSortPrefix(t, k.app, layout).Compare(cut), "record %+v is not below the cut", k)
+				_, dup := above[k]
+				require.False(t, dup, "record %+v produced by both tasks", k)
+			}
+			for k := range above {
+				require.GreaterOrEqual(t, appSortPrefix(t, k.app, layout).Compare(cut), 0, "record %+v is below the cut", k)
+			}
+
+			union := make(map[appTS]int, len(below)+len(above))
+			for k, v := range below {
+				union[k] += v
+			}
+			for k, v := range above {
+				union[k] += v
+			}
+			require.Equal(t, readLogObjectRecords(t.Context(), t, dataBucket, "obj", tenant), union)
 		})
-		cutApp := apps[len(apps)/2]
-		cut := appSortPrefix(t, cutApp, sortSchema)
-		runs := sourceLogRuns(t, dataBucket, tenant, "obj")
-
-		below := mergeRecords(t, dataBucket, &physical.LogMerge{
-			Tenant:   tenant,
-			Runs:     runs,
-			KeyRange: &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, cutApp, sortSchema)},
-		})
-		above := mergeRecords(t, dataBucket, &physical.LogMerge{
-			Tenant:   tenant,
-			Runs:     runs,
-			KeyRange: &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, cutApp, sortSchema), End: sortPrefixLimitProto},
-		})
-
-		for k := range below {
-			require.Negative(t, appSortPrefix(t, k.app, sortSchema).Compare(cut), "record %+v is not below the cut", k)
-			_, dup := above[k]
-			require.False(t, dup, "record %+v produced by both tasks", k)
-		}
-		for k := range above {
-			require.GreaterOrEqual(t, appSortPrefix(t, k.app, sortSchema).Compare(cut), 0, "record %+v is below the cut", k)
-		}
-
-		union := make(map[appTS]int, len(below)+len(above))
-		for k, v := range below {
-			union[k] += v
-		}
-		for k, v := range above {
-			union[k] += v
-		}
-		require.Equal(t, readLogObjectRecords(ctx, t, dataBucket, "obj", tenant), union)
-	})
+	}
 
 	t.Run("skips the sections of an object with no stream in range", func(t *testing.T) {
 		dataBucket := objstore.NewInMemBucket()
@@ -1195,9 +1186,9 @@ func TestDoLogObjectMerge(t *testing.T) {
 		buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{
 			tenant: {{labels: `{app="b"}`, entries: wideLinesAt(day, 3)}},
 		})
-		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", sortSchema)}
-		if appSortPrefix(t, "a", sortSchema).Compare(appSortPrefix(t, "b", sortSchema)) > 0 {
-			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", sortSchema), End: sortPrefixLimitProto}
+		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", defaultLayout)}
+		if appSortPrefix(t, "a", defaultLayout).Compare(appSortPrefix(t, "b", defaultLayout)) > 0 {
+			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", defaultLayout), End: sortPrefixLimitProto}
 		}
 		c := newTestExecutorContext(t, objstore.NewInMemBucket())
 		c.dataBucket = dataBucket
@@ -1220,9 +1211,9 @@ func TestDoLogObjectMerge(t *testing.T) {
 		buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 			tenant: {{labels: `{app="a"}`, entries: wideLinesAt(day, 4)}, {labels: `{app="b"}`, entries: wideLinesAt(day, 3)}},
 		})
-		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", sortSchema)}
-		if appSortPrefix(t, "a", sortSchema).Compare(appSortPrefix(t, "b", sortSchema)) > 0 {
-			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", sortSchema), End: sortPrefixLimitProto}
+		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", defaultLayout)}
+		if appSortPrefix(t, "a", defaultLayout).Compare(appSortPrefix(t, "b", defaultLayout)) > 0 {
+			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", defaultLayout), End: sortPrefixLimitProto}
 		}
 		merge := func(inputBytes int64) error {
 			c := newTestExecutorContext(t, objstore.NewInMemBucket())
@@ -1251,9 +1242,9 @@ func TestDoLogObjectMerge(t *testing.T) {
 			tenant: {{labels: `{app="b"}`, entries: wideLinesAt(day, 4)}},
 		})
 
-		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", sortSchema)}
-		if appSortPrefix(t, "a", sortSchema).Compare(appSortPrefix(t, "b", sortSchema)) > 0 {
-			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", sortSchema), End: sortPrefixLimitProto}
+		keyRange := &compactionv2pb.KeyRange{Start: minSortPrefixProto, End: appSortPrefixProto(t, "b", defaultLayout)}
+		if appSortPrefix(t, "a", defaultLayout).Compare(appSortPrefix(t, "b", defaultLayout)) > 0 {
+			keyRange = &compactionv2pb.KeyRange{Start: appSortPrefixProto(t, "a", defaultLayout), End: sortPrefixLimitProto}
 		}
 		got := mergeRecords(t, dataBucket, &physical.LogMerge{
 			Tenant:   tenant,
@@ -1274,7 +1265,7 @@ func TestDropStreamsOutsideRange(t *testing.T) {
 			2: {ID: 2, Labels: labels.FromStrings("app", "b")},
 		}
 	}
-	a, b := appSortPrefix(t, "a", sortSchema), appSortPrefix(t, "b", sortSchema)
+	a, b := appSortPrefix(t, "a", layout), appSortPrefix(t, "b", layout)
 	low, high := a, b
 	lowID, highID := int64(1), int64(2)
 	if a.Compare(b) > 0 {
@@ -1708,16 +1699,17 @@ func TestDoLogObjectMerge_StreamsLayout(t *testing.T) {
 		require.Nil(t, arts)
 	})
 
-	t.Run("returns an error and no output when the sources have a non-default shard layout", func(t *testing.T) {
-		four, err := streams.ShardLayoutFromBuckets(4)
-		require.NoError(t, err)
-		layout := streams.NewLayout(four, nil)
+	t.Run("returns an error and no output when sources have different shard layouts", func(t *testing.T) {
 		dataBucket := objstore.NewInMemBucket()
-		uploadRawSource(t, dataBucket, "objA", four, &layout)
+		for path, buckets := range map[string]uint32{"objA": 8, "objB": streams.DefaultShardBuckets} {
+			buildSourceLogObjectWithConfig(t, dataBucket, path, testLogsBuilderConfig(2048, 1<<21), streams.MustShardLayoutFromBuckets(buckets), []string{"label:app"}, map[string][]testStream{
+				tenant: {{labels: `{app="a"}`, entries: linesAt(base, 2)}},
+			})
+		}
 		c := newContext(t, dataBucket)
 
-		arts, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")})
-		require.ErrorContains(t, err, "supports only")
+		arts, err := c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")})
+		require.EqualError(t, err, `source object "objB" has a different stream layout than "objA"`)
 		require.Nil(t, arts)
 	})
 
@@ -1877,4 +1869,18 @@ func outputLayouts(t *testing.T, dataBucket objstore.Bucket, sources ...string) 
 		return nil
 	}, objstore.WithRecursiveIter()))
 	return layouts
+}
+
+// testLogsBuilderConfig returns the builder config of a source log object with
+// the given target page size and target section size.
+func testLogsBuilderConfig(targetPageSize, targetSectionSize flagext.Bytes) logsobj.BuilderBaseConfig {
+	return logsobj.BuilderBaseConfig{
+		TargetPageSize:            targetPageSize,
+		MaxPageRows:               10000,
+		TargetObjectSize:          1 << 22, // 4 MiB
+		TargetSectionSize:         targetSectionSize,
+		BufferSize:                2048 * 8,
+		SectionStripeMergeLimit:   2,
+		EstimatedCompressionRatio: 8,
+	}
 }
