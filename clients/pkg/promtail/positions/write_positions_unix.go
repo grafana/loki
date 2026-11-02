@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	renameio "github.com/google/renameio/v2"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
 func writePositionFile(filename string, positions map[string]string) error {

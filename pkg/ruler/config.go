@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"

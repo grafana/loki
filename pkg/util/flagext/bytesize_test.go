@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func Test_ByteSize(t *testing.T) {

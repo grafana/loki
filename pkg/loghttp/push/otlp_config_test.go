@@ -6,7 +6,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 var defaultGlobalOTLPConfig = GlobalOTLPConfig{}
