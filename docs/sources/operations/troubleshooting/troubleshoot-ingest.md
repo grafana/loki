@@ -346,7 +346,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 
 **Default configuration:**
 
-- `unordered_writes`: true (since Loki 2.4). This flag, and `-ingester.unordered-writes`, are deprecated and will be removed in a future major release, after which out-of-order writes will be accepted unconditionally.
+- Loki always accepts out-of-order writes; the per-tenant `unordered_writes` setting and the `-ingester.unordered-writes` flag that used to control this have been removed.
 - `max_chunk_age`: 2 hours
 - Acceptable timestamp window: 1 hour behind the newest entry (half of `max_chunk_age`)
 
@@ -371,7 +371,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 - Enforced by: Ingester
 - Retryable: No
 - HTTP status: 400 Bad Request
-- Configurable per tenant: Yes, for `unordered_writes`. No, for `max_chunk_age` (global only).
+- Configurable per tenant: No, `max_chunk_age` is global only.
 
 ### Error: `greater_than_max_sample_age`
 
@@ -567,11 +567,11 @@ This validation is always enabled and cannot be disabled. Duplicate label names 
 
 **Cause:**
 
-The HTTP compressed push request body exceeds the configured limit in your gateway/reverse proxy or service that fronts Loki after decompression.
+This error message can come from two different places: a gateway/reverse proxy in front of Loki enforcing its own body-size limit, or Loki's distributor rejecting a push request that exceeds its own configured limit (`limits_config.max_push_size`) before it can parse the streams out of the body.
 
 **Default configuration:**
 
-- Loki server max request body size: Configured at the HTTP server level
+- Loki distributor push size: `limits_config.max_push_size` (CLI flag `-distributor.max-push-size`), default 2 GB. Applies to both the compressed and decompressed size of the request, and is configurable per tenant.
 - Nginx gateway (Helm): `gateway.nginxConfig.clientMaxBodySize` (default: 4 MB)
 - Alloy default batch size: 1 MB
 
@@ -579,14 +579,16 @@ The HTTP compressed push request body exceeds the configured limit in your gatew
 
 * **Split large batches** into smaller, more frequent requests.
 
-* **Increase batch limit** Increase the allowed body size on your gateway/reverse proxy.  For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
+* **Increase the gateway/reverse proxy limit**. For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
+
+* **Increase `limits_config.max_push_size`** if the error is coming from Loki's distributor rather than a gateway, and your cluster has the resources to handle larger requests.
 
 **Properties:**
 
-- Enforced by: Distributor
+- Enforced by: Gateway/reverse proxy, or the distributor via `max_push_size`
 - Retryable: No
 - HTTP status: 413 Request Entity Too Large
-- Configurable per tenant: No
+- Configurable per tenant: Yes, for `max_push_size`. No, for gateway/reverse proxy limits.
 
 ## Storage errors
 
