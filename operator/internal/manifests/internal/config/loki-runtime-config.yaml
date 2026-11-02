@@ -52,6 +52,12 @@ overrides:
     {{- if $spec.QueryLimits.QueryTimeout }}
     query_timeout: {{ $spec.QueryLimits.QueryTimeout }}
     {{- end }}
+    {{- if $spec.QueryLimits.MaxQueryLength }}
+    max_query_length: {{ $spec.QueryLimits.MaxQueryLength }}
+    {{- end }}
+    {{- if $spec.QueryLimits.MaxQueryLookback }}
+    max_query_lookback: {{ $spec.QueryLimits.MaxQueryLookback }}
+    {{- end }}
     {{- if $spec.QueryLimits.CardinalityLimit }}
     cardinality_limit: {{ $spec.QueryLimits.CardinalityLimit }}
     {{- end }}
