@@ -48,8 +48,6 @@ For more information on how to push logs to Loki via the HTTP endpoint, refer to
 Alternatively, you can use Grafana Alloy to extract and attach structured metadata to your log lines.
 See the [Alloy `stage.structured_metadata` block](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagestructured_metadata) for more information.
 
-With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/).
-
 {{< admonition type="warning" >}}
 Structured metadata size is taken into account while asserting ingestion rate limiting.
 Along with that, there are separate limits on how much structured metadata can be attached per log line.
