@@ -5,14 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -344,6 +348,164 @@ func TestConsumer_ReplicasBuildIdenticalChunks(t *testing.T) {
 		require.Greater(t, len(checksums), 2, "stream %s needs several chunks for the test to cut chunks by size", ls)
 	}
 	require.Equal(t, inOrder, reordered)
+}
+
+// TestCanRetry pins the errors that stall the partition until they clear. Anything tied to one
+// stream or tenant, like a rate limit, must not be added.
+func TestCanRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "read only", err: ErrReadOnly, want: true},
+		{name: "wrapped read only", err: fmt.Errorf("push: %w", ErrReadOnly), want: true},
+		{name: "other error", err: errors.New("push failed")},
+		{name: "per tenant limit", err: httpgrpc.Errorf(http.StatusTooManyRequests, "rate limit exceeded")},
+		{name: "nil"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, canRetry(tc.err))
+		})
+	}
+}
+
+// orderRecord is a record of a stream in a test batch. The line carries its offset, so a pusher
+// can tell which record it was handed.
+type orderRecord struct {
+	tenant string
+	stream string
+	size   int // the length of the line, to make groups of different sizes.
+}
+
+// orderRecords encodes the records in a random order, giving them ascending offsets from 1. The
+// shuffle varies how the streams interleave and in which order their groups are first seen, so a
+// broken grouping or sort can't pass by luck of the input. The seed is logged to replay a failure.
+func orderRecords(t *testing.T, specs []orderRecord) []partition.Record {
+	t.Helper()
+
+	seed := time.Now().UnixNano()
+	t.Logf("shuffle seed: %d", seed)
+	specs = slices.Clone(specs)
+	rand.New(rand.NewSource(seed)).Shuffle(len(specs), func(i, j int) { specs[i], specs[j] = specs[j], specs[i] })
+
+	records := make([]partition.Record, 0, len(specs))
+	for i, spec := range specs {
+		offset := int64(i + 1)
+		line := strconv.FormatInt(offset, 10) + "-"
+		for len(line) < spec.size {
+			line += "x"
+		}
+		stream := logproto.Stream{
+			Labels:  labels.FromStrings("stream", spec.stream).String(),
+			Entries: []logproto.Entry{{Timestamp: time.Unix(offset, 0), Line: line}},
+		}
+		records = append(records, partition.Record{
+			Ctx:      context.Background(),
+			TenantID: spec.tenant,
+			Content:  encodeFlat(t, stream)[0].Value,
+			Offset:   offset,
+		})
+	}
+	return records
+}
+
+// TestGroupByStream checks that a shuffled batch comes back as one group per tenant and stream,
+// each in offset order, largest first.
+func TestGroupByStream(t *testing.T) {
+	var specs []orderRecord
+	for r := 0; r < 5; r++ {
+		for _, tenant := range []string{"a", "b"} {
+			for i, stream := range []string{"1", "2", "3"} {
+				specs = append(specs, orderRecord{tenant: tenant, stream: stream, size: 10 * (i + 1)})
+			}
+		}
+	}
+	records := orderRecords(t, specs)
+
+	groups := groupByStream(records)
+	require.Len(t, groups, 6, "the same labels under two tenants must not share a group")
+
+	key := func(i int) string {
+		labels, err := kafka.StreamLabels(records[i].Content)
+		require.NoError(t, err)
+		return records[i].TenantID + "/" + string(labels)
+	}
+	total := 0
+	for g, group := range groups {
+		for n, index := range group.indexes {
+			require.Equal(t, key(group.indexes[0]), key(index), "group %d mixes streams", g)
+			if n > 0 {
+				require.Greater(t, index, group.indexes[n-1], "group %d is not in offset order", g)
+			}
+		}
+		if g > 0 {
+			require.GreaterOrEqual(t, groups[g-1].size, group.size, "group %d is larger than the one before it", g)
+		}
+		total += len(group.indexes)
+	}
+	require.Equal(t, len(records), total, "every record must be in exactly one group")
+}
+
+// orderPusher records the order in which the records of each stream reach it. The line of a
+// record starts with its offset.
+type orderPusher struct {
+	mtx     sync.Mutex
+	offsets map[string][]int64 // by tenant and stream labels.
+}
+
+func (p *orderPusher) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	offset, err := strconv.ParseInt(strings.SplitN(req.Streams[0].Entries[0].Line, "-", 2)[0], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	key := tenantID + req.Streams[0].Labels
+
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if p.offsets == nil {
+		p.offsets = map[string][]int64{}
+	}
+	p.offsets[key] = append(p.offsets[key], offset)
+	return &logproto.PushResponse{}, nil
+}
+
+// TestConsumer_AppliesStreamsInOffsetOrder checks that with several workers the records of every
+// stream still reach the pusher in offset order, whichever worker applies which stream.
+func TestConsumer_AppliesStreamsInOffsetOrder(t *testing.T) {
+	var (
+		tenants = []string{"a", "b"}
+		streams = []string{"1", "2", "3", "4", "5", "6", "7"}
+		specs   = make([]orderRecord, 0, 50*len(tenants)*len(streams))
+	)
+	for r := 0; r < 50; r++ {
+		for _, tenant := range tenants {
+			for i, stream := range streams {
+				specs = append(specs, orderRecord{tenant: tenant, stream: stream, size: 10 * (i + 1)})
+			}
+		}
+	}
+	records := orderRecords(t, specs)
+
+	pusher := &orderPusher{}
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 8)(&noopCommitter{}, log.NewNopLogger())
+	require.NoError(t, err)
+	recordsCh := make(chan []partition.Record, 1)
+	recordsCh <- records
+	close(recordsCh)
+	consumer.Start(context.Background(), recordsCh)()
+
+	require.Len(t, pusher.offsets, len(tenants)*len(streams))
+	total := 0
+	for key, offsets := range pusher.offsets {
+		require.True(t, sort.SliceIsSorted(offsets, func(i, j int) bool { return offsets[i] < offsets[j] }), "stream %s was applied out of order: %v", key, offsets)
+		total += len(offsets)
+	}
+	require.Equal(t, len(records), total)
 }
 
 // BenchmarkConsume measures how long the consumer takes to apply a batch of records to an
