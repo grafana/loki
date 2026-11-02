@@ -7120,8 +7120,12 @@ type BackendServicesListUsableCall struct {
 	header_      http.Header
 }
 
-// ListUsable: Retrieves a list of all usable backend services in the specified
-// project.
+// ListUsable: Retrieves a list of all usable backend services for Application
+// Load
+// Balancers and Proxy Network Load Balancers in the specified project.
+// Backend services for external and internal passthrough Network
+// Load
+// Balancers are not included in the response.
 //
 // - project: Project ID for this request.
 func (r *BackendServicesService) ListUsable(project string) *BackendServicesListUsableCall {
@@ -17112,6 +17116,22 @@ func (r *ForwardingRulesService) Get(project string, region string, forwardingRu
 	return c
 }
 
+// View sets the optional parameter "view":
+//
+// Possible values:
+//
+//	"BASIC" - The default view of a ForwardingRule, which includes the basic
+//
+// fields.
+//
+//	"FULL" - The full view, including the ForwardingRule.`attached_extensions`
+//
+// field.
+func (c *ForwardingRulesGetCall) View(view string) *ForwardingRulesGetCall {
+	c.urlParams_.Set("view", view)
+	return c
+}
+
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -20322,6 +20342,22 @@ func (r *GlobalForwardingRulesService) Get(project string, forwardingRule string
 	c := &GlobalForwardingRulesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.project = project
 	c.forwardingRule = forwardingRule
+	return c
+}
+
+// View sets the optional parameter "view":
+//
+// Possible values:
+//
+//	"BASIC" - The default view of a ForwardingRule, which includes the basic
+//
+// fields.
+//
+//	"FULL" - The full view, including the ForwardingRule.`attached_extensions`
+//
+// field.
+func (c *GlobalForwardingRulesGetCall) View(view string) *GlobalForwardingRulesGetCall {
+	c.urlParams_.Set("view", view)
 	return c
 }
 
@@ -31912,6 +31948,15 @@ func (r *InstanceGroupManagersService) Delete(project string, zone string, insta
 	return c
 }
 
+// NoGracefulShutdown sets the optional parameter "noGracefulShutdown": When
+// set, graceful shutdown is skipped for instance deletion even if
+// it's
+// configured for the instances.
+func (c *InstanceGroupManagersDeleteCall) NoGracefulShutdown(noGracefulShutdown bool) *InstanceGroupManagersDeleteCall {
+	c.urlParams_.Set("noGracefulShutdown", fmt.Sprint(noGracefulShutdown))
+	return c
+}
+
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so
 // that if you must retry your request, the server will know to ignore
@@ -32058,6 +32103,15 @@ func (r *InstanceGroupManagersService) DeleteInstances(project string, zone stri
 	c.zone = zone
 	c.instanceGroupManager = instanceGroupManager
 	c.instancegroupmanagersdeleteinstancesrequest = instancegroupmanagersdeleteinstancesrequest
+	return c
+}
+
+// NoGracefulShutdown sets the optional parameter "noGracefulShutdown": When
+// set, graceful shutdown is skipped for instance deletion even if
+// it's
+// configured for the instances.
+func (c *InstanceGroupManagersDeleteInstancesCall) NoGracefulShutdown(noGracefulShutdown bool) *InstanceGroupManagersDeleteInstancesCall {
+	c.urlParams_.Set("noGracefulShutdown", fmt.Sprint(noGracefulShutdown))
 	return c
 }
 
@@ -33957,6 +34011,15 @@ func (r *InstanceGroupManagersService) RecreateInstances(project string, zone st
 	return c
 }
 
+// NoGracefulShutdown sets the optional parameter "noGracefulShutdown": When
+// set, graceful shutdown is skipped for instance recreation even if
+// it's
+// configured for the instances.
+func (c *InstanceGroupManagersRecreateInstancesCall) NoGracefulShutdown(noGracefulShutdown bool) *InstanceGroupManagersRecreateInstancesCall {
+	c.urlParams_.Set("noGracefulShutdown", fmt.Sprint(noGracefulShutdown))
+	return c
+}
+
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so
 // that if you must retry your request, the server will know to ignore
@@ -34876,6 +34939,15 @@ func (r *InstanceGroupManagersService) StopInstances(project string, zone string
 	c.zone = zone
 	c.instanceGroupManager = instanceGroupManager
 	c.instancegroupmanagersstopinstancesrequest = instancegroupmanagersstopinstancesrequest
+	return c
+}
+
+// NoGracefulShutdown sets the optional parameter "noGracefulShutdown": When
+// set, graceful shutdown is skipped for instance stopping even if
+// it's
+// configured for the instances.
+func (c *InstanceGroupManagersStopInstancesCall) NoGracefulShutdown(noGracefulShutdown bool) *InstanceGroupManagersStopInstancesCall {
+	c.urlParams_.Set("noGracefulShutdown", fmt.Sprint(noGracefulShutdown))
 	return c
 }
 
@@ -82413,9 +82485,12 @@ type RegionBackendServicesListUsableCall struct {
 	header_      http.Header
 }
 
-// ListUsable: Retrieves a list of all usable backend services in the specified
-// project in
-// the given region.
+// ListUsable: Retrieves a list of all usable backend services for Application
+// Load
+// Balancers and Proxy Network Load Balancers in the specified project in
+// the
+// given region. Backend services for external and internal passthrough
+// Network Load Balancers are not included in the response.
 //
 //   - project: Project ID for this request.
 //   - region: Name of the region scoping this request.
