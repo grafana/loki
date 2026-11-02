@@ -170,11 +170,14 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 // second block. The cached blob is always the prefix [0, regionEnd), so section data is never
 // cached, however large maxBytes is. A logs section's own metadata is never what grows the region,
 // but it can still be included incidentally if it comes before an included non-logs section.
+// Listing every non-logs section type in [WithPrioritySections] prevents this, because then all logs
+// metadata follows all non-logs metadata. Objects built without that option can have logs metadata
+// first.
 //
 // A non-logs section that alone would exceed maxBytes is skipped rather than aborting the whole
 // extension, so the result is the largest offset achievable. This depends only on each section's own
-// layout offset, not its position in md.Sections, since sections are not guaranteed to be listed in
-// on-disk offset order.
+// layout offset, not its position in md.Sections, because the file format does not require
+// md.Sections to be in offset order.
 //
 // maxBytes also guards against a corrupt layout driving a huge allocation in fetchExtendedMetadataRegion.
 // Only startOff itself exceeding maxBytes fails outright, since then nothing is left to cache, not
