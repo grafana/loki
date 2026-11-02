@@ -1,47 +1,150 @@
-# Meta Data for SEO
-
-## Homepage
+# Hugo
 title = "Loki Operator"
-titleSeparator = "-"
-titleAddition = "Kubernetes Operator for Loki"
-description = "A Kubernetes Operator for Loki provided by the Grafana Loki SIG operator. "
-
-## Open Graph + Twitter Cards
+description = "A Kubernetes Operator for Loki provided by the Grafana Loki SIG operator."
 images = ["logo.png"]
-#twitterSite = ""
-#twitterCreator = ""
-#facebookAuthor = ""
-#facebookPublisher = ""
-ogLocale = "en_US"
 
-## JSON-LD
-schemaType = "Organization"
-schemaLogo = "logo.png"
-schemaTwitter = ""
-schemaLinkedIn = ""
-schemaGitHub = "https://github.com/grafana"
-schemaSection = "blog"
+# mainSections
+mainSections = ["docs"]
 
-## Sitelinks Search Box
-siteLinksSearchBox = false
+# Enable mathematical rendering on every page (unless you set the `math` parameter to `false` in front matter)
+math = false # false (default) or true
+mathEngine = "KaTeX" # "KaTeX" (default) or "MathJax"
 
-## Chrome Browser
-themeColor = "#fff"
+[social]
+  twitter = ""
 
-# Footer
-footer = "Powered by <a href=\"https://www.netlify.com/\">Netlify</a>, <a href=\"https://gohugo.io/\">Hugo</a>, and based on <a href=\"https://getdoks.org/\">Doks</a>"
+# Doks (@thulite/doks-core)
+[doks]
+  # Color mode
+  colorMode = "auto" # auto (default), light or dark
+  colorModeToggler = true # true (default) or false (this setting is only relevant when colorMode = auto)
 
-# Edit Page
-docsRepo = "https://github.com/grafana/loki"
-editPage = false
+  # Navbar
+  navbarSticky = true # true (default) or false
+  containerBreakpoint = "fluid" # "", "sm", "md", "lg", "xl", "xxl", or "fluid" (default)
 
-[options]
-  lazySizes = false
-  clipBoard = true
-  instantPage = false
-  flexSearch = true
-  darkMode = true
-  bootStrapJs = false
-  breadCrumb = true
-  highLight = false
-  kaTex = false
+  ## Button
+  navBarButton = false # false (default) or true
+  navBarButtonUrl = "/docs/prologue/introduction/"
+  navBarButtonText = "Get started"
+
+  # FlexSearch
+  flexSearch = true # true (default) or false
+  searchExclKinds = [] # list of page kinds to exclude from search indexing (e.g. ["home", "taxonomy", "term"] )
+  searchExclTypes = [] # list of content types to exclude from search indexing (e.g. ["blog", "docs", "legal", "contributors", "categories"])
+  showSearch = [] # [] (all pages, default) or homepage (optionally) and list of sections (e.g. ["homepage", "blog", "guides"])
+  indexSummary = false # true or false (default); whether to index only the `.Summary` instead of the full `.Content`; limits the respective JSON field size and thus increases loading time
+
+  ## Search results
+  showDate = false # false (default) or true
+  showSummary = true # true (default) or false
+  searchLimit = 99 # 0 (no limit, default) or natural number
+
+  # Global alert
+  alert = false # false (default) or true
+  alertDismissable = true # true (default) or false
+
+  # Bootstrap
+  bootstrapJavascript = false # false (default) or true
+
+  # Nav
+  sectionSwitcher = false # true or false (default)
+  sectionNav = ["docs"] # ["docs"] (default) or list of sections (e.g. ["docs", "guides"])
+  toTopButton = false # false (default) or true
+  breadcrumbTrail = false # false (default) or true
+  headlineHash = true # true (default) or false
+  scrollSpy = true # true (default) or false
+
+  # Multilingual
+  multilingualMode = false # false (default) or true
+  showMissingLanguages = true # whether or not to show untranslated languages in the language menu; true (default) or false
+
+  # Versioning
+  docsVersioning = false # false (default) or true
+  docsVersion = "1.0"
+
+  # UX
+  headerBar = true # true (default) or false
+  backgroundDots = false # true (default) or false
+  aiButtons = false # true (default) or false
+
+  # Homepage
+  sectionFooter = false # false (default) or true
+
+  # Blog
+  relatedPosts = false # false (default) or true
+  imageList = true # true (default) or false
+  imageSingle = true # true (default) or false
+
+  # Repository
+  editPage = false # false (default) or true
+  lastMod = false # false (default) or true
+  repoHost = "GitHub" # GitHub (default), Gitea, GitLab, Bitbucket, or BitbucketServer
+  docsRepo = "https://github.com/h-enk/doks"
+  docsRepoBranch = "main" # main (default), master, or <branch name>
+  docsRepoSubPath = "" # "" (none, default) or <sub path>
+
+  krokiURL = "https://kroki.io" # "https://kroki.io" (default) or custom URL like http://localhost:8000.
+
+  # SCSS colors
+  # backGround = "yellowgreen"
+  ## Dark theme
+  # textDark = "#dee2e6" # "#dee2e6" (default), "#dee2e6" (orignal), or custom color
+  # accentDark = "#5d2f86" # "#5d2f86" (default), "#5d2f86" (original), or custom color
+  ## Light theme
+  # textLight = "#1d2d35" # "#1d2d35" (default), "#1d2d35" (orignal), or custom color
+  # accentLight = "#8ed6fb" # "#8ed6fb" (default), "#8ed6fb" (orignal), or custom color
+
+  # [doks.menu]
+  #   [doks.menu.section]
+  #     auto = true # true (default) or false
+  #     collapsibleSidebar = true # true (default) or false
+
+# Debug
+[render_hooks.image]
+  errorLevel = 'ignore' # ignore (default), warning, or error (fails the build)
+
+[render_hooks.link]
+  errorLevel = 'ignore' # ignore (default), warning, or error (fails the build)
+  highlightBroken = false # true or false (default)
+
+# Images (@thulite/images)
+[thulite_images]
+  [thulite_images.defaults]
+    decoding = "async" # sync, async, or auto (default)
+    fetchpriority = "auto" # high, low, or auto (default)
+    loading = "lazy" # eager or lazy (default)
+    widths = [480, 576, 768, 1025, 1200, 1440] # [640, 768, 1024, 1366, 1600, 1920] for example
+    sizes = "auto" # 100vw (default), 75vw, or auto for example
+    process = "" # "fill 1600x900" or "fill 2100x900" for example
+    lqip = "16x webp q20" # "16x webp q20" or "21x webp q20" for example
+
+# Inline SVG (@thulite/inline-svg)
+[inline_svg]
+  iconSetDir = "tabler-icons" # tabler-icons (default)
+  iconSetVariant = "outline" # outline (default) or filled
+
+# SEO (@thulite/seo)
+[seo]
+  [seo.title]
+    separator = "" # "|" (default)
+    suffix = "" # title hugo.toml (default)
+  [seo.description]
+    summaryFallback = "" # "" (default)
+  [seo.description.length]
+    errorlevel = "warning" # warning (default), error, or ignore
+    min = 110
+    max = 160
+  [seo.favicons]
+    icon = "favicon.png" # favicon.png (default)
+    svgIcon = "favicon.svg" # favicon.svg (default)
+  [seo.schemas]
+    type = "Organization" # Organization (default) or Person
+    logo = "favicon-512x512.png" # Logo of Organization — favicon-512x512.png (default)
+    name = "Loki Operator" # Name of Organization or Person
+    sameAs = [] # E.g. ["https://github.com/thuliteio/thulite", "https://fosstodon.org/@thulite"]
+    images = ["logo.png"] # ["cover.png"] (default)
+    article = [] # Article sections
+    newsArticle = [] # NewsArticle sections
+    blogPosting = [] # BlogPosting sections
+    product = [] # Product sections

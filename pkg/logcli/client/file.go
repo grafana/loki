@@ -259,14 +259,6 @@ func (l *limiter) StreamFirstExecutionEnabled(_ string) bool {
 	return false
 }
 
-func (l *limiter) DebugEngineTasks(_ string) bool {
-	return false // This setting for the v2 execution engine is unused in LogCLI
-}
-
-func (l *limiter) DebugEngineStreams(_ string) bool {
-	return false // This setting for the v2 execution engine is unused in LogCLI
-}
-
 type querier struct {
 	r      io.Reader
 	labels labels.Labels

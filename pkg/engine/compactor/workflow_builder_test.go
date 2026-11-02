@@ -160,8 +160,7 @@ func TestBuildIndexMergePlan_AssignsFreshNodeID(t *testing.T) {
 func TestBuildLogMergePlan(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 	task := &compactionv2pb.TaskSpec{
-		Tenant:     "t1",
-		SortSchema: []string{"label:service_name"},
+		Tenant: "t1",
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
 		},
@@ -177,7 +176,6 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.Equal(t, "t1", node.Tenant)
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
 	require.Equal(t, task.Runs, node.Runs)
-	require.Equal(t, task.SortSchema, node.SortSchema)
 
 	task2 := &compactionv2pb.TaskSpec{
 		Tenant: "t1",
@@ -190,17 +188,19 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.NotEqual(t, root.ID(), p2Root.ID(), "every build must mint a fresh NodeID")
 }
 
-func TestBuildSortObjectPlan(t *testing.T) {
-	plan := buildSortObjectPlan("objects/source", []string{"label:app"})
-	root, err := plan.Root()
-	require.NoError(t, err)
+func TestBuildDeletionSweepPlan(t *testing.T) {
+	t.Run("returns a plan with one DeletionSweep root for the tenant", func(t *testing.T) {
+		root, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		require.IsType(t, &physical.DeletionSweep{}, root)
+		require.Equal(t, "t1", root.(*physical.DeletionSweep).Tenant)
+	})
 
-	node, ok := root.(*physical.SortObject)
-	require.True(t, ok, "root is %T, want *physical.SortObject", root)
-	require.Equal(t, "objects/source", node.SourceObjectPath)
-	require.Equal(t, []string{"label:app"}, node.SortSchema)
-
-	second, err := buildSortObjectPlan("objects/source", []string{"label:app"}).Root()
-	require.NoError(t, err)
-	require.NotEqual(t, root.ID(), second.ID(), "every build must mint a fresh NodeID")
+	t.Run("mints a fresh NodeID for every build", func(t *testing.T) {
+		n1, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		n2, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		require.NotEqual(t, n1.ID(), n2.ID())
+	})
 }

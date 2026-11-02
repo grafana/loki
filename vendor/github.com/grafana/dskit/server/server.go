@@ -100,10 +100,11 @@ type Config struct {
 	GRPCCollectMaxStreamsByConn bool   `yaml:"grpc_collect_max_streams_by_conn"`
 	ProxyProtocolEnabled        bool   `yaml:"proxy_protocol_enabled"`
 
-	CipherSuites  string    `yaml:"tls_cipher_suites"`
-	MinVersion    string    `yaml:"tls_min_version"`
-	HTTPTLSConfig TLSConfig `yaml:"http_tls_config"`
-	GRPCTLSConfig TLSConfig `yaml:"grpc_tls_config"`
+	CipherSuites     string    `yaml:"tls_cipher_suites"`
+	MinVersion       string    `yaml:"tls_min_version"`
+	CurvePreferences string    `yaml:"tls_curve_preferences"`
+	HTTPTLSConfig    TLSConfig `yaml:"http_tls_config"`
+	GRPCTLSConfig    TLSConfig `yaml:"grpc_tls_config"`
 
 	RegisterInstrumentation                  bool `yaml:"register_instrumentation"`
 	ReportGRPCCodesInInstrumentationLabel    bool `yaml:"report_grpc_codes_in_instrumentation_label_enabled"`
@@ -197,6 +198,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.HTTPListenNetwork, "server.http-listen-network", DefaultNetwork, "HTTP server listen network, default tcp")
 	f.StringVar(&cfg.CipherSuites, "server.tls-cipher-suites", "", "Comma-separated list of cipher suites to use. If blank, the default Go cipher suites is used.")
 	f.StringVar(&cfg.MinVersion, "server.tls-min-version", "", "Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11, VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.")
+	f.StringVar(&cfg.CurvePreferences, "server.tls-curve-preferences", "", "Comma-separated list of TLS curve/group preferences for key exchange. Allowed values: CurveP256, CurveP384, CurveP521, X25519, X25519MLKEM768, SecP256r1MLKEM768, SecP384r1MLKEM1024. If blank, the default Go curve preferences are used.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSCertPath, "server.http-tls-cert-path", "", "HTTP server cert path.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSKeyPath, "server.http-tls-key-path", "", "HTTP server key path.")
 	f.StringVar(&cfg.HTTPTLSConfig.ClientAuth, "server.http-tls-client-auth", "", "HTTP TLS Client Auth type.")
@@ -362,6 +364,10 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	curvePreferences, err := stringToCurvePreferences(cfg.CurvePreferences)
+	if err != nil {
+		return nil, err
+	}
 
 	// Setup TLS
 	var httpTLSConfig *tls.Config
@@ -369,15 +375,16 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		(len(cfg.HTTPTLSConfig.TLSKeyPath) > 0 || len(cfg.HTTPTLSConfig.TLSKey) > 0) {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
 		httpTLSConfig, err = web.ConfigToTLSConfig(&web.TLSConfig{
-			TLSCert:       cfg.HTTPTLSConfig.TLSCert,
-			TLSKey:        config.Secret(cfg.HTTPTLSConfig.TLSKey),
-			ClientCAsText: cfg.HTTPTLSConfig.ClientCAsText,
-			TLSCertPath:   cfg.HTTPTLSConfig.TLSCertPath,
-			TLSKeyPath:    cfg.HTTPTLSConfig.TLSKeyPath,
-			ClientAuth:    cfg.HTTPTLSConfig.ClientAuth,
-			ClientCAs:     cfg.HTTPTLSConfig.ClientCAs,
-			CipherSuites:  cipherSuites,
-			MinVersion:    minVersion,
+			TLSCert:          cfg.HTTPTLSConfig.TLSCert,
+			TLSKey:           config.Secret(cfg.HTTPTLSConfig.TLSKey),
+			ClientCAsText:    cfg.HTTPTLSConfig.ClientCAsText,
+			TLSCertPath:      cfg.HTTPTLSConfig.TLSCertPath,
+			TLSKeyPath:       cfg.HTTPTLSConfig.TLSKeyPath,
+			ClientAuth:       cfg.HTTPTLSConfig.ClientAuth,
+			ClientCAs:        cfg.HTTPTLSConfig.ClientCAs,
+			CipherSuites:     cipherSuites,
+			CurvePreferences: curvePreferences,
+			MinVersion:       minVersion,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating http tls config: %v", err)
@@ -388,15 +395,16 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		(len(cfg.GRPCTLSConfig.TLSKeyPath) > 0 || len(cfg.GRPCTLSConfig.TLSKey) > 0) {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
 		grpcTLSConfig, err = web.ConfigToTLSConfig(&web.TLSConfig{
-			TLSCert:       cfg.GRPCTLSConfig.TLSCert,
-			TLSKey:        config.Secret(cfg.GRPCTLSConfig.TLSKey),
-			ClientCAsText: cfg.GRPCTLSConfig.ClientCAsText,
-			TLSCertPath:   cfg.GRPCTLSConfig.TLSCertPath,
-			TLSKeyPath:    cfg.GRPCTLSConfig.TLSKeyPath,
-			ClientAuth:    cfg.GRPCTLSConfig.ClientAuth,
-			ClientCAs:     cfg.GRPCTLSConfig.ClientCAs,
-			CipherSuites:  cipherSuites,
-			MinVersion:    minVersion,
+			TLSCert:          cfg.GRPCTLSConfig.TLSCert,
+			TLSKey:           config.Secret(cfg.GRPCTLSConfig.TLSKey),
+			ClientCAsText:    cfg.GRPCTLSConfig.ClientCAsText,
+			TLSCertPath:      cfg.GRPCTLSConfig.TLSCertPath,
+			TLSKeyPath:       cfg.GRPCTLSConfig.TLSKeyPath,
+			ClientAuth:       cfg.GRPCTLSConfig.ClientAuth,
+			ClientCAs:        cfg.GRPCTLSConfig.ClientCAs,
+			CipherSuites:     cipherSuites,
+			CurvePreferences: curvePreferences,
+			MinVersion:       minVersion,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating grpc tls config: %v", err)

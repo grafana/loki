@@ -265,7 +265,9 @@ func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params
 		r.Attrs.StartOffset = cr.GetStart()
 		r.remain = cr.GetEnd() - cr.GetStart()
 	} else {
-		r.remain = size
+		// Without a content range, derive the expected byte count from the
+		// request rather than assuming the whole object is returned.
+		r.remain = rangeReaderRemain(size, startOffset, params.length)
 	}
 
 	// For a zero-length request, explicitly close the stream and set remaining

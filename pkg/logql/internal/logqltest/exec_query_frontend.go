@@ -22,7 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	v2 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -411,7 +411,6 @@ func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overri
 	return queryrange.NewMiddleware(
 		cfg,
 		engineOpts,
-		queryrange.RouterConfig{},
 		nil,
 		logger,
 		overrides,

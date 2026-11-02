@@ -42,7 +42,6 @@ import (
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/engine"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -98,7 +97,6 @@ type Config struct {
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
 	Querier             querier.Config             `yaml:"querier,omitempty"`
-	QueryEngine         engine.Config              `yaml:"query_engine,omitempty" category:"experimental"`
 	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
@@ -108,8 +106,8 @@ type Config struct {
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
+	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
@@ -142,6 +140,10 @@ type Config struct {
 	// TenantLimitsAllowPublish specifies which limit fields to return from the tenant limits endpoint.
 	// If empty, all fields are returned. This allows filtering of sensitive or unwanted configuration.
 	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
+
+	// ExposedFields specifies which /config fields /loki/api/v1/exposed-config returns, addressed
+	// by dot-separated path. Empty means nothing is exposed, since /config can hold sensitive data.
+	ExposedFields []string `yaml:"exposed_fields"`
 
 	Common common.Config `yaml:"common,omitempty"`
 
@@ -210,11 +212,16 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"List of limit fields to publish from the tenant limits endpoint. If empty, all fields are returned. Use YAML field names (e.g., 'retention_period', 'max_query_series').",
 	)
 
+	f.Var(
+		(*flagext.StringSlice)(&c.ExposedFields),
+		"config.exposed-fields",
+		"List of /config fields to expose via /loki/api/v1/exposed-config, addressed by dot-separated path (e.g. 'distributor.otlp_config.default_resource_attributes_as_index_labels'). Empty by default, meaning nothing is exposed.",
+	)
+
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
-	c.QueryEngine.RegisterFlags(f)
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -358,10 +365,12 @@ func (c *Config) Validate() error {
 	if err := c.Pattern.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
 	}
-	if c.Ingester.KafkaIngestion.Enabled {
+	if c.Ingester.KafkaIngestion.Enabled || (c.Pattern.Enabled && c.Pattern.KafkaIngestion.Enabled) {
 		if err := c.KafkaConfig.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
+	}
+	if c.Ingester.KafkaIngestion.Enabled {
 		if err := c.DataObj.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
@@ -486,8 +495,6 @@ type Loki struct {
 	dataObjCompactionPlanner  *enginecompactor.Planner
 	dataObjCompactionWorker   *enginecompactor.Worker
 	scratchStore              scratch.Store
-	queryEngineV2             *engine.Engine
-	queryEngineV2Scheduler    *engine.Scheduler
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -578,6 +585,7 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
 	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(false))
 	t.Server.HTTP.Path("/loki/api/v1/drilldown-limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(true))
+	t.Server.HTTP.Path("/loki/api/v1/exposed-config").Methods("GET").HandlerFunc(exposedConfigHandler(t.Cfg, t.Cfg.ExposedFields))
 }
 
 // ListTargets prints a list of available user visible targets and their
@@ -848,9 +856,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(LoglineScheduler, t.initLoglineScheduler, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineCompactor, t.initLoglineCompactor, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngineWorker, t.initV2QueryEngineWorker, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(ScratchStore, t.initScratchStore, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
@@ -873,9 +878,6 @@ func (t *Loki) setupModuleManager() error {
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, LoglineQueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
-		QueryEngine:              {QueryEngineScheduler},
-		QueryEngineWorker:        {Server, Overrides, TenantConfigs, Analytics},
-		QueryEngineScheduler:     {Server, Overrides, TenantConfigs, Analytics},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},

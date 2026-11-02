@@ -3,14 +3,16 @@ package log
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
-const MaxInternedStrings = 1024
+// MaxParserFieldCacheSize is the maximum number of keys in one parser field cache.
+const MaxParserFieldCacheSize = 1024
 
 // errorLabelsCount is how many labels appendErrorLabels can add: __error__ and __error_details__.
 const errorLabelsCount = 2
@@ -440,12 +442,12 @@ func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBu
 			}
 		}
 
-		if name == logqlmodel.ErrorLabel {
+		if name == logqlerr.ErrorLabel {
 			b.err = l.Value
 			return
 		}
 
-		if name == logqlmodel.ErrorDetailsLabel {
+		if name == logqlerr.ErrorDetailsLabel {
 			b.errDetails = l.Value
 			return
 		}
@@ -474,13 +476,13 @@ func (b *LabelsBuilder) GetJSONPath(labelName string) []string {
 func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 	if b.err != "" {
 		buf = append(buf, labels.Label{
-			Name:  logqlmodel.ErrorLabel,
+			Name:  logqlerr.ErrorLabel,
 			Value: b.err,
 		})
 	}
 	if b.errDetails != "" {
 		buf = append(buf, labels.Label{
-			Name:  logqlmodel.ErrorDetailsLabel,
+			Name:  logqlerr.ErrorDetailsLabel,
 			Value: b.errDetails,
 		})
 	}
@@ -639,21 +641,23 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 		return b.currentResult
 	}
 
-	// Get all labels at once and sort them
+	// Get all labels at once and sort them without allocations.
 	b.buf = b.UnsortedLabels(b.buf)
-	lbls := labels.New(b.buf...)
-	hash := b.Hash(lbls)
+	sortLabelPairsByName(b.buf)
+	hash := b.HashSorted(b.buf)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
+
+	lbls := labels.New(b.buf...)
 
 	// Now segregate the sorted labels into their categories
 	var stream, meta, parsed []labels.Label
 
 	for _, l := range b.buf {
 		// Skip error labels for stream and meta categories
-		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel {
+		if l.Name == logqlerr.ErrorLabel || l.Name == logqlerr.ErrorDetailsLabel {
 			parsed = append(parsed, l)
 			continue
 		}
@@ -672,6 +676,14 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	b.resultCache[hash] = result
 
 	return result
+}
+
+// sortLabelPairsByName sorts buf in place by Name, using the exact
+// comparator labels.New uses internally - so hashing buf in this order
+// (see hasher.HashSorted) produces the same hash labels.New(buf...)
+// would, without first paying for its packed-string encoding.
+func sortLabelPairsByName(buf []labels.Label) {
+	slices.SortFunc(buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 }
 
 func labelsContain(labels []labels.Label, name string) bool {
@@ -693,12 +705,13 @@ func findLabelValue(labels []labels.Label, name string) (string, bool) {
 }
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResult {
-	lbls := labels.New(buf...)
-	hash := b.Hash(lbls)
+	sortLabelPairsByName(buf)
+	hash := b.HashSorted(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
 
+	lbls := labels.New(buf...)
 	res := NewLabelsResult(lbls.String(), hash, lbls, labels.EmptyLabels(), labels.EmptyLabels())
 	b.resultCache[hash] = res
 	return res
@@ -866,34 +879,57 @@ func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 	// __error_details__: keeping them, instead of the builder's error, would make the two labels
 	// report different errors.
 	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
-		return l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel
+		return l.Name == logqlerr.ErrorLabel || l.Name == logqlerr.ErrorDetailsLabel
 	})
 
-	buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+	buf = append(buf, labels.Label{Name: logqlerr.ErrorLabel, Value: b.err})
 	if b.errDetails != "" {
-		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
+		buf = append(buf, labels.Label{Name: logqlerr.ErrorDetailsLabel, Value: b.errDetails})
 	}
 
 	return buf
 }
 
-type internedStringSet map[string]struct {
-	s  string
-	ok bool
+// parserFieldCache maps a key to a label name and an extract flag. The flag is false when the
+// parser never extracts the key.
+//
+// The cache keeps the answer from the first line that has the key. Use one cache for one set of hints.
+type parserFieldCache map[string]parserField
+
+type parserField struct {
+	labelName string
+	extract   bool
 }
 
-func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (string, bool) {
-	s, ok := i[string(data)]
-	if ok {
-		return s.s, s.ok
+// get returns the label name of key and whether the parser can extract it. The flag is false when
+// the parser never extracts the key. The label name has no meaning in that case.
+//
+// get calls sanitize and reads hints only when the cache has no entry for key. sanitize returns the
+// label name of the key and whether the key gives a label.
+func (c parserFieldCache) get(key []byte, hints ParserHint, sanitize func() (string, bool)) (string, bool) {
+	// A parser renames a key that collides with a stream or metadata label by adding DuplicateSuffix.
+	// It then checks the hints again with the new name. So get reports false only when the hints
+	// reject both names, and the caller can skip the key before the collision lookups. A caller that
+	// renames in another way cannot rely on a false flag.
+	return c.lookup(key, func() (string, bool) {
+		labelName, valid := sanitize()
+		extract := valid && (hints.ShouldExtract(labelName) || hints.ShouldExtract(labelName+DuplicateSuffix))
+		return labelName, extract
+	})
+}
+
+// lookup returns the answer that resolve gave for key. It calls resolve only when the cache has no
+// entry for key.
+func (c parserFieldCache) lookup(key []byte, resolve func() (string, bool)) (string, bool) {
+	field, found := c[string(key)]
+	if found {
+		return field.labelName, field.extract
 	}
-	newStr, ok := createNew()
-	if len(i) >= MaxInternedStrings {
-		return newStr, ok
+	labelName, extract := resolve()
+	// Log lines supply most keys, so their number has no bound. A full cache stops storing keys, and
+	// lookup then calls resolve on every call for a key that it does not hold.
+	if len(c) < MaxParserFieldCacheSize {
+		c[string(key)] = parserField{labelName: labelName, extract: extract}
 	}
-	i[string(data)] = struct {
-		s  string
-		ok bool
-	}{s: newStr, ok: ok}
-	return newStr, ok
+	return labelName, extract
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,9 +23,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
@@ -370,4 +371,28 @@ func TestReaderWebSocketHeaderWithoutBearerToken(t *testing.T) {
 	header, err := r.webSocketHeader(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, "Basic credentials", header.Get("Authorization"))
+}
+
+func TestStopWhileReconnecting(t *testing.T) {
+	// Reserve a free address and close the listener so that dialing it fails
+	// and the reader keeps retrying the connection.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close())
+
+	r, err := NewReader(io.Discard, make(chan time.Time), false, nil, "", "", "", addr, "",
+		"", "", "", "", time.Second, "pod", "canary", "stream", "stdout", time.Minute, "", "", false)
+	require.NoError(t, err)
+
+	stopped := make(chan struct{})
+	go func() {
+		r.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not return while the reader was reconnecting")
+	}
 }

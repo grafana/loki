@@ -12,11 +12,6 @@ type Tflock = struct {
 	Fl_pid    Tpid_t
 }
 
-type Tmax_align_t = struct {
-	F__ll int64
-	F__ld float64
-}
-
 type Tstatx = struct {
 	Fstx_mask            Tuint32_t
 	Fstx_blksize         Tuint32_t

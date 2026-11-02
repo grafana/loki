@@ -24,8 +24,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
@@ -39,9 +37,6 @@ type Config struct {
 	// Logger for optional log messages.
 	Logger log.Logger
 
-	// Metrics for the worker's wire connections.
-	WireMetrics *wire.Metrics
-
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
@@ -50,9 +45,6 @@ type Config struct {
 	// log objects (stored at the unprefixed dataobj root) must be read through
 	// this bucket. Optional; nil falls back to Bucket.
 	DataBucket objstore.Bucket
-
-	// Metastore client to access indexes.
-	Metastore metastore.Metastore
 
 	// Dialer to establish connections to scheduler and remote workers.
 	Dialer wire.Dialer
@@ -73,14 +65,6 @@ type Config struct {
 	// to find new remote schedulers.
 	SchedulerLookupInterval time.Duration
 
-	// BatchSize specifies the maximum number of rows to retrieve in a single
-	// read call of a task pipeline, or to send in a single message to a peer (sink).
-	BatchSize int64
-
-	// PrefetchBytes controls the number of bytes prefetched when opening a
-	// data object in scan tasks.
-	PrefetchBytes int64
-
 	// NumThreads is the number of worker threads to spawn. The number of
 	// threads corresponds to the number of tasks that can be executed
 	// concurrently.
@@ -88,30 +72,16 @@ type Config struct {
 	// If NumThreads is set to 0, NumThreads defaults to [runtime.GOMAXPROCS].
 	NumThreads int
 
-	// Absolute path of the endpoint where the frame handler is registered.
-	// Used for connecting to scheduler and other workers.
-	Endpoint string
-
-	// StreamFilterer is an optional filterer that can filter streams based on their labels.
-	// When set, streams are filtered before scanning.
-	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
-
-	// TaskCaches is an optional registry of backing caches for task results.
-	TaskCaches executor.TaskCacheRegistry
-
-	// ScratchStore is an optional scratch store for index merge operations.
-	// Required for compaction tasks; may be nil for query-only workers.
+	// ScratchStore holds the temporary data of compaction tasks. Optional; nil
+	// keeps the data in memory.
 	ScratchStore scratch.Store
 
 	// IndexobjCfg is the builder config for compacted index objects.
-	// Required for compaction tasks; may be nil for query-only workers.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
-	// LogsobjCfg is the builder config for compacted log objects
-	// Required for compaction tasks; may be nil for query-only workers.
+	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
-	// UploaderCfg controls object key generation for compacted log objects.
-	UploaderCfg uploader.Config
+
 	// BuilderMetrics is shared by logs object builders across worker tasks.
 	BuilderMetrics *logsobj.BuilderMetrics
 
@@ -131,7 +101,6 @@ type Worker struct {
 	config     Config
 	logger     log.Logger
 	numThreads int
-	taskCaches executor.TaskCacheRegistry
 
 	initOnce sync.Once
 	svc      services.Service
@@ -183,7 +152,6 @@ func New(config Config) (*Worker, error) {
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
-		taskCaches:  config.TaskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -224,18 +192,12 @@ func (w *Worker) run(ctx context.Context) error {
 			logMergeObserver = w.config.NewLogMergeObserver(i)
 		}
 		t := &thread{
-			BatchSize:      w.config.BatchSize,
-			PrefetchBytes:  w.config.PrefetchBytes,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
 			DataBucket:     w.config.DataBucket,
-			Metastore:      w.config.Metastore,
-			StreamFilterer: w.config.StreamFilterer,
-			TaskCaches:     w.taskCaches,
 			ScratchStore:   w.config.ScratchStore,
 			IndexobjCfg:    w.config.IndexobjCfg,
 			LogsobjCfg:     w.config.LogsobjCfg,
-			UploaderCfg:    w.config.UploaderCfg,
 			BuilderMetrics: w.config.BuilderMetrics,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,

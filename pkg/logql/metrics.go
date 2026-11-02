@@ -19,9 +19,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	logql_stats "github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	logql_stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -157,11 +157,6 @@ func RecordRangeAndInstantQueryMetrics(
 
 	if queryType == QueryTypeMetric && rangeType == InstantType {
 		resultCache = stats.Caches.InstantMetricResult
-	}
-
-	// In the Thor engine, we track stats for log queries in a different category
-	if queryType == QueryTypeFilter && stats.QueryUsedV2Engine() {
-		resultCache = stats.Caches.LogResult
 	}
 
 	// Tag throughput metric by latency type based on a threshold.

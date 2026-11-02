@@ -6,6 +6,8 @@ Runs compaction jobs, as the `logline-compactor` target. Requests jobs from the 
 
 The compactor has no config section of its own. `Config` is assembled from `logline.compaction` plus `logline.index.density_threshold`, so merged indexes apply the same density threshold the builder used. New settings go into those sections, never into a section named after this package.
 
+`logline.compaction.postings_encoding` picks the postings encoding of merged indexes (`delta-varint` by default, or `elias-fano`). It applies to the output only: the merge reads each source in the encoding recorded in its header, so a deployment can switch either way without rewriting existing indexes. Enable `elias-fano` only once every component that reads its indexes supports it.
+
 ## Invariants
 
 These must never be broken. Violating any causes stale work, wasted resources, or data corruption.
@@ -37,12 +39,12 @@ The compactor is single-threaded: request a job, execute it, request the next. T
 `compact()` implements a three-phase pipeline:
 
 1. **Prepare readers** — parallel `errgroup` fetches meta.json and index size (via `bucket.Attributes`) for each source, then opens an `io.ReaderAt` backed by range reads (`store.GetIndexReadAheadReaderAt`). No full download; source data is read on-demand during the merge.
-2. **Build meta skeleton** — generate a unique `store.NewStorageID()`, extract the partition date from the first SourceID, union time bounds across all source metas, and copy shard config + document interval from the first source. Hash, SizeBytes, and IndexHeader are populated during phase 3.
+2. **Build meta skeleton** — generate a unique `store.NewStorageID()`, extract the partition date from the first SourceID, union time bounds across all source metas, and copy shard config, document interval, and document shard bits from the first source. Hash, SizeBytes, and IndexHeader are populated during phase 3.
 3. **Streaming merge + upload** — `store.PutIndexStreaming(ctx, &meta, write)` sets up an `io.Pipe` whose reader side is fed to `bucket.Upload` on a goroutine. The `write` callback runs `Merger.Merge(ctx, readers, sizes, w)` which streams bytes straight into the pipe via an xxh3 + byte-counter tee, and returns the `format.HeaderInfo` describing the merged index. After the upload goroutine finishes, `PutIndexStreaming` populates `meta.Hash` and `meta.SizeBytes` from the tee and `meta.IndexHeader` from the returned `HeaderInfo`, then uploads `meta.json` as the commit marker. Merge duration in `merge_duration_seconds`; upload duration in `upload_duration_seconds`.
 
 The compactor never holds a local copy of the merged output. StorageID must be generated once per job before the upload retry path, so a compactor that restarts mid-upload still addresses the same object path on the next attempt.
 
-**Version support**: compaction uses the streaming-friendly v3 format (footer-at-EOF) via the shim's `Merger.Merge`. The scheduler groups sources by resolved version in the compaction key.
+**Version support**: compaction uses the streaming-friendly v3 format (footer-at-EOF) via the shim's `Merger.Merge`. The scheduler groups sources by resolved version in the compaction key. It skips v5 indexes with document shard bits, because the v5 merge rejects them; see `internal/v5/AGENTS.md`.
 
 **Date extraction**: the scheduler guarantees all SourceIDs share the same partition date. The date is extracted from `strings.SplitN(sourceIDs[0], "/", 2)[0]`.
 
@@ -56,11 +58,15 @@ When the compactor stops (e.g. rollout), `stopping()` calls `abandonCurrentJob()
 
 ### Backoff on error, immediate retry on no-work
 
-When `requestJob` returns an error (network failure, bad response), the compactor waits 5s before retrying. When `executeJob` fails, the compactor also waits 5s before requesting the next job to avoid a tight retry loop on transient errors (the scheduler would re-deliver the same job). When the scheduler returns 204 (no work available), the compactor retries immediately — the scheduler's long poll already absorbed the wait.
+When `requestJob` returns an error (network failure, bad response), the compactor waits 5s before retrying. The scheduler answers 503 until it is running, so every scheduler restart produces a run of these: a 503 is logged at warn with the scheduler's state, any other error at error. When `executeJob` fails, the compactor also waits 5s before requesting the next job to avoid a tight retry loop on transient errors (the scheduler would re-deliver the same job). When the scheduler returns 204 (no work available), the compactor retries immediately — the scheduler's long poll already absorbed the wait.
 
-### Compactor-reported completion (lastCompletedJobID)
+### Compactor-reported completion (last_completed_job_id)
 
-After a successful compaction, `executeJob` sets `lastCompletedJobID` to the job ID. The next `requestJob` call includes it as a query parameter so the scheduler can remove the job immediately (fast-path completion). The field is cleared after building the request — if the request fails, the scheduler's tick-based detection handles it. On job failure, `lastCompletedJobID` is not set, which also serves as the signal for the failure backoff in `runLoop`.
+After a successful compaction, `runLoop` marks the job completed pending ack. Every job request then carries its ID as `last_completed_job_id`, so the scheduler can remove the job immediately (fast-path completion). The ID is cleared only once the scheduler answers with 200 or 204. A failed request keeps it for the retry. That includes the 503 the scheduler answers while it starts, so without this every scheduler restart would drop the reports of jobs that finish during it.
+
+Dropping the ID on a failed request is not safe. Until a store poll sees the merged index, the scheduler still holds the job for this compactor, and `getByWorker` hands it back to be compacted again, which breaks the scheduler's "compacted at most once" invariant. Resending is safe because the scheduler only removes a job that still exists and belongs to this compactor. A failed job is never marked completed, so its ID is never sent.
+
+If the compactor stops while a report is still unacknowledged, `stopping()` sends it to the scheduler's complete endpoint with the same backoff as abandon (`reportCompletedJob`). The endpoint removes the job the same way the job request does, without assigning new work. Abandoning it instead would return its sources to the planner and get them compacted again by another compactor. Without the report, a compactor that comes back under the same ID (a container restart in the same pod, a StatefulSet, or an explicit `compactor_id`) is handed the finished job again. A scheduler that predates the endpoint answers 404, which is not retried. The job then waits for tick-based detection, as before.
 
 ### Compactor ID defaults to hostname
 
@@ -98,12 +104,12 @@ logline_index_compactor_bytes_uploaded_total           # bytes written to object
 ```
 loop:
   requestJob(ctx) via GET <job path>?worker_id=X[&last_completed_job_id=Y]
-    ├─ error → log, backoff 5s, continue
-    ├─ nil (204) → continue immediately (scheduler already waited)
-    └─ job → executeJob(ctx, job)
+    ├─ error → log, keep Y, backoff 5s, continue
+    ├─ nil (204) → clear Y, continue immediately (scheduler already waited)
+    └─ job → clear Y, executeJob(ctx, job)
                 ├─ deadline exceeded → log, metric, backoff 5s, continue
                 ├─ error → log, metric, backoff 5s, continue
-                └─ success → log, metric, set lastCompletedJobID, continue
+                └─ success → log, metric, set Y to the job ID, continue
 ```
 
 ## Testing

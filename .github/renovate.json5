@@ -15,6 +15,15 @@
   ignorePaths: [
     'vendor/**',
   ],
+  // Renovate reads the root release tags (v0.4.0, v3.x) as versions of the nested
+  // pkg/push module. Go needs pkg/push/vX.Y.Z tags, so these versions do not resolve
+  // for modules that import Loki.
+  //
+  // Use ignoreDeps, not a packageRule with 'enabled: false'. The self-hosted runner
+  // sets force.enabled to true, and that overrides 'enabled: false' in every packageRule.
+  ignoreDeps: [
+    'github.com/grafana/loki/pkg/push',
+  ],
   prHourlyLimit: 4,
   baseBranchPatterns: [
     'main',
@@ -254,12 +263,6 @@
     {
       // Disable all updates for pkg/push/go.mod (deps of the submodule).
       matchFileNames: ['pkg/push/go.mod'],
-      enabled: false,
-    },
-    {
-      // Do not bump github.com/grafana/loki/pkg/push in any go.mod.
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/grafana/loki/pkg/push'],
       enabled: false,
     },
     {

@@ -23,9 +23,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	querystats "github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -66,22 +67,22 @@ type querySizeLimitSpec struct {
 var (
 	maxQueryBytesReadSpec = querySizeLimitSpec{
 		limitName: "MaxQueryBytesRead",
-		sentinel:  logqlmodel.ErrMaxQueryBytesRead,
+		sentinel:  logqlerr.ErrMaxQueryBytesRead,
 		errorTmpl: limErrQueryTooManyBytesTmpl,
 	}
 	maxQuerierBytesReadSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		sentinel:  logqlerr.ErrQuerierTooManyBytes,
 		errorTmpl: limErrQuerierTooManyBytesTmpl,
 	}
 	maxQuerierBytesReadShardableSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		sentinel:  logqlerr.ErrQuerierTooManyBytes,
 		errorTmpl: limErrQuerierTooManyBytesShardableTmpl,
 	}
 	maxQuerierBytesReadUnshardableSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		sentinel:  logqlerr.ErrQuerierTooManyBytes,
 		errorTmpl: limErrQuerierTooManyBytesUnshardableTmpl,
 	}
 )
@@ -232,7 +233,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
 		queryLen := timestamp.Time(r.GetEnd().UnixMilli()).Sub(timestamp.Time(r.GetStart().UnixMilli()))
 		if queryLen > maxQueryLength {
-			return nil, fmt.Errorf("%w: %w", logqlmodel.ErrMaxQueryLength,
+			return nil, fmt.Errorf("%w: %w", logqlerr.ErrMaxQueryLength,
 				httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength)))
 		}
 	}
@@ -460,12 +461,17 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
 
 		if len(sl.hashes) >= sl.maxSeries && httpreq.IsLogsDrilldownRequest(ctx) {
+			// Return the response with its full statistics. Recording them as
+			// discarded work as well would count the same scan twice.
 			metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
 			return res, nil
 		}
 
 		sl.hashes[hash] = struct{}{}
 		if len(sl.hashes) > sl.maxSeries {
+			// The query already ran. Preserve its usage before discarding the
+			// successful response; the outer collector will see only the error.
+			querystats.JoinDiscardedWork(ctx, promResponse.Statistics)
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 		}
 	}
@@ -546,8 +552,8 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 
 	if parallelism < 1 {
 		err := fmt.Errorf("%w: %w",
-			logqlmodel.ErrMaxQueryParallelism,
-			httpgrpc.Errorf(http.StatusTooManyRequests, "%s", logqlmodel.ErrMaxQueryParallelism.Error()),
+			logqlerr.ErrMaxQueryParallelism,
+			httpgrpc.Errorf(http.StatusTooManyRequests, "%s", logqlerr.ErrMaxQueryParallelism.Error()),
 		)
 		// Rejected before rt.middleware runs, so the line is emitted here.
 		logFailedQueryUsageForRejection(ctx, request, err)
@@ -729,7 +735,7 @@ func validateMaxEntriesLimits(ctx context.Context, reqLimit uint32, limits Limit
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
-		return fmt.Errorf("%w: %w", logqlmodel.ErrMaxEntriesLimit,
+		return fmt.Errorf("%w: %w", logqlerr.ErrMaxEntriesLimit,
 			httpgrpc.Errorf(http.StatusBadRequest, maxSeriesErrTmpl, reqLimit, maxEntriesLimit))
 	}
 	return nil

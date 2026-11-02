@@ -17,8 +17,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	lokimem "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -32,11 +33,27 @@ var (
 // concurrently in Open. Hardcoded for now.
 const maxConcurrentSectionOpens = 64
 
-// postingsResultSchema is the pointers-section Arrow schema the resolver's
-// results are serialized into, so the postings reader is a drop-in for the
-// legacy reader on the shared ArrowRecordBatchReader seam. This schema is only
-// the wire format consumers already decode via pointers.FromRecordBatch /
-// pointers.InternalLabelsColumn.
+// internalLabelsFieldName is the name of the postingsResultSchema field that
+// holds the ambiguous names of the row's section, joined by commas. Every row of
+// one section carries the same names.
+const internalLabelsFieldName = "__streamLabelNames__"
+
+// Column positions in postingsResultSchema, in the order of its fields.
+const (
+	resultColPath = iota
+	resultColSection
+	resultColStreamID
+	resultColStreamIDRef
+	resultColMinTimestamp
+	resultColMaxTimestamp
+	resultColRowCount
+	resultColUncompressedSize
+	resultColAmbiguousNames
+)
+
+// postingsResultSchema is the Arrow schema of the batches that
+// postingsIndexSectionsReader emits. CollectSections decodes them with
+// resolvedRowsFromRecordBatch.
 var postingsResultSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "path.path.utf8", Type: arrow.BinaryTypes.String},
 	{Name: "section.int64", Type: arrow.PrimitiveTypes.Int64},
@@ -46,34 +63,45 @@ var postingsResultSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "max_timestamp.timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns},
 	{Name: "row_count.int64", Type: arrow.PrimitiveTypes.Int64},
 	{Name: "uncompressed_size.int64", Type: arrow.PrimitiveTypes.Int64},
-	{Name: pointers.InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true},
+	{Name: internalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true},
 }, nil)
 
-// resolvedRow is one pointers-schema row: a single stream within a resolved
-// section, expanded from that section's stream-ID bitmap.
+// resolvedRow is one row of postingsResultSchema: a single stream within a
+// resolved section, expanded from that section's stream-ID bitmap.
 type resolvedRow struct {
-	objectPath     string
-	sectionIndex   int64
-	streamID       int64
-	minTimestamp   int64
-	maxTimestamp   int64
+	objectPath   string
+	sectionIndex int64
+
+	// streamID is the stream ID within the data object. It maps to the
+	// stream_id_ref column.
+	streamID int64
+
+	// minTimestamp and maxTimestamp are Unix nanoseconds.
+	minTimestamp int64
+	maxTimestamp int64
+
+	// rowCount and uncompressedSize stay zero because the resolver reports
+	// neither. Zero means "not reported".
+	rowCount         int64
+	uncompressedSize int64
+
 	ambiguousNames []string
 }
 
 // postingsIndexSectionsReader resolves matching streams from an index object's
 // postings sections via a streamSelector, expands each result's
-// stream-ID bitmap into one pointers-schema row per stream, and serializes those
+// stream-ID bitmap into one resolvedRow per stream, and serializes those
 // rows in batchSize chunks. Section lifetime is bound to the underlying
 // *dataobj.Object, so the reader does not close sections itself.
 type postingsIndexSectionsReader struct {
 	logger log.Logger
 	obj    *dataobj.Object
 
-	matchers    []*labels.Matcher
-	predicates  []*labels.Matcher
-	start, end  time.Time
-	batchSize   int
-	bucketRange *postings.ShardBucketRange
+	matchers   []*labels.Matcher
+	predicates []*labels.Matcher
+	start, end time.Time
+	batchSize  int
+	hashRange  *streams.HashRange
 
 	initialized bool
 	resolved    bool
@@ -94,20 +122,20 @@ func newPostingsIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
-	bucketRange *postings.ShardBucketRange,
+	hashRange *streams.HashRange,
 ) *postingsIndexSectionsReader {
 	if batchSize <= 0 {
 		batchSize = 8192
 	}
 	return &postingsIndexSectionsReader{
-		logger:      logger,
-		obj:         obj,
-		matchers:    matchers,
-		predicates:  predicates,
-		start:       start,
-		end:         end,
-		batchSize:   batchSize,
-		bucketRange: bucketRange,
+		logger:     logger,
+		obj:        obj,
+		matchers:   matchers,
+		predicates: predicates,
+		start:      start,
+		end:        end,
+		batchSize:  batchSize,
+		hashRange:  hashRange,
 	}
 }
 
@@ -140,6 +168,18 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	opened := make([]*postings.Section, len(matching))
 	g, groupCtx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrentSectionOpens)
+
+	// Read the layout in parallel with the postings sections, so the two reads overlap. An index
+	// with no postings section of the tenant has nothing to prune.
+	var bucketRange *postings.ShardBucketRange
+	if len(matching) > 0 {
+		g.Go(func() error {
+			var err error
+			bucketRange, err = r.shardBucketRange(groupCtx, tenant)
+			return err
+		})
+	}
+
 	for i, section := range matching {
 		g.Go(func() error {
 			sec, err := postings.Open(groupCtx, section)
@@ -155,7 +195,7 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	}
 
 	// Open readers of the sections, configured with the input predicates
-	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end, r.bucketRange)
+	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end, bucketRange)
 	if err := selector.open(ctx, opened, maxConcurrentSectionOpens); err != nil {
 		return fmt.Errorf("opening postings readers: %w", err)
 	}
@@ -163,6 +203,25 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 
 	r.initialized = true
 	return nil
+}
+
+// shardBucketRange maps the hash range of the request to the shard buckets of tenant in this index
+// object. It returns nil if the request has no hash range, or if the range covers every bucket of
+// the layout, because such a range prunes nothing.
+func (r *postingsIndexSectionsReader) shardBucketRange(ctx context.Context, tenant string) (*postings.ShardBucketRange, error) {
+	if r.hashRange == nil {
+		return nil, nil
+	}
+
+	layout, err := indexobj.TenantShardLayout(ctx, r.obj, tenant)
+	if err != nil {
+		return nil, fmt.Errorf("reading the shard layout of the index object: %w", err)
+	}
+	from, to := layout.BucketRange(*r.hashRange)
+	if layout.CoversAllShardBuckets(from, to) {
+		return nil, nil
+	}
+	return &postings.ShardBucketRange{From: from, To: to}, nil
 }
 
 var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")
@@ -257,8 +316,8 @@ func (r *postingsIndexSectionsReader) stats() readerStats {
 	}
 }
 
-// sectionResultsToRecordBatch serializes expanded per-stream rows into the
-// pointers-section Arrow schema. stream_id is the index-internal stream ID,
+// sectionResultsToRecordBatch serializes expanded per-stream rows into
+// postingsResultSchema. stream_id is the index-internal stream ID,
 // which the resolver does not carry and no consumer reads from this batch, so it
 // is set to 0.
 func sectionResultsToRecordBatch(rows []resolvedRow) arrow.RecordBatch {
@@ -290,8 +349,8 @@ func sectionResultsToRecordBatch(rows []resolvedRow) arrow.RecordBatch {
 		streamIDRefB.Append(row.streamID)
 		minTsB.Append(arrow.Timestamp(row.minTimestamp))
 		maxTsB.Append(arrow.Timestamp(row.maxTimestamp))
-		rowCountB.Append(0)
-		sizeB.Append(0)
+		rowCountB.Append(row.rowCount)
+		sizeB.Append(row.uncompressedSize)
 		if len(row.ambiguousNames) > 0 {
 			labelsB.Append(strings.Join(row.ambiguousNames, ","))
 		} else {
@@ -310,4 +369,44 @@ func sectionResultsToRecordBatch(rows []resolvedRow) arrow.RecordBatch {
 		sizeB.NewArray(),
 		labelsB.NewArray(),
 	}, int64(n))
+}
+
+// resolvedRowsFromRecordBatch decodes rec into one resolvedRow per row. It
+// returns an error when the fields of rec differ from postingsResultSchema in
+// name, order, type, nullability, or metadata.
+//
+// A null ambiguous-names value decodes to nil. The decoder ignores the
+// stream_id column.
+func resolvedRowsFromRecordBatch(rec arrow.RecordBatch) ([]resolvedRow, error) {
+	if !rec.Schema().Equal(postingsResultSchema) {
+		return nil, errors.New("schema does not match postingsResultSchema")
+	}
+
+	var (
+		paths          = rec.Column(resultColPath).(*array.String)
+		sections       = rec.Column(resultColSection).(*array.Int64)
+		streamIDRefs   = rec.Column(resultColStreamIDRef).(*array.Int64)
+		minTimestamps  = rec.Column(resultColMinTimestamp).(*array.Timestamp)
+		maxTimestamps  = rec.Column(resultColMaxTimestamp).(*array.Timestamp)
+		rowCounts      = rec.Column(resultColRowCount).(*array.Int64)
+		sizes          = rec.Column(resultColUncompressedSize).(*array.Int64)
+		ambiguousNames = rec.Column(resultColAmbiguousNames).(*array.String)
+	)
+
+	rows := make([]resolvedRow, rec.NumRows())
+	for i := range rows {
+		rows[i] = resolvedRow{
+			objectPath:       paths.Value(i),
+			sectionIndex:     sections.Value(i),
+			streamID:         streamIDRefs.Value(i),
+			minTimestamp:     int64(minTimestamps.Value(i)),
+			maxTimestamp:     int64(maxTimestamps.Value(i)),
+			rowCount:         rowCounts.Value(i),
+			uncompressedSize: sizes.Value(i),
+		}
+		if !ambiguousNames.IsNull(i) {
+			rows[i].ambiguousNames = strings.Split(ambiguousNames.Value(i), ",")
+		}
+	}
+	return rows, nil
 }

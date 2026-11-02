@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
+	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -269,4 +271,63 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	}
 
 	return cfg
+}
+
+func TestInitPatternIngesterTee(t *testing.T) {
+	tests := []struct {
+		name           string
+		patternEnabled bool
+		kafkaIngestion bool
+	}{
+		{name: "disabled", patternEnabled: false},
+		{name: "disabled when the pattern ingester consumes from Kafka", patternEnabled: true, kafkaIngestion: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			loki := &Loki{}
+			loki.Cfg.Pattern.Enabled = tc.patternEnabled
+			loki.Cfg.Pattern.KafkaIngestion.Enabled = tc.kafkaIngestion
+
+			svc, err := loki.initPatternIngesterTee()
+			require.NoError(t, err)
+			require.Nil(t, svc)
+			require.Nil(t, loki.Tee)
+		})
+	}
+}
+
+// Puts both servers and an ingester in the service map, then checks only the
+// ingester comes back - if the servers wait on each other, neither shuts down.
+func TestServerServicesToWaitFor(t *testing.T) {
+	ingester := services.NewIdleService(nil, nil)
+	l := &Loki{serviceMap: map[string]services.Service{
+		Server:         services.NewIdleService(nil, nil),
+		InternalServer: services.NewIdleService(nil, nil),
+		Ingester:       ingester,
+	}}
+
+	require.Equal(t, []services.Service{ingester}, l.serverServicesToWaitFor())
+}
+
+func TestLoglineStoreConfigBorrowsIngesterWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		queryIngestersWithin time.Duration
+		want                 time.Duration
+	}{
+		{name: "querier value", queryIngestersWithin: 3 * time.Hour, want: 3 * time.Hour},
+		{name: "unset falls back to default", queryIngestersWithin: 0, want: loglinestore.DefaultQueryIngestersWithin},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := &Loki{}
+			l.Cfg.Logline.Store.MinDate = "2026-01-01"
+			l.Cfg.Querier.QueryIngestersWithin = tc.queryIngestersWithin
+
+			cfg := l.loglineStoreConfig()
+			require.Equal(t, tc.want, cfg.QueryIngestersWithin)
+			require.Equal(t, "2026-01-01", cfg.MinDate)
+			// The shared section stays untouched.
+			require.Zero(t, l.Cfg.Logline.Store.QueryIngestersWithin)
+		})
+	}
 }

@@ -9,7 +9,7 @@ You can read a high level overview of Loki storage [here](https://grafana.com/do
 
 Grafana Loki needs to store two different types of data: **chunks** and **indexes**.
 
-When using Accelerated Search (experimental), then a third data type is used: **bloom blocks**.
+When using Accelerated Search (deprecated), then a third data type is used: **bloom blocks**.
 
 Loki receives logs in separate streams, where each stream is uniquely identified
 by its tenant ID and its set of labels. As log entries from a stream arrive,

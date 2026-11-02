@@ -17,8 +17,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 
 	"github.com/grafana/loki/pkg/push"
@@ -1645,4 +1645,40 @@ func TestNestedJSONFieldDetection(t *testing.T) {
 			require.Equal(t, expectedPath, df[field].jsonPath, "Wrong json path for field %s", field)
 		}
 	})
+}
+
+func TestDetectedFieldsPreservesQueryUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		query  string
+		values bool
+		empty  bool
+		bytes  int64
+	}{
+		{name: "fields", query: `{app="test"}`, bytes: 1024},
+		{name: "values", query: `{app="test"}`, values: true, bytes: 2048},
+		{name: "filtered fields", query: `{app="test"} |= "line"`, bytes: 4096},
+		{name: "no matching entries", query: `{app="test"}`, empty: true, bytes: 8192},
+		{name: "zero usage", query: `{app="test"}`, empty: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := logResponseWithScanUsage(tc.bytes)
+			logs.Statistics.Summary.Splits = 3
+			logs.Statistics.Summary.Shards = 6
+			if tc.empty {
+				logs.Data.Result = nil
+			}
+			next := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) { return logs, nil })
+			handler := NewDetectedFieldsHandler(next, next, fakeLimits{})
+			request := &DetectedFieldsRequest{DetectedFieldsRequest: logproto.DetectedFieldsRequest{
+				Query: tc.query, Start: time.Unix(0, 0), End: time.Unix(60, 0),
+				LineLimit: 10, Limit: 10, Values: tc.values, Name: "message",
+			}}
+
+			response, err := handler.Do(user.InjectOrgID(context.Background(), "test"), request)
+			require.NoError(t, err)
+			got := response.(*DetectedFieldsResponse)
+			require.Equal(t, logs.Statistics, got.Statistics)
+		})
+	}
 }

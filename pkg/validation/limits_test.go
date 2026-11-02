@@ -402,23 +402,12 @@ func TestLimitsValidation(t *testing.T) {
 			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown", OTLPConfig: &push.OTLPConfig{}},
 			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", compression.SupportedCodecs()),
 		},
-		{
-			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "none", OTLPConfig: &push.OTLPConfig{}, EngineResultsCacheTimeBucketInterval: model.Duration(30 * time.Second)},
-			expected: fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got 30s"),
-		},
-		{
-			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "none", OTLPConfig: &push.OTLPConfig{}, EngineResultsCacheTimeBucketInterval: model.Duration(time.Hour)},
-			expected: nil,
-		},
 	} {
 		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)
 		t.Run(desc, func(t *testing.T) {
 			tc.limits.TSDBShardingStrategy = logql.PowerOfTwoVersion.String() // hacky but needed for test
 			tc.limits.TSDBMaxBytesPerShard = DefaultTSDBMaxBytesPerShard
 			tc.limits.DataObjMaxBytesPerShard = DefaultDataObjMaxBytesPerShard
-			if tc.limits.EngineResultsCacheTimeBucketInterval == 0 {
-				_ = tc.limits.EngineResultsCacheTimeBucketInterval.Set("24h")
-			}
 			if tc.expected == nil {
 				require.NoError(t, tc.limits.Validate())
 			} else {
@@ -1297,7 +1286,7 @@ func TestDataObjCompaction_ValidateRejectsLogWithoutIndex(t *testing.T) {
 
 func TestDataObjCompaction_ValidateAcceptsValidCombinations(t *testing.T) {
 	// Build from RegisterFlags defaults so the other required Validate() fields
-	// (TSDBMaxBytesPerShard, EngineResultsCacheTimeBucketInterval, etc.) are
+	// (TSDBMaxBytesPerShard, etc.) are
 	// already satisfied; toggle only the two compaction booleans.
 	combos := []struct{ index, log bool }{
 		{false, false},
@@ -1507,16 +1496,22 @@ func TestShardFactor_Validate(t *testing.T) {
 		require.NoError(t, ShardFactor(0).Validate())
 	})
 
+	t.Run("accepts every power of two up to the maximum", func(t *testing.T) {
+		for f := ShardFactor(1); f <= MaxShardFactor; f *= 2 {
+			require.NoError(t, f.Validate(), "factor %d", f)
+		}
+	})
+
 	t.Run("rejects a factor that is not a power of two", func(t *testing.T) {
-		require.ErrorContains(t, ShardFactor(24).Validate(), "not a power of two")
+		require.EqualError(t, ShardFactor(24).Validate(), "shard bucket count 24 is not a power of two")
 	})
 
-	t.Run("rejects a power of two that is not the default", func(t *testing.T) {
-		require.ErrorContains(t, ShardFactor(64).Validate(), "shard factor 64 is not supported, only 32 is")
+	t.Run("rejects the first power of two above the maximum", func(t *testing.T) {
+		require.EqualError(t, ShardFactor(2*MaxShardFactor).Validate(), "shard factor 512 is more than the maximum 256")
 	})
 
-	t.Run("rejects a factor above the maximum", func(t *testing.T) {
-		require.ErrorContains(t, ShardFactor(1<<20).Validate(), "more than the maximum")
+	t.Run("reports the maximum of the limit for a factor above the maximum of the shard layout", func(t *testing.T) {
+		require.EqualError(t, ShardFactor(1<<20).Validate(), "shard factor 1048576 is more than the maximum 256")
 	})
 }
 
@@ -1553,12 +1548,21 @@ func TestLimits_DataObjShardFactor(t *testing.T) {
 		require.NoError(t, l.Validate())
 	})
 
-	t.Run("validation rejects an unsupported factor from the flag", func(t *testing.T) {
+	t.Run("validation accepts a factor that is a power of two from the flag", func(t *testing.T) {
 		var l Limits
 		fs := flag.NewFlagSet("test", flag.ContinueOnError)
 		l.RegisterFlags(fs)
 		require.NoError(t, fs.Parse([]string{"-limits.dataobj-shard-factor=16"}))
-		require.ErrorContains(t, l.Validate(), "dataobj_shard_factor: shard factor 16 is not supported")
+		require.NoError(t, l.Validate())
+		require.Equal(t, ShardFactor(16), l.DataObjShardFactor)
+	})
+
+	t.Run("validation rejects a factor that is not a power of two from the flag", func(t *testing.T) {
+		var l Limits
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		l.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-limits.dataobj-shard-factor=24"}))
+		require.EqualError(t, l.Validate(), "dataobj_shard_factor: shard bucket count 24 is not a power of two")
 	})
 
 	t.Run("yaml without the field keeps the default factor", func(t *testing.T) {
@@ -1571,14 +1575,25 @@ func TestLimits_DataObjShardFactor(t *testing.T) {
 		require.Equal(t, ShardFactor(streams.DefaultShardBuckets), l.DataObjShardFactor)
 	})
 
-	t.Run("validation rejects an unsupported factor from yaml", func(t *testing.T) {
+	t.Run("validation accepts a factor that is a power of two from yaml", func(t *testing.T) {
 		var defaults Limits
 		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
 		setDefaultLimitsForYAML(t, defaults)
 
 		var l Limits
-		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_shard_factor: 8`), &l))
-		require.ErrorContains(t, l.Validate(), "dataobj_shard_factor")
+		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_shard_factor: 128`), &l))
+		require.NoError(t, l.Validate())
+		require.Equal(t, ShardFactor(128), l.DataObjShardFactor)
+	})
+
+	t.Run("validation rejects a factor above the maximum from yaml", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		setDefaultLimitsForYAML(t, defaults)
+
+		var l Limits
+		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_shard_factor: 512`), &l))
+		require.EqualError(t, l.Validate(), "dataobj_shard_factor: shard factor 512 is more than the maximum 256")
 	})
 }
 

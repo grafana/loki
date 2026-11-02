@@ -93,10 +93,10 @@ func planActor(plan *physical.Plan) (string, error) {
 		return "index-merge", nil
 	case *physical.LogMerge:
 		return "log-merge", nil
-	case *physical.SortObject:
-		return "sort-object", nil
 	case *physical.IndexFilter:
 		return "index-filter", nil
+	case *physical.DeletionSweep:
+		return "deletion-sweep", nil
 	default:
 		return "", fmt.Errorf("unsupported compaction plan root %T", root)
 	}

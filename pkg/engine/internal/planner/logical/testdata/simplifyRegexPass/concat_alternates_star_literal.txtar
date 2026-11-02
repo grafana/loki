@@ -1,8 +1,0 @@
-Concatenations with alternates that start with ".*" followed by a literal
-can't be simplified, since that literal isn't adjacent to the base literal.
-
--- column --
-utf8.builtin.message
-
--- regex --
-foo(.*bar|uzz)

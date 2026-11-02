@@ -149,6 +149,9 @@ func parseIPVSBackendStatus(file io.Reader) ([]IPVSBackendStatus, error) {
 		if len(fields) == 0 {
 			continue
 		}
+		if len(fields) < 2 {
+			return nil, fmt.Errorf("%w: Malformed line %q", ErrFileParse, scanner.Text())
+		}
 		switch {
 		case fields[0] == "IP" || fields[0] == "Prot" || fields[1] == "RemoteAddress:Port":
 			continue

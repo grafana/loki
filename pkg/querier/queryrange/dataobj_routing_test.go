@@ -36,7 +36,7 @@ func TestDataObjResolve(t *testing.T) {
 	cfg := Config{DataObjEnabled: true, DataObjStorageLag: dataObjRoutingLag, now: func() time.Time { return dataObjRoutingNow }}
 	insideStart, insideEnd := dataObjRoutingNow.Add(-24*time.Hour), dataObjRoutingNow.Add(-12*time.Hour)
 
-	resolve := func(limits fakeLimits, tenants []string, query string, start, end time.Time) dataObjResolution {
+	resolve := func(limits fakeLimits, tenants []string, query string, start, end time.Time) DataObjResolution {
 		return dataObjResolve(cfg, limits, tenants, syntax.MustParseExpr(query), start, end)
 	}
 
@@ -49,36 +49,127 @@ func TestDataObjResolve(t *testing.T) {
 	t.Run("accepts a stream-first sum inside the data-object range", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "eligible", res.outcome)
-		require.InDelta(t, 1.0, res.coverage, 1e-9)
+		require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+		require.InDelta(t, 1.0, res.Coverage, 1e-9)
 		require.True(t, res.prefers())
 	})
 
 	t.Run("rejects every query when the config turns data objects off", func(t *testing.T) {
 		res := dataObjResolve(Config{DataObjStorageLag: dataObjRoutingLag}, dataObjTenantLimits("1"), []string{"1"}, syntax.MustParseExpr(streamFirstQuery), insideStart, insideEnd)
 
-		require.Equal(t, "data_objects_disabled", res.outcome)
+		require.Equal(t, DataObjOutcomeDataObjectsDisabled, res.Outcome)
 		require.False(t, res.prefers())
 	})
 
 	t.Run("rejects a log query", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `{app="a"} |= "x"`, insideStart, insideEnd)
 
-		require.Equal(t, "unsupported_query", res.outcome)
+		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
 		require.False(t, res.prefers())
 	})
 
 	t.Run("rejects a range aggregation that is not a sum", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `count_over_time({app="a"}[1m])`, insideStart, insideEnd)
 
-		require.Equal(t, "unsupported_query", res.outcome)
-		require.Zero(t, res.coverage)
+		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
+		require.Zero(t, res.Coverage)
 	})
 
 	t.Run("rejects a sum of an aggregation that stream-first order does not support", func(t *testing.T) {
-		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `sum(rate({app="a"}[1m]))`, insideStart, insideEnd)
+		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `sum(avg_over_time({app="a"} | logfmt | unwrap n [1m]))`, insideStart, insideEnd)
 
-		require.Equal(t, "unsupported_query", res.outcome)
+		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
+	})
+
+	t.Run("accepts a stream-first sum nested in another expression", func(t *testing.T) {
+		for _, query := range []string{
+			`label_replace(sum by (app) (count_over_time({app="a"}[1m])), "b", "c", "app", ".+")`,
+			`max by (node) (sum by (node, pod) (count_over_time({app="a"}[1m])))`,
+			`(sum(count_over_time({app="a"}[1m])) or vector(0)) > bool 0`,
+			`sum(count_over_time({app="a"}[1m])) + sum(avg_over_time({app="a"} | logfmt | unwrap n [1m]))`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+			})
+		}
+	})
+
+	t.Run("rejects an expression with no stream-first part", func(t *testing.T) {
+		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `max(sum(avg_over_time({app="a"} | logfmt | unwrap n [1m])))`, insideStart, insideEnd)
+
+		require.Equal(t, DataObjOutcomeUnsupportedQuery, res.Outcome)
+	})
+
+	t.Run("accepts a query when only one of its stream-first parts overlaps the data-object range and counts the other part as zero coverage", func(t *testing.T) {
+		const outside = `sum(count_over_time({app="a"}[1m] offset 100h))`
+		const inside = `sum(count_over_time({app="a"}[1m]))`
+
+		for _, query := range []string{outside + " + " + inside, inside + " + " + outside} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+				require.InDelta(t, 0.5, res.Coverage, 1e-9)
+				require.False(t, res.prefers())
+			})
+		}
+	})
+
+	t.Run("rejects a query when none of its stream-first parts overlaps the data-object range", func(t *testing.T) {
+		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `sum(count_over_time({app="a"}[1m] offset 100h)) + sum(count_over_time({app="a"}[1m] offset 200h))`, insideStart, insideEnd)
+
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
+	})
+
+	t.Run("reports the average coverage of the stream-first parts when several of them overlap the data-object range", func(t *testing.T) {
+		windowStart := dataObjRoutingBandEnd.Add(-25 * time.Minute)
+		start, end := streamFirstRequestRange(windowStart, windowStart.Add(100*time.Minute))
+		const partial = `sum(count_over_time({app="a"}[1m]))`
+		const full = `sum(count_over_time({app="a"}[1m] offset 24h))`
+
+		for _, query := range []string{partial + " + " + full, full + " + " + partial} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, start, end)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+				require.InDelta(t, (0.25+1.0)/2, res.Coverage, 1e-9)
+				require.True(t, res.prefers())
+			})
+		}
+	})
+
+	t.Run("counts a range vector that does not run in stream-first order as zero coverage", func(t *testing.T) {
+		const streamFirst = `sum(count_over_time({app="a"}[1h]))`
+		const notStreamFirst = `min(count_over_time({app="a"}[1h]))`
+
+		for _, query := range []string{streamFirst + " / " + notStreamFirst, notStreamFirst + " / " + streamFirst} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+				require.InDelta(t, 0.5, res.Coverage, 1e-9)
+				require.False(t, res.prefers())
+			})
+		}
+	})
+
+	t.Run("weights the coverage of each stream-first part by the length of its read window", func(t *testing.T) {
+		const longRangeInside = `sum(count_over_time({app="a"}[1h]))`
+		const shortRangeOutside = `sum(count_over_time({app="a"}[1m] offset 100h))`
+		span := insideEnd.Sub(insideStart)
+		wantCoverage := float64(span+time.Hour) / float64(2*span+time.Hour+time.Minute)
+
+		for _, query := range []string{longRangeInside + " + " + shortRangeOutside, shortRangeOutside + " + " + longRangeInside} {
+			t.Run(query, func(t *testing.T) {
+				res := resolve(dataObjTenantLimits("1"), []string{"1"}, query, insideStart, insideEnd)
+
+				require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+				require.InDelta(t, wantCoverage, res.Coverage, 1e-9)
+				require.True(t, res.prefers())
+			})
+		}
 	})
 
 	t.Run("rejects a tenant that turns stream-first off", func(t *testing.T) {
@@ -87,7 +178,7 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(limits, []string{"1"}, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "stream_first_disabled", res.outcome)
+		require.Equal(t, DataObjOutcomeStreamFirstDisabled, res.Outcome)
 	})
 
 	t.Run("rejects a tenant without a data-object start time", func(t *testing.T) {
@@ -96,25 +187,25 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(limits, []string{"1"}, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "data_objects_disabled", res.outcome)
+		require.Equal(t, DataObjOutcomeDataObjectsDisabled, res.Outcome)
 	})
 
 	t.Run("rejects a request without tenants", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1"), nil, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "data_objects_disabled", res.outcome)
+		require.Equal(t, DataObjOutcomeDataObjectsDisabled, res.Outcome)
 	})
 
 	t.Run("rejects a request that ends before the tenant start time", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, dataObjRoutingBandStart.Add(-10*time.Hour), dataObjRoutingBandStart.Add(-5*time.Hour))
 
-		require.Equal(t, "outside_data_object_range", res.outcome)
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
 	})
 
 	t.Run("rejects a request that starts after now minus the storage lag", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, dataObjRoutingNow.Add(-2*time.Hour), dataObjRoutingNow.Add(-time.Hour))
 
-		require.Equal(t, "outside_data_object_range", res.outcome)
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
 	})
 
 	t.Run("rejects a tenant whose start time is not before now minus the storage lag", func(t *testing.T) {
@@ -123,7 +214,7 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(limits, []string{"1"}, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "outside_data_object_range", res.outcome)
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
 	})
 
 	t.Run("rejects a request whose read window ends exactly where the held range starts", func(t *testing.T) {
@@ -131,13 +222,13 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, end.Add(-time.Hour), end)
 
-		require.Equal(t, "outside_data_object_range", res.outcome)
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
 	})
 
 	t.Run("accepts a request whose read window ends one nanosecond after the held range starts", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, dataObjRoutingBandStart.Add(-time.Hour), dataObjRoutingBandStart)
 
-		require.Equal(t, "eligible", res.outcome)
+		require.Equal(t, DataObjOutcomeEligible, res.Outcome)
 	})
 
 	t.Run("rejects a request whose read window starts exactly where the held range ends", func(t *testing.T) {
@@ -145,8 +236,8 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, start.Add(time.Hour))
 
-		require.Equal(t, "outside_data_object_range", res.outcome)
-		require.Zero(t, res.coverage)
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
+		require.Zero(t, res.Coverage)
 	})
 
 	t.Run("accepts a request that overlaps the range by one nanosecond of its read window", func(t *testing.T) {
@@ -154,7 +245,7 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, start)
 
-		require.Equal(t, "eligible", res.outcome)
+		require.Equal(t, DataObjOutcomeEligible, res.Outcome)
 	})
 
 	t.Run("counts the range vector in the time range the query reads", func(t *testing.T) {
@@ -163,8 +254,8 @@ func TestDataObjResolve(t *testing.T) {
 		short := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, end)
 		long := resolve(dataObjTenantLimits("1"), []string{"1"}, `sum(count_over_time({app="a"}[2h]))`, start, end)
 
-		require.Equal(t, "outside_data_object_range", short.outcome)
-		require.Equal(t, "eligible", long.outcome)
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, short.Outcome)
+		require.Equal(t, DataObjOutcomeEligible, long.Outcome)
 	})
 
 	t.Run("counts the offset in the time range the query reads", func(t *testing.T) {
@@ -172,8 +263,8 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, `sum(count_over_time({app="a"}[1m] offset 24h))`, start, end)
 
-		require.Equal(t, "eligible", res.outcome)
-		require.InDelta(t, 1.0, res.coverage, 1e-9)
+		require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+		require.InDelta(t, 1.0, res.Coverage, 1e-9)
 	})
 
 	t.Run("reports the share of the read window that data objects hold", func(t *testing.T) {
@@ -182,8 +273,8 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, end)
 
-		require.Equal(t, "eligible", res.outcome)
-		require.InDelta(t, 0.25, res.coverage, 1e-9)
+		require.Equal(t, DataObjOutcomeEligible, res.Outcome)
+		require.InDelta(t, 0.25, res.Coverage, 1e-9)
 		require.False(t, res.prefers())
 	})
 
@@ -193,7 +284,7 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, end)
 
-		require.Equal(t, "eligible", res.outcome)
+		require.Equal(t, DataObjOutcomeEligible, res.Outcome)
 		require.False(t, res.prefers())
 	})
 
@@ -203,14 +294,14 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, end)
 
-		require.Equal(t, "eligible", res.outcome)
+		require.Equal(t, DataObjOutcomeEligible, res.Outcome)
 		require.True(t, res.prefers())
 	})
 
 	t.Run("accepts several tenants that all read data objects", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1", "2"), []string{"1", "2"}, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "eligible", res.outcome)
+		require.Equal(t, DataObjOutcomeEligible, res.Outcome)
 	})
 
 	t.Run("rejects several tenants when one of them has no data-object start time", func(t *testing.T) {
@@ -219,7 +310,7 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(limits, []string{"1", "2"}, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "data_objects_disabled", res.outcome)
+		require.Equal(t, DataObjOutcomeDataObjectsDisabled, res.Outcome)
 	})
 
 	t.Run("rejects several tenants when one of them turns stream-first off", func(t *testing.T) {
@@ -228,7 +319,7 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(limits, []string{"1", "2"}, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "stream_first_disabled", res.outcome)
+		require.Equal(t, DataObjOutcomeStreamFirstDisabled, res.Outcome)
 	})
 
 	t.Run("uses the latest tenant start time as the start of the data-object range", func(t *testing.T) {
@@ -237,7 +328,7 @@ func TestDataObjResolve(t *testing.T) {
 
 		res := resolve(limits, []string{"1", "2"}, streamFirstQuery, insideStart, insideEnd)
 
-		require.Equal(t, "outside_data_object_range", res.outcome)
+		require.Equal(t, DataObjOutcomeOutsideDataObjRange, res.Outcome)
 	})
 }
 

@@ -25,9 +25,9 @@ For more information see [Deployment modes](https://grafana.com/docs/loki/<LOKI_
 | [Compactor](#compactor)                            | x            | x |   |   | x |
 | [Ruler](#ruler)                                    | x            | x |   |   | x |
 | [Pattern ingester](#pattern-ingester)              | x            | x |   | x |   |
-| [Bloom Planner (Experimental)](#bloom-planner)     | x            |   |   |   | x |
-| [Bloom Builder (Experimental)](#bloom-builder)     | x            |   |   |   | x |
-| [Bloom Gateway (Experimental)](#bloom-gateway)     | x            |   |   |   | x |
+| [Bloom Planner (Deprecated)](#bloom-planner)       | x            |   |   |   | x |
+| [Bloom Builder (Deprecated)](#bloom-builder)       | x            |   |   |   | x |
+| [Bloom Gateway (Deprecated)](#bloom-gateway)       | x            |   |   |   | x |
 
 This page describes the responsibilities of each of these components.
 
@@ -379,7 +379,7 @@ For configuration, monitoring, and migration guidance, refer to [Kafka-based ing
 ## Bloom Planner
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
+This feature is deprecated and will be removed in a future release. Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 
@@ -392,7 +392,7 @@ This service is also used to apply blooms retention.
 ## Bloom Builder
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
+This feature is deprecated and will be removed in a future release. Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 
@@ -406,7 +406,7 @@ The service is stateless and horizontally scalable.
 ## Bloom Gateway
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
+This feature is deprecated and will be removed in a future release. Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 

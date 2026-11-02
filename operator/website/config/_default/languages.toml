@@ -1,0 +1,9 @@
+[en]
+  label = "English"
+  contentDir = "content/en"
+  weight = 10
+  [en.params]
+    languageISO = "EN"
+    languageTag = "en-US"
+    footer = 'Powered by <a href="https://www.netlify.com/">Netlify</a>, <a href="https://gohugo.io/">Hugo</a>, and based on <a href="https://getdoks.org/">Doks</a>'
+    alertText = ''

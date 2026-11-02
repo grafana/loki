@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // created for and scoped to each logs section
@@ -36,7 +35,7 @@ func (c *columnValuesCalculation) Prepare(_ context.Context, calcCtx *logsCalcul
 		c.metadataColumns[column.Name] = struct{}{}
 		calcCtx.builder.PrepareBloomColumn(
 			calcCtx.objectPath, calcCtx.sectionIdx,
-			column.Name, uint(column.Cardinality), int64(streams.DefaultShardLayout().Buckets()),
+			column.Name, uint(column.Cardinality), int64(calcCtx.shardLayout.Buckets()),
 		)
 	}
 	return nil
@@ -57,7 +56,7 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 			}
 			batchErr = calcCtx.builder.ObserveBloomPosting(postings.BloomObservation{
 				ObjectPath:       calcCtx.objectPath,
-				ShardBuckets:     int64(streams.DefaultShardLayout().Buckets()),
+				ShardBuckets:     int64(calcCtx.shardLayout.Buckets()),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       md.Name,
 				Value:            md.Value,

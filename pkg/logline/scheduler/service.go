@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -396,23 +397,44 @@ func (s *Service) prepareWorker(workerID string, r *http.Request) *Job {
 	// the scheduler can remove it immediately instead of waiting for the
 	// next tick to detect it via the store snapshot.
 	if lastJobID := schedulerapi.LastCompletedJobID(r); lastJobID != "" {
-		if existing := s.jobs.get(lastJobID); existing != nil && existing.WorkerID == workerID {
-			if err := s.jobs.remove(lastJobID); err != nil {
-				level.Error(s.logger).Log("msg", "failed to remove worker-reported completed job", "job_id", lastJobID, "err", err)
-			} else {
-				for _, id := range existing.SourceIDs {
-					s.completedSources[id] = struct{}{}
-				}
-				level.Info(s.logger).Log("msg", "job completion through worker report", "job_id", lastJobID, "worker_id", workerID)
-				s.metrics.jobsCompletedTotal.WithLabelValues("worker_report").Inc()
-				s.metrics.jobsInFlight.Set(float64(len(s.jobs.jobs)))
-			}
+		if err := s.completeReportedJobLocked(workerID, lastJobID); err != nil && !errors.Is(err, errJobOwnedByOtherWorker) {
+			level.Error(s.logger).Log("msg", "failed to remove worker-reported completed job", "job_id", lastJobID, "err", err)
 		}
 	}
 
 	// If this worker already has a job, re-deliver it. This handles retries
 	// from workers that crashed before receiving the response.
 	return s.jobs.getByWorker(workerID)
+}
+
+// errJobOwnedByOtherWorker is returned when a worker reports a job that is
+// assigned to a different worker.
+var errJobOwnedByOtherWorker = errors.New("job belongs to a different worker")
+
+// completeReportedJobLocked removes a job its worker reports as finished and
+// marks its sources completed, so the planner skips them until a store poll
+// sees the merged index. A job that no longer exists is not an error: workers
+// resend a report until one succeeds.
+//
+// Caller must hold s.mu.
+func (s *Service) completeReportedJobLocked(workerID, jobID string) error {
+	job := s.jobs.get(jobID)
+	if job == nil {
+		return nil
+	}
+	if job.WorkerID != workerID {
+		return errJobOwnedByOtherWorker
+	}
+	if err := s.jobs.remove(jobID); err != nil {
+		return err
+	}
+	for _, id := range job.SourceIDs {
+		s.completedSources[id] = struct{}{}
+	}
+	level.Info(s.logger).Log("msg", "job completion through worker report", "job_id", jobID, "worker_id", workerID)
+	s.metrics.jobsCompletedTotal.WithLabelValues("worker_report").Inc()
+	s.metrics.jobsInFlight.Set(float64(len(s.jobs.jobs)))
+	return nil
 }
 
 // waitForWork returns the current notification channel. Callers select on it;

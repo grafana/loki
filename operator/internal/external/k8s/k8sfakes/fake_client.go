@@ -15,12 +15,8 @@ import (
 type FakeClient struct {
 	ApplyStub        func(context.Context, runtime.ApplyConfiguration, ...client.ApplyOption) error
 	applyMutex       sync.RWMutex
-	applyArgsForCall []struct {
-		arg1 context.Context
-		arg2 runtime.ApplyConfiguration
-		arg3 []client.ApplyOption
-	}
-	applyReturns struct {
+	applyArgsForCall []FakeClientApplyArgs
+	applyReturns     struct {
 		result1 error
 	}
 	applyReturnsOnCall map[int]struct {
@@ -28,12 +24,8 @@ type FakeClient struct {
 	}
 	CreateStub        func(context.Context, client.Object, ...client.CreateOption) error
 	createMutex       sync.RWMutex
-	createArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.CreateOption
-	}
-	createReturns struct {
+	createArgsForCall []FakeClientCreateArgs
+	createReturns     struct {
 		result1 error
 	}
 	createReturnsOnCall map[int]struct {
@@ -41,12 +33,8 @@ type FakeClient struct {
 	}
 	DeleteStub        func(context.Context, client.Object, ...client.DeleteOption) error
 	deleteMutex       sync.RWMutex
-	deleteArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.DeleteOption
-	}
-	deleteReturns struct {
+	deleteArgsForCall []FakeClientDeleteArgs
+	deleteReturns     struct {
 		result1 error
 	}
 	deleteReturnsOnCall map[int]struct {
@@ -54,12 +42,8 @@ type FakeClient struct {
 	}
 	DeleteAllOfStub        func(context.Context, client.Object, ...client.DeleteAllOfOption) error
 	deleteAllOfMutex       sync.RWMutex
-	deleteAllOfArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.DeleteAllOfOption
-	}
-	deleteAllOfReturns struct {
+	deleteAllOfArgsForCall []FakeClientDeleteAllOfArgs
+	deleteAllOfReturns     struct {
 		result1 error
 	}
 	deleteAllOfReturnsOnCall map[int]struct {
@@ -67,13 +51,8 @@ type FakeClient struct {
 	}
 	GetStub        func(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error
 	getMutex       sync.RWMutex
-	getArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.ObjectKey
-		arg3 client.Object
-		arg4 []client.GetOption
-	}
-	getReturns struct {
+	getArgsForCall []FakeClientGetArgs
+	getReturns     struct {
 		result1 error
 	}
 	getReturnsOnCall map[int]struct {
@@ -81,10 +60,8 @@ type FakeClient struct {
 	}
 	GroupVersionKindForStub        func(runtime.Object) (schema.GroupVersionKind, error)
 	groupVersionKindForMutex       sync.RWMutex
-	groupVersionKindForArgsForCall []struct {
-		arg1 runtime.Object
-	}
-	groupVersionKindForReturns struct {
+	groupVersionKindForArgsForCall []FakeClientGroupVersionKindForArgs
+	groupVersionKindForReturns     struct {
 		result1 schema.GroupVersionKind
 		result2 error
 	}
@@ -94,10 +71,8 @@ type FakeClient struct {
 	}
 	IsObjectNamespacedStub        func(runtime.Object) (bool, error)
 	isObjectNamespacedMutex       sync.RWMutex
-	isObjectNamespacedArgsForCall []struct {
-		arg1 runtime.Object
-	}
-	isObjectNamespacedReturns struct {
+	isObjectNamespacedArgsForCall []FakeClientIsObjectNamespacedArgs
+	isObjectNamespacedReturns     struct {
 		result1 bool
 		result2 error
 	}
@@ -107,12 +82,8 @@ type FakeClient struct {
 	}
 	ListStub        func(context.Context, client.ObjectList, ...client.ListOption) error
 	listMutex       sync.RWMutex
-	listArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.ObjectList
-		arg3 []client.ListOption
-	}
-	listReturns struct {
+	listArgsForCall []FakeClientListArgs
+	listReturns     struct {
 		result1 error
 	}
 	listReturnsOnCall map[int]struct {
@@ -120,13 +91,8 @@ type FakeClient struct {
 	}
 	PatchStub        func(context.Context, client.Object, client.Patch, ...client.PatchOption) error
 	patchMutex       sync.RWMutex
-	patchArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 client.Patch
-		arg4 []client.PatchOption
-	}
-	patchReturns struct {
+	patchArgsForCall []FakeClientPatchArgs
+	patchReturns     struct {
 		result1 error
 	}
 	patchReturnsOnCall map[int]struct {
@@ -134,9 +100,8 @@ type FakeClient struct {
 	}
 	RESTMapperStub        func() meta.RESTMapper
 	rESTMapperMutex       sync.RWMutex
-	rESTMapperArgsForCall []struct {
-	}
-	rESTMapperReturns struct {
+	rESTMapperArgsForCall []struct{}
+	rESTMapperReturns     struct {
 		result1 meta.RESTMapper
 	}
 	rESTMapperReturnsOnCall map[int]struct {
@@ -144,9 +109,8 @@ type FakeClient struct {
 	}
 	SchemeStub        func() *runtime.Scheme
 	schemeMutex       sync.RWMutex
-	schemeArgsForCall []struct {
-	}
-	schemeReturns struct {
+	schemeArgsForCall []struct{}
+	schemeReturns     struct {
 		result1 *runtime.Scheme
 	}
 	schemeReturnsOnCall map[int]struct {
@@ -154,9 +118,8 @@ type FakeClient struct {
 	}
 	StatusStub        func() client.StatusWriter
 	statusMutex       sync.RWMutex
-	statusArgsForCall []struct {
-	}
-	statusReturns struct {
+	statusArgsForCall []struct{}
+	statusReturns     struct {
 		result1 client.StatusWriter
 	}
 	statusReturnsOnCall map[int]struct {
@@ -164,10 +127,8 @@ type FakeClient struct {
 	}
 	SubResourceStub        func(string) client.SubResourceClient
 	subResourceMutex       sync.RWMutex
-	subResourceArgsForCall []struct {
-		arg1 string
-	}
-	subResourceReturns struct {
+	subResourceArgsForCall []FakeClientSubResourceArgs
+	subResourceReturns     struct {
 		result1 client.SubResourceClient
 	}
 	subResourceReturnsOnCall map[int]struct {
@@ -175,32 +136,103 @@ type FakeClient struct {
 	}
 	UpdateStub        func(context.Context, client.Object, ...client.UpdateOption) error
 	updateMutex       sync.RWMutex
-	updateArgsForCall []struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.UpdateOption
-	}
-	updateReturns struct {
+	updateArgsForCall []FakeClientUpdateArgs
+	updateReturns     struct {
 		result1 error
 	}
 	updateReturnsOnCall map[int]struct {
 		result1 error
 	}
 	invocations      map[string][][]interface{}
+	callOrder        []string
 	invocationsMutex sync.RWMutex
 }
 
+// FakeClientApplyArgs holds the arguments of one call to Apply.
+type FakeClientApplyArgs struct {
+	Arg1 context.Context
+	Arg2 runtime.ApplyConfiguration
+	Arg3 []client.ApplyOption
+}
+
+// FakeClientCreateArgs holds the arguments of one call to Create.
+type FakeClientCreateArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 []client.CreateOption
+}
+
+// FakeClientDeleteArgs holds the arguments of one call to Delete.
+type FakeClientDeleteArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 []client.DeleteOption
+}
+
+// FakeClientDeleteAllOfArgs holds the arguments of one call to DeleteAllOf.
+type FakeClientDeleteAllOfArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 []client.DeleteAllOfOption
+}
+
+// FakeClientGetArgs holds the arguments of one call to Get.
+type FakeClientGetArgs struct {
+	Arg1 context.Context
+	Arg2 client.ObjectKey
+	Arg3 client.Object
+	Arg4 []client.GetOption
+}
+
+// FakeClientGroupVersionKindForArgs holds the arguments of one call to GroupVersionKindFor.
+type FakeClientGroupVersionKindForArgs struct {
+	Arg1 runtime.Object
+}
+
+// FakeClientIsObjectNamespacedArgs holds the arguments of one call to IsObjectNamespaced.
+type FakeClientIsObjectNamespacedArgs struct {
+	Arg1 runtime.Object
+}
+
+// FakeClientListArgs holds the arguments of one call to List.
+type FakeClientListArgs struct {
+	Arg1 context.Context
+	Arg2 client.ObjectList
+	Arg3 []client.ListOption
+}
+
+// FakeClientPatchArgs holds the arguments of one call to Patch.
+type FakeClientPatchArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 client.Patch
+	Arg4 []client.PatchOption
+}
+
+// FakeClientSubResourceArgs holds the arguments of one call to SubResource.
+type FakeClientSubResourceArgs struct {
+	Arg1 string
+}
+
+// FakeClientUpdateArgs holds the arguments of one call to Update.
+type FakeClientUpdateArgs struct {
+	Arg1 context.Context
+	Arg2 client.Object
+	Arg3 []client.UpdateOption
+}
+
 func (fake *FakeClient) Apply(arg1 context.Context, arg2 runtime.ApplyConfiguration, arg3 ...client.ApplyOption) error {
+	var arg3Copy []client.ApplyOption
+	if arg3 != nil {
+		arg3Copy = make([]client.ApplyOption, len(arg3))
+		copy(arg3Copy, arg3)
+	}
 	fake.applyMutex.Lock()
 	ret, specificReturn := fake.applyReturnsOnCall[len(fake.applyArgsForCall)]
-	fake.applyArgsForCall = append(fake.applyArgsForCall, struct {
-		arg1 context.Context
-		arg2 runtime.ApplyConfiguration
-		arg3 []client.ApplyOption
-	}{arg1, arg2, arg3})
+	fake.applyArgsForCall = append(fake.applyArgsForCall, FakeClientApplyArgs{arg1, arg2, arg3Copy})
 	stub := fake.ApplyStub
 	fakeReturns := fake.applyReturns
-	fake.recordInvocation("Apply", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("Apply", []interface{}{arg1, arg2, arg3Copy})
 	fake.applyMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3...)
@@ -227,7 +259,15 @@ func (fake *FakeClient) ApplyArgsForCall(i int) (context.Context, runtime.ApplyC
 	fake.applyMutex.RLock()
 	defer fake.applyMutex.RUnlock()
 	argsForCall := fake.applyArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3
+}
+
+func (fake *FakeClient) ApplyArgs() []FakeClientApplyArgs {
+	fake.applyMutex.RLock()
+	defer fake.applyMutex.RUnlock()
+	args := make([]FakeClientApplyArgs, len(fake.applyArgsForCall))
+	copy(args, fake.applyArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) ApplyReturns(result1 error) {
@@ -254,16 +294,17 @@ func (fake *FakeClient) ApplyReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeClient) Create(arg1 context.Context, arg2 client.Object, arg3 ...client.CreateOption) error {
+	var arg3Copy []client.CreateOption
+	if arg3 != nil {
+		arg3Copy = make([]client.CreateOption, len(arg3))
+		copy(arg3Copy, arg3)
+	}
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
-	fake.createArgsForCall = append(fake.createArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.CreateOption
-	}{arg1, arg2, arg3})
+	fake.createArgsForCall = append(fake.createArgsForCall, FakeClientCreateArgs{arg1, arg2, arg3Copy})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
-	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3Copy})
 	fake.createMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3...)
@@ -290,7 +331,15 @@ func (fake *FakeClient) CreateArgsForCall(i int) (context.Context, client.Object
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3
+}
+
+func (fake *FakeClient) CreateArgs() []FakeClientCreateArgs {
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
+	args := make([]FakeClientCreateArgs, len(fake.createArgsForCall))
+	copy(args, fake.createArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) CreateReturns(result1 error) {
@@ -317,16 +366,17 @@ func (fake *FakeClient) CreateReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeClient) Delete(arg1 context.Context, arg2 client.Object, arg3 ...client.DeleteOption) error {
+	var arg3Copy []client.DeleteOption
+	if arg3 != nil {
+		arg3Copy = make([]client.DeleteOption, len(arg3))
+		copy(arg3Copy, arg3)
+	}
 	fake.deleteMutex.Lock()
 	ret, specificReturn := fake.deleteReturnsOnCall[len(fake.deleteArgsForCall)]
-	fake.deleteArgsForCall = append(fake.deleteArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.DeleteOption
-	}{arg1, arg2, arg3})
+	fake.deleteArgsForCall = append(fake.deleteArgsForCall, FakeClientDeleteArgs{arg1, arg2, arg3Copy})
 	stub := fake.DeleteStub
 	fakeReturns := fake.deleteReturns
-	fake.recordInvocation("Delete", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("Delete", []interface{}{arg1, arg2, arg3Copy})
 	fake.deleteMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3...)
@@ -353,7 +403,15 @@ func (fake *FakeClient) DeleteArgsForCall(i int) (context.Context, client.Object
 	fake.deleteMutex.RLock()
 	defer fake.deleteMutex.RUnlock()
 	argsForCall := fake.deleteArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3
+}
+
+func (fake *FakeClient) DeleteArgs() []FakeClientDeleteArgs {
+	fake.deleteMutex.RLock()
+	defer fake.deleteMutex.RUnlock()
+	args := make([]FakeClientDeleteArgs, len(fake.deleteArgsForCall))
+	copy(args, fake.deleteArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) DeleteReturns(result1 error) {
@@ -380,16 +438,17 @@ func (fake *FakeClient) DeleteReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeClient) DeleteAllOf(arg1 context.Context, arg2 client.Object, arg3 ...client.DeleteAllOfOption) error {
+	var arg3Copy []client.DeleteAllOfOption
+	if arg3 != nil {
+		arg3Copy = make([]client.DeleteAllOfOption, len(arg3))
+		copy(arg3Copy, arg3)
+	}
 	fake.deleteAllOfMutex.Lock()
 	ret, specificReturn := fake.deleteAllOfReturnsOnCall[len(fake.deleteAllOfArgsForCall)]
-	fake.deleteAllOfArgsForCall = append(fake.deleteAllOfArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.DeleteAllOfOption
-	}{arg1, arg2, arg3})
+	fake.deleteAllOfArgsForCall = append(fake.deleteAllOfArgsForCall, FakeClientDeleteAllOfArgs{arg1, arg2, arg3Copy})
 	stub := fake.DeleteAllOfStub
 	fakeReturns := fake.deleteAllOfReturns
-	fake.recordInvocation("DeleteAllOf", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("DeleteAllOf", []interface{}{arg1, arg2, arg3Copy})
 	fake.deleteAllOfMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3...)
@@ -416,7 +475,15 @@ func (fake *FakeClient) DeleteAllOfArgsForCall(i int) (context.Context, client.O
 	fake.deleteAllOfMutex.RLock()
 	defer fake.deleteAllOfMutex.RUnlock()
 	argsForCall := fake.deleteAllOfArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3
+}
+
+func (fake *FakeClient) DeleteAllOfArgs() []FakeClientDeleteAllOfArgs {
+	fake.deleteAllOfMutex.RLock()
+	defer fake.deleteAllOfMutex.RUnlock()
+	args := make([]FakeClientDeleteAllOfArgs, len(fake.deleteAllOfArgsForCall))
+	copy(args, fake.deleteAllOfArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) DeleteAllOfReturns(result1 error) {
@@ -443,17 +510,17 @@ func (fake *FakeClient) DeleteAllOfReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeClient) Get(arg1 context.Context, arg2 client.ObjectKey, arg3 client.Object, arg4 ...client.GetOption) error {
+	var arg4Copy []client.GetOption
+	if arg4 != nil {
+		arg4Copy = make([]client.GetOption, len(arg4))
+		copy(arg4Copy, arg4)
+	}
 	fake.getMutex.Lock()
 	ret, specificReturn := fake.getReturnsOnCall[len(fake.getArgsForCall)]
-	fake.getArgsForCall = append(fake.getArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.ObjectKey
-		arg3 client.Object
-		arg4 []client.GetOption
-	}{arg1, arg2, arg3, arg4})
+	fake.getArgsForCall = append(fake.getArgsForCall, FakeClientGetArgs{arg1, arg2, arg3, arg4Copy})
 	stub := fake.GetStub
 	fakeReturns := fake.getReturns
-	fake.recordInvocation("Get", []interface{}{arg1, arg2, arg3, arg4})
+	fake.recordInvocation("Get", []interface{}{arg1, arg2, arg3, arg4Copy})
 	fake.getMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3, arg4...)
@@ -480,7 +547,15 @@ func (fake *FakeClient) GetArgsForCall(i int) (context.Context, client.ObjectKey
 	fake.getMutex.RLock()
 	defer fake.getMutex.RUnlock()
 	argsForCall := fake.getArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3, argsForCall.Arg4
+}
+
+func (fake *FakeClient) GetArgs() []FakeClientGetArgs {
+	fake.getMutex.RLock()
+	defer fake.getMutex.RUnlock()
+	args := make([]FakeClientGetArgs, len(fake.getArgsForCall))
+	copy(args, fake.getArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) GetReturns(result1 error) {
@@ -509,9 +584,7 @@ func (fake *FakeClient) GetReturnsOnCall(i int, result1 error) {
 func (fake *FakeClient) GroupVersionKindFor(arg1 runtime.Object) (schema.GroupVersionKind, error) {
 	fake.groupVersionKindForMutex.Lock()
 	ret, specificReturn := fake.groupVersionKindForReturnsOnCall[len(fake.groupVersionKindForArgsForCall)]
-	fake.groupVersionKindForArgsForCall = append(fake.groupVersionKindForArgsForCall, struct {
-		arg1 runtime.Object
-	}{arg1})
+	fake.groupVersionKindForArgsForCall = append(fake.groupVersionKindForArgsForCall, FakeClientGroupVersionKindForArgs{arg1})
 	stub := fake.GroupVersionKindForStub
 	fakeReturns := fake.groupVersionKindForReturns
 	fake.recordInvocation("GroupVersionKindFor", []interface{}{arg1})
@@ -541,7 +614,15 @@ func (fake *FakeClient) GroupVersionKindForArgsForCall(i int) runtime.Object {
 	fake.groupVersionKindForMutex.RLock()
 	defer fake.groupVersionKindForMutex.RUnlock()
 	argsForCall := fake.groupVersionKindForArgsForCall[i]
-	return argsForCall.arg1
+	return argsForCall.Arg1
+}
+
+func (fake *FakeClient) GroupVersionKindForArgs() []FakeClientGroupVersionKindForArgs {
+	fake.groupVersionKindForMutex.RLock()
+	defer fake.groupVersionKindForMutex.RUnlock()
+	args := make([]FakeClientGroupVersionKindForArgs, len(fake.groupVersionKindForArgsForCall))
+	copy(args, fake.groupVersionKindForArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) GroupVersionKindForReturns(result1 schema.GroupVersionKind, result2 error) {
@@ -573,9 +654,7 @@ func (fake *FakeClient) GroupVersionKindForReturnsOnCall(i int, result1 schema.G
 func (fake *FakeClient) IsObjectNamespaced(arg1 runtime.Object) (bool, error) {
 	fake.isObjectNamespacedMutex.Lock()
 	ret, specificReturn := fake.isObjectNamespacedReturnsOnCall[len(fake.isObjectNamespacedArgsForCall)]
-	fake.isObjectNamespacedArgsForCall = append(fake.isObjectNamespacedArgsForCall, struct {
-		arg1 runtime.Object
-	}{arg1})
+	fake.isObjectNamespacedArgsForCall = append(fake.isObjectNamespacedArgsForCall, FakeClientIsObjectNamespacedArgs{arg1})
 	stub := fake.IsObjectNamespacedStub
 	fakeReturns := fake.isObjectNamespacedReturns
 	fake.recordInvocation("IsObjectNamespaced", []interface{}{arg1})
@@ -605,7 +684,15 @@ func (fake *FakeClient) IsObjectNamespacedArgsForCall(i int) runtime.Object {
 	fake.isObjectNamespacedMutex.RLock()
 	defer fake.isObjectNamespacedMutex.RUnlock()
 	argsForCall := fake.isObjectNamespacedArgsForCall[i]
-	return argsForCall.arg1
+	return argsForCall.Arg1
+}
+
+func (fake *FakeClient) IsObjectNamespacedArgs() []FakeClientIsObjectNamespacedArgs {
+	fake.isObjectNamespacedMutex.RLock()
+	defer fake.isObjectNamespacedMutex.RUnlock()
+	args := make([]FakeClientIsObjectNamespacedArgs, len(fake.isObjectNamespacedArgsForCall))
+	copy(args, fake.isObjectNamespacedArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) IsObjectNamespacedReturns(result1 bool, result2 error) {
@@ -635,16 +722,17 @@ func (fake *FakeClient) IsObjectNamespacedReturnsOnCall(i int, result1 bool, res
 }
 
 func (fake *FakeClient) List(arg1 context.Context, arg2 client.ObjectList, arg3 ...client.ListOption) error {
+	var arg3Copy []client.ListOption
+	if arg3 != nil {
+		arg3Copy = make([]client.ListOption, len(arg3))
+		copy(arg3Copy, arg3)
+	}
 	fake.listMutex.Lock()
 	ret, specificReturn := fake.listReturnsOnCall[len(fake.listArgsForCall)]
-	fake.listArgsForCall = append(fake.listArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.ObjectList
-		arg3 []client.ListOption
-	}{arg1, arg2, arg3})
+	fake.listArgsForCall = append(fake.listArgsForCall, FakeClientListArgs{arg1, arg2, arg3Copy})
 	stub := fake.ListStub
 	fakeReturns := fake.listReturns
-	fake.recordInvocation("List", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("List", []interface{}{arg1, arg2, arg3Copy})
 	fake.listMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3...)
@@ -671,7 +759,15 @@ func (fake *FakeClient) ListArgsForCall(i int) (context.Context, client.ObjectLi
 	fake.listMutex.RLock()
 	defer fake.listMutex.RUnlock()
 	argsForCall := fake.listArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3
+}
+
+func (fake *FakeClient) ListArgs() []FakeClientListArgs {
+	fake.listMutex.RLock()
+	defer fake.listMutex.RUnlock()
+	args := make([]FakeClientListArgs, len(fake.listArgsForCall))
+	copy(args, fake.listArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) ListReturns(result1 error) {
@@ -698,17 +794,17 @@ func (fake *FakeClient) ListReturnsOnCall(i int, result1 error) {
 }
 
 func (fake *FakeClient) Patch(arg1 context.Context, arg2 client.Object, arg3 client.Patch, arg4 ...client.PatchOption) error {
+	var arg4Copy []client.PatchOption
+	if arg4 != nil {
+		arg4Copy = make([]client.PatchOption, len(arg4))
+		copy(arg4Copy, arg4)
+	}
 	fake.patchMutex.Lock()
 	ret, specificReturn := fake.patchReturnsOnCall[len(fake.patchArgsForCall)]
-	fake.patchArgsForCall = append(fake.patchArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 client.Patch
-		arg4 []client.PatchOption
-	}{arg1, arg2, arg3, arg4})
+	fake.patchArgsForCall = append(fake.patchArgsForCall, FakeClientPatchArgs{arg1, arg2, arg3, arg4Copy})
 	stub := fake.PatchStub
 	fakeReturns := fake.patchReturns
-	fake.recordInvocation("Patch", []interface{}{arg1, arg2, arg3, arg4})
+	fake.recordInvocation("Patch", []interface{}{arg1, arg2, arg3, arg4Copy})
 	fake.patchMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3, arg4...)
@@ -735,7 +831,15 @@ func (fake *FakeClient) PatchArgsForCall(i int) (context.Context, client.Object,
 	fake.patchMutex.RLock()
 	defer fake.patchMutex.RUnlock()
 	argsForCall := fake.patchArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3, argsForCall.Arg4
+}
+
+func (fake *FakeClient) PatchArgs() []FakeClientPatchArgs {
+	fake.patchMutex.RLock()
+	defer fake.patchMutex.RUnlock()
+	args := make([]FakeClientPatchArgs, len(fake.patchArgsForCall))
+	copy(args, fake.patchArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) PatchReturns(result1 error) {
@@ -764,8 +868,7 @@ func (fake *FakeClient) PatchReturnsOnCall(i int, result1 error) {
 func (fake *FakeClient) RESTMapper() meta.RESTMapper {
 	fake.rESTMapperMutex.Lock()
 	ret, specificReturn := fake.rESTMapperReturnsOnCall[len(fake.rESTMapperArgsForCall)]
-	fake.rESTMapperArgsForCall = append(fake.rESTMapperArgsForCall, struct {
-	}{})
+	fake.rESTMapperArgsForCall = append(fake.rESTMapperArgsForCall, struct{}{})
 	stub := fake.RESTMapperStub
 	fakeReturns := fake.rESTMapperReturns
 	fake.recordInvocation("RESTMapper", []interface{}{})
@@ -817,8 +920,7 @@ func (fake *FakeClient) RESTMapperReturnsOnCall(i int, result1 meta.RESTMapper) 
 func (fake *FakeClient) Scheme() *runtime.Scheme {
 	fake.schemeMutex.Lock()
 	ret, specificReturn := fake.schemeReturnsOnCall[len(fake.schemeArgsForCall)]
-	fake.schemeArgsForCall = append(fake.schemeArgsForCall, struct {
-	}{})
+	fake.schemeArgsForCall = append(fake.schemeArgsForCall, struct{}{})
 	stub := fake.SchemeStub
 	fakeReturns := fake.schemeReturns
 	fake.recordInvocation("Scheme", []interface{}{})
@@ -870,8 +972,7 @@ func (fake *FakeClient) SchemeReturnsOnCall(i int, result1 *runtime.Scheme) {
 func (fake *FakeClient) Status() client.StatusWriter {
 	fake.statusMutex.Lock()
 	ret, specificReturn := fake.statusReturnsOnCall[len(fake.statusArgsForCall)]
-	fake.statusArgsForCall = append(fake.statusArgsForCall, struct {
-	}{})
+	fake.statusArgsForCall = append(fake.statusArgsForCall, struct{}{})
 	stub := fake.StatusStub
 	fakeReturns := fake.statusReturns
 	fake.recordInvocation("Status", []interface{}{})
@@ -923,9 +1024,7 @@ func (fake *FakeClient) StatusReturnsOnCall(i int, result1 client.StatusWriter) 
 func (fake *FakeClient) SubResource(arg1 string) client.SubResourceClient {
 	fake.subResourceMutex.Lock()
 	ret, specificReturn := fake.subResourceReturnsOnCall[len(fake.subResourceArgsForCall)]
-	fake.subResourceArgsForCall = append(fake.subResourceArgsForCall, struct {
-		arg1 string
-	}{arg1})
+	fake.subResourceArgsForCall = append(fake.subResourceArgsForCall, FakeClientSubResourceArgs{arg1})
 	stub := fake.SubResourceStub
 	fakeReturns := fake.subResourceReturns
 	fake.recordInvocation("SubResource", []interface{}{arg1})
@@ -955,7 +1054,15 @@ func (fake *FakeClient) SubResourceArgsForCall(i int) string {
 	fake.subResourceMutex.RLock()
 	defer fake.subResourceMutex.RUnlock()
 	argsForCall := fake.subResourceArgsForCall[i]
-	return argsForCall.arg1
+	return argsForCall.Arg1
+}
+
+func (fake *FakeClient) SubResourceArgs() []FakeClientSubResourceArgs {
+	fake.subResourceMutex.RLock()
+	defer fake.subResourceMutex.RUnlock()
+	args := make([]FakeClientSubResourceArgs, len(fake.subResourceArgsForCall))
+	copy(args, fake.subResourceArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) SubResourceReturns(result1 client.SubResourceClient) {
@@ -982,16 +1089,17 @@ func (fake *FakeClient) SubResourceReturnsOnCall(i int, result1 client.SubResour
 }
 
 func (fake *FakeClient) Update(arg1 context.Context, arg2 client.Object, arg3 ...client.UpdateOption) error {
+	var arg3Copy []client.UpdateOption
+	if arg3 != nil {
+		arg3Copy = make([]client.UpdateOption, len(arg3))
+		copy(arg3Copy, arg3)
+	}
 	fake.updateMutex.Lock()
 	ret, specificReturn := fake.updateReturnsOnCall[len(fake.updateArgsForCall)]
-	fake.updateArgsForCall = append(fake.updateArgsForCall, struct {
-		arg1 context.Context
-		arg2 client.Object
-		arg3 []client.UpdateOption
-	}{arg1, arg2, arg3})
+	fake.updateArgsForCall = append(fake.updateArgsForCall, FakeClientUpdateArgs{arg1, arg2, arg3Copy})
 	stub := fake.UpdateStub
 	fakeReturns := fake.updateReturns
-	fake.recordInvocation("Update", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("Update", []interface{}{arg1, arg2, arg3Copy})
 	fake.updateMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2, arg3...)
@@ -1018,7 +1126,15 @@ func (fake *FakeClient) UpdateArgsForCall(i int) (context.Context, client.Object
 	fake.updateMutex.RLock()
 	defer fake.updateMutex.RUnlock()
 	argsForCall := fake.updateArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.Arg1, argsForCall.Arg2, argsForCall.Arg3
+}
+
+func (fake *FakeClient) UpdateArgs() []FakeClientUpdateArgs {
+	fake.updateMutex.RLock()
+	defer fake.updateMutex.RUnlock()
+	args := make([]FakeClientUpdateArgs, len(fake.updateArgsForCall))
+	copy(args, fake.updateArgsForCall)
+	return args
 }
 
 func (fake *FakeClient) UpdateReturns(result1 error) {
@@ -1054,9 +1170,18 @@ func (fake *FakeClient) Invocations() map[string][][]interface{} {
 	return copiedInvocations
 }
 
+func (fake *FakeClient) CallOrder() []string {
+	fake.invocationsMutex.RLock()
+	defer fake.invocationsMutex.RUnlock()
+	order := make([]string, len(fake.callOrder))
+	copy(order, fake.callOrder)
+	return order
+}
+
 func (fake *FakeClient) recordInvocation(key string, args []interface{}) {
 	fake.invocationsMutex.Lock()
 	defer fake.invocationsMutex.Unlock()
+	fake.callOrder = append(fake.callOrder, key)
 	if fake.invocations == nil {
 		fake.invocations = map[string][][]interface{}{}
 	}

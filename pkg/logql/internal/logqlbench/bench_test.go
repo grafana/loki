@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/storage"
 	objectclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -127,7 +128,7 @@ var queries = []benchQuery{
 	},
 	{
 		// The filter matches the lines whose number ends in 7, which is about 10% of them.
-		expr:                 fmt.Sprintf(`sum(count_over_time(%s |~ "line=[0-9]*7 " [24h]))`, selectorAll),
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s |~ "value=[0-9]*7 " [24h]))`, selectorAll),
 		description:          "high input, low output, line filter",
 		instant:              true,
 		streamFirstSupported: true,
@@ -140,8 +141,8 @@ var queries = []benchQuery{
 		streamFirstSupported: true,
 	},
 	{
-		// Only the last line of each stream holds "line=4999 ", which is about 0.02% of the lines.
-		expr:                 fmt.Sprintf(`sum(count_over_time(%s |= "line=4999 " [24h]))`, selectorAll),
+		// Only the last line of each stream holds "value=4999 ", which is about 0.02% of the lines.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s |= "value=4999 " [24h]))`, selectorAll),
 		description:          "high input, low output, line filter that keeps almost nothing",
 		instant:              true,
 		streamFirstSupported: true,
@@ -151,6 +152,25 @@ var queries = []benchQuery{
 		expr:                 fmt.Sprintf(`sum(count_over_time(%s != "level=info" [24h]))`, selectorAll),
 		description:          "high input, low output, negated line filter that keeps nothing",
 		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
+		// The shard metadata cycles through 50 values by line, so the filter keeps 2% of the lines.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s | shard="shard-07" | logfmt [24h]))`, selectorAll),
+		description:          "high input, low output, metadata equality before a parser that keeps 2%",
+		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
+		expr:                 fmt.Sprintf("sum by(%s) (sum_over_time(%s | logfmt | unwrap value [5m]))", labelMediumCardName, selectorAll),
+		description:          "high input, medium output, unwrap",
+		instant:              false,
+		streamFirstSupported: true,
+	},
+	{
+		expr:                 fmt.Sprintf("sum by(%s) (rate(%s | logfmt | unwrap value [5m]))", labelMediumCardName, selectorAll),
+		description:          "high input, medium output, unwrap",
+		instant:              false,
 		streamFirstSupported: true,
 	},
 	{
@@ -168,7 +188,7 @@ func TestQueriesStreamFirstSupport(t *testing.T) {
 			name = query.name() + " supports stream-first execution"
 		}
 		t.Run(name, func(t *testing.T) {
-			_, got := logql.StreamFirstRangeAggregation(query.expr)
+			got := len(logql.StreamFirstRangeAggregations(syntax.MustParseExpr(query.expr))) > 0
 			require.Equal(t, query.streamFirstSupported, got, "query %q", query.expr)
 		})
 	}
@@ -310,8 +330,6 @@ func (benchLimits) BlockedQueries(_ context.Context, _ string) []*validation.Blo
 	return nil
 }
 func (l benchLimits) StreamFirstExecutionEnabled(_ string) bool { return l.streamFirstEnabled }
-func (benchLimits) DebugEngineTasks(_ string) bool              { return false }
-func (benchLimits) DebugEngineStreams(_ string) bool            { return false }
 
 // instrumentation is shared by both backends; only one runs per sub-benchmark, so one instance is safe.
 type instrumentation struct {

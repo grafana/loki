@@ -314,6 +314,10 @@ func main() {
 ```
 
 ### Unmarshalling and marshalling
+
+Duration strings used by `Duration()`, `MustDuration()`, and default unmarshalling
+into `time.Duration` fields support Go's duration units plus `d` for fixed 24-hour
+days. For example, `2d`, `1.5d`, and `1d12h` represent 48, 36, and 36 hours.
 `Parser`s can be used to unmarshal and scan the values in a Koanf instance into a struct based on the field tags, and to marshal a Koanf instance back into serialized bytes, for example to JSON or YAML files
 
 ```go

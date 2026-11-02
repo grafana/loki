@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -129,13 +128,11 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		return 0
 	})
 
-	sortSchema := strings.Join(c.schema, ",")
 	for _, agg := range sorted {
 		err := builder.AppendStat(
 			calcCtx.objectPath,
 			calcCtx.sectionIdx,
 			agg.shardBucket,
-			sortSchema,
 			agg.labels,
 			agg.minTimestamp,
 			agg.maxTimestamp,

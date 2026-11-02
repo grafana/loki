@@ -99,7 +99,7 @@ func buildSyntheticDataobj(tb testing.TB, logsSectionSize flagext.Bytes, streamC
 		TargetSectionSize:       logsSectionSize,
 		BufferSize:              4 << 20,
 		SectionStripeMergeLimit: 2,
-	}, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
+	}, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), logsobj.NoTenantOverrides{})
 	require.NoError(tb, err)
 
 	// Deterministic so iteration-to-iteration variance is only from scheduling.
@@ -151,7 +151,7 @@ func buildSyntheticDataobj(tb testing.TB, logsSectionSize flagext.Bytes, streamC
 		require.NoError(tb, builder.Append(benchTenant, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 	}
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.FlushAndSort(context.Background())
 	require.NoError(tb, err)
 
 	// Calculate runs sections concurrently only when the object holds several logs sections.

@@ -576,6 +576,7 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 					sectionIdx:         0,
 					streamLabels:       streamLabels,
 					streamShardBuckets: shardBuckets,
+					shardLayout:        streams.DefaultShardLayout(),
 					builder:            builder,
 				}
 				calc := &labelPostingsCalculation{}

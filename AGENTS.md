@@ -56,7 +56,7 @@ make test-fuzz                                 # run fuzz tests
 
 - Follow the Grafana [Writers' Toolkit](https://grafana.com/docs/writers-toolkit/) Style Guide
 - Use CommonMark flavor of markdown for documentation
-- Create LIDs (Loki Improvement Documents) for large functionality changes
+- Create Github issues for large functionality changes
 - Document upgrading steps in `docs/sources/setup/upgrade/_index.md`
 - Preview docs locally with `make docs` from the `/docs` directory
 - Include examples and clear descriptions for public APIs

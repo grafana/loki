@@ -17,8 +17,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -239,8 +239,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		// Keep the usage of the shards and index lookups that completed before
 		// the failure.
-		stats.JoinPartial(ctx, res.Statistics)
-		stats.JoinPartial(ctx, resolverStats.Result(0, 0, 0))
+		stats.JoinDiscardedWork(ctx, res.Statistics)
+		stats.JoinDiscardedWork(ctx, resolverStats.Result(0, 0, 0))
 		return nil, err
 	}
 

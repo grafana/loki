@@ -23,7 +23,7 @@ func newOverlapPlanner(metas []store.Meta, maxJobSizeBytes int64) CompactionPlan
 	for _, m := range metas {
 		k, ok := compactionKeyFor(m)
 		if !ok {
-			continue // skip metas with unrecognised versions
+			continue // skip metas that cannot be merged
 		}
 		byKey[k] = append(byKey[k], m)
 	}

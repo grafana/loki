@@ -7,6 +7,8 @@ schema_config:
     # Starting from 2018-04-15 Loki should store indexes on BoltDB with the v11 schema
     # using daily periodic tables and chunks on filesystem.
     # The index tables will be prefixed with "index_".
+    # NOTE: `store: boltdb-shipper` is deprecated and scheduled for removal in Loki 4.0.
+    # This entry is kept only to illustrate migrating an existing boltdb-shipper period to tsdb.
     - from: "2018-04-15"
       store: boltdb-shipper
       object_store: filesystem

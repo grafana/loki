@@ -1,9 +1,6 @@
 package physical
 
 import (
-	"context"
-	"slices"
-
 	"github.com/oklog/ulid/v2"
 )
 
@@ -29,17 +26,3 @@ func (n *IndexFilter) ID() ulid.ULID { return n.NodeID }
 
 // Type implements the Node interface.
 func (*IndexFilter) Type() NodeType { return NodeTypeIndexFilter }
-
-// Clone implements the Node interface.
-func (n *IndexFilter) Clone() Node {
-	return &IndexFilter{
-		NodeID:          ulid.Make(),
-		Tenant:          n.Tenant,
-		SourceIndexPath: n.SourceIndexPath,
-		ObjectPaths:     slices.Clone(n.ObjectPaths),
-	}
-}
-
-// CacheKey implements the Node interface. IndexFilter writes object-storage
-// artifacts and is therefore not cacheable.
-func (*IndexFilter) CacheKey(context.Context) string { return "" }
