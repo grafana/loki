@@ -511,6 +511,46 @@ func TestDoIndexMerge_CompactedIndexCloseErrorPropagates(t *testing.T) {
 	require.ErrorContains(t, err, "scratch remove failed")
 }
 
+func TestDoIndexMerge(t *testing.T) {
+	const tenant = "tenant-1"
+	srcPath := "source/index-0.dat"
+	bucket := objstore.NewInMemBucket()
+	buildSourceIndexWithBothKinds(t, bucket, tenant, srcPath)
+	node := &physical.IndexMerge{
+		NodeID: ulid.Make(),
+		Tenant: tenant,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: srcPath, SectionIndex: 0}}},
+		},
+	}
+
+	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
+		store := newLiveHandlesStore()
+		c := newTestExecutorContext(t, bucket)
+		c.scratchStore = store
+
+		_, err := c.doIndexMerge(t.Context(), node)
+		require.NoError(t, err)
+		require.Zero(t, store.Live())
+	})
+
+	t.Run("releases its scratch space when its context is cancelled during the merge", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		store := newLiveHandlesStore()
+		store.onPut = cancel
+		c := newTestExecutorContext(t, bucket)
+		c.scratchStore = store
+		// A one-byte section size makes the builder put a postings section in
+		// scratch after the first row.
+		c.indexobjCfg.TargetSectionSize = 1
+
+		_, err := c.doIndexMerge(ctx, node)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, store.Live())
+	})
+}
+
 // TestExecuteIndexMerge_SkipsLegacySections tests that the executor skips a
 // legacy streams section while it processes a source object that holds
 // streams, stats, and postings sections.
