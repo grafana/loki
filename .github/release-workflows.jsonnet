@@ -87,7 +87,7 @@ local weeklyImageJobs = {
   ),
   'major-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      branches=['release-[0-9]+.0.0'],
+      branches=['release-4.0.0'],  // empty list for disabling the workflow while it's not needed
       buildImage=buildImage,
       checkTemplate=checkTemplate,
       distRunsOn='ubuntu-x64',
@@ -100,10 +100,8 @@ local weeklyImageJobs = {
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
-      // Instead of hard-coding the release version, push an empty to the target branch `release-X.0.0`
-      // git commit --allow-empty -m "chore: Release X.0.0-rcY" -m "Release-As: X.0.0-rcY"
-      // https://github.com/googleapis/release-please#how-do-i-change-the-version-number
-      // releaseAs='x.0.0',
+      // versioningStrategy='default', // the argument releaseAs overrides the strategy
+      releaseAs='4.0.0-rc.1',
       goVersion=goVersion,
     ) + {
       name: 'Prepare Major Release PR',

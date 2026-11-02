@@ -5,17 +5,18 @@ description: Describes the process to create a workflow for a major release of G
 
 # Prepare Major Release
 
-A major release follows the same process as [minor and patch releases](../prepare-release/), but requires a custom workflow to be created to run on the branch we want to release from. The reason for this is that we don't do major releases very often, so it is not economical to keep those workflows running all the time.
+A major release follows the same process as [minor and patch releases](../prepare-release/), but requires a custom workflow to be enabled to run on the branch we want to release from. The reason for this is that we don't do major releases very often, so it is not economical to keep those workflows running all the time.
 
 To create a major release workflow, follow the steps below.
 
 1. Edit `./github/release-workflows.jsonnet`
-1. Add a new workflow for the major release. For example, the 3.0 release looked like the following:
+1. Edit the workflow  `major-release-pr.yml` for the major release.
+   For example, the 4.0.0 release looked like the following:
 
 ```jsonnet
   'major-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      branches=['release-*.0.0'],
+      branches=['release-4.0.0'], // empty list to disable workflow runs
       buildImage=buildImage,
       checkTemplate=checkTemplate,
       distRunsOn='ubuntu-x64',
@@ -29,10 +30,7 @@ To create a major release workflow, follow the steps below.
       skipArm=false,
       skipValidation=false,
       goVersion=goVersion,
-      // Instead of hard-coding the release version, push an empty to the target branch `release-X.0.0`
-      // git commit --allow-empty -m "chore: Release X.0.0-rcY" -m "Release-As: X.0.0-rcY"
-      // https://github.com/googleapis/release-please#how-do-i-change-the-version-number
-      // releaseAs='x.0.0',
+      releaseAs='4.0.0-rc.1',
     ) + {
       name: 'Prepare Major Release PR',
     }, false, false
