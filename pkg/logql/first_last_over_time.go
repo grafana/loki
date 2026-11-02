@@ -207,7 +207,7 @@ func (e *mergeOverTimeStepEvaluator) inRange(sampleTimestamp, stepTimestamp int6
 	// is wider.
 	//
 	// The interval is half-open: the lower bound is exclusive, the upper bound is inclusive.
-  windowStart := windowEnd - e.rangeInterval.Nanoseconds()
+	windowStart := windowEnd - e.rangeInterval.Nanoseconds()
 	return windowStart/int64(time.Millisecond) < sampleTimestamp && sampleTimestamp <= sampleTimestampToMillis(windowEnd)
 }
 
