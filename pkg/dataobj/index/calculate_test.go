@@ -31,7 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-// Used to expose SortSchemaLabels to logs builders
+// fakeLimits exposes SortSchemaLabels and DataObjShardLayout to logs builders.
 type fakeLimits struct{}
 
 func (fakeLimits) CompactionPhases(_ string) (runIndex, runLog bool) {
@@ -39,6 +39,9 @@ func (fakeLimits) CompactionPhases(_ string) (runIndex, runLog bool) {
 }
 func (fakeLimits) SortSchemaLabels(string) []string {
 	return fakeSchema
+}
+func (fakeLimits) DataObjShardLayout(string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
 }
 
 var testCalculatorConfig = logsobj.BuilderBaseConfig{

@@ -24,6 +24,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
+var (
+	errServiceUnavailableMaxLoad = errors.New("the server cannot accept more requests at this time")
+)
+
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	d.pushHandler(w, r, loghttppush.ParseLokiRequest, loghttppush.HTTPError, constants.Loki)
@@ -97,6 +101,15 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
+	// This check happens after the circuit breaker so the circuit breaker can count the number
+	// of occurrences of this error. Without this, the circuit breaker cannot open.
+	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
+	if maxInflightBytes > 0 && d.inflightBytes.Load() >= maxInflightBytes {
+		circuitBreakerErr = errServiceUnavailableMaxLoad
+		errorWriter(w, circuitBreakerErr.Error(), http.StatusServiceUnavailable, logger)
+		return
+	}
+
 	// If the X-Loki-Backfill-Shard header is set, validate it and stash the shard in the request
 	// context so the format parsers (Loki and OTLP) add the internal backfill labels to every stream.
 	shard, ok, shardErr := loghttppush.ExtractAndValidateBackfillShard(r)
@@ -144,6 +157,11 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	}
 
 	d.recordParsedRequest(r, logger, tenantID, format, presumedAgentIP, req, pushStats, streamResolver)
+
+	requestSize := int64(req.Size())
+	newInflightBytes := d.inflightBytes.Add(requestSize)
+	d.m.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
+	defer d.inflightBytes.Add(-requestSize)
 
 	_, err = d.pushWithResolver(r.Context(), req, streamResolver, format)
 	if err != nil {

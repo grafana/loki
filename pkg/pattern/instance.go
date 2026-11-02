@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	syntaxutil "github.com/grafana/loki/v3/pkg/util/syntax"
 )
 
 var tracer = otel.Tracer("pkg/pattern")
@@ -160,7 +161,7 @@ func (i *instance) skipStream(stream logproto.Stream) (bool, error) {
 	if err != nil {
 		return false, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
-	return lbls.Has(constants.AggregatedMetricLabel) || lbls.Has(constants.PatternLabel), nil
+	return constants.IsPatternIngesterStream(lbls.Has), nil
 }
 
 // streamOwner decides whether this ingester builds patterns for a stream.
@@ -240,7 +241,7 @@ func (i *instance) forMatchingStreams(
 	matchers []*labels.Matcher,
 	fn func(*stream) error,
 ) error {
-	filters, matchers := util.SplitFiltersAndMatchers(matchers)
+	filters, matchers := syntaxutil.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, nil)
 	if err != nil {
 		return err

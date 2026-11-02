@@ -1507,21 +1507,21 @@ func TestMultiStageExpr_PushableLabelFilters(t *testing.T) {
 			query: `{app="x"} | level="a" | decolorize | pod="b" | json`,
 			want:  []string{`level="a"`, `pod="b"`},
 		},
-		"an ip filter does not stop the walk and is not returned": {
+		"an ip filter does not stop the walk and is returned": {
 			query: `{app="x"} | addr=ip("10.0.0.0/8") | pod="b" | json`,
-			want:  []string{`pod="b"`},
+			want:  []string{`addr=ip("10.0.0.0/8")`, `pod="b"`},
 		},
-		"an ip filter after a numeric filter is not returned": {
+		"an ip filter after a numeric filter is returned": {
 			query: `{app="x"} | level="a" | status > 400 | addr=ip("10.0.0.0/8") | pod="b" | json`,
-			want:  []string{`level="a"`, `pod="b"`},
+			want:  []string{`level="a"`, `addr=ip("10.0.0.0/8")`, `pod="b"`},
 		},
-		"an and returns the side that is not an ip filter": {
+		"an and with an ip filter is returned whole": {
 			query: `{app="x"} | level="a" and addr=ip("10.0.0.0/8") | json`,
-			want:  []string{`level="a"`},
+			want:  []string{`( level="a" , addr=ip("10.0.0.0/8") )`},
 		},
-		"an or with an ip filter is not returned": {
+		"an or with an ip filter is returned whole": {
 			query: `{app="x"} | level="a" or addr=ip("10.0.0.0/8") | pod="b" | json`,
-			want:  []string{`pod="b"`},
+			want:  []string{`( level="a" or addr=ip("10.0.0.0/8") )`, `pod="b"`},
 		},
 		"a numeric filter is not returned and does not stop the walk": {
 			query: `{app="x"} | level="a" | status > 400 | pod="b" | json`,

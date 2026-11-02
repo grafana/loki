@@ -14,9 +14,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -399,7 +400,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	parsed := make(map[string][]string, len(origParsed))
 	for lbl, values := range origParsed {
-		if logqlmodel.IsPipelineErrorLabel(lbl) {
+		if logqlerr.IsPipelineErrorLabel(lbl) {
 			continue
 		}
 
@@ -446,7 +447,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {
-		if logqlmodel.IsPipelineErrorLabel(lbl) {
+		if logqlerr.IsPipelineErrorLabel(lbl) {
 			continue
 		}
 		vals := make([]string, 0, len(values))

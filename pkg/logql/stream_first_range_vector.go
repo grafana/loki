@@ -9,9 +9,9 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/v3/pkg/iter"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -63,8 +63,9 @@ type streamFirstRangeVectorIterator struct {
 // newStreamFirstRangeVectorIterator returns an iterator for expr over it, whose samples may come
 // in any order.
 //
-// selRange, step, start, end and offset are in nanoseconds. start and end are the query bounds
-// before the offset shift. A step of zero means an instant query.
+// step, start, end and offset are in nanoseconds. start and end are the query bounds before the
+// offset shift. A step of zero means an instant query. The window of a step spans the range vector
+// duration of expr.
 //
 // grouping is the grouping of the vector aggregation above expr. maxSeries limits the output
 // series of that aggregation, which can be fewer than the iterator's series.
@@ -78,7 +79,7 @@ func newStreamFirstRangeVectorIterator(
 	ctx context.Context,
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
-	selRange, step, start, end, offset int64,
+	step, start, end, offset int64,
 	grouping *syntax.Grouping,
 	maxSeries int,
 	keepsErroredLines bool,
@@ -102,7 +103,7 @@ func newStreamFirstRangeVectorIterator(
 	return &streamFirstRangeVectorIterator{
 		it:                    it,
 		newAccumulator:        newAccumulator,
-		selRange:              selRange,
+		selRange:              expr.Left.Interval.Nanoseconds(),
 		step:                  step,
 		start:                 start,
 		offset:                offset,
@@ -252,15 +253,15 @@ func (r *streamFirstRangeVectorIterator) accumulatedSeriesFor(lbs string) (*accu
 	//
 	// The series limit counts output series, so it does not bound such series that share one.
 	// Without this check, every one of them keeps an accumulator until load ends.
-	if !r.keepsErroredLines && metric.Has(logqlmodel.ErrorLabel) {
-		return nil, logqlmodel.NewPipelineErr(metric)
+	if !r.keepsErroredLines && metric.Has(logqlerr.ErrorLabel) {
+		return nil, logqlerr.NewPipelineErr(metric)
 	}
 
 	output := r.groupingKey(metric)
 	if _, ok := r.outputs[output]; !ok {
 		if r.maxSeries > 0 && len(r.outputs) >= r.maxSeries {
 			if !r.partialResultsAllowed {
-				return nil, logqlmodel.NewSeriesLimitError(r.maxSeries)
+				return nil, logqlerr.NewSeriesLimitError(r.maxSeries)
 			}
 			r.metadata.AddWarning(seriesLimitPartialResultsWarning(r.maxSeries))
 			return nil, nil

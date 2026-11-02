@@ -17,7 +17,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	lokimem "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -95,11 +97,11 @@ type postingsIndexSectionsReader struct {
 	logger log.Logger
 	obj    *dataobj.Object
 
-	matchers    []*labels.Matcher
-	predicates  []*labels.Matcher
-	start, end  time.Time
-	batchSize   int
-	bucketRange *postings.ShardBucketRange
+	matchers   []*labels.Matcher
+	predicates []*labels.Matcher
+	start, end time.Time
+	batchSize  int
+	hashRange  *streams.HashRange
 
 	initialized bool
 	resolved    bool
@@ -120,20 +122,20 @@ func newPostingsIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
-	bucketRange *postings.ShardBucketRange,
+	hashRange *streams.HashRange,
 ) *postingsIndexSectionsReader {
 	if batchSize <= 0 {
 		batchSize = 8192
 	}
 	return &postingsIndexSectionsReader{
-		logger:      logger,
-		obj:         obj,
-		matchers:    matchers,
-		predicates:  predicates,
-		start:       start,
-		end:         end,
-		batchSize:   batchSize,
-		bucketRange: bucketRange,
+		logger:     logger,
+		obj:        obj,
+		matchers:   matchers,
+		predicates: predicates,
+		start:      start,
+		end:        end,
+		batchSize:  batchSize,
+		hashRange:  hashRange,
 	}
 }
 
@@ -166,6 +168,18 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	opened := make([]*postings.Section, len(matching))
 	g, groupCtx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrentSectionOpens)
+
+	// Read the layout in parallel with the postings sections, so the two reads overlap. An index
+	// with no postings section of the tenant has nothing to prune.
+	var bucketRange *postings.ShardBucketRange
+	if len(matching) > 0 {
+		g.Go(func() error {
+			var err error
+			bucketRange, err = r.shardBucketRange(groupCtx, tenant)
+			return err
+		})
+	}
+
 	for i, section := range matching {
 		g.Go(func() error {
 			sec, err := postings.Open(groupCtx, section)
@@ -181,7 +195,7 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	}
 
 	// Open readers of the sections, configured with the input predicates
-	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end, r.bucketRange)
+	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end, bucketRange)
 	if err := selector.open(ctx, opened, maxConcurrentSectionOpens); err != nil {
 		return fmt.Errorf("opening postings readers: %w", err)
 	}
@@ -189,6 +203,25 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 
 	r.initialized = true
 	return nil
+}
+
+// shardBucketRange maps the hash range of the request to the shard buckets of tenant in this index
+// object. It returns nil if the request has no hash range, or if the range covers every bucket of
+// the layout, because such a range prunes nothing.
+func (r *postingsIndexSectionsReader) shardBucketRange(ctx context.Context, tenant string) (*postings.ShardBucketRange, error) {
+	if r.hashRange == nil {
+		return nil, nil
+	}
+
+	layout, err := indexobj.TenantShardLayout(ctx, r.obj, tenant)
+	if err != nil {
+		return nil, fmt.Errorf("reading the shard layout of the index object: %w", err)
+	}
+	from, to := layout.BucketRange(*r.hashRange)
+	if layout.CoversAllShardBuckets(from, to) {
+		return nil, nil
+	}
+	return &postings.ShardBucketRange{From: from, To: to}, nil
 }
 
 var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")

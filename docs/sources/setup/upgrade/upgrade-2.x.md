@@ -2,9 +2,8 @@
 title: Upgrade Loki 2.x versions
 menuTitle: 
 description:  Upgrading instructions for Grafana Loki 2.x versions.
-weight: 600
+weight: 198
 ---
-
 
 # Upgrade Loki 2.x versions
 

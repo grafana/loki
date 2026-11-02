@@ -141,7 +141,7 @@ func _closeUnixFile(tls *libc.TLS, id uintptr) (r int32) {
 	_ = pFile
 	pFile = id
 	if (*TunixFile)(unsafe.Pointer(pFile)).Fh >= 0 {
-		_robust_close(tls, pFile, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(42658))
+		_robust_close(tls, pFile, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(43115))
 		(*TunixFile)(unsafe.Pointer(pFile)).Fh = -int32(1)
 	}
 	Xsqlite3_free(tls, (*TunixFile)(unsafe.Pointer(pFile)).FpPreallocatedUnused)

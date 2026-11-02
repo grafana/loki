@@ -1,5 +1,20 @@
 # Changes
 
+## [0.24.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.24.1...auth/v0.24.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* Adds additional validation for REST RPC requests ([#20753](https://github.com/googleapis/google-cloud-go/issues/20753)) ([7827181](https://github.com/googleapis/google-cloud-go/commit/7827181e7cb653fb69645c538b162b2c7490b0bb))
+* **auth/grpctransport:** Use storage-direct authority for Interconnect ([#20738](https://github.com/googleapis/google-cloud-go/issues/20738)) ([232cbe4](https://github.com/googleapis/google-cloud-go/commit/232cbe4bf444d2b697c456012cc703bff81006a3))
+
+## [0.24.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.24.0...auth/v0.24.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **auth:** Return empty tls.Certificate on secureconnect helper failure ([#20632](https://github.com/googleapis/google-cloud-go/issues/20632)) ([1cdb61a](https://github.com/googleapis/google-cloud-go/commit/1cdb61a25ffb7ac5d0c859191d485621c4f7aed7)), refs [#20593](https://github.com/googleapis/google-cloud-go/issues/20593)
+
 ## [0.24.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.3...auth/v0.24.0) (2026-09-23)
 
 

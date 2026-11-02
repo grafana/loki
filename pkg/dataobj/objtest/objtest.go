@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -44,6 +45,10 @@ const Tenant = "objtest"
 // bucket finds them.
 const indexPrefix = "index/v0"
 
+// objectsPerIndex is the most logs objects that one index covers. [Builder.Close] starts a new
+// index when the current one reaches this count, or when the next object has another layout.
+const objectsPerIndex = 16
+
 // Option customizes a [Builder].
 type Option func(*builderOptions)
 
@@ -53,6 +58,7 @@ type builderOptions struct {
 	targetObjectSize  flagext.Bytes
 	bufferSize        flagext.Bytes
 	maxPageRows       int
+	overrides         logsobj.TenantOverrides
 }
 
 // WithTargetSectionSize targets the uncompressed data one logs section holds, so a small value
@@ -89,6 +95,16 @@ func WithMaxPageRows(rows int) Option {
 	return func(o *builderOptions) { o.maxPageRows = rows }
 }
 
+// WithTenantOverrides sets the per-tenant settings that the logs builder reads for [Tenant]: the
+// sort schema and the shard layout. The default is [logsobj.NoTenantOverrides]: no schema labels
+// and the default shard layout.
+//
+// The builder reads the settings once for each object, at the first append to it. A change applies
+// to the objects that start after it. The object in progress keeps its layout.
+func WithTenantOverrides(overrides logsobj.TenantOverrides) Option {
+	return func(o *builderOptions) { o.overrides = overrides }
+}
+
 // Builder is a bucket holding logs data objects and index data objects. Append logs with
 // [Builder.Append], then call [Builder.Close] to write the indexes that make them resolvable.
 type Builder struct {
@@ -108,7 +124,7 @@ type Builder struct {
 
 // NewBuilder creates a builder that can be used for accumulating logs.
 func NewBuilder(t testing.TB, opts ...Option) *Builder {
-	var options builderOptions
+	options := builderOptions{overrides: logsobj.NoTenantOverrides{}}
 	for _, opt := range opts {
 		opt(&options)
 	}
@@ -145,7 +161,7 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 		builderConfig.MaxPageRows = options.maxPageRows
 	}
 
-	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
+	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), options.overrides)
 	require.NoError(t, err, "expected to be able to create logs builder")
 
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexPrefix)
@@ -241,8 +257,12 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 	calculator := index.NewCalculator(indexBuilder, index.NewCalculatorMetrics(nil))
 
 	var (
-		count           int
-		objectsPerIndex = 16
+		count int
+
+		// pending counts the objects in the calculator that no flushed index covers yet.
+		// pendingLayout is their layout. It has no meaning when pending is 0.
+		pending       int
+		pendingLayout streams.Layout
 	)
 	err = b.bucket.Iter(ctx, "", func(name string) error {
 		if !strings.Contains(name, "objects") {
@@ -254,12 +274,28 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 			return fmt.Errorf("reading object: %w", err)
 		}
 
+		layout, err := streamsLayout(ctx, reader)
+		if err != nil {
+			return fmt.Errorf("reading layout of object %s: %w", name, err)
+		}
+
+		// The calculator rejects an index that mixes layouts, so flush before the first object of a
+		// new layout.
+		if pending > 0 && !layout.Equal(pendingLayout) {
+			if err := b.flushAndUpload(ctx, calculator); err != nil {
+				return fmt.Errorf("flushing and uploading index: %w", err)
+			}
+			pending = 0
+		}
+
 		if err := calculator.Calculate(ctx, b.logger, reader, name); err != nil {
 			return fmt.Errorf("calculating index: %w", err)
 		}
 
 		count++
-		if count%objectsPerIndex != 0 {
+		pending++
+		pendingLayout = layout
+		if pending < objectsPerIndex {
 			// Stop early if we haven't accumulated enough objects yet.
 			return nil
 		}
@@ -267,6 +303,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 		if err := b.flushAndUpload(ctx, calculator); err != nil {
 			return fmt.Errorf("flushing and uploading index: %w", err)
 		}
+		pending = 0
 		return nil
 	}, objstore.WithRecursiveIter())
 	if err != nil {
@@ -278,12 +315,35 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 		// result rather than as a missing fixture.
 		return fmt.Errorf("no logs object found to index: append logs before calling Close")
 	}
-	if count%objectsPerIndex != 0 {
+	if pending > 0 {
 		if err := b.flushAndUpload(ctx, calculator); err != nil {
 			return fmt.Errorf("failed to flush and upload index: %w", err)
 		}
 	}
 	return nil
+}
+
+// streamsLayout returns the layout that the streams section of [Tenant] records in obj. It returns
+// an error if obj has no such section or the section records no layout.
+func streamsLayout(ctx context.Context, obj *dataobj.Object) (streams.Layout, error) {
+	for _, section := range obj.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != Tenant {
+			continue
+		}
+		opened, err := streams.Open(ctx, section)
+		if err != nil {
+			return streams.Layout{}, fmt.Errorf("opening streams section: %w", err)
+		}
+		layout, ok, err := opened.Layout()
+		if err != nil {
+			return streams.Layout{}, fmt.Errorf("reading streams layout: %w", err)
+		}
+		if !ok {
+			return streams.Layout{}, fmt.Errorf("streams section records no layout")
+		}
+		return layout, nil
+	}
+	return streams.Layout{}, fmt.Errorf("object holds no streams section for tenant %s", Tenant)
 }
 
 func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculator) error {

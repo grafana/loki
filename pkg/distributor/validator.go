@@ -135,18 +135,6 @@ func (v Validator) ValidateEntry(vCtx validationContext, labels labels.Labels, e
 	return "", nil
 }
 
-func (v Validator) IsAggregatedMetricStream(ls labels.Labels) bool {
-	return ls.Has(constants.AggregatedMetricLabel)
-}
-
-func (v Validator) IsPatternStream(ls labels.Labels) bool {
-	return ls.Has(constants.PatternLabel)
-}
-
-func (v Validator) IsInternalStream(ls labels.Labels) bool {
-	return v.IsAggregatedMetricStream(ls) || v.IsPatternStream(ls)
-}
-
 // Validate labels returns an error if the labels are invalid and if the stream is an aggregated metric stream
 func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.InternalStreamAdapter, retentionHours, policy, format string) error {
 	if ls.IsEmpty() {
@@ -156,7 +144,7 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 	}
 
 	// Skip validation for aggregated metric and pattern streams, as we create those for internal use
-	if v.IsInternalStream(ls) {
+	if constants.IsInternalStream(ls.Has) {
 		return nil
 	}
 

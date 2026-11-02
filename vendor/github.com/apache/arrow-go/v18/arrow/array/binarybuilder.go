@@ -25,6 +25,7 @@ import (
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/internal/json"
@@ -38,26 +39,29 @@ type BinaryBuilder struct {
 	offsets bufBuilder
 	values  *byteBufferBuilder
 
-	appendOffsetVal func(int)
-	getOffsetVal    func(int) int
-	maxCapacity     uint64
-	offsetByteWidth int
+	appendOffsetVal       func(int)
+	unsafeAppendOffsetVal func(int)
+	getOffsetVal          func(int) int
+	maxCapacity           uint64
+	offsetByteWidth       int
 }
 
 // NewBinaryBuilder can be used for any of the variable length binary types,
 // Binary, LargeBinary, String, LargeString by passing the appropriate data type
 func NewBinaryBuilder(mem memory.Allocator, dtype arrow.BinaryDataType) *BinaryBuilder {
 	var (
-		offsets         bufBuilder
-		offsetValFn     func(int)
-		maxCapacity     uint64
-		offsetByteWidth int
-		getOffsetVal    func(int) int
+		offsets           bufBuilder
+		offsetValFn       func(int)
+		unsafeOffsetValFn func(int)
+		maxCapacity       uint64
+		offsetByteWidth   int
+		getOffsetVal      func(int) int
 	)
 	switch dtype.Layout().Buffers[1].ByteWidth {
 	case 4:
 		b := newInt32BufferBuilder(mem)
 		offsetValFn = func(v int) { b.AppendValue(int32(v)) }
+		unsafeOffsetValFn = func(v int) { b.unsafeAppendValue(v) }
 		getOffsetVal = func(i int) int { return int(b.Value(i)) }
 		offsets = b
 		maxCapacity = math.MaxInt32
@@ -65,6 +69,7 @@ func NewBinaryBuilder(mem memory.Allocator, dtype arrow.BinaryDataType) *BinaryB
 	case 8:
 		b := newInt64BufferBuilder(mem)
 		offsetValFn = func(v int) { b.AppendValue(int64(v)) }
+		unsafeOffsetValFn = func(v int) { b.unsafeAppendValue(v) }
 		getOffsetVal = func(i int) int { return int(b.Value(i)) }
 		offsets = b
 		maxCapacity = math.MaxInt64
@@ -72,14 +77,15 @@ func NewBinaryBuilder(mem memory.Allocator, dtype arrow.BinaryDataType) *BinaryB
 	}
 
 	bb := &BinaryBuilder{
-		builder:         builder{mem: mem},
-		dtype:           dtype,
-		offsets:         offsets,
-		values:          newByteBufferBuilder(mem),
-		appendOffsetVal: offsetValFn,
-		maxCapacity:     maxCapacity,
-		offsetByteWidth: offsetByteWidth,
-		getOffsetVal:    getOffsetVal,
+		builder:               builder{mem: mem},
+		dtype:                 dtype,
+		offsets:               offsets,
+		values:                newByteBufferBuilder(mem),
+		appendOffsetVal:       offsetValFn,
+		unsafeAppendOffsetVal: unsafeOffsetValFn,
+		maxCapacity:           maxCapacity,
+		offsetByteWidth:       offsetByteWidth,
+		getOffsetVal:          getOffsetVal,
 	}
 	bb.refCount.Add(1)
 	return bb
@@ -127,9 +133,15 @@ func (b *BinaryBuilder) AppendNull() {
 }
 
 func (b *BinaryBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+
+	b.Reserve(n)
+	b.appendCurrentOffsets(n)
+	bitutil.SetBitsTo(b.nullBitmap.Bytes(), int64(b.length), int64(n), false)
+	b.length += n
+	b.nulls += n
 }
 
 func (b *BinaryBuilder) AppendEmptyValue() {
@@ -139,9 +151,13 @@ func (b *BinaryBuilder) AppendEmptyValue() {
 }
 
 func (b *BinaryBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+
+	b.Reserve(n)
+	b.appendCurrentOffsets(n)
+	b.unsafeAppendBoolsToBitmap(nil, n)
 }
 
 // AppendValues will append the values in the v slice. The valid slice determines which values
@@ -157,6 +173,7 @@ func (b *BinaryBuilder) AppendValues(v [][]byte, valid []bool) {
 	}
 
 	b.Reserve(len(v))
+	b.reserveOffsetCapacity(len(v))
 
 	// Pre-calculate total data size to minimize allocations
 	totalDataSize := 0
@@ -166,8 +183,8 @@ func (b *BinaryBuilder) AppendValues(v [][]byte, valid []bool) {
 	b.ReserveData(totalDataSize)
 
 	for _, vv := range v {
-		b.appendNextOffset()
-		b.values.Append(vv)
+		b.unsafeAppendNextOffset()
+		b.values.unsafeAppend(vv)
 	}
 
 	b.unsafeAppendBoolsToBitmap(valid, len(v))
@@ -186,6 +203,7 @@ func (b *BinaryBuilder) AppendStringValues(v []string, valid []bool) {
 	}
 
 	b.Reserve(len(v))
+	b.reserveOffsetCapacity(len(v))
 
 	// Pre-calculate total data size to minimize allocations
 	totalDataSize := 0
@@ -195,8 +213,8 @@ func (b *BinaryBuilder) AppendStringValues(v []string, valid []bool) {
 	b.ReserveData(totalDataSize)
 
 	for _, vv := range v {
-		b.appendNextOffset()
-		b.values.Append([]byte(vv))
+		b.unsafeAppendNextOffset()
+		b.values.unsafeAppend([]byte(vv))
 	}
 
 	b.unsafeAppendBoolsToBitmap(valid, len(v))
@@ -227,6 +245,23 @@ func (b *BinaryBuilder) init(capacity int) {
 // DataLen returns the number of bytes in the data array.
 func (b *BinaryBuilder) DataLen() int { return b.values.length }
 
+type binaryBuilderCheckpoint struct {
+	builder *BinaryBuilder
+	dataLen int
+}
+
+func (c *binaryBuilderCheckpoint) capture() {
+	c.dataLen = c.builder.DataLen()
+}
+
+func (c *binaryBuilderCheckpoint) restore() {
+	c.builder.ResizeData(c.dataLen)
+}
+
+func (b *BinaryBuilder) newCheckpoint() checkpointState {
+	return &binaryBuilderCheckpoint{builder: b}
+}
+
 // DataCap returns the total number of bytes that can be stored
 // without allocating additional memory.
 func (b *BinaryBuilder) DataCap() int { return b.values.capacity }
@@ -235,6 +270,13 @@ func (b *BinaryBuilder) DataCap() int { return b.values.capacity }
 // by checking the capacity and calling Resize if necessary.
 func (b *BinaryBuilder) Reserve(n int) {
 	b.reserve(n, b.Resize)
+}
+
+func (b *BinaryBuilder) reserveOffsetCapacity(n int) {
+	offsetBytes := (b.length + n + 1) * b.offsetByteWidth
+	if b.offsets.Cap() < offsetBytes {
+		b.offsets.resize(offsetBytes)
+	}
 }
 
 // ReserveData ensures there is enough space for appending n bytes
@@ -248,11 +290,24 @@ func (b *BinaryBuilder) ReserveData(n int) {
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
 // additional memory will be allocated. If n is smaller, the allocated memory may be reduced.
 func (b *BinaryBuilder) Resize(n int) {
+	if n < b.length {
+		b.truncate(n)
+	}
 	b.offsets.resize((n + 1) * b.offsetByteWidth)
-	if (n * b.offsetByteWidth) < b.offsets.Len() {
+	if n < b.offsets.Len() {
 		b.offsets.SetLength(n * b.offsetByteWidth)
 	}
 	b.resize(n, b.init)
+}
+
+func (b *BinaryBuilder) truncate(n int) {
+	dataLen := b.values.Len()
+	if n < b.offsets.Len() {
+		dataLen = b.getOffsetVal(n)
+	}
+	b.builder.truncate(n)
+	b.offsets.SetLength(n * b.offsetByteWidth)
+	b.values.SetLength(dataLen)
 }
 
 func (b *BinaryBuilder) ResizeData(n int) {
@@ -316,6 +371,31 @@ func (b *BinaryBuilder) appendNextOffset() {
 	numBytes := b.values.Len()
 	debug.Assert(uint64(numBytes) <= b.maxCapacity, "exceeded maximum capacity of binary array")
 	b.appendOffsetVal(numBytes)
+}
+
+func (b *BinaryBuilder) unsafeAppendNextOffset() {
+	numBytes := b.values.Len()
+	debug.Assert(uint64(numBytes) <= b.maxCapacity, "exceeded maximum capacity of binary array")
+	b.unsafeAppendOffsetVal(numBytes)
+}
+
+func (b *BinaryBuilder) appendCurrentOffsets(n int) {
+	numBytes := b.values.Len()
+	debug.Assert(uint64(numBytes) <= b.maxCapacity, "exceeded maximum capacity of binary array")
+	start := b.offsets.Len() * b.offsetByteWidth
+	b.offsets.Advance(n * b.offsetByteWidth)
+	switch b.offsetByteWidth {
+	case arrow.Int32SizeBytes:
+		offsets := arrow.Int32Traits.CastFromBytes(b.offsets.Bytes()[start:])
+		for i := range offsets {
+			offsets[i] = int32(numBytes)
+		}
+	case arrow.Int64SizeBytes:
+		offsets := arrow.Int64Traits.CastFromBytes(b.offsets.Bytes()[start:])
+		for i := range offsets {
+			offsets[i] = int64(numBytes)
+		}
+	}
 }
 
 func (b *BinaryBuilder) AppendValueFromString(s string) error {
@@ -425,6 +505,31 @@ func (b *BinaryViewBuilder) SetBlockSize(sz uint) {
 
 func (b *BinaryViewBuilder) Type() arrow.DataType { return b.dtype }
 
+type binaryViewBuilderCheckpoint struct {
+	builder    *BinaryViewBuilder
+	length     int
+	blockState *multiBufferCheckpoint
+}
+
+func (c *binaryViewBuilderCheckpoint) capture() {
+	c.length = c.builder.length
+	c.blockState.capture()
+}
+
+func (c *binaryViewBuilderCheckpoint) restore() {
+	c.blockState.restore()
+	for i := c.length; i < len(c.builder.rawData); i++ {
+		c.builder.rawData[i] = arrow.ViewHeader{}
+	}
+}
+
+func (b *BinaryViewBuilder) newCheckpoint() checkpointState {
+	return &binaryViewBuilderCheckpoint{
+		builder:    b,
+		blockState: b.blockBuilder.newCheckpoint(),
+	}
+}
+
 func (b *BinaryViewBuilder) Release() {
 	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
@@ -521,10 +626,17 @@ func (b *BinaryViewBuilder) AppendNull() {
 }
 
 func (b *BinaryViewBuilder) AppendNulls(n int) {
-	b.Reserve(n)
-	for i := 0; i < n; i++ {
-		b.UnsafeAppendBoolToBitmap(false)
+	if n <= 0 {
+		return
 	}
+	if n > math.MaxInt-b.length {
+		panic("arrow/array: builder length overflow")
+	}
+
+	b.Reserve(n)
+	bitutil.SetBitsTo(b.nullBitmap.Bytes(), int64(b.length), int64(n), false)
+	b.length += n
+	b.nulls += n
 }
 
 func (b *BinaryViewBuilder) AppendEmptyValue() {

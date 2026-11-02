@@ -1,10 +1,10 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@ba2e119ef225396a0eb8425811f44914dc446963"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@1c8a4e33b968af202d91753cd0df9bf217961b4f"
     "with":
       "build_image": "golang:1.27.3"
       "golang_ci_lint_version": "v2.14.0"
-      "release_lib_ref": "ba2e119ef225396a0eb8425811f44914dc446963"
+      "release_lib_ref": "1c8a4e33b968af202d91753cd0df9bf217961b4f"
       "skip_validation": false
       "use_github_app_token": true
   "logql-analyzer-image":
@@ -12,7 +12,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "ba2e119ef225396a0eb8425811f44914dc446963"
+      "RELEASE_LIB_REF": "1c8a4e33b968af202d91753cd0df9bf217961b4f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -135,12 +135,10 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
         # 'needs.logql-analyzer-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -152,7 +150,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "ba2e119ef225396a0eb8425811f44914dc446963"
+      "RELEASE_LIB_REF": "1c8a4e33b968af202d91753cd0df9bf217961b4f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -275,12 +273,10 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
         # 'needs.loki-canary-boringcrypto-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -292,7 +288,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "ba2e119ef225396a0eb8425811f44914dc446963"
+      "RELEASE_LIB_REF": "1c8a4e33b968af202d91753cd0df9bf217961b4f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -415,12 +411,10 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
         # 'needs.loki-canary-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -432,7 +426,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "ba2e119ef225396a0eb8425811f44914dc446963"
+      "RELEASE_LIB_REF": "1c8a4e33b968af202d91753cd0df9bf217961b4f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -555,12 +549,10 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
         # 'needs.loki-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -572,7 +564,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.27.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "ba2e119ef225396a0eb8425811f44914dc446963"
+      "RELEASE_LIB_REF": "1c8a4e33b968af202d91753cd0df9bf217961b4f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -695,12 +687,10 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
         # 'needs.loki-query-tee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \

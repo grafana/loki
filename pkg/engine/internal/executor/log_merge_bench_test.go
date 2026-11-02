@@ -78,7 +78,9 @@ func BenchmarkLogObjectMerge(b *testing.B) {
 		c.indexobjCfg = defaults.IndexobjBuilder
 		c.dataBucket = dataBucket
 		_, err := c.doLogObjectMerge(b.Context(), node)
-		require.NoError(b, err)
+		if err != nil {
+			require.NoError(b, err)
+		}
 	}
 }
 

@@ -230,10 +230,15 @@ func (c *tablesManager) runCompaction(ctx context.Context, applyRetention bool) 
 		if err != nil {
 			status = statusFailure
 		}
-		if applyRetention {
-			c.metrics.applyRetentionOperationTotal.WithLabelValues(status).Inc()
-		} else {
-			c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+		// Shutdown or a compactor handover cancels ctx, which is not a failure.
+		// Check ctx, not err: object store clients may not wrap context.Canceled.
+		canceled := err != nil && errors.Is(ctx.Err(), context.Canceled)
+		if !canceled {
+			if applyRetention {
+				c.metrics.applyRetentionOperationTotal.WithLabelValues(status).Inc()
+			} else {
+				c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+			}
 		}
 		runtime := time.Since(start)
 		if status == statusSuccess {

@@ -120,12 +120,34 @@ The `loki_querytee_secondary_backend_stats_ratio` metric observes the ratio of a
 The proxy observes it for each compared pair when both backends return a decoded response.
 It skips a stat when the primary value is zero.
 
-| Label                  | Values                                                                              |
-| ---------------------- | ----------------------------------------------------------------------------------- |
-| `route`                | The route of the compared request.                                                  |
-| `stat`                 | `bytes_processed`, `lines_processed`, `exec_time`, `queue_time`, `splits`, `shards` |
-| `queriers_load_status` | `both_idle`, `primary_busy`, `secondary_busy`, `both_busy`                          |
-| `result_cache_status`  | `both_miss`, `primary_hit`, `secondary_hit`, `both_hit`                             |
+| Label                  | Values                                                                 |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `route`                | The route of the compared request.                                     |
+| `stat`                 | `bytes_processed`, `exec_time`                                         |
+| `primary_bucket`       | The bucket of the primary value of the stat, listed in the next table. |
+| `queriers_load_status` | `both_idle`, `primary_busy`, `secondary_busy`, `both_busy`             |
+| `result_cache_status`  | `both_miss`, `primary_hit`, `secondary_hit`, `both_hit`                |
+
+The `primary_bucket` label has a different set of values for each stat.
+Each bucket holds the values above the previous bucket, up to and including its upper bound.
+So a `less_than_` bucket also holds a value equal to its bound.
+The sizes are decimal: 1 GB is 10^9 bytes.
+
+| `stat`            | `primary_bucket`  | Primary value              |
+| ----------------- | ----------------- | -------------------------- |
+| `bytes_processed` | `less_than_1gb`   | At most 1 GB               |
+| `bytes_processed` | `1gb_to_10gb`     | Above 1 GB, up to 10 GB    |
+| `bytes_processed` | `10gb_to_100gb`   | Above 10 GB, up to 100 GB  |
+| `bytes_processed` | `100gb_to_1tb`    | Above 100 GB, up to 1 TB   |
+| `bytes_processed` | `more_than_1tb`   | Above 1 TB                 |
+| `exec_time`       | `less_than_100ms` | At most 100 ms             |
+| `exec_time`       | `100ms_to_500ms`  | Above 100 ms, up to 500 ms |
+| `exec_time`       | `500ms_to_1s`     | Above 500 ms, up to 1 s    |
+| `exec_time`       | `1s_to_5s`        | Above 1 s, up to 5 s       |
+| `exec_time`       | `5s_to_10s`       | Above 5 s, up to 10 s      |
+| `exec_time`       | `10s_to_30s`      | Above 10 s, up to 30 s     |
+| `exec_time`       | `30s_to_60s`      | Above 30 s, up to 60 s     |
+| `exec_time`       | `more_than_60s`   | Above 60 s                 |
 
 A backend is busy when its query waited more than 100ms in the queue.
 A backend hits the cache when the range query, instant metric or log results cache of its query-frontend found at least one entry.

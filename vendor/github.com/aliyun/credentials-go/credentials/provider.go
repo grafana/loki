@@ -8,6 +8,7 @@ const (
 	PATHCredentialFile         = "~/.alibabacloud/credentials"
 	ENVRoleArn                 = "ALIBABA_CLOUD_ROLE_ARN"
 	ENVOIDCProviderArn         = "ALIBABA_CLOUD_OIDC_PROVIDER_ARN"
+	ENVOIDCToken               = "ALIBABA_CLOUD_OIDC_TOKEN"
 	ENVOIDCTokenFile           = "ALIBABA_CLOUD_OIDC_TOKEN_FILE"
 	ENVRoleSessionName         = "ALIBABA_CLOUD_ROLE_SESSION_NAME"
 )

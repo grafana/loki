@@ -59,6 +59,16 @@ func TestNewProjectionPlan(t *testing.T) {
 			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
 			wantMetadata:          []string{"__error__", "__error_details__", "app"},
 		},
+		"rate under a sum reads no message, only the grouping key and the error labels": {
+			query:        `sum by (app) (rate({app="x"}[1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
+		},
+		"rate with an unwrap under a sum narrows the metadata to the grouping key and the unwrapped name": {
+			query:        `sum by (app) (rate({app="x"} | unwrap duration | __error__="" [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "duration"},
+		},
 		"a sum with no grouping reads only the error label metadata, which can set the pipeline error": {
 			query:        `sum (count_over_time({app="x"}[1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},

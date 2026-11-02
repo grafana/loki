@@ -1097,10 +1097,11 @@ dataobj:
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
 
-  # Caches the metadata of the data objects the querier reads. The cache is
-  # enabled when a backend is configured. Entries are keyed by object path, so
-  # the cache cannot differentiate entries between different buckets and
-  # clusters. Multiple installations must not share the same cache backend.
+  # Caches the metadata region of the log objects and index objects the querier
+  # reads, or the entire object if it is tiny. The cache is enabled when a
+  # backend is configured. Entries are keyed by object path, so the cache cannot
+  # differentiate entries between different buckets and clusters. Multiple
+  # installations must not share the same cache backend.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
@@ -1148,10 +1149,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
-    # Experimental: Maximum runs per LogMerge task (K for log compaction). Log
-    # compaction starts only when a size level holds K runs, so a larger K
-    # leaves more overlapping runs per window. Separate from max-runs-per-task
-    # to scale independently. Must be at least 2.
+    # Experimental: Runs per planned log merge (K for log compaction), before
+    # logs.max-task-size splits it into tasks. Log compaction merges only groups
+    # of K runs from one size level, so a larger K leaves more overlapping runs
+    # per window. Separate from max-runs-per-task to scale independently. Must
+    # be at least 2.
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
     [logs_max_runs_per_task: <int> | default = 8]
 
@@ -1160,6 +1162,14 @@ dataobj:
     # are skipped.
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
+
+    # Experimental: Maximum uncompressed input size of one LogMerge task. The
+    # planner splits a larger merge into tasks by stream sort prefix and never
+    # splits one sort prefix. A task exceeds the maximum in two cases: a sort
+    # prefix above it gets a task of its own, and the last task of a merge can
+    # take in a leftover of up to 10% of it. 0 disables the split.
+    # CLI flag: -dataobj.compaction.logs.max-task-size
+    [logs_max_task_size: <int> | default = 0B]
 
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
@@ -1722,6 +1732,13 @@ ingest_limits_frontend_client:
 # 'max_query_series').
 # CLI flag: -limits.tenant-limits-allow-publish
 [tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_entries_limit_per_query max_line_size_truncate max_query_bytes_read max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream volume_enabled volume_max_series]]
+
+# List of /config fields to expose via /loki/api/v1/exposed-config, addressed by
+# dot-separated path (e.g.
+# 'distributor.otlp_config.default_resource_attributes_as_index_labels'). Empty
+# by default, meaning nothing is exposed.
+# CLI flag: -config.exposed-fields
+[exposed_fields: <list of strings> | default = []]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -4080,11 +4097,15 @@ discover_generic_fields:
 # CLI flag: -validation.discover-service-name
 [discover_service_name: <list of strings> | default = [service app application app_name name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
 
-# Discover and add log levels during ingestion, if not present already. Levels
-# would be added to Structured Metadata with name
-# level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and
-# one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical',
-# 'fatal' (case insensitive).
+# Discover the log level of each entry during ingestion and add it to Structured
+# Metadata as detected_level, unless it is already present. The level is read
+# from the first stream label or Structured Metadata field whose name is in
+# log_level_fields (default: level, LEVEL, Level, log.level, severity, SEVERITY,
+# Severity, SeverityText, lvl, LVL, Lvl, severity_text, Severity_Text,
+# SEVERITY_TEXT). Otherwise it is derived from the OTLP severity number, or from
+# the log line: a JSON or logfmt field named in log_level_fields, then keywords.
+# Recognized values (case insensitive) are normalized to 'trace', 'debug',
+# 'info', 'warn', 'error', 'critical' or 'fatal'.
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 

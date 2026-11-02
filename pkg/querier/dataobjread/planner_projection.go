@@ -9,9 +9,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // ProjectionPlan says which columns of a logs section a query returns and which of its metadata
@@ -70,7 +70,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 	)
 
 	addMetadataName := func(name string) {
-		if name == "" || logqlmodel.IsPipelineErrorLabel(name) {
+		if name == "" || logqlerr.IsPipelineErrorLabel(name) {
 			return
 		}
 		metadataNames[name] = struct{}{}
@@ -205,8 +205,8 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 	if !plan.needAllMetadata {
 		// A metadata key named after an error label sets the pipeline error, the same way a
 		// failed stage does. So read those columns even when the query does not name them.
-		metadataNames[logqlmodel.ErrorLabel] = struct{}{}
-		metadataNames[logqlmodel.ErrorDetailsLabel] = struct{}{}
+		metadataNames[logqlerr.ErrorLabel] = struct{}{}
+		metadataNames[logqlerr.ErrorDetailsLabel] = struct{}{}
 		plan.metadataNames = slices.Sorted(maps.Keys(metadataNames))
 	}
 	return plan, nil
@@ -431,7 +431,7 @@ func pushdownCandidate(matcher *labels.Matcher) []*labels.Matcher {
 	// or a stored metadata key can set that error, so a predicate on the column does not match the
 	// filter. Pushing one down would drop rows the pipeline keeps, and handing one to the metastore
 	// would drop sections the query needs.
-	if matcher == nil || logqlmodel.IsPipelineErrorLabel(matcher.Name) {
+	if matcher == nil || logqlerr.IsPipelineErrorLabel(matcher.Name) {
 		return nil
 	}
 

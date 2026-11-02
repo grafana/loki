@@ -31,6 +31,10 @@ type columnStatsBuilder struct {
 
 	// for cardinality
 	hll *hyperloglog.Sketch
+
+	// encodeBuf holds the encoding of the last value inserted into hll. The
+	// sketch only hashes its input, so the buffer is reused between values.
+	encodeBuf []byte
 }
 
 // ColumnStatsBuilder is for column-level statistics
@@ -51,16 +55,14 @@ func newColumnStatsBuilder(opts StatisticsOptions) (*columnStatsBuilder, error) 
 
 func (csb *columnStatsBuilder) Append(value Value) {
 	if csb.opts.StoreCardinalityStats && !value.IsNil() && !value.IsZero() {
-		buf, err := value.MarshalBinary()
+		buf, err := value.AppendBinary(csb.encodeBuf[:0])
 		if err != nil {
 			panic(fmt.Sprintf(
 				"failed to marshal value for cardinality stats of type %s: %s",
 				value.Type(), err,
 			))
 		}
-
-		// TODO(owen-d): improve efficiency, ideally we don't need to marshal
-		// into an intermediate buffer.
+		csb.encodeBuf = buf
 		csb.hll.Insert(buf)
 	}
 }

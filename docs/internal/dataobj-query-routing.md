@@ -20,14 +20,16 @@ allowed it and its own checks pass.
 The query-frontend calls a request eligible for data objects when all of these hold:
 
 1. The query-frontend has data objects turned on.
-2. The query is a metric query supported by stream-first ordering in the query engine.
+2. The query is a metric query, and the query engine can run at least one part of it in stream-first
+   order. The part can sit at any depth, for example under `label_replace` or inside a binary
+   expression.
 3. Every tenant of the request has stream-first execution turned on and a data-object query start time.
-4. The data that the query reads overlaps the time range that data objects hold. That range starts
-   at the latest start time among the tenants. It ends at the current time minus the storage lag,
-   because the newest data is not in data objects yet.
+4. The data that at least one stream-first part reads overlaps the time range that data objects
+   hold. That range starts at the latest start time among the tenants. It ends at the current time
+   minus the storage lag, because the newest data is not in data objects yet.
 
-The data that a query reads is wider than the time range of the request. It also covers the range
-vector of the query, and it moves back by the `offset` of the query.
+The data that a part reads is wider than the time range of the request. It also covers the range
+vector of the part, and it moves back by the `offset` of the part.
 
 ## Where the decision is made
 
@@ -45,20 +47,23 @@ The querier reads data objects for a request only when all of these hold:
 
 - the query-frontend marked the request eligible;
 - the querier has data objects turned on;
-- the querier evaluates the query in stream-first order, which needs stream-first execution for
-  the tenant;
+- the querier evaluates a part of the query in stream-first order, which needs stream-first
+  execution for the tenant;
 - the tenant has a data-object start time, and the request overlaps the time range that data
   objects hold.
 
-The querier reads the part of the request outside that time range from chunks. A request that did
-not pass through a query-frontend is never marked, so it reads chunks.
+The querier reads the time range of the request outside that range from chunks. It also reads from
+chunks any part of the query that does not run in stream-first order. A request that did not pass
+through a query-frontend is never marked, so it reads chunks.
 
 ## Which queries prefer data objects
 
 Eligibility decides whether a querier may read data objects. A second rule decides whether the
 query-frontend changes how it splits and shards the query. A query prefers data objects when it is
-eligible and data objects hold more than half of the time range that it reads. The query-frontend
-applies this rule to the piece it is working on:
+eligible and data objects hold more than half of the read windows of all its range vectors, taken
+together. A longer window weighs more. A range vector that reads from chunks, such as one that does
+not run in stream-first order, counts as zero. The query-frontend applies this rule to the piece it
+is working on:
 
 - to the whole query when it splits it in time;
 - to each time split when it shards it, so a recent split that no data object covers keeps the
@@ -90,22 +95,38 @@ A piece of a query that prefers data objects is sharded with its own rules. The 
 configured sharding strategy:
 
 - with the power-of-two strategy, the number of shards comes from the bytes of the query and the
-  setting `-querier.dataobj-max-bytes-per-shard`. The number of shards is capped at 256, which is
-  8 times the number of shard buckets of a data object. A data object has 32 buckets, so above 32
-  shards several shards read the same bucket. The query then reads up to 8 times as much data as
-  it needs. We accept that to get more shards and finish the query sooner;
-- with the bounded strategy, the index returns its shards. If it returns more than 256, the
-  query-frontend merges neighbouring shards by size into at most 256 shards. The merged shards
-  still cover the same range without gaps. The same over-read applies. The query-frontend drops the
-  chunk refs of the shards, merged or not, because the query reads most of its range from data
-  objects. The querier resolves the chunks it needs itself.
+  setting `-querier.dataobj-max-bytes-per-shard`. The number of shards is capped at 8 times the
+  number of shard buckets that the tenant sets for new data objects, and never above 256. The
+  default is 32 buckets, so the default cap is 256. Above the number of buckets, several shards
+  read the same bucket. The query then reads up to 8 times as much data as it needs. We accept that
+  to get more shards and finish the query sooner;
+- with the bounded strategy, the index returns its shards. If it returns more than the cap, the
+  query-frontend merges neighbouring shards by size into at most that many shards. The merged
+  shards still cover the same range without gaps. The same over-read applies. The query-frontend
+  drops the chunk refs of the shards, merged or not, because the query reads most of its range from
+  data objects. The querier resolves the chunks it needs itself.
+
+### Shard buckets
+
+A tenant sets the number of shard buckets of its new data objects with the `dataobj_shard_factor`
+limit. The query-frontend takes the number from the current setting of the tenant. A query can have
+several tenants. The query-frontend then takes the largest number, because a smaller one would
+limit the shards of the tenant with the most buckets. A tenant with fewer buckets over-reads by
+more than 8 times in that query.
+
+The query-frontend only estimates the cost. The metastore and the querier decide which streams a
+shard reads. The data objects of one query can have different numbers of buckets, because a tenant
+can change its setting. The metastore reads the number of buckets from each index object, and the
+querier reads it from each data object. Both take 32 for an object that records none, because
+legacy data objects used 32 hardcoded shard buckets. Each of them maps the shard to the buckets of
+that object. A shard reads the same streams whatever the number of buckets of the objects.
 
 ## Limitations
 
 - The shard count still comes from the chunk index.
 - The bounded strategy still asks the index for shards of the size of the chunk setting, then merges
   them. It does not use the data-object setting.
-- The cap of 256 shards can make a shard larger than `max_querier_bytes_read` allows. The
+- The cap on the number of shards can make a shard larger than `max_querier_bytes_read` allows. The
   query-frontend then rejects a query that the chunk logic would shard into smaller pieces and
   accept. This affects only the largest queries.
 - The prediction for time splitting is approximate.

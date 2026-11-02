@@ -3,6 +3,7 @@ package metastore
 import (
 	"context"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -11,33 +12,16 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
-
-// buildPostingsIndexObject builds a *dataobj.Object containing a single tenant
-// postings section with the given label postings.
-func buildPostingsIndexObject(t testing.TB, tenant string, lps []postings.LabelObservation) (*dataobj.Object, func()) {
-	t.Helper()
-
-	b := postings.NewBuilder(nil, 0, 0, 1<<20)
-	b.SetTenant(tenant)
-	for _, lp := range lps {
-		b.ObserveLabelPosting(lp)
-	}
-
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(b))
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	return obj, func() { _ = closer.Close() }
-}
 
 func TestPostingsIndexSectionsReader_ResolvesAndEmitsResultBatch(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
 	ts := now.Add(-2 * time.Hour)
-	obj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
 		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "nginx", StreamID: 7, Timestamp: ts, UncompressedSize: 0},
 		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "loki", StreamID: 9, Timestamp: ts, UncompressedSize: 0},
 	})
@@ -70,7 +54,7 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsResultBatch(t *testing.T) {
 }
 
 func TestPostingsIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
-	obj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
 		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: now, UncompressedSize: 0},
 	})
 	defer closer()
@@ -88,7 +72,7 @@ func TestPostingsIndexSectionsReader_PaginatesByBatchSize(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
 	ts := now.Add(-2 * time.Hour)
-	obj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
 		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: ts, UncompressedSize: 0},
 		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 2, Timestamp: ts, UncompressedSize: 0},
 		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 3, Timestamp: ts, UncompressedSize: 0},
@@ -118,7 +102,7 @@ func TestPostingsIndexSectionsReader_PaginatesByBatchSize(t *testing.T) {
 
 func TestPostingsIndexSectionsReader_ZeroMatchersEOF(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
-	obj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
 		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: now, UncompressedSize: 0},
 	})
 	defer closer()
@@ -162,4 +146,54 @@ func TestPostingsReader_ExpandsBitmapToStreamRows(t *testing.T) {
 
 	rec := sectionResultsToRecordBatch(rows)
 	require.Equal(t, int64(2), rec.NumRows())
+}
+
+func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), tenantID)
+	observations := []postings.LabelObservation{
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now},
+	}
+	eightBuckets := streams.NewLayout(streams.MustShardLayoutFromBuckets(8), nil)
+	sixtyFourBuckets := streams.NewLayout(streams.MustShardLayoutFromBuckets(64), nil)
+
+	setup := func(t *testing.T, hashRange *streams.HashRange, layouts ...streams.Layout) *postingsIndexSectionsReader {
+		t.Helper()
+
+		obj, closer := buildIndexObject(t, tenantID, observations, layouts...)
+		t.Cleanup(closer)
+		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
+		reader := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now.Add(time.Hour), matchers, nil, 0, hashRange)
+		t.Cleanup(reader.Close)
+		return reader
+	}
+
+	t.Run("maps the upper half of the hashes to the upper buckets of the layout that the index records", func(t *testing.T) {
+		reader := setup(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, eightBuckets)
+
+		got, err := reader.shardBucketRange(ctx, tenantID)
+		require.NoError(t, err)
+		require.Equal(t, &postings.ShardBucketRange{From: 4, To: 7}, got)
+	})
+
+	t.Run("returns no range when the range covers every bucket of the layout", func(t *testing.T) {
+		reader := setup(t, &streams.HashRange{From: 0, To: math.MaxUint64}, eightBuckets)
+
+		got, err := reader.shardBucketRange(ctx, tenantID)
+		require.NoError(t, err)
+		require.Nil(t, got)
+	})
+
+	t.Run("fails when the stats sections record different layouts", func(t *testing.T) {
+		reader := setup(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, eightBuckets, sixtyFourBuckets)
+
+		_, err := reader.shardBucketRange(ctx, tenantID)
+		require.ErrorIs(t, err, indexobj.ErrMixedLayouts)
+		require.ErrorIs(t, reader.Open(ctx), indexobj.ErrMixedLayouts)
+	})
+
+	t.Run("reads no layout when the request has no hash range", func(t *testing.T) {
+		reader := setup(t, nil, eightBuckets, sixtyFourBuckets)
+
+		require.NoError(t, reader.Open(ctx))
+	})
 }

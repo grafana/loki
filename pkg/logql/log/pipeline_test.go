@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func TestNoopPipeline(t *testing.T) {
@@ -348,7 +348,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 				NewJSONParser(false),
 				NewDropLabels([]NamedLabelMatcher{
 					{
-						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
+						labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, errLogfmt),
 						"",
 					},
 					{
@@ -373,13 +373,13 @@ func TestDropLabelsPipeline(t *testing.T) {
 				labels.FromStrings("level", "info",
 					"ts", "2020-10-18T18:04:22.147378997Z",
 					"caller", "metrics.go:81",
-					logqlmodel.ErrorLabel, errJSON,
-					logqlmodel.ErrorDetailsLabel, "Value looks like object, but can't find closing '}' symbol",
+					logqlerr.ErrorLabel, errJSON,
+					logqlerr.ErrorDetailsLabel, "Value looks like object, but can't find closing '}' symbol",
 				),
 				labels.FromStrings("namespace", "prod",
 					"pod_uuid", "foo",
 					"pod_deployment_ref", "foobar",
-					logqlmodel.ErrorDetailsLabel, "logfmt syntax error at pos 2 : unexpected '\"'",
+					logqlerr.ErrorDetailsLabel, "logfmt syntax error at pos 2 : unexpected '\"'",
 				),
 			},
 		},
@@ -615,8 +615,8 @@ func TestStages_RequiredLabelNamesForParsers(t *testing.T) {
 		},
 		{
 			name:   "starts the list at a filter on __error__",
-			stages: Stages{labelEqualFilter("a"), labelEqualFilter(logqlmodel.ErrorLabel), labelEqualFilter("b")},
-			want:   []string{logqlmodel.ErrorLabel, "b"},
+			stages: Stages{labelEqualFilter("a"), labelEqualFilter(logqlerr.ErrorLabel), labelEqualFilter("b")},
+			want:   []string{logqlerr.ErrorLabel, "b"},
 		},
 		{
 			name:   "keeps the names a line_format reads after the first parser",
@@ -652,7 +652,7 @@ func Benchmark_Pipeline(b *testing.B) {
 		),
 		mustNewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("caller_foo", "caller"), NewTemplateLabelFmt("new", "{{.query_type}}:{{.range_type}}")}),
 		NewJSONParser(false),
-		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON)),
+		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, errJSON)),
 		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
 	}
 	p := NewPipeline(stages)
@@ -818,8 +818,8 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 			b.Fatalf("resulting line not ok: %s\n", line)
 		}
 
-		if resLbs.Labels().Get(logqlmodel.ErrorLabel) != errJSON {
-			b.Fatalf("no %s label found: %+v\n", logqlmodel.ErrorLabel, resLbs.Labels())
+		if resLbs.Labels().Get(logqlerr.ErrorLabel) != errJSON {
+			b.Fatalf("no %s label found: %+v\n", logqlerr.ErrorLabel, resLbs.Labels())
 		}
 	}
 }

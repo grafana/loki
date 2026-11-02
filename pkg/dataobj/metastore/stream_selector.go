@@ -493,7 +493,7 @@ func (s *streamSelector) refAdmitsPredicates(streamLabels map[string]struct{}, b
 
 // splitFiltersAndMatchers splits matchers into filters (empty-matching, also
 // select streams lacking the label name) and matchers (value-selecting, seed the
-// result). Mirrors LogQL's util.SplitFiltersAndMatchers, treating a `.*` regex as
+// result). Mirrors LogQL's syntaxutil.SplitFiltersAndMatchers, treating a `.*` regex as
 // a value-selecting matcher.
 func (s *streamSelector) splitFiltersAndMatchers() (filters, matchers []*labels.Matcher) {
 	for _, m := range s.matchers {
@@ -510,7 +510,7 @@ func (s *streamSelector) splitFiltersAndMatchers() (filters, matchers []*labels.
 }
 
 // isFilter reports whether a matcher is treated as a filter: one that also
-// matches streams lacking its label name. Mirrors util.SplitFiltersAndMatchers: a
+// matches streams lacking its label name. Mirrors syntaxutil.SplitFiltersAndMatchers: a
 // matcher that matches "" is a filter, except a `.*` regex which selects every
 // stream and is a value-selecting matcher.
 func isFilter(m *labels.Matcher) bool {

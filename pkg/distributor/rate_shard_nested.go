@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // shardNested divides a nested stream's entries across shards, each taking a contiguous run of
@@ -44,7 +45,7 @@ func shardNested(stream logproto.InternalStreamAdapter, lbls labels.Labels, shar
 
 	// The shard label goes in once as a placeholder, so naming a shard is a string replacement
 	// rather than a label set rebuilt and rendered per shard.
-	template := labels.NewBuilder(lbls).Set(ingester.ShardLbName, ingester.ShardLbPlaceholder).Labels()
+	template := labels.NewBuilder(lbls).Set(constants.StreamShardLabel, ingester.ShardLbPlaceholder).Labels()
 	pattern := template.String()
 
 	out := make([]logproto.InternalStreamAdapter, count)
@@ -104,5 +105,5 @@ func shardIdentity(template labels.Labels, pattern string, shardNumber int) (str
 	shardLabel := strconv.Itoa(shardNumber)
 
 	return strings.Replace(pattern, ingester.ShardLbPlaceholder, shardLabel, 1),
-		labels.StableHash(labels.NewBuilder(template).Set(ingester.ShardLbName, shardLabel).Labels())
+		labels.StableHash(labels.NewBuilder(template).Set(constants.StreamShardLabel, shardLabel).Labels())
 }

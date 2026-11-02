@@ -1,12 +1,10 @@
-//go:build go1.27 && goexperiment.jsonv2
-
 package errors
 
 import "strings"
 
-// typeErrorMessage is the message of encoding/json of Go 1.27, which is made of encoding/json/v2: Struct is the
-// root type, and Field the path from it to the value, whose array elements are their indices. A path which ends
-// with an index is not called a struct field, and the cause of the error, Err, follows the message.
+// typeErrorMessage is the message of encoding/json of Go 1.27, which is made of encoding/json/v2, on every version
+// of Go: Struct is the root type, and Field the path from it to the value, whose array elements are their indices. A
+// path which ends with an index is not called a struct field, and the cause of the error, Err, follows the message.
 func typeErrorMessage(e *UnmarshalTypeError) string {
 	var s string
 	if e.Struct != "" || e.Field != "" {

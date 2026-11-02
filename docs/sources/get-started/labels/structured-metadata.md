@@ -24,7 +24,7 @@ You should only use structured metadata in the following situations:
 
 - If you are ingesting data in OpenTelemetry format, using Grafana Alloy or an OpenTelemetry Collector. Structured metadata was designed to support native ingestion of OpenTelemetry data.
 - If you have high cardinality metadata that should not be used as a label and does not exist in the log line.  Some examples might include `process_id` or `thread_id` or Kubernetes pod names.
-- If you are using [Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) to visualize and explore your Loki logs.  You must set `discover_log_levels` and `allow_structured_metadata` to `true` in your Loki configuration.
+- If you are using [Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) to visualize and explore your Loki logs. You must enable `pattern_ingester.enabled`, `allow_structured_metadata`, `volume_enabled`, and `discover_log_levels` in your Loki configuration. For the full setup, refer to [Access or install Grafana Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/access/).
 - If you are a large-scale customer, who is ingesting more than 75TB of logs a month and are using [Bloom filters](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/bloom-filters/) (deprecated), starting in [Loki 3.3](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3-3/) Bloom filters now utilize structured metadata.
 
 ## Enable or disable structured metadata
@@ -33,9 +33,18 @@ You enable structured metadata in the Loki config.yaml file.
 
 ```yaml
 limits_config:
-    allow_structured_metadata: true
-    volume_enabled: true
-    retention_period: 672h # 28 days retention
+  allow_structured_metadata: true
+```
+
+If you are also using [Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/), you need additional settings. The following example enables structured metadata along with the other settings required by Logs Drilldown:
+
+```yaml
+pattern_ingester:
+  enabled: true
+limits_config:
+  allow_structured_metadata: true
+  volume_enabled: true
+  discover_log_levels: true
 ```
 
 You can disable Structured Metadata by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`. Note structured metadata is required to support ingesting OTLP data.
