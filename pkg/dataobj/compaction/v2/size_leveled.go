@@ -28,8 +28,8 @@ const (
 // Level 0 holds runs below base. Level n, for n >= 1, holds runs in
 // [base*ratio^(n-1), base*ratio^n). The top level has no upper size bound.
 //
-// A level is full when it holds k runs. Each merge task holds exactly k runs
-// from one level.
+// A level is full when it holds at least k runs. Each merge task holds
+// exactly k runs from one level.
 type SizeLeveledStrategy struct {
 	base  uint64
 	ratio uint64
