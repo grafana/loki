@@ -351,8 +351,8 @@ github.com/dgryski/go-metro v0.0.0-20261008173524-5059e0b1da03 h1:/DH8T7hZyRwnHe
 github.com/dgryski/go-metro v0.0.0-20261008173524-5059e0b1da03/go.mod h1:j+MopvvtIWPZFgEQY11qG5kPi55yP2suJFyqonAE3IU=
 github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f h1:lO4WD4F/rVNCu3HqELle0jiPLLBs70cWOduZpkS1E78=
 github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f/go.mod h1:cuUVRXasLTGF7a8hSLbxyZXjz+1KgoB3wDUb6vlszIc=
-github.com/digitalocean/godo v1.232.0 h1:nrQjWitcXKBDYQfz/dFjw4/dGaJ5hXAF/zDZMR73hl4=
-github.com/digitalocean/godo v1.232.0/go.mod h1:xQsWpVCCbkDrWisHA72hPzPlnC+4W5w/McZY5ij9uvU=
+github.com/digitalocean/godo v1.233.0 h1:4v1RboHNcPyMvT8y/1hSPm7gt1Cbfl+0jMKRYwjLL2s=
+github.com/digitalocean/godo v1.233.0/go.mod h1:xQsWpVCCbkDrWisHA72hPzPlnC+4W5w/McZY5ij9uvU=
 github.com/dimchansky/utfbom v1.1.1/go.mod h1:SxdoEBH5qIqFocHMyGOXVAybYJdr71b1Q/j0mACtrfE=
 github.com/dimchansky/utfbom v1.2.0 h1:ikiGYT9Wa8zleQ0xrlAWC9Ar9LNInSWRodJ5MkHB3d4=
 github.com/dimchansky/utfbom v1.2.0/go.mod h1:kJPs9PFVyF/LnFVVGz+XXvouv0KxympBxr0pSwv0KQU=

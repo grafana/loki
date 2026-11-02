@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	hostedAgentsTemplatesBasePath        = "/v2/agents/templates"
+	hostedAgentsTemplatesBasePath        = hostedAgentsAPIPrefix + "/templates"
 	hostedAgentTemplateByIDPath          = hostedAgentsTemplatesBasePath + "/%s"
 	hostedAgentTemplateBuildsPath        = hostedAgentTemplateByIDPath + "/builds"
 	hostedAgentTemplateBuildByIDPath     = hostedAgentTemplateBuildsPath + "/%s"
@@ -74,14 +74,14 @@ type HostedAgentTemplateBuild struct {
 	UpdatedAt  Timestamp                      `json:"updated_at"`
 }
 
-// HostedAgentTemplateCreateRequest is the body for POST /v2/agents/templates.
+// HostedAgentTemplateCreateRequest is the body for POST /v2/harness-runtime/templates.
 type HostedAgentTemplateCreateRequest struct {
 	Name         string `json:"name"`
 	BaseTemplate string `json:"base_template"`
 	SourceOCIRef string `json:"source_oci_ref"`
 }
 
-// HostedAgentTemplateUpdateRequest is the body for PUT /v2/agents/templates/{template_id}.
+// HostedAgentTemplateUpdateRequest is the body for PUT /v2/harness-runtime/templates/{template_id}.
 // Updating source kicks a new build.
 type HostedAgentTemplateUpdateRequest struct {
 	SourceOCIRef string `json:"source_oci_ref,omitempty"`
@@ -94,13 +94,13 @@ type HostedAgentTemplateListOptions struct {
 	PageSize  int    `url:"page_size,omitempty"`
 }
 
-// HostedAgentTemplatesListResponse is returned by GET /v2/agents/templates.
+// HostedAgentTemplatesListResponse is returned by GET /v2/harness-runtime/templates.
 type HostedAgentTemplatesListResponse struct {
 	Templates     []HostedAgentTemplate `json:"templates"`
 	NextPageToken string                `json:"next_page_token,omitempty"`
 }
 
-// HostedAgentTemplateDeleteResponse is returned by DELETE /v2/agents/templates/{template_id}.
+// HostedAgentTemplateDeleteResponse is returned by DELETE /v2/harness-runtime/templates/{template_id}.
 type HostedAgentTemplateDeleteResponse struct {
 	TemplateID string `json:"template_id"`
 	Deleted    bool   `json:"deleted"`

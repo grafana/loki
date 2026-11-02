@@ -20,7 +20,12 @@ const (
 	hostedAgentManifestMediaType  = "application/x-yaml"
 	hostedAgentWorkspaceMediaType = "application/octet-stream"
 
-	hostedAgentsSessionsBasePath                    = "/v2/agents/sessions"
+	// hostedAgentsAPIPrefix is the public path prefix of the Harness Runtime API.
+	// It was previously /v2/agents, which the edge still serves with identical
+	// behaviour.
+	hostedAgentsAPIPrefix = "/v2/harness-runtime"
+
+	hostedAgentsSessionsBasePath                    = hostedAgentsAPIPrefix + "/sessions"
 	hostedAgentPolicyValidatePath                   = hostedAgentsSessionsBasePath + "/policy/validate"
 	hostedAgentSessionByIDPath                      = hostedAgentsSessionsBasePath + "/%s"
 	hostedAgentSessionEventsPath                    = hostedAgentSessionByIDPath + "/events"
@@ -40,11 +45,11 @@ const (
 	hostedAgentSessionWorkspaceTransferCancelPath   = hostedAgentSessionWorkspaceTransferByIDPath + "/cancel"
 
 	// Team-scoped external-provider (e.g. GitHub) OAuth connect flow.
-	hostedAgentProviderAuthPath     = "/v2/agents/auth/%s"
+	hostedAgentProviderAuthPath     = hostedAgentsAPIPrefix + "/auth/%s"
 	hostedAgentProviderAuthPollPath = hostedAgentProviderAuthPath + "/poll"
 
 	// Team-scoped external-provider connection management (harness-api's proxy
-	// of Action Gateway / tool-registry). Shares the /v2/agents/auth/{provider}
+	// of Action Gateway / tool-registry). Shares the /v2/harness-runtime/auth/{provider}
 	// prefix with the connect flow above. The by-id path takes provider then id.
 	hostedAgentProviderConnectionsPath    = hostedAgentProviderAuthPath + "/connections"
 	hostedAgentProviderConnectionByIDPath = hostedAgentProviderConnectionsPath + "/%s"
@@ -55,7 +60,7 @@ const (
 	hostedAgentSessionForkPath               = hostedAgentSessionByIDPath + "/fork"
 
 	// Persistent workspaces: team-scoped sets of files that outlive sessions.
-	hostedAgentWorkspacesBasePath = "/v2/agents/workspaces"
+	hostedAgentWorkspacesBasePath = hostedAgentsAPIPrefix + "/workspaces"
 	hostedAgentWorkspaceByIDPath  = hostedAgentWorkspacesBasePath + "/%s"
 
 	// HostedAgentForkMaxCount is the v1 cap on children created by one fork call.
@@ -77,7 +82,7 @@ const (
 )
 
 // HostedAgentsService exposes the DigitalOcean Hosted Agents session API
-// (HarnessAPI from harness.proto). Routes live under /v2/agents/sessions.
+// (HarnessAPI from harness.proto). Routes live under /v2/harness-runtime/sessions.
 type HostedAgentsService interface {
 	// CreateSession provisions a session using the legacy JSON body (agent_kind,
 	// repo_hint, idle_timeout_seconds). Prefer CreateSessionFromManifest for
@@ -91,14 +96,18 @@ type HostedAgentsService interface {
 	// OpenAISessionID in opt so harness-api can persist openai_session_id for
 	// attach correlation (?openai_session_id=). doctl resolves ${...}
 	// placeholders client-side before calling this API; there is no
-	// server-side variables map.
+	// server-side variables map. The session is placed in the region of the
+	// API host called (see HostedAgentsRegionalBaseURL); the YAML body carries
+	// no region. The returned session reports Region and Location.
 	CreateSessionFromManifest(context.Context, []byte, *HostedAgentManifestCreateOptions) (*HostedAgentSession, *Response, error)
 	// CreateSessionFromEnvironment provisions a session from an existing
 	// immutable Environment, referenced by config_id. The request uses
 	// Content-Type: application/json with a {name, config_id} body (optional
-	// resume_on_topoff and workspace_id); the environment's stored manifest and
-	// declared credentials seed the session at create time. This is the only
-	// create path that can attach a persistent workspace.
+	// resume_on_topoff, workspace_id and region); the environment's stored
+	// manifest and declared credentials seed the session at create time. This
+	// is the only create path that can attach a persistent workspace. The
+	// Environment must live in the region of the API host called (see
+	// HostedAgentsRegionalBaseURL); on any other region's host it is a 404.
 	CreateSessionFromEnvironment(context.Context, *HostedAgentSessionFromEnvironmentRequest) (*HostedAgentSession, *Response, error)
 	// CreateSessionFromConfig is an alias for CreateSessionFromEnvironment.
 	// Prefer CreateSessionFromEnvironment; this name remains for compatibility.
@@ -145,7 +154,7 @@ type HostedAgentsService interface {
 	DeleteConnection(context.Context, string, string) (*HostedAgentConnectionEnvelope, *Response, error)
 	ExecInSandbox(context.Context, string, *HostedAgentSandboxExecRequest) (*HostedAgentSandboxExecResponse, *Response, error)
 	// ListSandboxSizes returns the customer-selectable sandbox (microVM) size
-	// catalog (GET /v2/agents/sessions/sandbox/sizes). Every slug is accepted by
+	// catalog (GET /v2/harness-runtime/sessions/sandbox/sizes). Every slug is accepted by
 	// CreateSession as spec.sandbox.sizeSlug. Ordered smallest-to-largest; no
 	// pagination.
 	ListSandboxSizes(context.Context) (*HostedAgentSandboxSizesResponse, *Response, error)
@@ -169,7 +178,7 @@ type HostedAgentsService interface {
 	RollbackToCheckpoint(context.Context, string, string) (*HostedAgentSession, *Response, error)
 
 	// Persistent workspaces (separate sets of files that outlive sessions, attached to a
-	// session at create time). Routes live under /v2/agents/workspaces. These are
+	// session at create time). Routes live under /v2/harness-runtime/workspaces. These are
 	// distinct from the session /workspace file transfer APIs above.
 	CreateWorkspace(context.Context, *HostedAgentWorkspaceCreateRequest) (*HostedAgentWorkspace, *Response, error)
 	ListWorkspaces(context.Context, *HostedAgentWorkspaceListOptions) (*HostedAgentWorkspacesListResponse, *Response, error)
@@ -177,7 +186,7 @@ type HostedAgentsService interface {
 	DeleteWorkspace(context.Context, string) (*Response, error)
 
 	// Environments (immutable team-scoped environment definitions). Routes
-	// live under /v2/agents/configs. Prefer the Environment* methods; the
+	// live under /v2/harness-runtime/configs. Prefer the Environment* methods; the
 	// AgentConfig* names remain as compatible aliases.
 	ListEnvironments(context.Context, *HostedEnvironmentListOptions) (*HostedEnvironmentsListResponse, *Response, error)
 	GetEnvironment(context.Context, string) (*HostedEnvironment, *Response, error)
@@ -192,7 +201,7 @@ type HostedAgentsService interface {
 	DeleteAgentConfig(context.Context, string) (*Response, error)
 	ListAgentConfigSessions(context.Context, string, *HostedAgentSessionListOptions) (*HostedAgentSessionsListResponse, *Response, error)
 
-	// Team custom templates (BYOA). Routes live under /v2/agents/templates.
+	// Team custom templates (BYOA). Routes live under /v2/harness-runtime/templates.
 	ListTemplates(context.Context, *HostedAgentTemplateListOptions) (*HostedAgentTemplatesListResponse, *Response, error)
 	CreateTemplate(context.Context, *HostedAgentTemplateCreateRequest) (*HostedAgentTemplate, *Response, error)
 	GetTemplate(context.Context, string) (*HostedAgentTemplate, *Response, error)
@@ -469,6 +478,42 @@ type HostedAgentSession struct {
 	// (manifest parse + policy fidelity). Populated on the create response
 	// only; omitted on get/list.
 	Warnings []string `json:"warnings,omitempty"`
+	// Region is the DO region slug the session is placed in, e.g. "ric1".
+	// Stamped once at create from the region that served the request and never
+	// recomputed. Returned on create/get/list for teams on the regional routing
+	// rollout; omitted otherwise, and for sessions created before the field
+	// existed, which are all ric1.
+	Region string `json:"region,omitempty"`
+	// Location is the session's canonical URL from the create response's
+	// Location header, on the host of the region that owns it, e.g.
+	// https://api-ric1.digitalocean.com/v2/agents/sessions/{id}. Point follow-up
+	// calls at that host (HostedAgentsRegionalBaseURL(session.Region) gives the
+	// base URL). Populated only by the create methods, only when the server
+	// sent the header (teams on the regional routing rollout); never on the
+	// wire.
+	Location string `json:"-"`
+}
+
+// HostedAgentsRegionalBaseURL returns the base URL of the API host for one
+// region, e.g. "https://api-mem1.digitalocean.com/" for "mem1", in the form
+// SetBaseURL accepts. Every MARS resource lives in exactly one region, and the
+// API host chosen is what places a create and what finds a resource: a session
+// created on api-mem1 is placed in mem1 and is a 404 on any other region's
+// host. The region-less default (api.digitalocean.com) places in and serves
+// ric1. There is no redirect, forwarding or fan-out between regions. An empty
+// region returns the region-less default. Example:
+//
+//	client, _ := godo.New(httpClient, godo.SetBaseURL(godo.HostedAgentsRegionalBaseURL("mem1")))
+//	sess, _, _ := client.HostedAgents.CreateSessionFromEnvironment(ctx, &godo.HostedAgentSessionFromEnvironmentRequest{
+//		Name: "review-bot", ConfigID: cfg.ID, Region: "mem1", // body region matches the host
+//	})
+//	// sess.Location is on api-mem1; use the same client for every follow-up.
+func HostedAgentsRegionalBaseURL(region string) string {
+	region = strings.TrimSpace(strings.ToLower(region))
+	if region == "" {
+		return defaultBaseURL
+	}
+	return "https://api-" + region + ".digitalocean.com/"
 }
 
 // HostedAgentRun represents a single execution within a session.
@@ -565,7 +610,7 @@ func (e *HostedAgentEvent) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// HostedAgentSessionCreateRequest is the body for POST /v2/agents/sessions.
+// HostedAgentSessionCreateRequest is the body for POST /v2/harness-runtime/sessions.
 type HostedAgentSessionCreateRequest struct {
 	AgentKind          HostedAgentKind `json:"agent_kind"`
 	RepoHint           string          `json:"repo_hint,omitempty"`
@@ -576,7 +621,7 @@ type HostedAgentSessionCreateRequest struct {
 }
 
 // HostedAgentSessionFromConfigRequest creates a session from an existing
-// immutable Environment (POST /v2/agents/sessions with a JSON body). Name is
+// immutable Environment (POST /v2/harness-runtime/sessions with a JSON body). Name is
 // required and becomes the new session name; ConfigID must be the UUID of an
 // Environment owned by the caller's team.
 // Prefer HostedAgentSessionFromEnvironmentRequest; this name remains for
@@ -597,6 +642,16 @@ type HostedAgentSessionFromConfigRequest struct {
 	// one shared Environment can be used with a different workspace per session.
 	// Omitted when empty, which creates the session without one.
 	WorkspaceID string `json:"workspace_id,omitempty"`
+	// Region is an optional placement check, not a routing instruction. The
+	// region a session is placed in is decided by the API host the request
+	// reaches: the region-less host (api.digitalocean.com) places in the default
+	// region, ric1, and a regional host (api-<region>.digitalocean.com, see
+	// HostedAgentsRegionalBaseURL) places in that region. When Region is set it
+	// must equal the region of the host called, or the create fails with a 4xx
+	// whose message starts with "region_mismatch"; nothing is re-placed or
+	// forwarded. Omitted when empty. Only honored for teams on the regional
+	// routing rollout; ignored otherwise.
+	Region string `json:"region,omitempty"`
 }
 
 // HostedAgentSessionFromEnvironmentRequest is the advertised alias for
@@ -604,7 +659,7 @@ type HostedAgentSessionFromConfigRequest struct {
 type HostedAgentSessionFromEnvironmentRequest = HostedAgentSessionFromConfigRequest
 
 // HostedAgentSessionUpdateRequest is the body for PATCH
-// /v2/agents/sessions/{session_id}: an allowlisted subset of session-scoped
+// /v2/harness-runtime/sessions/{session_id}: an allowlisted subset of session-scoped
 // settings, never an agents.yaml or Agent Config mutation. The server rejects
 // unknown top-level keys, and rejects an empty object, so every field is a
 // pointer: nil omits it and leaves the server-side value untouched.
@@ -652,7 +707,7 @@ type HostedAgentSessionListOptions struct {
 	ParentSessionID string `url:"parent_session_id,omitempty"`
 }
 
-// HostedAgentSessionsListResponse is returned by GET /v2/agents/sessions.
+// HostedAgentSessionsListResponse is returned by GET /v2/harness-runtime/sessions.
 type HostedAgentSessionsListResponse struct {
 	Sessions      []HostedAgentSession `json:"sessions"`
 	NextPageToken string               `json:"next_page_token"`
@@ -771,7 +826,7 @@ type HostedAgentResolveHITLRequest struct {
 	Content map[string]any `json:"content,omitempty"`
 }
 
-// HostedAgentProviderAuthStart is returned by POST /v2/agents/auth/{provider}.
+// HostedAgentProviderAuthStart is returned by POST /v2/harness-runtime/auth/{provider}.
 // Status is "pending" when the user must still authorize in a browser
 // (ConnectURL/PollURL/VerificationCode are set), or "success" when the team is
 // already connected (those fields are empty). It is a free-form connect-flow
@@ -788,7 +843,7 @@ type HostedAgentProviderAuthStart struct {
 }
 
 // HostedAgentProviderAuthPoll is returned by GET
-// /v2/agents/auth/{provider}/poll. It reports only whether authorization has
+// /v2/harness-runtime/auth/{provider}/poll. It reports only whether authorization has
 // completed ("pending" or "success"); no secret is returned.
 type HostedAgentProviderAuthPoll struct {
 	Provider  string     `json:"provider"`
@@ -889,7 +944,7 @@ type HostedAgentSandboxExecResponse struct {
 }
 
 // HostedAgentSandboxSize is a customer-selectable sandbox (microVM) size from
-// GET /v2/agents/sessions/sandbox/sizes. Submit Slug as spec.sandbox.sizeSlug
+// GET /v2/harness-runtime/sessions/sandbox/sizes. Submit Slug as spec.sandbox.sizeSlug
 // on CreateSession; VCPUs, MemoryMB, and the price fields are for display.
 type HostedAgentSandboxSize struct {
 	Slug             string  `json:"slug,omitempty"`
@@ -1048,6 +1103,7 @@ func (s *HostedAgentsServiceOp) CreateSession(ctx context.Context, create *Hoste
 	if root.Session == nil {
 		return nil, resp, errors.New("hosted agents: create session returned no session")
 	}
+	root.Session.Location = resp.Header.Get("Location")
 	return root.Session, resp, nil
 }
 
@@ -1105,6 +1161,7 @@ func (s *HostedAgentsServiceOp) doCreateSession(ctx context.Context, req *http.R
 	if root.Session == nil {
 		return nil, resp, errors.New("hosted agents: create session returned no session")
 	}
+	root.Session.Location = resp.Header.Get("Location")
 	return root.Session, resp, nil
 }
 
