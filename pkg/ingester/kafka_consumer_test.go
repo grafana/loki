@@ -415,6 +415,63 @@ func BenchmarkConsume(b *testing.B) {
 	}
 }
 
+// TestGroupByStream checks that a stream's records stay together, in batch order, that the tenant
+// is part of the group key, and that the largest groups come first.
+func TestGroupByStream(t *testing.T) {
+	// newRecord returns a record of the given tenant and stream, holding the given number of entries.
+	newRecord := func(tenant, stream string, entries int) partition.Record {
+		s := logproto.Stream{Labels: labels.FromStrings("stream", stream).String()}
+		for i := 0; i < entries; i++ {
+			s.Entries = append(s.Entries, logproto.Entry{Timestamp: time.Unix(int64(i), 0), Line: "line"})
+		}
+		return partition.Record{TenantID: tenant, Content: encodeFlat(t, s)[0].Value}
+	}
+
+	for _, tc := range []struct {
+		name    string
+		records []partition.Record
+		want    [][]int // the batch index of the records of each group, in group order.
+	}{
+		{
+			name: "interleaved streams keep batch order within a group",
+			records: []partition.Record{
+				newRecord(tenantID, "a", 1),
+				newRecord(tenantID, "b", 1),
+				newRecord(tenantID, "a", 1),
+				newRecord(tenantID, "c", 1),
+				newRecord(tenantID, "b", 1),
+				newRecord(tenantID, "a", 1),
+			},
+			want: [][]int{{0, 2, 5}, {1, 4}, {3}},
+		},
+		{
+			name: "same labels under different tenants are separate groups",
+			records: []partition.Record{
+				newRecord("tenant-1", "a", 1),
+				newRecord("tenant-2", "a", 1),
+				newRecord("tenant-1", "a", 1),
+			},
+			want: [][]int{{0, 2}, {1}},
+		},
+		{
+			name: "the largest group comes first, whatever its position in the batch",
+			records: []partition.Record{
+				newRecord(tenantID, "small", 1),
+				newRecord(tenantID, "big", 20),
+			},
+			want: [][]int{{1}, {0}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got [][]int
+			for _, g := range groupByStream(tc.records) {
+				got = append(got, g.indexes)
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func encodeFlat(t *testing.T, stream logproto.Stream) []*kgo.Record {
 	t.Helper()
 	records, err := kafka.Encode(0, tenantID, stream, 10000)
