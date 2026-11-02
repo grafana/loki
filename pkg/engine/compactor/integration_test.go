@@ -635,6 +635,18 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	}
 }
 
+func TestDeletionSweepDispatch(t *testing.T) {
+	t.Run("worker runs a dispatched DeletionSweep task and reports not implemented", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		c := newIntegrationCoordinator(ctx, t, objstore.NewInMemBucket(), time.Now(), nil)
+
+		_, err := c.logDispatcher.Run(ctx, "acme", []*physical.Plan{buildDeletionSweepPlan("acme")})
+		require.ErrorContains(t, err, "deletion-sweep job:")
+		require.ErrorContains(t, err, "DeletionSweep: not implemented")
+	})
+}
+
 // recordLogActors wraps c's log dispatcher and returns a function that
 // reports the actors of every log task run so far.
 func recordLogActors(c *coordinator) func() []string {
