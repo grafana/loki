@@ -410,41 +410,61 @@ func orderRecords(t *testing.T, specs []orderRecord) []partition.Record {
 	return records
 }
 
-// TestGroupByStream checks that a shuffled batch comes back as one group per tenant and stream,
-// each in offset order, largest first.
+// TestGroupByStream checks that a stream's records stay together, in batch order, that the tenant
+// is part of the group key, and that the largest groups come first.
 func TestGroupByStream(t *testing.T) {
-	var specs []orderRecord
-	for r := 0; r < 5; r++ {
-		for _, tenant := range []string{"a", "b"} {
-			for i, stream := range []string{"1", "2", "3"} {
-				specs = append(specs, orderRecord{tenant: tenant, stream: stream, size: 10 * (i + 1)})
-			}
+	// newRecord returns a record of the given tenant and stream, holding the given number of entries.
+	newRecord := func(tenant, stream string, entries int) partition.Record {
+		s := logproto.Stream{Labels: labels.FromStrings("stream", stream).String()}
+		for i := 0; i < entries; i++ {
+			s.Entries = append(s.Entries, logproto.Entry{Timestamp: time.Unix(int64(i), 0), Line: "line"})
 		}
+		return partition.Record{TenantID: tenant, Content: encodeFlat(t, s)[0].Value}
 	}
-	records := orderRecords(t, specs)
 
-	groups := groupByStream(records)
-	require.Len(t, groups, 6, "the same labels under two tenants must not share a group")
-
-	key := func(i int) string {
-		labels, err := kafka.StreamLabels(records[i].Content)
-		require.NoError(t, err)
-		return records[i].TenantID + "/" + string(labels)
-	}
-	total := 0
-	for g, group := range groups {
-		for n, index := range group.indexes {
-			require.Equal(t, key(group.indexes[0]), key(index), "group %d mixes streams", g)
-			if n > 0 {
-				require.Greater(t, index, group.indexes[n-1], "group %d is not in offset order", g)
+	for _, tc := range []struct {
+		name    string
+		records []partition.Record
+		want    [][]int // the batch index of the records of each group, in group order.
+	}{
+		{
+			name: "interleaved streams keep batch order within a group",
+			records: []partition.Record{
+				newRecord(tenantID, "a", 1),
+				newRecord(tenantID, "b", 1),
+				newRecord(tenantID, "a", 1),
+				newRecord(tenantID, "c", 1),
+				newRecord(tenantID, "b", 1),
+				newRecord(tenantID, "a", 1),
+			},
+			want: [][]int{{0, 2, 5}, {1, 4}, {3}},
+		},
+		{
+			name: "same labels under different tenants are separate groups",
+			records: []partition.Record{
+				newRecord("tenant-1", "a", 1),
+				newRecord("tenant-2", "a", 1),
+				newRecord("tenant-1", "a", 1),
+			},
+			want: [][]int{{0, 2}, {1}},
+		},
+		{
+			name: "the largest group comes first, whatever its position in the batch",
+			records: []partition.Record{
+				newRecord(tenantID, "small", 1),
+				newRecord(tenantID, "big", 20),
+			},
+			want: [][]int{{1}, {0}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got [][]int
+			for _, g := range groupByStream(tc.records) {
+				got = append(got, g.indexes)
 			}
-		}
-		if g > 0 {
-			require.GreaterOrEqual(t, groups[g-1].size, group.size, "group %d is larger than the one before it", g)
-		}
-		total += len(group.indexes)
+			require.Equal(t, tc.want, got)
+		})
 	}
-	require.Equal(t, len(records), total, "every record must be in exactly one group")
 }
 
 // orderPusher records the order in which the records of each stream reach it. The line of a
