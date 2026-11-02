@@ -323,7 +323,7 @@ name: "create release"
 "on":
   push:
     branches:
-    - "release-[0-9]+.[0-9]+.x"
+    - "release-[0-9]+.[0-9]+.[0-9x]+"
     - "k[0-9]+"
     - "main"
 permissions:

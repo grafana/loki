@@ -108,7 +108,7 @@ local weeklyImageJobs = {
   ),
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
-      branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+', 'main'],
+      branches=['release-[0-9]+.[0-9]+.[0-9x]+', 'k[0-9]+', 'main'],
       imagePrefix=imagePrefix,
       releaseLibRef=releaseLibRef,
       pluginBuildDir=dockerPluginDir,
