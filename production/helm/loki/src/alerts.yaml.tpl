@@ -77,7 +77,7 @@ groups:
           {{- toYaml . | nindent 10 }}
           {{- end }}
         expr: |
-          sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 1
+          sum(loki_tsdb_shipper_compactor_running) by (cluster, namespace) > 1
         for: {{ .for }}
         labels:
           severity: {{ .severity }}
