@@ -113,3 +113,16 @@ func (n *IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		ObjectPaths:     slices.Clone(n.ObjectPaths),
 	}, nil
 }
+
+// MarshalPhysical converts a protobuf DeletionSweep into a physical plan node.
+func (n *Node_DeletionSweep) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.DeletionSweep.MarshalPhysical(nodeID)
+}
+
+// MarshalPhysical converts a protobuf DeletionSweep into a physical plan node.
+func (n *DeletionSweep) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.DeletionSweep{
+		NodeID: nodeID,
+		Tenant: n.Tenant,
+	}, nil
+}

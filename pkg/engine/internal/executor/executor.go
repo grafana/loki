@@ -151,6 +151,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
 	case *physical.IndexFilter:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexFilter(n))
+	case *physical.DeletionSweep:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeDeletionSweep(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
