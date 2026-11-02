@@ -31,14 +31,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
-	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
-	clientutil "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	storageawscommon "github.com/grafana/loki/v3/pkg/storage/common/aws"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
+	bucket_s3 "github.com/grafana/loki/v4/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/client/hedging"
+	clientutil "github.com/grafana/loki/v4/pkg/storage/chunk/client/util"
+	storageawscommon "github.com/grafana/loki/v4/pkg/storage/common/aws"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	loki_instrument "github.com/grafana/loki/v4/pkg/util/instrument"
 )
 
 const (

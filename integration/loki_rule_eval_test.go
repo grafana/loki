@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/integration/client"
-	"github.com/grafana/loki/v3/integration/cluster"
-	"github.com/grafana/loki/v3/pkg/ruler"
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v4/integration/client"
+	"github.com/grafana/loki/v4/integration/cluster"
+	"github.com/grafana/loki/v4/pkg/ruler"
+	"github.com/grafana/loki/v4/pkg/storage/config"
 )
 
 // mode=EvalModeLocal tests that rules are evaluated locally with an embedded query engine

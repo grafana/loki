@@ -1,7 +1,7 @@
 package log
 
 import (
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
 )
 
 type KeepLabels struct {

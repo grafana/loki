@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // Pipeline represents a data processing pipeline that can read Arrow records.

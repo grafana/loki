@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
-	"github.com/grafana/loki/v3/pkg/util/mempool"
+	"github.com/grafana/loki/v4/pkg/compression"
+	v2 "github.com/grafana/loki/v4/pkg/iter/v2"
+	"github.com/grafana/loki/v4/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v4/pkg/util/mempool"
 )
 
 var BloomPagePool = mempool.New("test", []mempool.Bucket{

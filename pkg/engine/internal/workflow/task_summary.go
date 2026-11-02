@@ -5,10 +5,10 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
-	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/schedulerstat"
+	"github.com/grafana/loki/v4/pkg/engine/internal/worker/workerstat"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPath bool) {

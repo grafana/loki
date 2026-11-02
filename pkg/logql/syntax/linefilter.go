@@ -1,8 +1,8 @@
 package syntax
 
 import (
-	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v4/pkg/logql/log"
+	"github.com/grafana/loki/v4/pkg/util/encoding"
 )
 
 // Binary encoding of the LineFilter

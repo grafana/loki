@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
 )
 
 // streamNotification is a deferred call to a stream-closed handler.

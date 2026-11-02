@@ -15,13 +15,13 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 
-	loghttppush "github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
+	loghttppush "github.com/grafana/loki/v4/pkg/loghttp/push"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.

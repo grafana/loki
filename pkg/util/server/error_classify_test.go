@@ -11,8 +11,8 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/util/validation"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
+	"github.com/grafana/loki/v4/pkg/util/validation"
 )
 
 // wrapLimit mirrors how pkg/querier/queryrange/limits.go builds its rejections:

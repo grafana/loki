@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v4/pkg/util/flagext"
 )
 
 const (

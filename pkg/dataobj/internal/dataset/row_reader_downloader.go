@@ -4,11 +4,11 @@ import (
 	"context"
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/rangeset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 // rowReaderDownloader is a utility for downloading pages in bulk from a

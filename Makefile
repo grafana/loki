@@ -38,7 +38,7 @@ GOEXPERIMENT       ?= $(shell go env GOEXPERIMENT)
 GOTEST             ?= go test
 
 # Build flags
-VPREFIX            := github.com/grafana/loki/v3/pkg/util/build
+VPREFIX            := github.com/grafana/loki/v4/pkg/util/build
 GO_LDFLAGS         := -X $(VPREFIX).Branch=$(GIT_BRANCH) \
                       -X $(VPREFIX).Version=$(IMAGE_TAG) \
                       -X $(VPREFIX).Revision=$(GIT_REVISION) \

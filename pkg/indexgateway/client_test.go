@@ -28,11 +28,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/util/discovery"
+	"github.com/grafana/loki/v4/pkg/util/discovery"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 type mockDNSProvider struct {

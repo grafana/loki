@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql"
 	"github.com/stretchr/testify/require"
 )
 

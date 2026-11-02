@@ -6,12 +6,12 @@
 // memory management rather than arrow-go's reference counting.
 //
 // Package columnar is EXPERIMENTAL and currently only intended to be used by
-// [github.com/grafana/loki/v3/pkg/dataobj].
+// [github.com/grafana/loki/v4/pkg/dataobj].
 package columnar
 
 import (
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar/types"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // A Datum is a piece of data which either represents an [Array] or a [Scalar].

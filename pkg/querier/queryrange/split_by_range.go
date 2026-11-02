@@ -11,12 +11,12 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	"github.com/grafana/loki/v4/pkg/logql"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/util/marshal"
 )
 
 // splitByRange splits the range vector of an instant metric request into sub-queries. The split

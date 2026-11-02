@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v4/pkg/logql/log"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
 )
 
 func NewStringLabelFilter(s string) *string {

@@ -14,7 +14,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v4/pkg/engine/internal/metrictimer"
 )
 
 // Peer wraps a [Conn] into a synchronous API that acts as both a

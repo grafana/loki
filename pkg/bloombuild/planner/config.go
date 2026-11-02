@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/planner/queue"
-	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
+	"github.com/grafana/loki/v4/pkg/bloombuild/planner/queue"
+	"github.com/grafana/loki/v4/pkg/bloombuild/planner/strategies"
 )
 
 // Config configures the bloom-planner component.

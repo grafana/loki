@@ -6,7 +6,7 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
 )
 
 type fakeColumn struct{ dataset.Column }

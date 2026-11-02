@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gotest.tools/assert"
 
-	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/v4/pkg/tool/rules/rwrulefmt"
 )
 
 func TestAggregateBy(t *testing.T) {

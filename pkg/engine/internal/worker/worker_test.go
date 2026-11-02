@@ -16,12 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v4/pkg/engine/internal/worker"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
 )
 
 var errReleased = errors.New("bucket released")

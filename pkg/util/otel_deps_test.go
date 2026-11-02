@@ -6,7 +6,7 @@ import (
 	"github.com/grafana/dskit/tracing"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 func TestOtelVersions(t *testing.T) {

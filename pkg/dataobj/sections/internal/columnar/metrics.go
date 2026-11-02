@@ -10,9 +10,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/result"
 )
 
 // Metrics instruments the a columnar section. Metrics are only updated when

@@ -11,7 +11,7 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/store"
 	"github.com/influxdata/tdigest"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // QuantileSketch estimates quantiles over time.

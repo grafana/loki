@@ -3,10 +3,10 @@ package dataset
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // A valueEncoder encodes sequences of [Value], writing them to an underlying

@@ -5,8 +5,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 // estimate of the maximum number of index files we expect in a cell

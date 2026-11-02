@@ -3,7 +3,7 @@ package dataset
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // compiledPredicate is a [Predicate] with its column references resolved to

@@ -13,13 +13,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/iter"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/labelpool"
+	"github.com/grafana/loki/v4/pkg/compression"
+	"github.com/grafana/loki/v4/pkg/iter"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql/log"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/labelpool"
 )
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})

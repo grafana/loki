@@ -6,9 +6,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logline/regexliteral"
-	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logline/regexliteral"
+	logql_log "github.com/grafana/loki/v4/pkg/logql/log"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
 )
 
 // SupportedQuery returns literal match strings for query shapes that can use

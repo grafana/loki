@@ -19,15 +19,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/querier/testutil"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/querier/testutil"
+	"github.com/grafana/loki/v4/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func testSampleStreams() []queryrangebase.SampleStream {

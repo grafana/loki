@@ -13,9 +13,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/logline/limits"
-	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logline/limits"
+	schedulerapi "github.com/grafana/loki/v4/pkg/logline/scheduler/api"
+	"github.com/grafana/loki/v4/pkg/logline/store"
 )
 
 // Service implements the dskit Service interface for the compaction scheduler.

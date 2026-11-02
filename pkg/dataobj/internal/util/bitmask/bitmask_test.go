@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/bitmask"
 )
 
 func Fuzz(f *testing.F) {

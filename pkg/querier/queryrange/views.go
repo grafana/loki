@@ -11,8 +11,8 @@ import (
 	"github.com/richardartoul/molecule"
 	"github.com/richardartoul/molecule/src/codec"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
 )
 
 // Pull fiel numbers from protobuf message descriptions.

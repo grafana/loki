@@ -9,7 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
 )
 
 // batchReader is the batch-level reader consumed by [RowReader]. [*Reader]

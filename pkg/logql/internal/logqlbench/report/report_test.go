@@ -12,7 +12,7 @@ import (
 // averaging duplicate samples) and an instant query that only runs chunk-timestamp-first.
 const benchOutput = `goos: darwin
 goarch: arm64
-pkg: github.com/grafana/loki/v3/pkg/logql/internal/logqlbench
+pkg: github.com/grafana/loki/v4/pkg/logql/internal/logqlbench
 cpu: Apple M3 Pro
 BenchmarkLogQLMetricQueries
 BenchmarkLogQLMetricQueries/query=sum(count_over_time({cluster="x"}[5m]))_(high_input,_low_output,_range)/scenario=chunk-timestamp-first/latency=0s-11         	       1	1000000000 ns/op	 1000000 store_bytes/op	      10 store_reqs/op	1 store_max_parallel	2000000 B/op	500000 allocs/op
@@ -29,7 +29,7 @@ BenchmarkLogQLMetricQueries/query=count_over_time({service="y"}[24h])_(medium_in
 BenchmarkLogQLMetricQueries/query=count_over_time({service="y"}[24h])_(medium_input,_medium_output,_instant)/scenario=chunk-timestamp-first/latency=50ms-11    	       1	2100000000 ns/op	 5000000 store_bytes/op	      20 store_reqs/op	2 store_max_parallel	4000000 B/op	1000000 allocs/op
 BenchmarkLogQLMetricQueries/query=count_over_time({service="y"}[24h])_(medium_input,_medium_output,_instant)/scenario=chunk-timestamp-first/latency=250ms-11   	       1	2300000000 ns/op	 5000000 store_bytes/op	      20 store_reqs/op	4 store_max_parallel	4000000 B/op	1000000 allocs/op
 PASS
-ok  	github.com/grafana/loki/v3/pkg/logql/internal/logqlbench	12.345s
+ok  	github.com/grafana/loki/v4/pkg/logql/internal/logqlbench	12.345s
 `
 
 const wantReport = "## Benchmark results\n" +

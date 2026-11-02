@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
 // seriesOffset returns the absolute file offset of the series record for the

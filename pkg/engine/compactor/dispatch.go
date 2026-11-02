@@ -6,9 +6,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	v2 "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
 )
 
 // runFunc executes one single-root physical.Plan as a workflow.

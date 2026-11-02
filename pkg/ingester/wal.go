@@ -14,9 +14,9 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/prometheus/prometheus/util/compression"
 
-	"github.com/grafana/loki/v3/pkg/ingester/wal"
-	"github.com/grafana/loki/v3/pkg/util/flagext"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/ingester/wal"
+	"github.com/grafana/loki/v4/pkg/util/flagext"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 var (

@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/runtime"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/compactor/retention"
+	"github.com/grafana/loki/v4/pkg/runtime"
+	lokiring "github.com/grafana/loki/v4/pkg/util/ring"
+	"github.com/grafana/loki/v4/pkg/validation"
 )
 
 func Test_recalculateOwnedStreams_newRecalculateOwnedStreamsIngester(t *testing.T) {

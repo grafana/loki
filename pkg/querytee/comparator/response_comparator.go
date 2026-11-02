@@ -15,8 +15,8 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // ErrComparisonMismatch is returned when responses are successfully compared but don't match.

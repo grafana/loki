@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/querier/plan"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/querier/plan"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
 )
 
 // dataObjOutcomes lists every value of the outcome label of the eligibility metric.

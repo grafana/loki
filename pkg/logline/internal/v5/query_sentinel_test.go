@@ -7,7 +7,7 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 func TestGetBitmapAllSentinels(t *testing.T) {

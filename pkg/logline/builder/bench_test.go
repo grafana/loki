@@ -24,9 +24,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 const capturedDataFile = "testdata/kafka_records.bin"

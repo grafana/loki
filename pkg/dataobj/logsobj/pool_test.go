@@ -8,7 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v4/pkg/scratch"
 )
 
 func TestSizedBuilderPool(t *testing.T) {

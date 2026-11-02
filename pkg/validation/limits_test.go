@@ -16,13 +16,13 @@ import (
 	"go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v4/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v4/pkg/compression"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v4/pkg/loghttp/push"
+	"github.com/grafana/loki/v4/pkg/logql"
+	"github.com/grafana/loki/v4/pkg/util/flagext"
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {

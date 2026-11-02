@@ -6,10 +6,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
 func makeBlockRef(minFp, maxFp model.Fingerprint, from, through model.Time) bloomshipper.BlockRef {

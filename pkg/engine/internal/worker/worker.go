@@ -23,13 +23,13 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
-	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/scratch"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v4/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v4/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v4/pkg/engine/internal/obslock"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v4/pkg/scratch"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
 )
 
 // Config holds configuration options for [Worker].

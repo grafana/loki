@@ -3,7 +3,7 @@ package physical
 import (
 	"github.com/oklog/ulid/v2"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
 )
 
 // IndexMerge represents one K-way sort-merge task over INDEX sections

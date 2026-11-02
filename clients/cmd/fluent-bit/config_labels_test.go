@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
+	"github.com/grafana/loki/v4/pkg/util/flagext"
 )
 
 func Test_externalLabelsFromFluentBitLabelsOption(t *testing.T) {

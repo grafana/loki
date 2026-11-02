@@ -11,10 +11,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
 )
 
 // DefaultHeadPrefetchBytes is how many bytes an object open reads up front. The encoder packs

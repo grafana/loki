@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // TestNoDifferenceBetweenEncodingsForConsumers having sent a stream over the wire, a consumer cannot tell which of the two

@@ -8,7 +8,7 @@ import (
 
 	dennwc "github.com/dennwc/varint"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // InvalidTypeError is used as a panic value when using [Value] methods with

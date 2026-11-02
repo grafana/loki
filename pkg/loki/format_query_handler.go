@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/util/server"
 )
 
 func formatQueryHandler() http.HandlerFunc {

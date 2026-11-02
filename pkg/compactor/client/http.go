@@ -13,10 +13,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
 
-	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion"
+	"github.com/grafana/loki/v4/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/loki/v4/pkg/util/log"
 )
 
 const (

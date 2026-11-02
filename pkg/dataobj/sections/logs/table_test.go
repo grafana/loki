@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/result"
 )
 
 var (

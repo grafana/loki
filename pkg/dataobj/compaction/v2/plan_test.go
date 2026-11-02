@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
 )
 
 type fakeRun struct {

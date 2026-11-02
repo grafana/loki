@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/iter"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/iter"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // mockStreamIterator returns an iterator with 1 stream and quantity entries,

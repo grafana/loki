@@ -16,9 +16,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/util"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 type poolClientFactory interface {

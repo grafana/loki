@@ -15,9 +15,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 const (

@@ -13,16 +13,16 @@ import (
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v4/pkg/storage/chunk"
 
 	"github.com/stretchr/testify/require"
 
-	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	util_test "github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	v2 "github.com/grafana/loki/v4/pkg/iter/v2"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
+	tsdb_index "github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_test "github.com/grafana/loki/v4/pkg/util"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 type mockLimits struct {

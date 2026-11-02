@@ -16,10 +16,10 @@ import (
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/validation"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
+	storage_errors "github.com/grafana/loki/v4/pkg/storage/errors"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/validation"
 )
 
 // Failure categories returned by ClassifyFailure: a bounded set, safe to use as

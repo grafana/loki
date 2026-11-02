@@ -7,7 +7,7 @@ import (
 	fmt "fmt"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
-	logproto "github.com/grafana/loki/v3/pkg/logproto"
+	logproto "github.com/grafana/loki/v4/pkg/logproto"
 	github_com_prometheus_common_model "github.com/prometheus/common/model"
 	io "io"
 	math "math"

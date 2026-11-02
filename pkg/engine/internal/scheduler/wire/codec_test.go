@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
 )
 
 func TestProtobufCodec_TaskStreams(t *testing.T) {

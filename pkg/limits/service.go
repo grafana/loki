@@ -17,12 +17,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
-	"github.com/grafana/loki/v3/pkg/limits/proto"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v4/pkg/kafka/client"
+	"github.com/grafana/loki/v4/pkg/kafka/partition"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 const (

@@ -62,7 +62,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"go.opentelemetry.io/otel/attribute"
 
-	internal "github.com/grafana/loki/v3/pkg/xcap/internal/proto"
+	internal "github.com/grafana/loki/v4/pkg/xcap/internal/proto"
 )
 
 // Capture captures statistical information about the lifetime of a query.

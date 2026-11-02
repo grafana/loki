@@ -4,7 +4,7 @@ import (
 	"container/heap"
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 /*

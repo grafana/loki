@@ -7,9 +7,9 @@ import (
 	"math"
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/dataset/buffer"
+	"github.com/grafana/loki/v4/pkg/dataset/encoding"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 // File is a region-based virtual reader over a serialized dataset.

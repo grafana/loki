@@ -23,11 +23,11 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	querier_stats "github.com/grafana/loki/v3/pkg/querier/stats"
-	"github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	querier_stats "github.com/grafana/loki/v4/pkg/querier/stats"
+	"github.com/grafana/loki/v4/pkg/util"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/util/server"
 )
 
 const (

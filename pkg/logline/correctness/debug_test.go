@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
 )
 
 func TestHandleDebug_Success(t *testing.T) {

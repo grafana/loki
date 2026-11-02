@@ -15,14 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v4/pkg/logline/store"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
 )
 
 func TestFrontendHintAdapter_ProvideHints(t *testing.T) {

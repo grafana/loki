@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
 )
 
 func TestUsageStore_ActiveStreams(t *testing.T) {

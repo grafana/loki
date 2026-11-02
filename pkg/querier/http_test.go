@@ -12,11 +12,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logqlmodel"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/validation"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"

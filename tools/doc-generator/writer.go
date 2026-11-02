@@ -15,7 +15,7 @@ import (
 	"github.com/mitchellh/go-wordwrap"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/grafana/loki/v3/tools/doc-generator/parse"
+	"github.com/grafana/loki/v4/tools/doc-generator/parse"
 )
 
 type specWriter struct {

@@ -9,7 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 func TestPackPipelineNodes(t *testing.T) {

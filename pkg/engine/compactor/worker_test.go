@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v4/pkg/scratch"
 )
 
 // validWorkerCfg returns a minimal valid WorkerConfig for tests. The

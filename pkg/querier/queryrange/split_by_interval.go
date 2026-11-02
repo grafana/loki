@@ -14,13 +14,13 @@ import (
 	attribute "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/validation"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/storage/config"
+	"github.com/grafana/loki/v4/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/validation"
 )
 
 type lokiResult struct {

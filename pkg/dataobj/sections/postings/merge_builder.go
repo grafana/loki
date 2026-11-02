@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj"
 )
 
 // MergeBuilder accumulates posting entries from pre-aggregated rows (e.g., from

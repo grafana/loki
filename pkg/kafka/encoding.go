@@ -12,8 +12,8 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logql/syntax"
 )
 
 var (

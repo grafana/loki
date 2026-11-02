@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	"github.com/grafana/loki/v4/pkg/compression"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
 
 	"github.com/grafana/loki/pkg/push"
 )

@@ -9,7 +9,7 @@ import "gogoproto/gogo.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
 
-option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb";
+option go_package = "github.com/grafana/loki/v4/pkg/engine/internal/proto/wirepb";
 
 message Frame {
   oneof kind {
@@ -102,7 +102,7 @@ message TaskAssignMessage {
 // longer needed.
 message TaskCancelMessage {
   ulid.loki.v1.ProtoULID id = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.customtype) = "github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 }
@@ -111,7 +111,7 @@ message TaskCancelMessage {
 // result of a task.
 message TaskResultMessage {
   ulid.loki.v1.ProtoULID id = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.customtype) = "github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
@@ -122,7 +122,7 @@ message TaskResultMessage {
 // worker about the location of a stream receiver.
 message StreamBindMessage {
   ulid.loki.v1.ProtoULID stream_id = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.customtype) = "github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
@@ -137,7 +137,7 @@ message StreamBindMessage {
 // plane. No other messages may be sent along data plane connections.
 message StreamDataMessage {
   ulid.loki.v1.ProtoULID stream_id = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.customtype) = "github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
@@ -149,7 +149,7 @@ message StreamDataMessage {
 // stream's producer finishes or is cancelled or disconnected.
 message StreamClosedMessage {
   ulid.loki.v1.ProtoULID stream_id = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.customtype) = "github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
@@ -160,7 +160,7 @@ message StreamClosedMessage {
 // Task is a single unit of work within a workflow.
 message Task {
   ulid.loki.v1.ProtoULID ulid = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.customtype) = "github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
@@ -189,7 +189,7 @@ message StreamList {
 // Stream is an abstract representation of how data flows across task boundaries.
 message Stream {
   ulid.loki.v1.ProtoULID ulid = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.customtype) = "github.com/grafana/loki/v4/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 

@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/pool"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
 // minPooledPostingsListBytes is the size below which a postings list's buffer

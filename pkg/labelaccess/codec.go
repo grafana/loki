@@ -9,12 +9,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
+	"github.com/grafana/loki/v4/pkg/labelaccess/types"
 
-	"github.com/grafana/loki/v3/pkg/loki/codec"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/loki/codec"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 type Codec struct {

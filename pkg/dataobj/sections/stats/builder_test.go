@@ -13,8 +13,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/util/arrowtest"
 )
 
 // defaultEncoder is a SectionEncoder using default page sizes for testing.

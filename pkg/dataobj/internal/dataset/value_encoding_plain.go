@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 func init() {

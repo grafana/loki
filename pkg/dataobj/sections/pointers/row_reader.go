@@ -12,9 +12,9 @@ import (
 
 	"github.com/bits-and-blooms/bloom/v3"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/symbolizer"
 )
 
 // RowReader reads the set of streams from an [Object].

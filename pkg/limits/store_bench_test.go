@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
 )
 
 func BenchmarkUsageStore_Store(b *testing.B) {

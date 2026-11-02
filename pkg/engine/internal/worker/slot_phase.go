@@ -3,7 +3,7 @@ package worker
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v4/pkg/engine/internal/metrictimer"
 )
 
 // slotPhaseTracker accumulates, over one worker slot's lifetime, how long the

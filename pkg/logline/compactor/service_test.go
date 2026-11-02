@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
+	"github.com/grafana/loki/v4/pkg/logline"
+	schedulerapi "github.com/grafana/loki/v4/pkg/logline/scheduler/api"
 )
 
 // newTestService creates a compactor Service suitable for lifecycle tests.

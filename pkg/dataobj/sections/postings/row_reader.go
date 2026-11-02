@@ -8,7 +8,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
 )
 
 // RowReader reads [Row] records from a postings [Section] one row at a time, in

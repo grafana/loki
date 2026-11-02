@@ -6,10 +6,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/testutils"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/engine/internal/proto/physicalpb"
+	"github.com/grafana/loki/v4/pkg/engine/internal/proto/testutils"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/dag"
 )
 
 // TestRoundTripNodes_Reflection uses reflection to construct each supported

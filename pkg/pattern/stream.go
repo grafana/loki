@@ -9,12 +9,12 @@ import (
 
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
-	"github.com/grafana/loki/v3/pkg/pattern/drain"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/loghttp/push"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/pattern/aggregation"
+	"github.com/grafana/loki/v4/pkg/pattern/drain"
+	"github.com/grafana/loki/v4/pkg/pattern/iter"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"

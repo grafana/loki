@@ -8,13 +8,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/common"
-	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v4/pkg/bloombuild/common"
+	"github.com/grafana/loki/v4/pkg/bloombuild/planner/plannertest"
+	"github.com/grafana/loki/v4/pkg/bloombuild/protos"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
