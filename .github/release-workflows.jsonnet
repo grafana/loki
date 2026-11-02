@@ -59,6 +59,7 @@ local weeklyImageJobs = {
       skipArm=false,
       skipValidation=false,
       versioningStrategy='always-bump-patch',
+      goVersion=goVersion,
     ) + {
       name: 'Prepare Patch Release PR',
     }, false, false
@@ -79,6 +80,7 @@ local weeklyImageJobs = {
       skipArm=false,
       skipValidation=false,
       versioningStrategy='always-bump-minor',
+      goVersion=goVersion,
     ) + {
       name: 'Prepare Minor Release PR from Weekly',
     }, false, false
@@ -102,6 +104,7 @@ local weeklyImageJobs = {
       // git commit --allow-empty -m "chore: Release X.0.0-rcY" -m "Release-As: X.0.0-rcY"
       // https://github.com/googleapis/release-please#how-do-i-change-the-version-number
       // releaseAs='x.0.0',
+      goVersion=goVersion,
     ) + {
       name: 'Prepare Major Release PR',
     }, false, false
