@@ -191,9 +191,9 @@ func (e *mergeOverTimeStepEvaluator) pop(r, s int) {
 // inRange returns true if sampleTimestamp, the timestamp of the sample a shard picked as its
 // first/last candidate, falls inside the aggregation window ending at stepTimestamp.
 func (e *mergeOverTimeStepEvaluator) inRange(sampleTimestamp, stepTimestamp int64) bool {
-	// The time stamp needs to be adjusted because the original datapoint at sampleTimestamp is
-	// from a shifted query.
-	stepTimestamp -= e.offset.Milliseconds()
+	// The window is shifted back by the offset. Work in nanoseconds because truncating a
+	// sub-millisecond offset to milliseconds moves the lower bound and drops the sample on it.
+	windowEnd := stepTimestamp*int64(time.Millisecond) - e.offset.Nanoseconds()
 
 	// An instant query has a single output step, so a candidate a shard returns has no other
 	// step to be confused with. The shard already restricted it to the right window, so there
@@ -207,7 +207,8 @@ func (e *mergeOverTimeStepEvaluator) inRange(sampleTimestamp, stepTimestamp int6
 	// is wider.
 	//
 	// The interval is half-open: the lower bound is exclusive, the upper bound is inclusive.
-	return (stepTimestamp-e.rangeInterval.Milliseconds()) < sampleTimestamp && sampleTimestamp <= stepTimestamp
+  windowStart := windowEnd - e.rangeInterval.Nanoseconds()
+	return windowStart/int64(time.Millisecond) < sampleTimestamp && sampleTimestamp <= sampleTimestampToMillis(windowEnd)
 }
 
 func (*mergeOverTimeStepEvaluator) Close() error { return nil }

@@ -142,6 +142,11 @@ eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap 
   {app="a"} 10 _ _  # [70s,90s) excludes the sample at 90s
 eval range from 30s to 90s step 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
   {app="a"} 20 _ _
+# Grouped queries are sharded and merged, which also has to keep the sample on the lower bound.
+eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns) by (app)
+  {app="a"} 10 _ _
+eval range from 30s to 90s step 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns) by (app)
+  {app="a"} 20 _ _
 # Output gaps.
 eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap v [20s])
   {app="a"} 20 _ 40
