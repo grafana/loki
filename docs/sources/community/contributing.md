@@ -35,4 +35,4 @@ make lint              # run linters
 
 ## Contribute to the Helm Chart
 
-Refer to [production/helm/loki/CONTRIBUTING.md](https://github.com/grafana/loki/blob/main/production/helm/loki/CONTRIBUTING.md) for chart-specific guidelines. The official Loki Helm chart is maintained in the [grafana/helm-charts](https://github.com/grafana/helm-charts) repository.
+Refer to [production/helm/loki/CONTRIBUTING.md](https://github.com/grafana/loki/blob/main/production/helm/loki/CONTRIBUTING.md) for chart-specific guidelines. The official Loki Helm chart is maintained in the [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) repository.
