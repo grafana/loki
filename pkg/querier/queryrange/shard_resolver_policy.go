@@ -3,12 +3,12 @@ package queryrange
 import (
 	"time"
 
-	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/validation"
+	valid "github.com/grafana/loki/v3/pkg/validation"
 )
 
 // shardingPolicy holds the parts of dynamic shard resolution that depend on where a query reads
@@ -56,8 +56,8 @@ func (chunkShardingPolicy) boundedShards(_ []string, shards []logproto.Shard, ch
 const dataObjMaxOverReadFactor = 8
 
 // dataObjMaxShards is the most shards that a query that reads data objects can have, whatever the
-// shard layout of its tenants.
-const dataObjMaxShards = dataObjMaxOverReadFactor * dataobjstreams.DefaultShardBuckets
+// shard layout of its tenants. It is the largest bucket count that a tenant can set.
+const dataObjMaxShards = valid.MaxShardFactor
 
 // dataObjShardingPolicy is the policy of queries that read data objects.
 type dataObjShardingPolicy struct {

@@ -755,23 +755,12 @@ func buildSourcePostingsObjectSized(t *testing.T, bucket objstore.Bucket, tenant
 	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
 }
 
-// layoutOfStats returns the layout with the default shard layout and the
-// sort schema of the first of rows as schema labels.
-func layoutOfStats(rows []stats.Stat) streams.Layout {
-	var schemaLabels []string
-	if len(rows) > 0 && rows[0].SortSchema != "" {
-		schemaLabels = strings.Split(rows[0].SortSchema, ",")
-	}
-	return streams.NewLayout(streams.DefaultShardLayout(), schemaLabels)
-}
-
-// buildSourceStatsObject builds a dataobj containing a single stats section
-// with the given stats rows, then uploads it to the bucket.
-func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, statsRows []stats.Stat) {
+// buildSourceStatsObject builds a dataobj with a single stats section that
+// holds statsRows and records layout, then uploads it to the bucket.
+func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, layout streams.Layout, statsRows []stats.Stat) {
 	t.Helper()
-	ctx := context.Background()
 
-	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layoutOfStats(statsRows))
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
 	statsBuilder.SetTenant(tenant)
 	for _, row := range statsRows {
 		statsBuilder.Append(row)
@@ -784,7 +773,7 @@ func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path s
 	require.NoError(t, err)
 	defer closer.Close()
 
-	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, obj))
 }
 
 // readPostingsRowsFromBucket downloads an object from the bucket, finds its
@@ -1056,8 +1045,9 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	// only scenario in which equal-key collisions are now possible.
 	ts1, ts2 := int64(100), int64(200)
 
+	serviceLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
 	sourceAPath := "source/index-a.dat"
-	buildSourceStatsObject(t, bucket, "tenant", sourceAPath, []stats.Stat{
+	buildSourceStatsObject(t, bucket, "tenant", sourceAPath, serviceLayout, []stats.Stat{
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
@@ -1071,7 +1061,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	})
 
 	sourceBPath := "source/index-b.dat"
-	buildSourceStatsObject(t, bucket, "tenant", sourceBPath, []stats.Stat{
+	buildSourceStatsObject(t, bucket, "tenant", sourceBPath, serviceLayout, []stats.Stat{
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
@@ -1145,8 +1135,9 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	})
 
 	// Build one source with stats only.
+	serviceLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
 	statsPath := "source/index-stats.dat"
-	buildSourceStatsObject(t, bucket, "tenant", statsPath, []stats.Stat{
+	buildSourceStatsObject(t, bucket, "tenant", statsPath, serviceLayout, []stats.Stat{
 		{
 			ObjectPath:       "log-A",
 			SectionIndex:     0,
@@ -1227,9 +1218,10 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	uncompressedSizes := []int64{1000, 2000, 3000, 4000}
 	ts1, ts2 := int64(100), int64(200) // identical for all sources
 
+	serviceLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
 	for i := 0; i < sourceCount; i++ {
 		path := fmt.Sprintf("source/index-%d.dat", i)
-		buildSourceStatsObject(t, bucket, "tenant", path, []stats.Stat{
+		buildSourceStatsObject(t, bucket, "tenant", path, serviceLayout, []stats.Stat{
 			{
 				ObjectPath:       "log-X",
 				SectionIndex:     0,
@@ -1372,7 +1364,7 @@ func TestExecuteIndexMerge_FailsWhenSourceLayoutsDiffer(t *testing.T) {
 
 	// Build two source objects with DIFFERENT SortSchema values
 	sourceAPath := "source/index-a.dat"
-	buildSourceStatsObject(t, bucket, "tenant", sourceAPath, []stats.Stat{
+	buildSourceStatsObject(t, bucket, "tenant", sourceAPath, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service", "label:job"}), []stats.Stat{
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
@@ -1386,7 +1378,7 @@ func TestExecuteIndexMerge_FailsWhenSourceLayoutsDiffer(t *testing.T) {
 	})
 
 	sourceBPath := "source/index-b.dat"
-	buildSourceStatsObject(t, bucket, "tenant", sourceBPath, []stats.Stat{
+	buildSourceStatsObject(t, bucket, "tenant", sourceBPath, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:job", "label:service"}), []stats.Stat{
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
@@ -1680,7 +1672,7 @@ func TestExecuteIndexMerge_StreamsLayout(t *testing.T) {
 		data, err := os.ReadFile(filepath.Join("..", "..", "..", "dataobj", "testdata", "legacy", "legacy-index.dataobj"))
 		require.NoError(t, err)
 		require.NoError(t, bucket.Upload(t.Context(), "source/legacy", bytes.NewReader(data)))
-		buildSourceStatsObject(t, bucket, "acme", "source/new", []stats.Stat{{
+		buildSourceStatsObject(t, bucket, "acme", "source/new", serviceLayout, []stats.Stat{{
 			ObjectPath: "logs/new", SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "api"}, MinTimestamp: 1, MaxTimestamp: 2,
 		}})
@@ -1690,4 +1682,22 @@ func TestExecuteIndexMerge_StreamsLayout(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, serviceLayout, got)
 	})
+
+	for _, buckets := range []uint32{1, 8, 256} {
+		t.Run(fmt.Sprintf("records the layout of two sources with a shard bucket count of %d", buckets), func(t *testing.T) {
+			layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(buckets), []string{"label:service_name"})
+			bucket := objstore.NewInMemBucket()
+			for _, name := range []string{"a", "b"} {
+				buildSourceStatsObject(t, bucket, "acme", "source/"+name, layout, []stats.Stat{{
+					ObjectPath: "logs/" + name, SortSchema: "label:service_name",
+					Labels: map[string]string{"service_name": name}, ShardBucket: buckets - 1, MinTimestamp: 1, MaxTimestamp: 2,
+				}})
+			}
+
+			got, ok, err := indexobj.TenantLayout(t.Context(), merge(t, bucket, "source/a", "source/b"), "acme")
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(t, layout, got)
+		})
+	}
 }
