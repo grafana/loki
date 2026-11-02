@@ -20,12 +20,12 @@ type AnsiParser struct {
 	oscString          state
 	stateMap           []state
 
-	logf func(string, ...interface{})
+	logf func(string, ...any)
 }
 
 type Option func(*AnsiParser)
 
-func WithLogf(f func(string, ...interface{})) Option {
+func WithLogf(f func(string, ...any)) Option {
 	return func(ap *AnsiParser) {
 		ap.logf = f
 	}
@@ -45,7 +45,7 @@ func CreateParser(initialState string, evtHandler AnsiEventHandler, opts ...Opti
 		logger := log.New(logFile, "", log.LstdFlags)
 		if ap.logf != nil {
 			l := ap.logf
-			ap.logf = func(s string, v ...interface{}) {
+			ap.logf = func(s string, v ...any) {
 				l(s, v...)
 				logger.Printf(s, v...)
 			}
@@ -55,7 +55,7 @@ func CreateParser(initialState string, evtHandler AnsiEventHandler, opts ...Opti
 	}
 
 	if ap.logf == nil {
-		ap.logf = func(string, ...interface{}) {}
+		ap.logf = func(string, ...any) {}
 	}
 
 	ap.csiEntry = csiEntryState{baseState{name: "CsiEntry", parser: ap}}
@@ -113,16 +113,13 @@ func (ap *AnsiParser) handle(b byte) error {
 
 	if newState == nil {
 		ap.logf("WARNING: newState is nil")
-		return errors.New("New state of 'nil' is invalid.")
+		return errors.New("new state of 'nil' is invalid")
 	}
 
-	if newState != ap.currState {
-		if err := ap.changeState(newState); err != nil {
-			return err
-		}
+	if newState == ap.currState {
+		return nil
 	}
-
-	return nil
+	return ap.changeState(newState)
 }
 
 func (ap *AnsiParser) changeState(newState state) error {
@@ -136,7 +133,7 @@ func (ap *AnsiParser) changeState(newState state) error {
 
 	// Perform transition action
 	if err := ap.currState.Transition(newState); err != nil {
-		ap.logf("Transition from '%s' to '%s' failed with: '%v'", ap.currState.Name(), newState.Name, err)
+		ap.logf("Transition from '%s' to '%s' failed with: '%v'", ap.currState.Name(), newState.Name(), err)
 		return err
 	}
 

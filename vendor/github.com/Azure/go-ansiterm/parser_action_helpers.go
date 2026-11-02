@@ -4,9 +4,9 @@ import (
 	"strconv"
 )
 
-func parseParams(bytes []byte) ([]string, error) {
-	paramBuff := make([]byte, 0, 0)
-	params := []string{}
+func parseParams(bytes []byte) []string {
+	var paramBuff []byte
+	var params []string
 
 	for _, v := range bytes {
 		if v == ';' {
@@ -14,7 +14,7 @@ func parseParams(bytes []byte) ([]string, error) {
 				// Completed parameter, append it to the list
 				s := string(paramBuff)
 				params = append(params, s)
-				paramBuff = make([]byte, 0, 0)
+				paramBuff = paramBuff[:0]
 			}
 		} else {
 			paramBuff = append(paramBuff, v)
@@ -27,11 +27,7 @@ func parseParams(bytes []byte) ([]string, error) {
 		params = append(params, s)
 	}
 
-	return params, nil
-}
-
-func parseCmd(context ansiContext) (string, error) {
-	return string(context.currentChar), nil
+	return params
 }
 
 func getInt(params []string, dflt int) int {
@@ -53,7 +49,7 @@ func getInts(params []string, minCount int, dflt int) []int {
 
 	if len(ints) < minCount {
 		remaining := minCount - len(ints)
-		for i := 0; i < remaining; i++ {
+		for range remaining {
 			ints = append(ints, dflt)
 		}
 	}
