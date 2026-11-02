@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	datasetmd_v2 "github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
 )
 
 // RegionRead is the xcap region name that holds the statistics of reading

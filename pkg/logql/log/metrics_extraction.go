@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 )
 
 const (

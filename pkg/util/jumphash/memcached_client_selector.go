@@ -11,7 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/gomemcache/memcache"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 // Selector implements the memcache.ServerSelector

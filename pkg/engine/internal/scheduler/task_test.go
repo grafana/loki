@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v4/pkg/engine/internal/scheduler/schedulerstat"
+	"github.com/grafana/loki/v4/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v4/pkg/xcap"
 )
 
 func TestTask_AssignmentRetries(t *testing.T) {

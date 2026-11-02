@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
 )
 
 // Values of the decision label of the secondary decisions metric. A selection strategy adds its own

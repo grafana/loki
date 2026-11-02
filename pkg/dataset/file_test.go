@@ -10,17 +10,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
-	"github.com/grafana/loki/v3/pkg/columnar/types"
-	"github.com/grafana/loki/v3/pkg/dataset"
-	"github.com/grafana/loki/v3/pkg/dataset/array"
-	"github.com/grafana/loki/v3/pkg/dataset/buffer"
-	datasetencoding "github.com/grafana/loki/v3/pkg/dataset/encoding"
-	"github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec"
-	"github.com/grafana/loki/v3/pkg/dataset/layout"
-	"github.com/grafana/loki/v3/pkg/expr"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v4/pkg/columnar/types"
+	"github.com/grafana/loki/v4/pkg/dataset"
+	"github.com/grafana/loki/v4/pkg/dataset/array"
+	"github.com/grafana/loki/v4/pkg/dataset/buffer"
+	datasetencoding "github.com/grafana/loki/v4/pkg/dataset/encoding"
+	"github.com/grafana/loki/v4/pkg/dataset/encoding/wirecodec"
+	"github.com/grafana/loki/v4/pkg/dataset/layout"
+	"github.com/grafana/loki/v4/pkg/expr"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 func TestBuildOpen(t *testing.T) {

@@ -5,12 +5,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/tools/tsdb/helpers"
+	"github.com/grafana/loki/v4/pkg/storage"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper"
+	shipperindex "github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v4/pkg/storage/stores/shipper/indexshipper/tsdb"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
+	"github.com/grafana/loki/v4/tools/tsdb/helpers"
 )
 
 // go build ./tools/tsdb/index-analyzer && BUCKET=19453 DIR=/tmp/loki-index-analysis ./index-analyzer --config.file=/tmp/loki-config.yaml

@@ -8,10 +8,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
-	valid "github.com/grafana/loki/v3/pkg/validation"
+	dataobjstreams "github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/storage/stores/index/stats"
+	valid "github.com/grafana/loki/v4/pkg/validation"
 )
 
 func TestChunkShardingPolicy_powerOfTwoShards(t *testing.T) {

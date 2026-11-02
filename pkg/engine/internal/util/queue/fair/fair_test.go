@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
+	"github.com/grafana/loki/v4/pkg/engine/internal/util/queue/fair"
 )
 
 func Example() {

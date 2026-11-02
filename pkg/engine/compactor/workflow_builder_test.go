@@ -12,10 +12,10 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	v2 "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v4/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
 )
 
 func TestReadCompactionResult(t *testing.T) {

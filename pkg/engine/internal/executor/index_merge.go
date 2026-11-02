@@ -9,15 +9,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/util/loser"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	v2 "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v4/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
+	"github.com/grafana/loki/v4/pkg/util/loser"
 )
 
 // executeIndexMerge orchestrates the index merge: classify sections,

@@ -16,11 +16,11 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/logcli/client"
-	"github.com/grafana/loki/v3/pkg/logcli/output"
-	"github.com/grafana/loki/v3/pkg/logcli/util"
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/util/unmarshal"
+	"github.com/grafana/loki/v4/pkg/logcli/client"
+	"github.com/grafana/loki/v4/pkg/logcli/output"
+	"github.com/grafana/loki/v4/pkg/logcli/util"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	"github.com/grafana/loki/v4/pkg/util/unmarshal"
 )
 
 type contextTailClient interface {

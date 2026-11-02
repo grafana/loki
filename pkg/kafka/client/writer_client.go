@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v4/pkg/kafka"
 )
 
 // writerRequestTimeoutOverhead is the overhead applied by the Writer to every Kafka timeout.

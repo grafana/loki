@@ -13,11 +13,11 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v4/pkg/storage/bucket"
 )
 
 // DefaultTocBuilderConfig is the builder config for ToC objects. Its sizes are

@@ -11,13 +11,13 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
+	"github.com/grafana/loki/v4/pkg/loghttp"
+	legacy "github.com/grafana/loki/v4/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v4/pkg/logql/model"
+	"github.com/grafana/loki/v4/pkg/logql/model/stats"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
+	marshal_legacy "github.com/grafana/loki/v4/pkg/util/marshal/legacy"
 )
 
 func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {

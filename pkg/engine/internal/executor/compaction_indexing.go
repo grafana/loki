@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	v2 "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2"
+	dataobjindex "github.com/grafana/loki/v4/pkg/dataobj/index"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 // uploadAndIndexObject uploads a logs object, adds it to calc, and closes its

@@ -3,7 +3,7 @@ package xcap
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
+	"github.com/grafana/loki/v4/pkg/xcap/internal/proto"
 )
 
 // toProtoCapture converts a Capture to its protobuf representation.

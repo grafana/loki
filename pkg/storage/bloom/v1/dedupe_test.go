@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	iter "github.com/grafana/loki/v4/pkg/iter/v2"
 )
 
 func TestMergeDedupeIter(t *testing.T) {

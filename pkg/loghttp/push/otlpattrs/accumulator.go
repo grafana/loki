@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v4/pkg/util"
 )
 
 // Kind identifies which part of the OTLP payload an attribute came from.

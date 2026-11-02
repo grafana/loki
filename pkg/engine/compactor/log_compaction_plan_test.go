@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	compactionv2pb "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v4/pkg/dataobj/metastore"
 )
 
 func TestLogCompactionPlanLogTaskStats(t *testing.T) {

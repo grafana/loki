@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v4/pkg/loghttp"
 )
 
 var errWriteFailed = errors.New("write failed")

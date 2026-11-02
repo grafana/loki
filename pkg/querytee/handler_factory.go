@@ -7,10 +7,10 @@ import (
 
 	"github.com/grafana/dskit/middleware"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/querytee/comparator"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	"github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/querytee/comparator"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/pkg/util/server"
 )
 
 // HandlerFactory creates the query handler of a route.

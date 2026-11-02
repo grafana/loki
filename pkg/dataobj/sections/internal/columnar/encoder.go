@@ -7,12 +7,12 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/bufpool"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/protocodec"
 )
 
 // FormatVersion is the current version the encoding format for dataset-derived

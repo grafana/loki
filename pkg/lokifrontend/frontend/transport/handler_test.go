@@ -15,10 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logql/model/stats"
-	qr "github.com/grafana/loki/v3/pkg/querier/queryrange"
-	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v4/pkg/logql/model/stats"
+	qr "github.com/grafana/loki/v4/pkg/querier/queryrange"
+	base "github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v4/pkg/util/httpreq"
 )
 
 func TestFormatRequestHeaders(t *testing.T) {

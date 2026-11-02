@@ -4,7 +4,7 @@ package grafana.dataset.v1;
 
 import "pkg/dataset/encoding/wirecodec/internal/arraymd/arraymd.proto";
 
-option go_package = "github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/datasetmd";
+option go_package = "github.com/grafana/loki/v4/pkg/dataset/encoding/wirecodec/internal/datasetmd";
 
 // Metadata holds the metadata for a dataset.
 message Metadata {

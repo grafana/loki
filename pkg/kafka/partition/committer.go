@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v4/pkg/kafka/client"
 )
 
 // Committer defines an interface for committing offsets

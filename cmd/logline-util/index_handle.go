@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 // indexHandle wraps a logline.Reader for use by CLI tools.

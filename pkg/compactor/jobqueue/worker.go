@@ -13,8 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v4/pkg/compactor/client/grpc"
+	util_log "github.com/grafana/loki/v4/pkg/util/log"
 )
 
 var (

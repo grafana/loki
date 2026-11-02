@@ -1,6 +1,6 @@
 package hintprovider
 
-import "github.com/grafana/loki/v3/pkg/logql/syntax"
+import "github.com/grafana/loki/v4/pkg/logql/syntax"
 
 func SupportedMetricQuery(expr syntax.Expr, ngramLength int) []string {
 	selector, ok := metricLogSelector(expr)

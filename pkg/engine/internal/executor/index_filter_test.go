@@ -13,13 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
-	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v4/pkg/dataobj"
+	v2 "github.com/grafana/loki/v4/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v4/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v4/pkg/engine/internal/planner/physical"
 )
 
 // buildFilterSourceIndex uploads an index with one postings row and one stats

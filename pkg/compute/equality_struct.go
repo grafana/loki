@@ -3,8 +3,8 @@ package compute
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v4/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/memory"
 )
 
 func structEquals(alloc *memory.Allocator, left, right *columnar.Struct, selection memory.Bitmap) (*columnar.Bool, error) {

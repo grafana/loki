@@ -12,7 +12,7 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v4/pkg/logline/format"
 )
 
 // latencyReaderAt wraps an io.ReaderAt and injects a configurable latency on

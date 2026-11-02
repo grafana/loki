@@ -39,8 +39,8 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 
-	"github.com/grafana/loki/v3/pkg/util/encoding"
-	"github.com/grafana/loki/v3/pkg/util/labelpool"
+	"github.com/grafana/loki/v4/pkg/util/encoding"
+	"github.com/grafana/loki/v4/pkg/util/labelpool"
 )
 
 const (

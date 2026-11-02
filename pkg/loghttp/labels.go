@@ -10,7 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/jsonparser"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v4/pkg/logproto"
 )
 
 // LabelResponse represents the http json response to a label query

@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v4/pkg/logproto"
+	lokiring "github.com/grafana/loki/v4/pkg/util/ring"
 
 	"github.com/grafana/loki/pkg/push"
 )

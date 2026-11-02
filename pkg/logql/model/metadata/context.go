@@ -12,7 +12,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v4/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
 type (

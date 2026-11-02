@@ -17,7 +17,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 
-	"github.com/grafana/loki/v3/pkg/kafkav2"
+	"github.com/grafana/loki/v4/pkg/kafkav2"
 )
 
 func TestRequiredReplicasReporter(t *testing.T) {

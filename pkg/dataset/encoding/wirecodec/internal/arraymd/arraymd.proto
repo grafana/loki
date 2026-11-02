@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package grafana.dataset.array.v1;
 
-option go_package = "github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/arraymd";
+option go_package = "github.com/grafana/loki/v4/pkg/dataset/encoding/wirecodec/internal/arraymd";
 
 // Array represents an individual Array in the dataset. The encoding and type of
 // the array determine how to interpret its structure. Type information is

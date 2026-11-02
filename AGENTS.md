@@ -35,7 +35,7 @@ make test-fuzz                                 # run fuzz tests
 - Follow import order:
   1. standard lib
   2. external packages
-  3. Loki packages (`github.com/grafana/loki/v3`)
+  3. Loki packages (`github.com/grafana/loki/v4`)
 - Error handling: Always check errors with `if err != nil { return ... }`
 - Use structured logging with leveled logging (`github.com/go-kit/log`)
 - Document all exported functions, types, and variables

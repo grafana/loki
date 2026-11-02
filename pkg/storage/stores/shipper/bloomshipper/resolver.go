@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v4/pkg/compression"
+	v1 "github.com/grafana/loki/v4/pkg/storage/bloom/v1"
 )
 
 const (

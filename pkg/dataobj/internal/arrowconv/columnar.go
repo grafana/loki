@@ -7,7 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	arrowmemory "github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v4/pkg/columnar"
 )
 
 // ToRecordBatch converts a columnar RecordBatch into an Arrow RecordBatch using

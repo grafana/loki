@@ -3,7 +3,7 @@ package compactor
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v4/pkg/logline"
 )
 
 // Config is what the compactor reads from the logline config.

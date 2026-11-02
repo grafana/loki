@@ -6,7 +6,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 
-	"github.com/grafana/loki/v3/pkg/memory/internal/memalign"
+	"github.com/grafana/loki/v4/pkg/memory/internal/memalign"
 )
 
 // Bitmap is a bit-packed representation of a sequence of boolean values. Bits

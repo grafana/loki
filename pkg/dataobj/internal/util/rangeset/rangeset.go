@@ -11,7 +11,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v4/pkg/dataobj/internal/util/sliceclear"
 )
 
 // Range is a half-open interval [Start, End).

@@ -5,7 +5,7 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v4/pkg/util/constants"
 )
 
 func EntriesTotalSize(entries []push.Entry) int {

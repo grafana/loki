@@ -11,7 +11,7 @@ import (
 	"github.com/coder/quartz"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/v4/pkg/limits/proto"
 )
 
 // The number of stripe locks.
