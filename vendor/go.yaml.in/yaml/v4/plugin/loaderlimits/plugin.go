@@ -1,10 +1,10 @@
 // Copyright 2026 The go-yaml Project Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package limit provides a configurable safety limit plugin for go-yaml.
+// Package loaderlimits provides configurable loader limits for go-yaml.
 //
-// The limit plugin controls the maximum nesting depth and alias expansion
-// ratio during YAML parsing.
+// The loader-limits plugin controls the maximum nesting depth and alias
+// expansion ratio during YAML parsing.
 // By default, go-yaml enforces conservative limits to prevent DoS attacks.
 // This plugin lets you relax or tighten those limits for your use case.
 //
@@ -12,27 +12,30 @@
 //
 //	import (
 //	    "go.yaml.in/yaml/v4"
-//	    "go.yaml.in/yaml/v4/plugin/limit"
+//	    "go.yaml.in/yaml/v4/plugin/loaderlimits"
 //	)
 //
 //	// Default limits
-//	loader := yaml.NewLoader(data, yaml.WithPlugin(limit.New()))
+//	loader := yaml.NewLoader(data, yaml.WithPlugin(loaderlimits.New()))
 //
 //	// Disable alias checking (e.g. for 11,000 programmatic aliases)
-//	loader := yaml.NewLoader(data, yaml.WithPlugin(limit.New(limit.AliasNone())))
+//	loader := yaml.NewLoader(data,
+//	    yaml.WithPlugin(loaderlimits.New(loaderlimits.AliasNone())))
 //
 //	// Custom depth limit
-//	loader := yaml.NewLoader(data, yaml.WithPlugin(limit.New(limit.DepthValue(50))))
+//	loader := yaml.NewLoader(data,
+//	    yaml.WithPlugin(loaderlimits.New(loaderlimits.DepthValue(50))))
 //
 // # Third-Party Plugins
 //
-// You can implement [yaml.LimitPlugin] directly instead of using this package:
+// You can implement [yaml.LoaderLimitsPlugin] directly instead of using this
+// package:
 //
 //	type StrictLimit struct{}
 //	func (s *StrictLimit) CheckDepth(depth int, ctx *yaml.DepthContext) error { ... }
 //	func (s *StrictLimit) CheckAlias(aliasCount, constructCount int) error { ... }
 //	yaml.NewLoader(data, yaml.WithPlugin(&StrictLimit{}))
-package limit
+package loaderlimits
 
 import (
 	"fmt"
@@ -42,6 +45,8 @@ import (
 
 // DepthContext is an alias for the type used in depth check callbacks.
 // See [yaml.DepthContext] for field documentation.
+//
+// [yaml.DepthContext]: https://pkg.go.dev/go.yaml.in/yaml/v4#DepthContext
 type DepthContext = libyaml.DepthContext
 
 // Plugin implements configurable safety limits for YAML parsing.
@@ -57,7 +62,7 @@ type Plugin struct {
 // Option configures a [Plugin].
 type Option func(*Plugin)
 
-// New creates a limit plugin with the given options.
+// New creates a loader-limits plugin with the given options.
 // With no options, it uses the same defaults as the bare go-yaml library.
 func New(opts ...Option) *Plugin {
 	p := &Plugin{}
@@ -121,7 +126,7 @@ func AliasFunc(fn func(aliasCount, constructCount int) error) Option {
 	}
 }
 
-// CheckDepth implements [yaml.LimitPlugin].
+// CheckDepth implements [yaml.LoaderLimitsPlugin].
 func (p *Plugin) CheckDepth(depth int, ctx *DepthContext) error {
 	if p.depthFn != nil {
 		return p.depthFn(depth, ctx)
@@ -138,7 +143,7 @@ func (p *Plugin) CheckDepth(depth int, ctx *DepthContext) error {
 	return libyaml.DefaultDepthCheck(depth, ctx)
 }
 
-// CheckAlias implements [yaml.LimitPlugin].
+// CheckAlias implements [yaml.LoaderLimitsPlugin].
 func (p *Plugin) CheckAlias(aliasCount, constructCount int) error {
 	if p.aliasFn != nil {
 		return p.aliasFn(aliasCount, constructCount)
@@ -155,7 +160,7 @@ func (p *Plugin) CheckAlias(aliasCount, constructCount int) error {
 	return libyaml.DefaultAliasCheck(aliasCount, constructCount)
 }
 
-// NewFromYAML creates a limit plugin from a YAML config map.
+// NewFromYAML creates a loader-limits plugin from a YAML config map.
 // Keys: "depth" (int or null), "alias" (int or null).
 // Null values disable the corresponding check.
 // Omitted keys use defaults.
@@ -169,7 +174,8 @@ func NewFromYAML(cfg map[string]any) (*Plugin, error) {
 			} else {
 				n, ok := val.(int)
 				if !ok {
-					return nil, fmt.Errorf("limit: depth must be int or null, got %T", val)
+					return nil, fmt.Errorf(
+						"loader-limits: depth must be int or null, got %T", val)
 				}
 				opts = append(opts, DepthValue(n))
 			}
@@ -179,12 +185,13 @@ func NewFromYAML(cfg map[string]any) (*Plugin, error) {
 			} else {
 				n, ok := val.(int)
 				if !ok {
-					return nil, fmt.Errorf("limit: alias must be int or null, got %T", val)
+					return nil, fmt.Errorf(
+						"loader-limits: alias must be int or null, got %T", val)
 				}
 				opts = append(opts, AliasValue(n))
 			}
 		default:
-			return nil, fmt.Errorf("limit: unknown key %q", key)
+			return nil, fmt.Errorf("loader-limits: unknown key %q", key)
 		}
 	}
 	return New(opts...), nil
