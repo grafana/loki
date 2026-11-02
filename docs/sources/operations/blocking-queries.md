@@ -84,6 +84,8 @@ A query for `{env="prod"}` (a `limited` query) matches the first rule's pattern,
 
 Blocked queries are logged, as well as counted in the `loki_blocked_queries` metric on a per-tenant basis.
 
+A blocked query fails with an HTTP `400 Bad Request` response and the error message `query blocked by policy`. Retrying the same query will fail as long as the matching block rule remains in place.
+
 When a policy matches by pattern/hash/regex, Loki logs whether the query type and request tags matched that policy:
 
 ```logfmt
@@ -102,11 +104,12 @@ Query blocking is enforced by the LogQL query engine when it evaluates a query. 
 
 - Range and instant queries sent to the `/loki/api/v1/query` and `/loki/api/v1/query_range` API endpoints.
 - [Alerting and recording rules](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/), in both local and remote rule evaluation modes. Remote evaluation sends the rule's query back through the query frontend and querier, so it is blocked the same way as an API query.
+- The `/loki/api/v1/detected_fields` endpoint. The query frontend converts a `detected_fields` request into an internal `query_range` request and sends it through the same code path as a regular filter or limited query, so the underlying query is subject to the same block rules.
 
 Query blocking does **not** apply to:
 
 - Log tailing (the `/loki/api/v1/tail` endpoint). Tailing reads from the ingesters and the store without using the query engine, so no block policy is applied.
-- Metadata endpoints, such as `labels`, `series`, `index/stats`, `index/volume`, and `detected_fields`. These endpoints don't run a LogQL expression through the query engine, so there is nothing for the query blocker to match against.
+- Metadata endpoints, such as `labels`, `series`, `index/stats`, `index/volume`, and `detected_labels`. These endpoints don't run a LogQL expression through the query engine, so there is nothing for the query blocker to match against.
 
 ## Tag-based blocking
 
@@ -118,7 +121,7 @@ You can scope a blocked query rule to requests that include specific key=value p
 - Matching rules:
   - Keys are matched case-insensitively (the server lowercases keys).
   - Values are matched case-insensitively.
-  - All specified `tags:` pairs in the rule must be present in the request to apply the block.
+  - All specified `query_tags:` pairs in the rule must be present in the request to apply the block.
 
 Examples:
 
