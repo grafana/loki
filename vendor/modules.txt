@@ -2123,7 +2123,7 @@ github.com/xdg-go/stringprep
 # github.com/xhit/go-str2duration/v2 v2.2.0
 ## explicit; go 1.13
 github.com/xhit/go-str2duration/v2
-# github.com/xo/terminfo v1.2.0
+# github.com/xo/terminfo v1.3.0
 ## explicit; go 1.25
 github.com/xo/terminfo
 # github.com/yuin/gopher-lua v1.1.2
