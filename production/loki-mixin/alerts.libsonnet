@@ -129,6 +129,29 @@
               |||, 'cluster', $._config.per_cluster_label),
             },
           },
+          {
+            // Alert if the compactor has not successfully applied retention in the last 6h since the last run.
+            alert: 'LokiCompactorRetentionStalled',
+            expr: |||
+              min (
+                time()
+                -
+                (loki_compactor_apply_retention_last_successful_run_timestamp_seconds{} > 0)
+              )
+              by (%s, namespace)
+              > 60 * 60 * 6
+            ||| % $._config.per_cluster_label,
+            'for': '1h',
+            labels: {
+              severity: 'warning',
+            },
+            annotations: {
+              summary: 'Loki compactor retention has not run in the last 6 hours.',
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.namespace }} compactor has not successfully applied retention in the last 6 hours. This may cause expired data retention backlog.
+              |||, 'cluster', $._config.per_cluster_label),
+            },
+          },
         ],
       },
     ],
