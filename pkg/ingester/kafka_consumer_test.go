@@ -360,9 +360,9 @@ func TestCanRetry(t *testing.T) {
 	}{
 		{name: "read only", err: ErrReadOnly, want: true},
 		{name: "wrapped read only", err: fmt.Errorf("push: %w", ErrReadOnly), want: true},
-		{name: "other error", err: errors.New("push failed")},
-		{name: "per tenant limit", err: httpgrpc.Errorf(http.StatusTooManyRequests, "rate limit exceeded")},
-		{name: "nil"},
+		{name: "other error", err: errors.New("push failed"), want: false},
+		{name: "per tenant limit", err: httpgrpc.Errorf(http.StatusTooManyRequests, "rate limit exceeded"), want: false},
+		{name: "nil", want: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, canRetry(tc.err))
@@ -378,10 +378,11 @@ type orderRecord struct {
 	size   int // the length of the line, to make groups of different sizes.
 }
 
-// orderRecords encodes the records in a random order, giving them ascending offsets from 1. The
-// shuffle varies how the streams interleave and in which order their groups are first seen, so a
-// broken grouping or sort can't pass by luck of the input. The seed is logged to replay a failure.
-func orderRecords(t *testing.T, specs []orderRecord) []partition.Record {
+// interleaveRecords encodes the records with their streams interleaved at random, giving them
+// ascending offsets from 1. The shuffle varies how the streams interleave and in which order their
+// groups are first seen, so a broken grouping or sort can't pass by luck of the input. The seed is
+// logged to replay a failure.
+func interleaveRecords(t *testing.T, specs []orderRecord) []partition.Record {
 	t.Helper()
 
 	seed := time.Now().UnixNano()
@@ -509,7 +510,7 @@ func TestConsumer_AppliesStreamsInOffsetOrder(t *testing.T) {
 			}
 		}
 	}
-	records := orderRecords(t, specs)
+	records := interleaveRecords(t, specs)
 
 	pusher := &orderPusher{}
 	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 8)(&noopCommitter{}, log.NewNopLogger())
