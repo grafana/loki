@@ -60,6 +60,12 @@ message StreamMetadataRecord {
   // The shard count the producing zone last granted this stream. Restores
   // the stream count budget on replay.
   uint32 shardCount = 5;
+  // When non-zero, this is a removal record: the writer (an ingester) no
+  // longer holds the stream, and this is the time of the last push it
+  // received for it, in unix nanoseconds. Consumers delete the stream only
+  // if they have not seen it since, so a stream still receiving pushes is
+  // never deleted.
+  int64 removedLastSeenAt = 6;
 }
 
 message CheckLimitsAndShardRequest {

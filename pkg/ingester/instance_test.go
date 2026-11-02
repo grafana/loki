@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -101,6 +102,71 @@ func TestGetHashForLabels_MatchesLoglineStreamFingerprint(t *testing.T) {
 		require.NoError(t, err)
 		want, _ := logline.StreamFingerprint(ls, nil)
 		require.Equal(t, model.Fingerprint(want), i.getHashForLabels(ls), s)
+	}
+}
+
+// mockStreamRemovalNotifier records the streams it is notified of.
+type mockStreamRemovalNotifier struct {
+	services.Service
+	removed map[uint64]time.Time
+}
+
+func newMockStreamRemovalNotifier() *mockStreamRemovalNotifier {
+	return &mockStreamRemovalNotifier{
+		Service: services.NewIdleService(nil, nil),
+		removed: make(map[uint64]time.Time),
+	}
+}
+
+func (m *mockStreamRemovalNotifier) StreamRemoved(_ string, streamHashNoShard uint64, lastPushAt time.Time) {
+	m.removed[streamHashNoShard] = lastPushAt
+}
+
+func TestInstance_RemoveStreamNotifiesRemoval(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+	notifier := newMockStreamRemovalNotifier()
+	inst.streamRemovalNotifier = notifier
+
+	before := time.Now()
+	require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{app="a"}`, Entries: entries(1, before.Add(-time.Minute))},
+		{Labels: `{__stream_shard__="1", app="b"}`, Entries: entries(1, before.Add(-time.Minute))},
+		{Labels: `{app="c"}`, Entries: entries(1, before.Add(-time.Minute))},
+	}}))
+
+	var streams []*stream
+	require.NoError(t, inst.forAllStreams(context.Background(), func(s *stream) error {
+		streams = append(streams, s)
+		return nil
+	}))
+	require.Len(t, streams, 3)
+	for _, s := range streams {
+		s.chunkMtx.Lock()
+		// A stream with no push time, as after a WAL replay, is not reported.
+		if s.labels.Get("app") == "c" {
+			s.lastPushAt = time.Time{}
+		}
+		inst.removeStream(s)
+		s.chunkMtx.Unlock()
+	}
+
+	// The reported hash must be the one the distributor sends to the ingest
+	// limits service: the stable hash of the labels without the shard label.
+	hashOf := func(s string) uint64 {
+		ls, err := syntax.ParseLabels(s)
+		require.NoError(t, err)
+		return labels.StableHash(ls)
+	}
+	require.Len(t, notifier.removed, 2)
+	for _, ls := range []string{`{app="a"}`, `{app="b"}`} {
+		lastPushAt, ok := notifier.removed[hashOf(ls)]
+		require.True(t, ok, ls)
+		require.False(t, lastPushAt.Before(before), ls)
 	}
 }
 

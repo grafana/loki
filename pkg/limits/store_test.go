@@ -408,6 +408,89 @@ func TestUsageStore_Evict(t *testing.T) {
 	require.Equal(t, 2, actual2)
 }
 
+func TestUsageStore_RemoveCond(t *testing.T) {
+	const slack = 5 * time.Second
+	now := time.Unix(1_000_000, 0)
+	tests := []struct {
+		name string
+		// The streams in the store before the removal.
+		streams []streamUsage
+		// The removal to apply.
+		tenant            string
+		streamHash        uint64
+		removedLastSeenAt time.Time
+		// The expected result.
+		expectedRemoved bool
+		expectedHashes  []uint64
+	}{{
+		name:              "stream not seen since the removal is deleted",
+		streams:           []streamUsage{{hash: 0x1, lastSeenAt: now.UnixNano()}, {hash: 0x2, lastSeenAt: now.UnixNano()}},
+		tenant:            "tenant",
+		streamHash:        0x1,
+		removedLastSeenAt: now,
+		expectedRemoved:   true,
+		expectedHashes:    []uint64{0x2},
+	}, {
+		name:              "stream seen within the slack is deleted",
+		streams:           []streamUsage{{hash: 0x1, lastSeenAt: now.Add(slack).UnixNano()}},
+		tenant:            "tenant",
+		streamHash:        0x1,
+		removedLastSeenAt: now,
+		expectedRemoved:   true,
+		expectedHashes:    []uint64{},
+	}, {
+		name:              "stream seen after the removal and slack is kept",
+		streams:           []streamUsage{{hash: 0x1, lastSeenAt: now.Add(slack + time.Nanosecond).UnixNano()}},
+		tenant:            "tenant",
+		streamHash:        0x1,
+		removedLastSeenAt: now,
+		expectedRemoved:   false,
+		expectedHashes:    []uint64{0x1},
+	}, {
+		name:              "unknown stream is a no-op",
+		streams:           []streamUsage{{hash: 0x1, lastSeenAt: now.UnixNano()}},
+		tenant:            "tenant",
+		streamHash:        0x2,
+		removedLastSeenAt: now,
+		expectedRemoved:   false,
+		expectedHashes:    []uint64{0x1},
+	}, {
+		name:              "stream of another tenant is kept",
+		streams:           []streamUsage{{hash: 0x1, lastSeenAt: now.UnixNano()}},
+		tenant:            "other",
+		streamHash:        0x1,
+		removedLastSeenAt: now,
+		expectedRemoved:   false,
+		expectedHashes:    []uint64{0x1},
+	}, {
+		name:              "stream in a policy bucket is deleted",
+		streams:           []streamUsage{{hash: 0x1, lastSeenAt: now.UnixNano(), policy: "high-priority"}},
+		tenant:            "tenant",
+		streamHash:        0x1,
+		removedLastSeenAt: now,
+		expectedRemoved:   true,
+		expectedHashes:    []uint64{},
+	}}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, prometheus.NewRegistry())
+			require.NoError(t, err)
+			clock := quartz.NewMock(t)
+			clock.Set(now)
+			s.clock = clock
+			for _, stream := range test.streams {
+				s.setForTests("tenant", stream)
+			}
+			require.Equal(t, test.expectedRemoved, s.RemoveCond(test.tenant, test.streamHash, test.removedLastSeenAt, slack))
+			actual := make([]uint64, 0, len(test.expectedHashes))
+			for _, stream := range s.TenantActiveStreams("tenant") {
+				actual = append(actual, stream.hash)
+			}
+			require.ElementsMatch(t, test.expectedHashes, actual)
+		})
+	}
+}
+
 func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
 	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, &mockLimits{}, prometheus.NewRegistry())

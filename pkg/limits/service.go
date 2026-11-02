@@ -180,6 +180,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		streamShardsConsumer,
 		newOffsetReadinessCheck(s.partitionManager),
 		cfg.LifecyclerConfig.Zone,
+		cfg.RemovalRecordSlack,
 		logger,
 		reg,
 	)

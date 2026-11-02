@@ -35,14 +35,18 @@ type consumer struct {
 	// switched to ready.
 	readinessCheck partitionReadinessCheck
 	// zone is used to discard our own records.
-	zone   string
-	logger log.Logger
+	zone string
+	// removalRecordSlack is the clock skew tolerated when applying removal
+	// records.
+	removalRecordSlack time.Duration
+	logger             log.Logger
 
 	// Metrics.
 	lag              prometheus.Histogram
 	recordsFetched   prometheus.Counter
 	recordsDiscarded prometheus.Counter
 	recordsInvalid   prometheus.Counter
+	streamsRemoved   prometheus.Counter
 
 	// Used for tests.
 	clock quartz.Clock
@@ -56,18 +60,20 @@ func newConsumer(
 	streamShards *streamShardStore,
 	readinessCheck partitionReadinessCheck,
 	zone string,
+	removalRecordSlack time.Duration,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) *consumer {
 	return &consumer{
-		client:           client,
-		partitionManager: partitionManager,
-		usage:            usage,
-		streamShards:     streamShards,
-		readinessCheck:   readinessCheck,
-		zone:             zone,
-		logger:           logger,
-		clock:            quartz.NewReal(),
+		client:             client,
+		partitionManager:   partitionManager,
+		usage:              usage,
+		streamShards:       streamShards,
+		readinessCheck:     readinessCheck,
+		zone:               zone,
+		removalRecordSlack: removalRecordSlack,
+		logger:             logger,
+		clock:              quartz.NewReal(),
 		lag: promauto.With(reg).NewHistogram(
 			prometheus.HistogramOpts{
 				Name:                            "loki_ingest_limits_lag_seconds",
@@ -94,6 +100,12 @@ func newConsumer(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_records_invalid_total",
 				Help: "The total number of invalid records.",
+			},
+		),
+		streamsRemoved: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_streams_removed_total",
+				Help: "The total number of streams deleted by removal records.",
 			},
 		),
 	}
@@ -176,6 +188,20 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 	if err := s.Unmarshal(r.Value); err != nil {
 		c.recordsInvalid.Inc()
 		return fmt.Errorf("corrupted record: %w", err)
+	}
+	if s.Metadata == nil {
+		c.recordsInvalid.Inc()
+		return errors.New("record has no metadata")
+	}
+	// Removal records are written by ingesters, not by a zone of this
+	// service, so they are applied in every zone and in every partition
+	// state. The condition in RemoveCond makes them safe to apply more than
+	// once, and in any order relative to pushes seen after them.
+	if s.RemovedLastSeenAt != 0 {
+		if c.usage.RemoveCond(s.Tenant, s.Metadata.StreamHash, time.Unix(0, s.RemovedLastSeenAt), c.removalRecordSlack) {
+			c.streamsRemoved.Inc()
+		}
+		return nil
 	}
 	if c.shouldDiscardRecord(state, &s) {
 		c.recordsDiscarded.Inc()

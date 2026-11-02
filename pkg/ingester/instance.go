@@ -155,6 +155,10 @@ type instance struct {
 	customStreamsTracker push.UsageTracker
 
 	tenantsRetention *retention.TenantsRetention
+
+	// streamRemovalNotifier is notified when a stream is removed. It may be
+	// nil.
+	streamRemovalNotifier StreamRemovalNotifier
 }
 
 func newInstance(
@@ -454,7 +458,8 @@ func (i *instance) getOrCreateStream(ctx context.Context, pushReqStream logproto
 	return s, err
 }
 
-// removeStream removes a stream from the instance.
+// removeStream removes a stream from the instance. The caller must hold the
+// stream's chunkMtx.
 func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
@@ -467,6 +472,12 @@ func (i *instance) removeStream(s *stream) {
 		i.metrics.instance.streamsCountStats.Add(-1)
 		i.memoryPolicyStreams.dec(s.policy)
 		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.policy)
+		// A stream that has only been replayed from the WAL has no push time
+		// that is safe to report, as the ingest limits service may have seen
+		// pushes for it that the WAL did not hold.
+		if i.streamRemovalNotifier != nil && !s.lastPushAt.IsZero() {
+			i.streamRemovalNotifier.StreamRemoved(i.instanceID, s.labelHashNoShard, s.lastPushAt)
+		}
 	}
 }
 

@@ -18,6 +18,9 @@ const (
 	DefaultEvictInterval = 10 * time.Minute
 	DefaultNumPartitions = 64
 	DefaultConsumerGroup = "ingest-limits"
+	// DefaultRemovalRecordSlack is the default clock skew tolerated when
+	// applying removal records.
+	DefaultRemovalRecordSlack = 5 * time.Second
 )
 
 // Config represents the configuration for the ingest limits service.
@@ -46,6 +49,12 @@ type Config struct {
 	// StreamShardingDurabilityEnabled keeps the stream sharding rate buckets
 	// on the metadata topic.
 	StreamShardingDurabilityEnabled bool `yaml:"stream_sharding_durability_enabled"`
+
+	// RemovalRecordSlack is the clock skew tolerated between ingesters and
+	// the ingest limits service when applying removal records. A stream is
+	// deleted only if it has not been seen after the time in the removal
+	// record plus the slack.
+	RemovalRecordSlack time.Duration `yaml:"removal_record_slack"`
 
 	// The number of partitions for the Kafka topic used to read and write stream metadata.
 	// It is fixed, not a maximum.
@@ -96,6 +105,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable durability for stream sharding. Rate buckets are written to the stream metadata topic and restored from it, which removes the warm-up period after a restart or a partition rebalance during which streams are not sharded. It adds one record per stream per bucket size.",
 	)
+	f.DurationVar(
+		&cfg.RemovalRecordSlack,
+		"ingest-limits.removal-record-slack",
+		DefaultRemovalRecordSlack,
+		"EXPERIMENTAL: The clock skew tolerated between ingesters and the ingest limits service when applying stream removal records. A stream is deleted only if it has not been seen after the time of the last push the ingester received plus this slack.",
+	)
 	f.IntVar(
 		&cfg.NumPartitions,
 		"ingest-limits.num-partitions",
@@ -135,6 +150,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.EvictionInterval <= 0 {
 		return errors.New("eviction interval must be greater than 0")
+	}
+	if cfg.RemovalRecordSlack < 0 {
+		return errors.New("removal record slack must not be negative")
 	}
 	if cfg.NumPartitions <= 0 {
 		return errors.New("num partitions must be greater than 0")
