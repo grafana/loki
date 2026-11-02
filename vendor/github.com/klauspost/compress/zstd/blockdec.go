@@ -240,9 +240,11 @@ func (b *blockDec) decodeBuf(hist *history) error {
 			b.dst[i] = v
 		}
 		hist.appendKeep(b.dst)
+		hist.decoders.consumeSyncLen(len(b.dst))
 		return nil
 	case blockTypeRaw:
 		hist.appendKeep(b.data)
+		hist.decoders.consumeSyncLen(len(b.data))
 		return nil
 	case blockTypeCompressed:
 		saved := b.dst
@@ -400,8 +402,9 @@ func (b *blockDec) decodeLiterals(in []byte, hist *history) (remain []byte, err 
 			}
 		}
 		var err error
-		// Use our out buffer.
-		huff.MaxDecodedSize = litRegenSize
+		// Decoder.Decompress* uses cap(dst) for the size limit. Do not write
+		// MaxDecodedSize on hist.huffTree: with a trained dictionary that
+		// pointer aliases the shared dict.litEnc and concurrent DecodeAll races.
 		if fourStreams {
 			literals, err = huff.Decoder().Decompress4X(b.literalBuf[:0:litRegenSize], literals)
 		} else {
@@ -486,6 +489,7 @@ func (b *blockDec) decodeCompressed(hist *history) error {
 	}
 	if hist.decoders.nSeqs == 0 {
 		b.dst = append(b.dst, hist.decoders.literals...)
+		hist.decoders.consumeSyncLen(len(hist.decoders.literals))
 		return nil
 	}
 	before := len(hist.decoders.out)
@@ -673,10 +677,6 @@ func (b *blockDec) executeSequences(hist *history) error {
 	hbytes := hist.b
 	if len(hbytes) > hist.windowSize {
 		hbytes = hbytes[len(hbytes)-hist.windowSize:]
-		// We do not need history anymore.
-		if hist.dict != nil {
-			hist.dict.content = nil
-		}
 	}
 	hist.decoders.windowSize = hist.windowSize
 	hist.decoders.out = b.dst[:0]

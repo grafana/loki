@@ -20,6 +20,11 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// MethodQuery is the QUERY HTTP method. It is a safe, idempotent method that
+// carries a request body, see https://datatracker.ietf.org/doc/rfc10008/.
+// It is not yet part of net/http, so it is defined here.
+const MethodQuery = "QUERY"
+
 type param string
 
 // Param returns param p for the context, or the empty string when
@@ -112,6 +117,11 @@ func (r *Router) Post(path string, h http.HandlerFunc) {
 // Head registers a new HEAD route.
 func (r *Router) Head(path string, h http.HandlerFunc) {
 	r.rtr.HEAD(r.prefix+path, r.handle(path, h))
+}
+
+// Query registers a new QUERY route.
+func (r *Router) Query(path string, h http.HandlerFunc) {
+	r.rtr.Handle(MethodQuery, r.prefix+path, r.handle(path, h))
 }
 
 // Redirect takes an absolute path and sends an internal HTTP redirect for it,
