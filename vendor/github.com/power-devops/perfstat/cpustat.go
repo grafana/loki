@@ -16,12 +16,13 @@ import "C"
 
 import (
 	"fmt"
-	"runtime"
+    "sync"
 	"time"
 	"unsafe"
 )
 
 var old_cpu_total_stat *C.perfstat_cpu_total_t
+var cpuUtilMutex sync.Mutex
 
 func init() {
 	old_cpu_total_stat = (*C.perfstat_cpu_total_t)(C.malloc(C.sizeof_perfstat_cpu_total_t))
@@ -32,13 +33,18 @@ func CpuStat() ([]CPU, error) {
 	var cpustat *C.perfstat_cpu_t
 	var cpu C.perfstat_id_t
 
-	ncpu := runtime.NumCPU()
+	ncpu := C.perfstat_cpu(nil, nil, C.sizeof_perfstat_cpu_t, 0)
+    if ncpu <= 0 {
+        return nil, fmt.Errorf("perfstat_cpu() error")
+    }
 
 	cpustat_len := C.sizeof_perfstat_cpu_t * C.ulong(ncpu)
 	cpustat = (*C.perfstat_cpu_t)(C.malloc(cpustat_len))
 	defer C.free(unsafe.Pointer(cpustat))
-	C.strcpy(&cpu.name[0], C.CString(C.FIRST_CPU))
-	r := C.perfstat_cpu(&cpu, cpustat, C.sizeof_perfstat_cpu_t, C.int(ncpu))
+	cstr := C.CString(C.FIRST_CPU)
+	C.strcpy(&cpu.name[0], cstr)
+	C.free(unsafe.Pointer(cstr))
+	r := C.perfstat_cpu(&cpu, cpustat, C.sizeof_perfstat_cpu_t, ncpu)
 	if r <= 0 {
 		return nil, fmt.Errorf("error perfstat_cpu()")
 	}
@@ -110,6 +116,8 @@ func CpuUtilTotalStat() (*CPUUtil, error) {
 	var new_cpu_total_stat *C.perfstat_cpu_total_t
 	var data C.perfstat_rawdata_t
 
+    cpuUtilMutex.Lock()
+    defer cpuUtilMutex.Unlock()
 	new_cpu_total_stat = (*C.perfstat_cpu_total_t)(C.malloc(C.sizeof_perfstat_cpu_total_t))
 	cpuutil = (*C.perfstat_cpu_util_t)(C.malloc(C.sizeof_perfstat_cpu_util_t))
 	defer C.free(unsafe.Pointer(cpuutil))
