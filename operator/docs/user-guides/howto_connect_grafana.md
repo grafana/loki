@@ -42,7 +42,10 @@ If your LokiStack deployment has the gateway enabled, use one of the first two o
 
 The preferred option for accessing the data stored in Loki managed by loki-operator when running on OpenShift with the default OpenShift tenancy model is to go through the LokiStack gateway and do proper authentication against the authentication service included in OpenShift.
 
-An example configuration authenticating to the gateway in this manner is available in  [`addon_grafana_gateway_ocp_oauth.yaml`](https://raw.githubusercontent.com/grafana/loki/main/operator/hack/addon_grafana_gateway_ocp_oauth.yaml).
+The following example configurations for authenticating to the gateway in this manner are available:
+- For Grafana version < 9.0.0 [`addon_grafana_gateway_ocp_oauth.yaml`](https://raw.githubusercontent.com/grafana/loki/main/operator/hack/addon_grafana_gateway_ocp_oauth.yaml).
+- For Grafana version >= 9.0.0 [`addon_grafana_gateway_ocp_auth_grafana_9.yaml`](https://raw.githubusercontent.com/grafana/loki/main/operator/hack/addon_grafana_gateway_ocp_oauth_grafana9.yaml).
+  Note: You have to set the value of the `CLUSTER_ROUTES_BASE` environment.
 
 The configuration uses `oauth-proxy` to authenticate the user to the Grafana instance and forwards the token through Grafana to LokiStack's gateway service. This enables the configuration to fully take advantage of the tenancy model, so that users can only see the logs of their applications and only admins can view infrastructure and audit logs.
 
