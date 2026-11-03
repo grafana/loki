@@ -667,11 +667,13 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, rec
 		return
 	}
 
+	if !validRecordTimestamp(recordTime) {
+		return
+	}
+
 	// Replicas of a partition consume the same records, so the record timestamp is the same on
 	// all of them.
-	if validRecordTimestamp(recordTime) {
-		ch.IngestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
-	}
+	ch.IngestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.

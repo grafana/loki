@@ -397,12 +397,12 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 		recordTime time.Time
 		want       model.Time
 	}{
-		{"backfill stream under v14 without a record timestamp stays unset", v14, backfill, time.Time{}, 0},
-		{"non-backfill stream under v14 stays unset", v14, nonBackfill, time.Time{}, 0},
-		{"backfill stream under v13 stays unset", v13, backfill, time.Time{}, 0},
+		{"backfill stream on v14 without a record timestamp stays unset", v14, backfill, time.Time{}, 0},
+		{"non-backfill stream on v14 stays unset", v14, nonBackfill, time.Time{}, 0},
+		{"backfill stream on v13 stays unset", v13, backfill, time.Time{}, 0},
 		{"non-backfill stream with a record timestamp stays unset", v14, nonBackfill, recordTime, 0},
-		{"backfill stream under v13 with a record timestamp stays unset", v13, backfill, recordTime, 0},
-		{"backfill stream under v14 uses the record timestamp", v14, backfill, recordTime, model.Time(recordTime.UnixMilli())},
+		{"backfill stream on v13 with a record timestamp stays unset", v13, backfill, recordTime, 0},
+		{"backfill stream on v14 uses the record timestamp", v14, backfill, recordTime, model.Time(recordTime.UnixMilli())},
 		{"epoch record timestamp is not used", v14, backfill, time.UnixMilli(0), 0},
 		{"Kafka NoTimestamp is not used", v14, backfill, time.UnixMilli(-1), 0},
 	} {

@@ -17,13 +17,9 @@ type ChunkMeta struct {
 
 	// IngestedAt is the time the chunk was ingested (as opposed to the timestamps of its log
 	// lines): the highest timestamp of the Kafka records that fed it. It is recorded only for
-	// backfilled chunks ingested from Kafka — those whose stream carries the
-	// __backfill__="true" label — and is zero otherwise. In TSDB FormatV4 it is
-	// encoded as a day-precision delta against MaxTime, rounded up to the next UTC
-	// day boundary so retention measured from ingestion never expires a chunk early.
-	//
-	// It is also zero when the index version predates FormatV4 and does not carry
-	// this field.
+	// backfilled chunks (streams with __backfill__="true" label) ingested from Kafka.
+	// In TSDB FormatV4 it is encoded as a day-precision delta against MaxTime, rounded up to
+	// the next UTC day boundary so retention measured from ingestion never expires a chunk early.
 	//
 	// Example: MaxTime is 2026-01-10 14:30 UTC and the chunk was ingested on
 	// 2026-01-12 08:00 UTC. The ingestion time rounds up to 2026-01-13 00:00 UTC
