@@ -92,7 +92,10 @@ func TestWriteEntryWatermarks(t *testing.T) {
 
 		require.NoError(t, writer.WriteEntry(ctx, wmTenant, wmEntry("indexes/b", 0, 199, int64Ptr(99))))
 
-		require.Len(t, readToC(ctx, t, bucket, wmTocPath()), 2)
+		require.Equal(t, []tocRow{
+			{Tenant: wmTenant, Path: "indexes/a", StartUnix: 10, EndUnix: 20},
+			{Tenant: wmTenant, Path: "indexes/b", StartUnix: 10, EndUnix: 20},
+		}, readToC(ctx, t, bucket, wmTocPath()))
 		require.Equal(t, []watermarks.Watermark{wm(0, 199)}, readWatermarks(ctx, t, bucket, wmTocPath()))
 		require.Equal(t, uint64(1), sampleCount(t, writer.metrics.writeSeconds, opWriteEntry, changeWritten))
 	})
@@ -109,6 +112,8 @@ func TestWriteEntryWatermarks(t *testing.T) {
 		require.ErrorIs(t, err, ErrWatermarkMismatch)
 		var mismatch *WatermarkMismatchError
 		require.ErrorAs(t, err, &mismatch)
+		require.NotNil(t, mismatch.Expected)
+		require.NotNil(t, mismatch.Actual)
 		require.Equal(t, int64(99), *mismatch.Expected)
 		require.Equal(t, int64(150), *mismatch.Actual)
 		require.Equal(t, before, readRawToC(ctx, t, bucket, wmTocPath()))
@@ -141,6 +146,7 @@ func TestWriteEntryWatermarks(t *testing.T) {
 		var mismatch *WatermarkMismatchError
 		require.ErrorAs(t, err, &mismatch)
 		require.Nil(t, mismatch.Expected)
+		require.NotNil(t, mismatch.Actual)
 		require.Equal(t, int64(99), *mismatch.Actual)
 		require.Len(t, readToC(ctx, t, bucket, wmTocPath()), 1)
 	})
@@ -311,13 +317,14 @@ func TestWriteEntryWatermarks(t *testing.T) {
 
 		var mismatch *WatermarkMismatchError
 		require.ErrorAs(t, err, &mismatch)
+		require.NotNil(t, mismatch.Actual)
 		require.Equal(t, int64(150), *mismatch.Actual)
 		require.Equal(t, 2, bucket.calls, "the mismatch must stop the retries")
 		require.Len(t, readToC(ctx, t, inner, wmTocPath()), 2)
 		require.Equal(t, []watermarks.Watermark{wm(0, 150)}, readWatermarks(ctx, t, inner, wmTocPath()))
 	})
 
-	t.Run("reads a ToC with watermarks through the pointer read path", func(t *testing.T) {
+	t.Run("returns every pointer path and lists the tenant when the ToC holds watermark rows", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
 		require.NoError(t, writer.WriteEntry(ctx, wmTenant, wmEntry("indexes/a", 0, 99, nil)))
@@ -338,20 +345,85 @@ func TestWriteEntryWatermarks(t *testing.T) {
 		require.Equal(t, []string{wmTenant}, tenants)
 	})
 
-	t.Run("returns an error without a write when the update is not valid", func(t *testing.T) {
-		for name, update := range map[string]WatermarkUpdate{
-			"empty topic":         {Partition: 0, EndOffset: 1},
-			"negative partition":  {Topic: wmTopic, Partition: -1, EndOffset: 1},
-			"negative end offset": {Topic: wmTopic, EndOffset: -1},
-			"negative expected":   {Topic: wmTopic, EndOffset: 1, Expected: int64Ptr(-1)},
-			"end below expected":  {Topic: wmTopic, EndOffset: 1, Expected: int64Ptr(2)},
+	t.Run("returns a mismatch error and creates no ToC when the ToC does not exist and the caller has a value", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+
+		err := writer.WriteEntry(ctx, wmTenant, wmEntry("indexes/a", 0, 199, int64Ptr(99)))
+
+		require.ErrorIs(t, err, ErrWatermarkMismatch)
+		require.Empty(t, bucket.Objects())
+	})
+
+	t.Run("returns a mismatch error and keeps the ToC when the pointer is new and the watermark is above the end offset", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 500)})
+		before := readRawToC(ctx, t, bucket, wmTocPath())
+		writer := newTableOfContentsWriter(t, bucket)
+
+		err := writer.WriteEntry(ctx, wmTenant, wmEntry("indexes/b", 0, 199, int64Ptr(99)))
+
+		require.ErrorIs(t, err, ErrWatermarkMismatch)
+		require.Equal(t, before, readRawToC(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("adds the pointer and keeps the watermark when the expected value equals the end offset", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
+		writer := newTableOfContentsWriter(t, bucket)
+
+		require.NoError(t, writer.WriteEntry(ctx, wmTenant, wmEntry("indexes/b", 0, 99, int64Ptr(99))))
+
+		require.Len(t, readToC(ctx, t, bucket, wmTocPath()), 2)
+		require.Equal(t, []watermarks.Watermark{wm(0, 99)}, readWatermarks(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("returns an error and writes nothing when ReplaceIndexPointers gets an entry with a watermark update", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
+		before := readRawToC(ctx, t, bucket, wmTocPath())
+		writer := newTableOfContentsWriter(t, bucket)
+
+		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a"}, []TableOfContentsEntry{wmEntry("indexes/merged", 0, 199, int64Ptr(99))})
+
+		require.ErrorContains(t, err, "has a watermark update")
+		require.False(t, replaced)
+		require.Equal(t, before, readRawToC(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("copies the update so a later change by the caller does not affect the write", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
+		writer := newTableOfContentsWriter(t, bucket)
+		expected := int64(99)
+		entry := wmEntry("indexes/b", 0, 199, &expected)
+
+		require.NoError(t, writer.WriteEntry(ctx, wmTenant, entry))
+		expected = 1
+
+		require.Equal(t, []watermarks.Watermark{wm(0, 199)}, readWatermarks(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("returns a validation error and writes nothing when the update is not valid", func(t *testing.T) {
+		for _, tc := range []struct {
+			name   string
+			update WatermarkUpdate
+		}{
+			{"the topic is empty", WatermarkUpdate{Partition: 0, EndOffset: 1}},
+			{"the partition is negative", WatermarkUpdate{Topic: wmTopic, Partition: -1, EndOffset: 1}},
+			{"the end offset is negative", WatermarkUpdate{Topic: wmTopic, EndOffset: -1}},
+			{"the expected value is negative", WatermarkUpdate{Topic: wmTopic, EndOffset: 1, Expected: int64Ptr(-1)}},
+			{"the end offset is below the expected value", WatermarkUpdate{Topic: wmTopic, EndOffset: 1, Expected: int64Ptr(2)}},
 		} {
-			t.Run(name, func(t *testing.T) {
+			t.Run(tc.name, func(t *testing.T) {
 				bucket := objstore.NewInMemBucket()
 				writer := newTableOfContentsWriter(t, bucket)
-				entry := TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(10), EndTime: unixTime(20), Watermark: &update}
+				entry := TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(10), EndTime: unixTime(20), Watermark: &tc.update}
 
-				require.Error(t, writer.WriteEntry(ctx, wmTenant, entry))
+				err := writer.WriteEntry(ctx, wmTenant, entry)
+
+				require.ErrorContains(t, err, "watermark update has")
+				require.NotErrorIs(t, err, ErrWatermarkMismatch)
 				require.Empty(t, bucket.Objects())
 			})
 		}
