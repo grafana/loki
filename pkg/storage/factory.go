@@ -414,7 +414,7 @@ func (c *ClientMetrics) Unregister() {
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		c, err := bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, util_log.Logger)
+		c, err := bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, cfg.MaxParallelGetChunk, util_log.Logger)
 		if err != nil {
 			// See if the admin has forgotten to set up any config, e.g. because they didn't realize the default changed.
 			var blankConfig bucket.ConfigWithNamedStores

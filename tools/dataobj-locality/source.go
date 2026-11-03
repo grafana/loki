@@ -127,7 +127,7 @@ func isCompactedIndexPath(path string) bool {
 // buildBucketFromLokiConfig loads a full Loki config file and derives the
 // object-store bucket and metastore config from it, mirroring the
 // getDataObjBucket + compaction-worker wiring in pkg/loki/modules.go.
-func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv bool, logger log.Logger) (objstore.Bucket, metastore.Config, error) {
+func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv bool, concurrency int, logger log.Logger) (objstore.Bucket, metastore.Config, error) {
 	level.Info(logger).Log("msg", "loading loki config", "file", configFile)
 
 	args := []string{"-config.file=" + configFile}
@@ -163,7 +163,7 @@ func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv
 		"index_prefix", mCfg.IndexStoragePrefix,
 	)
 
-	ib, err := bucket.NewClient(ctx, backend, objCfg.Config, "dataobj-locality", logger, nil)
+	ib, err := bucket.NewClient(ctx, backend, objCfg.Config, "dataobj-locality", logger, concurrency, nil)
 	if err != nil {
 		return nil, metastore.Config{}, fmt.Errorf("creating bucket client: %w", err)
 	}

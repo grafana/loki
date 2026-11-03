@@ -33,7 +33,7 @@ func TestNewBucketClientTLSConfig(t *testing.T) {
 	cfg.HTTP.TLSConfig.ServerName = "my-azure-endpoint"
 
 	var captured azure.Config
-	_, err := newBucketClient(cfg, "test", log.NewNopLogger(), nil, captureFactory(&captured))
+	_, err := newBucketClient(cfg, "test", 0, log.NewNopLogger(), nil, captureFactory(&captured))
 	require.NoError(t, err)
 
 	require.Equal(t, "/etc/ssl/ca.crt", captured.HTTPConfig.TLSConfig.CAFile)
@@ -52,7 +52,7 @@ func TestNewBucketClientDefaultsUnchanged(t *testing.T) {
 	// Deliberately leave cfg.HTTP at zero value.
 
 	var captured azure.Config
-	_, err := newBucketClient(cfg, "test", log.NewNopLogger(), nil, captureFactory(&captured))
+	_, err := newBucketClient(cfg, "test", 0, log.NewNopLogger(), nil, captureFactory(&captured))
 	require.NoError(t, err)
 
 	require.Empty(t, captured.HTTPConfig.TLSConfig.CAFile)

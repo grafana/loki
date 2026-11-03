@@ -93,7 +93,7 @@ func newFakeS3Bucket(t *testing.T) (*fakeS3, objstore.Bucket) {
 			SecretAccessKey: flagext.SecretWithValue("test"),
 			Insecure:        true,
 		},
-	}, "test", log.NewNopLogger(), nil)
+	}, "test", log.NewNopLogger(), 10, nil)
 	require.NoError(t, err)
 	return srv, bkt
 }

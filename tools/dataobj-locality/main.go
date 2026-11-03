@@ -74,7 +74,7 @@ func (cmd *localityCommand) run() error {
 		return fmt.Errorf("--sort-key must be set when --locality includes logs")
 	}
 
-	src, err := cmd.buildSource(ctx, logger, from, to)
+	src, err := cmd.buildSource(ctx, logger, *cmd.concurrency, from, to)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (cmd *localityCommand) run() error {
 
 // buildSource constructs the section source from the mutually-exclusive
 // --dir (local) or --config.file (bucket) flags.
-func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, from, to time.Time) (sectionSource, error) {
+func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, concurrency int, from, to time.Time) (sectionSource, error) {
 	var (
 		b    objstore.Bucket
 		mCfg metastore.Config
@@ -137,7 +137,7 @@ func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, 
 			return nil, fmt.Errorf("--tenant is required for the bucket source")
 		}
 		var err error
-		b, mCfg, err = buildBucketFromLokiConfig(ctx, *cmd.lokiConfigFile, *cmd.expandEnv, logger)
+		b, mCfg, err = buildBucketFromLokiConfig(ctx, *cmd.lokiConfigFile, *cmd.expandEnv, concurrency, logger)
 		if err != nil {
 			return nil, err
 		}

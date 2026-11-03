@@ -98,7 +98,7 @@ func newCongestionControlledS3(t *testing.T, handler http.HandlerFunc) congestio
 	}
 	require.NoError(t, storeCfg.DisableRetries(bucket.S3))
 
-	adapter, err := bucket.NewObjectClient(context.Background(), bucket.S3, storeCfg, "test", hedging.Config{}, log.NewNopLogger())
+	adapter, err := bucket.NewObjectClient(context.Background(), bucket.S3, storeCfg, "test", hedging.Config{}, 0, log.NewNopLogger())
 	require.NoError(t, err)
 
 	cfg := congestion.Config{
