@@ -21,7 +21,7 @@ import (
 type SimpleValue uint8
 
 var (
-	typeSimpleValue = reflect.TypeOf(SimpleValue(0))
+	typeSimpleValue = reflect.TypeFor[SimpleValue]()
 )
 
 // MarshalCBOR encodes SimpleValue as CBOR simple value (major type 7).
@@ -81,7 +81,7 @@ func (sv *SimpleValue) unmarshalCBOR(data []byte) error {
 
 	d := decoder{data: data, dm: defaultDecMode}
 
-	typ, ai, val := d.getHead()
+	typ, ai, val := d.readHead()
 
 	if typ != cborTypePrimitives {
 		return &UnmarshalTypeError{CBORType: typ.String(), GoType: "SimpleValue"}

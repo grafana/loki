@@ -4,7 +4,6 @@
 package cbor
 
 import (
-	"bytes"
 	"reflect"
 	"sync"
 )
@@ -14,7 +13,7 @@ type mapKeyValueEncodeFunc struct {
 	kpool, vpool sync.Pool
 }
 
-func (me *mapKeyValueEncodeFunc) encodeKeyValues(e *bytes.Buffer, em *encMode, v reflect.Value, kvs []keyValue) error {
+func (me *mapKeyValueEncodeFunc) encodeKeyValues(dst []byte, em *encMode, v reflect.Value, kvs []keyValue) ([]byte, error) {
 	iterk := me.kpool.Get().(*reflect.Value)
 	defer func() {
 		iterk.SetZero()
@@ -26,42 +25,44 @@ func (me *mapKeyValueEncodeFunc) encodeKeyValues(e *bytes.Buffer, em *encMode, v
 		me.vpool.Put(iterv)
 	}()
 
+	var err error
+
 	if kvs == nil {
 		for i, iter := 0, v.MapRange(); iter.Next(); i++ {
 			iterk.SetIterKey(iter)
 			iterv.SetIterValue(iter)
 
-			if err := me.kf(e, em, *iterk); err != nil {
-				return err
+			if dst, err = me.kf(dst, em, *iterk); err != nil {
+				return dst, err
 			}
-			if err := me.ef(e, em, *iterv); err != nil {
-				return err
+			if dst, err = me.ef(dst, em, *iterv); err != nil {
+				return dst, err
 			}
 		}
-		return nil
+		return dst, nil
 	}
 
-	initial := e.Len()
+	initial := len(dst)
 	for i, iter := 0, v.MapRange(); iter.Next(); i++ {
 		iterk.SetIterKey(iter)
 		iterv.SetIterValue(iter)
 
-		offset := e.Len()
-		if err := me.kf(e, em, *iterk); err != nil {
-			return err
+		offset := len(dst)
+		if dst, err = me.kf(dst, em, *iterk); err != nil {
+			return dst, err
 		}
-		valueOffset := e.Len()
-		if err := me.ef(e, em, *iterv); err != nil {
-			return err
+		valueOffset := len(dst)
+		if dst, err = me.ef(dst, em, *iterv); err != nil {
+			return dst, err
 		}
 		kvs[i] = keyValue{
 			offset:      offset - initial,
 			valueOffset: valueOffset - initial,
-			nextOffset:  e.Len() - initial,
+			nextOffset:  len(dst) - initial,
 		}
 	}
 
-	return nil
+	return dst, nil
 }
 
 func getEncodeMapFunc(t reflect.Type, newEncodeFuncs map[reflect.Type]*inProgressEncodeFuncs) encodeFunc {
