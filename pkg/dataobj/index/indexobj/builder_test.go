@@ -170,6 +170,8 @@ func TestBuilder_AppendWatermark(t *testing.T) {
 	t.Run("holds index pointers and watermarks in one object", func(t *testing.T) {
 		builder := newBuilder(t)
 		require.NoError(t, builder.AppendWatermark("topic", 7, 42))
+		require.NoError(t, builder.AppendWatermark("topic", 8, 43))
+		require.NoError(t, builder.AppendWatermark("other-topic", 8, 44))
 		for _, p := range testPointers {
 			require.NoError(t, builder.AppendIndexPointer(p))
 		}
@@ -179,7 +181,11 @@ func TestBuilder_AppendWatermark(t *testing.T) {
 		defer closer.Close()
 
 		require.Equal(t, testPointers, readPointers(t, obj))
-		require.Equal(t, []watermarks.Watermark{{Topic: "topic", Partition: 7, Watermark: 42}}, readWatermarks(t, obj))
+		require.Equal(t, []watermarks.Watermark{
+			{Topic: "other-topic", Partition: 8, Watermark: 44},
+			{Topic: "topic", Partition: 7, Watermark: 42},
+			{Topic: "topic", Partition: 8, Watermark: 43},
+		}, readWatermarks(t, obj))
 	})
 
 	t.Run("returns an error and records nothing for an invalid watermark", func(t *testing.T) {
@@ -190,6 +196,18 @@ func TestBuilder_AppendWatermark(t *testing.T) {
 
 		_, _, err := builder.Flush()
 		require.ErrorIs(t, err, ErrBuilderEmpty)
+	})
+
+	t.Run("returns an error and keeps the old value when the watermark is lower", func(t *testing.T) {
+		builder := newBuilder(t)
+		require.NoError(t, builder.AppendWatermark("topic", 1, 5))
+		require.Error(t, builder.AppendWatermark("topic", 1, 4))
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		require.Equal(t, []watermarks.Watermark{{Topic: "topic", Partition: 1, Watermark: 5}}, readWatermarks(t, obj))
 	})
 
 	t.Run("builds nothing for a watermark after Reset", func(t *testing.T) {

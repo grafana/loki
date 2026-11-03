@@ -80,7 +80,7 @@ func (s *Section) init() error {
 	if s.isEmpty() {
 		return nil
 	}
-	for _, ct := range []ColumnType{ColumnTypeTopic, ColumnTypePartition, ColumnTypeWatermark} {
+	for _, ct := range sectionColumns {
 		if counts[ct] != 1 {
 			return fmt.Errorf("got %d %s columns, want 1", counts[ct], ct)
 		}
@@ -99,6 +99,10 @@ func (s *Section) isEmpty() bool { return len(s.inner.Columns()) == 0 }
 // Unrecognized columns (e.g., when running older code against newer watermarks
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
+
+// sectionColumns lists the column types that a non-empty section holds, one
+// column each.
+var sectionColumns = []ColumnType{ColumnTypeTopic, ColumnTypePartition, ColumnTypeWatermark}
 
 // ColumnType represents the kind of information stored in a [Column].
 type ColumnType int

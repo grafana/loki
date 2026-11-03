@@ -1,7 +1,6 @@
 package watermarks
 
 import (
-	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,59 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
-
-func TestDecodeRow(t *testing.T) {
-	columns := []*Column{
-		{Type: ColumnTypeTopic},
-		{Type: ColumnTypePartition},
-		{Type: ColumnTypeWatermark},
-	}
-
-	t.Run("decodes a valid row", func(t *testing.T) {
-		var wm Watermark
-		row := dataset.Row{Values: []dataset.Value{
-			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(0), dataset.Int64Value(0),
-		}}
-
-		require.NoError(t, decodeRow(columns, row, &wm))
-		require.Equal(t, Watermark{Topic: "topic"}, wm)
-	})
-
-	for name, row := range map[string]dataset.Row{
-		"fails when the topic is empty": {Values: []dataset.Value{
-			dataset.BinaryValue(nil), dataset.Int64Value(1), dataset.Int64Value(1),
-		}},
-		"fails when the topic has the wrong physical type": {Values: []dataset.Value{
-			dataset.Int64Value(1), dataset.Int64Value(1), dataset.Int64Value(1),
-		}},
-		"fails when the partition is nil": {Values: []dataset.Value{
-			dataset.BinaryValue([]byte("topic")), {}, dataset.Int64Value(1),
-		}},
-		"fails when the partition overflows int32": {Values: []dataset.Value{
-			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(math.MaxInt32 + 1), dataset.Int64Value(1),
-		}},
-		"fails when the partition is negative": {Values: []dataset.Value{
-			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(-1), dataset.Int64Value(1),
-		}},
-		"fails when the watermark is negative": {Values: []dataset.Value{
-			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(1), dataset.Int64Value(-1),
-		}},
-		"fails when the watermark is nil": {Values: []dataset.Value{
-			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(1), {},
-		}},
-		"fails when the watermark has the wrong physical type": {Values: []dataset.Value{
-			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(1), dataset.BinaryValue([]byte("x")),
-		}},
-		"fails when the row has more values than columns": {Values: []dataset.Value{
-			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(1), dataset.Int64Value(1), dataset.Int64Value(1),
-		}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			var wm Watermark
-			require.Error(t, decodeRow(columns, row, &wm))
-		})
-	}
-}
 
 type testColumn struct {
 	tag     string
@@ -130,11 +76,18 @@ func buildRawObject(t *testing.T, columns ...testColumn) *dataobj.Object {
 	return obj
 }
 
-func TestOpen_RawSections(t *testing.T) {
+func TestOpen(t *testing.T) {
 	topic := testColumn{tag: "topic", logical: "topic", strs: []string{"topic"}}
 	partition := testColumn{tag: "partition", logical: "partition", ints: []int64{3}}
 	watermark := testColumn{tag: "watermark", logical: "watermark", ints: []int64{9}}
 	future := testColumn{tag: "future", logical: "future_field", ints: []int64{1}}
+
+	t.Run("returns an error for a section of another type", func(t *testing.T) {
+		obj := buildOtherSectionObject(t)
+
+		_, err := Open(t.Context(), obj.Sections()[0])
+		require.Error(t, err)
+	})
 
 	t.Run("skips a column of an unknown type and reads the known columns", func(t *testing.T) {
 		obj := buildRawObject(t, topic, partition, watermark, future)

@@ -59,12 +59,13 @@ func (b *Builder) Tenant() string { return b.tenant }
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Set stores the watermark of a topic and partition. A second call for the same
-// topic and partition replaces the first watermark, even with a lower value, so
-// the caller decides which value wins.
+// topic and partition replaces the first watermark with a higher or equal one.
 //
-// Set returns an error, and stores nothing, if the topic is empty or the
-// partition or the watermark is negative. The reader rejects such rows, so the
-// builder must not write them.
+// Set returns an error, and stores nothing, if the topic is empty, if the
+// partition or the watermark is negative, or if the watermark is lower than the
+// one already stored. A watermark only moves forward, so a lower value points
+// to a bug in the caller. The reader rejects negative rows, so the builder must
+// not write them.
 func (b *Builder) Set(topic string, partition int32, watermark int64) error {
 	switch {
 	case topic == "":
@@ -74,27 +75,36 @@ func (b *Builder) Set(topic string, partition int32, watermark int64) error {
 	case watermark < 0:
 		return fmt.Errorf("watermark must not be negative: got %d", watermark)
 	}
-	b.watermarks[topicPartition{topic: topic, partition: partition}] = watermark
+
+	key := topicPartition{topic: topic, partition: partition}
+	if current, ok := b.watermarks[key]; ok && watermark < current {
+		return fmt.Errorf("watermark of topic %q partition %d must not decrease: got %d, have %d", topic, partition, watermark, current)
+	}
+	b.watermarks[key] = watermark
 	return nil
 }
 
 // EstimatedSize returns the estimated size of the watermarks section in
 // bytes. It returns 0 when the builder holds no rows.
+//
+// The estimate counts the topic bytes, 8 bytes for each partition and
+// watermark, and a fixed metadata overhead for each column. The delta encoding
+// of the numbers makes the real size smaller, so the estimate is an upper
+// bound.
 func (b *Builder) EstimatedSize() int {
 	if len(b.watermarks) == 0 {
 		return 0
 	}
 
-	// Assume an average topic name of 32 bytes, an 8 byte partition, an 8 byte
-	// watermark, and 100 bytes of metadata for each of the 3 columns. A section
-	// holds a few rows, so no compression is assumed.
 	const (
-		avgTopicLength   = 32
-		rowSize          = avgTopicLength + 8 + 8
+		numbersSize      = 8 + 8
 		metadataOverhead = 100
-		columns          = 3
 	)
-	return len(b.watermarks)*rowSize + columns*metadataOverhead
+	size := len(sectionColumns) * metadataOverhead
+	for key := range b.watermarks {
+		size += len(key.topic) + numbersSize
+	}
+	return size
 }
 
 // Flush writes the watermarks section to w. On success, Flush resets b.

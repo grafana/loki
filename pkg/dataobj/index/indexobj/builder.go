@@ -238,10 +238,11 @@ func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
 
 // AppendWatermark records the highest offset of a Kafka topic and partition
 // whose records the object holds. A second call for the same topic and
-// partition replaces the first value, even with a lower one.
+// partition replaces the first value.
 //
-// AppendWatermark returns an error if the topic is empty or the partition or
-// the watermark is negative.
+// AppendWatermark returns an error if the topic is empty, if the partition or
+// the watermark is negative, or if the watermark is lower than the one already
+// recorded for the topic and partition.
 func (b *Builder) AppendWatermark(topic string, partition int32, watermark int64) error {
 	if err := b.getWatermarksBuilder().Set(topic, partition, watermark); err != nil {
 		return err
