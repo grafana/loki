@@ -238,6 +238,10 @@ func groupByStream(records []partition.Record) []streamGroup {
 	return groups
 }
 
+// canRetry reports whether a push that failed with err is retried with backoff until it succeeds
+// or the consumer stops. Meanwhile the stream's worker is blocked and the commit can't move past
+// its record, so a retryable error stalls the partition until it clears. Only ingester-wide
+// conditions (shutdown, WAL disk throttling) belong here, never one tied to a stream or tenant.
 func canRetry(err error) bool {
 	return errors.Is(err, ErrReadOnly)
 }
