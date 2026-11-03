@@ -157,7 +157,6 @@
 * correct missing accumulation metric ([#20734](https://github.com/grafana/loki/issues/20734)) ([88cb599](https://github.com/grafana/loki/commit/88cb5996126181c356a355d931b7baea6104d1dd))
 * correct relative path to configuration examples ([#20546](https://github.com/grafana/loki/issues/20546)) ([9001084](https://github.com/grafana/loki/commit/90010843b7039be0c25b1cb665119a29e90e2abd))
 * correctness failure for aggregations with a drop ([#20782](https://github.com/grafana/loki/issues/20782)) ([3b44b80](https://github.com/grafana/loki/commit/3b44b8057b0ecefd7b62dc5c68ba63150893bfee))
-* CVEs in release 3.7.x ([#21771](https://github.com/grafana/loki/issues/21771)) ([bb4c5d8](https://github.com/grafana/loki/commit/bb4c5d8758b8540cb742466683143a9ea93743c8))
 * **dataobj-inspect:** Enhance dump and list-streams commands ([#20757](https://github.com/grafana/loki/issues/20757)) ([cd3fd30](https://github.com/grafana/loki/commit/cd3fd30a46d7c59fea5b124f3f252df960ca2148))
 * **dataobj:** Also apply categorize labels to parsed labels ([#20671](https://github.com/grafana/loki/issues/20671)) ([660ce3f](https://github.com/grafana/loki/commit/660ce3f238b0217d582340221d13d423a5c733ee))
 * **dataobj:** Avoid deadlock in index-builder when cancelling mid-build ([#20621](https://github.com/grafana/loki/issues/20621)) ([294d574](https://github.com/grafana/loki/commit/294d574bc907c58cfadb2e376a45e1411b3e66f1))
@@ -191,7 +190,6 @@
 * **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.96.1 (main) ([#20993](https://github.com/grafana/loki/issues/20993)) ([d36987e](https://github.com/grafana/loki/commit/d36987e0eb9e391acd7c89fef19d48df059b4b56))
 * **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.96.2 (main) ([#21025](https://github.com/grafana/loki/issues/21025)) ([b24c270](https://github.com/grafana/loki/commit/b24c270b8f5a46e75daeacbb90e3cbb4e3995239))
 * **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.97.1 (main) ([#21094](https://github.com/grafana/loki/issues/21094)) ([dc46c09](https://github.com/grafana/loki/commit/dc46c0977b6b3d36adf9337e120bc8214f3faf84))
-* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.97.3 [security] (release-3.7.x) ([#21457](https://github.com/grafana/loki/issues/21457)) ([7bc9450](https://github.com/grafana/loki/commit/7bc945082fd7ef7632a9bfd18cc22f23130ea64a))
 * **deps:** update module github.com/aws/smithy-go to v1.24.1 (main) ([#20939](https://github.com/grafana/loki/issues/20939)) ([9926aa9](https://github.com/grafana/loki/commit/9926aa95edf8a421daa9f20479e7c4f2ede8f655))
 * **deps:** update module github.com/aws/smithy-go to v1.24.2 (main) ([#21036](https://github.com/grafana/loki/issues/21036)) ([07c0410](https://github.com/grafana/loki/commit/07c0410a8ba16d0ac673843b4b556b125a1ba9a1))
 * **deps:** update module github.com/baidubce/bce-sdk-go to v0.9.259 (main) ([#20644](https://github.com/grafana/loki/issues/20644)) ([09c2509](https://github.com/grafana/loki/commit/09c250963594397f97b52cfa326bd77c61d97bc6))
@@ -263,7 +261,6 @@
 * **engine:** correct 'end' attribute in Basic.Execute trace span ([#20561](https://github.com/grafana/loki/issues/20561)) ([1fa1a15](https://github.com/grafana/loki/commit/1fa1a15598643b355712763c116263700387af37))
 * **engine:** fix additional instances of writing/reading on a closed conn ([#20982](https://github.com/grafana/loki/issues/20982)) ([1f7cacf](https://github.com/grafana/loki/commit/1f7cacfb27d31daacce9a68b3859e4d9091f980c))
 * **enginev2:** Copy values when storing min/max stats ([#20589](https://github.com/grafana/loki/issues/20589)) ([6f72400](https://github.com/grafana/loki/commit/6f72400daa2835177d8978b33d88b6f00434e31d))
-* Fix ruler panic related to unset validation scheme (backport release-3.7.x) ([#21401](https://github.com/grafana/loki/issues/21401)) ([cf65729](https://github.com/grafana/loki/commit/cf65729674b1f0be8011223c474df3e2e5253216))
 * fix two skipped logql benchmark queries ([#20897](https://github.com/grafana/loki/issues/20897)) ([773b760](https://github.com/grafana/loki/commit/773b760dca0bc7f4a4b89f21881ca55f2401c43e))
 * Fix typo in Helm deployment guide ([#20608](https://github.com/grafana/loki/issues/20608)) ([4a2ce63](https://github.com/grafana/loki/commit/4a2ce635d76ae3043c009ddc1d10cb78a548be6e))
 * force releaseplease version ([#21272](https://github.com/grafana/loki/issues/21272)) ([e0b94ef](https://github.com/grafana/loki/commit/e0b94ef23db30126ec578e443d0137e7763bcc9a))
@@ -312,7 +309,6 @@
 * service failure on stopping kafkav2 consumer ([#20672](https://github.com/grafana/loki/issues/20672)) ([fcdd2ad](https://github.com/grafana/loki/commit/fcdd2adf2ace48515d56cc2a16717fee2762bbe5))
 * set consumption lag to zero after idle flush timeout ([#20620](https://github.com/grafana/loki/issues/20620)) ([14d2285](https://github.com/grafana/loki/commit/14d2285b763469892d7a5e36075366ca3c4850b2))
 * skip benchmark queries unsupported by v2 engine for goldfish comparison ([#21186](https://github.com/grafana/loki/issues/21186)) ([a668dca](https://github.com/grafana/loki/commit/a668dcab4e7c11d10f499c9743c24eac634ec1d6))
-* **storage:** attach SHA-256 checksum on PutObject for Object Lock buckets ([#21849](https://github.com/grafana/loki/issues/21849)) ([7df13d9](https://github.com/grafana/loki/commit/7df13d9ad3993700c3aff23edf5dfa2966281416))
 * **test:** Ensure timestamp test works in all timezones ([#20916](https://github.com/grafana/loki/issues/20916)) ([1bf3b78](https://github.com/grafana/loki/commit/1bf3b788b02f851a95882741b14d0592bcfd1e68))
 * **Thor:** Allow non-strict parsing with logfmt ([#21013](https://github.com/grafana/loki/issues/21013)) ([2b0a5a6](https://github.com/grafana/loki/commit/2b0a5a6e4d88a8d1d0ecdbe84c5aab47fcceab83))
 * **thor:** Fix error filtering before range aggregations ([#20560](https://github.com/grafana/loki/issues/20560)) ([514a142](https://github.com/grafana/loki/commit/514a14285996af806c4f37a58a86979459d0d4e2))
@@ -320,7 +316,6 @@
 * **thor:** incorrect empty records skipping  ([#20812](https://github.com/grafana/loki/issues/20812)) ([b1f059d](https://github.com/grafana/loki/commit/b1f059d4e078c0a2312390797224f433013b01b8))
 * **thor:** Return empty log lines properly for the new engine ([#20971](https://github.com/grafana/loki/issues/20971)) ([b2d98d6](https://github.com/grafana/loki/commit/b2d98d676c7d6442b3fa49bf09c7c6193de9b008))
 * typo - oki -&gt; loki ([#21051](https://github.com/grafana/loki/issues/21051)) ([50d878b](https://github.com/grafana/loki/commit/50d878b39d47a20ee41eb76b0cda737b0f754679))
-* Upgrade Go and gRPC versions on 3.7.x ([#21282](https://github.com/grafana/loki/issues/21282)) ([2c8fff2](https://github.com/grafana/loki/commit/2c8fff222bab6813374b973ae0eb49043d3ed14e))
 * Use newer Go in fluentbit and fix canary test (backport k299) ([#21257](https://github.com/grafana/loki/issues/21257)) ([e437140](https://github.com/grafana/loki/commit/e4371407795290e9e54342bc6865bbfd4224586b))
 * use TrimSuffix over Trim ([#20830](https://github.com/grafana/loki/issues/20830)) ([1cb060b](https://github.com/grafana/loki/commit/1cb060b0184e15c3e54d2a05e7df8e8cb1524948))
 * WAL replay hang when flush doesn't progress ([#21176](https://github.com/grafana/loki/issues/21176)) ([fb58ab8](https://github.com/grafana/loki/commit/fb58ab8c21f0cfa3c5b954900667b2d7493dbd6f))
@@ -1677,7 +1672,6 @@ fix(ruler): Return StatusBadRequest on multiple org IDs (#17850)
 ### Bug Fixes
 
 * **deps:** Move to Go 1.24.5 ([#18412](https://github.com/grafana/loki/issues/18412)) ([2aa4680](https://github.com/grafana/loki/commit/2aa468065721587d0db829ff6b3cce9b73c10699))
-* Handle WAL corruption properly on startup (backport release-3.5.x) ([#18408](https://github.com/grafana/loki/issues/18408)) ([5b8ee9a](https://github.com/grafana/loki/commit/5b8ee9a582d168cbde2cb5a0bad48283069351d6))
 
 ## [3.5.2](https://github.com/grafana/loki/compare/v3.5.1...v3.5.2) (2025-07-10)
 
@@ -2369,7 +2363,6 @@ fix(ruler): Return StatusBadRequest on multiple org IDs (#17850)
 ### Miscellaneous Chores
 
 - **promtail:** Switch Promtail base image from Debian to Ubuntu to fix critical security issues (https://github.com/grafana/loki/issues/15195).
-- **docker:** Move from base-nossl to static. This PR removes the inclusion of glibc into most of the Docker images created by the Loki build system. ([#15203](https://github.com/grafana/loki/issues/15203)).
 
 ## [3.3.0](https://github.com/grafana/loki/compare/v3.2.1...v3.3.0) (2024-11-19)
 
