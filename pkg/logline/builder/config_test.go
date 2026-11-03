@@ -549,6 +549,7 @@ func TestKafkaConfigFlags(t *testing.T) {
 		"logline-builder.kafka.consumer-group-name",
 		"logline-builder.kafka.session-timeout",
 		"logline-builder.kafka.instance-id",
+		"logline-builder.kafka.api-versions-max-version",
 	} {
 		require.NotNil(t, fs.Lookup(name), "missing flag %s", name)
 	}
@@ -566,6 +567,7 @@ func TestKafkaConfigFlags(t *testing.T) {
 	require.Zero(t, cfg.Kafka.DialTimeout)
 	require.Equal(t, DefaultConsumerGroupName, cfg.Kafka.ConsumerGroupName)
 	require.Equal(t, DefaultKafkaSessionTimeout, cfg.Kafka.SessionTimeout)
+	require.Equal(t, kafka.DefaultAPIVersionsMaxVersion, cfg.Kafka.APIVersionsMaxVersion)
 }
 
 // TestConfig_ExtractThreads_ValidRangeAndDefault pins the extract_threads

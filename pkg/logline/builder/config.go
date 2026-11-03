@@ -96,6 +96,10 @@ type KafkaConfig struct {
 	// same identity instead of triggering a rebalance. Defaults to
 	// os.Hostname() when empty.
 	InstanceID string `yaml:"instance_id"`
+
+	// APIVersionsMaxVersion is not inherited from the root config: it has a
+	// real default, so unset can't be told apart from deliberately set.
+	APIVersionsMaxVersion int `yaml:"api_versions_max_version"`
 }
 
 func (c *KafkaConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -124,6 +128,8 @@ func (c *KafkaConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.InstanceID, prefix+".instance-id", "",
 		"Kafka static-membership ID (defaults to os.Hostname() if empty). "+
 			"Pod restarts within session-timeout rejoin without rebalance.")
+	f.IntVar(&c.APIVersionsMaxVersion, prefix+".api-versions-max-version", kafka.DefaultAPIVersionsMaxVersion,
+		"Kafka ApiVersions max version. See -kafka.api-versions-max-version.")
 }
 
 // ApplyDefaultsFrom fills every unset field from Loki's root kafka_config.
@@ -184,6 +190,9 @@ func (c *KafkaConfig) Validate() error {
 	}
 	if c.SessionTimeout < 0 {
 		return fmt.Errorf("session_timeout must be non-negative, got %v", c.SessionTimeout)
+	}
+	if c.APIVersionsMaxVersion < 0 {
+		return kafka.ErrInvalidAPIVersionsMaxVersion
 	}
 
 	// InstanceID defaults to os.Hostname() so each pod gets a stable static-

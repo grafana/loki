@@ -137,3 +137,25 @@ func TestProducerLingerMustBeValid(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIVersionsMaxVersionMustBeValid(t *testing.T) {
+	cfg := Config{
+		ReaderConfig: ClientConfig{
+			Address:  "abcd",
+			ClientID: "reader",
+		},
+		Topic:                                "abcd",
+		ProducerMaxRecordSizeBytes:           1048576,
+		ProducerMaxInflightRequestsPerBroker: 20,
+		ProducerLinger:                       50 * time.Millisecond,
+	}
+
+	// 0 means the franz-go default.
+	require.NoError(t, cfg.Validate())
+
+	cfg.APIVersionsMaxVersion = DefaultAPIVersionsMaxVersion
+	require.NoError(t, cfg.Validate())
+
+	cfg.APIVersionsMaxVersion = -1
+	require.ErrorIs(t, cfg.Validate(), ErrInvalidAPIVersionsMaxVersion)
+}

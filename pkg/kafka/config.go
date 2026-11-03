@@ -29,6 +29,7 @@ var (
 	ErrInvalidProducerMaxRecordSizeBytes           = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, MaxProducerRecordDataBytesLimit)
 	ErrInvalidProducerMaxInflightRequestsPerBroker = errors.New("the configured producer max inflight requests per broker must be greater than or equal to 1")
 	ErrInvalidProducerLinger                       = errors.New("the configured producer linger must be greater than or equal to 0")
+	ErrInvalidAPIVersionsMaxVersion                = errors.New("the configured ApiVersions max version must be greater than or equal to 0")
 )
 
 // Config holds the generic config for the Kafka backend.
@@ -64,6 +65,8 @@ type Config struct {
 
 	EnableKafkaHistograms bool `yaml:"enable_kafka_histograms"`
 	TracingEnabled        bool `yaml:"tracing_enabled"`
+
+	APIVersionsMaxVersion int `yaml:"api_versions_max_version"`
 }
 
 type ClientConfig struct {
@@ -122,6 +125,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxConsumerWorkers, prefix+".max-consumer-workers", 1, "The maximum number of workers to use for processing records from Kafka.")
 
 	f.BoolVar(&cfg.TracingEnabled, prefix+".tracing-enabled", false, "Enable tracing.")
+	f.IntVar(&cfg.APIVersionsMaxVersion, prefix+".api-versions-max-version", DefaultAPIVersionsMaxVersion, apiVersionsMaxVersionUsage)
 	// If the number of workers is set to 0, use the number of available CPUs
 	if cfg.MaxConsumerWorkers == 0 {
 		cfg.MaxConsumerWorkers = runtime.GOMAXPROCS(0)
@@ -146,6 +150,9 @@ func (cfg *Config) Validate() error {
 	}
 	if (cfg.SASLUsername == "") != (cfg.SASLPassword.String() == "") {
 		return ErrInconsistentSASLUsernameAndPassword
+	}
+	if cfg.APIVersionsMaxVersion < 0 {
+		return ErrInvalidAPIVersionsMaxVersion
 	}
 
 	return nil

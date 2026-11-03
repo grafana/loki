@@ -221,6 +221,8 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 		opts = append(opts, kgo.WithHooks(metrics))
 	}
 
+	opts = append(opts, kafka.APIVersionsMaxVersionOpts(cfg.APIVersionsMaxVersion)...)
+
 	return opts
 }
 
