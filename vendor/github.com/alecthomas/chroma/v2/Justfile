@@ -1,4 +1,4 @@
-set positional-arguments := true
+set positional-arguments
 set shell := ["bash", "-c"]
 
 version := `git describe --tags --dirty --always`
@@ -20,6 +20,10 @@ tokentype-string:
 # Format JavaScript files
 format-js:
     biome format --write cmd/chromad/static/index.js cmd/chromad/static/chroma.js
+
+# Tidy Go modules
+tidy:
+    find . -name 'go.mod' -execdir go mod tidy \;
 
 # Build chromad binary
 chromad: wasm-exec chroma-wasm

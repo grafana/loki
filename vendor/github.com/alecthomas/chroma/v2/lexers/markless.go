@@ -70,14 +70,14 @@ func marklessRules() Rules {
 			{`(! )([^ ]+)(.+?)$`, ByGroups(Keyword, NameFunction, NameVariable), nil},
 		},
 		"embed": {
-			{`(\[ )([^ ]+)( )([^,]+)`, ByGroups(Keyword, NameFunction, TextWhitespace, String), Push("embed-options")},
+			{`(\[ )([^ ]+)( )([^,\]\n]+)`, ByGroups(Keyword, NameFunction, TextWhitespace, String), Push("embed-options")},
 		},
 		"embed-options": {
 			{`\\.`, Text, nil},
 			{`,`, Punctuation, nil},
 			{`\]?$`, Keyword, Pop(1)},
 			// Generic key or key/value pair
-			{`( *)([^, \]]+)([^,\]]+)?`, ByGroups(TextWhitespace, NameFunction, String), nil},
+			{`( *)([^, \]\n]+)([^,\]\n]+)?`, ByGroups(TextWhitespace, NameFunction, String), nil},
 			{`.`, Text, nil},
 		},
 		"footnote": {
