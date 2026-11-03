@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/builder"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -16,10 +17,12 @@ const DefaultStorageLag = 3 * time.Hour
 type Config struct {
 	Builder builder.Config `yaml:"builder"`
 	// Uploader is shared by every target that uploads data objects.
-	Uploader uploader.Config `yaml:"uploader"`
+	Uploader  uploader.Config  `yaml:"uploader"`
+	Metastore metastore.Config `yaml:"metastore"`
 	// MetadataCache caches the metadata region of log objects and index objects, or the entire object
-	// if it is tiny. It is enabled when a backend is configured.
-	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata region of the log objects and index objects the querier reads, or the entire object if it is tiny. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
+	// if it is tiny. When -dataobj-metastore.toc-resolver.enabled is set, it also holds the tables of
+	// contents (ToCs) that the resolver refreshes. It is enabled when a backend is configured.
+	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata region of the log objects and index objects the querier reads, or the entire object if it is tiny. When -dataobj-metastore.toc-resolver.enabled is set, the cache also holds the tables of contents (ToCs) that the resolver refreshes. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
 	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
 	// to the top-level Enabled flag opts the deployment in.
@@ -33,6 +36,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Builder.RegisterFlags(f)
 	cfg.Uploader.RegisterFlagsWithPrefix("dataobj.uploader.", f)
+	cfg.Metastore.RegisterFlags(f)
 	cfg.MetadataCache.RegisterFlagsWithPrefix("dataobj.metadata-cache.", "", f)
 	cfg.Compaction.RegisterFlags(f)
 	f.StringVar(

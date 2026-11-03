@@ -18,13 +18,16 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -70,12 +73,31 @@ func WithIndexMetadataCache(cache dataobj.MetadataCache) ObjectMetastoreOption {
 	return func(m *ObjectMetastore) { m.indexMetadataCache = cache }
 }
 
+// WithTOCResolverCache makes the ToC resolver of the metastore read through cache when it refreshes a ToC. A nil cache
+// disables it.
+func WithTOCResolverCache(cache *metadatacache.Cache) ObjectMetastoreOption {
+	return func(m *ObjectMetastore) { m.tocCache = cache }
+}
+
 // ObjectMetastore is a metastore that stores data objects in object storage.
+//
+// It is also a service that refreshes the ToCs it keeps in memory. Run it when the ToC resolver is enabled in the
+// config. With the resolver disabled, the service does nothing and the metastore reads every ToC from object storage.
 type ObjectMetastore struct {
+	services.Service
+
 	bucket      objstore.BucketReader
 	parallelism int
 	logger      log.Logger
 	metrics     *ObjectMetastoreMetrics
+
+	// tocResolver serves every ToC the metastore reads. It is never nil.
+	tocResolver *TOCResolver
+
+	// tocCache is the shared cache that tocResolver reads through when it refreshes a ToC. It is separate from
+	// indexMetadataCache because the resolver rejects a cached ToC that is too old, and indexMetadataCache accepts every
+	// cached value.
+	tocCache *metadatacache.Cache
 
 	// indexMetadataCache caches the metadata region of index objects. It is nil when no cache is
 	// configured.
@@ -282,9 +304,10 @@ func IterTableOfContentsPaths(tenant string, start, end time.Time) iter.Seq[stri
 	}
 }
 
-// NewObjectMetastore returns a metastore that reads tables of contents and
-// index objects under [IndexStoragePrefix] in b.
-func NewObjectMetastore(b objstore.Bucket, logger log.Logger, metrics *ObjectMetastoreMetrics, opts ...ObjectMetastoreOption) *ObjectMetastore {
+// NewObjectMetastore returns a metastore that reads tables of contents and index objects under [IndexStoragePrefix] in
+// b. It registers its metrics, and those of its ToC resolver, on reg. reg may be nil, and a registerer accepts one
+// metastore.
+func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, reg prometheus.Registerer, opts ...ObjectMetastoreOption) *ObjectMetastore {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -293,11 +316,15 @@ func NewObjectMetastore(b objstore.Bucket, logger log.Logger, metrics *ObjectMet
 		bucket:      dataobj.NewInstrumentedBucketReader(NewIndexBucket(b)),
 		parallelism: 64,
 		logger:      logger,
-		metrics:     metrics,
+		metrics:     NewObjectMetastoreMetrics(reg),
 	}
 	for _, opt := range opts {
 		opt(store)
 	}
+
+	// The resolver reads the bucket of the metastore. Its cache keys carry the same index storage prefix.
+	store.tocResolver = NewTOCResolver(store.bucket, cfg.TOCResolver, store.tocCache, IndexStoragePrefix+"/", logger, reg)
+	store.Service = store.tocResolver.Service
 
 	return store
 }
@@ -351,10 +378,9 @@ func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths 
 	for i, path := range tablePaths {
 		g.Go(func() error {
 			var err error
+			// A missing ToC means the window holds no data, so listObjects returns no entries and no error.
 			objects[i], err = m.listObjects(ctx, path, sStart, sEnd)
-			// If the metastore object is not found, it means it's outside of any existing window
-			// and we can safely ignore it.
-			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
+			if err != nil {
 				return fmt.Errorf("listing objects from metastore %s: %w", path, err)
 			}
 			return nil
@@ -368,19 +394,20 @@ func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths 
 	return dedupeAndSortEntries(objects), nil
 }
 
+// listObjects returns the entries of the ToC at path that overlap [sStart, sEnd] and belong to the tenant in ctx. A
+// missing ToC yields no entries.
 func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, sEnd *scalar.Timestamp) ([]IndexEntry, error) {
-	var buf bytes.Buffer
-	objectReader, err := m.bucket.Get(ctx, path)
+	data, err := m.tocResolver.ReadTOC(ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	defer objectReader.Close()
 
-	n, err := buf.ReadFrom(objectReader)
-	if err != nil {
-		return nil, fmt.Errorf("reading metastore object: %w", err)
+	// The resolver returns no bytes for a ToC that does not exist, which means the window holds no data.
+	if len(data) == 0 {
+		return nil, nil
 	}
-	object, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), n)
+
+	object, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, fmt.Errorf("getting object from reader: %w", err)
 	}

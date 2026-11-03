@@ -149,6 +149,8 @@ const (
 	CacheGenerationLoader           = "cache-generation-loader"
 	PartitionRing                   = "partition-ring"
 	DataObjExplorer                 = "dataobj-explorer"
+	DataObjCache                    = "dataobj-cache"
+	DataObjMetastore                = "dataobj-metastore"
 	DataObjBuilder                  = "dataobj-builder"
 	DataObjCompactionPlanner        = "dataobj-compaction-planner"
 	DataObjCompactionWorker         = "dataobj-compaction-worker"
@@ -517,7 +519,7 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	return ingestLimitsFrontend, nil
 }
 
-func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
+func (t *Loki) initQuerier() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "querier")
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
@@ -552,53 +554,19 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 
 	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
 	// data-object store.
-	var (
-		dataObjStore          querier.Store
-		dataObjMetadataCaches []*metadatacache.Cache
-	)
-
-	// A failed init returns no service, so nothing else stops the caches.
-	defer func() {
-		if returnErr != nil {
-			for _, c := range dataObjMetadataCaches {
-				c.Stop()
-			}
-		}
-	}()
-
-	if t.Cfg.DataObj.Enabled {
-		dataObjBucket, err := t.getDataObjBucket("dataobj-querier")
-		if err != nil {
-			return nil, err
-		}
-		var (
-			storeOpts     []querier.DataObjStoreOption
-			metastoreOpts []metastore.ObjectMetastoreOption
-		)
+	var dataObjStore querier.Store
+	if t.dataObjMetastore != nil {
+		var storeOpts []querier.DataObjStoreOption
 
 		if t.lbacChunkFilterer != nil {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
 		}
 
-		if cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
-			backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
-			if err != nil {
-				return nil, fmt.Errorf("creating data object metadata cache: %w", err)
-			}
-
-			// The two caches share one backend. It ignores a repeated Stop, so each cache can stop it.
-			cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
-			logsCache := metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
-			indexCache := metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
-			dataObjMetadataCaches = []*metadatacache.Cache{logsCache, indexCache}
-
-			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(logsCache))
-			metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(indexCache))
+		if t.dataObjLogsCache != nil {
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(t.dataObjLogsCache))
 		}
 
-		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, logger, t.metastoreMetrics, metastoreOpts...)
-
-		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
+		dataObjStore, err = querier.NewDataObjStore(t.Store, t.dataObjBucket, t.dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
 			return nil, err
 		}
@@ -794,9 +762,6 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 
 	if svc != nil {
 		svc.AddListener(newStopListener(deleteStore.Stop))
-		for _, c := range dataObjMetadataCaches {
-			svc.AddListener(newStopListener(c.Stop))
-		}
 	}
 	return withLoglineStorePolling(loglineStore, svc)
 }
@@ -844,6 +809,57 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 			return err
 		},
 	), nil
+}
+
+// initDataObjCache builds the metadata caches of the data objects. They share one backend. It returns no service when
+// data objects are disabled or no cache is configured.
+func (t *Loki) initDataObjCache() (services.Service, error) {
+	if !t.Cfg.DataObj.Enabled || !cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "querier")
+
+	backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+	}
+
+	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
+	t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
+	t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
+	t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+
+	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
+	return services.NewIdleService(nil, func(error) error {
+		t.dataObjLogsCache.Stop()
+		t.dataObjIndexCache.Stop()
+		t.dataObjTOCCache.Stop()
+		return nil
+	}), nil
+}
+
+// initDataObjMetastore builds the metastore of the data objects. The metastore is also a service, which refreshes its
+// ToCs. It returns no service when data objects are disabled.
+func (t *Loki) initDataObjMetastore() (services.Service, error) {
+	if !t.Cfg.DataObj.Enabled {
+		return nil, nil
+	}
+
+	bucket, err := t.getDataObjBucket("dataobj-querier")
+	if err != nil {
+		return nil, err
+	}
+
+	// A nil cache must not reach WithIndexMetadataCache: it takes an interface, so it would hold a typed nil pointer.
+	metastoreOpts := []metastore.ObjectMetastoreOption{metastore.WithTOCResolverCache(t.dataObjTOCCache)}
+	if t.dataObjIndexCache != nil {
+		metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(t.dataObjIndexCache))
+	}
+
+	t.dataObjBucket = bucket
+	t.dataObjMetastore = metastore.NewObjectMetastore(bucket, t.Cfg.DataObj.Metastore, log.With(util_log.Logger, "component", "querier"), prometheus.DefaultRegisterer, metastoreOpts...)
+	return t.dataObjMetastore, nil
 }
 
 func (t *Loki) initIngester() (_ services.Service, err error) {

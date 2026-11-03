@@ -392,8 +392,9 @@ func (b *Builder) Metastore() *metastore.ObjectMetastore {
 
 	return metastore.NewObjectMetastore(
 		b.bucket,
+		metastore.Config{},
 		b.logger,
-		metastore.NewObjectMetastoreMetrics(nil),
+		nil,
 	)
 }
 
