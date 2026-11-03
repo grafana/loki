@@ -75,6 +75,10 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
 	calc := dataobjindex.NewCalculator(indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
+	// The scratch store outlives the task. A failed or cancelled merge must
+	// release the sections it buffered, or they stay for the process
+	// lifetime. After a successful flush, the reset does nothing.
+	defer calc.Reset()
 
 	merged := sortmerge.MixedRunIterator(ctx, inputs.runs)
 
@@ -83,6 +87,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	if err != nil {
 		return nil, err
 	}
+	defer w.discard()
 	var (
 		inputBytesTotal int64
 		dups            logs.DuplicateTracker
@@ -513,12 +518,11 @@ func (w *logObjectWriter) startNewObject() error {
 	cfg := w.c.logsobjCfg
 	overrides := fixedLayout{layout: w.layout}
 
-	var err error
-	w.logsBuilder, err = logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides)
+	builder, err := logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides)
 	if err != nil {
 		return err
 	}
-
+	w.logsBuilder = builder
 	return nil
 }
 
@@ -559,6 +563,12 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 		}
 	}
 	return w.stats, nil
+}
+
+// discard releases the sections of the in-progress object from the scratch
+// store. It does nothing after finish uploaded the last object.
+func (w *logObjectWriter) discard() {
+	w.logsBuilder.Reset()
 }
 
 // finalizeAndUpload appends the pending sections, flushes them into one compacted
