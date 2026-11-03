@@ -293,6 +293,21 @@ In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 If [`block_ingestion_until`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) is configured and push requests are blocked, the endpoint will return the status code configured in `block_ingestion_status_code` (`260` by default)
 along with an error message. If the configured status code is `200`, no error message will be returned.
 
+### Force labels with the `X-Loki-Forced-Labels` header
+
+If [`forced_labels_header_enabled`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) is enabled for a tenant, an authenticating proxy in front of Loki can set the `X-Loki-Forced-Labels` header to force labels onto every stream of the request, so that clients can't spoof them.
+The header value is a label set in LogQL selector syntax, for example `{user="alice", site="edge-07"}`.
+Loki sets each label on every stream, overwriting a stream label with the same name, and then applies the usual stream validation and limits, such as `max_label_names_per_series`.
+The header applies to `/loki/api/v1/push` and `/otlp/v1/logs`.
+
+The header must be set at most once and contain at most 10 labels in at most 1024 bytes.
+Label names must be valid legacy Prometheus label names that don't start with `__`, and values must not be empty. Otherwise, Loki rejects the request with HTTP 400.
+When the setting is disabled, which is the default, Loki ignores the header.
+
+{{< admonition type="warning" >}}
+Only enable `forced_labels_header_enabled` behind a proxy that sets this header and strips any client-supplied value. Otherwise, any client can set any label on its streams.
+{{< /admonition >}}
+
 ### Examples
 
 The following cURL command pushes a stream with the label "foo=bar2" and a single log line "fizzbuzz" using JSON encoding:

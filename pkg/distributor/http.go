@@ -122,6 +122,21 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		r = r.Clone(loghttppush.InjectBackfillShardContext(r.Context(), shard))
 	}
 
+	// If the tenant enables it, validate the X-Loki-Forced-Labels header set by an authenticating
+	// proxy and stash the labels in the request context so the format parsers (Loki and OTLP) set
+	// them on every stream. When disabled, the header is ignored: it is never trusted.
+	if d.validator.ForcedLabelsHeaderEnabled(tenantID) {
+		forcedLabels, ok, forcedLabelsErr := loghttppush.ExtractAndValidateForcedLabels(r)
+		if forcedLabelsErr != nil {
+			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", forcedLabelsErr))
+			recordFail(http.StatusBadRequest, forcedLabelsErr.Error())
+			return
+		}
+		if ok {
+			r = r.Clone(loghttppush.InjectForcedLabelsContext(r.Context(), forcedLabels))
+		}
+	}
+
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
 	// across all parsers for this HTTP request.
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)

@@ -1635,3 +1635,17 @@ func TestOverrides_ShardLayout(t *testing.T) {
 		require.Equal(t, streams.DefaultShardLayout(), ov.DataObjShardLayout("custom"))
 	})
 }
+
+func TestForcedLabelsHeaderEnabledPerTenant(t *testing.T) {
+	defaults := Limits{}
+	dskit_flagext.DefaultValues(&defaults)
+	require.False(t, defaults.ForcedLabelsHeaderEnabled, "the header must be disabled by default")
+
+	var trusted Limits
+	require.NoError(t, yaml.Unmarshal([]byte(`forced_labels_header_enabled: true`), &trusted))
+
+	overrides, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"trusted": &trusted}))
+	require.NoError(t, err)
+	require.True(t, overrides.ForcedLabelsHeaderEnabled("trusted"))
+	require.False(t, overrides.ForcedLabelsHeaderEnabled("other"))
+}

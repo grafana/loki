@@ -294,6 +294,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	// backfill labels added below.
 	backfillShard := ExtractBackfillShardContext(r.Context())
 
+	// If an authenticating proxy forces labels (X-Loki-Forced-Labels header), every stream gets
+	// them below, overwriting the labels with the same name sent by the client.
+	forcedLabels := ExtractForcedLabelsContext(r.Context())
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 
@@ -311,6 +315,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		if lbs.Has(constants.BackfillLabel) || lbs.Has(constants.BackfillShardLabel) {
 			return nil, nil, errReservedBackfillLabels()
 		}
+
+		// Forced labels are set before anything derives from the labels, such as service-name
+		// discovery, so nothing is derived from a client value they replace.
+		lbs = setForcedLabels(lbs, forcedLabels)
 
 		isInternalStream := constants.IsInternalStream(lbs.Has)
 		if isInternalStream {

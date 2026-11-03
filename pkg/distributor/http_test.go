@@ -833,3 +833,110 @@ func TestDistributorMaxInflightBytesLimit(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	require.Equal(t, float64(2050), bytesReceived())
 }
+
+func TestPushHandlerForcedLabels(t *testing.T) {
+	const body = `{"streams":[{"stream":{"app":"web","user":"mallory"},"values":[["%d","hello"]]}]}`
+
+	// pushedLabels returns the labels of the streams the ingesters received.
+	pushedLabels := func(t *testing.T, ingesters []mockIngester) []string {
+		t.Helper()
+		var got []string
+		require.Eventually(t, func() bool {
+			got = got[:0]
+			for i := range ingesters {
+				ingesters[i].mu.Lock()
+				for _, pr := range ingesters[i].pushed {
+					for _, s := range pr.Streams {
+						got = append(got, s.Labels)
+					}
+				}
+				ingesters[i].mu.Unlock()
+			}
+			return len(got) > 0
+		}, time.Second, 10*time.Millisecond)
+		return got
+	}
+
+	doPush := func(t *testing.T, enabled bool, maxLabels int, headerValues ...string) (*httptest.ResponseRecorder, []mockIngester) {
+		t.Helper()
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.ForcedLabelsHeaderEnabled = enabled
+		if maxLabels > 0 {
+			limits.MaxLabelNamesPerSeries = maxLabels
+		}
+		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(fmt.Sprintf(body, time.Now().UnixNano())))
+		req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+		req.Header.Set("Content-Type", "application/json")
+		for _, v := range headerValues {
+			req.Header.Add(push.HTTPHeaderForcedLabelsKey, v)
+		}
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+		return rec, ingesters
+	}
+
+	t.Run("disabled by default", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		require.False(t, limits.ForcedLabelsHeaderEnabled)
+	})
+
+	t.Run("disabled: a valid header is ignored", func(t *testing.T) {
+		rec, ingesters := doPush(t, false, 0, `{user="alice"}`)
+		require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+		for _, ls := range pushedLabels(t, ingesters) {
+			require.Equal(t, "mallory", mustParseLabels(ls).Get("user"), "labels=%s", ls)
+		}
+	})
+
+	t.Run("disabled: an invalid header is ignored", func(t *testing.T) {
+		rec, ingesters := doPush(t, false, 0, `not a label set`, `{__name__="x"}`)
+		require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+		for _, ls := range pushedLabels(t, ingesters) {
+			require.Equal(t, "mallory", mustParseLabels(ls).Get("user"), "labels=%s", ls)
+		}
+	})
+
+	t.Run("enabled: forced labels overwrite client labels", func(t *testing.T) {
+		rec, ingesters := doPush(t, true, 0, `{user="alice", site="edge-07"}`)
+		require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+		for _, ls := range pushedLabels(t, ingesters) {
+			lbs := mustParseLabels(ls)
+			require.Equal(t, "alice", lbs.Get("user"), "labels=%s", ls)
+			require.Equal(t, "edge-07", lbs.Get("site"), "labels=%s", ls)
+			require.Equal(t, "web", lbs.Get("app"), "labels=%s", ls)
+		}
+	})
+
+	t.Run("enabled: no header leaves labels untouched", func(t *testing.T) {
+		rec, ingesters := doPush(t, true, 0)
+		require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+		for _, ls := range pushedLabels(t, ingesters) {
+			require.Equal(t, "mallory", mustParseLabels(ls).Get("user"), "labels=%s", ls)
+		}
+	})
+
+	t.Run("enabled: an invalid header is rejected", func(t *testing.T) {
+		rec, _ := doPush(t, true, 0, `{__name__="x"}`)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Contains(t, rec.Body.String(), push.HTTPHeaderForcedLabelsKey)
+	})
+
+	t.Run("enabled: a repeated header is rejected", func(t *testing.T) {
+		rec, _ := doPush(t, true, 0, `{user="alice"}`, `{user="mallory"}`)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Contains(t, rec.Body.String(), push.HTTPHeaderForcedLabelsKey)
+	})
+
+	t.Run("enabled: forced labels count toward max_label_names_per_series", func(t *testing.T) {
+		// The client stream has app and user (service_name is not counted). Forcing site makes
+		// three label names, one more than allowed, so the distributor validator rejects it.
+		rec, _ := doPush(t, true, 2, `{site="edge-07"}`)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Contains(t, rec.Body.String(), "label names")
+	})
+}
