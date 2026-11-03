@@ -36,7 +36,7 @@ const (
 // NewWriterClient returns the kgo.Client that should be used by the Writer.
 //
 // The returned Client collects the standard set of *kprom.Metrics, prefixed with
-// `MetricsPrefix`
+// `MetricsPrefix`, and native histograms of the latency of Produce requests per broker.
 func NewWriterClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
 	// Do not export the client ID, because we use it to specify options to the backend.
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
@@ -91,6 +91,8 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, logger log.Logger,
 		// https://github.com/twmb/franz-go/issues/777
 		kgo.MaxBufferedRecords(math.MaxInt), // Use a high value to set it as unlimited, because the client doesn't support "0 as unlimited".
 		kgo.MaxBufferedBytes(0),
+
+		kgo.WithHooks(newProduceHistograms(WrapPrometheusRegisterer(component, reg))),
 	)
 	client, err := kgo.NewClient(opts...)
 	if err != nil {

@@ -35,7 +35,7 @@ var mapAccessRegex = regexp.MustCompile(mapAccessRegexString)
 // If it cannot find the value, Get will return a nil
 // value inside an instance of Obj.
 //
-// Get can only operate directly on map[string]interface{} and []interface.
+// Get can only operate directly on map[string]any and []interface.
 //
 // # Example
 //
@@ -43,22 +43,46 @@ var mapAccessRegex = regexp.MustCompile(mapAccessRegexString)
 //
 //	o.Get("books[1].chapters[2].title")
 func (m Map) Get(selector string) *Value {
-	rawObj := access(m, selector, nil, false)
+	rawObj, _ := access(m, selector, nil, actionGet)
 	return &Value{data: rawObj}
 }
 
 // Set sets the value using the specified selector and
 // returns the object on which Set was called.
 //
-// Set can only operate directly on map[string]interface{} and []interface
+// Set can only operate directly on map[string]any and []interface
 //
 // # Example
 //
 // To set the title of the third chapter of the second book, do:
 //
 //	o.Set("books[1].chapters[2].title","Time to Go")
-func (m Map) Set(selector string, value interface{}) Map {
-	access(m, selector, value, true)
+func (m Map) Set(selector string, value any) Map {
+	access(m, selector, value, actionSet)
+	return m
+}
+
+// Delete removes map keys or slice elements using each selector in order and
+// returns m. It traverses Map, map[string]any, and slices using the same dot and
+// bracket notation as Get. Missing paths and out-of-range indexes are ignored.
+// Calling Delete with no selectors or on a nil Map is a no-op.
+//
+// Map keys are deleted in place. Removing a slice element shifts later elements
+// down by one, so subsequent selectors use the updated indexes. Slice deletions
+// preserve slice types and copy affected slices, including enclosing slices,
+// without changing their existing backing arrays. The new slice is stored in
+// the nearest enclosing map, which, like every map on the path, is modified in
+// place.
+//
+// # Example
+//
+// To delete a chapter's title and the draft flag, do:
+//
+//	o.Delete("books[1].chapters[2].title", "draft")
+func (m Map) Delete(selectors ...string) Map {
+	for _, selector := range selectors {
+		access(m, selector, nil, actionDelete)
+	}
 	return m
 }
 
@@ -100,26 +124,30 @@ func getKey(s string) (string, string) {
 				nextSel = mapMatches[3]
 			}
 
-			if nextSel == "" {
-				selSegs = []string{"", ""}
-			} else if nextSel[0] == '.' {
-				nextSel = nextSel[1:]
-			}
+			nextSel = strings.TrimPrefix(nextSel, ".")
 		}
 	}
 
 	return thisSel, nextSel
 }
 
+type accessAction int
+
+const (
+	actionGet accessAction = iota
+	actionSet
+	actionDelete
+)
+
 // access accesses the object using the selector and performs the
 // appropriate action.
-func access(current interface{}, selector string, value interface{}, isSet bool) interface{} {
+func access(current any, selector string, value any, action accessAction) (any, bool) {
 	thisSel, nextSel := getKey(selector)
 
 	indexes := []int{}
 	for strings.Contains(thisSel, "[") {
 		prevSel := thisSel
-		index := -1
+		var index int
 		index, thisSel = getIndex(thisSel)
 		indexes = append(indexes, index)
 		if prevSel == thisSel {
@@ -128,29 +156,44 @@ func access(current interface{}, selector string, value interface{}, isSet bool)
 	}
 
 	if curMap, ok := current.(Map); ok {
-		current = map[string]interface{}(curMap)
+		current = map[string]any(curMap)
 	}
 	// get the object in question
 	switch current.(type) {
-	case map[string]interface{}:
-		curMSI := current.(map[string]interface{})
-		if nextSel == "" && isSet {
-			curMSI[thisSel] = value
-			return nil
+	case map[string]any:
+		curMSI := current.(map[string]any)
+		if nextSel == "" {
+			switch {
+			case action == actionSet && len(indexes) == 0:
+				curMSI[thisSel] = value
+				return nil, true
+			case action == actionDelete && len(indexes) == 0:
+				delete(curMSI, thisSel)
+				return nil, true
+			case action == actionDelete:
+				updated, ok := deleteSliceIndex(curMSI[thisSel], indexes)
+				if ok {
+					curMSI[thisSel] = updated
+				}
+				return nil, ok
+			}
 		}
 
-		_, ok := curMSI[thisSel].(map[string]interface{})
+		_, ok := curMSI[thisSel].(map[string]any)
 		if !ok {
 			_, ok = curMSI[thisSel].(Map)
 		}
 
-		if (curMSI[thisSel] == nil || !ok) && len(indexes) == 0 && isSet {
-			curMSI[thisSel] = map[string]interface{}{}
+		if (curMSI[thisSel] == nil || !ok) && len(indexes) == 0 && action == actionSet {
+			curMSI[thisSel] = map[string]any{}
 		}
 
-		current = curMSI[thisSel]
+		current, ok = curMSI[thisSel]
+		if !ok {
+			return nil, false
+		}
 	default:
-		current = nil
+		return nil, false
 	}
 
 	// do we need to access the item of an array?
@@ -161,24 +204,56 @@ func access(current interface{}, selector string, value interface{}, isSet bool)
 			index := indexes[num]
 			indexes = indexes[:num]
 			if array, ok := interSlice(current); ok {
-				if index < len(array) {
+				if index >= 0 && index < len(array) {
+					if action == actionSet && nextSel == "" && num == 0 {
+						array[index] = value
+						return nil, true
+					}
 					current = array[index]
 				} else {
-					current = nil
-					break
+					return nil, false
 				}
+			} else {
+				return nil, false
 			}
 		}
 	}
 
 	if nextSel != "" {
-		current = access(current, nextSel, value, isSet)
+		return access(current, nextSel, value, action)
 	}
-	return current
+	return current, true
 }
 
-func interSlice(slice interface{}) ([]interface{}, bool) {
-	if array, ok := slice.([]interface{}); ok {
+// deleteSliceIndex copies slices along an index path, which getIndex builds in
+// reverse order. Nothing is copied or replaced unless the whole path exists.
+func deleteSliceIndex(current any, indexes []int) (any, bool) {
+	s := reflect.ValueOf(current)
+	if s.Kind() != reflect.Slice {
+		return nil, false
+	}
+	index := indexes[len(indexes)-1]
+	if index < 0 || index >= s.Len() {
+		return nil, false
+	}
+	if len(indexes) == 1 {
+		out := reflect.MakeSlice(s.Type(), s.Len()-1, s.Len()-1)
+		reflect.Copy(out, s.Slice(0, index))
+		reflect.Copy(out.Slice(index, out.Len()), s.Slice(index+1, s.Len()))
+		return out.Interface(), true
+	}
+	updated, ok := deleteSliceIndex(s.Index(index).Interface(), indexes[:len(indexes)-1])
+	if !ok {
+		return nil, false
+	}
+	out := reflect.MakeSlice(s.Type(), s.Len(), s.Len())
+	reflect.Copy(out, s)
+	out.Index(index).Set(reflect.ValueOf(updated))
+	return out.Interface(), true
+}
+
+func interSlice(slice any) ([]any, bool) {
+	if array, ok := slice.([]any); ok {
 		return array, ok
 	}
 
@@ -187,9 +262,9 @@ func interSlice(slice interface{}) ([]interface{}, bool) {
 		return nil, false
 	}
 
-	ret := make([]interface{}, s.Len())
+	ret := make([]any, s.Len())
 
-	for i := 0; i < s.Len(); i++ {
+	for i := range ret {
 		ret[i] = s.Index(i).Interface()
 	}
 

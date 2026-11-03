@@ -56,6 +56,25 @@ func timeToUnixSecons(t time.Time) int64 {
 	return t.Unix()
 }
 
+// maxFutureTimestampSkew is how far ahead of the local clock a timestamp in a ring entry
+// may be before Merge treats it as written by a node with a skewed clock.
+const maxFutureTimestampSkew = 10 * time.Minute
+
+// futureTimestampLimit returns the latest unix timestamp Merge accepts at the given time.
+func futureTimestampLimit(now time.Time) int64 {
+	return now.Add(maxFutureTimestampSkew).Unix()
+}
+
+// localMergeTimestamp returns the timestamp Merge compares incoming timestamps against for a local
+// entry. A local timestamp beyond limit was written by a node with a clock too far ahead, so it loses
+// against any valid incoming timestamp, including zero.
+func localMergeTimestamp(ts, limit int64) int64 {
+	if ts > limit {
+		return -1
+	}
+	return ts
+}
+
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
 func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time, readOnly bool, readOnlyUpdated time.Time, versions InstanceVersions) InstanceDesc {
@@ -205,6 +224,10 @@ func (i *InstanceDesc) IsReady(now time.Time, heartbeatTimeout time.Duration) er
 // it will choose more recent state from the two rings, and put that into this ring.
 // There is one exception: we accept LEFT state even if Timestamp hasn't changed.
 //
+// Timestamps more than maxFutureTimestampSkew ahead of the local clock are considered
+// to come from a node with a skewed clock: such incoming entries are ignored, and such
+// local entries are replaced by any other incoming entry, so that the ring can recover.
+//
 // localCAS flag tells the merge that it can use incoming ring as a full state, and detect
 // missing ingesters based on it. Ingesters from incoming ring will cause ingester
 // to be marked as LEFT and gossiped about.
@@ -246,18 +269,25 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 
 	var updated []string
 	tokensChanged := false
+	timestampLimit := futureTimestampLimit(now)
 
 	for name, oing := range otherIngesterMap {
+		if oing.Timestamp > timestampLimit {
+			// Written by a node with a clock too far ahead. Accepting it would block all later updates.
+			continue
+		}
+
 		ting := thisIngesterMap[name]
-		// ting.Timestamp will be 0, if there was no such ingester in our version
-		if oing.Timestamp > ting.Timestamp {
+		// thisTimestamp will be 0, if there was no such ingester in our version
+		thisTimestamp := localMergeTimestamp(ting.Timestamp, timestampLimit)
+		if oing.Timestamp > thisTimestamp {
 			if !tokensEqual(ting.Tokens, oing.Tokens) {
 				tokensChanged = true
 			}
 			oing.Tokens = append([]uint32(nil), oing.Tokens...) // make a copy of tokens
 			thisIngesterMap[name] = oing
 			updated = append(updated, name)
-		} else if oing.Timestamp == ting.Timestamp && ting.State != LEFT && oing.State == LEFT {
+		} else if oing.Timestamp == thisTimestamp && ting.State != LEFT && oing.State == LEFT {
 			// we accept LEFT even if timestamp hasn't changed
 			thisIngesterMap[name] = oing // has no tokens already
 			updated = append(updated, name)

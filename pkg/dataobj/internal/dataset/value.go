@@ -186,11 +186,17 @@ func (v *Value) Zero() {
 //
 // NULL values encode as nil.
 func (v Value) MarshalBinary() (data []byte, err error) {
+	return v.AppendBinary(nil)
+}
+
+// AppendBinary appends the encoding of v from [Value.MarshalBinary] to buf and
+// returns the extended buffer. A NULL value appends nothing.
+func (v Value) AppendBinary(buf []byte) ([]byte, error) {
 	if v.IsNil() {
-		return nil, nil
+		return buf, nil
 	}
 
-	buf := binary.AppendUvarint(nil, uint64(v.Type()))
+	buf = binary.AppendUvarint(buf, uint64(v.Type()))
 
 	switch v.Type() {
 	case datasetmd.PHYSICAL_TYPE_INT64:

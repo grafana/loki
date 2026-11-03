@@ -28,24 +28,9 @@ is that Prometheus will, for example, reject a remote-write request with 100 sam
 
 ### Start-up
 
-When the `ruler` starts up, it opens and replays each tenant's WAL independently, in its own goroutine. This means
-replay for different tenants can happen at the same time, and the `ruler` doesn't wait for one tenant's replay to
-finish before starting the next one's.
-
-{{< admonition type="note" >}}
-Rule evaluation is not blocked by WAL replay. Both recording rules and alerting rules evaluate on their normal
-schedule while a tenant's WAL is still replaying.
-
-The only thing affected during replay is sample persistence. Until a tenant's WAL replay finishes, its appender is
-not ready, so any samples produced by that tenant's recording rules during this window are dropped instead of being
-written to the WAL. You can monitor this with the `loki_ruler_wal_appender_ready` metric (see
-[Appender Not Ready](#appender-not-ready)). Alerting rules are not affected, because Loki sends alert notifications
-before it appends any samples.
-{{< /admonition >}}
-
-You can disable WAL replay for a tenant with the per-tenant limit `ruler_enable_wal_replay`
-(`-ruler.enable-wal-replay`, default `true`). Disabling replay reduces start-up memory usage and shortens the
-appender's not-ready window, but the `ruler` will not recover the tenant's in-memory WAL state after a restart.
+When the `ruler` starts up, it deletes (wipes) its remote-write WAL directory and starts each tenant with a fresh, empty
+WAL. WAL data left over from a previous run is not replayed, so any samples that had not yet been flushed to remote storage
+before the restart are discarded.
 
 ### Truncation
 

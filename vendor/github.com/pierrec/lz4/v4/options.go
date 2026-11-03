@@ -200,8 +200,12 @@ func CompressionLevelOption(level CompressionLevel) Option {
 
 func onBlockDone(int) {}
 
-// OnBlockDoneOption is triggered when a block has been processed. For a Writer, it is when is has been compressed,
-// for a Reader, it is when it has been uncompressed.
+// OnBlockDoneOption is triggered when a block has been processed: for a Writer,
+// once per block when it has been compressed, with the compressed size, and in
+// full before Close returns; for a Reader, as uncompressed data is read out,
+// with the number of bytes read. A Writer with a concurrency level above one
+// may run the handler from several goroutines at the same time, so it must be
+// safe for concurrent use.
 func OnBlockDoneOption(handler func(size int)) Option {
 	if handler == nil {
 		handler = onBlockDone

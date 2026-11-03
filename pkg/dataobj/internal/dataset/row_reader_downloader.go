@@ -155,8 +155,8 @@ func (dl *rowReaderDownloader) Prefetch(ctx context.Context) error {
 // AddColumn adds a column to the rowReaderDownloader. This should be called
 // before the downloader is used.
 //
-// AddColumn must be called matching the order of columns in
-// [RowReaderOptions.Columns].
+// AddColumn must be called in the order of the columns of the RowReader: the
+// projected columns, then the columns that only predicates read.
 func (dl *rowReaderDownloader) AddColumn(col Column, primary bool) {
 	wrappedCol := newReaderColumn(dl, col, primary)
 

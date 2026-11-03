@@ -77,6 +77,41 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 	require.False(t, checkBit(bitmaps[0], 0), "bit 0 should not be set")
 }
 
+func TestMergeBuilder_AppendLabelEntry_ShardBuckets(t *testing.T) {
+	t.Run("a merged label row keeps the shard bucket range of the source row", func(t *testing.T) {
+		source := NewBuilder(nil, 0, 0, 1<<20)
+		for streamID, bucket := range map[int64]uint32{1: 3, 2: 9} {
+			source.ObserveLabelPosting(LabelObservation{
+				ObjectPath: "/o", SectionIndex: 0, ColumnName: "env", LabelValue: "prod",
+				StreamID: streamID, Timestamp: time.Unix(0, 10).UTC(), ShardBucket: bucket,
+			})
+		}
+		sourceSections := flushAndOpenSections(t, source)
+		require.Len(t, sourceSections, 1)
+
+		reader := NewReader(ReaderOptions{Columns: sourceSections[0].Columns()})
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { _ = reader.Close() })
+
+		merge := NewMergeBuilder(nil, 0, 0, 1<<20)
+		rows := NewRowReader(t.Context(), reader)
+		var merged int
+		for rows.Next() {
+			require.NoError(t, merge.AppendLabelEntry(rows.At().LabelEntry()))
+			merged++
+		}
+		require.NoError(t, rows.Err())
+		require.Equal(t, 1, merged)
+
+		mergedSections := flushMergeBuilderAndOpenSections(t, merge)
+		require.Len(t, mergedSections, 1)
+		got, _ := readAllRows(t, mergedSections[0])
+		require.Len(t, got, 1)
+		require.Equal(t, int64(3), got[0]["min_shard_bucket.int64"])
+		require.Equal(t, int64(9), got[0]["max_shard_bucket.int64"])
+	})
+}
+
 // TestMergeBuilder_AppendBloomEntry_RoundTrip verifies that appended bloom
 // entries round-trip correctly without aggregation.
 func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {

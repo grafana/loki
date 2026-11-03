@@ -22,6 +22,18 @@ overrides:
     per_tenant_override_config: ./overrides.yaml # DEPRECATED
     per_tenant_override_period: 5s # DEPRECATED
     allow_deletes: true # DELETED
+    bloom_gateway_enable_filtering: true # DEPRECATED
+    bloom_build_max_builders: 10 # DEPRECATED
+    bloom_build_task_max_retries: 3 # DEPRECATED
+    bloom_build_builder_response_timeout: 1m # DEPRECATED
+    bloom_creation_enabled: true # DEPRECATED
+    bloom_planning_strategy: split_keyspace_by_factor # DEPRECATED
+    bloom_split_series_keyspace_by: 256 # DEPRECATED
+    bloom_task_target_series_chunk_size: 20GB # DEPRECATED
+    bloom_block_encoding: none # DEPRECATED
+    bloom_prefetch_blocks: true # DEPRECATED
+    bloom_max_block_size: 200MB # DEPRECATED
+    bloom_max_bloom_size: 128MB # DEPRECATED
   "bar": *tenant_overrides
 
 multi_kv_config:

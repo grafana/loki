@@ -140,12 +140,3 @@ with the same tenant, but with a different additional HTTP header
 
 Alternatively, if you have a proxy for authentication in front of Loki, you can
 pass the (hashed) user from the authentication as downstream header to Loki.
-
-{{< admonition type="note" >}}
-Loki has an experimental next-generation query engine for querying data
-objects (dataobj/columnar storage), enabled with `query_engine.enable: true`.
-That engine also reads `X-Loki-Actor-Path` and uses it, together with the
-tenant, to schedule its own internal tasks fairly. However, that fairness
-mechanism is separate from the hierarchical queues described on this page, and
-`-query-scheduler.max-queue-hierarchy-levels` does not apply to it.
-{{< /admonition >}}

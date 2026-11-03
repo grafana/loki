@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -269,7 +269,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0, 0, false)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0, 0)
 	if err != nil {
 		panic(err)
 	}

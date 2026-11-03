@@ -39,6 +39,10 @@ var (
 	// if direct path connectivity cannot be established for a request.
 	WithDirectConnectivityEnforced any // func() option.ClientOption
 
+	// WithDirectPathXdsOverInterconnect is a function which is implemented by the storage package.
+	// It instructs the gRPC client to attempt DirectPath over Google Cloud Interconnect.
+	WithDirectPathXdsOverInterconnect any // func() option.ClientOption
+
 	// WithOtelMetrics is a function which is implemented by the storage package.
 	// It enables client-side OpenTelemetry metrics.
 	WithOtelMetrics any // func() option.ClientOption
@@ -51,4 +55,8 @@ var (
 	//
 	// This option is not supported at the moment.
 	WithBufferPool any // func(BufferPool) option.ClientOption
+
+	// WithGRPCKeepalive is a function which is implemented by the storage package.
+	// It enables HTTP/2 keepalive pings on the client's gRPC connections.
+	WithGRPCKeepalive any // func(GRPCKeepaliveConfig) option.ClientOption
 )

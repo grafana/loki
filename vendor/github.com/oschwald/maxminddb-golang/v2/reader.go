@@ -225,8 +225,9 @@ type readerOptions struct {
 type ReaderOption func(*readerOptions)
 
 // DisableStringCache disables caching of repeatedly decoded strings. This
-// reduces each Reader's fixed memory usage by approximately 64 KiB, but may
-// increase allocations when the same records are decoded repeatedly.
+// avoids the 72 KiB cache table on 64-bit systems and storage for cached strings.
+// The table is otherwise allocated on the first cache-eligible string decode.
+// Disabling caching may increase allocations when records are decoded repeatedly.
 func DisableStringCache() ReaderOption {
 	return func(options *readerOptions) {
 		options.disableStringCache = true
@@ -243,7 +244,7 @@ func DisableStringCache() ReaderOption {
 // updated database.
 // Use the Close method on the Reader object to return the resources to the system.
 func Open(file string, options ...ReaderOption) (*Reader, error) {
-	mapFile, err := os.Open(file)
+	mapFile, err := os.Open(file) // #nosec G703 -- The caller chooses the database file to open.
 	if err != nil {
 		return nil, err
 	}

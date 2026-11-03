@@ -14,7 +14,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 const (
@@ -272,9 +272,12 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 
 // Hints implements Stage.
 func (lf *LineFormatter) Hints() StageHints {
-	// line_format rewrites the line, but it sets __error__ when the template fails, which changes the
-	// output labels.
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It sets __error__ when the template fails, which changes the output labels.
+		CanModifyLabels: true,
+		// It replaces the line with the formatted template.
+		CanModifyLine: true,
+	}
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
@@ -297,6 +300,11 @@ func listNodeFields(nodes []parse.Node) []string {
 			res = append(res, listNodeFieldsFromBranch(node)...)
 		case parse.NodeField:
 			res = append(res, node.(*parse.FieldNode).Ident...)
+		case parse.NodeVariable:
+			// $ is the root of the template data, so $.foo reads the label foo like .foo does.
+			if v := node.(*parse.VariableNode); len(v.Ident) > 1 && v.Ident[0] == "$" {
+				res = append(res, v.Ident[1:]...)
+			}
 		}
 	}
 	return res
@@ -413,7 +421,7 @@ func validate(fmts []LabelFmt) error {
 	// To avoid confusion we allow to have a label name only once per stage.
 	uniqueLabelName := map[string]struct{}{}
 	for _, f := range fmts {
-		if f.Name == logqlmodel.ErrorLabel {
+		if f.Name == logqlerr.ErrorLabel {
 			return fmt.Errorf("%s cannot be formatted", f.Name)
 		}
 		if _, ok := uniqueLabelName[f.Name]; ok {
@@ -454,8 +462,11 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 
 // Hints implements Stage.
 func (lf *LabelsFormatter) Hints() StageHints {
-	// label_format renames or sets labels.
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It renames or sets labels.
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+	}
 }
 
 func (lf *LabelsFormatter) RequiredLabelNames() []string {
@@ -525,8 +536,12 @@ func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool
 
 // Hints implements Stage.
 func (Decolorizer) Hints() StageHints {
-	// It strips ANSI colors from the line, never touching labels.
-	return StageHints{CanModifyLabels: false}
+	return StageHints{
+		// It never touches labels.
+		CanModifyLabels: false,
+		// It strips ANSI colors from the line.
+		CanModifyLine: true,
+	}
 }
 
 func (Decolorizer) RequiredLabelNames() []string { return []string{} }

@@ -31,14 +31,16 @@ func TestFlushTaskSummaries_FlagsCriticalPath(t *testing.T) {
 	require.NoError(t, graph.AddEdge(dag.Edge[*Task]{Parent: a, Child: c}))
 
 	// C finishes after B, so the critical path is A -> C; B is off the path.
-	_, capture := xcap.NewCapture(context.Background(), nil)
+	_, capture := xcap.NewCapture(t.Context(), nil)
 	terminal := func(finish int64) pendingSummary {
 		return pendingSummary{result: TaskResult{Outcome: TaskOutcomeCompleted, Capture: capture}, taskFinishNanos: finish}
 	}
 
 	var buf bytes.Buffer
+	workflowID := ulid.Make()
 	wf := &Workflow{
 		logger:      log.NewLogfmtLogger(&buf),
+		manifest:    &Manifest{ID: workflowID},
 		graph:       graph,
 		taskResults: map[*Task]pendingSummary{a: terminal(100), b: terminal(20), c: terminal(40)},
 	}
@@ -59,6 +61,7 @@ func TestFlushTaskSummaries_FlagsCriticalPath(t *testing.T) {
 	require.Contains(t, lineFor(a), "on_critical_path=true")
 	require.Contains(t, lineFor(c), "on_critical_path=true")
 	require.Contains(t, lineFor(b), "on_critical_path=false")
+	require.Contains(t, lineFor(a), "workflow_id="+workflowID.String())
 }
 
 func TestOnTaskResult_DefersSummary(t *testing.T) {

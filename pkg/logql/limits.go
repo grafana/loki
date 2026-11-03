@@ -23,10 +23,6 @@ type Limits interface {
 	// StreamFirstExecutionEnabled reports whether eligible metric queries of the tenant run in
 	// stream-first sample order.
 	StreamFirstExecutionEnabled(userID string) bool
-
-	// v2 engine limits
-	DebugEngineTasks(string) bool
-	DebugEngineStreams(string) bool
 }
 
 type fakeLimits struct {
@@ -35,10 +31,6 @@ type fakeLimits struct {
 	blockedQueries []*validation.BlockedQuery
 	rangeLimit     time.Duration
 	requiredLabels []string
-
-	// v2 engine limits
-	debugEngineTasks   bool
-	debugEngineStreams bool
 }
 
 func (f fakeLimits) MaxQuerySeries(_ string) int {
@@ -63,12 +55,4 @@ func (f fakeLimits) RequiredLabels(_ context.Context, _ string) []string {
 
 func (f fakeLimits) StreamFirstExecutionEnabled(_ string) bool {
 	return false
-}
-
-func (f fakeLimits) DebugEngineTasks(_ string) bool {
-	return f.debugEngineTasks
-}
-
-func (f fakeLimits) DebugEngineStreams(_ string) bool {
-	return f.debugEngineStreams
 }

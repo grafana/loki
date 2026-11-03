@@ -45,7 +45,7 @@ func TestCanaryOTLPRoundTrip(t *testing.T) {
 			defer server.Close()
 			pusher, err := writer.NewPush(strings.TrimPrefix(server.URL, "http://"), "", "canary", time.Second,
 				config.DefaultHTTPClientConfig, "canary_instance", "replica-1", "canary_protocol", "otlp",
-				false, nil, "", "", "", "", "", &backoff.Config{MaxRetries: 1}, batchSize, writer.PushProtocolOTLP, log.NewNopLogger())
+				false, nil, "", "", "", "", "", "", &backoff.Config{MaxRetries: 1}, batchSize, writer.PushProtocolOTLP, log.NewNopLogger())
 			require.NoError(t, err)
 			defer pusher.Stop()
 			start := time.Unix(1700000000, 123456789)

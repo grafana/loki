@@ -22,8 +22,11 @@ type Unmarshaler interface {
 }
 
 // CursorUnmarshaler is implemented by decoders that can decode directly from
-// an immutable cursor and return its proven successor without acquiring a
-// stateful Decoder.
+// an immutable cursor and return its successor without acquiring a stateful
+// Decoder. Implementations must consume and validate the complete value.
+// Successor checks verify decoder identity and recorded origin. A successor from
+// MapReader.End relies on the implementation having completed that reader's
+// counted traversal.
 type CursorUnmarshaler interface {
 	UnmarshalMaxMindDBCursor(cursor Cursor) (Cursor, error)
 }
@@ -1632,10 +1635,7 @@ func (d *ReflectionDecoder) decodeBudgetedStringKey(offset uint) (string, uint, 
 	if err := d.reserveExactPayload(uint(len(key))); err != nil {
 		return "", 0, err
 	}
-	if d.stringCache == nil {
-		return string(key), nextOffset, nil
-	}
-	return d.stringCache.internAt(cacheOffset, key), nextOffset, nil
+	return d.decodeStringBytes(cacheOffset, key), nextOffset, nil
 }
 
 // unmarshalValidatedMapKey invokes a custom map-key decoder after decodeKey
@@ -1804,6 +1804,12 @@ func (d *ReflectionDecoder) decodeStructWithFields(
 		// fast-path decoders bypass embedded-pointer initialization,
 		// which is the caller's responsibility on the slow path.
 		switch fieldInfo.dispatch {
+		case dispatchString:
+			if fastOffset, ok := d.tryFastDecodeString(offset, fieldValue, depth); ok {
+				offset = fastOffset
+				continue
+			}
+			offset, err = d.decodeValueSkipUnmarshaler(offset, fieldValue, depth)
 		case dispatchFast:
 			if len(fieldInfo.index) == 0 {
 				fastOffset, ok := d.tryFastDecodeTyped(
@@ -2168,6 +2174,9 @@ const (
 	// decodeValueSkipUnmarshaler (which is sound: the field type cannot
 	// implement either custom interface by construction).
 	dispatchFast fieldDispatch = iota
+	// dispatchString decodes strings, including database pointers, without
+	// repeating destination-type dispatch. Custom unmarshalers take precedence.
+	dispatchString
 	// dispatchUnmarshaler: field's unwrapped type is an interface, or its pointer
 	// type implements CursorUnmarshaler or Unmarshaler through methods declared
 	// on either a value or pointer receiver. Goes through decodeValue, which
@@ -2411,7 +2420,7 @@ func makeStructFields(rootType reflect.Type) *fieldsType {
 	return makeStructFieldsWithStack(rootType, map[reflect.Type]bool{rootType: true})
 }
 
-//nolint:gocyclo // Field discovery keeps validation and precedence rules in one traversal.
+//nolint:gocyclo,maintidx // Field discovery keeps validation and precedence rules in one traversal.
 func makeStructFieldsWithStack(
 	rootType reflect.Type,
 	stack map[reflect.Type]bool,
@@ -2508,6 +2517,8 @@ func makeStructFieldsWithStack(
 			case maxSizeCustom ||
 				unwrappedFieldType.Kind() == reflect.Interface:
 				dispatch = dispatchUnmarshaler
+			case fieldType.Kind() == reflect.String:
+				dispatch = dispatchString
 			case isFastDecodeType(fieldType):
 				dispatch = dispatchFast
 			default:
@@ -2812,6 +2823,28 @@ func (av addressableValue) indirect(mayAlloc bool) addressableValue {
 		av = addressableValue{Value: av.Elem()}
 	}
 	return av
+}
+
+// tryFastDecodeString uses the key decoder to validate either an inline string
+// or one database pointer to a string. Failures fall back to value decoding so
+// type errors describe a value, not a map key. Callers must have an active budget.
+func (d *ReflectionDecoder) tryFastDecodeString(
+	offset uint,
+	result addressableValue,
+	depth int,
+) (uint, bool) {
+	// Leave the depth boundary to the general decoder. Following a database
+	// pointer adds one level, even though its target is a scalar.
+	if depth >= maximumDataStructureDepth {
+		return 0, false
+	}
+	value, cacheOffset, nextOffset, err := d.decodeKeyAt(offset)
+	if err != nil || uint(len(value)) > uint(d.payloadRemaining) {
+		return 0, false
+	}
+	d.payloadRemaining -= uint32(len(value))
+	result.SetString(d.decodeStringBytes(cacheOffset, value))
+	return nextOffset, true
 }
 
 // tryFastDecodeTyped returns (newOffset, true) on success and (0, false)

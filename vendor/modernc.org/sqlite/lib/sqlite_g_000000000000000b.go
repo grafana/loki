@@ -34,10 +34,10 @@ func Xsqlite3_exec(tls *libc.TLS, db uintptr, zSql uintptr, __ccgo_fp_xCallback 
 	**(**uintptr)(__ccgo_up(bp + 8)) = uintptr(0) /* The current SQL statement */
 	azCols = uintptr(0)                           /* True if callback data is initialized */
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(142761))
+		return _sqlite3MisuseError(tls, int32(143270))
 	}
 	if zSql == uintptr(0) {
-		zSql = __ccgo_ts + 1702
+		zSql = __ccgo_ts + 1730
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	_sqlite3Error(tls, db, SQLITE_OK)
@@ -148,30 +148,6 @@ exec_out:
 
 // C documentation
 //
-//	/* c is a control character.  Append the canonical JSON representation
-//	** of that control character to p.
-//	**
-//	** This routine assumes that the output buffer has already been enlarged
-//	** sufficiently to hold the worst-case encoding plus a nul terminator.
-//	*/
-func _jsonAppendControlChar(tls *libc.TLS, p uintptr, c Tu8) {
-	if _aSpecial[c] != 0 {
-		**(**int8)(__ccgo_up((*TJsonString)(unsafe.Pointer(p)).FzBuf + uintptr((*TJsonString)(unsafe.Pointer(p)).FnUsed))) = int8('\\')
-		**(**int8)(__ccgo_up((*TJsonString)(unsafe.Pointer(p)).FzBuf + uintptr((*TJsonString)(unsafe.Pointer(p)).FnUsed+uint64(1)))) = _aSpecial[c]
-		**(**Tu64)(__ccgo_up(p + 24)) += uint64(2)
-	} else {
-		**(**int8)(__ccgo_up((*TJsonString)(unsafe.Pointer(p)).FzBuf + uintptr((*TJsonString)(unsafe.Pointer(p)).FnUsed))) = int8('\\')
-		**(**int8)(__ccgo_up((*TJsonString)(unsafe.Pointer(p)).FzBuf + uintptr((*TJsonString)(unsafe.Pointer(p)).FnUsed+uint64(1)))) = int8('u')
-		**(**int8)(__ccgo_up((*TJsonString)(unsafe.Pointer(p)).FzBuf + uintptr((*TJsonString)(unsafe.Pointer(p)).FnUsed+uint64(2)))) = int8('0')
-		**(**int8)(__ccgo_up((*TJsonString)(unsafe.Pointer(p)).FzBuf + uintptr((*TJsonString)(unsafe.Pointer(p)).FnUsed+uint64(3)))) = int8('0')
-		**(**int8)(__ccgo_up((*TJsonString)(unsafe.Pointer(p)).FzBuf + uintptr((*TJsonString)(unsafe.Pointer(p)).FnUsed+uint64(4)))) = **(**int8)(__ccgo_up(__ccgo_ts + 1724 + uintptr(libc.Int32FromUint8(c)>>int32(4))))
-		**(**int8)(__ccgo_up((*TJsonString)(unsafe.Pointer(p)).FzBuf + uintptr((*TJsonString)(unsafe.Pointer(p)).FnUsed+uint64(5)))) = **(**int8)(__ccgo_up(__ccgo_ts + 1724 + uintptr(libc.Int32FromUint8(c)&int32(0xf))))
-		**(**Tu64)(__ccgo_up(p + 24)) += uint64(6)
-	}
-}
-
-// C documentation
-//
 //	/*
 //	** Expression p is a QNUMBER (quoted number). Dequote the value in p->u.zToken
 //	** and set the type to INTEGER or FLOAT. "Quoted" integers or floats are those
@@ -199,7 +175,7 @@ func _sqlite3DequoteNumber(tls *libc.TLS, pParse uintptr, p uintptr) {
 				}
 			} else {
 				if bHex == 0 && (!(libc.Int32FromUint8(_sqlite3CtypeMap[libc.Uint8FromInt8(**(**int8)(__ccgo_up(pIn + uintptr(-libc.Int32FromInt32(1)))))])&libc.Int32FromInt32(0x04) != 0) || !(libc.Int32FromUint8(_sqlite3CtypeMap[libc.Uint8FromInt8(**(**int8)(__ccgo_up(pIn + 1)))])&libc.Int32FromInt32(0x04) != 0)) || bHex == int32(1) && (!(libc.Int32FromUint8(_sqlite3CtypeMap[libc.Uint8FromInt8(**(**int8)(__ccgo_up(pIn + uintptr(-libc.Int32FromInt32(1)))))])&libc.Int32FromInt32(0x08) != 0) || !(libc.Int32FromUint8(_sqlite3CtypeMap[libc.Uint8FromInt8(**(**int8)(__ccgo_up(pIn + 1)))])&libc.Int32FromInt32(0x08) != 0)) {
-					_sqlite3ErrorMsg(tls, pParse, __ccgo_ts+1788, libc.VaList(bp+16, *(*uintptr)(unsafe.Pointer(p + 8))))
+					_sqlite3ErrorMsg(tls, pParse, __ccgo_ts+1812, libc.VaList(bp+16, *(*uintptr)(unsafe.Pointer(p + 8))))
 				}
 			}
 			goto _2
@@ -260,19 +236,18 @@ func _sqlite3DequoteNumber(tls *libc.TLS, pParse uintptr, p uintptr) {
 //	**   %%  %
 //	*/
 func _strftimeFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(208)
-	defer tls.Free(208)
+	bp := tls.Alloc(176)
+	defer tls.Free(176)
 	var c, cf int8
-	var db, zFmt, v3 uintptr
+	var db, pRes, zFmt, v3 uintptr
 	var h int32
 	var i, j, v2 Tsize_t
 	var iS Ti64
 	var s float64
-	var _ /* sRes at bp+48 */ Tsqlite3_str
 	var _ /* x at bp+0 */ TDateTime
-	var _ /* y at bp+128 */ TDateTime
-	var _ /* y at bp+80 */ TDateTime
-	_, _, _, _, _, _, _, _, _, _, _ = c, cf, db, h, i, iS, j, s, zFmt, v2, v3
+	var _ /* y at bp+48 */ TDateTime
+	var _ /* y at bp+96 */ TDateTime
+	_, _, _, _, _, _, _, _, _, _, _, _ = c, cf, db, h, i, iS, j, pRes, s, zFmt, v2, v3
 	if argc == 0 {
 		return
 	}
@@ -281,7 +256,7 @@ func _strftimeFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		return
 	}
 	db = Xsqlite3_context_db_handle(tls, context)
-	_sqlite3StrAccumInit(tls, bp+48, uintptr(0), uintptr(0), 0, **(**int32)(__ccgo_up(db + 136)))
+	pRes = Xsqlite3_str_new(tls, db)
 	_computeJD(tls, bp)
 	_computeYMD_HMS(tls, bp)
 	v2 = libc.Uint64FromInt32(0)
@@ -295,7 +270,7 @@ func _strftimeFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 			goto _1
 		}
 		if j < i {
-			Xsqlite3_str_append(tls, bp+48, zFmt+uintptr(j), libc.Int32FromUint64(i-j))
+			Xsqlite3_str_append(tls, pRes, zFmt+uintptr(j), libc.Int32FromUint64(i-j))
 		}
 		i = i + 1
 		j = i + uint64(1)
@@ -305,41 +280,41 @@ func _strftimeFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 			fallthrough
 		case int32('e'):
 			if int32(cf) == int32('d') {
-				v3 = __ccgo_ts + 1389
+				v3 = __ccgo_ts + 1417
 			} else {
-				v3 = __ccgo_ts + 1394
+				v3 = __ccgo_ts + 1422
 			}
-			Xsqlite3_str_appendf(tls, bp+48, v3, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp))).FD))
+			Xsqlite3_str_appendf(tls, pRes, v3, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp))).FD))
 		case int32('f'): /* Fractional seconds.  (Non-standard) */
 			s = (**(**TDateTime)(__ccgo_up(bp))).Fs
 			if s > float64(59.999) {
 				s = float64(59.999)
 			}
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1398, libc.VaList(bp+184, s))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1426, libc.VaList(bp+152, s))
 		case int32('F'):
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1405, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp))).FY, (**(**TDateTime)(__ccgo_up(bp))).FM, (**(**TDateTime)(__ccgo_up(bp))).FD))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1433, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp))).FY, (**(**TDateTime)(__ccgo_up(bp))).FM, (**(**TDateTime)(__ccgo_up(bp))).FD))
 		case int32('G'): /* Fall thru */
 			fallthrough
 		case int32('g'):
-			**(**TDateTime)(__ccgo_up(bp + 80)) = **(**TDateTime)(__ccgo_up(bp))
+			**(**TDateTime)(__ccgo_up(bp + 48)) = **(**TDateTime)(__ccgo_up(bp))
 			/* Move y so that it is the Thursday in the same week as x */
-			(**(**TDateTime)(__ccgo_up(bp + 80))).FiJD += int64((int32(3) - _daysAfterMonday(tls, bp)) * int32(86400000))
-			(**(**TDateTime)(__ccgo_up(bp + 80))).FvalidYMD = 0
-			_computeYMD(tls, bp+80)
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FiJD += int64((int32(3) - _daysAfterMonday(tls, bp)) * int32(86400000))
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FvalidYMD = 0
+			_computeYMD(tls, bp+48)
 			if int32(cf) == int32('g') {
-				Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1389, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp + 80))).FY%int32(100)))
+				Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1417, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp + 48))).FY%int32(100)))
 			} else {
-				Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1420, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp + 80))).FY))
+				Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1448, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp + 48))).FY))
 			}
 		case int32('H'):
 			fallthrough
 		case int32('k'):
 			if int32(cf) == int32('H') {
-				v3 = __ccgo_ts + 1389
+				v3 = __ccgo_ts + 1417
 			} else {
-				v3 = __ccgo_ts + 1394
+				v3 = __ccgo_ts + 1422
 			}
-			Xsqlite3_str_appendf(tls, bp+48, v3, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp))).Fh))
+			Xsqlite3_str_appendf(tls, pRes, v3, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp))).Fh))
 		case int32('I'): /* Fall thru */
 			fallthrough
 		case int32('l'):
@@ -351,50 +326,50 @@ func _strftimeFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 				h = int32(12)
 			}
 			if int32(cf) == int32('I') {
-				v3 = __ccgo_ts + 1389
+				v3 = __ccgo_ts + 1417
 			} else {
-				v3 = __ccgo_ts + 1394
+				v3 = __ccgo_ts + 1422
 			}
-			Xsqlite3_str_appendf(tls, bp+48, v3, libc.VaList(bp+184, h))
+			Xsqlite3_str_appendf(tls, pRes, v3, libc.VaList(bp+152, h))
 		case int32('j'): /* Day of year.  Jan01==1, Jan02==2, and so forth */
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1425, libc.VaList(bp+184, _daysAfterJan01(tls, bp)+int32(1)))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1453, libc.VaList(bp+152, _daysAfterJan01(tls, bp)+int32(1)))
 		case int32('J'): /* Julian day number.  (Non-standard) */
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1430, libc.VaList(bp+184, float64((**(**TDateTime)(__ccgo_up(bp))).FiJD)/float64(8.64e+07)))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1458, libc.VaList(bp+152, float64((**(**TDateTime)(__ccgo_up(bp))).FiJD)/float64(8.64e+07)))
 		case int32('m'):
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1389, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp))).FM))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1417, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp))).FM))
 		case int32('M'):
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1389, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp))).Fm))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1417, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp))).Fm))
 		case int32('p'): /* Fall thru */
 			fallthrough
 		case int32('P'):
 			if (**(**TDateTime)(__ccgo_up(bp))).Fh >= int32(12) {
 				if int32(cf) == int32('p') {
-					v3 = __ccgo_ts + 1436
+					v3 = __ccgo_ts + 1464
 				} else {
-					v3 = __ccgo_ts + 1439
+					v3 = __ccgo_ts + 1467
 				}
-				Xsqlite3_str_append(tls, bp+48, v3, int32(2))
+				Xsqlite3_str_append(tls, pRes, v3, int32(2))
 			} else {
 				if int32(cf) == int32('p') {
-					v3 = __ccgo_ts + 1442
+					v3 = __ccgo_ts + 1470
 				} else {
-					v3 = __ccgo_ts + 1445
+					v3 = __ccgo_ts + 1473
 				}
-				Xsqlite3_str_append(tls, bp+48, v3, int32(2))
+				Xsqlite3_str_append(tls, pRes, v3, int32(2))
 			}
 		case int32('R'):
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1448, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp))).Fh, (**(**TDateTime)(__ccgo_up(bp))).Fm))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1476, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp))).Fh, (**(**TDateTime)(__ccgo_up(bp))).Fm))
 		case int32('s'):
 			if int32(uint32(*(*uint8)(unsafe.Pointer(bp + 44))&0x4>>2)) != 0 {
-				Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1458, libc.VaList(bp+184, float64((**(**TDateTime)(__ccgo_up(bp))).FiJD-libc.Int64FromInt32(21086676)*libc.Int64FromInt32(10000000))/float64(1000)))
+				Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1486, libc.VaList(bp+152, float64((**(**TDateTime)(__ccgo_up(bp))).FiJD-libc.Int64FromInt32(21086676)*libc.Int64FromInt32(10000000))/float64(1000)))
 			} else {
 				iS = (**(**TDateTime)(__ccgo_up(bp))).FiJD/libc.Int64FromInt32(1000) - libc.Int64FromInt32(21086676)*libc.Int64FromInt32(10000)
-				Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1463, libc.VaList(bp+184, iS))
+				Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1491, libc.VaList(bp+152, iS))
 			}
 		case int32('S'):
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1389, libc.VaList(bp+184, int32((**(**TDateTime)(__ccgo_up(bp))).Fs)))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1417, libc.VaList(bp+152, int32((**(**TDateTime)(__ccgo_up(bp))).Fs)))
 		case int32('T'):
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1468, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp))).Fh, (**(**TDateTime)(__ccgo_up(bp))).Fm, int32((**(**TDateTime)(__ccgo_up(bp))).Fs)))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1496, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp))).Fh, (**(**TDateTime)(__ccgo_up(bp))).Fm, int32((**(**TDateTime)(__ccgo_up(bp))).Fs)))
 		case int32('u'): /* Day of week.  1 to 7.  Monday==1, Sunday==7 */
 			fallthrough
 		case int32('w'): /* Day of week.  0 to 6.  Sunday==0, Monday==1 */
@@ -402,24 +377,24 @@ func _strftimeFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 			if int32(c) == int32('0') && int32(cf) == int32('u') {
 				c = int8('7')
 			}
-			Xsqlite3_str_appendchar(tls, bp+48, int32(1), c)
+			Xsqlite3_str_appendchar(tls, pRes, int32(1), c)
 		case int32('U'): /* Week num. 00-53. First Sun of the year is week 01 */
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1389, libc.VaList(bp+184, (_daysAfterJan01(tls, bp)-_daysAfterSunday(tls, bp)+int32(7))/int32(7)))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1417, libc.VaList(bp+152, (_daysAfterJan01(tls, bp)-_daysAfterSunday(tls, bp)+int32(7))/int32(7)))
 		case int32('V'): /* Week num. 01-53. First week with a Thur is week 01 */
-			**(**TDateTime)(__ccgo_up(bp + 128)) = **(**TDateTime)(__ccgo_up(bp))
+			**(**TDateTime)(__ccgo_up(bp + 96)) = **(**TDateTime)(__ccgo_up(bp))
 			/* Adjust y so that is the Thursday in the same week as x */
-			(**(**TDateTime)(__ccgo_up(bp + 128))).FiJD += int64((int32(3) - _daysAfterMonday(tls, bp)) * int32(86400000))
-			(**(**TDateTime)(__ccgo_up(bp + 128))).FvalidYMD = 0
-			_computeYMD(tls, bp+128)
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1389, libc.VaList(bp+184, _daysAfterJan01(tls, bp+128)/int32(7)+int32(1)))
+			(**(**TDateTime)(__ccgo_up(bp + 96))).FiJD += int64((int32(3) - _daysAfterMonday(tls, bp)) * int32(86400000))
+			(**(**TDateTime)(__ccgo_up(bp + 96))).FvalidYMD = 0
+			_computeYMD(tls, bp+96)
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1417, libc.VaList(bp+152, _daysAfterJan01(tls, bp+96)/int32(7)+int32(1)))
 		case int32('W'): /* Week num. 00-53. First Mon of the year is week 01 */
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1389, libc.VaList(bp+184, (_daysAfterJan01(tls, bp)-_daysAfterMonday(tls, bp)+int32(7))/int32(7)))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1417, libc.VaList(bp+152, (_daysAfterJan01(tls, bp)-_daysAfterMonday(tls, bp)+int32(7))/int32(7)))
 		case int32('Y'):
-			Xsqlite3_str_appendf(tls, bp+48, __ccgo_ts+1420, libc.VaList(bp+184, (**(**TDateTime)(__ccgo_up(bp))).FY))
+			Xsqlite3_str_appendf(tls, pRes, __ccgo_ts+1448, libc.VaList(bp+152, (**(**TDateTime)(__ccgo_up(bp))).FY))
 		case int32('%'):
-			Xsqlite3_str_appendchar(tls, bp+48, int32(1), int8('%'))
+			Xsqlite3_str_appendchar(tls, pRes, int32(1), int8('%'))
 		default:
-			Xsqlite3_str_reset(tls, bp+48)
+			Xsqlite3_str_free(tls, pRes)
 			return
 		}
 		goto _1
@@ -428,9 +403,9 @@ func _strftimeFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 		i = i + 1
 	}
 	if j < i {
-		Xsqlite3_str_append(tls, bp+48, zFmt+uintptr(j), libc.Int32FromUint64(i-j))
+		Xsqlite3_str_append(tls, pRes, zFmt+uintptr(j), libc.Int32FromUint64(i-j))
 	}
-	_sqlite3ResultStrAccum(tls, context, bp+48)
+	Xsqlite3_result_str(tls, context, pRes, int32(SQLITE_FINISH))
 }
 
 // C documentation
@@ -457,14 +432,14 @@ func _unixFullPathname(tls *libc.TLS, pVfs uintptr, zPath uintptr, nOut int32, z
 	(**(**TDbPath)(__ccgo_up(bp))).FzOut = zOut
 	if int32(**(**int8)(__ccgo_up(zPath))) != int32('/') {
 		if (*(*func(*libc.TLS, uintptr, Tsize_t) uintptr)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(3)].FpCurrent})))(tls, bp+24, libc.Uint64FromInt64(1026)-libc.Uint64FromInt32(2)) == uintptr(0) {
-			return _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47370)), __ccgo_ts+3558, zPath, int32(47370))
+			return _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47830)), __ccgo_ts+3572, zPath, int32(47830))
 		}
 		_appendAllPathElements(tls, bp, bp+24)
 	}
 	_appendAllPathElements(tls, bp, zPath)
 	**(**int8)(__ccgo_up(zOut + uintptr((**(**TDbPath)(__ccgo_up(bp))).FnUsed))) = 0
 	if (**(**TDbPath)(__ccgo_up(bp))).Frc != 0 || (**(**TDbPath)(__ccgo_up(bp))).FnUsed < int32(2) {
-		return _sqlite3CantopenError(tls, int32(47376))
+		return _sqlite3CantopenError(tls, int32(47836))
 	}
 	if (**(**TDbPath)(__ccgo_up(bp))).FnSymlink != 0 {
 		return libc.Int32FromInt32(SQLITE_OK) | libc.Int32FromInt32(2)<<libc.Int32FromInt32(8)

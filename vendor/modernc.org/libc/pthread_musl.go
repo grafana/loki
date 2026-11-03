@@ -304,6 +304,25 @@ func Xpthread_mutex_lock(tls *TLS, m uintptr) int32 {
 
 			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		}
+	case PTHREAD_MUTEX_ERRORCHECK:
+		// Like RECURSIVE, without the count, and relocking is an error.
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
+			return EDEADLK
+		}
+
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			return 0
+		}
+
+		for {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+				return 0
+			}
+
+			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+		}
 	default:
 		panic(todo("", typ))
 	}
@@ -313,6 +332,30 @@ func Xpthread_mutex_trylock(tls *TLS, m uintptr) int32 {
 	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
 	case PTHREAD_MUTEX_NORMAL:
 		if (*pthreadMutex)(unsafe.Pointer(m)).TryLock() {
+			return 0
+		}
+
+		return EBUSY
+	case PTHREAD_MUTEX_RECURSIVE:
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
+			atomic.AddInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
+			return 0
+		}
+
+		// The owner field is the lock. As in Xpthread_mutex_lock, the embedded
+		// sync.Mutex is held only while owned, and briefly by unlock and by the
+		// loop in lock, so after the CAS Lock does not wait for another owner.
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			return 0
+		}
+
+		return EBUSY
+	case PTHREAD_MUTEX_ERRORCHECK:
+		// EBUSY whoever holds it, the caller included.
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			return 0
 		}
 
@@ -336,6 +379,14 @@ func Xpthread_mutex_unlock(tls *TLS, m uintptr) int32 {
 			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0)
 			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		}
+		return 0
+	case PTHREAD_MUTEX_ERRORCHECK:
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) != tls.ID {
+			return EPERM
+		}
+
+		atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0)
+		(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		return 0
 	default:
 		panic(todo("", typ))
@@ -400,15 +451,22 @@ func Xpthread_cond_timedwait(tls *TLS, c, m, ts uintptr) (r int32) {
 	}()
 
 	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
-	case PTHREAD_MUTEX_NORMAL:
-		(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+	case PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK:
+		// A recursive mutex releases one level, like musl's own
+		// pthread_cond_timedwait, so one locked more than once stays held
+		// while waiting (#62). Unlocking a RECURSIVE or ERRORCHECK mutex the
+		// caller does not hold reports EPERM, which the wait then returns.
+		if r = Xpthread_mutex_unlock(tls, m); r != 0 {
+			return r
+		}
+
 		select {
 		case <-ch:
 			// ok
 		case <-to:
 			r = ETIMEDOUT
 		}
-		(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+		Xpthread_mutex_lock(tls, m)
 		return r
 	default:
 		panic(todo("", typ))

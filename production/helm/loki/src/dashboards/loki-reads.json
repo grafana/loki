@@ -254,10 +254,10 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_boltdb_shipper_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\", operation=\"Shipper.Query\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                        "expr": "sum by (operation, status) (\n  label_replace(label_replace(rate(loki_index_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
                         "format": "time_series",
                         "intervalFactor": 2,
-                        "legendFormat": "{{status}}",
+                        "legendFormat": "{{operation}} {{status}}",
                         "refId": "A",
                         "step": 10
                      }
@@ -330,26 +330,26 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\", operation=\"Shipper.Query\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_index_request_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval]))) * 1e3",
                         "format": "time_series",
                         "intervalFactor": 2,
-                        "legendFormat": "99th Percentile",
+                        "legendFormat": "99th Percentile {{operation}}",
                         "refId": "A",
                         "step": 10
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\", operation=\"Shipper.Query\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_index_request_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval]))) * 1e3",
                         "format": "time_series",
                         "intervalFactor": 2,
-                        "legendFormat": "50th Percentile",
+                        "legendFormat": "50th Percentile {{operation}}",
                         "refId": "B",
                         "step": 10
                      },
                      {
-                        "expr": "sum(rate(loki_boltdb_shipper_request_duration_seconds_sum{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\", operation=\"Shipper.Query\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\", operation=\"Shipper.Query\"}[$__rate_interval]))",
+                        "expr": "sum by (operation) (rate(loki_index_request_duration_seconds_sum{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval])) * 1e3 / sum by (operation) (rate(loki_index_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval]))",
                         "format": "time_series",
                         "intervalFactor": 2,
-                        "legendFormat": "Average",
+                        "legendFormat": "Average {{operation}}",
                         "refId": "C",
                         "step": 10
                      }
@@ -395,7 +395,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "BoltDB Shipper",
+            "title": "TSDB Shipper",
             "titleSize": "h6"
          }
       ],

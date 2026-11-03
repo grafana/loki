@@ -653,9 +653,9 @@ var File_google_monitoring_v3_group_service_proto protoreflect.FileDescriptor
 
 const file_google_monitoring_v3_group_service_proto_rawDesc = "" +
 	"\n" +
-	"(google/monitoring/v3/group_service.proto\x12\x14google.monitoring.v3\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a#google/api/monitored_resource.proto\x1a\x19google/api/resource.proto\x1a!google/monitoring/v3/common.proto\x1a google/monitoring/v3/group.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x9a\x03\n" +
-	"\x11ListGroupsRequest\x12;\n" +
-	"\x04name\x18\a \x01(\tB'\xe0A\x02\xfaA!\x12\x1fmonitoring.googleapis.com/GroupR\x04name\x12R\n" +
+	"(google/monitoring/v3/group_service.proto\x12\x14google.monitoring.v3\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a#google/api/monitored_resource.proto\x1a\x19google/api/resource.proto\x1a!google/monitoring/v3/common.proto\x1a google/monitoring/v3/group.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x9b\x03\n" +
+	"\x11ListGroupsRequest\x12<\n" +
+	"\x04name\x18\a \x01(\tB(\xe2A\x01\x02\xfaA!\x12\x1fmonitoring.googleapis.com/GroupR\x04name\x12R\n" +
 	"\x11children_of_group\x18\x02 \x01(\tB$\xfaA!\n" +
 	"\x1fmonitoring.googleapis.com/GroupH\x00R\x0fchildrenOfGroup\x12T\n" +
 	"\x12ancestors_of_group\x18\x03 \x01(\tB$\xfaA!\n" +
@@ -668,23 +668,23 @@ const file_google_monitoring_v3_group_service_proto_rawDesc = "" +
 	"\x06filter\"o\n" +
 	"\x12ListGroupsResponse\x121\n" +
 	"\x05group\x18\x01 \x03(\v2\x1b.google.monitoring.v3.GroupR\x05group\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"N\n" +
-	"\x0fGetGroupRequest\x12;\n" +
-	"\x04name\x18\x03 \x01(\tB'\xe0A\x02\xfaA!\n" +
-	"\x1fmonitoring.googleapis.com/GroupR\x04name\"\xae\x01\n" +
-	"\x12CreateGroupRequest\x12;\n" +
-	"\x04name\x18\x04 \x01(\tB'\xe0A\x02\xfaA!\x12\x1fmonitoring.googleapis.com/GroupR\x04name\x126\n" +
-	"\x05group\x18\x02 \x01(\v2\x1b.google.monitoring.v3.GroupB\x03\xe0A\x02R\x05group\x12#\n" +
-	"\rvalidate_only\x18\x03 \x01(\bR\fvalidateOnly\"q\n" +
-	"\x12UpdateGroupRequest\x126\n" +
-	"\x05group\x18\x02 \x01(\v2\x1b.google.monitoring.v3.GroupB\x03\xe0A\x02R\x05group\x12#\n" +
-	"\rvalidate_only\x18\x03 \x01(\bR\fvalidateOnly\"o\n" +
-	"\x12DeleteGroupRequest\x12;\n" +
-	"\x04name\x18\x03 \x01(\tB'\xe0A\x02\xfaA!\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"O\n" +
+	"\x0fGetGroupRequest\x12<\n" +
+	"\x04name\x18\x03 \x01(\tB(\xe2A\x01\x02\xfaA!\n" +
+	"\x1fmonitoring.googleapis.com/GroupR\x04name\"\xb0\x01\n" +
+	"\x12CreateGroupRequest\x12<\n" +
+	"\x04name\x18\x04 \x01(\tB(\xe2A\x01\x02\xfaA!\x12\x1fmonitoring.googleapis.com/GroupR\x04name\x127\n" +
+	"\x05group\x18\x02 \x01(\v2\x1b.google.monitoring.v3.GroupB\x04\xe2A\x01\x02R\x05group\x12#\n" +
+	"\rvalidate_only\x18\x03 \x01(\bR\fvalidateOnly\"r\n" +
+	"\x12UpdateGroupRequest\x127\n" +
+	"\x05group\x18\x02 \x01(\v2\x1b.google.monitoring.v3.GroupB\x04\xe2A\x01\x02R\x05group\x12#\n" +
+	"\rvalidate_only\x18\x03 \x01(\bR\fvalidateOnly\"p\n" +
+	"\x12DeleteGroupRequest\x12<\n" +
+	"\x04name\x18\x03 \x01(\tB(\xe2A\x01\x02\xfaA!\n" +
 	"\x1fmonitoring.googleapis.com/GroupR\x04name\x12\x1c\n" +
-	"\trecursive\x18\x04 \x01(\bR\trecursive\"\xea\x01\n" +
-	"\x17ListGroupMembersRequest\x12;\n" +
-	"\x04name\x18\a \x01(\tB'\xe0A\x02\xfaA!\n" +
+	"\trecursive\x18\x04 \x01(\bR\trecursive\"\xeb\x01\n" +
+	"\x17ListGroupMembersRequest\x12<\n" +
+	"\x04name\x18\a \x01(\tB(\xe2A\x01\x02\xfaA!\n" +
 	"\x1fmonitoring.googleapis.com/GroupR\x04name\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +

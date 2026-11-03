@@ -122,6 +122,8 @@ func TestReaders_ResetAt(t *testing.T) {
 		require.Equal(t, 20, r.Offset())
 		require.ErrorIs(t, r.ResetAt(21), ErrInvalidSize)
 		require.Equal(t, 20, r.Offset())
+		require.ErrorIs(t, r.ResetAt(-1), ErrInvalidSize)
+		require.Equal(t, 20, r.Offset())
 	})
 }
 

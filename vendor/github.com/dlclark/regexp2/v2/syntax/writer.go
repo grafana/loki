@@ -195,8 +195,12 @@ func (w *writer) codeFromTree(tree *RegexTree) (*Code, error) {
 	//TODO: benchmark string prefixes
 	if prefix != nil && len(prefix.PrefixStr) > 0 && MaxPrefixSize > 0 {
 		if len(prefix.PrefixStr) > MaxPrefixSize {
-			// limit prefix changes to 10k
-			prefix.PrefixStr = prefix.PrefixStr[:MaxPrefixSize]
+			// Keep the portion encountered first in the search direction.
+			if rtl {
+				prefix.PrefixStr = prefix.PrefixStr[len(prefix.PrefixStr)-MaxPrefixSize:]
+			} else {
+				prefix.PrefixStr = prefix.PrefixStr[:MaxPrefixSize]
+			}
 		}
 		bmPrefix = newBmPrefix(prefix.PrefixStr, prefix.CaseInsensitive, rtl)
 	} else {
@@ -514,8 +518,13 @@ func (w *writer) emitFragment(nodetype NodeType, node *RegexNode, curIndex int) 
 	case NtRef:
 		w.emit1(InstOp(node.T|ntBits), w.mapCapnum(node.M))
 
-	case NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary, NtBeginning, NtStart, NtEndZ, NtEnd, NtUpdateBumpalong:
+	case NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtBeginning, NtStart, NtEndZ, NtEnd, NtUpdateBumpalong:
 		w.emit(InstOp(node.T))
+
+	case NtECMABoundary, NtNonECMABoundary:
+		// Ci tells the runner that IgnoreCase applies, which (with Unicode)
+		// adds to the word characters.
+		w.emit(InstOp(node.T) | bits&Ci)
 
 	case NtGrapheme:
 		w.emit(InstOp(node.T | ntBits))

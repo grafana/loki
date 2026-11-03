@@ -103,8 +103,16 @@ func (t logMergeTask) physicalPlan(tenant string, window time.Time) *physical.Pl
 
 func (t logMergeTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
+// logStats returns the input bytes of the task's key range from the index
+// stats, so the tasks of a split merge add up to the bytes of the merge. If
+// the spec has no input bytes, it falls back to the size of the task's
+// sections.
 func (t logMergeTask) logStats() logTaskStats {
 	stats := logTaskStats{oldestTimestamp: t.entry.StartTime}
+	if t.spec.InputBytes > 0 {
+		stats.inputBytes = uint64(t.spec.InputBytes)
+		return stats
+	}
 	for _, run := range t.spec.Runs {
 		for _, section := range run.Sections {
 			stats.inputBytes += uint64(section.UncompressedSize)
@@ -130,22 +138,3 @@ func (t indexFilterTask) tocEntry() metastore.TableOfContentsEntry { return t.en
 // logTaskStats returns zero bytes, because the filter reads only the source
 // index.
 func (t indexFilterTask) logStats() logTaskStats { return logTaskStats{} }
-
-// sortObjectTask rewrites one log object with sortSchema. bytes is the
-// uncompressed size of the sections of the object.
-type sortObjectTask struct {
-	objectPath string
-	sortSchema []string
-	entry      metastore.TableOfContentsEntry
-	bytes      uint64
-}
-
-func (t sortObjectTask) physicalPlan(string, time.Time) *physical.Plan {
-	return buildSortObjectPlan(t.objectPath, t.sortSchema)
-}
-
-func (t sortObjectTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
-
-func (t sortObjectTask) logStats() logTaskStats {
-	return logTaskStats{inputBytes: t.bytes, oldestTimestamp: t.entry.StartTime}
-}

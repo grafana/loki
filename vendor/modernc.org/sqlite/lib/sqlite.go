@@ -90,6 +90,8 @@ const BTREE_FREE_PAGE_COUNT = 0
 
 const BTREE_HINT_RANGE = 0
 
+const BTREE_HINT_TABLECURSOR = 1
+
 const BTREE_INCR_VACUUM = 7
 
 const BTREE_INTKEY = 1
@@ -895,6 +897,8 @@ const FTS5_MAX_LEVEL = 64
 
 const FTS5_MAX_PAGE_SIZE = 65536
 
+const FTS5_MAX_PGNO = 2147483392
+
 const FTS5_MAX_PREFIX_INDEXES = 31
 
 const FTS5_MAX_SEGMENT = 2000
@@ -1169,7 +1173,7 @@ type Fts5PoslistPopulator = TFts5PoslistPopulator
 ** at each "%%" line.  Also, any "P-a-r-s-e" identifier prefix (without the
 ** interstitial "-" characters) contained in this template is changed into
 ** the value of the %name directive from the grammar.  Otherwise, the content
-** of this template is copied straight through into the generate parser
+** of this template is copied straight through into the generated parser
 ** source file.
 **
 ** The following is the concatenation of all %include directives from the
@@ -1589,6 +1593,8 @@ const JSON_MERGE_OOM = 3
 
 const JSON_MERGE_TOODEEP = 4
 
+const JSON_NOCACHE = 4
+
 const JSON_SQL = 2
 
 const JSON_SUBTYPE = 74
@@ -1939,29 +1945,29 @@ const OPFLG_OUT2 = 16
 
 const OPFLG_OUT3 = 32
 
-const OP_Abortable = 191
+const OP_Abortable = 190
 
 const OP_Add = 107
 
-const OP_AddImm = 88
+const OP_AddImm = 87
 
-const OP_Affinity = 98
+const OP_Affinity = 97
 
-const OP_AggFinal = 167
+const OP_AggFinal = 166
 
-const OP_AggInverse = 163
+const OP_AggInverse = 162
 
-const OP_AggStep = 164
+const OP_AggStep = 163
 
-const OP_AggStep1 = 165
+const OP_AggStep1 = 164
 
-const OP_AggValue = 166
+const OP_AggValue = 165
 
 const OP_And = 44
 
 const OP_AutoCommit = 1
 
-const OP_BeginSubrtn = 76
+const OP_BeginSubrtn = 75
 
 const OP_BitAnd = 103
 
@@ -1969,85 +1975,85 @@ const OP_BitNot = 115
 
 const OP_BitOr = 104
 
-const OP_Blob = 79
+const OP_Blob = 78
 
-const OP_Cast = 90
+const OP_Cast = 89
 
 const OP_Checkpoint = 3
 
-const OP_Clear = 147
+const OP_Clear = 146
 
-const OP_Close = 124
+const OP_Close = 123
 
-const OP_ClrSubtype = 182
+const OP_ClrSubtype = 181
 
-const OP_CollSeq = 87
+const OP_CollSeq = 86
 
-const OP_Column = 96
+const OP_Column = 95
 
-const OP_ColumnsUsed = 125
+const OP_ColumnsUsed = 124
 
-const OP_Compare = 92
+const OP_Compare = 91
 
 const OP_Concat = 112
 
-const OP_Copy = 82
+const OP_Copy = 81
 
-const OP_Count = 100
+const OP_Count = 99
 
-const OP_CreateBtree = 149
+const OP_CreateBtree = 148
 
-const OP_CursorHint = 187
+const OP_CursorHint = 186
 
-const OP_CursorLock = 169
+const OP_CursorLock = 168
 
-const OP_CursorUnlock = 170
+const OP_CursorUnlock = 169
 
-const OP_DecrJumpZero = 63
+const OP_DecrJumpZero = 62
 
-const OP_DeferredSeek = 143
+const OP_DeferredSeek = 142
 
-const OP_Delete = 132
+const OP_Delete = 131
 
-const OP_Destroy = 146
+const OP_Destroy = 145
 
 const OP_Divide = 110
 
-const OP_DropIndex = 155
+const OP_DropIndex = 153
 
-const OP_DropTable = 153
+const OP_DropTable = 152
 
-const OP_DropTrigger = 156
+const OP_DropTrigger = 155
 
 const OP_ElseEq = 59
 
-const OP_EndCoroutine = 70
+const OP_EndCoroutine = 69
 
 const OP_Eq = 54
 
-const OP_Expire = 168
+const OP_Expire = 167
 
-const OP_Explain = 190
+const OP_Explain = 189
 
-const OP_Filter = 66
+const OP_Filter = 65
 
-const OP_FilterAdd = 185
+const OP_FilterAdd = 184
 
-const OP_FinishSeek = 145
+const OP_FinishSeek = 144
 
-const OP_FkCheck = 85
+const OP_FkCheck = 84
 
-const OP_FkCounter = 160
+const OP_FkCounter = 159
 
-const OP_FkIfZero = 60
+const OP_FkIfZero = 50
 
-const OP_Found = 29
+const OP_Found = 28
 
-const OP_Function = 68
+const OP_Function = 67
 
 const OP_Ge = 58
 
-const OP_GetSubtype = 183
+const OP_GetSubtype = 182
 
 const OP_Gosub = 10
 
@@ -2055,63 +2061,61 @@ const OP_Goto = 9
 
 const OP_Gt = 55
 
-const OP_Halt = 72
+const OP_Halt = 71
 
-const OP_HaltIfNull = 71
+const OP_HaltIfNull = 70
 
-const OP_IFindKey = 47
+const OP_IFindKey = 46
 
-const OP_IdxDelete = 142
+const OP_IdxDelete = 141
 
-const OP_IdxGE = 46
+const OP_IdxGE = 45
 
-const OP_IdxGT = 42
+const OP_IdxGT = 41
 
-const OP_IdxInsert = 140
+const OP_IdxInsert = 139
 
-const OP_IdxLE = 41
+const OP_IdxLE = 40
 
-const OP_IdxLT = 45
+const OP_IdxLT = 42
 
-const OP_IdxRowid = 144
+const OP_IdxRowid = 143
 
 const OP_If = 16
 
-const OP_IfEmpty = 37
+const OP_IfEmpty = 36
 
-const OP_IfNoHope = 26
+const OP_IfNoHope = 25
 
 const OP_IfNot = 17
 
-const OP_IfNotOpen = 25
-
-const OP_IfNotZero = 62
+const OP_IfNotZero = 61
 
 const OP_IfNullRow = 20
 
-const OP_IfPos = 61
+const OP_IfPos = 60
 
-const OP_IfSizeBetween = 33
+const OP_IfSizeBetween = 32
 
-const OP_IncrVacuum = 64
+const OP_IncrVacuum = 63
 
 const OP_Init = 8
 
 const OP_InitCoroutine = 11
 
-const OP_Insert = 130
+const OP_Insert = 129
 
-const OP_Int64 = 74
+const OP_Int64 = 73
 
-const OP_IntCopy = 84
+const OP_IntCopy = 83
 
-const OP_Integer = 73
+const OP_Integer = 72
 
-const OP_IntegrityCk = 157
+const OP_IntegrityCk = 156
 
 const OP_IsNull = 51
 
-const OP_IsTrue = 93
+const OP_IsTrue = 92
 
 const OP_IsType = 18
 
@@ -2119,21 +2123,21 @@ const OP_JournalMode = 4
 
 const OP_Jump = 14
 
-const OP_Last = 32
+const OP_Last = 31
 
 const OP_Le = 56
 
-const OP_LoadAnalysis = 152
+const OP_LoadAnalysis = 151
 
 const OP_Lt = 57
 
-const OP_MakeRecord = 99
+const OP_MakeRecord = 98
 
-const OP_MaxPgcnt = 181
+const OP_MaxPgcnt = 180
 
-const OP_MemMax = 161
+const OP_MemMax = 160
 
-const OP_Move = 81
+const OP_Move = 80
 
 const OP_Multiply = 109
 
@@ -2141,187 +2145,187 @@ const OP_MustBeInt = 13
 
 const OP_Ne = 53
 
-const OP_NewRowid = 129
+const OP_NewRowid = 128
 
-const OP_Next = 40
+const OP_Next = 39
 
-const OP_NoConflict = 27
+const OP_NoConflict = 26
 
-const OP_Noop = 189
+const OP_Noop = 188
 
 const OP_Not = 19
 
-const OP_NotExists = 31
+const OP_NotExists = 30
 
-const OP_NotFound = 28
+const OP_NotFound = 27
 
 const OP_NotNull = 52
 
-const OP_Null = 77
+const OP_Null = 76
 
-const OP_NullRow = 138
+const OP_NullRow = 137
 
-const OP_Offset = 95
+const OP_Offset = 94
 
-const OP_OffsetLimit = 162
+const OP_OffsetLimit = 161
 
 const OP_Once = 15
 
-const OP_OpenAutoindex = 119
+const OP_OpenAutoindex = 117
 
-const OP_OpenDup = 117
+const OP_OpenDup = 116
 
-const OP_OpenEphemeral = 120
+const OP_OpenEphemeral = 119
 
-const OP_OpenPseudo = 123
+const OP_OpenPseudo = 122
 
-const OP_OpenRead = 114
+const OP_OpenRead = 113
 
-const OP_OpenWrite = 116
+const OP_OpenWrite = 114
 
 const OP_Or = 43
 
-const OP_Pagecount = 180
+const OP_Pagecount = 179
 
-const OP_Param = 159
+const OP_Param = 158
 
-const OP_ParseSchema = 151
+const OP_ParseSchema = 150
 
-const OP_Permutation = 91
+const OP_Permutation = 90
 
-const OP_Prev = 39
+const OP_Prev = 38
 
-const OP_Program = 50
+const OP_Program = 49
 
-const OP_PureFunc = 67
+const OP_PureFunc = 66
 
-const OP_ReadCookie = 101
+const OP_ReadCookie = 100
 
 const OP_Real = 154
 
-const OP_RealAffinity = 89
+const OP_RealAffinity = 88
 
-const OP_ReleaseReg = 188
+const OP_ReleaseReg = 187
 
 const OP_Remainder = 111
 
-const OP_ReopenIdx = 113
+const OP_ReopenIdx = 102
 
-const OP_ResetCount = 133
+const OP_ResetCount = 132
 
-const OP_ResetSorter = 148
+const OP_ResetSorter = 147
 
-const OP_ResultRow = 86
+const OP_ResultRow = 85
 
-const OP_Return = 69
+const OP_Return = 68
 
-const OP_Rewind = 36
+const OP_Rewind = 35
 
-const OP_RowCell = 131
+const OP_RowCell = 130
 
-const OP_RowData = 136
+const OP_RowData = 135
 
-const OP_RowSetAdd = 158
+const OP_RowSetAdd = 157
 
-const OP_RowSetRead = 48
+const OP_RowSetRead = 47
 
-const OP_RowSetTest = 49
+const OP_RowSetTest = 48
 
-const OP_Rowid = 137
+const OP_Rowid = 136
 
-const OP_SCopy = 83
+const OP_SCopy = 82
 
 const OP_Savepoint = 0
 
-const OP_SeekEnd = 139
+const OP_SeekEnd = 138
 
 const OP_SeekGE = 23
 
 const OP_SeekGT = 24
 
-const OP_SeekHit = 127
+const OP_SeekHit = 126
 
 const OP_SeekLE = 22
 
 const OP_SeekLT = 21
 
-const OP_SeekRowid = 30
+const OP_SeekRowid = 29
 
-const OP_SeekScan = 126
+const OP_SeekScan = 125
 
-const OP_Sequence = 128
+const OP_Sequence = 127
 
-const OP_SequenceTest = 122
+const OP_SequenceTest = 121
 
-const OP_SetCookie = 102
+const OP_SetCookie = 101
 
-const OP_SetSubtype = 184
+const OP_SetSubtype = 183
 
 const OP_ShiftLeft = 105
 
 const OP_ShiftRight = 106
 
-const OP_SoftNull = 78
+const OP_SoftNull = 77
 
-const OP_Sort = 35
+const OP_Sort = 34
 
-const OP_SorterCompare = 134
+const OP_SorterCompare = 133
 
-const OP_SorterData = 135
+const OP_SorterData = 134
 
-const OP_SorterInsert = 141
+const OP_SorterInsert = 140
 
-const OP_SorterNext = 38
+const OP_SorterNext = 37
 
-const OP_SorterOpen = 121
+const OP_SorterOpen = 120
 
-const OP_SorterSort = 34
+const OP_SorterSort = 33
 
-const OP_SqlExec = 150
+const OP_SqlExec = 149
 
-const OP_String = 75
+const OP_String = 74
 
 const OP_String8 = 118
 
 const OP_Subtract = 108
 
-const OP_TableLock = 171
+const OP_TableLock = 170
 
-const OP_Trace = 186
+const OP_Trace = 185
 
 const OP_Transaction = 2
 
-const OP_TypeCheck = 97
+const OP_TypeCheck = 96
 
-const OP_VBegin = 172
+const OP_VBegin = 171
 
-const OP_VCheck = 176
+const OP_VCheck = 175
 
-const OP_VColumn = 178
+const OP_VColumn = 177
 
-const OP_VCreate = 173
+const OP_VCreate = 172
 
-const OP_VDestroy = 174
+const OP_VDestroy = 173
 
 const OP_VFilter = 6
 
-const OP_VInitIn = 177
+const OP_VInitIn = 176
 
-const OP_VNext = 65
+const OP_VNext = 64
 
-const OP_VOpen = 175
+const OP_VOpen = 174
 
-const OP_VRename = 179
+const OP_VRename = 178
 
 const OP_VUpdate = 7
 
 const OP_Vacuum = 5
 
-const OP_Variable = 80
+const OP_Variable = 79
 
 const OP_Yield = 12
 
-const OP_ZeroOrNull = 94
+const OP_ZeroOrNull = 93
 
 const OS_VXWORKS = 0
 
@@ -2337,7 +2341,7 @@ const P4_EXPR = -10
 
 const P4_FREE_IF_LE = -7
 
-const P4_FUNCCTX = -16
+const P4_FUNCCTX = -14
 
 const P4_FUNCDEF = -8
 
@@ -2345,9 +2349,7 @@ const P4_INDEX = -6
 
 const P4_INT32 = -3
 
-const P4_INT64 = -14
-
-const P4_INTARRAY = -15
+const P4_INTARRAY = -13
 
 const P4_KEYINFO = -9
 
@@ -2355,17 +2357,15 @@ const P4_MEM = -11
 
 const P4_NOTUSED = 0
 
-const P4_REAL = -13
-
 const P4_STATIC = -1
 
 const P4_SUBPROGRAM = -4
 
-const P4_SUBRTNSIG = -18
+const P4_SUBRTNSIG = -16
 
 const P4_TABLE = -5
 
-const P4_TABLEREF = -17
+const P4_TABLEREF = -15
 
 const P4_TRANSIENT = 0
 
@@ -2780,10 +2780,6 @@ const READ_LOCK = 1
 
 const RESERVED_LOCK = 2
 
-const RNDAWAY = 1.0000001192092896
-
-const RNDTOWARDS = 0.9999998807907104
-
 const ROWSET_ALLOCATION_SIZE = 1024
 
 const ROWSET_NEXT = 2
@@ -2931,7 +2927,7 @@ type RtreeValue = TRtreeValue
 **
 ** For best performance, an attempt is made to guess at the byte-order
 ** using C-preprocessor macros.  If that is unsuccessful, or if
-** -DSQLITE_RUNTIME_BYTEORDER=1 is set, then byte-order is determined
+** -DSQLITE_BYTEORDER=0 is set, then byte-order is determined
 ** at run-time.
  */
 
@@ -3027,6 +3023,8 @@ const SORTER_MAX_MERGE_COUNT = 16
 
 const SORTER_TYPE_INTEGER = 1
 
+const SORTER_TYPE_REAL = 4
+
 const SORTER_TYPE_TEXT = 2
 
 const SORTFLAG_UseSorter = 1
@@ -3116,8 +3114,6 @@ const SQLITE_BUSY_TIMEOUT = 773
 const SQLITE_BalancedMerge = 2097152
 
 const SQLITE_BloomFilter = 524288
-
-const SQLITE_BloomPulldown = 1048576
 
 const SQLITE_CANTOPEN = 14
 
@@ -3649,6 +3645,8 @@ const SQLITE_FCNTL_ZIPVFS = 25
 
 const SQLITE_FILE_HEADER = "SQLite format 3"
 
+const SQLITE_FINISH = 2
+
 const SQLITE_FLOAT = 2
 
 const SQLITE_FORMAT = 24
@@ -3708,8 +3706,6 @@ const SQLITE_FUNC_UNLIKELY = 1024
 const SQLITE_FUNC_UNSAFE = 2097152
 
 const SQLITE_FUNC_WINDOW = 65536
-
-const SQLITE_FactorOutConst = 8
 
 const SQLITE_FkNoAction = 34359738368
 
@@ -3925,9 +3921,13 @@ const SQLITE_LIMIT_LIKE_PATTERN_LENGTH = 8
 
 const SQLITE_LIMIT_PARSER_DEPTH = 12
 
+const SQLITE_LIMIT_SCHEMA = 13
+
 const SQLITE_LIMIT_SQL_LENGTH = 1
 
 const SQLITE_LIMIT_TRIGGER_DEPTH = 10
+
+const SQLITE_LIMIT_TRIGGER_STEPS = 14
 
 const SQLITE_LIMIT_VARIABLE_NUMBER = 9
 
@@ -3999,6 +3999,8 @@ const SQLITE_MAX_PMASZ = 536870912
 
 const SQLITE_MAX_PREPARE_RETRY = 25
 
+const SQLITE_MAX_SCHEMA = 10000000
+
 const SQLITE_MAX_SCHEMA_RETRY = 50
 
 const SQLITE_MAX_SQL_LENGTH = 1000000000
@@ -4008,6 +4010,8 @@ const SQLITE_MAX_SRCLIST = 200
 const SQLITE_MAX_SYMLINK = 200
 
 const SQLITE_MAX_TRIGGER_DEPTH = 1000
+
+const SQLITE_MAX_TRIGGER_STEPS = 65000
 
 const SQLITE_MAX_U32 = 4294967295
 
@@ -4061,7 +4065,7 @@ const SQLITE_MUTEX_STATIC_VFS2 = 12
 
 const SQLITE_MUTEX_STATIC_VFS3 = 13
 
-const SQLITE_MX_JUMP_OPCODE = 66
+const SQLITE_MX_JUMP_OPCODE = 65
 
 const SQLITE_MinMaxOpt = 65536
 
@@ -4099,7 +4103,7 @@ const SQLITE_N_BTREE_META = 16
 
 const SQLITE_N_KEYWORD = 147
 
-const SQLITE_N_LIMIT = 13
+const SQLITE_N_LIMIT = 15
 
 const SQLITE_N_STDTYPE = 6
 
@@ -4291,11 +4295,11 @@ const SQLITE_SCANSTAT_SELECTID = 5
 
 const SQLITE_SCHEMA = 17
 
-const SQLITE_SCM_BRANCH = "branch-3.53"
+const SQLITE_SCM_BRANCH = "branch-3.54"
 
-const SQLITE_SCM_DATETIME = "2026-07-24T19:02:57.525Z"
+const SQLITE_SCM_DATETIME = "2026-10-16T14:45:20.546Z"
 
-const SQLITE_SCM_TAGS = "release version-3.53.4"
+const SQLITE_SCM_TAGS = "release version-3.54.1"
 
 const SQLITE_SELECT = 21
 
@@ -4327,7 +4331,7 @@ const SQLITE_SORTER_PMASZ = 250
 
 const SQLITE_SOUNDEX = 1
 
-const SQLITE_SOURCE_ID = "2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc"
+const SQLITE_SOURCE_ID = "2026-10-16 14:45:20 555e07ef33f69a0957d24d8e555b702464a131d6f1607f4c3c1e4551e8e6ca76"
 
 const SQLITE_SO_ASC = 0
 
@@ -4537,6 +4541,8 @@ const SQLITE_U64_DIGITS = 20
 
 const SQLITE_UPDATE = 23
 
+const SQLITE_USES_INLINE = 1
+
 const SQLITE_USE_SEH = 1
 
 const SQLITE_USE_URI = 0
@@ -4553,9 +4559,13 @@ const SQLITE_UTF8 = 1
 
 const SQLITE_UTF8_ZT = 16
 
-const SQLITE_VERSION = "3.53.4"
+const SQLITE_UnionLimit = 2147483648
 
-const SQLITE_VERSION_NUMBER = 3053004
+const SQLITE_VERSION = "3.54.1"
+
+const SQLITE_VERSION_NUMBER = 3054001
+
+const SQLITE_VNBMC = 2
 
 const SQLITE_VTABRISK_High = 2
 
@@ -4584,6 +4594,8 @@ const SQLITE_WITHOUT_ZONEMALLOC = 1
 const SQLITE_WindowFunc = 2
 
 const SQLITE_WriteSchema = 1
+
+const SQLITE_XFER = 1
 
 type SQLiteThread = TSQLiteThread
 
@@ -4676,88 +4688,6 @@ type SorterList = TSorterList
 type SorterRecord = TSorterRecord
 
 type Sqlite3Config = TSqlite3Config
-
-/************** End of sqliteInt.h *******************************************/
-/************** Begin file os_common.h ***************************************/
-/*
-** 2004 May 22
-**
-** The author disclaims copyright to this source code.  In place of
-** a legal notice, here is a blessing:
-**
-**    May you do good and not evil.
-**    May you find forgiveness for yourself and forgive others.
-**    May you share freely, never taking more than you give.
-**
-******************************************************************************
-**
-** This file contains macros and a little bit of code that is common to
-** all of the platform-specific files (os_*.c) and is #included into those
-** files.
-**
-** This file should be #included by the os_*.c files only.  It is not a
-** general purpose header file.
- */
-
-/*
-** At least two bugs have slipped in because we changed the MEMORY_DEBUG
-** macro to SQLITE_DEBUG and some older makefiles have not yet made the
-** switch.  The following code should catch this problem at compile-time.
- */
-
-/*
-** Macros for performance tracing.  Normally turned off.  Only works
-** on i486 hardware.
- */
-
-/*
-** If we compile with the SQLITE_TEST macro set, then the following block
-** of code will give us the ability to simulate a disk I/O error.  This
-** is used for testing the I/O recovery logic.
- */
-
-/*
-** When testing, keep a count of the number of open files.
- */
-
-/************** End of os_common.h *******************************************/
-/************** Begin file ctime.c *******************************************/
-/* DO NOT EDIT!
-** This file is automatically generated by the script in the canonical
-** SQLite source tree at tool/mkctimec.tcl.
-**
-** To modify this header, edit any of the various lists in that script
-** which specify categories of generated conditionals in this file.
- */
-
-/*
-** 2010 February 23
-**
-** The author disclaims copyright to this source code.  In place of
-** a legal notice, here is a blessing:
-**
-**    May you do good and not evil.
-**    May you find forgiveness for yourself and forgive others.
-**    May you share freely, never taking more than you give.
-**
-*************************************************************************
-**
-** This file implements routines used to report what compile-time options
-** SQLite was built with.
- */
-
-/*
-** Include the configuration header output by 'configure' if we're using the
-** autoconf-based build
- */
-
-/* These macros are provided to "stringify" the value of the define
-** for those options in which the value is meaningful. */
-
-/* Like CTIMEOPT_VAL, but especially for SQLITE_DEFAULT_LOOKASIDE. This
-** option requires a separate macro because legal values contain a single
-** comma. e.g. (-DSQLITE_DEFAULT_LOOKASIDE="100,100") */
-/* #include "sqliteInt.h" */
 
 type Sqlite3_index_info = sqlite3_index_info
 
@@ -8268,6 +8198,8 @@ type Tsqlite3_api_routines = struct {
 	Fstr_free               uintptr
 	Fcarray_bind            uintptr
 	Fcarray_bind_v2         uintptr
+	Fincomplete             uintptr
+	Fresult_str             uintptr
 }
 
 // C documentation
@@ -9142,8 +9074,8 @@ type Tsqlite3_snapshot = struct {
 //	** <li> ^The sqlite3_str object is created using [sqlite3_str_new()].
 //	** <li> ^Text is appended to the sqlite3_str object using various
 //	** methods, such as [sqlite3_str_appendf()].
-//	** <li> ^The sqlite3_str object is destroyed and the string it created
-//	** is returned using the [sqlite3_str_finish()] interface.
+//	** <li> The sqlite3_str object is destroyed and the string it created
+//	** is returned using [sqlite3_str_finish()] or [sqlite3_result_str()].
 //	** </ol>
 //	*/
 type Tsqlite3_str = struct {
@@ -10492,7 +10424,8 @@ func Xsqlite3_changes(tls *libc.TLS, db uintptr) (r int32) {
 // C documentation
 //
 //	/*
-//	** Return the number of changes in the most recent call to sqlite3_exec().
+//	** Return the number of changes in the most recently executed DML
+//	** statement.
 //	*/
 func Xsqlite3_changes64(tls *libc.TLS, db uintptr) (r Tsqlite3_int64) {
 	var iRet Ti64
@@ -10730,6 +10663,10 @@ func Xsqlite3_commit_hook(tls *libc.TLS, db uintptr, __ccgo_fp_xCallback uintptr
 	return pOld
 }
 
+func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
+	return libc.BoolInt32(Xsqlite3_incomplete(tls, zSql) == 0)
+}
+
 // C documentation
 //
 //	/*
@@ -10936,7 +10873,7 @@ func Xsqlite3_errcode(tls *libc.TLS, db uintptr) (r int32) {
 		return int32(SQLITE_NOMEM)
 	}
 	if !(_sqlite3SafetyCheckSickOrOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(190627))
+		return _sqlite3MisuseError(tls, int32(191628))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
@@ -10961,7 +10898,7 @@ func Xsqlite3_errmsg(tls *libc.TLS, db uintptr) (r uintptr) {
 		return _sqlite3ErrStr(tls, int32(SQLITE_NOMEM))
 	}
 	if !(_sqlite3SafetyCheckSickOrOk(tls, db) != 0) {
-		return _sqlite3ErrStr(tls, _sqlite3MisuseError(tls, int32(190521)))
+		return _sqlite3ErrStr(tls, _sqlite3MisuseError(tls, int32(191522)))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
@@ -11078,7 +11015,7 @@ func Xsqlite3_extended_errcode(tls *libc.TLS, db uintptr) (r int32) {
 		return int32(SQLITE_NOMEM)
 	}
 	if !(_sqlite3SafetyCheckSickOrOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(190642))
+		return _sqlite3MisuseError(tls, int32(191643))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
@@ -11199,7 +11136,7 @@ func Xsqlite3_finalize(tls *libc.TLS, pStmt uintptr) (r int32) {
 		v = pStmt
 		db = (*TVdbe)(unsafe.Pointer(v)).Fdb
 		if _vdbeSafety(tls, v) != 0 {
-			return _sqlite3MisuseError(tls, int32(94215))
+			return _sqlite3MisuseError(tls, int32(93777))
 		}
 		Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 		if (*TVdbe)(unsafe.Pointer(v)).FstartTime > 0 {
@@ -11640,7 +11577,7 @@ func Xsqlite3_prepare(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, ppS
 func Xsqlite3_prepare16(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, ppStmt uintptr, pzTail uintptr) (r int32) {
 	var rc int32
 	_ = rc
-	rc = _sqlite3Prepare16(tls, db, zSql, nBytes, uint32(0), ppStmt, pzTail)
+	rc = _sqlite3Prepare16(tls, db, zSql, nBytes & ^libc.Int32FromInt32(1), uint32(0), ppStmt, pzTail)
 	/* VERIFY: F13021 */
 	return rc
 }
@@ -11648,7 +11585,7 @@ func Xsqlite3_prepare16(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, p
 func Xsqlite3_prepare16_v2(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, ppStmt uintptr, pzTail uintptr) (r int32) {
 	var rc int32
 	_ = rc
-	rc = _sqlite3Prepare16(tls, db, zSql, nBytes, uint32(SQLITE_PREPARE_SAVESQL), ppStmt, pzTail)
+	rc = _sqlite3Prepare16(tls, db, zSql, nBytes & ^libc.Int32FromInt32(1), uint32(SQLITE_PREPARE_SAVESQL), ppStmt, pzTail)
 	/* VERIFY: F13021 */
 	return rc
 }
@@ -11656,7 +11593,7 @@ func Xsqlite3_prepare16_v2(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32
 func Xsqlite3_prepare16_v3(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, prepFlags uint32, ppStmt uintptr, pzTail uintptr) (r int32) {
 	var rc int32
 	_ = rc
-	rc = _sqlite3Prepare16(tls, db, zSql, nBytes, uint32(SQLITE_PREPARE_SAVESQL)|prepFlags&uint32(SQLITE_PREPARE_MASK), ppStmt, pzTail)
+	rc = _sqlite3Prepare16(tls, db, zSql, nBytes & ^libc.Int32FromInt32(1), uint32(SQLITE_PREPARE_SAVESQL)|prepFlags&uint32(SQLITE_PREPARE_MASK), ppStmt, pzTail)
 	/* VERIFY: F13021 */
 	return rc
 }
@@ -11853,7 +11790,7 @@ func Xsqlite3_result_error(tls *libc.TLS, pCtx uintptr, z uintptr, n int32) {
 
 // C documentation
 //
-//	/* An SQLITE_NOMEM error. */
+//	/* Cause the SQL function to raise an SQLITE_NOMEM error. */
 func Xsqlite3_result_error_nomem(tls *libc.TLS, pCtx uintptr) {
 	_sqlite3VdbeMemSetNull(tls, (*Tsqlite3_context)(unsafe.Pointer(pCtx)).FpOut)
 	(*Tsqlite3_context)(unsafe.Pointer(pCtx)).FisError = int32(SQLITE_NOMEM)
@@ -12102,7 +12039,7 @@ func Xsqlite3_step(tls *libc.TLS, pStmt uintptr) (r int32) {
 	v = pStmt      /* the prepared statement */
 	cnt = 0        /* The database connection */
 	if _vdbeSafetyNotNull(tls, v) != 0 {
-		return _sqlite3MisuseError(tls, int32(95027))
+		return _sqlite3MisuseError(tls, int32(94650))
 	}
 	db = (*TVdbe)(unsafe.Pointer(v)).Fdb
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
@@ -12438,14 +12375,20 @@ func Xsqlite3_value_int64(tls *libc.TLS, pVal uintptr) (r Tsqlite_int64) {
 //	*/
 func Xsqlite3_value_numeric_type(tls *libc.TLS, pVal uintptr) (r int32) {
 	var eType int32
-	var pMem uintptr
-	_, _ = eType, pMem
+	var pMem, pMutex, v1 uintptr
+	_, _, _, _ = eType, pMem, pMutex, v1
 	eType = Xsqlite3_value_type(tls, pVal)
 	if eType == int32(SQLITE_TEXT) {
 		pMem = pVal
-		Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer((*TMem)(unsafe.Pointer(pMem)).Fdb)).Fmutex)
+		if (*TMem)(unsafe.Pointer(pMem)).Fdb != 0 {
+			v1 = (*Tsqlite3)(unsafe.Pointer((*TMem)(unsafe.Pointer(pMem)).Fdb)).Fmutex
+		} else {
+			v1 = uintptr(0)
+		}
+		pMutex = v1
+		Xsqlite3_mutex_enter(tls, pMutex)
 		_applyNumericAffinity(tls, pMem, 0)
-		Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer((*TMem)(unsafe.Pointer(pMem)).Fdb)).Fmutex)
+		Xsqlite3_mutex_leave(tls, pMutex)
 		eType = Xsqlite3_value_type(tls, pVal)
 	}
 	return eType
@@ -18400,7 +18343,7 @@ var _aFts5UnicodeMap = [1765]Tu16{
 //	** initializer must be kept in sync with the SQLITE_LIMIT_*
 //	** #defines in sqlite3.h.
 //	*/
-var _aHardLimit = [13]int32{
+var _aHardLimit = [15]int32{
 	0:  int32(SQLITE_MAX_LENGTH),
 	1:  int32(SQLITE_MAX_SQL_LENGTH),
 	2:  int32(SQLITE_MAX_COLUMN),
@@ -18414,6 +18357,8 @@ var _aHardLimit = [13]int32{
 	10: int32(SQLITE_MAX_TRIGGER_DEPTH),
 	11: int32(SQLITE_MAX_WORKER_THREADS),
 	12: int32(SQLITE_MAX_PARSER_DEPTH),
+	13: int32(SQLITE_MAX_SCHEMA),
+	14: int32(SQLITE_MAX_TRIGGER_STEPS),
 }
 
 /*
@@ -19194,6 +19139,22 @@ var _aScaleLo = [26]uint32{
 	23: uint32(0xbc633b39),
 	24: uint32(0x0a862f81),
 	25: uint32(0x6c07a2c2),
+}
+
+var _aShift = [7]Tu8{
+	1: uint8(56),
+	2: uint8(48),
+	3: uint8(40),
+	4: uint8(32),
+	5: uint8(16),
+}
+
+var _aShift1 = [8]Tu8{
+	1: uint8(56),
+	2: uint8(48),
+	3: uint8(40),
+	4: uint8(32),
+	5: uint8(16),
 }
 
 var _aStart = [2]Tu8{
@@ -20193,7 +20154,7 @@ func _btreeCursor(tls *libc.TLS, p uintptr, iTable TPgno, wrFlag int32, pKeyInfo
 	/* Assert that the caller has opened the required transaction. */
 	if iTable <= uint32(1) {
 		if iTable < uint32(1) {
-			return _sqlite3CorruptError(tls, int32(78365))
+			return _sqlite3CorruptError(tls, int32(77897))
 		} else {
 			if _btreePagecount(tls, pBt) == uint32(0) {
 				iTable = uint32(0)
@@ -20312,7 +20273,7 @@ func _btreeGetUnusedPage(tls *libc.TLS, pBt uintptr, pgno TPgno, ppPage uintptr,
 		if _sqlite3PagerPageRefcount(tls, (*TMemPage)(unsafe.Pointer(**(**uintptr)(__ccgo_up(ppPage)))).FpDbPage) > int32(1) {
 			_releasePage(tls, **(**uintptr)(__ccgo_up(ppPage)))
 			**(**uintptr)(__ccgo_up(ppPage)) = uintptr(0)
-			return _sqlite3CorruptError(tls, int32(76108))
+			return _sqlite3CorruptError(tls, int32(75640))
 		}
 		(*TMemPage)(unsafe.Pointer(**(**uintptr)(__ccgo_up(ppPage)))).FisInit = uint8(0)
 	} else {
@@ -20724,7 +20685,7 @@ func _codeReal(tls *libc.TLS, v uintptr, z uintptr, negateFlag int32, iMem int32
 		if negateFlag != 0 {
 			**(**float64)(__ccgo_up(bp)) = -**(**float64)(__ccgo_up(bp))
 		}
-		_sqlite3VdbeAddOp4Dup8(tls, v, int32(OP_Real), 0, iMem, 0, bp, -int32(13))
+		_sqlite3VdbeAddDouble(tls, v, iMem, **(**float64)(__ccgo_up(bp)))
 	}
 }
 
@@ -21118,6 +21079,28 @@ func _daysAfterSunday(tls *libc.TLS, pDate uintptr) (r int32) {
 
 // C documentation
 //
+//	/*
+//	** Return the number of dates in a specific month.
+//	*/
+func _daysOfMonth(tls *libc.TLS, Y int32, M int32) (r int32) {
+	if int32(1)<<M&int32(0x15aa) != 0 {
+		return int32(31)
+	} else {
+		if M != int32(2) {
+			return int32(30)
+		} else {
+			if Y%int32(4) == 0 && (Y%int32(100) != 0 || Y%int32(400) == 0) {
+				return int32(29)
+			} else {
+				return int32(28)
+			}
+		}
+	}
+	return r
+}
+
+// C documentation
+//
 //	/* Finish the work of sqlite3DbMallocRawNN for the unusual and
 //	** slower case when the allocation cannot be fulfilled using lookaside.
 //	*/
@@ -21248,7 +21231,7 @@ func _decodeFlags(tls *libc.TLS, pPage uintptr, flagByte int32) (r int32) {
 				(*TMemPage)(unsafe.Pointer(pPage)).FintKeyLeaf = uint8(0)
 				(*TMemPage)(unsafe.Pointer(pPage)).FxCellSize = __ccgo_fp(_cellSizePtrIdxLeaf)
 				(*TMemPage)(unsafe.Pointer(pPage)).FxParseCell = __ccgo_fp(_btreeParseCellPtrIndex)
-				return _sqlite3CorruptError(tls, int32(75701))
+				return _sqlite3CorruptError(tls, int32(75230))
 			}
 		}
 	} else {
@@ -21274,7 +21257,7 @@ func _decodeFlags(tls *libc.TLS, pPage uintptr, flagByte int32) (r int32) {
 				(*TMemPage)(unsafe.Pointer(pPage)).FintKeyLeaf = uint8(0)
 				(*TMemPage)(unsafe.Pointer(pPage)).FxCellSize = __ccgo_fp(_cellSizePtr)
 				(*TMemPage)(unsafe.Pointer(pPage)).FxParseCell = __ccgo_fp(_btreeParseCellPtrIndex)
-				return _sqlite3CorruptError(tls, int32(75725))
+				return _sqlite3CorruptError(tls, int32(75254))
 			}
 		}
 	}
@@ -21676,15 +21659,11 @@ func _freeP4(tls *libc.TLS, db uintptr, p4type int32, p4 uintptr) {
 	var pSig uintptr
 	_ = pSig
 	switch p4type {
-	case -int32(16):
-		_freeP4FuncCtx(tls, db, p4)
-	case -int32(13):
-		fallthrough
 	case -int32(14):
-		fallthrough
+		_freeP4FuncCtx(tls, db, p4)
 	case -int32(7):
 		fallthrough
-	case -int32(15):
+	case -int32(13):
 		if p4 != 0 {
 			_sqlite3DbNNFreeNN(tls, db, p4)
 		}
@@ -21704,11 +21683,11 @@ func _freeP4(tls *libc.TLS, db uintptr, p4type int32, p4 uintptr) {
 		if (*Tsqlite3)(unsafe.Pointer(db)).FpnBytesFreed == uintptr(0) {
 			_sqlite3VtabUnlock(tls, p4)
 		}
-	case -int32(17):
+	case -int32(15):
 		if (*Tsqlite3)(unsafe.Pointer(db)).FpnBytesFreed == uintptr(0) {
 			_sqlite3DeleteTable(tls, db, p4)
 		}
-	case -int32(18):
+	case -int32(16):
 		pSig = p4
 		_sqlite3DbFree(tls, db, (*TSubrtnSig)(unsafe.Pointer(pSig)).FzAff)
 		_sqlite3DbFree(tls, db, pSig)
@@ -22725,6 +22704,7 @@ func _fts5IterSetOutputs_Noop(tls *libc.TLS, pUnused1 uintptr, pUnused2 uintptr)
 func _fts5IterSetOutputs_ZeroColset(tls *libc.TLS, pIter uintptr, pSeg uintptr) {
 	_ = pSeg
 	(*TFts5Iter)(unsafe.Pointer(pIter)).Fbase.FnData = 0
+	(*TFts5Iter)(unsafe.Pointer(pIter)).Fbase.FbEof = uint8(1)
 }
 
 func _fts5LeafFirstTermOff(tls *libc.TLS, pLeaf uintptr) (r int32) {
@@ -23465,40 +23445,6 @@ func _fts5StmtType(tls *libc.TLS, pCsr uintptr) (r int32) {
 	return int32(FTS5_STMT_LOOKUP)
 }
 
-// C documentation
-//
-//	/*
-//	** This function is called to process a DELETE on a contentless_delete=1
-//	** table. It adds the tombstone required to delete the entry with rowid
-//	** iDel. If successful, SQLITE_OK is returned. Or, if an error occurs,
-//	** an SQLite error code.
-//	*/
-func _fts5StorageContentlessDelete(tls *libc.TLS, p uintptr, iDel Ti64) (r int32) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
-	var iOrigin Ti64
-	var rc int32
-	var _ /* pLookup at bp+0 */ uintptr
-	_, _ = iOrigin, rc
-	iOrigin = 0
-	**(**uintptr)(__ccgo_up(bp)) = uintptr(0)
-	rc = SQLITE_OK
-	/* Look up the origin of the document in the %_docsize table. Store
-	 ** this in stack variable iOrigin.  */
-	rc = _fts5StorageGetStmt(tls, p, int32(FTS5_STMT_LOOKUP_DOCSIZE), bp, uintptr(0))
-	if rc == SQLITE_OK {
-		Xsqlite3_bind_int64(tls, **(**uintptr)(__ccgo_up(bp)), int32(1), iDel)
-		if int32(SQLITE_ROW) == Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp))) {
-			iOrigin = Xsqlite3_column_int64(tls, **(**uintptr)(__ccgo_up(bp)), int32(1))
-		}
-		rc = Xsqlite3_reset(tls, **(**uintptr)(__ccgo_up(bp)))
-	}
-	if rc == SQLITE_OK && iOrigin != 0 {
-		rc = _sqlite3Fts5IndexContentlessDelete(tls, (*TFts5Storage)(unsafe.Pointer(p)).FpIndex, iOrigin, iDel)
-	}
-	return rc
-}
-
 func _fts5StorageDecodeSizeArray(tls *libc.TLS, aCol uintptr, nCol int32, aBlob uintptr, nBlob int32) (r int32) {
 	var i, iOff int32
 	_, _ = i, iOff
@@ -23788,6 +23734,72 @@ func _fts5UnicodeIsException(tls *libc.TLS, p uintptr, iCode int32) (r int32) {
 // C documentation
 //
 //	/*
+//	** The following two macros - FTS5_READ_UTF8 and FTS5_WRITE_UTF8 - have
+//	** been copied from the sqlite3 source file utf.c.
+//	*/
+var _fts5Utf8Trans1 = [64]uint8{
+	1:  uint8(0x01),
+	2:  uint8(0x02),
+	3:  uint8(0x03),
+	4:  uint8(0x04),
+	5:  uint8(0x05),
+	6:  uint8(0x06),
+	7:  uint8(0x07),
+	8:  uint8(0x08),
+	9:  uint8(0x09),
+	10: uint8(0x0a),
+	11: uint8(0x0b),
+	12: uint8(0x0c),
+	13: uint8(0x0d),
+	14: uint8(0x0e),
+	15: uint8(0x0f),
+	16: uint8(0x10),
+	17: uint8(0x11),
+	18: uint8(0x12),
+	19: uint8(0x13),
+	20: uint8(0x14),
+	21: uint8(0x15),
+	22: uint8(0x16),
+	23: uint8(0x17),
+	24: uint8(0x18),
+	25: uint8(0x19),
+	26: uint8(0x1a),
+	27: uint8(0x1b),
+	28: uint8(0x1c),
+	29: uint8(0x1d),
+	30: uint8(0x1e),
+	31: uint8(0x1f),
+	33: uint8(0x01),
+	34: uint8(0x02),
+	35: uint8(0x03),
+	36: uint8(0x04),
+	37: uint8(0x05),
+	38: uint8(0x06),
+	39: uint8(0x07),
+	40: uint8(0x08),
+	41: uint8(0x09),
+	42: uint8(0x0a),
+	43: uint8(0x0b),
+	44: uint8(0x0c),
+	45: uint8(0x0d),
+	46: uint8(0x0e),
+	47: uint8(0x0f),
+	49: uint8(0x01),
+	50: uint8(0x02),
+	51: uint8(0x03),
+	52: uint8(0x04),
+	53: uint8(0x05),
+	54: uint8(0x06),
+	55: uint8(0x07),
+	57: uint8(0x01),
+	58: uint8(0x02),
+	59: uint8(0x03),
+	61: uint8(0x01),
+}
+
+// C documentation
+//
+//	/*
 //	** xTokenizer method for a wrapper tokenizer that offers the v1 interface
 //	** (no support for locales).
 //	*/
@@ -23811,6 +23823,36 @@ func _fts5V2toV1Tokenize(tls *libc.TLS, pTok uintptr, pCtx uintptr, flags int32,
 	_ = pLocale
 	_ = nLocale
 	return (*(*func(*libc.TLS, uintptr, uintptr, int32, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{(*TFts5VtoVTokenizer)(unsafe.Pointer(p)).Fx1.FxTokenize})))(tls, (*TFts5VtoVTokenizer)(unsafe.Pointer(p)).FpReal, pCtx, flags, pText, nText, __ccgo_fp_xToken)
+}
+
+// C documentation
+//
+//	/*
+//	** Return the integer value of pVal, clamped to the range [-1, 0x7FFFFFFF].
+//	** This is used for the column-number arguments of auxiliary functions,
+//	** so that 64-bit values that are too large or too small to fit in a
+//	** 32-bit signed integer are not truncated to what might be a valid
+//	** column number.
+//	*/
+func _fts5ValueClampedInt(tls *libc.TLS, pVal uintptr) (r int32) {
+	var v1, v2, v3 int64
+	_, _, _ = v1, v2, v3
+	if Xsqlite3_value_int64(tls, pVal) > int64(-libc.Int32FromInt32(1)) {
+		v2 = Xsqlite3_value_int64(tls, pVal)
+	} else {
+		v2 = int64(-libc.Int32FromInt32(1))
+	}
+	if v2 < int64(libc.Int32FromInt32(0x7FFFFFFF)) {
+		if Xsqlite3_value_int64(tls, pVal) > int64(-libc.Int32FromInt32(1)) {
+			v3 = Xsqlite3_value_int64(tls, pVal)
+		} else {
+			v3 = int64(-libc.Int32FromInt32(1))
+		}
+		v1 = v3
+	} else {
+		v1 = int64(libc.Int32FromInt32(0x7FFFFFFF))
+	}
+	return int32(v1)
 }
 
 var _fts5Vocab = Tsqlite3_module{
@@ -23883,6 +23925,29 @@ func _fts5VocabRowidMethod(tls *libc.TLS, pCursor uintptr, pRowid uintptr) (r in
 	pCsr = pCursor
 	**(**Tsqlite_int64)(__ccgo_up(pRowid)) = (*TFts5VocabCursor)(unsafe.Pointer(pCsr)).Frowid
 	return SQLITE_OK
+}
+
+// C documentation
+//
+//	/*
+//	** If value pVal is an SQLITE_TEXT value, return a pointer to a buffer
+//	** containing the UTF-8 representation of the value, and set output
+//	** parameter (*pnText) to the size of the buffer contents in bytes. Or,
+//	** if pVal is some other type of value, return NULL and set (*pnText)
+//	** to 0 before returning.
+//	*/
+func _fts5VocabValueText(tls *libc.TLS, pVal uintptr, pnText uintptr) (r uintptr) {
+	var nRet int32
+	var zRet uintptr
+	_, _ = nRet, zRet
+	zRet = uintptr(0)
+	nRet = 0
+	if Xsqlite3_value_type(tls, pVal) == int32(SQLITE_TEXT) {
+		zRet = Xsqlite3_value_text(tls, pVal)
+		nRet = Xsqlite3_value_bytes(tls, pVal)
+	}
+	**(**int32)(__ccgo_up(pnText)) = nRet
+	return zRet
 }
 
 // C documentation
@@ -24738,20 +24803,39 @@ var _getCacheSize = [9]TVdbeOpList{
 //	/*
 //	** Argument z points into the body of a constraint - specifically the
 //	** second token of the constraint definition.  For a named constraint,
-//	** z points to the first token past the CONSTRAINT keyword.  For an
+//	** z points to the second token of the constraint definition. For an
 //	** unnamed NOT NULL constraint, z points to the first byte past the NOT
 //	** keyword.
 //	**
+//	** Argument eTok may be the token value of the first token of the constraint
+//	** (e.g. TK_CHECK or TK_REFERENCES) or zero. If it is either TK_REFERENCES
+//	** or TK_FOREIGN, special parsing is enabled to find the end of the foreign-key
+//	** constraint definition.
+//	**
 //	** Return the number of bytes until the end of the constraint.
 //	*/
-func _getConstraint(tls *libc.TLS, z uintptr) (r int32) {
+func _getConstraint(tls *libc.TLS, z uintptr, _eTok int32) (r int32) {
 	bp := tls.Alloc(16)
 	defer tls.Free(16)
+	*(*int32)(unsafe.Pointer(bp)) = _eTok
 	var iOff, n int32
-	var _ /* t at bp+0 */ int32
+	var _ /* t at bp+4 */ int32
 	_, _ = iOff, n
 	iOff = 0
-	**(**int32)(__ccgo_up(bp)) = 0
+	**(**int32)(__ccgo_up(bp + 4)) = 0
+	if **(**int32)(__ccgo_up(bp)) == int32(TK_FOREIGN) {
+		/* For a FOREIGN KEY constraint, use getConstraint() to parse everything
+		 ** up to the REFERENCES keyword. Then getConstraintToken() to consume
+		 ** the TK_REFERENCES token itself. Then fall through to the special
+		 ** handling for TK_REFERENCES below.  */
+		iOff = _getConstraint(tls, z, 0)
+		iOff = iOff + _getConstraintToken(tls, z+uintptr(iOff), bp)
+	}
+	if **(**int32)(__ccgo_up(bp)) == int32(TK_REFERENCES) {
+		/* REFERENCES is followed by a table name. Gobble this up here in
+		 ** case the table name is a fallback token like TK_GENERATED. */
+		iOff = iOff + _getConstraintToken(tls, z+uintptr(iOff), bp+4)
+	}
 	/* Now, the current constraint proceeds until the next occurence of one
 	 ** of the following tokens:
 	 **
@@ -24761,8 +24845,8 @@ func _getConstraint(tls *libc.TLS, z uintptr) (r int32) {
 	 ** Also exit the loop if ILLEGAL turns up.
 	 */
 	for int32(1) != 0 {
-		n = _getConstraintToken(tls, z+uintptr(iOff), bp)
-		if **(**int32)(__ccgo_up(bp)) == int32(TK_CONSTRAINT) || **(**int32)(__ccgo_up(bp)) == int32(TK_PRIMARY) || **(**int32)(__ccgo_up(bp)) == int32(TK_NOT) || **(**int32)(__ccgo_up(bp)) == int32(TK_UNIQUE) || **(**int32)(__ccgo_up(bp)) == int32(TK_CHECK) || **(**int32)(__ccgo_up(bp)) == int32(TK_DEFAULT) || **(**int32)(__ccgo_up(bp)) == int32(TK_COLLATE) || **(**int32)(__ccgo_up(bp)) == int32(TK_REFERENCES) || **(**int32)(__ccgo_up(bp)) == int32(TK_FOREIGN) || **(**int32)(__ccgo_up(bp)) == int32(TK_RP) || **(**int32)(__ccgo_up(bp)) == int32(TK_COMMA) || **(**int32)(__ccgo_up(bp)) == int32(TK_ILLEGAL) || **(**int32)(__ccgo_up(bp)) == int32(TK_AS) || **(**int32)(__ccgo_up(bp)) == int32(TK_GENERATED) {
+		n = _getConstraintToken(tls, z+uintptr(iOff), bp+4)
+		if **(**int32)(__ccgo_up(bp + 4)) == int32(TK_CONSTRAINT) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_PRIMARY) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_NOT) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_UNIQUE) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_CHECK) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_DEFAULT) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_COLLATE) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_REFERENCES) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_FOREIGN) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_RP) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_COMMA) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_ILLEGAL) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_AS) || **(**int32)(__ccgo_up(bp + 4)) == int32(TK_GENERATED) {
 			break
 		}
 		iOff = iOff + n
@@ -24963,8 +25047,17 @@ func _groupConcatFinalize(tls *libc.TLS, context uintptr) {
 	_ = pGCC
 	pGCC = Xsqlite3_aggregate_context(tls, context, 0)
 	if pGCC != 0 {
-		_sqlite3ResultStrAccum(tls, context, pGCC)
+		Xsqlite3_result_str(tls, context, pGCC, int32(SQLITE_XFER))
 		Xsqlite3_free(tls, (*TGroupConcatCtx)(unsafe.Pointer(pGCC)).FpnSepLengths)
+	}
+}
+
+func _groupConcatValue(tls *libc.TLS, context uintptr) {
+	var pGCC uintptr
+	_ = pGCC
+	pGCC = Xsqlite3_aggregate_context(tls, context, 0)
+	if pGCC != 0 && (*TGroupConcatCtx)(unsafe.Pointer(pGCC)).FnAccum > 0 {
+		Xsqlite3_result_str(tls, context, pGCC, SQLITE_COPY)
 	}
 }
 
@@ -25380,7 +25473,7 @@ func _jsonArrayValue(tls *libc.TLS, ctx uintptr) {
 //	**
 //	** Return the number of errors.
 //	*/
-func _jsonBlobExpand(tls *libc.TLS, pParse uintptr, N Tu32) (r int32) {
+func _jsonBlobExpand(tls *libc.TLS, pParse uintptr, N Tu64) (r int32) {
 	var aNew uintptr
 	var t Tu64
 	_, _ = aNew, t
@@ -25389,8 +25482,8 @@ func _jsonBlobExpand(tls *libc.TLS, pParse uintptr, N Tu32) (r int32) {
 	} else {
 		t = uint64((*TJsonParse)(unsafe.Pointer(pParse)).FnBlobAlloc * uint32(2))
 	}
-	if t < uint64(N) {
-		t = uint64(N + uint32(100))
+	if t < N {
+		t = N + uint64(100)
 	}
 	aNew = _sqlite3DbRealloc(tls, (*TJsonParse)(unsafe.Pointer(pParse)).Fdb, (*TJsonParse)(unsafe.Pointer(pParse)).FaBlob, t)
 	if aNew == uintptr(0) {
@@ -25403,7 +25496,7 @@ func _jsonBlobExpand(tls *libc.TLS, pParse uintptr, N Tu32) (r int32) {
 }
 
 func _jsonBlobExpandAndAppendNode(tls *libc.TLS, pParse uintptr, eType Tu8, szPayload Tu64, aPayload uintptr) {
-	if _jsonBlobExpand(tls, pParse, uint32(uint64((*TJsonParse)(unsafe.Pointer(pParse)).FnBlob)+szPayload+uint64(9))) != 0 {
+	if _jsonBlobExpand(tls, pParse, uint64((*TJsonParse)(unsafe.Pointer(pParse)).FnBlob)+szPayload+uint64(9)) != 0 {
 		return
 	}
 	_jsonBlobAppendNode(tls, pParse, eType, szPayload, aPayload)
@@ -25572,7 +25665,7 @@ func _jsonbArrayCount(tls *libc.TLS, pParse uintptr, iRoot Tu32) (r Tu32) {
 		if !(n > uint32(0) && i < iEnd) {
 			break
 		}
-		n = _jsonbPayloadSize(tls, pParse, i, bp)
+		n = _jsonbPayloadSizeSemiInline(tls, pParse, i, bp)
 		goto _1
 	_1:
 		;
@@ -26513,7 +26606,17 @@ func _nodeWrite(tls *libc.TLS, pRtree uintptr, pNode uintptr) (r int32) {
 		Xsqlite3_bind_null(tls, p, int32(2))
 		if (*TRtreeNode)(unsafe.Pointer(pNode)).FiNode == 0 && rc == SQLITE_OK {
 			(*TRtreeNode)(unsafe.Pointer(pNode)).FiNode = Xsqlite3_last_insert_rowid(tls, (*TRtree)(unsafe.Pointer(pRtree)).Fdb)
-			_nodeHashInsert(tls, pRtree, pNode)
+			if (*TRtreeNode)(unsafe.Pointer(pNode)).FiNode == 0 {
+				/* If the SQL statement has succeeded but sqlite3_last_insert_rowid()
+				 ** returns 0, then the shadow table schema has been corrupted somehow
+				 ** (e.g. the %_node table has been replaced by a WITHOUT ROWID table).
+				 ** It would be dangerous to continue in this case as the hash table
+				 ** implementation assumes iNode==0 means that the node is not part
+				 ** of the hash table. */
+				rc = libc.Int32FromInt32(SQLITE_CORRUPT) | libc.Int32FromInt32(1)<<libc.Int32FromInt32(8)
+			} else {
+				_nodeHashInsert(tls, pRtree, pNode)
+			}
 		}
 	}
 	return rc
@@ -28540,11 +28643,8 @@ func _renameTokenFree(tls *libc.TLS, db uintptr, pToken uintptr) {
 //	/*
 //	** Generate code to return a single integer value.
 //	*/
-func _returnSingleInt(tls *libc.TLS, v uintptr, _value Ti64) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
-	*(*Ti64)(unsafe.Pointer(bp)) = _value
-	_sqlite3VdbeAddOp4Dup8(tls, v, int32(OP_Int64), 0, int32(1), 0, bp, -int32(14))
+func _returnSingleInt(tls *libc.TLS, v uintptr, value Ti64) {
+	_sqlite3VdbeAddInt64(tls, v, int32(1), value)
 	_sqlite3VdbeAddOp2(tls, v, int32(OP_ResultRow), int32(1), int32(1))
 }
 
@@ -28962,6 +29062,26 @@ func _rtreeTokenLength(tls *libc.TLS, z uintptr) (r int32) {
 	return int32(_sqlite3GetToken(tls, z, bp))
 }
 
+// C documentation
+//
+//	/*
+//	** Translate pVal into a 32-bit integer.  If pVal is an integer
+//	** that is larger than 32 bits, the cap it at the largest or
+//	** smallest 32-bit integer.
+//	*/
+func _rtreeValueInt32(tls *libc.TLS, pVal uintptr) (r int32) {
+	var v64 Ti64
+	_ = v64
+	v64 = Xsqlite3_value_int64(tls, pVal)
+	if v64 > int64(2147483647) {
+		return int32(2147483647)
+	}
+	if v64 < -int64(2147483648) {
+		return int32(-libc.Int64FromInt64(2147483648))
+	}
+	return int32(v64)
+}
+
 var _sFts5Api = TFts5ExtensionApi{
 	FiVersion: int32(4),
 }
@@ -29181,7 +29301,7 @@ func _sessionBindRow(tls *libc.TLS, pIter uintptr, __ccgo_fp_xValue uintptr, nCo
 			if **(**uintptr)(__ccgo_up(bp)) == uintptr(0) {
 				/* The value in the changeset was "undefined". This indicates a
 				 ** corrupt changeset blob.  */
-				rc = _sqlite3CorruptError(tls, int32(238923))
+				rc = _sqlite3CorruptError(tls, int32(240256))
 			} else {
 				rc = _sessionBindValue(tls, pStmt, i+int32(1), **(**uintptr)(__ccgo_up(bp)))
 			}
@@ -29314,7 +29434,7 @@ func _sessionChangesetBufferTblhdr(tls *libc.TLS, pIn uintptr, pnByte uintptr) (
 		 ** large value for nCol may cause nRead to wrap around and become
 		 ** negative. Leading to a crash. */
 		if **(**int32)(__ccgo_up(bp)) < 0 || **(**int32)(__ccgo_up(bp)) > int32(65536) {
-			rc = _sqlite3CorruptError(tls, int32(237833))
+			rc = _sqlite3CorruptError(tls, int32(239162))
 		} else {
 			rc = _sessionInputBuffer(tls, pIn, nRead+**(**int32)(__ccgo_up(bp))+int32(100))
 			nRead = nRead + **(**int32)(__ccgo_up(bp))
@@ -29332,7 +29452,7 @@ func _sessionChangesetBufferTblhdr(tls *libc.TLS, pIn uintptr, pnByte uintptr) (
 		}
 		rc = _sessionInputBuffer(tls, pIn, nRead+int32(100))
 		if rc == SQLITE_OK && (*TSessionInput)(unsafe.Pointer(pIn)).FiNext+nRead >= (*TSessionInput)(unsafe.Pointer(pIn)).FnData {
-			rc = _sqlite3CorruptError(tls, int32(237851))
+			rc = _sqlite3CorruptError(tls, int32(239180))
 		}
 	}
 	**(**int32)(__ccgo_up(pnByte)) = nRead + int32(1)
@@ -29579,6 +29699,29 @@ func _sessionMergeValue(tls *libc.TLS, paOne uintptr, paTwo uintptr, pnVal uintp
 	return pRet
 }
 
+// C documentation
+//
+//	/*
+//	** Prepare the statement specified by printf format zFmt and its trailing
+//	** arguments.
+//	*/
+func _sessionPrepareMprintf(tls *libc.TLS, pRc uintptr, db uintptr, pp uintptr, pzErrmsg uintptr, zFmt uintptr, va uintptr) {
+	var ap Tva_list
+	var zSql uintptr
+	_, _ = ap, zSql
+	if **(**int32)(__ccgo_up(pRc)) == SQLITE_OK {
+		ap = va
+		zSql = Xsqlite3_vmprintf(tls, zFmt, ap)
+		if zSql == uintptr(0) {
+			**(**int32)(__ccgo_up(pRc)) = int32(SQLITE_NOMEM)
+		} else {
+			**(**int32)(__ccgo_up(pRc)) = _sessionPrepare(tls, db, pp, pzErrmsg, zSql)
+			Xsqlite3_free(tls, zSql)
+		}
+		_ = ap
+	}
+}
+
 func _sessionPreupdateCount(tls *libc.TLS, pCtx uintptr) (r int32) {
 	return Xsqlite3_preupdate_count(tls, pCtx)
 }
@@ -29801,7 +29944,7 @@ func _skipCreateTable(tls *libc.TLS, ctx uintptr, zSql uintptr, piOff uintptr) (
 			break
 		}
 		if **(**int32)(__ccgo_up(bp)) == int32(TK_ILLEGAL) {
-			Xsqlite3_result_error_code(tls, ctx, _sqlite3CorruptError(tls, int32(123475)))
+			Xsqlite3_result_error_code(tls, ctx, _sqlite3CorruptError(tls, int32(123686)))
 			return int32(SQLITE_ERROR)
 		}
 	}
@@ -29983,12 +30126,6 @@ func _sqlite3AuthContextPush(tls *libc.TLS, pParse uintptr, pContext uintptr, zC
 }
 
 var _sqlite3Autoext = Tsqlite3AutoExtList{}
-
-func _sqlite3AutoincrementEnd(tls *libc.TLS, pParse uintptr) {
-	if (*TParse)(unsafe.Pointer(pParse)).FpAinc != 0 {
-		_autoIncrementEnd(tls, pParse)
-	}
-}
 
 // C documentation
 //
@@ -30532,7 +30669,7 @@ func _sqlite3BtreeIncrVacuum(tls *libc.TLS, p uintptr) (r int32) {
 		nFree = _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer((*TBtShared)(unsafe.Pointer(pBt)).FpPage1)).FaData+36)
 		nFin = _finalDbSize(tls, pBt, nOrig, nFree)
 		if nOrig < nFin || nFree >= nOrig {
-			rc = _sqlite3CorruptError(tls, int32(77823))
+			rc = _sqlite3CorruptError(tls, int32(77355))
 		} else {
 			if nFree > uint32(0) {
 				rc = _saveAllCursors(tls, pBt, uint32(0), uintptr(0))
@@ -30628,6 +30765,11 @@ func _sqlite3BtreeLeaveCursor(tls *libc.TLS, pCur uintptr) {
 ** Including a description of file format and an overview of operation.
  */
 /* #include "btreeInt.h" */
+
+/*
+** Suppress false-positive compiler warnings from GCC.  Warnings are
+** re-enabled at the bottom of this source file.
+ */
 
 // C documentation
 //
@@ -30954,6 +31096,25 @@ func _sqlite3CodeVerifySchema(tls *libc.TLS, pParse uintptr, iDb int32) {
 	}
 	_sqlite3CodeVerifySchemaAtToplevel(tls, v1, iDb)
 }
+
+func _sqlite3ColumnExprAuth(tls *libc.TLS, pTab uintptr, pCol uintptr, pParse uintptr) (r uintptr) {
+	var pExpr uintptr
+	_ = pExpr
+	pExpr = _sqlite3ColumnExpr(tls, pTab, pCol)
+	if (*Tsqlite3)(unsafe.Pointer((*TParse)(unsafe.Pointer(pParse)).Fdb)).FxAuth != uintptr(0) {
+		_sqlite3FuncAuth(tls, pParse, pExpr)
+	}
+	return pExpr
+}
+
+/*
+** Suppress false-positive warning message generated with -O3 in GCC
+** on the second call to sqlite3Strlen30() in the sqlite3ColumnSetColl()
+** function below.  See the forum thread beginning on 2026-05-10T01:11:22Z.
+**
+** See also the "pop" pragma to undo this warning suppression immediately
+** after the function.
+ */
 
 // C documentation
 //
@@ -32412,7 +32573,7 @@ func _sqlite3ExprCollSeqMatch(tls *libc.TLS, pParse uintptr, pE1 uintptr, pE2 ui
 	_, _ = pColl1, pColl2
 	pColl1 = _sqlite3ExprNNCollSeq(tls, pParse, pE1)
 	pColl2 = _sqlite3ExprNNCollSeq(tls, pParse, pE2)
-	return libc.BoolInt32(_sqlite3StrICmp(tls, (*TCollSeq)(unsafe.Pointer(pColl1)).FzName, (*TCollSeq)(unsafe.Pointer(pColl2)).FzName) == 0)
+	return libc.BoolInt32(pColl1 == pColl2)
 }
 
 // C documentation
@@ -32509,7 +32670,7 @@ func _sqlite3ExprIsConstant(tls *libc.TLS, pParse uintptr, p uintptr) (r int32) 
 //	** Walk an expression tree.  Return non-zero if
 //	**
 //	**   (1) the expression is constant, and
-//	**   (2) the expression does originate in the ON or USING clause
+//	**   (2) the expression does not originate in the ON or USING clause
 //	**       of a LEFT JOIN, and
 //	**   (3) the expression does not contain any EP_FixedCol TK_COLUMN
 //	**       operands created by the constant propagation optimization.
@@ -34037,14 +34198,91 @@ func _sqlite3InvokeBusyHandler(tls *libc.TLS, p uintptr) (r int32) {
 	return rc
 }
 
-// C documentation
-//
-//	/*
-//	** Return true if CollSeq is the default built-in BINARY.
-//	*/
 func _sqlite3IsBinary(tls *libc.TLS, p uintptr) (r int32) {
-	return libc.BoolInt32(p == uintptr(0) || (*TCollSeq)(unsafe.Pointer(p)).FxCmp == __ccgo_fp(_binCollFunc))
+	return libc.BoolInt32(p == uintptr(0) || (*TCollSeq)(unsafe.Pointer(p)).FxCmp == __ccgo_fp(_sqlite3BinaryCompare))
 }
+
+/************** End of sqliteInt.h *******************************************/
+/************** Begin file os_common.h ***************************************/
+/*
+** 2004 May 22
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+******************************************************************************
+**
+** This file contains macros and a little bit of code that is common to
+** all of the platform-specific files (os_*.c) and is #included into those
+** files.
+**
+** This file should be #included by the os_*.c files only.  It is not a
+** general purpose header file.
+ */
+
+/*
+** At least two bugs have slipped in because we changed the MEMORY_DEBUG
+** macro to SQLITE_DEBUG and some older makefiles have not yet made the
+** switch.  The following code should catch this problem at compile-time.
+ */
+
+/*
+** Macros for performance tracing.  Normally turned off.  Only works
+** on i486 hardware.
+ */
+
+/*
+** If we compile with the SQLITE_TEST macro set, then the following block
+** of code will give us the ability to simulate a disk I/O error.  This
+** is used for testing the I/O recovery logic.
+ */
+
+/*
+** When testing, keep a count of the number of open files.
+ */
+
+/************** End of os_common.h *******************************************/
+/************** Begin file ctime.c *******************************************/
+/* DO NOT EDIT!
+** This file is automatically generated by the script in the canonical
+** SQLite source tree at tool/mkctimec.tcl.
+**
+** To modify this header, edit any of the various lists in that script
+** which specify categories of generated conditionals in this file.
+ */
+
+/*
+** 2010 February 23
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+*************************************************************************
+**
+** This file implements routines used to report what compile-time options
+** SQLite was built with.
+ */
+
+/*
+** Include the configuration header output by 'configure' if we're using the
+** autoconf-based build
+ */
+
+/* These macros are provided to "stringify" the value of the define
+** for those options in which the value is meaningful. */
+
+/* Like CTIMEOPT_VAL, but especially for SQLITE_DEFAULT_LOOKASIDE. This
+** option requires a separate macro because legal values contain a single
+** comma. e.g. (-DSQLITE_DEFAULT_LOOKASIDE="100,100") */
+/* #include "sqliteInt.h" */
 
 // C documentation
 //
@@ -34110,7 +34348,7 @@ func _sqlite3LockAndPrepare(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int3
 	cnt = 0
 	**(**uintptr)(__ccgo_up(ppStmt)) = uintptr(0)
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) || zSql == uintptr(0) {
-		return _sqlite3MisuseError(tls, int32(149178))
+		return _sqlite3MisuseError(tls, int32(149723))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	_sqlite3BtreeEnterAll(tls, db)
@@ -34516,7 +34754,7 @@ func _sqlite3OpcodeName(tls *libc.TLS, i int32) (r uintptr) {
 //	** from the comments following the "case OP_xxxx:" statements in
 //	** the vdbe.c file.
 //	*/
-var _sqlite3OpcodeProperty = [192]uint8{
+var _sqlite3OpcodeProperty = [191]uint8{
 	4:   uint8(0x10),
 	6:   uint8(0x41),
 	8:   uint8(0x81),
@@ -34536,20 +34774,20 @@ var _sqlite3OpcodeProperty = [192]uint8{
 	22:  uint8(0xc9),
 	23:  uint8(0xc9),
 	24:  uint8(0xc9),
-	25:  uint8(0x01),
+	25:  uint8(0x49),
 	26:  uint8(0x49),
 	27:  uint8(0x49),
 	28:  uint8(0x49),
-	29:  uint8(0x49),
-	30:  uint8(0xc9),
-	31:  uint8(0x49),
-	32:  uint8(0xc1),
-	33:  uint8(0x01),
+	29:  uint8(0xc9),
+	30:  uint8(0x49),
+	31:  uint8(0xc1),
+	32:  uint8(0x01),
+	33:  uint8(0x41),
 	34:  uint8(0x41),
-	35:  uint8(0x41),
-	36:  uint8(0xc1),
+	35:  uint8(0xc1),
+	36:  uint8(0x01),
 	37:  uint8(0x01),
-	38:  uint8(0x01),
+	38:  uint8(0x41),
 	39:  uint8(0x41),
 	40:  uint8(0x41),
 	41:  uint8(0x41),
@@ -34557,11 +34795,11 @@ var _sqlite3OpcodeProperty = [192]uint8{
 	43:  uint8(0x26),
 	44:  uint8(0x26),
 	45:  uint8(0x41),
-	46:  uint8(0x41),
-	47:  uint8(0x09),
-	48:  uint8(0x23),
-	49:  uint8(0x0b),
-	50:  uint8(0x81),
+	46:  uint8(0x09),
+	47:  uint8(0x23),
+	48:  uint8(0x0b),
+	49:  uint8(0x81),
+	50:  uint8(0x01),
 	51:  uint8(0x03),
 	52:  uint8(0x03),
 	53:  uint8(0x0b),
@@ -34571,33 +34809,33 @@ var _sqlite3OpcodeProperty = [192]uint8{
 	57:  uint8(0x0b),
 	58:  uint8(0x0b),
 	59:  uint8(0x01),
-	60:  uint8(0x01),
+	60:  uint8(0x03),
 	61:  uint8(0x03),
 	62:  uint8(0x03),
-	63:  uint8(0x03),
-	64:  uint8(0x01),
-	65:  uint8(0x41),
-	66:  uint8(0x01),
+	63:  uint8(0x01),
+	64:  uint8(0x41),
+	65:  uint8(0x01),
+	68:  uint8(0x02),
 	69:  uint8(0x02),
-	70:  uint8(0x02),
-	71:  uint8(0x08),
+	70:  uint8(0x08),
+	72:  uint8(0x10),
 	73:  uint8(0x10),
 	74:  uint8(0x10),
-	75:  uint8(0x10),
-	77:  uint8(0x10),
+	76:  uint8(0x10),
+	78:  uint8(0x10),
 	79:  uint8(0x10),
-	80:  uint8(0x10),
+	82:  uint8(0x10),
 	83:  uint8(0x10),
-	84:  uint8(0x10),
+	87:  uint8(0x02),
 	88:  uint8(0x02),
 	89:  uint8(0x02),
-	90:  uint8(0x02),
-	93:  uint8(0x12),
-	94:  uint8(0x1e),
-	95:  uint8(0x20),
-	96:  uint8(0x40),
+	92:  uint8(0x12),
+	93:  uint8(0x1e),
+	94:  uint8(0x20),
+	95:  uint8(0x40),
+	99:  uint8(0x10),
 	100: uint8(0x10),
-	101: uint8(0x10),
+	102: uint8(0x40),
 	103: uint8(0x26),
 	104: uint8(0x26),
 	105: uint8(0x26),
@@ -34609,41 +34847,40 @@ var _sqlite3OpcodeProperty = [192]uint8{
 	111: uint8(0x26),
 	112: uint8(0x26),
 	113: uint8(0x40),
-	114: uint8(0x40),
 	115: uint8(0x12),
+	116: uint8(0x40),
 	117: uint8(0x40),
 	118: uint8(0x10),
 	119: uint8(0x40),
-	120: uint8(0x40),
-	124: uint8(0x40),
+	123: uint8(0x40),
+	125: uint8(0x40),
 	126: uint8(0x40),
-	127: uint8(0x40),
+	127: uint8(0x10),
 	128: uint8(0x10),
-	129: uint8(0x10),
-	135: uint8(0x40),
-	137: uint8(0x50),
-	139: uint8(0x40),
+	134: uint8(0x40),
+	136: uint8(0x50),
+	138: uint8(0x40),
+	139: uint8(0x04),
 	140: uint8(0x04),
-	141: uint8(0x04),
-	143: uint8(0x40),
-	144: uint8(0x50),
-	145: uint8(0x40),
-	146: uint8(0x10),
-	149: uint8(0x10),
+	142: uint8(0x40),
+	143: uint8(0x50),
+	144: uint8(0x40),
+	145: uint8(0x10),
+	148: uint8(0x10),
 	154: uint8(0x10),
-	158: uint8(0x06),
-	159: uint8(0x10),
-	161: uint8(0x04),
-	162: uint8(0x1a),
-	175: uint8(0x40),
-	176: uint8(0x10),
-	177: uint8(0x50),
-	178: uint8(0x40),
+	157: uint8(0x06),
+	158: uint8(0x10),
+	160: uint8(0x04),
+	161: uint8(0x1a),
+	174: uint8(0x40),
+	175: uint8(0x10),
+	176: uint8(0x50),
+	177: uint8(0x40),
+	179: uint8(0x10),
 	180: uint8(0x10),
-	181: uint8(0x10),
-	182: uint8(0x02),
+	181: uint8(0x02),
+	182: uint8(0x12),
 	183: uint8(0x12),
-	184: uint8(0x12),
 }
 
 func _sqlite3OsAccess(tls *libc.TLS, pVfs uintptr, zPath uintptr, flags int32, pResOut uintptr) (r int32) {
@@ -36091,16 +36328,6 @@ func _sqlite3PutVarint(tls *libc.TLS, p uintptr, v Tu64) (r int32) {
 	return _putVarint64(tls, p, v)
 }
 
-/*
-** Bitmasks used by sqlite3GetVarint().  These precomputed constants
-** are defined here rather than simply putting the constant expressions
-** inline in order to work around bugs in the RVT compiler.
-**
-** SLOT_2_0     A mask for  (0x7f<<14) | 0x7f
-**
-** SLOT_4_2_0   A mask for  (0x7f<<28) | SLOT_2_0
- */
-
 // C documentation
 //
 //	/*
@@ -36602,11 +36829,16 @@ func _sqlite3SelectWalkNoop(tls *libc.TLS, NotUsed uintptr, NotUsed2 uintptr) (r
 //	** to a non-NULL value if iCur contains no NULLs.  Cause register regHasNull
 //	** to be set to NULL if iCur contains one or more NULL values.
 //	*/
-func _sqlite3SetHasNullFlag(tls *libc.TLS, v uintptr, iCur int32, regHasNull int32) {
-	var addr1 int32
-	_ = addr1
+func _sqlite3SetHasNullFlag(tls *libc.TLS, v uintptr, iCur int32, regHasNull int32, eSortOrder int32) {
+	var addr1, op int32
+	_, _ = addr1, op
 	_sqlite3VdbeAddOp2(tls, v, int32(OP_Integer), 0, regHasNull)
-	addr1 = _sqlite3VdbeAddOp1(tls, v, int32(OP_Rewind), iCur)
+	if eSortOrder == SQLITE_SO_ASC {
+		op = int32(OP_Rewind)
+	} else {
+		op = int32(OP_Last)
+	}
+	addr1 = _sqlite3VdbeAddOp1(tls, v, op, iCur)
 	_sqlite3VdbeAddOp3(tls, v, int32(OP_Column), iCur, 0, regHasNull)
 	_sqlite3VdbeChangeP5(tls, v, uint16(OPFLAG_TYPEOFARG))
 	_sqlite3VdbeJumpHere(tls, v, addr1)
@@ -37331,29 +37563,6 @@ func _sqlite3ValueFree(tls *libc.TLS, v uintptr) {
 	_sqlite3DbFreeNN(tls, (*TMem)(unsafe.Pointer(v)).Fdb, v)
 }
 
-// C documentation
-//
-//	/*
-//	** Create a new sqlite3_value object, containing the value of pExpr.
-//	**
-//	** This only works for very simple expressions that consist of one constant
-//	** token (i.e. "5", "5.1", "'a string'"). If the expression can
-//	** be converted directly into a value, then the value is allocated and
-//	** a pointer written to *ppVal. The caller is responsible for deallocating
-//	** the value by passing it to sqlite3ValueFree() later on. If the expression
-//	** cannot be converted to a value, then *ppVal is set to NULL.
-//	*/
-func _sqlite3ValueFromExpr(tls *libc.TLS, db uintptr, pExpr uintptr, enc Tu8, affinity Tu8, ppVal uintptr) (r int32) {
-	var v1 int32
-	_ = v1
-	if pExpr != 0 {
-		v1 = _valueFromExpr(tls, db, pExpr, enc, affinity, ppVal, uintptr(0))
-	} else {
-		v1 = 0
-	}
-	return v1
-}
-
 func _sqlite3ValueSetNull(tls *libc.TLS, p uintptr) {
 	_sqlite3VdbeMemSetNull(tls, p)
 }
@@ -37438,7 +37647,16 @@ func _sqlite3VdbeAddOp4(tls *libc.TLS, p uintptr, op int32, p1 int32, p2 int32, 
 //	** sqlite3VdbeAddOp4() since it needs to also needs to mark all btrees
 //	** as having been used.
 //	**
-//	** The zWhere string must have been obtained from sqlite3_malloc().
+//	** zWhere is a WHERE clause that defines which entries of the schema
+//	** to reparse.  If zWhere==0, that means all entries.  p5 is a mask
+//	** of INITFLAG_* values for the parse.
+//	**
+//	** In the current usage, the following are always true:
+//	**
+//	**     ALTER TABLE:     zWhere==0,  p5!=0
+//	**     Otherwise:       zWhere!=0,  p5==0
+//	**
+//	** The zWhere string must have been obtained from sqlite3DbMalloc().
 //	** This routine will take ownership of the allocated memory.
 //	*/
 func _sqlite3VdbeAddParseSchemaOp(tls *libc.TLS, p uintptr, iDb int32, zWhere uintptr, p5 Tu16) {
@@ -37816,10 +38034,6 @@ func _sqlite3VdbeOneByteSerialTypeLen(tls *libc.TLS, serial_type Tu8) (r Tu8) {
 ** works for him.  We, the developers, have no way to independently
 ** verify this, but Frank seems to know what he is talking about
 ** so we trust him.
- */
-
-/* Input "x" is a sequence of unsigned characters that represent a
-** big-endian integer.  Return the equivalent native integer
  */
 
 // C documentation
@@ -38969,6 +39183,16 @@ func _statResetCounts(tls *libc.TLS, pCsr uintptr) {
 	(*TStatCursor)(unsafe.Pointer(pCsr)).FnPayload = 0
 	(*TStatCursor)(unsafe.Pointer(pCsr)).FszPage = 0
 	(*TStatCursor)(unsafe.Pointer(pCsr)).FnPage = 0
+}
+
+/* Mapping state number to yy value for the return */
+var _statemap = [8]Tu8{
+	2: uint8(1),
+	3: uint8(1),
+	4: uint8(1),
+	5: uint8(3),
+	6: uint8(2),
+	7: uint8(1),
 }
 
 func _subjournalPageIfRequired(tls *libc.TLS, pPg uintptr) (r int32) {
@@ -48130,7 +48354,11 @@ const etDECIMAL = 16
 
 const etDYNSTRING = 6
 
+const etESCAPE_J = 18
+
 const etESCAPE_Q = 10
+
+const etESCAPE_j = 17
 
 const etESCAPE_q = 9
 
@@ -48142,7 +48370,7 @@ const etFLOAT = 1
 
 const etGENERIC = 3
 
-const etINVALID = 17
+const etINVALID = 19
 
 const etORDINAL = 15
 
@@ -48168,7 +48396,7 @@ type et_info = Tet_info
 
 /*
 ** The table is searched by hash.  In the case of %C where C is the character
-** and that character has ASCII value j, then the hash is j%23.
+** and that character has ASCII value j, then the hash is j%25.
 **
 ** The order of the entries in fmtinfo[] and the hash chain was entered
 ** manually, but based on the output of the following TCL script:
@@ -48179,8 +48407,6 @@ type fd_set = Tfd_set
 const first_valueInvFunc = "noopStepFunc"
 
 const first_valueValueFunc = "noopValueFunc"
-
-type float_t = Tfloat_t
 
 type fpos_t = Tfpos_t
 
@@ -48297,8 +48523,6 @@ type fts5yyStackEntry = Tfts5yyStackEntry
 
 const get4byte = "sqlite3Get4byte"
 
-const getVarint = "sqlite3GetVarint"
-
 type ht_slot = Tht_slot
 
 /* Simulate a memory-mapping fault in the -shm file for testing purposes */
@@ -48365,8 +48589,6 @@ type p4union = Tp4union
 const percent_rankFinalizeFunc = "percent_rankValueFunc"
 
 const put4byte = "sqlite3Put4byte"
-
-const putVarint = "sqlite3PutVarint"
 
 type rbu_file = Trbu_file
 

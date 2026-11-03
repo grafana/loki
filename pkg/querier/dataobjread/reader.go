@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_server "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -32,7 +32,7 @@ const (
 	DefaultReadBatchSize = 1024
 )
 
-// LogRecord is one decoded log line with the identity the sample layer needs.
+// LogRecord is one decoded log entry with the identity the sample layer needs.
 type LogRecord struct {
 	streamHash   uint64
 	streamLabels labels.Labels
@@ -40,13 +40,14 @@ type LogRecord struct {
 	// timestamp is nanoseconds since the Unix epoch.
 	timestamp int64
 
+	// line is nil when nothing reads the line after the read, and for an empty line.
 	line     []byte
 	metadata labels.Labels
 }
 
-// LogReader runs a read plan and yields decoded log lines in batches.
+// LogReader runs a read plan and yields decoded log records in batches.
 //
-// One row reader scans each planned section, matching all of its streams together and reading
+// One row reader scans each planned section, matching all of its streams together and returning
 // only the planned columns. The planner rejects a section it was given twice, so no section is
 // scanned twice.
 //
@@ -60,7 +61,7 @@ type LogRecord struct {
 // data-object tier is never deduplicated against another source.
 //
 // The records in flight do not grow with the sample count. The plan does grow with the stream
-// count: every queued task references its object's decoded streams, one label set each.
+// count: every queued task references the decoded streams of its object, one label set each.
 //
 // Next and At are for the single consumer goroutine only. Err and Close are safe to call from
 // another one.
@@ -272,7 +273,7 @@ func (r *LogReader) Next() bool {
 		// A failed scan is terminal, so stop instead of returning the batches queued before it.
 		// Checked once per batch, not per record, to keep the per-sample path cheap.
 		if err := r.Err(); err != nil {
-			// Stop the planner too: it must not keep resolving objects for a query that has
+			// Stop the planner too: it must not keep planning objects for a query that has
 			// already failed.
 			r.tasks.Abort(err)
 			return false

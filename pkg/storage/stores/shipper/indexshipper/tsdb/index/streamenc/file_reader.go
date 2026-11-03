@@ -73,8 +73,11 @@ func (f *FileReader) Reset() error {
 // read-ahead window is a cursor move, in either direction, since the window
 // spans bytes on both sides of the cursor. Anything else drops the window, so
 // the next access preads at the right place.
+//
+// An offset outside the segment returns ErrInvalidSize and leaves the cursor
+// where it was.
 func (f *FileReader) ResetAt(off int) error {
-	if off > f.length {
+	if off < 0 || off > f.length {
 		return ErrInvalidSize
 	}
 

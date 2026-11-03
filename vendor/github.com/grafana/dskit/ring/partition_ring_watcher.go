@@ -27,7 +27,9 @@ type PartitionRingWatcher struct {
 	ring   *PartitionRing
 
 	// Metrics.
-	numPartitionsGaugeVec *prometheus.GaugeVec
+	numPartitionsGaugeVec      *prometheus.GaugeVec
+	maxPartitionIDGauge        prometheus.Gauge
+	maxDerivedPartitionIDGauge prometheus.Gauge
 
 	// opts is used to propagate the options each time the ring is updated.
 	opts PartitionRingOptions
@@ -57,9 +59,21 @@ func NewPartitionRingWatcherWithOptions(name, key string, kv kv.Client, opts Par
 			Help:        "Number of partitions by state in the partitions ring.",
 			ConstLabels: map[string]string{"name": name},
 		}, []string{"state"}),
+		maxPartitionIDGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name:        "partition_ring_max_partition_id",
+			Help:        "Highest partition ID in the ring, or -1 when empty.",
+			ConstLabels: map[string]string{"name": name},
+		}),
+		maxDerivedPartitionIDGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name:        "partition_ring_max_derived_partition_id",
+			Help:        "Highest partition ID using derived tokens in the ring, or -1 when none.",
+			ConstLabels: map[string]string{"name": name},
+		}),
 		opts: opts,
 	}
 
+	r.maxPartitionIDGauge.Set(-1)
+	r.maxDerivedPartitionIDGauge.Set(-1)
 	r.Service = services.NewBasicService(r.starting, r.loop, nil).WithName("partitions-ring-watcher")
 	return r
 }
@@ -121,6 +135,14 @@ func (w *PartitionRingWatcher) updatePartitionRing(desc *PartitionRingDesc) erro
 	}
 
 	// Update metrics.
+	maxDerivedPartitionID := int32(-1)
+	for id, partition := range desc.Partitions {
+		if partition.TokenScheme == PartitionTokensSmt512 && id > maxDerivedPartitionID {
+			maxDerivedPartitionID = id
+		}
+	}
+	w.maxPartitionIDGauge.Set(float64(newRing.maxPartitionID))
+	w.maxDerivedPartitionIDGauge.Set(float64(maxDerivedPartitionID))
 	for state, count := range desc.countPartitionsByState() {
 		w.numPartitionsGaugeVec.WithLabelValues(state.CleanName()).Set(float64(count))
 	}

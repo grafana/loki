@@ -47,13 +47,29 @@ type Stage interface {
 // Stages is the ordered sequence of stages a pipeline runs on a line.
 type Stages []Stage
 
-// RequiredLabelNames returns the label names every stage reads, in stage order and with duplicates.
+// RequiredLabelNames returns the unique label names that the stages read, in stage order.
 func (s Stages) RequiredLabelNames() []string {
 	var names []string
 	for _, stage := range s {
 		names = append(names, stage.RequiredLabelNames()...)
 	}
-	return names
+	return uniqueString(names)
+}
+
+// RequiredLabelNamesForParsers returns the label names that the parsers may need to extract.
+func (s Stages) RequiredLabelNamesForParsers() []string {
+	// It starts at the first stage that can modify labels or reads the error label. It returns
+	// each name once, in stage order.
+	var names []string
+	started := false
+	for _, stage := range s {
+		hints := stage.Hints()
+		started = started || hints.CanModifyLabels || hints.ReadsErrorLabel
+		if started {
+			names = append(names, stage.RequiredLabelNames()...)
+		}
+	}
+	return uniqueString(names)
 }
 
 // Hints returns the hints of the stages as one.
@@ -73,8 +89,8 @@ type StageHints struct {
 	// replace a label, or set __error__.
 	CanModifyLabels bool
 
-	// ReadsErrorLabel reports whether the stage compares __error__ or __error_details__, whatever
-	// it does with the value.
+	// ReadsErrorLabel reports whether the result of the stage depends on the error of the line.
+	// A comparison of __error__ or __error_details__ does, whatever it does with the value.
 	//
 	// Only a label filter reports it. A converting comparison against either label cannot report
 	// it, and the parser rejects that form instead.
@@ -86,6 +102,9 @@ type StageHints struct {
 	// when any stage asks. A filter on __error__ therefore also covers an error returned by a
 	// stage placed after the __error__ filter.
 	KeepsErroredLines bool
+
+	// CanModifyLine reports whether the stage can return a line that differs from the one it received.
+	CanModifyLine bool
 }
 
 // Merge combines the hints of two stages that both run on a line.
@@ -94,6 +113,7 @@ func (h StageHints) Merge(other StageHints) StageHints {
 		CanModifyLabels:   h.CanModifyLabels || other.CanModifyLabels,
 		ReadsErrorLabel:   h.ReadsErrorLabel || other.ReadsErrorLabel,
 		KeepsErroredLines: h.KeepsErroredLines || other.KeepsErroredLines,
+		CanModifyLine:     h.CanModifyLine || other.CanModifyLine,
 	}
 }
 
@@ -171,8 +191,8 @@ func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) 
 
 // Hints implements Stage.
 func (noopStage) Hints() StageHints {
-	// It does nothing, so it changes no labels.
-	return StageHints{CanModifyLabels: false}
+	// It does nothing, so it changes no labels and no line.
+	return StageHints{CanModifyLabels: false, CanModifyLine: false}
 }
 
 func (noopStage) RequiredLabelNames() []string { return []string{} }
@@ -259,7 +279,7 @@ type streamPipeline struct {
 	builder *LabelsBuilder
 }
 
-func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
+func NewStreamPipeline(stages Stages, labelsBuilder *LabelsBuilder) StreamPipeline {
 	return &streamPipeline{stages, labelsBuilder}
 }
 

@@ -133,6 +133,7 @@ This is the full list of Kafka-related metrics, organized by component. For the 
 - `loki_kafka_client_partition_reader_fetch_errors_total`: errors fetching records from Kafka brokers.
 - `loki_kafka_client_partition_reader_fetches_total` and `loki_kafka_client_partition_reader_records_per_fetch`: fetch throughput.
 - `loki_kafka_client_partition_reader_offset_commit_requests_total` and `loki_kafka_client_partition_reader_offset_commit_failures_total`: health of offset commits to Kafka.
+- `loki_kafka_client_produce_write_wait_seconds`, `loki_kafka_client_produce_write_time_seconds`, `loki_kafka_client_produce_read_wait_seconds` and `loki_kafka_client_produce_read_time_seconds` (labels: `node_id`, `host`): native histograms of how long each stage of a Produce request to each broker takes: waiting to be written, writing, waiting for the response, and reading the response.
 
 ## Configuration examples
 

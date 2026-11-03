@@ -771,14 +771,13 @@ func newInstanceWithLimits(
 	metrics *ingesterMetrics,
 	drainCfg *drain.Config,
 	drainLimits Limits,
-	ringClient RingClient,
-	ingesterID string,
+	owner streamOwner,
 	metricWriter aggregation.EntryWriter,
 	patternWriter aggregation.EntryWriter,
 	aggregationMetrics *aggregation.Metrics,
 	volumeThreshold float64,
 ) (*instance, error) {
-	return newInstance(instanceID, logger, metrics, drainCfg, drainLimits, ringClient, ingesterID, metricWriter, patternWriter, aggregationMetrics, volumeThreshold)
+	return newInstance(instanceID, logger, metrics, drainCfg, drainLimits, owner, metricWriter, patternWriter, aggregationMetrics, volumeThreshold)
 }
 
 func TestStreamPerTenantConfigurationThreading(t *testing.T) {
@@ -810,8 +809,7 @@ func TestStreamPerTenantConfigurationThreading(t *testing.T) {
 			newIngesterMetrics(nil, "test"),
 			drainCfg,
 			limits,
-			&fakeRingClient{},
-			"test-ingester",
+			&ringOwner{ringClient: &fakeRingClient{}, ingesterID: "test-ingester"},
 			mockWriter,
 			mockWriter,
 			aggregation.NewMetrics(nil),

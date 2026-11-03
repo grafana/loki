@@ -9,7 +9,8 @@ the full storage read path and parsing/extraction pipeline are exercised end to 
 The format is adapted from Prometheus' [`promqltest`](https://github.com/prometheus/prometheus/tree/main/promql/promqltest)
 DSL.
 
-For syntax highlighting of `.logqltest` files in GoLand or VS Code, see [syntax/README.md](syntax/README.md).
+For syntax highlighting of `.logqltest` files in GoLand, VS Code or Zed, see `tools/syntax/logqltest`
+in the `grafana/loki-toolbox` repository.
 
 ## Commands
 
@@ -284,14 +285,18 @@ Each `eval` runs on multiple execution stacks:
   querier over the chunk store.
 - `direct (stream-first)` — the same, with stream-first execution enabled.
 - `direct (dataobj)` — the direct stack with stream-first execution and data objects on. The
-  querier reads stream-first queries from data objects and every other query from chunks. A
-  stream-first query that returns data must read data-object rows, or the eval fails.
+  stack has no query-frontend, so it marks every query as eligible for data objects itself. The
+  querier reads the stream-first parts of a query from data objects and every other part from
+  chunks. A query with a stream-first part that returns data must read data-object rows, or the
+  eval fails. The check skips a query with another source of samples, such as `vector()` or a range
+  aggregation that is not stream-first, because that source does not read data objects.
 - `query-frontend + query-scheduler (no sharding, timestamp-first)` — a real frontend, scheduler, and querier loop.
 - `query-frontend + query-scheduler (sharding, timestamp-first)` — the same loop with query sharding on.
 - `query-frontend + query-scheduler (sharding, stream-first)` — the same loop with query sharding
   and stream-first execution on.
 - `query-frontend + query-scheduler (sharding, dataobj)` — the sharded stream-first loop over the
-  `direct (dataobj)` querier.
+  `direct (dataobj)` querier. The frontend has data objects on, so it decides which queries a
+  querier may read from data objects.
 - `query-frontend + query-scheduler (sharding, dataobj and chunk)` — the same, but the querier reads
   the samples before 90s from chunks.
 

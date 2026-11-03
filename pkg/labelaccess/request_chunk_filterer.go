@@ -26,7 +26,8 @@ func (r *RequestChunkFilterer) ForRequest(ctx context.Context) chunk.Filterer {
 }
 
 // filtererForRequest extracts LBAC policies from the context and returns a ChunkFilterer.
-// This is shared between RequestChunkFilterer (V1 engine) and RequestStreamFilterer (V2 engine).
+// It returns nil, which disables filtering, when the context has no policy for
+// the tenant or when it cannot read the policies or the tenant.
 func filtererForRequest(ctx context.Context) *ChunkFilterer {
 	// Extract policies from context
 	instancePolicyMap, err := ExtractLabelMatchersContext(ctx)

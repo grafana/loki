@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"iter"
 	"unsafe"
+
+	"github.com/grafana/loki/v3/pkg/columnar"
 )
 
 // Predicate is an expression used to filter rows in a [RowReader].
@@ -71,6 +73,24 @@ type (
 		//
 		// If Keep returns true, the row is kept.
 		Keep func(column Column, value Value) bool
+
+		// KeepBatch is optional. It tests an array of values of a binary column at once.
+		// It appends to dstIndexes the index in values of every value that Keep keeps, in ascending
+		// order with no repeat, and returns the result. values holds a null value as an empty
+		// value.
+		//
+		// KeepBatch must give the same result as Keep on every value. Keep gets a nil Value
+		// for a null value, so Keep must treat a nil and an empty value alike.
+		//
+		// The reader can call Keep instead of KeepBatch, so Keep must always be set. It does so for:
+		//   - the first predicate,
+		//   - a predicate inside And, Or or Not,
+		//   - a column that another predicate reads,
+		//   - a column that is not binary.
+		//
+		// KeepBatch must not retain values or dstIndexes after the call, and must not modify
+		// values. It must be safe for concurrent use.
+		KeepBatch func(column Column, values *columnar.UTF8, dstIndexes []int32) []int32
 	}
 )
 
@@ -140,6 +160,32 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	}
 
 	fn(nil)
+}
+
+// WalkPredicateColumn calls fn with the column of every leaf predicate in p, in the depth-first
+// order of [WalkPredicate]. A column that several leaves read comes up once for each of them.
+//
+// WalkPredicateColumn panics on a predicate type it does not support.
+func WalkPredicateColumn(p Predicate, fn func(Column)) {
+	WalkPredicate(p, func(p Predicate) bool {
+		switch p := p.(type) {
+		case EqualPredicate:
+			fn(p.Column)
+		case InPredicate:
+			fn(p.Column)
+		case GreaterThanPredicate:
+			fn(p.Column)
+		case LessThanPredicate:
+			fn(p.Column)
+		case FuncPredicate:
+			fn(p.Column)
+		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
+			// No columns to process.
+		default:
+			panic(fmt.Sprintf("dataset.WalkPredicateColumn: unsupported predicate type %T", p))
+		}
+		return true
+	})
 }
 
 // ValueSet is a set of [Value]s of one physical type.

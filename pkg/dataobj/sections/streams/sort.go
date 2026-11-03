@@ -19,17 +19,6 @@ type SortKey struct {
 	Labels      labels.Labels
 }
 
-// NewSortKey computes the globally stable sorting key for a stream.
-func NewSortKey(streamLabels labels.Labels, schemaKey string) SortKey {
-	hash := labels.StableHash(streamLabels)
-	return SortKey{
-		ShardBucket: ShardBucketFromHash(hash),
-		SchemaKey:   schemaKey,
-		Hash:        hash,
-		Labels:      streamLabels,
-	}
-}
-
 // CompareSortKey compares stream keys by shard bucket, schema key,
 // stable hash, and full labels.
 func CompareSortKey(a, b SortKey) int {
@@ -66,6 +55,14 @@ type SortPrefix struct {
 func NewSortPrefix(shardBucket uint32, schemaValues []string) SortPrefix {
 	return SortPrefix{ShardBucket: shardBucket, SchemaKey: EncodeSchemaKey(schemaValues)}
 }
+
+// MinSortPrefix returns the lowest sort prefix. No stream sorts below it.
+func MinSortPrefix() SortPrefix { return SortPrefix{} }
+
+// SortPrefixLimit returns a sort prefix above the prefix of every stream in
+// every [ShardLayout]. It is not the prefix of any stream: its shard bucket is
+// one past the highest bucket of the largest layout.
+func SortPrefixLimit() SortPrefix { return SortPrefix{ShardBucket: 1 << maxShardBits} }
 
 // Compare reports the order of a and b by shard bucket, then schema key.
 func (a SortPrefix) Compare(b SortPrefix) int {

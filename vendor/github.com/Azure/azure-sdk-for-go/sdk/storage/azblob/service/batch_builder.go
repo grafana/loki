@@ -49,8 +49,7 @@ func (bb *BatchBuilder) Delete(containerName string, blobName string, options *B
 		return err
 	}
 
-	deleteOptions, leaseInfo, accessConditions := options.format()
-	req, err := getGeneratedBlobClient(blobClient).DeleteCreateRequest(context.TODO(), deleteOptions, leaseInfo, accessConditions)
+	req, err := getGeneratedBlobClient(blobClient).DeleteCreateRequest(context.TODO(), options.format())
 	if err != nil {
 		return err
 	}
@@ -77,8 +76,7 @@ func (bb *BatchBuilder) SetTier(containerName string, blobName string, accessTie
 		return err
 	}
 
-	setTierOptions, leaseInfo, accessConditions := options.format()
-	req, err := getGeneratedBlobClient(blobClient).SetTierCreateRequest(context.TODO(), accessTier, setTierOptions, leaseInfo, accessConditions)
+	req, err := getGeneratedBlobClient(blobClient).SetTierCreateRequest(context.TODO(), accessTier, options.format())
 	if err != nil {
 		return err
 	}

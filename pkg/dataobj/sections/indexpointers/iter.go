@@ -51,7 +51,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 
 		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset:           dset,
-			Columns:           columns,
+			ProjectedColumns:  columns,
 			PrefetchAllOnOpen: true,
 		})
 		defer r.Close()

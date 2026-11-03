@@ -959,11 +959,11 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 	require.False(t, ok, "buffer floor alone must not cross the threshold")
 
 	// Each first touch of a (shard, day) allocates its dense tick bitset
-	// (ticksPerDay/8 = 108 KB at the 100ms interval); keep touching new days
+	// (cellsPerDay/8 = 108 KB at the 100ms interval); keep touching new days
 	// until the resident estimate crosses the threshold.
-	ticksPerDay := builder.ing.postings.ticksPerDay
+	cellsPerDay := builder.ing.postings.cellsPerDay
 	for i := uint64(0); builder.estimatedMemoryBytes() <= threshold; i++ {
-		builder.ing.postings.recordDocumentTick(0, uint32(i*ticksPerDay))
+		builder.ing.postings.recordDocumentTick(0, uint32(i*cellsPerDay))
 	}
 
 	ok, reason := svc.shouldFlush()

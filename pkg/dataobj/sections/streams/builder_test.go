@@ -31,7 +31,7 @@ func Test(t *testing.T) {
 		{labels.FromStrings("cluster", "test", "app", "empty"), time.Unix(1, 0), 0},
 	}
 
-	tracker := streams.NewBuilder(nil, 1024, 0)
+	tracker := streams.NewBuilder(nil, 1024, 0, streams.DefaultShardLayout())
 	for _, tc := range tt {
 		tracker.Record(tc.Labels, tc.Time, tc.Size)
 	}
@@ -48,7 +48,7 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(15, 0).UTC(),
 			Rows:             3,
 			UncompressedSize: 30,
-			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "foo"))),
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "foo"))),
 		},
 		{
 			ID:               2,
@@ -57,7 +57,7 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(100, 0).UTC(),
 			Rows:             1,
 			UncompressedSize: 20,
-			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"))),
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"))),
 		},
 		{
 			ID:               3,
@@ -66,7 +66,7 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(1, 0).UTC(),
 			Rows:             1,
 			UncompressedSize: 0,
-			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "empty"))),
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "empty"))),
 		},
 	}
 
@@ -89,11 +89,6 @@ func Test(t *testing.T) {
 	}
 
 	require.Equal(t, expect, actual)
-}
-
-func TestShardBucketFromHash(t *testing.T) {
-	ls := labels.FromStrings("app", "auth")
-	require.Equal(t, streams.ShardBucket(ls), streams.ShardBucketFromHash(labels.StableHash(ls)))
 }
 
 func copyLabels(in labels.Labels) labels.Labels {

@@ -4,11 +4,15 @@
 package generated
 
 import (
+	"context"
+	"net/http"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
 
 func (client *PageBlobClient) Endpoint() string {
-	return client.endpoint
+	return client.url
 }
 
 func (client *PageBlobClient) InternalClient() *azcore.Client {
@@ -21,8 +25,27 @@ func (client *PageBlobClient) InternalClient() *azcore.Client {
 func NewPageBlobClient(endpoint string, azClient *azcore.Client) *PageBlobClient {
 	client := &PageBlobClient{
 		internal: azClient,
-		endpoint: endpoint,
-		version:  ServiceVersion,
+		url:      endpoint,
 	}
 	return client
+}
+
+// GetPageRangesCreateRequest creates the GetPageRanges request.
+func (client *PageBlobClient) GetPageRangesCreateRequest(ctx context.Context, options *PageBlobClientGetPageRangesOptions) (*policy.Request, error) {
+	return client.getPageRangesCreateRequest(ctx, options)
+}
+
+// GetPageRangesHandleResponse handles the GetPageRanges response.
+func (client *PageBlobClient) GetPageRangesHandleResponse(resp *http.Response, successCodes ...int) (PageBlobClientGetPageRangesResponse, error) {
+	return client.getPageRangesHandleResponse(resp, successCodes...)
+}
+
+// GetPageRangesDiffCreateRequest creates the GetPageRangesDiff request.
+func (client *PageBlobClient) GetPageRangesDiffCreateRequest(ctx context.Context, options *PageBlobClientGetPageRangesDiffOptions) (*policy.Request, error) {
+	return client.getPageRangesDiffCreateRequest(ctx, options)
+}
+
+// GetPageRangesDiffHandleResponse handles the GetPageRangesDiff response.
+func (client *PageBlobClient) GetPageRangesDiffHandleResponse(resp *http.Response, successCodes ...int) (PageBlobClientGetPageRangesDiffResponse, error) {
+	return client.getPageRangesDiffHandleResponse(resp, successCodes...)
 }
