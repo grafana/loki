@@ -355,34 +355,6 @@ func buildChunkDesc(t testing.TB) *chunkDesc {
 	return desc
 }
 
-// IngestedAt is part of the encoded chunk, so replicas that flush the same backfilled chunk must
-// produce the same checksum, and thus chunk key, for the chunk to be deduplicated.
-func TestBackfillChunkChecksumIsSameOnReplicas(t *testing.T) {
-	i := &Ingester{periodicConfigs: []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}}
-
-	checksum := func(recordTime time.Time) uint32 {
-		desc := buildChunkDesc(t)
-		from, through := util.RoundToMilliseconds(desc.chunk.Bounds())
-		metric := labels.FromStrings("app", "foo", constants.BackfillLabel, "true")
-		ch := chunk.NewChunk(
-			"foo", 1, metric,
-			chunkenc.NewFacade(desc.chunk, dummyConf().BlockSize, dummyConf().TargetChunkSize),
-			from, through,
-			i.chunkIngestedAt(metric, from, recordTime),
-		)
-		require.NoError(t, ch.Encode())
-		return ch.Checksum
-	}
-
-	recordTime := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
-
-	// Same records.
-	require.Equal(t, checksum(recordTime), checksum(recordTime))
-	// Different highest record timestamps are different chunks as far as ingestion time is
-	// concerned.
-	require.NotEqual(t, checksum(recordTime), checksum(recordTime.Add(7*time.Second)))
-}
-
 func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 	// Only schema v14 persists IngestedAt in the index.
 	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}

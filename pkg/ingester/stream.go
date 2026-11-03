@@ -383,9 +383,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		if dup {
 			s.handleLoggingOfDuplicateEntry(entries[i])
 		}
-		if !recordTime.IsZero() {
-			chunk.observeRecordTimestamp(recordTime)
-		}
+		chunk.observeRecordTimestamp(recordTime)
 
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
