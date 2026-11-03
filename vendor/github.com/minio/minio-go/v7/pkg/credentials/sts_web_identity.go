@@ -19,6 +19,7 @@ package credentials
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -114,19 +115,38 @@ func NewSTSWebIdentity(stsEndpoint string, getWebIDTokenExpiry func() (*WebIdent
 	return New(i), nil
 }
 
+const defaultKubernetesTokenFile = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
 // NewKubernetesIdentity returns a pointer to a new
 // Credentials object using the Kubernetes service account
+// token at /var/run/secrets/kubernetes.io/serviceaccount/token.
+//
+// The token audience must match the audience the server
+// requires (sts.min.io by default on MinIO AIStor). The default
+// service account token carries the API server audience, so
+// mount a projected token with the right audience and pass its
+// path with WithWebIdentityTokenFile.
 func NewKubernetesIdentity(stsEndpoint string, opts ...func(*STSWebIdentity)) (*Credentials, error) {
-	return NewSTSWebIdentity(stsEndpoint, func() (*WebIdentityToken, error) {
-		token, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+	return NewSTSWebIdentity(stsEndpoint, readWebIdentityTokenFile(defaultKubernetesTokenFile), opts...)
+}
+
+// WithWebIdentityTokenFile option reads the web identity token
+// from the file at path on every credential refresh, replacing
+// the token function passed to NewSTSWebIdentity.
+func WithWebIdentityTokenFile(path string) func(*STSWebIdentity) {
+	return func(i *STSWebIdentity) {
+		i.GetWebIDTokenExpiry = readWebIdentityTokenFile(path)
+	}
+}
+
+func readWebIdentityTokenFile(path string) func() (*WebIdentityToken, error) {
+	return func() (*WebIdentityToken, error) {
+		token, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
-
-		return &WebIdentityToken{
-			Token: string(token),
-		}, nil
-	}, opts...)
+		return &WebIdentityToken{Token: string(token)}, nil
+	}
 }
 
 // WithPolicy option will enforce that the returned credentials
@@ -137,7 +157,7 @@ func WithPolicy(policy string) func(*STSWebIdentity) {
 	}
 }
 
-func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSessionName string, policy string,
+func getWebIdentityCredentials(ctx context.Context, clnt *http.Client, endpoint, roleARN, roleSessionName string, policy string,
 	getWebIDTokenExpiry func() (*WebIdentityToken, error), tokenRevokeType string,
 ) (AssumeRoleWithWebIdentityResponse, error) {
 	idToken, err := getWebIDTokenExpiry()
@@ -180,7 +200,7 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSession
 		return AssumeRoleWithWebIdentityResponse{}, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(v.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), strings.NewReader(v.Encode()))
 	if err != nil {
 		return AssumeRoleWithWebIdentityResponse{}, err
 	}
@@ -242,7 +262,7 @@ func (m *STSWebIdentity) RetrieveWithCredContext(cc *CredContext) (Value, error)
 		return Value{}, errors.New("STS endpoint unknown")
 	}
 
-	a, err := getWebIdentityCredentials(client, stsEndpoint, m.RoleARN, m.roleSessionName, m.Policy, m.GetWebIDTokenExpiry, m.TokenRevokeType)
+	a, err := getWebIdentityCredentials(cc.requestContext(), client, stsEndpoint, m.RoleARN, m.roleSessionName, m.Policy, m.GetWebIDTokenExpiry, m.TokenRevokeType)
 	if err != nil {
 		return Value{}, err
 	}

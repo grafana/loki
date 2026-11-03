@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"sort"
+	"strings"
 
 	"github.com/alecthomas/chroma/v2"
 )
@@ -31,7 +32,7 @@ var Registry = func() map[string]*chroma.Style {
 		if err != nil {
 			panic(err)
 		}
-		registry[style.Name] = style
+		registry[strings.ToLower(style.Name)] = style
 		_ = r.Close()
 	}
 	return registry
@@ -42,7 +43,7 @@ var Fallback = Registry["swapoff"]
 
 // Register a chroma.Style.
 func Register(style *chroma.Style) *chroma.Style {
-	Registry[style.Name] = style
+	Registry[strings.ToLower(style.Name)] = style
 	return style
 }
 
@@ -58,8 +59,37 @@ func Names() []string {
 
 // Get named style, or Fallback.
 func Get(name string) *chroma.Style {
-	if style, ok := Registry[name]; ok {
+	if style, ok := Registry[strings.ToLower(name)]; ok {
 		return style
 	}
 	return Fallback
+}
+
+// GetForMode returns the named style if it already matches mode, otherwise its
+// registered counterpart if one exists and matches mode. If neither matches,
+// the originally-requested style is returned (or Fallback if the name is
+// unknown), so callers always get something usable.
+func GetForMode(name string, mode chroma.Mode) *chroma.Style {
+	style := Get(name)
+	if style.Mode() == mode {
+		return style
+	}
+	if style.Counterpart == "" {
+		return style
+	}
+	counterpart, ok := Registry[style.Counterpart]
+	if !ok || counterpart.Mode() != mode {
+		return style
+	}
+	return counterpart
+}
+
+// RegisterPair links two styles as light/dark counterparts of each other.
+//
+// Both styles are also registered if they are not already present.
+func RegisterPair(a, b *chroma.Style) {
+	Register(a)
+	Register(b)
+	a.Counterpart = strings.ToLower(b.Name)
+	b.Counterpart = strings.ToLower(a.Name)
 }

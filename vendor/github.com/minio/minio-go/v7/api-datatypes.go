@@ -122,8 +122,8 @@ func stringsCut(s, sep string) (before, after string, found bool) {
 // Owner name.
 type Owner struct {
 	XMLName     xml.Name `xml:"Owner" json:"owner"`
-	DisplayName string   `xml:"ID" json:"name"`
-	ID          string   `xml:"DisplayName" json:"id"`
+	DisplayName string   `xml:"DisplayName" json:"name"`
+	ID          string   `xml:"ID" json:"id"`
 }
 
 // UploadInfo contains information about the
@@ -150,15 +150,20 @@ type UploadInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMD5       string
+	ChecksumSHA512    string
+	ChecksumXXHash64  string
+	ChecksumXXHash3   string
+	ChecksumXXHash128 string
 	ChecksumMode      string
 }
 
 // RestoreInfo contains information of the restore operation of an archived object
 type RestoreInfo struct {
 	// Is the restoring operation is still ongoing
-	OngoingRestore bool
+	OngoingRestore bool `xml:"IsRestoreInProgress"`
 	// When the restored copy of the archived object will be removed
-	ExpiryTime time.Time
+	ExpiryTime time.Time `xml:"RestoreExpiryDate"`
 }
 
 // ObjectInfo container for object metadata.
@@ -168,19 +173,40 @@ type ObjectInfo struct {
 	// each parts concatenated into one string.
 	ETag string `json:"etag"`
 
-	Key          string    `json:"name"`         // Name of the object
-	LastModified time.Time `json:"lastModified"` // Date and time the object was last modified.
-	Size         int64     `json:"size"`         // Size in bytes of the object.
-	ContentType  string    `json:"contentType"`  // A standard MIME type describing the format of the object data.
-	Expires      time.Time `json:"expires"`      // The date and time at which the object is no longer able to be cached.
+	Key             string    `json:"name"`            // Name of the object
+	LastModified    time.Time `json:"lastModified"`    // Date and time the object was last modified.
+	Size            int64     `json:"size"`            // Size in bytes of the object.
+	ContentType     string    `json:"contentType"`     // A standard MIME type describing the format of the object data.
+	ContentEncoding string    `json:"contentEncoding"` // A standard MIME type describing encoding of the object data.
+	Expires         time.Time `json:"expires"`         // The date and time at which the object is no longer able to be cached.
 
 	// Collection of additional metadata on the object.
 	// eg: x-amz-meta-*, content-encoding etc.
 	Metadata http.Header `json:"metadata" xml:"-"`
 
-	// x-amz-meta-* headers stripped "x-amz-meta-" prefix containing the first value.
+	// Headers is the unfiltered set of response headers from the
+	// HEAD or GET request that produced this ObjectInfo, e.g.
+	// Content-Range for ranged requests. RFC 2047-encoded
+	// x-amz-meta-*/x-minio-meta-* values appear MIME-decoded, matching
+	// Metadata. Set only when the object info is parsed from an HTTP
+	// object response (StatObject, GetObject); nil elsewhere, e.g. in
+	// ListObjects results, on error paths, or for RDMA-backed GetObject.
+	// It aliases the response headers and must be treated as read-only.
+	Headers http.Header `json:"rawHeaders,omitempty" xml:"-"`
+
+	// UserMetadata contains x-amz-meta-* user metadata.
+	// StatObject and GetObject return it with the "X-Amz-Meta-" prefix
+	// stripped; list results with WithMetadata keep the exact values stored
+	// on the object (prefixed keys plus system entries such as content-type).
 	// Only returned by MinIO servers.
 	UserMetadata StringMap `json:"userMetadata,omitempty"`
+
+	// UserMetadataStripped is the user metadata from list results in the
+	// keyed form StatObject and GetObject return in UserMetadata:
+	// x-amz-meta-* entries with the "X-Amz-Meta-" prefix stripped and
+	// values passed through verbatim.
+	// Only populated by MinIO servers when listing with WithMetadata.
+	UserMetadataStripped StringMap `json:"userMetadataStripped,omitempty" xml:"-"`
 
 	// x-amz-tagging values in their k/v values.
 	// Only returned by MinIO servers.
@@ -218,7 +244,10 @@ type ObjectInfo struct {
 	// NumVersions is the number of versions of the object.
 	NumVersions int
 
-	Restore *RestoreInfo
+	// Restore is the restore state of an archived object. Listings only
+	// report it when asked with ListObjectsOptions.WithRestoreStatus, and
+	// only for objects that have been restored or are being restored.
+	Restore *RestoreInfo `xml:"RestoreStatus"`
 
 	// Checksum values
 	ChecksumCRC32     string
@@ -226,6 +255,12 @@ type ObjectInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMD5       string
+	ChecksumSHA512    string
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128"`
+	ChecksumAlgorithm string
 	ChecksumMode      string `xml:"ChecksumType"`
 
 	Internal *struct {

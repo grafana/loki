@@ -1,4 +1,4 @@
-<style name="monokai">
+<style name="monokai" counterpart="monokailight">
   <entry type="Error" style="#960050 bg:#1e0010"/>
   <entry type="Background" style="bg:#272822"/>
   <entry type="Keyword" style="#66d9ef"/>

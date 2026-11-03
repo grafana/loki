@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
@@ -111,6 +112,12 @@ type PutObjectOptions struct {
 	ConcurrentStreamParts bool
 	Internal              AdvancedPutOptions
 
+	// RDMABuffer, when non-nil and Options.EnableRDMA=true, selects the RDMA
+	// path via libminiocpp.so. Must reference RDMABufferSize contiguous bytes.
+	// When set, the reader / size args to PutObject are ignored.
+	RDMABuffer     unsafe.Pointer
+	RDMABufferSize int
+
 	customHeaders http.Header
 }
 
@@ -186,7 +193,7 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 	}
 
 	if !opts.RetainUntilDate.IsZero() {
-		header.Set("X-Amz-Object-Lock-Retain-Until-Date", opts.RetainUntilDate.Format(time.RFC3339))
+		header.Set(amzLockRetainUntil, opts.RetainUntilDate.UTC().Format(time.RFC3339))
 	}
 
 	if opts.LegalHold != "" {
@@ -315,6 +322,9 @@ func (a completedParts) Less(i, j int) bool { return a[i].PartNumber < a[j].Part
 //     For larger objects (up to ~48.83TiB), set PutObjectOptions.PartSize
 //     to control memory usage and enable uploads beyond 5TiB.
 //
+//     The ~48.83TiB ceiling is the product of the client's max part size and
+//     max parts count, both of which follow Options.UploadLimits.
+//
 //     WARNING: Passing down '-1' will use memory and these cannot
 //     be reused for best outcomes for PutObject(), pass the size always.
 //
@@ -322,6 +332,17 @@ func (a completedParts) Less(i, j int) bool { return a[i].PartNumber < a[j].Part
 func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64,
 	opts PutObjectOptions,
 ) (info UploadInfo, err error) {
+	if opts.RDMABuffer != nil && c.rdmaEnabled {
+		// A reader alongside the buffer means stream it: libminiocpp pins one
+		// part at a time rather than the whole object, so this carries objects
+		// past the 4 GiB an RDMA descriptor can address and does not ask the
+		// caller to pin the object's size. Without a reader the buffer already
+		// holds the object and goes out in a single transfer.
+		if reader != nil {
+			return c.putObjectRDMAStream(ctx, bucketName, objectName, reader, size, opts)
+		}
+		return c.putObjectRDMA(ctx, bucketName, objectName, opts)
+	}
 	if size < 0 && opts.DisableMultipart {
 		return UploadInfo{}, errors.New("object size must be provided with disable multipart upload")
 	}
@@ -332,7 +353,7 @@ func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, r
 	}
 
 	// Check for largest object size allowed.
-	if size > int64(maxObjectSize) {
+	if maxObjectSize := c.limits.maxObjectSize(); size > maxObjectSize {
 		return UploadInfo{}, errEntityTooLarge(size, maxObjectSize, bucketName, objectName)
 	}
 
@@ -354,6 +375,19 @@ func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, r
 	partSize := opts.PartSize
 	if opts.PartSize == 0 {
 		partSize = minPartSize
+	}
+
+	// Only an explicitly configured single PUT limit is enforced here. The 5GiB
+	// default is Amazon's; MinIO/AIStor and others accept far larger single
+	// PUTs, and PutObjectsSnowball sets DisableMultipart itself, so applying the
+	// default would refuse uploads that work today.
+	if maxSinglePut := c.limits.MaxSinglePutObjectSize; maxSinglePut > 0 && size > maxSinglePut {
+		if opts.DisableMultipart {
+			return UploadInfo{}, errEntityTooLarge(size, maxSinglePut, bucketName, objectName)
+		}
+		if int64(partSize) > maxSinglePut {
+			partSize = uint64(maxSinglePut)
+		}
 	}
 
 	if c.overrideSignerType.IsV2() {
@@ -397,7 +431,7 @@ func (c *Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketNam
 	var complMultipartUpload completeMultipartUpload
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, _, err := OptimalPartInfo(-1, opts.PartSize)
+	totalPartsCount, partSize, _, err := c.optimalPartInfo(-1, opts.PartSize)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -410,7 +444,7 @@ func (c *Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketNam
 
 	defer func() {
 		if err != nil {
-			c.abortMultipartUpload(ctx, bucketName, objectName, uploadID)
+			c.abortFailedUpload(ctx, bucketName, objectName, uploadID)
 		}
 	}()
 
@@ -428,8 +462,10 @@ func (c *Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketNam
 	customHeader := make(http.Header)
 	crc := opts.AutoChecksum.Hasher()
 
+	var lastErr error
 	for partNumber <= totalPartsCount {
 		length, rerr := readFull(reader, buf)
+		lastErr = rerr
 		if rerr == io.EOF && partNumber > 1 {
 			break
 		}
@@ -485,6 +521,14 @@ func (c *Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketNam
 		}
 	}
 
+	// A nil read error on the last allowed part means the reader was never
+	// drained; completing here would store a truncated object.
+	if lastErr == nil {
+		if err = errIfMoreData(reader, totalUploadedSize, int64(totalPartsCount), bucketName, objectName); err != nil {
+			return UploadInfo{}, err
+		}
+	}
+
 	// Loop over total uploaded parts to save them in
 	// Parts array before completing the multipart request.
 	allParts := make([]ObjectPart, 0, len(partsInfo))
@@ -502,16 +546,18 @@ func (c *Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketNam
 			ChecksumSHA1:      part.ChecksumSHA1,
 			ChecksumSHA256:    part.ChecksumSHA256,
 			ChecksumCRC64NVME: part.ChecksumCRC64NVME,
+			ChecksumMD5:       part.ChecksumMD5,
+			ChecksumSHA512:    part.ChecksumSHA512,
+			ChecksumXXHash64:  part.ChecksumXXHash64,
+			ChecksumXXHash3:   part.ChecksumXXHash3,
+			ChecksumXXHash128: part.ChecksumXXHash128,
 		})
 	}
 
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 
-	opts = PutObjectOptions{
-		ServerSideEncryption: opts.ServerSideEncryption,
-		AutoChecksum:         opts.AutoChecksum,
-	}
+	opts = completeUploadOpts(opts)
 	applyAutoChecksum(&opts, allParts)
 
 	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload, opts)

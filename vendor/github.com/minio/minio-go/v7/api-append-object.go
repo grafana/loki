@@ -88,7 +88,7 @@ func (opts *AppendObjectOptions) setChecksumParams(info ObjectInfo) {
 }
 
 func (opts AppendObjectOptions) validate(c *Client) (err error) {
-	if opts.ChunkSize > maxPartSize {
+	if opts.ChunkSize > uint64(c.limits.maxPartSize()) {
 		return errInvalidArgument("Append chunkSize cannot be larger than max part size allowed")
 	}
 	switch {
@@ -175,6 +175,11 @@ func (c *Client) appendObjectDo(ctx context.Context, bucketName, objectName stri
 		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
 		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
 		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
+		ChecksumMD5:       h.Get(ChecksumMD5.Key()),
+		ChecksumSHA512:    h.Get(ChecksumSHA512.Key()),
+		ChecksumXXHash64:  h.Get(ChecksumXXHash64.Key()),
+		ChecksumXXHash3:   h.Get(ChecksumXXHash3.Key()),
+		ChecksumXXHash128: h.Get(ChecksumXXHash128.Key()),
 		ChecksumMode:      h.Get(ChecksumFullObjectMode.Key()),
 	}, nil
 }
@@ -207,7 +212,7 @@ func (c *Client) AppendObject(ctx context.Context, bucketName, objectName string
 		if objectSize > 0 {
 			finalObjSize = info.Size + objectSize
 		}
-		totalPartsCount, partSize, lastPartSize, err := OptimalPartInfo(finalObjSize, opts.ChunkSize)
+		totalPartsCount, partSize, lastPartSize, err := c.optimalPartInfo(finalObjSize, opts.ChunkSize)
 		if err != nil {
 			return UploadInfo{}, err
 		}

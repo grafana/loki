@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
@@ -88,10 +89,17 @@ type ObjectAttributesResponse struct {
 	StorageClass string
 	ObjectSize   int
 	Checksum     struct {
-		ChecksumCRC32  string `xml:",omitempty"`
-		ChecksumCRC32C string `xml:",omitempty"`
-		ChecksumSHA1   string `xml:",omitempty"`
-		ChecksumSHA256 string `xml:",omitempty"`
+		ChecksumCRC32     string `xml:",omitempty"`
+		ChecksumCRC32C    string `xml:",omitempty"`
+		ChecksumCRC64NVME string `xml:",omitempty"`
+		ChecksumSHA1      string `xml:",omitempty"`
+		ChecksumSHA256    string `xml:",omitempty"`
+		ChecksumMD5       string `xml:",omitempty"`
+		ChecksumSHA512    string `xml:",omitempty"`
+		ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+		ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+		ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
+		ChecksumType      string `xml:",omitempty"`
 	}
 	ObjectParts struct {
 		PartsCount           int
@@ -105,12 +113,90 @@ type ObjectAttributesResponse struct {
 
 // ObjectAttributePart is used by ObjectAttributesResponse to describe an object part
 type ObjectAttributePart struct {
-	ChecksumCRC32  string `xml:",omitempty"`
-	ChecksumCRC32C string `xml:",omitempty"`
-	ChecksumSHA1   string `xml:",omitempty"`
-	ChecksumSHA256 string `xml:",omitempty"`
-	PartNumber     int
-	Size           int
+	ChecksumCRC32     string `xml:",omitempty"`
+	ChecksumCRC32C    string `xml:",omitempty"`
+	ChecksumCRC64NVME string `xml:",omitempty"`
+	ChecksumSHA1      string `xml:",omitempty"`
+	ChecksumSHA256    string `xml:",omitempty"`
+	ChecksumMD5       string `xml:",omitempty"`
+	ChecksumSHA512    string `xml:",omitempty"`
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
+	PartNumber        int
+	Size              int
+}
+
+// ChecksumMap returns a map of checksums for the object.
+func (o *ObjectAttributesResponse) ChecksumMap() map[string]string {
+	res := make(map[string]string)
+	setif := func(typ ChecksumType, value string) {
+		if value != "" {
+			res[typ.Key()] = value
+		}
+	}
+	setif(ChecksumCRC32C, o.Checksum.ChecksumCRC32C)
+	setif(ChecksumCRC32, o.Checksum.ChecksumCRC32)
+	setif(ChecksumCRC64NVME, o.Checksum.ChecksumCRC64NVME)
+	setif(ChecksumSHA1, o.Checksum.ChecksumSHA1)
+	setif(ChecksumSHA256, o.Checksum.ChecksumSHA256)
+	setif(ChecksumMD5, o.Checksum.ChecksumMD5)
+	setif(ChecksumSHA512, o.Checksum.ChecksumSHA512)
+	setif(ChecksumXXHash64, o.Checksum.ChecksumXXHash64)
+	setif(ChecksumXXHash3, o.Checksum.ChecksumXXHash3)
+	setif(ChecksumXXHash128, o.Checksum.ChecksumXXHash128)
+	return res
+}
+
+// ChecksumMode returns the checksum mode of the object.
+// If unable to determine, returns ChecksumUnknownMode.
+func (o *ObjectAttributesResponse) ChecksumMode() ChecksumMode {
+	t := o.ChecksumType()
+	if !t.IsSet() {
+		return ChecksumUnknownMode
+	}
+	switch o.Checksum.ChecksumType {
+	case amzChecksumModeComposite:
+		return ChecksumCompositeMode
+	case amzChecksumModeFullObject:
+		return ChecksumFullObjectMode
+	case "":
+		// Likely not supported by the server.
+		if o.Checksum.ChecksumCRC64NVME != "" || !strings.ContainsRune(o.ETag, '-') {
+			// Always full object.
+			return ChecksumFullObjectMode
+		}
+		if !t.CanMergeCRC() {
+			// Only composite possible.
+			return ChecksumCompositeMode
+		}
+	}
+	return ChecksumUnknownMode
+}
+
+// ChecksumType returns the checksum type of the object.
+// If none is set, returns ChecksumNone.
+func (o *ObjectAttributesResponse) ChecksumType() ChecksumType {
+	t := ChecksumNone
+	setif := func(typ ChecksumType, value string) {
+		if value != "" {
+			t = typ
+		}
+	}
+	setif(ChecksumCRC32C, o.Checksum.ChecksumCRC32C)
+	setif(ChecksumCRC32, o.Checksum.ChecksumCRC32)
+	setif(ChecksumCRC64NVME, o.Checksum.ChecksumCRC64NVME)
+	setif(ChecksumSHA1, o.Checksum.ChecksumSHA1)
+	setif(ChecksumSHA256, o.Checksum.ChecksumSHA256)
+	setif(ChecksumMD5, o.Checksum.ChecksumMD5)
+	setif(ChecksumSHA512, o.Checksum.ChecksumSHA512)
+	setif(ChecksumXXHash64, o.Checksum.ChecksumXXHash64)
+	setif(ChecksumXXHash3, o.Checksum.ChecksumXXHash3)
+	setif(ChecksumXXHash128, o.Checksum.ChecksumXXHash128)
+	if t.IsSet() && o.Checksum.ChecksumType == amzChecksumModeFullObject {
+		t |= ChecksumFullObject
+	}
+	return t
 }
 
 func (o *ObjectAttributes) parseResponse(resp *http.Response) (err error) {
