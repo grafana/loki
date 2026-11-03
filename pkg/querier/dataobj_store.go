@@ -29,8 +29,8 @@ import (
 // DataObjStoreOption customizes the store returned by [NewDataObjStore].
 type DataObjStoreOption func(*DataObjStore)
 
-// WithDataObjMetadataCache serves each object's metadata region through cache, so opening an
-// object does not read that region from object storage. A nil cache disables it.
+// WithDataObjMetadataCache serves the metadata region of each log object through cache, or the entire
+// object if it is tiny. A nil cache disables it.
 func WithDataObjMetadataCache(cache dataobj.MetadataCache) DataObjStoreOption {
 	return func(s *DataObjStore) { s.metadataCache = cache }
 }

@@ -28,7 +28,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -148,13 +147,21 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 // for it. The optional flush_index param is EXPERIMENTAL: if true, the request
 // waits for the chunks to be flushed and then also forces the in-memory index to
 // be shipped to object storage. A bare flush_index is true, an explicit value
-// is parsed as a bool.
+// is parsed as a bool. Only one flush_index request runs at a time across
+// FlushHandler and FlushTenantHandler; a concurrent one gets a 429.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	flushIndex, err := parseFlushIndex(r.URL.Query())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if flushIndex { // only 1 index flush allowed at a time
+		if !i.tryLockIndexFlush(w) {
+			return
+		}
+		defer i.indexFlushMtx.Unlock()
 	}
 
 	if err := i.flushStreams(ctx, "", nil, flushIndex); err != nil { // flushIndex implies synchronous
@@ -190,6 +197,8 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
 //     on the ingester, so this is not tenant-scoped. Absent means chunks only. A
 //     bare "flush_index" is true; an explicit value is parsed as a bool. if
 //     flush_index is true then the request blocks until the index is flushed.
+//     Only one flush_index request runs at a time across FlushHandler and
+//     FlushTenantHandler; a concurrent one gets a 429.
 //
 // The flush is async like the normal flush unless flush_index is true, in which case the request blocks until the index is flushed too.
 func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +207,13 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if flushIndex { // only 1 index flush allowed at a time
+		if !i.tryLockIndexFlush(w) {
+			return
+		}
+		defer i.indexFlushMtx.Unlock()
 	}
 
 	if err := i.flushStreams(ctx, tenantID, matchers, flushIndex); err != nil { // flushIndex implies synchronous
@@ -225,6 +241,17 @@ func flushErrorStatus(err error) int {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusInternalServerError
+}
+
+// tryLockIndexFlush takes indexFlushMtx for a flush_index request, or writes a
+// 429 and returns false if another one holds it. only one flush_index request
+// can run at a time across FlushHandler and FlushTenantHandler.
+func (i *Ingester) tryLockIndexFlush(w http.ResponseWriter) bool {
+	if !i.indexFlushMtx.TryLock() {
+		http.Error(w, "an index flush is already in progress, retry later", http.StatusTooManyRequests)
+		return false
+	}
+	return true
 }
 
 // parseFlushIndex parses the flush_index param. Absent is false, a bare
@@ -580,7 +607,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
-			i.chunkIngestedAt(metric, firstTime, lastTime, c.ingestedAt),
+			i.chunkIngestedAt(metric, firstTime, c.ingestedAt),
 		)
 
 		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
@@ -639,16 +666,10 @@ func validRecordTimestamp(ts time.Time, logger log.Logger) bool {
 	return true
 }
 
-// chunkIngestedAt returns the IngestedAt to stamp on a chunk being flushed. Chunks belonging to
-// backfilled streams (those carrying the __backfill__ label) get one, so that under TSDB FormatV4
-// (schema v14) retention can be measured from ingestion rather than from the log timestamps.
-// Chunks of streams without the __backfill__ label get zero. So do chunks whose period does not
-// support FormatV4, which fall back to Through-based retention.
-//
-// recordTime is the highest timestamp of the ingested (e.g. Kafka) records that fed the chunk.
-// It is used as the ingestion time as is if it is valid, see validRecordTimestamp. Otherwise
-// the flush time, rounded up to the next UTC day, is used.
-func (i *Ingester) chunkIngestedAt(metric labels.Labels, from, through model.Time, recordTime time.Time) model.Time {
+// chunkIngestedAt returns the IngestedAt for a chunk of a backfilled stream (__backfill__="true"):
+// the highest timestamp of the Kafka records that fed it, so retention can count from ingestion.
+// Other chunks, and chunks whose period doesn't store it (schema < v14), get zero.
+func (i *Ingester) chunkIngestedAt(metric labels.Labels, from model.Time, recordTime time.Time) model.Time {
 	if metric.Get(constants.BackfillLabel) != "true" {
 		return 0
 	}
@@ -665,25 +686,13 @@ func (i *Ingester) chunkIngestedAt(metric labels.Labels, from, through model.Tim
 		return 0
 	}
 
-	// Replicas of a partition consume the same records, so the record timestamp is the same on
-	// all of them and is used as is.
-	if validRecordTimestamp(recordTime, i.logger) {
-		return model.TimeFromUnixNano(recordTime.UnixNano())
+	if !validRecordTimestamp(recordTime, i.logger) {
+		return 0
 	}
 
-	// We are not using Kafka records, so fall back to the current time, adjusted to the beginning
-	// of the next UTC day as the index does. Otherwise each zone would stamp its own flush time,
-	// which gives the same chunk different checksums and prevents deduplication.
-	//
-	// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
-	// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
-	// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
-	//
-	// Replicas that flush on different UTC days still stamp different values, so those chunks are
-	// not deduplicated. We accept that: Kafka ingestion normally never gets here (every record has a
-	// timestamp), and for the rest only the chunks whose flushes fall on either side of UTC
-	// midnight are affected, a small fraction.
-	return model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(through)))
+	// Replicas of a partition consume the same records, so the record timestamp is the same on
+	// all of them.
+	return model.TimeFromUnixNano(recordTime.UnixNano())
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.

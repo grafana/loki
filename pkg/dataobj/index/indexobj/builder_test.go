@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -66,7 +65,6 @@ func TestBuilder(t *testing.T) {
 
 		require.Equal(t, 0, obj.Sections().Count(streams.CheckSection))
 		require.Equal(t, 1, obj.Sections().Count(postings.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(pointers.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
 		require.Equal(t, []string{testTenant}, obj.Tenants())

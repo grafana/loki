@@ -14,7 +14,7 @@ each container will use the default driver unless configured otherwise.
 
 ## Installation
 
-Before configuring the plugin, [install or upgrade the Grafana Loki Docker Driver Client](../)
+Before configuring the plugin, [install or upgrade the Grafana Loki Docker Driver Client](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/)
 
 ## Change the logging driver for a container
 
@@ -71,9 +71,7 @@ Options for the logging driver can also be configured with `log-opts` in the
 ```
 
 {{< admonition type="note" >}}
-log-opt configuration options in daemon.json must be provided as
-> strings. Boolean and numeric values (such as the value for loki-batch-size in
-> the example above) must therefore be enclosed in quotes (`"`).
+log-opt configuration options in daemon.json must be provided as strings. Boolean and numeric values (such as the value for loki-batch-size in the example above) must therefore be enclosed in quotes (`"`).
 {{< /admonition >}}
 
 After changing `daemon.json`, restart the Docker daemon for the changes to take
@@ -86,7 +84,6 @@ a [swarm service](https://docs.docker.com/engine/swarm/how-swarm-mode-works/serv
 directly in your compose file. This also applies for `docker-compose`:
 
 ```yaml
-version: "3.7"
 services:
   logger:
     image: grafana/grafana
@@ -102,10 +99,10 @@ You can then deploy your stack using:
 docker stack deploy my_stack_name --compose-file docker-compose.yaml
 ```
 
-Or with `docker-compose`:
+Or with `docker compose`:
 
 ```bash
-docker-compose -f docker-compose.yaml up
+docker compose -f docker-compose.yaml up
 ```
 
 Once deployed, the Grafana service will send its logs to Loki.
@@ -118,12 +115,13 @@ automatically discovered and sent as Loki labels, this way you can filter by the
 ## Labels
 
 Loki can receive a set of labels along with log line. These labels are used to index log entries and query back logs
-using [LogQL stream selector](../../../query/log_queries/#log-stream-selector).
+using [LogQL stream selector](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#log-stream-selector).
 
 By default, the Docker driver will add the following labels to each log line:
 
-- `filename`: where the log is written to on disk
+- `filename`: the path to the JSON log file on disk. This label is set even when `no-file=true`, in which case it reflects the path the file would have used, even though no file is actually created.
 - `host`: the hostname where the log has been generated
+- `source`: the stream the log line was read from, either `stdout` or `stderr`.
 - `swarm_stack`, `swarm_service`: added when deploying from Docker Swarm.
 - `compose_project`, `compose_service`: added when deploying with Docker Compose.
 
@@ -146,7 +144,6 @@ The example [docker-compose](https://github.com/grafana/loki/blob/main/clients/c
 below configures 2 stages, one to extract level values and one to set it as a label:
 
 ```yaml
-version: "3"
 services:
   grafana:
     image: grafana/grafana
@@ -196,7 +193,6 @@ Relabeling phase will happen only once per container and it is applied on the co
 For example the configuration below will rename the label `swarm_stack` and `swarm_service` to respectively `namespace` and `service`.
 
 ```yaml
-version: "3"
 services:
   grafana:
     image: grafana/grafana
@@ -221,7 +217,7 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | Option                          | Required? |       Default Value        | Description                                                                                                                                                                                                                                                                                                     |
 |---------------------------------|:---------:|:--------------------------:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `loki-url`                      |    Yes    |                            | Loki HTTP push endpoint.                                                                                                                                                                                                                                                                                        |
-| `loki-external-labels`          |    No     | `container_name={{.Name}}` | Additional label value pair separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/config/containers/logging/log_tags/). (eg: `container_name={{.ID}}.{{.Name}},cluster=prod`)                                                                 |
+| `loki-external-labels`          |    No     | `container_name={{.Name}}` | Additional label value pair separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/engine/logging/log_tags/). (eg: `container_name={{.ID}}.{{.Name}},cluster=prod`)                                                                 |
 | `loki-timeout`                  |    No     |           `10s`            | The timeout to use when sending logs to the Loki instance. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                                                      |
 | `loki-batch-wait`               |    No     |            `1s`            | The amount of time to wait before sending a log batch complete or not. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                                          |
 | `loki-batch-size`               |    No     |         `1048576`          | The maximum size of a log batch to send.                                                                                                                                                                                                                                                                        |
@@ -238,13 +234,15 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-tls-server-name`          |    No     |                            | Name used to validate the server certificate.                                                                                                                                                                                                                                                                   |
 | `loki-tls-insecure-skip-verify` |    No     |          `false`*          | Allow to skip tls verification.                                                                                                                                                                                                                                                                                 |
 | `loki-proxy-url`                |    No     |                            | Proxy URL use to connect to Loki.                                                                                                                                                                                                                                                                               |
-| `no-file`                       |    No     |          `false`*          | When `false` (default), the driver creates a local JSON log file for each container, which enables `docker logs`. Set to `true` to skip creating JSON log files entirely — no disk space is used for logs, but `docker logs` will not work for the container.                                |
+| `no-file`                       |    No     |          `false`*          | When `false` (default), the driver creates a local JSON log file for each container, which enables `docker logs`. Set to `true` to skip creating JSON log files entirely. No disk space is used for logs, but `docker logs` will not work for the container.                                |
 | `keep-file`                     |    No     |          `false`*          | When `false` (default), the JSON log file for a container is deleted when the container stops. Set to `true` to retain the JSON log file after the container stops. Has no effect when `no-file=true`, because no JSON log file is created.                                                                      |
 | `max-size`                      |    No     |             -1             | The maximum size of the log before it is rolled. A positive integer plus a modifier representing the unit of measure (k, m, or g). Defaults to -1 (unlimited). This is used by json-log required to keep the `docker log` command working.                                                                      |
 | `max-file`                      |    No     |             1              | The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. Only effective when max-size is also set. A positive integer. Defaults to 1.                                                                                                         |
 | `labels`                        |    No     |                            | Comma-separated list of keys of labels, which should be included in message, if these labels are specified for container.                                                                                                                                                                                       |
 | `env`                           |    No     |                            | Comma-separated list of keys of environment variables to be included in message if they specified for a container.                                                                                                                                                                                              |
 | `env-regex`                     |    No     |                            | A regular expression to match logging-related environment variables. Used for advanced log label options. If there is collision between the label and env keys, the value of the env takes precedence. Both options add additional fields to the labels of a logging message.                                   |
+| `mode`                          |    No     |         `blocking`         | Standard Docker logging-driver option. Set to `non-blocking` to buffer log messages in memory and send them to Loki asynchronously instead of blocking the container's main process. See [Known Issue: Deadlocked Docker Daemon](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/#known-issue-deadlocked-docker-daemon).                                     |
+| `max-buffer-size`               |    No     |            `1m`            | Standard Docker logging-driver option. The size of the in-memory buffer used when `mode=non-blocking`. Has no effect when `mode=blocking` (the default).                                                                                                                                                        |
 
 ### `no-file` and `keep-file` interactions
 
@@ -268,7 +266,7 @@ Boolean values in the configuration file only accept the following string type:
 ## Troubleshooting
 
 Plugin logs can be found as docker daemon log. To enable debug mode refer to the
-[Docker daemon documentation](https://docs.docker.com/config/daemon/).
+[Docker daemon documentation](https://docs.docker.com/engine/daemon/).
 
 The standard output (`stdout`) of a plugin is redirected to Docker logs. Such
 entries are prefixed with `plugin=`.
@@ -277,5 +275,5 @@ To find out the plugin ID of the Loki logging driver, use `docker plugin ls` and
 look for the `loki` entry.
 
 Depending on your system, location of Docker daemon logging may vary. Refer to
-[Docker documentation for Docker daemon](https://docs.docker.com/config/daemon/)
+[Docker documentation for Docker daemon](https://docs.docker.com/engine/daemon/)
 log location for your specific platform.

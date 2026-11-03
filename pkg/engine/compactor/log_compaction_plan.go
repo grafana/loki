@@ -103,8 +103,16 @@ func (t logMergeTask) physicalPlan(tenant string, window time.Time) *physical.Pl
 
 func (t logMergeTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
+// logStats returns the input bytes of the task's key range from the index
+// stats, so the tasks of a split merge add up to the bytes of the merge. If
+// the spec has no input bytes, it falls back to the size of the task's
+// sections.
 func (t logMergeTask) logStats() logTaskStats {
 	stats := logTaskStats{oldestTimestamp: t.entry.StartTime}
+	if t.spec.InputBytes > 0 {
+		stats.inputBytes = uint64(t.spec.InputBytes)
+		return stats
+	}
 	for _, run := range t.spec.Runs {
 		for _, section := range run.Sections {
 			stats.inputBytes += uint64(section.UncompressedSize)

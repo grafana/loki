@@ -17,8 +17,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -278,16 +278,13 @@ type EvaluatorFactory interface {
 type SampleEvaluatorFactory interface {
 	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr. It's explicitly passed another NewStepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// NewStepEvaluator implementations which can be composed.
-	//
-	// isRootExpr is true only for the root expression of the query, whose output is the query
-	// result.
-	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error)
+	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
 }
 
-type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error)
+type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
 
-func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error) {
-	return s(ctx, nextEvaluatorFactory, expr, p, isRootExpr)
+func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+	return s(ctx, nextEvaluatorFactory, expr, p)
 }
 
 type EntryEvaluatorFactory interface {
@@ -348,16 +345,15 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	q Params,
-	isRootExpr bool,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
-			sampleOrder := sampleOrderFor(ctx, e, ev.limits, isRootExpr)
+			sampleOrder := sampleOrderForExpr(ctx, e, ev.limits)
 
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ bool) (StepEvaluator, error) {
+			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				keepsErroredLines, err := syntax.KeepsErroredLines(rangExpr.Left)
 				if err != nil {
 					return nil, err
@@ -369,6 +365,8 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				}
 				switch sampleOrder {
 				case logproto.SAMPLE_ORDER_BY_STREAM:
+					// The series limit counts the output series of this sum, even when an outer
+					// aggregation reduces them later.
 					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.maxQuerySeries(ctx), keepsErroredLines)
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
 					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines)
@@ -436,30 +434,37 @@ func selectSampleParamsFor(q Params, expr syntax.SampleExpr, left *syntax.LogRan
 	}
 }
 
-// sampleOrderFor returns the sample order to use for expr.
-func sampleOrderFor(ctx context.Context, expr syntax.SampleExpr, limits Limits, isRootExpr bool) logproto.SampleOrder {
-	const timestampFirst = logproto.SAMPLE_ORDER_BY_TIMESTAMP
-
-	// The stream-first iterator enforces the series limit on its output series. Only at the root
-	// are those the series the query returns.
-	if !isRootExpr {
-		return timestampFirst
+// sampleOrderForExpr returns stream-first order when expr itself can run in it and every tenant
+// enables stream-first execution. Otherwise it returns timestamp-first order.
+func sampleOrderForExpr(ctx context.Context, expr syntax.SampleExpr, limits Limits) logproto.SampleOrder {
+	if _, ok := StreamFirstRangeAggregationExpr(expr); !ok || !streamFirstEnabledFor(ctx, limits) {
+		return logproto.SAMPLE_ORDER_BY_TIMESTAMP
 	}
+	return logproto.SAMPLE_ORDER_BY_STREAM
+}
 
-	if _, ok := StreamFirstRangeAggregation(expr.String()); !ok {
-		return timestampFirst
+// sampleOrderForQuery returns stream-first order when any part of expr can run in it and every
+// tenant enables stream-first execution. Otherwise it returns timestamp-first order.
+func sampleOrderForQuery(ctx context.Context, expr syntax.SampleExpr, limits Limits) logproto.SampleOrder {
+	if len(StreamFirstRangeAggregations(expr)) == 0 || !streamFirstEnabledFor(ctx, limits) {
+		return logproto.SAMPLE_ORDER_BY_TIMESTAMP
 	}
+	return logproto.SAMPLE_ORDER_BY_STREAM
+}
 
+// streamFirstEnabledFor reports whether every tenant of the query enables stream-first execution.
+// It returns false when the context has no tenant or an invalid one.
+func streamFirstEnabledFor(ctx context.Context, limits Limits) bool {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil || len(tenantIDs) == 0 {
-		return timestampFirst
+		return false
 	}
 	for _, id := range tenantIDs {
 		if !limits.StreamFirstExecutionEnabled(id) {
-			return timestampFirst
+			return false
 		}
 	}
-	return logproto.SAMPLE_ORDER_BY_STREAM
+	return true
 }
 
 // maxQuerySeries returns the series limit of the query, the smallest one among its tenants. It
@@ -501,7 +506,7 @@ func newVectorAggEvaluator(
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
@@ -854,7 +859,6 @@ func newStreamFirstRangeAggEvaluator(
 ) (StepEvaluator, error) {
 	rangeIter, err := newStreamFirstRangeVectorIterator(
 		ctx, it, expr,
-		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 		grouping,
@@ -957,7 +961,7 @@ func newBinOpStepEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false)
+		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
 		if err != nil {
 			return nil, err
 		}
@@ -970,7 +974,7 @@ func newBinOpStepEvaluator(
 		)
 	}
 	if rOk {
-		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false)
+		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
@@ -992,7 +996,7 @@ func newBinOpStepEvaluator(
 	// load them in parallel
 	g.Go(func() error {
 		var err error
-		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false)
+		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
@@ -1000,7 +1004,7 @@ func newBinOpStepEvaluator(
 	})
 	g.Go(func() error {
 		var err error
-		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false)
+		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
@@ -1425,7 +1429,7 @@ func newLabelReplaceEvaluator(
 	expr *syntax.LabelReplaceExpr,
 	q Params,
 ) (*LabelReplaceEvaluator, error) {
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
@@ -1526,8 +1530,8 @@ func pipelineErr[T any](keepsErroredLines bool, samples []T, metric func(T) labe
 		return nil
 	}
 	for _, s := range samples {
-		if m := metric(s); m.Has(logqlmodel.ErrorLabel) {
-			return logqlmodel.NewPipelineErr(m)
+		if m := metric(s); m.Has(logqlerr.ErrorLabel) {
+			return logqlerr.NewPipelineErr(m)
 		}
 	}
 	return nil

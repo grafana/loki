@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"slices"
 	"testing"
@@ -15,13 +16,17 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
+
+// filterSourceLayout is the layout of the stats sections that the filter
+// tests build, with the sort schema of filterStatRow.
+var filterSourceLayout = streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"})
 
 // buildFilterSourceIndex uploads an index with one postings row and one stats
 // row per log object, for each tenant. A small postingsSectionSize splits the
@@ -35,7 +40,7 @@ func buildFilterSourceIndex(t *testing.T, bucket objstore.Bucket, path string, p
 		for _, object := range objects {
 			rows = append(rows, filterStatRow(object, 0))
 		}
-		appendFilterStats(t, objBuilder, tenant, rows)
+		appendFilterStats(t, objBuilder, tenant, filterSourceLayout, rows)
 	}
 	uploadFilterSourceIndex(t, bucket, path, objBuilder)
 }
@@ -63,10 +68,11 @@ func appendFilterPostings(t *testing.T, objBuilder *dataobj.Builder, tenant stri
 	require.NoError(t, objBuilder.Append(postingsBuilder))
 }
 
-// appendFilterStats appends one stats section with rows.
-func appendFilterStats(t *testing.T, objBuilder *dataobj.Builder, tenant string, rows []stats.Stat) {
+// appendFilterStats appends one stats section that holds rows and records
+// layout.
+func appendFilterStats(t *testing.T, objBuilder *dataobj.Builder, tenant string, layout streams.Layout, rows []stats.Stat) {
 	t.Helper()
-	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layoutOfStats(rows))
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
 	statsBuilder.SetTenant(tenant)
 	for _, row := range rows {
 		statsBuilder.Append(row)
@@ -167,6 +173,38 @@ func TestDoIndexFilter(t *testing.T) {
 		require.Equal(t, []string{"logs/a", "logs/c"}, statsPaths)
 	})
 
+	for _, buckets := range []uint32{1, 8, 256} {
+		t.Run(fmt.Sprintf("records the layout of the source index and keeps the shard buckets of the rows with a shard bucket count of %d", buckets), func(t *testing.T) {
+			layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(buckets), []string{"label:service_name"})
+			bucket := objstore.NewInMemBucket()
+			objects := []string{"logs/a", "logs/b"}
+			objBuilder := dataobj.NewBuilder(nil)
+			appendFilterPostings(t, objBuilder, "acme", 1<<20, objects, false)
+			var rows []stats.Stat
+			for _, object := range objects {
+				row := filterStatRow(object, 0)
+				row.ShardBucket = buckets - 1
+				rows = append(rows, row)
+			}
+			appendFilterStats(t, objBuilder, "acme", layout, rows)
+			uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+			artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(t.Context(), &physical.IndexFilter{
+				NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+				ObjectPaths: []string{"logs/a"},
+			})
+			require.NoError(t, err)
+
+			got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), "acme")
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(t, layout, got)
+			keptRows := readAllStatsRowsFromBucket(t, bucket, artifact.Path)
+			require.Len(t, keptRows, 1)
+			require.Equal(t, buckets-1, keptRows[0].ShardBucket)
+		})
+	}
+
 	t.Run("reads every postings section of the source index", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objects := []string{"logs/a", "logs/b", "logs/c", "logs/d", "logs/e", "logs/f"}
@@ -193,7 +231,7 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, true)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
 		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
@@ -215,8 +253,8 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 1), filterStatRow("logs/b", 1)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 1), filterStatRow("logs/b", 1)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 		sourceStats := 0
 		for _, sec := range openObjectFromBucket(ctx, t, bucket, sourcePath).Sections() {
@@ -247,7 +285,7 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, true)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/a", 1), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/a", 1), filterStatRow("logs/b", 0)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
 		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
@@ -272,16 +310,11 @@ func TestDoIndexFilter(t *testing.T) {
 		require.ElementsMatch(t, wantStats, readAllStatsRowsFromBucket(t, bucket, artifact.Path))
 	})
 
-	t.Run("skips pointers and streams sections of the source index", func(t *testing.T) {
+	t.Run("skips streams sections of the source index", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
-
-		pointersBuilder := pointers.NewBuilder(nil, 0, 0)
-		pointersBuilder.SetTenant("acme")
-		pointersBuilder.ObserveStream("logs/a", 0, 1, 1, time.Unix(0, 1_000), 100)
-		require.NoError(t, objBuilder.Append(pointersBuilder))
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
 
 		streamsBuilder := streams.NewBuilder(nil, 8192, 0, streams.DefaultShardLayout())
 		streamsBuilder.SetTenant("acme")
@@ -297,7 +330,6 @@ func TestDoIndexFilter(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, sec := range openObjectFromBucket(ctx, t, bucket, artifact.Path).Sections() {
-			require.False(t, pointers.CheckSection(sec), "output must not hold a pointers section")
 			require.False(t, streams.CheckSection(sec), "output must not hold a streams section")
 		}
 		postingsPaths, statsPaths := indexObjectPaths(t, bucket, artifact.Path)
@@ -309,7 +341,7 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0)})
 
 		indexPointersBuilder := indexpointers.NewBuilder(nil, 1024, 0)
 		indexPointersBuilder.SetTenant("acme")
@@ -322,7 +354,7 @@ func TestDoIndexFilter(t *testing.T) {
 			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
 			ObjectPaths: []string{"logs/a"},
 		})
-		require.ErrorContains(t, err, "unknown section")
+		require.EqualError(t, err, `filtering source index "indexes/source": unknown section "github.com/grafana/loki/indexpointers@v2"`)
 	})
 
 	t.Run("does not copy rows of other tenants", func(t *testing.T) {
@@ -362,7 +394,7 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
@@ -376,7 +408,7 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/b", 0)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{

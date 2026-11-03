@@ -7,6 +7,8 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -35,12 +37,54 @@ func TestDataObjStrategy_Select(t *testing.T) {
 			end:      now.Add(-12 * time.Hour),
 			expected: Selection{Selected: true},
 		},
-		"does not select a query that is not a stream-first sum": {
+		"selects a stream-first sum nested in label_replace": {
+			tenants:  []string{"enabled"},
+			query:    `label_replace(sum by (digest) (sum_over_time({app="a"} | logfmt | unwrap duration_seconds(wait_time) [5m])), "engine", "mysql", "digest", ".+")`,
+			start:    now.Add(-24 * time.Hour),
+			end:      now.Add(-12 * time.Hour),
+			expected: Selection{Selected: true},
+		},
+		"selects a stream-first sum nested in another aggregation": {
+			tenants:  []string{"enabled"},
+			query:    `count by (node) (sum by (node, pod) (count_over_time({app="a"} | logfmt | __error__="" [5m])))`,
+			start:    now.Add(-24 * time.Hour),
+			end:      now.Add(-12 * time.Hour),
+			expected: Selection{Selected: true},
+		},
+		"selects a stream-first sum nested in binary operators": {
+			tenants:  []string{"enabled"},
+			query:    `(sum(count_over_time({app="a"}[5m])) or vector(0)) > bool 0`,
+			start:    now.Add(-24 * time.Hour),
+			end:      now.Add(-12 * time.Hour),
+			expected: Selection{Selected: true},
+		},
+		"does not select a nested metric query that holds no stream-first sum": {
+			tenants:  []string{"enabled"},
+			query:    `max(sum(avg_over_time({app="a"} | logfmt | unwrap n [5m])))`,
+			start:    now.Add(-24 * time.Hour),
+			end:      now.Add(-12 * time.Hour),
+			expected: Selection{Selected: false, Reason: "unsupported_query"},
+		},
+		"does not select a metric query that is not a stream-first sum": {
 			tenants:  []string{"enabled"},
 			query:    `rate({app="a"}[5m])`,
 			start:    now.Add(-24 * time.Hour),
 			end:      now.Add(-12 * time.Hour),
 			expected: Selection{Selected: false, Reason: "unsupported_query"},
+		},
+		"does not select a metric query that reads no logs and reports it as an unsupported query": {
+			tenants:  []string{"enabled"},
+			query:    `vector(1)`,
+			start:    now.Add(-24 * time.Hour),
+			end:      now.Add(-12 * time.Hour),
+			expected: Selection{Selected: false, Reason: "unsupported_query"},
+		},
+		"does not select a log query and reports it as an unsupported request": {
+			tenants:  []string{"enabled"},
+			query:    `{app="a"} |= "error"`,
+			start:    now.Add(-24 * time.Hour),
+			end:      now.Add(-12 * time.Hour),
+			expected: Selection{Selected: false, Reason: "unsupported_request"},
 		},
 		"does not select a query that does not parse": {
 			tenants:  []string{"enabled"},
@@ -82,6 +126,39 @@ func TestDataObjStrategy_Select(t *testing.T) {
 		req := &queryrange.LokiInstantRequest{Query: eligibleQuery, TimeTs: now.Add(-12 * time.Hour)}
 
 		require.Equal(t, Selection{Selected: true}, strategy.Select([]string{"enabled"}, req))
+	})
+
+	t.Run("does not select an instant log query and reports it as an unsupported request", func(t *testing.T) {
+		req := &queryrange.LokiInstantRequest{Query: `{app="a"}`, TimeTs: now.Add(-12 * time.Hour)}
+
+		require.Equal(t, Selection{Selected: false, Reason: "unsupported_request"}, strategy.Select([]string{"enabled"}, req))
+	})
+
+	t.Run("selects a stream-first sum that carries a plan", func(t *testing.T) {
+		expr, err := syntax.ParseExpr(eligibleQuery)
+		require.NoError(t, err)
+		req := &queryrange.LokiRequest{
+			Query:   eligibleQuery,
+			Plan:    &plan.QueryPlan{AST: expr},
+			StartTs: now.Add(-24 * time.Hour),
+			EndTs:   now.Add(-12 * time.Hour),
+		}
+
+		require.Equal(t, Selection{Selected: true}, strategy.Select([]string{"enabled"}, req))
+	})
+
+	t.Run("does not select a log query that carries a plan and reports it as an unsupported request", func(t *testing.T) {
+		const logQuery = `{app="a"} |= "error"`
+		expr, err := syntax.ParseExpr(logQuery)
+		require.NoError(t, err)
+		req := &queryrange.LokiRequest{
+			Query:   logQuery,
+			Plan:    &plan.QueryPlan{AST: expr},
+			StartTs: now.Add(-24 * time.Hour),
+			EndTs:   now.Add(-12 * time.Hour),
+		}
+
+		require.Equal(t, Selection{Selected: false, Reason: "unsupported_request"}, strategy.Select([]string{"enabled"}, req))
 	})
 
 	t.Run("does not select a query when data objects are disabled", func(t *testing.T) {

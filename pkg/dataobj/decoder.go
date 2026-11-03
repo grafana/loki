@@ -35,8 +35,9 @@ type decoder struct {
 
 	prefetchedRangeReader rangeReader
 
-	// metadataCache, when set, serves the metadata region so a warm cache avoids re-reading the
-	// metadata from object storage on every open. metadataKey identifies the object in the cache.
+	// metadataCache, when set, serves the metadata region, or the entire object if it is tiny, so a warm
+	// cache avoids re-reading it from object storage on every open. metadataKey identifies the object
+	// in the cache.
 	metadataCache MetadataCache
 	metadataKey   string
 
@@ -67,8 +68,8 @@ func (d *decoder) metadataDirect(ctx context.Context) (*filemd.Metadata, error) 
 }
 
 // metadataViaCache serves the metadata region from the cache (loading it on a miss), then decodes the
-// file metadata from it. It prefetches whatever region was cached, so a later section-metadata read
-// falling inside that region is served from memory instead of a fresh read from object storage.
+// file metadata from it. It prefetches whatever was cached, so a later read inside it is served from
+// memory instead of a fresh read from object storage.
 func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error) {
 	blob, err := d.metadataCache.GetOrLoadMetadataRegion(ctx, d.metadataKey, d.fetchExtendedMetadataRegion)
 	if err != nil {
@@ -109,8 +110,9 @@ func (d *decoder) decodeMetadataRegion(blob []byte) (md *filemd.Metadata, metada
 	return md, header.MetadataSize, nil
 }
 
-// fetchExtendedMetadataRegion reads the metadata region its caller should cache: the file metadata plus, per
-// extendedMetadataRegionEnd, every non-logs section's own metadata.
+// fetchExtendedMetadataRegion reads the metadata region its caller should cache: the file metadata
+// plus, per extendedMetadataRegionEnd, every non-logs section's own metadata. A tiny object is
+// returned whole.
 //
 // extendedMetadataRegionEnd already wraps its own error in errCannotCacheMetadata, so metadataViaCache
 // falls back to a direct read instead of failing the open.
@@ -129,8 +131,22 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 		return nil, err
 	}
 
-	// Return a right-sized copy, not a slice of buf. The copy is cached and kept as the prefetched
-	// window, so it outlives buf. A slice would pin buf's larger backing array.
+	// A read shorter than the prefetch window that ends with the trailer magic fetched the entire
+	// object: it is tiny. Cache all of it, unless it exceeds MaxItemBytes. The metadata region alone
+	// would send every section data read of a warm open back to object storage. That costs more than
+	// no cache.
+	//
+	// The magic check rejects a truncated read, such as a connection that drops mid-body. Without it,
+	// the cache would keep the truncated prefix, and every warm open would reuse it.
+	//
+	// Return a right-sized copy, not a slice of buf. The copy outlives buf, and a slice would pin its
+	// larger backing array.
+	bufLen := int64(len(buf))
+	fetchedEntireObject := bufLen < d.effectivePrefetchBytes() && bytes.HasSuffix(buf, magic)
+	if fetchedEntireObject && bufLen <= d.metadataCache.MaxItemBytes() {
+		return bytes.Clone(buf), nil
+	}
+
 	if int64(len(buf)) >= regionEnd {
 		return bytes.Clone(buf[:regionEnd]), nil
 	}
@@ -167,9 +183,9 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 //	                         |----------------------|  extended up to maxBytes (non-logs sections only)
 //
 // Every section's metadata sits in one contiguous block, followed by every section's data in a
-// second block. The cached blob is always the prefix [0, regionEnd), so section data is never
-// cached, however large maxBytes is. A logs section's own metadata is never what grows the region,
-// but it can still be included incidentally if it comes before an included non-logs section.
+// second block. The returned end never reaches the data block, however large maxBytes is. A logs
+// section's own metadata is never what grows the region, but it can still be included
+// incidentally if it comes before an included non-logs section.
 //
 // A non-logs section that alone would exceed maxBytes is skipped rather than aborting the whole
 // extension, so the result is the largest offset achievable. This depends only on each section's own

@@ -95,8 +95,9 @@ type Object struct {
 	tenants  []string
 }
 
-// MetadataCache caches the metadata region of data objects, keyed by an opaque key. Data objects are
-// immutable, so a cached entry never goes stale. Implementations must be safe for concurrent use.
+// MetadataCache caches the metadata region of data objects, or the entire object if it is tiny, keyed
+// by an opaque key. A key must name an object that never changes, so a cached entry never goes stale:
+// do not cache a ToC. Implementations must be safe for concurrent use.
 type MetadataCache interface {
 	// GetOrLoadMetadataRegion returns the metadata region for key. On a miss it calls load, stores the
 	// result, and returns it; concurrent calls for the same key share a single load. A load error is
@@ -126,11 +127,11 @@ type openOptions struct {
 }
 
 // WithMetadataCache serves the object's metadata region through the cache instead of reading it from
-// object storage on every open.
+// object storage on every open. A tiny object is cached whole.
 //
-// On the cached path, the prefetched window becomes exactly the cached metadata region, not
-// prefetchBytes. A caller that also relies on prefetchBytes to warm overlapping section reads should
-// account for that before enabling the cache.
+// On the cached path, the prefetched window becomes exactly the cached region, not prefetchBytes. A
+// caller that also relies on prefetchBytes to warm overlapping section reads should account for that
+// before enabling the cache.
 func WithMetadataCache(cache MetadataCache) OpenOption {
 	// normalizeNilCache collapses a typed-nil MetadataCache to a true nil interface value.
 	normalizeNilCache := func(cache MetadataCache) MetadataCache {

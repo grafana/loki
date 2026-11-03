@@ -235,8 +235,9 @@ func BenchmarkSections_PredicateMatchers(b *testing.B) {
 	}
 }
 
-// BenchmarkSections_ShardBucketRange resolves sections with and without a shard bucket range. Each
-// log object holds two adjacent buckets.
+// BenchmarkSections_ShardBucketRange resolves sections with and without a stream hash range. Each
+// log object holds two adjacent buckets. The index records its layout in a stats section, so a
+// resolution with a range also reads that layout.
 func BenchmarkSections_ShardBucketRange(b *testing.B) {
 	const (
 		objects           = 256
@@ -271,7 +272,7 @@ func BenchmarkSections_ShardBucketRange(b *testing.B) {
 			}
 		}
 	}
-	createIndexObjectWithPostings(ctx, b, bucket, observations)
+	createIndexObject(ctx, b, bucket, observations, streams.NewLayout(streams.DefaultShardLayout(), nil))
 	m := newTestObjectMetastore(bucket)
 
 	for _, test := range []struct {
@@ -284,10 +285,10 @@ func BenchmarkSections_ShardBucketRange(b *testing.B) {
 	} {
 		b.Run(test.name, func(b *testing.B) {
 			request := SectionsRequest{
-				Start:            now.Add(-time.Hour),
-				End:              now.Add(time.Hour),
-				Matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
-				ShardBucketRange: test.bucketRange,
+				Start:           now.Add(-time.Hour),
+				End:             now.Add(time.Hour),
+				Matchers:        []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+				StreamHashRange: hashRangeOfBuckets(streams.DefaultShardLayout(), test.bucketRange),
 			}
 
 			b.ReportAllocs()

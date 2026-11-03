@@ -117,3 +117,42 @@ func (m *kahanAvg) result() float64 {
 	}
 	return m.sum/m.count + m.compensation/m.count
 }
+
+// kahanVariance is the population variance of float64 values. The zero value is a variance of no
+// values.
+type kahanVariance struct {
+	count float64
+	// mean is the running mean. aux is the running sum of the squared deviations from the mean.
+	mean, meanCompensation float64
+	aux, auxCompensation   float64
+}
+
+// addValue adds v to the variance.
+func (s *kahanVariance) addValue(v float64) {
+	s.count++
+	delta := v - (s.mean + s.meanCompensation)
+	s.mean, s.meanCompensation = kahansum.Inc(delta/s.count, s.mean, s.meanCompensation)
+	s.aux, s.auxCompensation = kahansum.Inc(delta*(v-(s.mean+s.meanCompensation)), s.aux, s.auxCompensation)
+}
+
+// addPoints adds the value of each point to the variance. It gives the same result as calling
+// addValue for each point.
+func (s *kahanVariance) addPoints(points []promql.FPoint) {
+	count := s.count
+	mean, meanC := s.mean, s.meanCompensation
+	aux, auxC := s.aux, s.auxCompensation
+	for _, p := range points {
+		count++
+		delta := p.F - (mean + meanC)
+		mean, meanC = kahansum.Inc(delta/count, mean, meanC)
+		aux, auxC = kahansum.Inc(delta*(p.F-(mean+meanC)), aux, auxC)
+	}
+	s.count = count
+	s.mean, s.meanCompensation = mean, meanC
+	s.aux, s.auxCompensation = aux, auxC
+}
+
+// result returns the variance of the added values. It returns NaN when no value was added.
+func (s *kahanVariance) result() float64 {
+	return (s.aux + s.auxCompensation) / s.count
+}

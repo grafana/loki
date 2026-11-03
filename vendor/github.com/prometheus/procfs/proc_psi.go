@@ -74,18 +74,18 @@ func parsePSIStats(r io.Reader) (PSIStats, error) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		l := scanner.Text()
-		prefix := strings.Split(l, " ")[0]
+		prefix, _, _ := strings.Cut(l, " ")
 		switch prefix {
 		case "some":
 			psi := PSILine{}
-			_, err := fmt.Sscanf(l, fmt.Sprintf("some %s", lineFormat), &psi.Avg10, &psi.Avg60, &psi.Avg300, &psi.Total)
+			_, err := fmt.Sscanf(l, "some "+lineFormat, &psi.Avg10, &psi.Avg60, &psi.Avg300, &psi.Total)
 			if err != nil {
 				return PSIStats{}, err
 			}
 			psiStats.Some = &psi
 		case "full":
 			psi := PSILine{}
-			_, err := fmt.Sscanf(l, fmt.Sprintf("full %s", lineFormat), &psi.Avg10, &psi.Avg60, &psi.Avg300, &psi.Total)
+			_, err := fmt.Sscanf(l, "full "+lineFormat, &psi.Avg10, &psi.Avg60, &psi.Avg300, &psi.Total)
 			if err != nil {
 				return PSIStats{}, err
 			}

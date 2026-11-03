@@ -17,6 +17,7 @@ import (
 
 type OIDCCredentialsProvider struct {
 	oidcProviderARN   string
+	oidcToken         string
 	oidcTokenFilePath string
 	roleArn           string
 	roleSessionName   string
@@ -46,6 +47,11 @@ func NewOIDCCredentialsProviderBuilder() *OIDCCredentialsProviderBuilder {
 
 func (b *OIDCCredentialsProviderBuilder) WithOIDCProviderARN(oidcProviderArn string) *OIDCCredentialsProviderBuilder {
 	b.provider.oidcProviderARN = oidcProviderArn
+	return b
+}
+
+func (b *OIDCCredentialsProviderBuilder) WithOIDCToken(oidcToken string) *OIDCCredentialsProviderBuilder {
+	b.provider.oidcToken = oidcToken
 	return b
 }
 
@@ -99,11 +105,14 @@ func (b *OIDCCredentialsProviderBuilder) Build() (provider *OIDCCredentialsProvi
 		b.provider.roleSessionName = "credentials-go-" + strconv.FormatInt(time.Now().UnixNano()/1000, 10)
 	}
 
-	if b.provider.oidcTokenFilePath == "" {
+	token := b.provider.oidcToken
+	if token == "" {
+		token = os.Getenv("ALIBABA_CLOUD_OIDC_TOKEN")
+	}
+	if token == "" && b.provider.oidcTokenFilePath == "" {
 		b.provider.oidcTokenFilePath = os.Getenv("ALIBABA_CLOUD_OIDC_TOKEN_FILE")
 	}
-
-	if b.provider.oidcTokenFilePath == "" {
+	if token == "" && b.provider.oidcTokenFilePath == "" {
 		err = errors.New("the OIDCTokenFilePath is empty")
 		return
 	}
@@ -188,12 +197,12 @@ func (provider *OIDCCredentialsProvider) getCredentials() (session *sessionCrede
 	bodyForm := make(map[string]string)
 	bodyForm["RoleArn"] = provider.roleArn
 	bodyForm["OIDCProviderArn"] = provider.oidcProviderARN
-	token, err := ioutil.ReadFile(provider.oidcTokenFilePath)
+	token, err := provider.oidcTokenValue()
 	if err != nil {
 		return
 	}
 
-	bodyForm["OIDCToken"] = string(token)
+	bodyForm["OIDCToken"] = token
 	if provider.policy != "" {
 		bodyForm["Policy"] = provider.policy
 	}
@@ -237,6 +246,30 @@ func (provider *OIDCCredentialsProvider) getCredentials() (session *sessionCrede
 		Expiration:      *data.Credentials.Expiration,
 	}
 	return
+}
+
+func (provider *OIDCCredentialsProvider) oidcTokenValue() (string, error) {
+	if provider.oidcToken != "" {
+		return provider.oidcToken, nil
+	}
+	if token := os.Getenv("ALIBABA_CLOUD_OIDC_TOKEN"); token != "" {
+		return token, nil
+	}
+	if provider.oidcTokenFilePath != "" {
+		body, err := ioutil.ReadFile(provider.oidcTokenFilePath)
+		if err != nil {
+			return "", err
+		}
+		return string(body), nil
+	}
+	if path := os.Getenv("ALIBABA_CLOUD_OIDC_TOKEN_FILE"); path != "" {
+		body, err := ioutil.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		return string(body), nil
+	}
+	return "", errors.New("the OIDCTokenFilePath is empty")
 }
 
 func (provider *OIDCCredentialsProvider) needUpdateCredential() (result bool) {

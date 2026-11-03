@@ -126,20 +126,25 @@ type testIndexObject struct {
 	sectionSize  flagext.Bytes
 	stats        []stats.Stat
 	postings     []postings.Row
+
+	// shardBuckets is the bucket count of the shard layout that the stats
+	// section records. It must not be zero.
+	shardBuckets uint32
 }
 
 func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
 	t.Helper()
-	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, stats: rows})
+	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, stats: rows, shardBuckets: streams.DefaultShardBuckets})
 }
 
 func buildIndexWithPostings(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, sectionSize flagext.Bytes, rows []postings.Row) {
 	t.Helper()
-	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: sectionSize, postings: rows})
+	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: sectionSize, postings: rows, shardBuckets: streams.DefaultShardBuckets})
 }
 
 func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, object testIndexObject) {
 	t.Helper()
+	require.NotZero(t, object.shardBuckets, "testIndexObject.shardBuckets must be set")
 	cfg := logsobj.BuilderBaseConfig{
 		TargetPageSize:          2048,
 		MaxPageRows:             10000,
@@ -148,7 +153,7 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 	}
-	builder, err := indexobj.NewMergeBuilder(cfg, nil, object.tenant, layoutOfStats(object.stats))
+	builder, err := indexobj.NewMergeBuilder(cfg, nil, object.tenant, layoutOfStats(object.shardBuckets, object.stats))
 	require.NoError(t, err)
 	for _, stat := range object.stats {
 		require.NoError(t, builder.AppendStat(object.tenant, stat))
@@ -176,14 +181,14 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 	require.NoError(t, bucket.Upload(ctx, object.path, io.NopCloser(bytes.NewReader(objBytes))))
 }
 
-// layoutOfStats returns the layout with the default shard layout and the
+// layoutOfStats returns the layout with shardBuckets shard buckets and the
 // sort schema of the first of rows as schema labels.
-func layoutOfStats(rows []stats.Stat) streams.Layout {
+func layoutOfStats(shardBuckets uint32, rows []stats.Stat) streams.Layout {
 	var schemaLabels []string
 	if len(rows) > 0 && rows[0].SortSchema != "" {
 		schemaLabels = strings.Split(rows[0].SortSchema, ",")
 	}
-	return streams.NewLayout(streams.DefaultShardLayout(), schemaLabels)
+	return streams.NewLayout(streams.MustShardLayoutFromBuckets(shardBuckets), schemaLabels)
 }
 
 func buildIndexWithPostingsSections(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, sections ...[]postings.Row) {
@@ -237,6 +242,10 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			},
 			Min: newLogSortPrefix(0, []string{"auth"}),
 			Max: newLogSortPrefix(0, []string{"billing"}),
+			Keys: []v2.KeySize[logSortPrefix]{
+				{Key: newLogSortPrefix(0, []string{"auth"}), UncompressedSize: 300},
+				{Key: newLogSortPrefix(0, []string{"billing"}), UncompressedSize: 200},
+			},
 		},
 	}, refs)
 }
@@ -292,8 +301,9 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: newLogSortPrefix(0, []string{"auth", "eu"}),
-			Max: newLogSortPrefix(0, []string{"auth", "eu"}),
+			Min:  newLogSortPrefix(0, []string{"auth", "eu"}),
+			Max:  newLogSortPrefix(0, []string{"auth", "eu"}),
+			Keys: []v2.KeySize[logSortPrefix]{{Key: newLogSortPrefix(0, []string{"auth", "eu"}), UncompressedSize: 100}},
 		},
 	}, refs)
 }
@@ -413,9 +423,10 @@ func TestIndexSectionRefsFor_UsesAbsoluteSectionIndexes(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	path := "indexes/aa/idx-0"
 	buildIndex(ctx, t, bucket, testIndexObject{
-		tenant:      "acme",
-		path:        path,
-		sectionSize: 1,
+		tenant:       "acme",
+		path:         path,
+		sectionSize:  1,
+		shardBuckets: streams.DefaultShardBuckets,
 		stats: []stats.Stat{{
 			ObjectPath: "logs/a", SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "api"}, MinTimestamp: 1, MaxTimestamp: 2,

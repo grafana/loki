@@ -150,6 +150,44 @@ func TestConfigValidation(t *testing.T) {
 			errorMsg:  "less than the required",
 		},
 		{
+			// 16s × 32 → window end ≈ 2094-01-19.
+			name: "v5 default document shards accepted",
+			settings: Config{
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir: "/tmp/test",
+				Index:      logline.IndexConfig{Version: "v5"},
+			},
+			wantError: false,
+		},
+		{
+			// 500ms × 128 → window end = docIDEpoch + 2^25 × 500ms ≈
+			// 2026-07-14: shards shrink the window as much as a shorter
+			// interval does.
+			name: "v5 document shards with too-short docID window rejected",
+			settings: Config{
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir: "/tmp/test",
+				Index: logline.IndexConfig{
+					Version:           "v5",
+					DocumentInterval:  500 * time.Millisecond,
+					DocumentShardBits: 7,
+				},
+			},
+			wantError: true,
+			errorMsg:  "use a larger interval or fewer document shard bits",
+		},
+		{
+			// 100ms × 2^7 would end the window in 2026, but v3 ignores the
+			// shard bits, so the time-only window (2039) applies.
+			name: "v3 ignores document shard bits",
+			settings: Config{
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir: "/tmp/test",
+				Index:      logline.IndexConfig{Version: "v3", DocumentInterval: 100 * time.Millisecond, DocumentShardBits: 7},
+			},
+			wantError: false,
+		},
+		{
 			// Below 2^16 pairs the buffer degenerates into constant radix
 			// passes and tiny-run spills.
 			name: "postings_buffer_pairs below floor rejected",

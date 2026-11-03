@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -34,9 +35,14 @@ type Service struct {
 
 	// job tracks a single compactor job lifecycle:
 	// - running: currently in-flight, eligible for abandon on shutdown.
-	// - completed pending ack: finished successfully; include job ID on next
-	//   request so the scheduler can remove it immediately (fast-path completion).
+	// - completed pending ack: finished successfully; include job ID on every
+	//   request until the scheduler answers one, so the scheduler can remove it
+	//   immediately (fast-path completion).
 	job compactorJob
+
+	// retryBackoff is how long runLoop waits after a failed request or job.
+	// It is a field only so tests can shorten it.
+	retryBackoff time.Duration
 }
 
 type jobState int
@@ -72,14 +78,19 @@ func (j *compactorJob) markCompletedPendingAck(id string) {
 	j.id = id
 }
 
-func (j *compactorJob) consumeCompletedID() string {
+func (j *compactorJob) completedID() string {
 	if j.state != jobStateCompletedPendingAck {
 		return ""
 	}
-	id := j.id
+	return j.id
+}
+
+func (j *compactorJob) ackCompleted() {
+	if j.state != jobStateCompletedPendingAck {
+		return
+	}
 	j.state = jobStateIdle
 	j.id = ""
-	return id
 }
 
 // New creates a new compactor Service. Validates cfg and initialises metrics.
@@ -101,6 +112,7 @@ func New(indexStore *store.Store, cfg Config, logger log.Logger, reg prometheus.
 		metrics:          NewMetrics(reg),
 		httpClient:       &http.Client{Timeout: schedulerapi.ClientTimeout},
 		postingsEncoding: postingsEncoding,
+		retryBackoff:     5 * time.Second,
 	}
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
@@ -118,19 +130,40 @@ func (s *Service) running(ctx context.Context) error {
 func (s *Service) stopping(err error) error {
 	level.Info(s.logger).Log("msg", "compactor service stopping", "err", err)
 	s.abandonCurrentJob()
+	s.reportCompletedJob()
 	return nil
 }
 
 // abandonCurrentJob tells the scheduler to release the compactor's in-flight job
-// so it can be reassigned immediately. Uses a generous backoff because the
-// scheduler may be rolling at the same time as the compactor.
+// so it can be reassigned immediately.
 func (s *Service) abandonCurrentJob() {
 	jobID := s.job.runningID()
 	if jobID == "" {
 		return
 	}
+	s.sendJobUpdate("abandon", jobID, func(ctx context.Context) (*http.Request, error) {
+		return schedulerapi.NewAbandonRequest(ctx, s.cfg.Compaction.SchedulerAddress, s.cfg.Compaction.CompactorID, jobID)
+	})
+}
 
-	// Use a generous timeout and backoff: the scheduler may be mid-rollout.
+// reportCompletedJob tells the scheduler about a finished job that no job
+// request has reported yet. Without it, a compactor that restarts under the
+// same ID is handed the job again and compacts it twice. Abandoning the job
+// instead would return its sources to the planner.
+func (s *Service) reportCompletedJob() {
+	jobID := s.job.completedID()
+	if jobID == "" {
+		return
+	}
+	s.sendJobUpdate("complete", jobID, func(ctx context.Context) (*http.Request, error) {
+		return schedulerapi.NewCompleteRequest(ctx, s.cfg.Compaction.SchedulerAddress, s.cfg.Compaction.CompactorID, jobID)
+	})
+}
+
+// sendJobUpdate sends a shutdown-time job update to the scheduler. Uses a
+// generous timeout and backoff because the scheduler may be rolling at the same
+// time as the compactor.
+func (s *Service) sendJobUpdate(action, jobID string, newRequest func(context.Context) (*http.Request, error)) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -141,37 +174,38 @@ func (s *Service) abandonCurrentJob() {
 	})
 
 	for bo.Ongoing() {
-		req, err := schedulerapi.NewAbandonRequest(ctx, s.cfg.Compaction.SchedulerAddress, s.cfg.Compaction.CompactorID, jobID)
+		req, err := newRequest(ctx)
 		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to build abandon request", "job_id", jobID, "err", err)
+			level.Error(s.logger).Log("msg", "failed to build "+action+" request", "job_id", jobID, "err", err)
 			return
 		}
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
-			level.Warn(s.logger).Log("msg", "abandon request failed, retrying", "job_id", jobID, "err", err)
+			level.Warn(s.logger).Log("msg", action+" request failed, retrying", "job_id", jobID, "err", err)
 			bo.Wait()
 			continue
 		}
 		resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
-			level.Info(s.logger).Log("msg", "job abandoned successfully", "job_id", jobID)
+			level.Info(s.logger).Log("msg", action+" request succeeded", "job_id", jobID)
 			return
 		}
 
 		// 4xx errors are permanent (e.g. 409 if the job was already
-		// reassigned to another compactor). Only retry on 5xx / transient.
+		// reassigned to another compactor, or 404 from a scheduler that
+		// predates the complete route). Only retry on 5xx / transient.
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			level.Warn(s.logger).Log("msg", "abandon request rejected, not retrying", "job_id", jobID, "status", resp.StatusCode)
+			level.Warn(s.logger).Log("msg", action+" request rejected, not retrying", "job_id", jobID, "status", resp.StatusCode)
 			return
 		}
 
-		level.Warn(s.logger).Log("msg", "abandon request returned server error, retrying", "job_id", jobID, "status", resp.StatusCode)
+		level.Warn(s.logger).Log("msg", action+" request returned server error, retrying", "job_id", jobID, "status", resp.StatusCode)
 		bo.Wait()
 	}
 
-	level.Error(s.logger).Log("msg", "failed to abandon job after retries", "job_id", jobID)
+	level.Error(s.logger).Log("msg", "failed to send "+action+" request after retries", "job_id", jobID)
 }
 
 // runLoop continuously requests jobs from the scheduler and executes them until
@@ -184,21 +218,30 @@ func (s *Service) runLoop(ctx context.Context) error {
 		default:
 		}
 
-		job, err := s.requestJob(ctx, s.job.consumeCompletedID())
+		// Keep the completed job ID until a request succeeds. Without it, the
+		// scheduler hands the finished job back to this compactor, which
+		// compacts it again, unless a store poll has already seen the merged
+		// index.
+		job, err := s.requestJob(ctx, s.job.completedID())
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
-			level.Error(s.logger).Log("msg", "failed to request job", "err", err)
+			if errors.Is(err, schedulerapi.ErrSchedulerUnavailable) {
+				level.Warn(s.logger).Log("msg", "scheduler is not ready, retrying job request", "err", err)
+			} else {
+				level.Error(s.logger).Log("msg", "failed to request job", "err", err)
+			}
 			// Brief backoff before retrying to avoid hammering the scheduler on
 			// transient connectivity issues.
 			select {
-			case <-time.After(5 * time.Second):
+			case <-time.After(s.retryBackoff):
 			case <-ctx.Done():
 				return nil
 			}
 			continue
 		}
+		s.job.ackCompleted()
 
 		if job == nil {
 			// The scheduler long-poll timed out with no available work; retry immediately.
@@ -222,7 +265,7 @@ func (s *Service) runLoop(ctx context.Context) error {
 		// On failure, keep the running job ID so shutdown can still abandon it.
 		// The scheduler can return the same job ID to this compactor for retries.
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(s.retryBackoff):
 		case <-ctx.Done():
 			return nil
 		}

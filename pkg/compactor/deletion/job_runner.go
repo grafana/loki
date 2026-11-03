@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -73,7 +74,11 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !req.logSelectorExpr.HasFilter() {
+		// The manifest builder already checks HasFilter, so this only rejects a request without
+		// a pipeline. A manifest built by an older compactor can contain a request such as
+		// {app="x"} |~ ".*" that this version's HasFilter counts as no filter. Rejecting it
+		// would fail the job on every retry and block that manifest.
+		if _, ok := req.logSelectorExpr.(*syntax.PipelineExpr); !ok {
 			return nil, errors.New("deletion query does not contain filter")
 		}
 		deleteRequests = append(deleteRequests, req)

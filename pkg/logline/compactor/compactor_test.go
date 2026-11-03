@@ -958,6 +958,26 @@ func TestVerifyCompactionJob_MismatchInThirdSource(t *testing.T) {
 	require.Contains(t, err.Error(), "source 2")
 }
 
+func TestVerifyCompactionJob_MismatchDocumentShardBits(t *testing.T) {
+	metas := []store.Meta{
+		{Version: "v5", DocumentInterval: 16 * time.Second},
+		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
+	}
+	err := verifyCompactionJob(metas)
+	require.ErrorContains(t, err, "document_shard_bits")
+}
+
+func TestBuildMergedMetaSkeleton_CopiesDocumentLayout(t *testing.T) {
+	metas := []store.Meta{
+		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
+		{Version: "v5", DocumentInterval: 16 * time.Second, DocumentShardBits: 5},
+	}
+	m, err := (&Service{}).buildMergedMetaSkeleton("id", []string{"2026-03-20/a", "2026-03-20/b"}, metas)
+	require.NoError(t, err)
+	require.Equal(t, 16*time.Second, m.DocumentInterval)
+	require.Equal(t, 5, m.DocumentShardBits)
+}
+
 func TestVerifyCompactionJob_UnsupportedVersion(t *testing.T) {
 	metas := []store.Meta{
 		{Version: "v3", ShardCount: 4, ShardAlgorithm: "first_byte", ShardValue: 1},
