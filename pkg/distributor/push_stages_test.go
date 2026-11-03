@@ -133,7 +133,7 @@ func stagesAssertDiscards(t *testing.T, want []stagesDiscard) {
 	}
 }
 
-func stagesAssertRejectedPartialWrites(t *testing.T, d *Distributor, policy string, want float64) {
+func stagesAssertRejectedPartialWrites(t *testing.T, d *Distributor, want float64) {
 	t.Helper()
 
 	if want == 0 {
@@ -142,7 +142,7 @@ func stagesAssertRejectedPartialWrites(t *testing.T, d *Distributor, policy stri
 	}
 
 	require.Equal(t, 1, testutil.CollectAndCount(d.m.rejectedPartialWrites))
-	require.Equal(t, want, testutil.ToFloat64(d.m.rejectedPartialWrites.WithLabelValues("test", policy)))
+	require.Equal(t, want, testutil.ToFloat64(d.m.rejectedPartialWrites.WithLabelValues("test")))
 }
 
 func stagesHTTPStatus(t *testing.T, err error) int32 {
@@ -214,12 +214,13 @@ func TestDistributor_PushErrorPrecedence(t *testing.T) {
 		exceedsErr        error
 		wantStatus        int32
 		wantErrorContains string
+		wantRejected      bool
 		wantWritten       []string
 		wantCheckedHashes []uint64
 		wantDiscards      []stagesDiscard
 	}{
 		{
-			name: "stream limit wins over validation and still writes the accepted stream",
+			name: "stream limit wins over validation and rejects the whole push",
 			request: func() *logproto.PushRequest {
 				return &logproto.PushRequest{Streams: []logproto.Stream{
 					{Labels: written.String(), Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "keep"}}},
@@ -232,7 +233,7 @@ func TestDistributor_PushErrorPrecedence(t *testing.T) {
 			},
 			wantStatus:        http.StatusTooManyRequests,
 			wantErrorContains: limited.String(),
-			wantWritten:       []string{written.String()},
+			wantRejected:      true,
 			wantCheckedHashes: []uint64{labels.StableHash(written), labels.StableHash(limited)},
 			wantDiscards: []stagesDiscard{
 				{reason: validation.InvalidLabels, samples: 1, bytes: float64(len("bad"))},
@@ -275,7 +276,11 @@ func TestDistributor_PushErrorPrecedence(t *testing.T) {
 			d.ingestLimits = newIngestLimits(client, prometheus.NewRegistry())
 
 			resp, err := d.Push(user.InjectOrgID(context.Background(), "test"), tc.request())
-			require.Equal(t, success, resp)
+			if tc.wantRejected {
+				require.Nil(t, resp)
+			} else {
+				require.Equal(t, success, resp)
+			}
 			require.Equal(t, tc.wantStatus, stagesHTTPStatus(t, err))
 			if tc.wantErrorContains != "" {
 				require.ErrorContains(t, err, tc.wantErrorContains)
@@ -286,70 +291,60 @@ func TestDistributor_PushErrorPrecedence(t *testing.T) {
 			require.ElementsMatch(t, tc.wantCheckedHashes, stagesRequestHashes(exceeds[0].Streams))
 			require.Empty(t, client.stagesCheckRequests())
 
-			stagesRequireWrites(t, ingesters, tc.wantWritten)
+			if tc.wantRejected {
+				stagesAssertNoWrites(t, ingesters)
+				stagesAssertRejectedPartialWrites(t, d, 1)
+			} else {
+				stagesRequireWrites(t, ingesters, tc.wantWritten)
+				stagesAssertRejectedPartialWrites(t, d, 0)
+			}
 			stagesAssertDiscards(t, tc.wantDiscards)
-			stagesAssertRejectedPartialWrites(t, d, "", 0)
 		})
 	}
 }
 
-func TestDistributor_PushRejectPartialWritesOnStreamLimit(t *testing.T) {
+func TestDistributor_PushRejectsWholePushOnStreamLimit(t *testing.T) {
+	stagesResetDiscardMetrics(t)
+
 	accepted := labels.FromStrings("app", "accepted")
 	limited := labels.FromStrings("app", "limited")
 
-	tests := []struct {
-		name         string
-		rejectPolicy string
-	}{
-		{name: "policy on accepted stream rejects the whole push", rejectPolicy: "accepted"},
-		{name: "policy on stream-limit rejected stream rejects the whole push", rejectPolicy: "limited"},
+	lim := stagesNewLimits()
+	lim.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"accepted": []*validation.PriorityStream{{Selector: accepted.String(), Priority: 1}},
+		"limited":  []*validation.PriorityStream{{Selector: limited.String(), Priority: 1}},
 	}
+	require.NoError(t, lim.Validate())
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			stagesResetDiscardMetrics(t)
+	distributors, ingesters := prepare(t, 1, 3, lim, nil)
+	d := distributors[0]
+	d.cfg.IngestLimitsEnabled = true
 
-			lim := stagesNewLimits()
-			lim.PolicyStreamMapping = validation.PolicyStreamMapping{
-				"accepted": []*validation.PriorityStream{{Selector: accepted.String(), Priority: 1}},
-				"limited":  []*validation.PriorityStream{{Selector: limited.String(), Priority: 1}},
-			}
-			lim.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
-				tc.rejectPolicy: {RejectPartialWrites: true},
-			}
-			require.NoError(t, lim.Validate())
-
-			distributors, ingesters := prepare(t, 1, 3, lim, nil)
-			d := distributors[0]
-			d.cfg.IngestLimitsEnabled = true
-
-			client := &recordingLimitsClient{
-				exceedsReasons: map[uint64]uint32{
-					labels.StableHash(limited): uint32(limits.ReasonMaxStreams),
-				},
-			}
-			d.ingestLimits = newIngestLimits(client, prometheus.NewRegistry())
-
-			resp, err := d.Push(user.InjectOrgID(context.Background(), "test"), &logproto.PushRequest{
-				Streams: []logproto.Stream{
-					{Labels: accepted.String(), Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "accepted"}}},
-					{Labels: limited.String(), Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "limited"}}},
-				},
-			})
-			require.Nil(t, resp)
-			require.Equal(t, int32(http.StatusTooManyRequests), stagesHTTPStatus(t, err))
-
-			exceeds := client.stagesExceedsRequests()
-			require.Len(t, exceeds, 1)
-			require.ElementsMatch(t, []uint64{labels.StableHash(accepted), labels.StableHash(limited)}, stagesRequestHashes(exceeds[0].Streams))
-
-			stagesAssertNoWrites(t, ingesters)
-			stagesAssertDiscards(t, []stagesDiscard{
-				{reason: validation.StreamLimit, policy: "limited", samples: 1, bytes: float64(len("limited"))},
-			})
-			stagesAssertRejectedPartialWrites(t, d, tc.rejectPolicy, 1)
-		})
+	client := &recordingLimitsClient{
+		exceedsReasons: map[uint64]uint32{
+			labels.StableHash(limited): uint32(limits.ReasonMaxStreams),
+		},
 	}
+	d.ingestLimits = newIngestLimits(client, prometheus.NewRegistry())
+
+	resp, err := d.Push(user.InjectOrgID(context.Background(), "test"), &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{Labels: accepted.String(), Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "accepted"}}},
+			{Labels: limited.String(), Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "limited"}}},
+		},
+	})
+	require.Nil(t, resp)
+	require.Equal(t, int32(http.StatusTooManyRequests), stagesHTTPStatus(t, err))
+
+	exceeds := client.stagesExceedsRequests()
+	require.Len(t, exceeds, 1)
+	require.ElementsMatch(t, []uint64{labels.StableHash(accepted), labels.StableHash(limited)}, stagesRequestHashes(exceeds[0].Streams))
+
+	stagesAssertNoWrites(t, ingesters)
+	stagesAssertDiscards(t, []stagesDiscard{
+		{reason: validation.StreamLimit, policy: "limited", samples: 1, bytes: float64(len("limited"))},
+	})
+	stagesAssertRejectedPartialWrites(t, d, 1)
 }
 
 func TestDistributor_PushLiveDryRunWritesRejectedStreamUnsharded(t *testing.T) {
@@ -398,7 +393,7 @@ func TestDistributor_PushLiveDryRunWritesRejectedStreamUnsharded(t *testing.T) {
 	// The original labels show the stream was written unsharded, not rate-sharded.
 	stagesRequireWrites(t, ingesters, []string{stream.String()})
 	stagesAssertDiscards(t, nil)
-	stagesAssertRejectedPartialWrites(t, d, "", 0)
+	stagesAssertRejectedPartialWrites(t, d, 0)
 }
 
 func TestDistributor_PushLiveRejectionWinsOverEnforceRejection(t *testing.T) {
@@ -469,7 +464,7 @@ func TestDistributor_PushLiveRejectionWinsOverEnforceRejection(t *testing.T) {
 		{reason: validation.StreamLimit, policy: "live", samples: 1, bytes: float64(len("live"))},
 		{reason: validation.StreamLimit, policy: "enforced", samples: 1, bytes: float64(len("enforced"))},
 	})
-	stagesAssertRejectedPartialWrites(t, d, "", 0)
+	stagesAssertRejectedPartialWrites(t, d, 0)
 }
 
 func TestDistributor_PushRateLimitErrorListsTenantBucketFirst(t *testing.T) {
@@ -525,5 +520,5 @@ func TestDistributor_PushRateLimitErrorListsTenantBucketFirst(t *testing.T) {
 		{reason: validation.RateLimited, policy: "alpha", samples: 2, bytes: 140},
 		{reason: validation.RateLimited, policy: "zebra", samples: 2, bytes: 160},
 	})
-	stagesAssertRejectedPartialWrites(t, d, "", 0)
+	stagesAssertRejectedPartialWrites(t, d, 0)
 }

@@ -528,9 +528,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 //
 // After the last three, the remaining streams are still written and the error is returned with the
 // response. The push is rejected instead when there is an error and nothing is left to write, or
-// when the error is a 429 and a stream of the push resolves to a policy with reject_partial_writes.
-// A rejected push returns a nil response, and so does a failed write, which may have been partly
-// written by then.
+// when the error is a 429: a 429 tells clients to retry the whole push, so the streams written
+// before it would be written again. A rejected push returns a nil response, and so does a failed
+// write, which may have been partly written by then.
 func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -586,9 +586,11 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			return nil, finalErr
 		}
 
-		// The limits service has still counted the streams it accepted.
-		if validated.rejectPartialWrites && (limitsErr != nil || isTooManyRequests(validated.err)) {
-			d.m.rejectedPartialWrites.WithLabelValues(tenantID, validated.rejectPartialWritesPolicy).Inc()
+		// A 429 tells clients to retry the whole push, so never answer one after writing part of
+		// it: the accepted entries would be written again. Reject the whole push instead. The
+		// limits service has still counted the streams it accepted.
+		if limitsErr != nil || isTooManyRequests(validated.err) {
+			d.m.rejectedPartialWrites.WithLabelValues(tenantID).Inc()
 			return nil, finalErr
 		}
 	}
@@ -737,12 +739,6 @@ type validatedPush struct {
 	// or, if none did, the status code of a blocked stream. It is nil if every blocked stream had
 	// status code 200.
 	err error
-
-	// rejectPartialWrites is whether any stream with entries resolved to a policy with
-	// reject_partial_writes, even one that was then rejected. rejectPartialWritesPolicy is the
-	// first such policy.
-	rejectPartialWrites       bool
-	rejectPartialWritesPolicy string
 }
 
 // validateStreams validates the streams of req and returns the ones that pass. Side effects: it
@@ -780,10 +776,6 @@ func (d *Distributor) validateStreams(
 
 		parsed, labelsReason, err := d.parseAndValidateStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver)
 		stream.Labels, stream.Hash = parsed.labelsString, parsed.hash
-		if !result.rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, parsed.policy) {
-			result.rejectPartialWrites = true
-			result.rejectPartialWritesPolicy = parsed.policy
-		}
 
 		discard := func(reason string, err error) {
 			d.writeFailuresManager.Log(tenantID, err)
