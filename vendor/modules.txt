@@ -1555,7 +1555,7 @@ github.com/stretchr/testify/internal/difflib
 github.com/stretchr/testify/internal/spew
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20261009124658-72d3b9ff63af => github.com/grafana/objstore v0.0.0-20261013190022-d05e3fae91a4
+# github.com/thanos-io/objstore v0.0.0-20261030234810-710b1835d118 => github.com/grafana/objstore v0.0.0-20261013190022-d05e3fae91a4
 ## explicit; go 1.22
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/clientutil
