@@ -1328,6 +1328,9 @@ func TestDoLogObjectMerge(t *testing.T) {
 		c := newSmallObjectExecutorContext(t, objstore.NewInMemBucket())
 		c.dataBucket = dataBucket
 		c.scratchStore = store
+		// A one-byte section size makes the index builder put sections in
+		// scratch for the objects that the merge uploaded before it failed.
+		c.indexobjCfg.TargetSectionSize = 1
 
 		_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: runs, InputBytes: 1})
 		require.ErrorContains(t, err, "input bytes")
