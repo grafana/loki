@@ -646,15 +646,10 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 }
 
 // maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
-// ones are ignored since UnixNano overflows after it.
+// ones are ignored since UnixNano overflows after it and will fail to encode.
 var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
 
-// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested record.
-// Records without a timestamp come with a zero time, or with a timestamp at or before the epoch
-// (e.g. Kafka's NoTimestamp, -1). Those would end up as an IngestedAt of zero, which means "not
-// set" and makes the chunk fall back to Through-based retention. Timestamps after
-// maxRecordTimestamp are ignored too, and logged since they mean something is very wrong (e.g. a
-// producer's clock).
+// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested Kafka record.
 func validRecordTimestamp(ts time.Time, logger log.Logger) bool {
 	if ts.UnixMilli() <= 0 {
 		return false
@@ -666,21 +661,12 @@ func validRecordTimestamp(ts time.Time, logger log.Logger) bool {
 	return true
 }
 
-// chunkIngestedAt returns the IngestedAt for a chunk of a backfilled stream (__backfill__="true"):
-// the highest timestamp of the Kafka records that fed it, so retention can count from ingestion.
-// Other chunks, and chunks whose period doesn't store it (schema < v14), get zero.
 func (i *Ingester) chunkIngestedAt(metric labels.Labels, from model.Time, recordTime time.Time) model.Time {
 	if metric.Get(constants.BackfillLabel) != "true" {
 		return 0
 	}
 
-	// Resolve the schema from the chunk's own time (its From). That's deliberate:
-	// the index format is selected per chunk time bounds (see tsdb.IndexBuckets),
-	// so the gate must match the period the chunk is actually written under.
-	// Resolving from the chunk's (old) backfill time is safe because replay is only
-	// enabled once the schema is v14, so a backfilled chunk's time always resolves
-	// to a v14+ period and this passes; the check still guards against ever
-	// stamping IngestedAt onto a non-FormatV4 index.
+	// Only set for chunks that fall within >= v14
 	schemaCfg := config.SchemaConfig{Configs: i.periodicConfigs}
 	if !schemaCfg.SupportsIngestedAtForTime(from) {
 		return 0
@@ -690,8 +676,8 @@ func (i *Ingester) chunkIngestedAt(metric labels.Labels, from model.Time, record
 		return 0
 	}
 
-	// Replicas of a partition consume the same records, so the record timestamp is the same on
-	// all of them.
+	// Replicas of a partition consume the same records in the same order, so the record timestamp is the same on
+	// all of them and chunks will be able to deduplicate.
 	return model.TimeFromUnixNano(recordTime.UnixNano())
 }
 

@@ -28,8 +28,7 @@ const (
 	WALRecordEntriesV2
 	// WALRecordEntriesV3 is the type for the WAL record for samples with structured metadata.
 	WALRecordEntriesV3
-	// WALRecordEntriesV4 adds the timestamp of the record (e.g. Kafka) the samples were ingested
-	// from, or zero if there is none.
+	// WALRecordEntriesV4 adds the timestamp of the Kafka record the samples were ingested from (zero if there is none).
 	WALRecordEntriesV4
 )
 
@@ -42,8 +41,8 @@ type Record struct {
 	UserID string
 	Series []record.RefSeries
 
-	// IngestedAt is the timestamp of the record (e.g. Kafka) the entries were ingested from, or
-	// zero if there is none. Only persisted by WALRecordEntriesV4 and later.
+	// IngestedAt is the timestamp of the Kafka record the entries were ingested from.
+	// Only persisted by WALRecordEntriesV4 and later.
 	IngestedAt time.Time
 
 	// entryIndexMap coordinates the RefEntries index associated with a particular fingerprint.

@@ -126,9 +126,6 @@ func TestChunkCodec(t *testing.T) {
 	}
 }
 
-// IngestedAt is serialized into the chunk header. It carries either a millisecond value (e.g. a
-// Kafka record timestamp) or a value at day precision (the flush-time fallback), so both forms
-// must decode to the value that was written.
 func TestChunkCodecIngestedAt(t *testing.T) {
 	decodeContext := NewDecodeContext()
 
@@ -138,7 +135,6 @@ func TestChunkCodecIngestedAt(t *testing.T) {
 	}{
 		{"zero (non-backfill chunk)", 0},
 		{"millisecond precision (written before day rounding)", 1792752435882},
-		{"day aligned", 1792800000000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := dummyChunkFor(model.Now(), labelsForDummyChunks)

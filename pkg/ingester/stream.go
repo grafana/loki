@@ -100,8 +100,8 @@ type chunkDesc struct {
 
 	lastUpdated time.Time
 
-	// ingestedAt is the highest timestamp of the ingested records (e.g. Kafka records) whose
-	// entries went into this chunk. It is zero when the entries did not come with one.
+	// ingestedAt is the highest timestamp of the ingested kafka records whose
+	// entries went into this chunk.
 	ingestedAt time.Time
 }
 
@@ -189,7 +189,7 @@ func (s *stream) Push(
 	usageTracker push.UsageTracker,
 	// format of the request - loki or otlp, mainly used for metrics
 	format string,
-	// Timestamp of the record (e.g. Kafka) the entries were ingested from, or zero if there is none.
+	// Timestamp of the Kafka record the entries were ingested from.
 	recordTime time.Time,
 ) (int, error) {
 	toStore, invalid := s.validateEntries(ctx, entries, false, rateLimitWholeStream, usageTracker, format)
@@ -222,8 +222,7 @@ func (s *stream) PushWalReplay(
 	// bypasses both the check and the validity window, as live pushes do.
 	counter int64,
 	usageTracker push.UsageTracker,
-	// Timestamp of the record (e.g. Kafka) the entries were ingested from, as logged in the WAL,
-	// or zero if there is none.
+	// Timestamp of the Kafka record the entries were ingested from, as logged in the WAL.
 	recordTime time.Time,
 ) (int, error) {
 	s.chunkMtx.Lock()

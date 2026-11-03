@@ -2101,7 +2101,8 @@ func (w *recordingWAL) Log(rec *wal.Record) error {
 }
 
 // The timestamp of the record a push comes from is stamped on the chunk and logged to the WAL, so
-// it is restored on replay. Timestamps that can't be used are ignored.
+// it is restored on replay. A push without one (zero or negative) stamps nothing. The Kafka
+// consumer validates the timestamp before setting it, see TestConsumerPassesRecordTimestamp.
 func TestPushRecordTimestamp(t *testing.T) {
 	recordTime := time.UnixMilli(1_700_000_000_000)
 
@@ -2113,7 +2114,6 @@ func TestPushRecordTimestamp(t *testing.T) {
 		{"record timestamp", recordTime.UnixMilli(), recordTime},
 		{"no record timestamp", 0, time.Time{}},
 		{"Kafka NoTimestamp", -1, time.Time{}},
-		{"far future", time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli(), time.Time{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)

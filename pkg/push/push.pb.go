@@ -38,7 +38,6 @@ type PushRequest struct {
 	// format in which streams are ingested - loki or otlp
 	Format string `protobuf:"bytes,2,opt,name=format,proto3" json:"format"`
 	// Timestamp in milliseconds of the Kafka record the push was read from, or 0 if there is none.
-	// Only set by the ingester's Kafka consumer.
 	IngestedAtMs int64 `protobuf:"varint,3,opt,name=ingested_at_ms,json=ingestedAtMs,proto3" json:"ingestedAtMs"`
 }
 

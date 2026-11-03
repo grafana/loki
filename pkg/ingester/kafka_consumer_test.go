@@ -63,8 +63,7 @@ var (
 )
 
 type fakePusher struct {
-	pushes []*logproto.PushRequest
-	// ingestedAtMs holds the IngestedAtMs of each push.
+	pushes       []*logproto.PushRequest
 	ingestedAtMs []int64
 	t            *testing.T
 }
@@ -125,7 +124,9 @@ func TestConsumerPassesRecordTimestamp(t *testing.T) {
 	require.NoError(t, err)
 
 	var toPush []partition.Record
-	for i, ts := range []time.Time{recordTime, {}} {
+	// A usable timestamp, then ones that aren't: none, Kafka's NoTimestamp and one past the
+	// supported range.
+	for i, ts := range []time.Time{recordTime, {}, time.UnixMilli(-1), time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)} {
 		for _, record := range encodeFlat(t, streamBar) {
 			toPush = append(toPush, partition.Record{
 				Ctx:       context.Background(),
@@ -144,8 +145,8 @@ func TestConsumerPassesRecordTimestamp(t *testing.T) {
 	cancel()
 	wait()
 
-	// The record timestamp is passed as is; instance.Push ignores the ones it can't use.
-	require.Equal(t, []int64{recordTime.UnixMilli(), time.Time{}.UnixMilli()}, pusher.ingestedAtMs)
+	// Only the usable timestamp is passed on.
+	require.Equal(t, []int64{recordTime.UnixMilli(), 0, 0, 0}, pusher.ingestedAtMs)
 }
 
 // consume runs the records of each stream through a consumer and returns what reached the

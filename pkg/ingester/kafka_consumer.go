@@ -152,8 +152,9 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 			recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
 			req := &logproto.PushRequest{
 				Streams: []logproto.Stream{stream},
-				// Replicas of a partition consume the same records, so the record timestamp is the same on all of them.
-				IngestedAtMs: record.Timestamp.UnixMilli(),
+			}
+			if validRecordTimestamp(record.Timestamp, kc.logger) {
+				req.IngestedAtMs = record.Timestamp.UnixMilli()
 			}
 
 			level.Debug(kc.logger).Log("msg", "pushing record", "offset", record.Offset, "length", len(record.Content))
