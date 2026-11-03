@@ -3,9 +3,12 @@ package schedulerapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -15,6 +18,8 @@ const (
 	AbandonPath   = "/logline/api/v1/compaction/abandon"
 	StatusPath    = "/logline/api/v1/compaction/status"
 	StoreDumpPath = "/logline/api/v1/store"
+	// CompletePath has no legacy route. Schedulers that predate it answer 404.
+	CompletePath = "/logline/api/v1/compaction/complete"
 )
 
 // Deprecated:
@@ -65,12 +70,21 @@ func NewJobRequest(ctx context.Context, baseURL, workerID, lastCompletedJobID st
 	return http.NewRequestWithContext(ctx, http.MethodGet, jobURL, nil)
 }
 
+// ErrSchedulerUnavailable is wrapped by the error ParseJobResponse returns
+// for a 503, which the scheduler answers until it is running.
+var ErrSchedulerUnavailable = errors.New("scheduler unavailable")
+
 // ParseJobResponse decodes an HTTP response into a JobResponse.
 // Returns (nil, nil) for 204 No Content, (*JobResponse, nil) for 200 OK,
-// or (nil, error) for anything else.
+// or (nil, error) for anything else. The error for a 503 wraps
+// ErrSchedulerUnavailable and carries the scheduler's reason.
 func ParseJobResponse(resp *http.Response) (*JobResponse, error) {
 	if resp.StatusCode == http.StatusNoContent {
 		return nil, nil
+	}
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		reason, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return nil, fmt.Errorf("%w: %s", ErrSchedulerUnavailable, strings.TrimSpace(string(reason)))
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected scheduler response: %d", resp.StatusCode)
@@ -90,6 +104,16 @@ func NewAbandonRequest(ctx context.Context, baseURL, workerID, jobID string) (*h
 	abandonURL := baseURL + LegacyAbandonPath + "?" + ParamWorkerID + "=" + url.QueryEscape(workerID) +
 		"&" + ParamJobID + "=" + url.QueryEscape(jobID)
 	return http.NewRequestWithContext(ctx, http.MethodPost, abandonURL, nil)
+}
+
+// NewCompleteRequest builds an HTTP POST request reporting that the worker
+// finished a job, without asking for a new one (e.g. during shutdown). The
+// scheduler removes the job and keeps its sources out of planning until a store
+// poll sees the merged index.
+func NewCompleteRequest(ctx context.Context, baseURL, workerID, jobID string) (*http.Request, error) {
+	completeURL := baseURL + CompletePath + "?" + ParamWorkerID + "=" + url.QueryEscape(workerID) +
+		"&" + ParamJobID + "=" + url.QueryEscape(jobID)
+	return http.NewRequestWithContext(ctx, http.MethodPost, completeURL, nil)
 }
 
 // WorkerID extracts the worker ID from an inbound HTTP request.

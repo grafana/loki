@@ -401,28 +401,18 @@ func minOverTime(samples []promql.FPoint, _ int64) float64 {
 	return minVal
 }
 
-// stdvarOverTime calculates the variance using Welford's online algorithm.
-// See https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+// stdvarOverTime computes the population variance of the samples with kahanVariance.
 func stdvarOverTime(samples []promql.FPoint, _ int64) float64 {
-	var aux, count, mean float64
-	for _, v := range samples {
-		count++
-		delta := v.F - mean
-		mean += delta / count
-		aux += delta * (v.F - mean)
-	}
-	return aux / count
+	var variance kahanVariance
+	variance.addPoints(samples)
+	return variance.result()
 }
 
+// stddevOverTime computes the population standard deviation of the samples with kahanVariance.
 func stddevOverTime(samples []promql.FPoint, _ int64) float64 {
-	var aux, count, mean float64
-	for _, v := range samples {
-		count++
-		delta := v.F - mean
-		mean += delta / count
-		aux += delta * (v.F - mean)
-	}
-	return math.Sqrt(aux / count)
+	var variance kahanVariance
+	variance.addPoints(samples)
+	return math.Sqrt(variance.result())
 }
 
 func quantileOverTime(q float64) BatchRangeVectorAggregator {
@@ -745,34 +735,30 @@ func (a *MinOverTime) at() float64 {
 	return a.min
 }
 
+// StdvarOverTime is the streaming counterpart of stdvarOverTime.
 type StdvarOverTime struct {
-	aux, count, mean float64
+	variance kahanVariance
 }
 
 func (a *StdvarOverTime) agg(sample promql.FPoint) {
-	a.count++
-	delta := sample.F - a.mean
-	a.mean += delta / a.count
-	a.aux += delta * (sample.F - a.mean)
+	a.variance.addValue(sample.F)
 }
 
 func (a *StdvarOverTime) at() float64 {
-	return a.aux / a.count
+	return a.variance.result()
 }
 
+// StddevOverTime is the streaming counterpart of stddevOverTime.
 type StddevOverTime struct {
-	aux, count, mean float64
+	variance kahanVariance
 }
 
 func (a *StddevOverTime) agg(sample promql.FPoint) {
-	a.count++
-	delta := sample.F - a.mean
-	a.mean += delta / a.count
-	a.aux += delta * (sample.F - a.mean)
+	a.variance.addValue(sample.F)
 }
 
 func (a *StddevOverTime) at() float64 {
-	return math.Sqrt(a.aux / a.count)
+	return math.Sqrt(a.variance.result())
 }
 
 type QuantileOverTime struct {

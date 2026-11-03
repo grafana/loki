@@ -24,9 +24,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -180,7 +181,7 @@ func newStream(
 	retentionHours string,
 	policy string,
 ) *stream {
-	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
+	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), constants.StreamShardLabel)
 	return &stream{
 		limiter:              NewStreamRateLimiter(limits, tenant, policy, 10*time.Second),
 		cfg:                  cfg,

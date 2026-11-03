@@ -38,6 +38,7 @@ func TestRegisterHandlers_ServesCurrentAndLegacyRoutes(t *testing.T) {
 	for _, path := range []string{
 		schedulerapi.AbandonPath,
 		schedulerapi.LegacyAbandonPath,
+		schedulerapi.CompletePath,
 	} {
 		rec := httptest.NewRecorder()
 		srv.HTTP.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
@@ -67,6 +68,7 @@ func TestRegisterHandlers_UnavailableUntilRunning(t *testing.T) {
 		{http.MethodGet, schedulerapi.LegacyJobPath + "?worker_id=w1"},
 		{http.MethodPost, schedulerapi.AbandonPath + "?worker_id=w1&job_id=j1"},
 		{http.MethodPost, schedulerapi.LegacyAbandonPath + "?worker_id=w1&job_id=j1"},
+		{http.MethodPost, schedulerapi.CompletePath + "?worker_id=w1&job_id=j1"},
 		{http.MethodGet, schedulerapi.StatusPath},
 		{http.MethodGet, schedulerapi.LegacyStatusPath},
 		{http.MethodGet, schedulerapi.StoreDumpPath},

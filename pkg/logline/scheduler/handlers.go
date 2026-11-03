@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -23,6 +24,7 @@ func RegisterHandlers(srv *server.Server, svc *Service, logger log.Logger) error
 	level.Info(logger).Log("msg", "registering scheduler handlers")
 	srv.HTTP.HandleFunc(schedulerapi.JobPath, svc.whenRunning(svc.handleJobRequest))
 	srv.HTTP.HandleFunc(schedulerapi.AbandonPath, svc.whenRunning(svc.handleAbandonJob))
+	srv.HTTP.HandleFunc(schedulerapi.CompletePath, svc.whenRunning(svc.handleCompleteJob))
 	srv.HTTP.HandleFunc(schedulerapi.StatusPath, svc.whenRunning(svc.handleStatus))
 	srv.HTTP.HandleFunc(schedulerapi.StoreDumpPath, svc.whenRunning(svc.handleStoreDump))
 
@@ -162,6 +164,34 @@ func (s *Service) handleAbandonJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// handleCompleteJob records a job its worker reports as finished, without
+// assigning new work. Workers call it on shutdown when no job request has
+// delivered the report, so a worker that restarts under the same ID is not
+// handed the finished job again.
+func (s *Service) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
+	workerID := schedulerapi.WorkerID(r)
+	jobID := schedulerapi.JobID(r)
+	if workerID == "" || jobID == "" {
+		http.Error(w, "worker_id and job_id are required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.completeReportedJobLocked(workerID, jobID); err != nil {
+		if errors.Is(err, errJobOwnedByOtherWorker) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		level.Error(s.logger).Log("msg", "failed to remove worker-reported completed job", "job_id", jobID, "worker_id", workerID, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 // writeJob writes a job response as JSON with the appropriate content type.
 func writeJob(w http.ResponseWriter, job *Job) {
 	w.Header().Set("Content-Type", "application/json")
@@ -267,6 +297,8 @@ type storeDumpEntry struct {
 
 	// DocumentInterval is the time range each document ID covers.
 	DocumentInterval time.Duration `json:"document_interval,omitempty"`
+	// DocumentShardBits is the v5 document shard bits. Zero is one shard.
+	DocumentShardBits int `json:"document_shard_bits,omitempty"`
 
 	// Shard identity. ShardCount=0 means unsharded.
 	ShardCount     int    `json:"shard_count"`
@@ -377,22 +409,23 @@ func toStoreDumpEntry(m store.Meta, snap *store.Snapshot, includeHeader bool) st
 		state = "compacted"
 	}
 	e := storeDumpEntry{
-		ID:               m.ID(),
-		Date:             m.Date,
-		Hash:             m.Hash,
-		Version:          m.Version,
-		State:            state,
-		SizeBytes:        m.SizeBytes,
-		MinLogTs:         m.MinLogTs,
-		MaxLogTs:         m.MaxLogTs,
-		MinRecordTs:      m.MinRecordTs,
-		MaxRecordTs:      m.MaxRecordTs,
-		CreatedAt:        m.CreatedAt,
-		CompactedFrom:    m.CompactedFrom,
-		DocumentInterval: m.DocumentInterval,
-		ShardCount:       m.ShardCount,
-		ShardAlgorithm:   m.ShardAlgorithm,
-		ShardValue:       m.ShardValue,
+		ID:                m.ID(),
+		Date:              m.Date,
+		Hash:              m.Hash,
+		Version:           m.Version,
+		State:             state,
+		SizeBytes:         m.SizeBytes,
+		MinLogTs:          m.MinLogTs,
+		MaxLogTs:          m.MaxLogTs,
+		MinRecordTs:       m.MinRecordTs,
+		MaxRecordTs:       m.MaxRecordTs,
+		CreatedAt:         m.CreatedAt,
+		CompactedFrom:     m.CompactedFrom,
+		DocumentInterval:  m.DocumentInterval,
+		DocumentShardBits: m.DocumentShardBits,
+		ShardCount:        m.ShardCount,
+		ShardAlgorithm:    m.ShardAlgorithm,
+		ShardValue:        m.ShardValue,
 	}
 	if includeHeader {
 		e.IndexHeader = m.IndexHeader

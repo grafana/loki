@@ -691,6 +691,9 @@ func TestFlushTenantHandler(t *testing.T) {
 		expectedStreams []string
 		// expectedFlushes is the number of forced index ships (FlushIndexes calls).
 		expectedFlushes int32
+		// indexFlushInProgress holds the index flush lock during the request, as a
+		// concurrent flush_index request would.
+		indexFlushInProgress bool
 	}{
 		{
 			name:                    "matchers scope flush to matching streams",
@@ -736,6 +739,21 @@ func TestFlushTenantHandler(t *testing.T) {
 			query:                   "tenant=" + userID + "&flush_index=maybe",
 			expectedFlushStatusCode: http.StatusBadRequest,
 		},
+		{
+			name:                    "concurrent index flush is rejected",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
+			query:                   "tenant=" + userID + "&flush_index",
+			indexFlushInProgress:    true,
+			expectedFlushStatusCode: http.StatusTooManyRequests,
+		},
+		{
+			name:                    "chunk-only flush is not blocked by an index flush",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
+			query:                   "tenant=" + userID,
+			indexFlushInProgress:    true,
+			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
@@ -748,6 +766,11 @@ func TestFlushTenantHandler(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, "/flush/tenant?"+tc.query, nil)
+
+			if tc.indexFlushInProgress {
+				ing.indexFlushMtx.Lock()
+				defer ing.indexFlushMtx.Unlock()
+			}
 
 			ing.FlushTenantHandler(w, r)
 
@@ -776,6 +799,9 @@ func TestFlushHandler(t *testing.T) {
 		expectedFlushed bool
 		// expectedIndexFlushes is the number of forced index ships (FlushIndexes calls).
 		expectedIndexFlushes int32
+		// indexFlushInProgress holds the index flush lock during the request, as a
+		// concurrent flush_index request would.
+		indexFlushInProgress bool
 	}{
 		{
 			name:               "the index is not flushed by default",
@@ -807,6 +833,18 @@ func TestFlushHandler(t *testing.T) {
 			query:              "flush_index=maybe",
 			expectedStatusCode: http.StatusBadRequest,
 		},
+		{
+			name:                 "concurrent index flush is rejected",
+			query:                "flush_index",
+			indexFlushInProgress: true,
+			expectedStatusCode:   http.StatusTooManyRequests,
+		},
+		{
+			name:                 "chunk-only flush is not blocked by an index flush",
+			indexFlushInProgress: true,
+			expectedStatusCode:   http.StatusNoContent,
+			expectedFlushed:      true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
@@ -818,6 +856,11 @@ func TestFlushHandler(t *testing.T) {
 					Streams: []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
 				})
 				require.NoError(t, err)
+			}
+
+			if tc.indexFlushInProgress {
+				ing.indexFlushMtx.Lock()
+				defer ing.indexFlushMtx.Unlock()
 			}
 
 			w := httptest.NewRecorder()

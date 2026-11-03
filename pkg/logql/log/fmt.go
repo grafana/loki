@@ -14,7 +14,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 const (
@@ -300,6 +300,11 @@ func listNodeFields(nodes []parse.Node) []string {
 			res = append(res, listNodeFieldsFromBranch(node)...)
 		case parse.NodeField:
 			res = append(res, node.(*parse.FieldNode).Ident...)
+		case parse.NodeVariable:
+			// $ is the root of the template data, so $.foo reads the label foo like .foo does.
+			if v := node.(*parse.VariableNode); len(v.Ident) > 1 && v.Ident[0] == "$" {
+				res = append(res, v.Ident[1:]...)
+			}
 		}
 	}
 	return res
@@ -416,7 +421,7 @@ func validate(fmts []LabelFmt) error {
 	// To avoid confusion we allow to have a label name only once per stage.
 	uniqueLabelName := map[string]struct{}{}
 	for _, f := range fmts {
-		if f.Name == logqlmodel.ErrorLabel {
+		if f.Name == logqlerr.ErrorLabel {
 			return fmt.Errorf("%s cannot be formatted", f.Name)
 		}
 		if _, ok := uniqueLabelName[f.Name]; ok {

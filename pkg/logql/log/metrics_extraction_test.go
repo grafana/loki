@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
@@ -278,8 +278,8 @@ func Test_Extract_ExpectedLabels(t *testing.T) {
 	require.Equal(t, labels.FromStrings("foo", "json"), sample.Labels.Labels())
 
 }
-func TestLabelExtractorWithStages(t *testing.T) {
 
+func TestLabelExtractorWithStages(t *testing.T) {
 	// A helper type to check if particular logline should be skipped
 	// during `ProcessLine` or got correct sample value extracted.
 	type checkLine struct {
@@ -338,6 +338,36 @@ func TestLabelExtractorWithStages(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a label filter before the parser does not make the parser read past the unwrapped label", func(t *testing.T) {
+		pre := Stages{
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "detected_level", "error")),
+			NewJSONParser(false),
+		}
+		ex := mustSampleExtractor(LabelExtractorWithStages("x", ConvertFloat, nil, false, true, pre, NoopStage))
+
+		sample, ok := ex.ForStream(labels.FromStrings("bar", "foo")).
+			Process(0, []byte(`{"x":"1.5","y":{"z":`), labels.FromStrings("detected_level", "error"))
+		require.True(t, ok)
+		require.Equal(t, 1.5, sample.Value)
+		require.Empty(t, sample.Labels.Labels())
+	})
+
+	t.Run("a post filter makes the parser extract the label it reads", func(t *testing.T) {
+		pre := Stages{
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "detected_level", "error")),
+			NewJSONParser(false),
+		}
+		postFilter := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "level", "error"))
+		sse := mustSampleExtractor(LabelExtractorWithStages("x", ConvertFloat, nil, false, true, pre, postFilter)).
+			ForStream(labels.FromStrings("bar", "foo"))
+		metadata := labels.FromStrings("detected_level", "error")
+
+		_, ok := sse.Process(0, []byte(`{"x":"1.5","level":"error"}`), metadata)
+		require.True(t, ok)
+		_, ok = sse.Process(0, []byte(`{"x":"1.5","level":"info"}`), metadata)
+		require.False(t, ok)
+	})
 }
 
 func TestDistinctValueSampleExtractor(t *testing.T) {
@@ -363,6 +393,21 @@ func TestDistinctValueSampleExtractor(t *testing.T) {
 			Process(0, []byte("line"), labels.FromStrings("mac", "cc:dd"))
 		require.True(t, ok)
 		require.Equal(t, xxhash.Sum64String("cc:dd"), math.Float64bits(sample.Value))
+	})
+
+	t.Run("a label filter before the parser does not make the parser report its error", func(t *testing.T) {
+		stages := []Stage{
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "detected_level", "error")),
+			NewJSONParser(false),
+		}
+		ex, err := NewDistinctValueSampleExtractor("x", stages, nil, false, true)
+		require.NoError(t, err)
+
+		sample, ok := ex.ForStream(labels.FromStrings("version", "1")).
+			Process(0, []byte(`{"x":"v","y":{"z":`), labels.FromStrings("detected_level", "error"))
+		require.True(t, ok)
+		require.Equal(t, xxhash.Sum64String("v"), math.Float64bits(sample.Value))
+		require.Empty(t, sample.Labels.Labels())
 	})
 }
 
@@ -436,6 +481,49 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	sse = se.ForStream(lbs)
 	_, ok = sse.Process(0, []byte(`nope`), labels.EmptyLabels())
 	require.False(t, ok)
+
+	t.Run("a filter on __error__ before the parser keeps the parser reporting its error", func(t *testing.T) {
+		stages := Stages{
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, "")),
+			NewJSONParser(false),
+		}
+		se, err := NewLineSampleExtractor(CountExtractor, stages, nil, false, true)
+		require.NoError(t, err)
+
+		sample, ok := se.ForStream(lbs).Process(0, []byte(`not json`), labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, "JSONParserErr", sample.Labels.Labels().Get(logqlerr.ErrorLabel))
+	})
+
+	t.Run("a label filter before the parser does not make the parser report its error when no label is kept", func(t *testing.T) {
+		stages := Stages{
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "detected_level", "error")),
+			NewJSONParser(false),
+		}
+		se, err := NewLineSampleExtractor(CountExtractor, stages, nil, false, true)
+		require.NoError(t, err)
+
+		sample, ok := se.ForStream(lbs).Process(0, []byte(`not json`), labels.FromStrings("detected_level", "error"))
+		require.True(t, ok)
+		assertLabelResult(t, labels.EmptyLabels(), sample.Labels)
+	})
+
+	t.Run("a label filter after the parser still makes the parser extract", func(t *testing.T) {
+		stages := Stages{
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "detected_level", "error")),
+			NewLogfmtParser(false, false),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "level", "error")),
+		}
+		se, err := NewLineSampleExtractor(CountExtractor, stages, nil, false, true)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		metadata := labels.FromStrings("detected_level", "error")
+
+		_, ok := sse.Process(0, []byte(`level=error`), metadata)
+		require.True(t, ok)
+		_, ok = sse.Process(0, []byte(`level=info`), metadata)
+		require.False(t, ok)
+	})
 }
 
 func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
@@ -830,7 +918,7 @@ func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadata
 		// cluster is a stream label outside the grouping, so its absence from the fallback's result
 		// is what proves the grouping was applied and not bypassed.
 		streamLabels = labels.FromStrings("namespace", "dev", "cluster", "us-central1")
-		errLabel     = labels.FromStrings(logqlmodel.ErrorLabel, "SampleExtractionErr")
+		errLabel     = labels.FromStrings(logqlerr.ErrorLabel, "SampleExtractionErr")
 		// The fallback groups like any other line and carries the error labels on top.
 		groupedWithErr = appendLabels(labels.FromStrings("namespace", "dev"), errLabel)
 	)
@@ -1002,8 +1090,8 @@ func TestBinaryLabelFilter_Hints(t *testing.T) {
 	safe := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "a", "1")) // reads only
 	unsafeFilter := NewBytesLabelFilter(LabelFilterGreaterThan, "size", 5)           // sets __error__ on parse failure
 
-	dropsError := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, ""))
-	keepsError := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, ""))
+	dropsError := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, ""))
+	keepsError := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlerr.ErrorLabel, ""))
 
 	t.Run("can modify labels when either leg can", func(t *testing.T) {
 		require.True(t, NewAndLabelFilter(safe, unsafeFilter).Hints().CanModifyLabels)
@@ -1030,14 +1118,27 @@ func TestBinaryLabelFilter_Hints(t *testing.T) {
 		require.True(t, NewAndLabelFilter(keeping, safe).Hints().KeepsErroredLines)
 		require.False(t, NewAndLabelFilter(dropping, safe).Hints().KeepsErroredLines)
 	})
+
+	t.Run("an ip filter neither reads the error label nor keeps the errored lines", func(t *testing.T) {
+		ipFilter := NewIPLabelFilter("10.0.0.0/8", "addr", LabelFilterEqual)
+
+		require.False(t, ipFilter.Hints().ReadsErrorLabel)
+		require.False(t, ipFilter.Hints().KeepsErroredLines)
+	})
+
+	t.Run("a binary filter reads the error label when a leg does", func(t *testing.T) {
+		require.True(t, NewAndLabelFilter(safe, dropsError).Hints().ReadsErrorLabel)
+		require.True(t, NewOrLabelFilter(dropsError, safe).Hints().ReadsErrorLabel)
+		require.False(t, NewAndLabelFilter(safe, safe).Hints().ReadsErrorLabel)
+	})
 }
 
 func TestStages_KeepsErroredLines(t *testing.T) {
 	errorFilter := func(typ labels.MatchType, value string) LabelFilterer {
-		return NewStringLabelFilter(labels.MustNewMatcher(typ, logqlmodel.ErrorLabel, value))
+		return NewStringLabelFilter(labels.MustNewMatcher(typ, logqlerr.ErrorLabel, value))
 	}
 	renameError := func() Stage {
-		f, err := NewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("e", logqlmodel.ErrorLabel)})
+		f, err := NewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("e", logqlerr.ErrorLabel)})
 		require.NoError(t, err)
 		return f
 	}
@@ -1130,7 +1231,7 @@ func TestStages_KeepsErroredLines(t *testing.T) {
 		},
 		{
 			name:   `a filter on __error_details__ does not keep the errored lines`,
-			stages: Stages{NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, ".*"))},
+			stages: Stages{NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, logqlerr.ErrorDetailsLabel, ".*"))},
 			want:   false,
 		},
 		{
