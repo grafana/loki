@@ -1205,10 +1205,10 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 // rateLimitBucket accumulates the bytes and line count of the streams metered against a
 // single ingestion rate-limit bucket (either the tenant-wide bucket or a per-policy bucket).
 type rateLimitBucket struct {
-	policy      string
-	hasOverride bool
-	bytes       int
-	lines       int
+	policy      string // the name of the policy that owns this bucket.
+	hasOverride bool   // true if the policy has its own rate limit, false if it uses the tenant default rate limit.
+	bytes       int    // the total number of bytes tested for this policy.
+	lines       int    // the total number of log lines tested for this policy.
 }
 
 // rateLimitError builds the client-facing 429 error for the rate-limit buckets a request
