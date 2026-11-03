@@ -133,18 +133,6 @@ func stagesAssertDiscards(t *testing.T, want []stagesDiscard) {
 	}
 }
 
-func stagesAssertRejectedPartialWrites(t *testing.T, d *Distributor, want float64) {
-	t.Helper()
-
-	if want == 0 {
-		require.Zero(t, testutil.CollectAndCount(d.m.rejectedPartialWrites))
-		return
-	}
-
-	require.Equal(t, 1, testutil.CollectAndCount(d.m.rejectedPartialWrites))
-	require.Equal(t, want, testutil.ToFloat64(d.m.rejectedPartialWrites.WithLabelValues("test")))
-}
-
 func stagesHTTPStatus(t *testing.T, err error) int32 {
 	t.Helper()
 
@@ -293,10 +281,8 @@ func TestDistributor_PushErrorPrecedence(t *testing.T) {
 
 			if tc.wantRejected {
 				stagesAssertNoWrites(t, ingesters)
-				stagesAssertRejectedPartialWrites(t, d, 1)
 			} else {
 				stagesRequireWrites(t, ingesters, tc.wantWritten)
-				stagesAssertRejectedPartialWrites(t, d, 0)
 			}
 			stagesAssertDiscards(t, tc.wantDiscards)
 		})
@@ -344,7 +330,6 @@ func TestDistributor_PushRejectsWholePushOnStreamLimit(t *testing.T) {
 	stagesAssertDiscards(t, []stagesDiscard{
 		{reason: validation.StreamLimit, policy: "limited", samples: 1, bytes: float64(len("limited"))},
 	})
-	stagesAssertRejectedPartialWrites(t, d, 1)
 }
 
 func TestDistributor_PushLiveDryRunWritesRejectedStreamUnsharded(t *testing.T) {
@@ -393,7 +378,6 @@ func TestDistributor_PushLiveDryRunWritesRejectedStreamUnsharded(t *testing.T) {
 	// The original labels show the stream was written unsharded, not rate-sharded.
 	stagesRequireWrites(t, ingesters, []string{stream.String()})
 	stagesAssertDiscards(t, nil)
-	stagesAssertRejectedPartialWrites(t, d, 0)
 }
 
 func TestDistributor_PushLiveRejectionWinsOverEnforceRejection(t *testing.T) {
@@ -464,7 +448,6 @@ func TestDistributor_PushLiveRejectionWinsOverEnforceRejection(t *testing.T) {
 		{reason: validation.StreamLimit, policy: "live", samples: 1, bytes: float64(len("live"))},
 		{reason: validation.StreamLimit, policy: "enforced", samples: 1, bytes: float64(len("enforced"))},
 	})
-	stagesAssertRejectedPartialWrites(t, d, 0)
 }
 
 func TestDistributor_PushRateLimitErrorListsTenantBucketFirst(t *testing.T) {
@@ -520,5 +503,4 @@ func TestDistributor_PushRateLimitErrorListsTenantBucketFirst(t *testing.T) {
 		{reason: validation.RateLimited, policy: "alpha", samples: 2, bytes: 140},
 		{reason: validation.RateLimited, policy: "zebra", samples: 2, bytes: 160},
 	})
-	stagesAssertRejectedPartialWrites(t, d, 0)
 }

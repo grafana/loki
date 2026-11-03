@@ -3243,14 +3243,12 @@ func TestDistributor_PushRejectsWholePushOn429(t *testing.T) {
 		blockStatusCode    int
 		expectedStatusCode int32
 		expectWrites       bool
-		expectedRejected   float64
 	}{
 		{
 			name:               "429 rejects the whole push",
 			blockStatusCode:    http.StatusTooManyRequests,
 			expectedStatusCode: http.StatusTooManyRequests,
 			expectWrites:       false,
-			expectedRejected:   1,
 		},
 		{
 			name:               "non 429 errors do not reject the whole push",
@@ -3292,8 +3290,6 @@ func TestDistributor_PushRejectsWholePushOn429(t *testing.T) {
 			} else {
 				require.Zero(t, pushed)
 			}
-
-			require.Equal(t, tc.expectedRejected, testutil.ToFloat64(distributors[0].m.rejectedPartialWrites.WithLabelValues("test")))
 		})
 	}
 }

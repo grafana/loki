@@ -409,11 +409,6 @@ type PolicyOverridableLimits struct {
 	// max_global_streams_per_user or inherit_limits.
 	LimitsServiceStreamsExpiry *model.Duration `yaml:"limits_service_streams_expiry" json:"limits_service_streams_expiry" doc:"hidden"`
 
-	// RejectPartialWrites is deprecated and has no effect: the distributor now always rejects the
-	// whole push when any of its streams is rejected with a 429. It is kept so existing configs
-	// still parse.
-	RejectPartialWrites bool `yaml:"reject_partial_writes" json:"reject_partial_writes" doc:"hidden"`
-
 	// ChunkIdlePeriod overrides -ingester.chunks-idle-period for the policy's streams.
 	// Unset or 0 keeps -ingester.chunks-idle-period.
 	// Note: a very short period may flush too-small chunks.

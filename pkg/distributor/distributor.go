@@ -590,7 +590,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		// it: the accepted entries would be written again. Reject the whole push instead. The
 		// limits service has still counted the streams it accepted.
 		if limitsErr != nil || isTooManyRequests(validated.err) {
-			d.m.rejectedPartialWrites.WithLabelValues(tenantID).Inc()
 			return nil, finalErr
 		}
 	}
