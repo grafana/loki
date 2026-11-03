@@ -145,7 +145,7 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/shirou/gopsutil/v4 v4.25.9
-	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
+	github.com/thanos-io/objstore v0.0.0-20261030234810-710b1835d118
 	github.com/tjhop/slog-gokit v0.1.4
 	github.com/twmb/franz-go v1.19.5
 	github.com/twmb/franz-go/pkg/kadm v1.16.1
