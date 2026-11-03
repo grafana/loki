@@ -138,6 +138,8 @@ func TestProducerLingerMustBeValid(t *testing.T) {
 	}
 }
 
+// TestAPIVersionsMaxVersionMustBeValid checks that 0 and positive caps are accepted
+// and negative ones are rejected.
 func TestAPIVersionsMaxVersionMustBeValid(t *testing.T) {
 	cfg := Config{
 		ReaderConfig: ClientConfig{

@@ -13,6 +13,8 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// TestKafkaClientCapsAPIVersions checks that the logline builder's Kafka client sends
+// ApiVersions at the configured cap.
 func TestKafkaClientCapsAPIVersions(t *testing.T) {
 	cluster, cfg := setupKafkaTest(t)
 	cfg.Kafka.APIVersionsMaxVersion = 3

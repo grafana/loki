@@ -36,6 +36,9 @@ func recordAPIVersions(cluster *kfake.Cluster) func() []int16 {
 	}
 }
 
+// TestClientsCapAPIVersions checks that the reader and writer clients send ApiVersions
+// at the configured cap. The lower cap proves the option is wired in, since
+// franz-go v1.21.x sends v4 anyway.
 func TestClientsCapAPIVersions(t *testing.T) {
 	tests := []struct {
 		name       string
