@@ -533,19 +533,9 @@ func isFlowIndicator(b []byte, i int) bool {
 // ']', '{', '}', ','.
 // We further limit it to ascii chars only, which is a subset of the spec
 // production but is usually what most people expect.
+// Trailing colons are excluded separately by the scanner and emitter to
+// preserve mapping separators immediately after aliases (issue #109).
 func isAnchorChar(b []byte, i int) bool {
-	if isColon(b, i) {
-		// [Go] we exclude colons from anchor/alias names.
-		//
-		// A colon is a valid anchor character according to the YAML 1.2 specification,
-		// but it can lead to ambiguity.
-		// https://github.com/yaml/go-yaml/issues/109
-		//
-		// Also, it would have been a breaking change to support it, as go.yaml.in/yaml/v3 ignores it.
-		// Supporting it could lead to unexpected behavior.
-		return false
-	}
-
 	return isPrintable(b, i) &&
 		!isLineBreak(b, i) &&
 		!isBlank(b, i) &&
@@ -719,9 +709,6 @@ func isEndOfScalarInFlowContentChar(b []byte, i int) bool {
 	// ",", "[", "]", "{" and "}"
 	case ',', '[', ']', '{', '}':
 		return true
-	// "? "
-	case '?':
-		return isBlankOrZero(b, i+1)
 	// ": ", ":,", ":]" and ":}"
 	case ':':
 		return b[i+1] == ' ' || b[i+1] == ',' ||
@@ -792,6 +779,14 @@ const max_number_length = 2
 
 // fetchMoreTokens ensures the token queue has at least one token for lookahead.
 func (parser *Parser) fetchMoreTokens() error {
+	if parser.token_input {
+		if parser.tokens_head >= len(parser.tokens) {
+			return io.EOF
+		}
+		parser.token_available = true
+		return nil
+	}
+
 	// While we need more tokens to fetch, do it.
 	for {
 		// [Go] The comment parsing logic requires a lookahead of two tokens
@@ -903,6 +898,20 @@ func (parser *Parser) fetchNextToken() (err error) {
 		if err != nil {
 			return
 		}
+		// Validate separation even when comments are not collected.
+		if parser.newlines == 0 {
+			if parser.unread < 1 {
+				if err = parser.updateBuffer(1); err != nil {
+					return
+				}
+			}
+			if parser.buffer[parser.buffer_pos] == '#' && len(parser.tokens) > 0 &&
+				parser.tokens[len(parser.tokens)-1].EndMark.Index == parser.mark.Index {
+				err = parser.formatScannerError(
+					"found a comment without preceding whitespace", parser.mark)
+				return
+			}
+		}
 		if parser.skip_comments {
 			return
 		}
@@ -952,9 +961,17 @@ func (parser *Parser) fetchNextToken() (err error) {
 	}
 
 	// Is it the value indicator?
-	if parser.buffer[parser.buffer_pos] == ':' && (parser.flow_level > 0 &&
-		!parser.isFlowSequence() || isBlankOrZero(parser.buffer, parser.buffer_pos+1)) {
-		return parser.fetchValue()
+	if parser.buffer[parser.buffer_pos] == ':' {
+		// A flow key or value may start with a colon and safe scalar content.
+		plain_scalar := len(parser.tokens) > 0 &&
+			(parser.tokens[len(parser.tokens)-1].Type == VALUE_TOKEN ||
+				parser.tokens[len(parser.tokens)-1].Type == KEY_TOKEN ||
+				parser.tokens[len(parser.tokens)-1].Type == FLOW_MAPPING_START_TOKEN) &&
+			!isFlowIndicator(parser.buffer, parser.buffer_pos+1)
+		if isBlankOrZero(parser.buffer, parser.buffer_pos+1) ||
+			(parser.flow_level > 0 && !parser.isFlowSequence() && !plain_scalar) {
+			return parser.fetchValue()
+		}
 	}
 
 	// Is it an alias?
@@ -1022,14 +1039,17 @@ func (parser *Parser) fetchNextToken() (err error) {
 		parser.buffer[parser.buffer_pos] == '>' || parser.buffer[parser.buffer_pos] == '\'' ||
 		parser.buffer[parser.buffer_pos] == '"' || parser.buffer[parser.buffer_pos] == '%' ||
 		parser.buffer[parser.buffer_pos] == '@' || parser.buffer[parser.buffer_pos] == '`') ||
-		(parser.buffer[parser.buffer_pos] == '-' && !isBlank(parser.buffer, parser.buffer_pos+1)) ||
+		(parser.buffer[parser.buffer_pos] == '-' &&
+			!isBlankOrZero(parser.buffer, parser.buffer_pos+1) &&
+			(parser.flow_level == 0 ||
+				!isFlowIndicator(parser.buffer, parser.buffer_pos+1))) ||
 		((parser.buffer[parser.buffer_pos] == '?' || parser.buffer[parser.buffer_pos] == ':') &&
 			!isBlankOrZero(parser.buffer, parser.buffer_pos+1)) {
 		return parser.fetchPlainScalar()
 	}
 
 	// If we don't determine the token type so far, it is an error.
-	return formatScannerErrorContext(
+	return parser.formatScannerErrorContext(
 		"while scanning for the next token", parser.mark,
 		"found character that cannot start any token", parser.mark)
 }
@@ -1060,7 +1080,7 @@ func (parser *Parser) fetchBlockEntry() error {
 	if parser.flow_level == 0 {
 		// Check if we are allowed to start a new entry.
 		if !parser.simple_key_allowed {
-			return formatScannerError("block sequence entries are not allowed in this context", parser.mark)
+			return parser.formatScannerError("block sequence entries are not allowed in this context", parser.mark)
 		}
 		// Add the BLOCK-SEQUENCE-START token if needed.
 		if err := parser.rollIndent(parser.mark.Column, -1, BLOCK_SEQUENCE_START_TOKEN, parser.mark); err != nil {
@@ -1141,6 +1161,12 @@ func (parser *Parser) fetchDirective() error {
 
 // Produce the DOCUMENT-START or DOCUMENT-END token.
 func (parser *Parser) fetchDocumentIndicator(typ TokenType) error {
+	if parser.indentConfig != nil &&
+		parser.indentConfig.LoadStyle == IndentStyleAuto &&
+		parser.indentConfig.Scope == IndentScopeDocument {
+		parser.indentStyle = indentStyleUnknown
+	}
+
 	// Reset the indentation level.
 	if err := parser.unrollIndent(-1, parser.mark); err != nil {
 		return err
@@ -1161,6 +1187,27 @@ func (parser *Parser) fetchDocumentIndicator(typ TokenType) error {
 	parser.skip()
 
 	end_mark := parser.mark
+
+	// Only whitespace and a comment may follow a document-end marker.
+	if typ == DOCUMENT_END_TOKEN {
+		for {
+			if parser.unread < 1 {
+				if err := parser.updateBuffer(1); err != nil {
+					return err
+				}
+			}
+			if !isBlank(parser.buffer, parser.buffer_pos) {
+				break
+			}
+			parser.skip()
+		}
+		if !isBreakOrZero(parser.buffer, parser.buffer_pos) &&
+			parser.buffer[parser.buffer_pos] != '#' {
+			return parser.formatScannerErrorContext(
+				"while scanning a document-end marker", start_mark,
+				"found unexpected content after document-end marker", parser.mark)
+		}
+	}
 
 	// Create the DOCUMENT-START or DOCUMENT-END token.
 	token := Token{
@@ -1286,7 +1333,7 @@ func (parser *Parser) fetchKey() error {
 	if parser.flow_level == 0 {
 		// Check if we are allowed to start a new key (not necessary simple).
 		if !parser.simple_key_allowed {
-			return formatScannerError("mapping keys are not allowed in this context", parser.mark)
+			return parser.formatScannerError("mapping keys are not allowed in this context", parser.mark)
 		}
 		// Add the BLOCK-MAPPING-START token if needed.
 		if err := parser.rollIndent(parser.mark.Column, -1, BLOCK_MAPPING_START_TOKEN, parser.mark); err != nil {
@@ -1414,6 +1461,11 @@ func (parser *Parser) fetchTag() error {
 
 // Produce the SCALAR(...,literal) or SCALAR(...,folded) tokens.
 func (parser *Parser) fetchValue() error {
+	// Flow values must be indented beyond the surrounding block collection.
+	if parser.flow_level > 0 && parser.mark.Column <= parser.indent {
+		return parser.formatScannerError("mapping values are not allowed in this context", parser.mark)
+	}
+
 	simple_key := &parser.simple_key
 
 	// Have we found a simple key?
@@ -1448,7 +1500,7 @@ func (parser *Parser) fetchValue() error {
 
 			// Check if we are allowed to start a complex value.
 			if !parser.simple_key_allowed {
-				return formatScannerError("mapping values are not allowed in this context", parser.mark)
+				return parser.formatScannerError("mapping values are not allowed in this context", parser.mark)
 			}
 
 			// Add the BLOCK-MAPPING-START token if needed.
@@ -1492,6 +1544,36 @@ func (parser *Parser) scanAnchor(token *Token, typ TokenType) error {
 	}
 
 	for isAnchorChar(parser.buffer, parser.buffer_pos) {
+		if isColon(parser.buffer, parser.buffer_pos) {
+			// A colon run belongs to the name only if a name character
+			// follows it. Leave trailing colons for the token scanner.
+			offset := 1
+			for {
+				if parser.unread <= offset {
+					// Keep room for the reader's next decoded input chunk.
+					if cap(parser.buffer) < offset+input_buffer_size {
+						buffer := make([]byte, len(parser.buffer),
+							2*(offset+input_buffer_size))
+						copy(buffer, parser.buffer)
+						parser.buffer = buffer
+					}
+					if err := parser.updateBuffer(offset + 1); err != nil {
+						return err
+					}
+				}
+				if !isColon(parser.buffer, parser.buffer_pos+offset) {
+					break
+				}
+				offset++
+			}
+			if !isAnchorChar(parser.buffer, parser.buffer_pos+offset) {
+				break
+			}
+			for offset > 0 {
+				s = parser.read(s)
+				offset--
+			}
+		}
 		s = parser.read(s)
 		if parser.unread < 1 {
 			if err := parser.updateBuffer(1); err != nil {
@@ -1519,7 +1601,7 @@ func (parser *Parser) scanAnchor(token *Token, typ TokenType) error {
 		if typ == ANCHOR_TOKEN {
 			context = "while scanning an anchor"
 		}
-		return formatScannerErrorContext(context, start_mark,
+		return parser.formatScannerErrorContext(context, start_mark,
 			"did not find expected alphabetic or numeric character", parser.mark)
 	}
 
@@ -1567,7 +1649,7 @@ func (parser *Parser) scanBlockScalar(token *Token, literal bool) error {
 		if isDigit(parser.buffer, parser.buffer_pos) {
 			// Check that the indentation is greater than 0.
 			if parser.buffer[parser.buffer_pos] == '0' {
-				return formatScannerErrorContext("while scanning a block scalar", start_mark,
+				return parser.formatScannerErrorContext("while scanning a block scalar", start_mark,
 					"found an indentation indicator equal to 0", parser.mark)
 			}
 
@@ -1580,7 +1662,7 @@ func (parser *Parser) scanBlockScalar(token *Token, literal bool) error {
 		// Do the same as above, but in the opposite order.
 
 		if parser.buffer[parser.buffer_pos] == '0' {
-			return formatScannerErrorContext("while scanning a block scalar", start_mark,
+			return parser.formatScannerErrorContext("while scanning a block scalar", start_mark,
 				"found an indentation indicator equal to 0", parser.mark)
 		}
 		increment = asDigit(parser.buffer, parser.buffer_pos)
@@ -1601,6 +1683,8 @@ func (parser *Parser) scanBlockScalar(token *Token, literal bool) error {
 		}
 	}
 
+	header_end := parser.mark.Index
+
 	// Eat whitespaces and comments to the end of the line.
 	if parser.unread < 1 {
 		if err := parser.updateBuffer(1); err != nil {
@@ -1616,6 +1700,10 @@ func (parser *Parser) scanBlockScalar(token *Token, literal bool) error {
 		}
 	}
 	if parser.buffer[parser.buffer_pos] == '#' {
+		if parser.mark.Index == header_end {
+			return parser.formatScannerErrorContext("while scanning a block scalar", start_mark,
+				"found a comment without preceding whitespace", parser.mark)
+		}
 		if err := parser.scanLineComment(start_mark); err != nil {
 			return err
 		}
@@ -1631,7 +1719,7 @@ func (parser *Parser) scanBlockScalar(token *Token, literal bool) error {
 
 	// Check if we are at the end of the line.
 	if !isBreakOrZero(parser.buffer, parser.buffer_pos) {
-		return formatScannerErrorContext("while scanning a block scalar", start_mark,
+		return parser.formatScannerErrorContext("while scanning a block scalar", start_mark,
 			"did not find expected comment or line break", parser.mark)
 	}
 
@@ -1698,6 +1786,7 @@ func (parser *Parser) scanBlockScalar(token *Token, literal bool) error {
 		leading_blank = isBlank(parser.buffer, parser.buffer_pos)
 
 		// Consume the current line.
+		lineStart := len(s)
 		for !isBreakOrZero(parser.buffer, parser.buffer_pos) {
 			s = parser.read(s)
 			if parser.unread < 1 {
@@ -1714,7 +1803,13 @@ func (parser *Parser) scanBlockScalar(token *Token, literal bool) error {
 			}
 		}
 
-		leading_break = parser.readLine(leading_break)
+		// A final whitespace-only content line retains its line break.
+		if isZeroChar(parser.buffer, parser.buffer_pos) &&
+			len(bytes.Trim(s[lineStart:], " \t")) == 0 {
+			leading_break = append(leading_break, '\n')
+		} else {
+			leading_break = parser.readLine(leading_break)
+		}
 
 		// Eat the following indentation spaces and line breaks.
 		if err := parser.scanBlockScalarBreaks(&indent, &trailing_breaks, start_mark, &end_mark); err != nil {
@@ -1752,13 +1847,27 @@ func (parser *Parser) scanBlockScalarBreaks(indent *int, breaks *[]byte, start_m
 	// Eat the indentation spaces and line breaks.
 	max_indent := 0
 	for {
+		style := indentStyleUnknown
+		indentMark := parser.mark
+		mixedMark := Mark{}
+		mixed := false
 		// Eat the indentation spaces.
 		if parser.unread < 1 {
 			if err := parser.updateBuffer(1); err != nil {
 				return err
 			}
 		}
-		for (*indent == 0 || parser.mark.Column < *indent) && isSpace(parser.buffer, parser.buffer_pos) {
+		for (*indent == 0 || parser.mark.Column < *indent) &&
+			(isSpace(parser.buffer, parser.buffer_pos) ||
+				(parser.indentConfig != nil &&
+					isTab(parser.buffer, parser.buffer_pos))) {
+			char := parser.buffer[parser.buffer_pos]
+			if style == indentStyleUnknown {
+				style = char
+			} else if style != char && !mixed {
+				mixedMark = parser.mark
+				mixed = true
+			}
 			parser.skip()
 			if parser.unread < 1 {
 				if err := parser.updateBuffer(1); err != nil {
@@ -1770,10 +1879,24 @@ func (parser *Parser) scanBlockScalarBreaks(indent *int, breaks *[]byte, start_m
 			max_indent = parser.mark.Column
 		}
 
-		// Check for a tab character messing the indentation.
-		if (*indent == 0 || parser.mark.Column < *indent) && isTab(parser.buffer, parser.buffer_pos) {
-			return formatScannerErrorContext("while scanning a block scalar", start_mark,
+		// Before auto-detection, tabs after the required indentation prefix
+		// are content, not indentation.
+		if isTab(parser.buffer, parser.buffer_pos) &&
+			((*indent == 0 && parser.mark.Column <= parser.indent) ||
+				(*indent > 0 && parser.mark.Column < *indent)) {
+			return parser.formatScannerErrorContext("while scanning a block scalar", start_mark,
 				"found a tab character where an indentation space is expected", parser.mark)
+		}
+		blankLine := isLineBreak(parser.buffer, parser.buffer_pos) ||
+			isZeroChar(parser.buffer, parser.buffer_pos)
+		if mixed && !blankLine {
+			return parser.formatScannerError(
+				"found mixed spaces and tabs in indentation", mixedMark)
+		}
+		if style != indentStyleUnknown && !blankLine {
+			if err := parser.validateIndentStyle(style, indentMark); err != nil {
+				return err
+			}
 		}
 
 		// Have we found a non-empty line?
@@ -1790,6 +1913,14 @@ func (parser *Parser) scanBlockScalarBreaks(indent *int, breaks *[]byte, start_m
 		// [Go] Should really be returning breaks instead.
 		*breaks = parser.readLine(*breaks)
 		*end_mark = parser.mark
+	}
+
+	// Count a final space-only line, including one shorter than the indent.
+	// An unterminated header and EOF immediately after a break add no line.
+	if isZeroChar(parser.buffer, parser.buffer_pos) &&
+		parser.mark.Line > start_mark.Line && parser.mark.Column > 1 &&
+		(*indent == 0 || parser.mark.Column <= *indent) {
+		*breaks = append(*breaks, '\n')
 	}
 
 	// Determine the indentation level if needed.
@@ -2017,7 +2148,7 @@ func (parser *Parser) scanDirective(token *Token) error {
 
 		// Unknown directive.
 	} else {
-		return formatScannerErrorContext("while scanning a directive", start_mark,
+		return parser.formatScannerErrorContext("while scanning a directive", start_mark,
 			"found unknown directive name", parser.mark)
 	}
 
@@ -2038,6 +2169,10 @@ func (parser *Parser) scanDirective(token *Token) error {
 	}
 
 	if parser.buffer[parser.buffer_pos] == '#' {
+		if parser.mark.Index == token.EndMark.Index {
+			return parser.formatScannerErrorContext("while scanning a directive", start_mark,
+				"found a comment without preceding whitespace", parser.mark)
+		}
 		// [Go] Discard this inline comment for the time being.
 		//if !parser.ScanLineComment(start_mark) {
 		//	return false
@@ -2054,7 +2189,7 @@ func (parser *Parser) scanDirective(token *Token) error {
 
 	// Check if we are at the end of the line.
 	if !isBreakOrZero(parser.buffer, parser.buffer_pos) {
-		return formatScannerErrorContext("while scanning a directive", start_mark,
+		return parser.formatScannerErrorContext("while scanning a directive", start_mark,
 			"did not find expected comment or line break", parser.mark)
 	}
 
@@ -2099,13 +2234,13 @@ func (parser *Parser) scanDirectiveName(start_mark Mark, name *[]byte) error {
 
 	// Check if the name is empty.
 	if len(s) == 0 {
-		return formatScannerErrorContext("while scanning a directive", start_mark,
+		return parser.formatScannerErrorContext("while scanning a directive", start_mark,
 			"could not find expected directive name", parser.mark)
 	}
 
 	// Check for an blank character after the name.
 	if !isBlankOrZero(parser.buffer, parser.buffer_pos) {
-		return formatScannerErrorContext("while scanning a directive", start_mark,
+		return parser.formatScannerErrorContext("while scanning a directive", start_mark,
 			"found unexpected non-alphabetical character", parser.mark)
 	}
 	*name = s
@@ -2142,13 +2277,13 @@ func (parser *Parser) scanFlowScalar(token *Token, single bool) error {
 					parser.buffer[parser.buffer_pos+1] == '.' &&
 					parser.buffer[parser.buffer_pos+2] == '.')) &&
 			isBlankOrZero(parser.buffer, parser.buffer_pos+3) {
-			return formatScannerErrorContext("while scanning a quoted scalar", start_mark,
+			return parser.formatScannerErrorContext("while scanning a quoted scalar", start_mark,
 				"found unexpected document indicator", parser.mark)
 		}
 
 		// Check for EOF.
 		if isZeroChar(parser.buffer, parser.buffer_pos) {
-			return formatScannerErrorContext("while scanning a quoted scalar", start_mark,
+			return parser.formatScannerErrorContext("while scanning a quoted scalar", start_mark,
 				"found unexpected end of stream", parser.mark)
 		}
 
@@ -2207,8 +2342,8 @@ func (parser *Parser) scanFlowScalar(token *Token, single bool) error {
 					s = append(s, '\x20')
 				case '"':
 					s = append(s, '"')
-				case '\'':
-					s = append(s, '\'')
+				case '/':
+					s = append(s, '/')
 				case '\\':
 					s = append(s, '\\')
 				case 'N': // NEL (#x85)
@@ -2232,7 +2367,7 @@ func (parser *Parser) scanFlowScalar(token *Token, single bool) error {
 				case 'U':
 					code_length = 8
 				default:
-					return formatScannerErrorContext("while scanning a quoted scalar", start_mark,
+					return parser.formatScannerErrorContext("while scanning a quoted scalar", start_mark,
 						"found unknown escape character", parser.mark)
 				}
 
@@ -2251,7 +2386,7 @@ func (parser *Parser) scanFlowScalar(token *Token, single bool) error {
 					}
 					for k := 0; k < code_length; k++ {
 						if !isHex(parser.buffer, parser.buffer_pos+k) {
-							return formatScannerErrorContext("while scanning a quoted scalar", start_mark,
+							return parser.formatScannerErrorContext("while scanning a quoted scalar", start_mark,
 								"did not find expected hexadecimal number", parser.mark)
 						}
 						value = (value << 4) + asHex(parser.buffer, parser.buffer_pos+k)
@@ -2259,7 +2394,7 @@ func (parser *Parser) scanFlowScalar(token *Token, single bool) error {
 
 					// Check the value and write the character.
 					if (value >= 0xD800 && value <= 0xDFFF) || value > 0x10FFFF {
-						return formatScannerErrorContext("while scanning a quoted scalar", start_mark,
+						return parser.formatScannerErrorContext("while scanning a quoted scalar", start_mark,
 							"found invalid Unicode character escape code", parser.mark)
 					}
 					if value <= 0x7F {
@@ -2532,13 +2667,29 @@ func (parser *Parser) scanPlainScalar(token *Token) error {
 			}
 		}
 
+		indentStyle := indentStyleUnknown
+		indentMark := Mark{}
+		mixedIndent := false
+		mixedMark := Mark{}
+		// A tab is indentation only if the line contains scalar content.
+		badTab := Mark{}
 		for isBlank(parser.buffer, parser.buffer_pos) || isLineBreak(parser.buffer, parser.buffer_pos) {
 			if isBlank(parser.buffer, parser.buffer_pos) {
 
 				// Check for tab characters that abuse indentation.
-				if leading_blanks && parser.mark.Column < indent && isTab(parser.buffer, parser.buffer_pos) {
-					return formatScannerErrorContext("while scanning a plain scalar", start_mark,
-						"found a tab character that violates indentation", parser.mark)
+				if leading_blanks && parser.mark.Column < indent {
+					if parser.indentConfig != nil {
+						char := parser.buffer[parser.buffer_pos]
+						if indentStyle == indentStyleUnknown {
+							indentStyle = char
+							indentMark = parser.mark
+						} else if indentStyle != char && !mixedIndent {
+							mixedIndent = true
+							mixedMark = parser.mark
+						}
+					} else if isTab(parser.buffer, parser.buffer_pos) && badTab.Line == 0 {
+						badTab = parser.mark
+					}
 				}
 
 				// Consume a space or a tab character.
@@ -2562,11 +2713,32 @@ func (parser *Parser) scanPlainScalar(token *Token) error {
 				} else {
 					trailing_breaks = parser.readLine(trailing_breaks)
 				}
+				indentStyle = indentStyleUnknown
+				mixedIndent = false
+				badTab = Mark{}
 			}
 			if parser.unread < 1 {
 				if err := parser.updateBuffer(1); err != nil {
 					return err
 				}
+			}
+		}
+		if badTab.Line != 0 && !isZeroChar(parser.buffer, parser.buffer_pos) &&
+			parser.buffer[parser.buffer_pos] != '#' {
+			return parser.formatScannerErrorContext("while scanning a plain scalar", start_mark,
+				"found a tab character that violates indentation", badTab)
+		}
+		if parser.indentConfig != nil &&
+			indentStyle != indentStyleUnknown &&
+			!isZeroChar(parser.buffer, parser.buffer_pos) &&
+			parser.buffer[parser.buffer_pos] != '#' {
+			if mixedIndent {
+				return parser.formatScannerError(
+					"found mixed spaces and tabs in indentation", mixedMark)
+			}
+			if err := parser.validateIndentStyle(
+				indentStyle, indentMark); err != nil {
+				return err
 			}
 		}
 
@@ -2619,7 +2791,7 @@ func (parser *Parser) scanTag(token *Token) error {
 
 		// Check for '>' and eat it.
 		if parser.buffer[parser.buffer_pos] != '>' {
-			return formatScannerErrorContext("while scanning a tag", start_mark,
+			return parser.formatScannerErrorContext("while scanning a tag", start_mark,
 				"did not find the expected '>'", parser.mark)
 		}
 
@@ -2663,8 +2835,12 @@ func (parser *Parser) scanTag(token *Token) error {
 			return err
 		}
 	}
-	if !isBlankOrZero(parser.buffer, parser.buffer_pos) {
-		return formatScannerErrorContext("while scanning a tag", start_mark,
+	// In flow content the tagged node may be empty, so ',', ']' and '}' can
+	// end the tag directly.
+	c := parser.buffer[parser.buffer_pos]
+	if !isBlankOrZero(parser.buffer, parser.buffer_pos) &&
+		!(parser.flow_level > 0 && (c == ',' || c == ']' || c == '}')) {
+		return parser.formatScannerErrorContext("while scanning a tag", start_mark,
 			"did not find expected whitespace or line break", parser.mark)
 	}
 
@@ -2713,7 +2889,7 @@ func (parser *Parser) scanTagDirectiveValue(start_mark Mark, handle, prefix *[]b
 		}
 	}
 	if !isBlank(parser.buffer, parser.buffer_pos) {
-		return formatScannerErrorContext("while scanning a %TAG directive", start_mark,
+		return parser.formatScannerErrorContext("while scanning a %TAG directive", start_mark,
 			"did not find expected whitespace", parser.mark)
 	}
 
@@ -2739,7 +2915,7 @@ func (parser *Parser) scanTagDirectiveValue(start_mark Mark, handle, prefix *[]b
 		}
 	}
 	if !isBlankOrZero(parser.buffer, parser.buffer_pos) {
-		return formatScannerErrorContext("while scanning a %TAG directive", start_mark,
+		return parser.formatScannerErrorContext("while scanning a %TAG directive", start_mark,
 			"did not find expected whitespace or line break", parser.mark)
 	}
 
@@ -2848,11 +3024,14 @@ func (parser *Parser) scanTagURI(directive bool, verbatim bool, head []byte, sta
 	// For non-verbatim tags, if we stopped at a printable character that
 	// isn't whitespace, it's an invalid tag character - give a specific
 	// error.
+	// Inside flow content, a flow indicator ends the tag instead.
 	// For verbatim tags, the caller will check for the expected '>'
 	// delimiter.
 	if !verbatim {
 		c := parser.buffer[parser.buffer_pos]
-		if !isBlankOrZero(parser.buffer, parser.buffer_pos) &&
+		flowEnd := parser.flow_level > 0 &&
+			isFlowIndicator(parser.buffer, parser.buffer_pos)
+		if !isBlankOrZero(parser.buffer, parser.buffer_pos) && !flowEnd &&
 			c >= 0x20 && c <= 0x7E {
 			return parser.setScannerTagError(directive, start_mark,
 				fmt.Sprintf("found character '%c' that is not allowed in a YAML tag", c))
@@ -2882,12 +3061,20 @@ func (parser *Parser) scanToNextToken() error {
 		if parser.mark.Column == 1 && isBOM(parser.buffer, parser.buffer_pos) {
 			parser.skip()
 		}
+		if parser.mark.Column == 1 && parser.flow_level == 0 &&
+			parser.indentConfig != nil {
+			if err := parser.scanIndentation(); err != nil {
+				return err
+			}
+		}
 
 		// Eat whitespaces.
 		// Tabs are allowed:
 		//  - in the flow context
+		//  - before a root flow collection (checked below)
+		//  - after a block sequence indicator (checked below)
 		//  - in the block context, but not at the beginning of the line or
-		//  after '-', '?', or ':' (complex value).
+		//  after '?' or ':' (complex value).
 		if parser.unread < 1 {
 			if err := parser.updateBuffer(1); err != nil {
 				return err
@@ -2900,6 +3087,51 @@ func (parser *Parser) scanToNextToken() error {
 				if err := parser.updateBuffer(1); err != nil {
 					return err
 				}
+			}
+		}
+
+		// Tabs after an indicator or sufficient indentation may separate
+		// scalar or flow content, but may not indent a block collection.
+		if parser.flow_level == 0 && isTab(parser.buffer, parser.buffer_pos) &&
+			len(parser.tokens) > 0 {
+			previous := &parser.tokens[len(parser.tokens)-1]
+			if (previous.Type == BLOCK_ENTRY_TOKEN &&
+				previous.EndMark.Line == parser.mark.Line) ||
+				(parser.mark.Line > previous.EndMark.Line &&
+					parser.mark.Column > parser.indent) {
+				parser.block_indent_tab = parser.mark
+				for isBlank(parser.buffer, parser.buffer_pos) {
+					parser.skip()
+					if parser.unread < 1 {
+						if err := parser.updateBuffer(1); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+
+		// Tabs may separate a root flow opener or a blank/comment line.
+		if parser.flow_level == 0 && isTab(parser.buffer, parser.buffer_pos) {
+			tab_mark := parser.mark
+			for isBlank(parser.buffer, parser.buffer_pos) {
+				parser.skip()
+				if parser.unread < 1 {
+					if err := parser.updateBuffer(1); err != nil {
+						return err
+					}
+				}
+			}
+			rootFlow := parser.indent < 0 &&
+				(parser.buffer[parser.buffer_pos] == '[' || parser.buffer[parser.buffer_pos] == '{')
+			if rootFlow {
+				parser.block_indent_tab = tab_mark
+			}
+			if !rootFlow && !isBreakOrZero(parser.buffer, parser.buffer_pos) &&
+				parser.buffer[parser.buffer_pos] != '#' {
+				return parser.formatScannerErrorContext(
+					"while scanning for the next token", tab_mark,
+					"found character that cannot start any token", tab_mark)
 			}
 		}
 
@@ -2963,6 +3195,67 @@ func (parser *Parser) scanToNextToken() error {
 		}
 	}
 
+	return nil
+}
+
+// scanIndentation consumes and validates structural line indentation.
+func (parser *Parser) scanIndentation() error {
+	style := indentStyleUnknown
+	start := parser.mark
+	mixedMark := Mark{}
+	mixed := false
+	for {
+		if parser.unread < 1 {
+			if err := parser.updateBuffer(1); err != nil {
+				return err
+			}
+		}
+		char := parser.buffer[parser.buffer_pos]
+		if char != ' ' && char != '\t' {
+			break
+		}
+		if style == indentStyleUnknown {
+			style = char
+		} else if style != char && !mixed {
+			mixedMark = parser.mark
+			mixed = true
+		}
+		parser.skip()
+	}
+	if style == indentStyleUnknown ||
+		isLineBreak(parser.buffer, parser.buffer_pos) ||
+		isZeroChar(parser.buffer, parser.buffer_pos) ||
+		parser.buffer[parser.buffer_pos] == '#' {
+		return nil
+	}
+	if mixed {
+		return parser.formatScannerError(
+			"found mixed spaces and tabs in indentation", mixedMark)
+	}
+	return parser.validateIndentStyle(style, start)
+}
+
+func (parser *Parser) validateIndentStyle(style byte, start Mark) error {
+	if parser.indentConfig == nil || style == indentStyleUnknown {
+		return nil
+	}
+	if parser.indentConfig.LoadStyle == IndentStyleTabs && style != '\t' {
+		return parser.formatScannerError(
+			"found spaces where tab indentation is required", start)
+	}
+	if parser.indentConfig.LoadStyle == IndentStyleSpaces && style != ' ' {
+		return parser.formatScannerError(
+			"found tabs where space indentation is required", start)
+	}
+	if parser.indentConfig.LoadStyle == IndentStyleAuto {
+		if parser.indentStyle == indentStyleUnknown {
+			parser.indentStyle = style
+		} else if parser.indentStyle != style {
+			return parser.formatScannerError(
+				"found indentation style that differs from earlier lines",
+				start)
+		}
+	}
 	return nil
 }
 
@@ -3034,7 +3327,7 @@ func (parser *Parser) scanVersionDirectiveNumber(start_mark Mark, number *int8) 
 		// Check if the number is too long.
 		length++
 		if length > max_number_length {
-			return formatScannerErrorContext("while scanning a %YAML directive", start_mark,
+			return parser.formatScannerErrorContext("while scanning a %YAML directive", start_mark,
 				"found extremely long version number", parser.mark)
 		}
 		value = value*10 + int8(asDigit(parser.buffer, parser.buffer_pos))
@@ -3048,7 +3341,7 @@ func (parser *Parser) scanVersionDirectiveNumber(start_mark Mark, number *int8) 
 
 	// Check if the number was present.
 	if length == 0 {
-		return formatScannerErrorContext("while scanning a %YAML directive", start_mark,
+		return parser.formatScannerErrorContext("while scanning a %YAML directive", start_mark,
 			"did not find expected version number", parser.mark)
 	}
 	*number = value
@@ -3084,7 +3377,7 @@ func (parser *Parser) scanVersionDirectiveValue(start_mark Mark, major, minor *i
 
 	// Eat '.'.
 	if parser.buffer[parser.buffer_pos] != '.' {
-		return formatScannerErrorContext("while scanning a %YAML directive", start_mark,
+		return parser.formatScannerErrorContext("while scanning a %YAML directive", start_mark,
 			"did not find expected digit or '.' character", parser.mark)
 	}
 
@@ -3129,7 +3422,7 @@ func (parser *Parser) saveSimpleKey() error {
 func (parser *Parser) removeSimpleKey() error {
 	// If the key is required, it is an error.
 	if parser.simple_key.required {
-		return formatScannerErrorContext(
+		return parser.formatScannerErrorContext(
 			"while scanning a simple key", parser.simple_key.mark,
 			"could not find expected ':'", parser.mark)
 	}
@@ -3152,7 +3445,7 @@ func (parser *Parser) increaseFlowLevel() error {
 	// Increase the flow level.
 	parser.flow_level++
 	if err := parser.depthCheck(parser.flow_level, &DepthContext{Kind: DepthKindFlow}); err != nil {
-		return formatScannerErrorContext(
+		return parser.formatScannerErrorContext(
 			"while increasing flow level", parser.simple_key.mark,
 			err.Error(), parser.mark)
 	}
@@ -3194,12 +3487,23 @@ func (parser *Parser) rollIndent(column, number int, typ TokenType, mark Mark) e
 	}
 
 	if parser.indent < column {
+		if parser.block_indent_tab.Line != 0 &&
+			parser.block_indent_tab.Line == mark.Line {
+			if parser.indentConfig == nil {
+				return parser.formatScannerError(
+					"found a tab character where an indentation space is expected",
+					parser.block_indent_tab)
+			}
+			if err := parser.validateIndentStyle('\t', parser.block_indent_tab); err != nil {
+				return err
+			}
+		}
 		// Push the current indentation level to the stack and set the new
 		// indentation level.
 		parser.indents = append(parser.indents, parser.indent)
 		parser.indent = column
 		if err := parser.depthCheck(len(parser.indents), &DepthContext{Kind: DepthKindBlock}); err != nil {
-			return formatScannerErrorContext(
+			return parser.formatScannerErrorContext(
 				"while increasing indent level", parser.simple_key.mark,
 				err.Error(), parser.mark)
 		}
@@ -3388,23 +3692,25 @@ func (parser *Parser) readLine(s []byte) []byte {
 }
 
 // formatScannerError creates a LoadError for scanner-stage errors.
-func formatScannerError(problem string, problemMark Mark) *LoadError {
+func (parser *Parser) formatScannerError(problem string, problemMark Mark) *LoadError {
 	return &LoadError{
-		Stage:   ScannerStage,
-		Mark:    problemMark,
-		Message: problem,
+		Stage:     ScannerStage,
+		Mark:      problemMark,
+		Message:   problem,
+		formatter: parser.formatError,
 	}
 }
 
 // formatScannerErrorContext creates a LoadError with both context and
 // problem information, each with their own mark positions.
-func formatScannerErrorContext(context string, contextMark Mark, problem string, problemMark Mark) *LoadError {
+func (parser *Parser) formatScannerErrorContext(context string, contextMark Mark, problem string, problemMark Mark) *LoadError {
 	return &LoadError{
 		Stage:       ScannerStage,
 		ContextMark: contextMark,
 		ContextMsg:  context,
 		Mark:        problemMark,
 		Message:     problem,
+		formatter:   parser.formatError,
 	}
 }
 
@@ -3415,7 +3721,7 @@ func (parser *Parser) setScannerTagError(directive bool, contextMark Mark, probl
 	if directive {
 		context = "while parsing a %TAG directive"
 	}
-	return formatScannerErrorContext(context, contextMark, problem, parser.mark)
+	return parser.formatScannerErrorContext(context, contextMark, problem, parser.mark)
 }
 
 // trace is a debug utility that prints entry/exit messages for function calls.
