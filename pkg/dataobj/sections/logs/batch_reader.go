@@ -46,13 +46,32 @@ type MetadataColumn struct {
 
 // MetadataLabels returns the metadata of record i as labels. A null element
 // is left out and an empty element is kept, as [DecodeRow] does.
+//
+// The returned labels own their memory. They stay valid after the batch
+// memory is reclaimed.
 func (b *Batch) MetadataLabels(i int) labels.Labels {
 	if len(b.Metadata) == 0 {
 		return labels.EmptyLabels()
 	}
 
-	labelBuilder := labelpool.Get()
-	defer labelpool.Put(labelBuilder)
+	builder := labelpool.Get()
+	defer labelpool.Put(builder)
+	return b.MetadataLabelsWith(builder, i)
+}
+
+// MetadataLabelsWith is [Batch.MetadataLabels] with a builder that the caller
+// owns. It saves a pool round trip for each record.
+//
+// It resets builder first, so labels the caller added earlier are lost.
+//
+// The returned labels own their memory, so the caller can reuse the builder
+// for the next record.
+func (b *Batch) MetadataLabelsWith(builder *labels.ScratchBuilder, i int) labels.Labels {
+	if len(b.Metadata) == 0 {
+		return labels.EmptyLabels()
+	}
+
+	builder.Reset()
 
 	// Sections store metadata columns sorted by name, so labels usually
 	// arrive sorted. Track the order to skip the sort in that case.
@@ -69,13 +88,13 @@ func (b *Batch) MetadataLabels(i int) labels.Labels {
 			labelsSorted = false
 		}
 		lastLabel = column.Name
-		labelBuilder.Add(column.Name, metadataValue(column.Values.Get(i)))
+		builder.Add(column.Name, metadataValue(column.Values.Get(i)))
 	}
 
 	if !labelsSorted {
-		labelBuilder.Sort()
+		builder.Sort()
 	}
-	return labelBuilder.Labels()
+	return builder.Labels()
 }
 
 // Record decodes record i into record, reusing its buffers. It resets record

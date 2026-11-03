@@ -188,63 +188,68 @@ func (t ReadTask) openScan(ctx context.Context, scan sectionScan) error {
 	return scan.Open(ctx)
 }
 
-// recordsFromBatch is [ReadTask.records] for a batch of the columnar reader. It builds each
-// record from the arrays of the batch, without a row in between.
-func (t ReadTask) recordsFromBatch(batch *logs.Batch) ([]LogRecord, error) {
+// resolveRuns appends the streams of the rows of batch to runs, one [streamRun] for each run of
+// consecutive rows that share a stream ID, and returns the result.
+//
+// It fails when a stream ID is not an admitted stream of the object. The read matches only the
+// task's streams, so such a row means the read broke. Dropping it would under-count the query
+// without a signal.
+//
+// It also fails when the batch has no stream ID or timestamp column, when a column does not have
+// one element for each row, or when the stream ID or timestamp column holds a null.
+func (t ReadTask) resolveRuns(batch *logs.Batch, runs []streamRun) ([]streamRun, error) {
 	if batch.StreamID == nil || batch.Timestamp == nil {
 		return nil, fmt.Errorf("data object %q logs section %d returned a batch without the stream ID or timestamp column", t.objectPath, t.sectionIdx)
 	}
-	// The lines of a batch share one buffer, because the batch memory is reused for the next
-	// read and the records must not alias it. One allocation per batch replaces one per line.
-	// A record that outlives its batch keeps the whole buffer alive. A section with no message
-	// column has no Message array, and its lines read as empty.
-	var lines []byte
-	if t.needReturningLine && batch.Message != nil {
-		lines = make([]byte, 0, batch.Message.DataLen())
-	}
 
-	var (
-		out = make([]LogRecord, 0, batch.Rows)
-
-		// Rows of one stream are usually next to each other, so the last lookup is likely to
-		// serve the next row.
-		lastStreamID int64
-		lastStream   objectStream
-		haveLast     bool
-	)
-	for i := range batch.Rows {
-		if batch.StreamID.IsNull(i) || batch.Timestamp.IsNull(i) {
-			return nil, fmt.Errorf("data object %q logs section %d returned row %d without a stream ID or a timestamp", t.objectPath, t.sectionIdx, i)
-		}
-
-		streamID := batch.StreamID.Get(i)
-		if !haveLast || streamID != lastStreamID {
-			stream, ok := t.streams.admittedByID[streamID]
-			if !ok {
-				return nil, fmt.Errorf("data object %q logs section %d returned unexpected stream ID %d", t.objectPath, t.sectionIdx, streamID)
-			}
-			lastStreamID, lastStream, haveLast = streamID, stream, true
-		}
-		stream := lastStream
-
-		var line []byte
-		if lines != nil {
-			if value := batch.Message.Get(i); len(value) > 0 {
-				start := len(lines)
-				lines = append(lines, value...)
-				line = lines[start:len(lines):len(lines)]
+	// The consumer reads each column by row index. A column of another length would panic there,
+	// away from the scan that can report it as a query error.
+	var mismatched string
+	switch {
+	case batch.StreamID.Len() != batch.Rows:
+		mismatched = "stream ID"
+	case batch.Timestamp.Len() != batch.Rows:
+		mismatched = "timestamp"
+	case batch.Message != nil && batch.Message.Len() != batch.Rows:
+		mismatched = "message"
+	default:
+		for _, column := range batch.Metadata {
+			if column.Values.Len() != batch.Rows {
+				mismatched = "metadata " + column.Name
+				break
 			}
 		}
-
-		out = append(out, LogRecord{
-			streamHash:   stream.streamHash,
-			streamLabels: stream.streamLabels,
-			timestamp:    batch.Timestamp.Get(i),
-			line:         line,
-			metadata:     batch.MetadataLabels(i),
-		})
 	}
-	return out, nil
+	if mismatched != "" {
+		return nil, fmt.Errorf("data object %q logs section %d returned a batch of %d rows with a %s column of another length", t.objectPath, t.sectionIdx, batch.Rows, mismatched)
+	}
+
+	// A null count is a constant-time read, so the common batch costs no scan. Only a broken
+	// section pays for the search that names the row.
+	if batch.StreamID.Nulls() > 0 || batch.Timestamp.Nulls() > 0 {
+		for i := range batch.Rows {
+			if batch.StreamID.IsNull(i) || batch.Timestamp.IsNull(i) {
+				return nil, fmt.Errorf("data object %q logs section %d returned row %d without a stream ID or a timestamp", t.objectPath, t.sectionIdx, i)
+			}
+		}
+	}
+
+	// Rows of one stream are usually next to each other, so one lookup serves a whole run.
+	for start := 0; start < batch.Rows; {
+		streamID := batch.StreamID.Get(start)
+		stream, ok := t.streams.admittedByID[streamID]
+		if !ok {
+			return nil, fmt.Errorf("data object %q logs section %d returned unexpected stream ID %d", t.objectPath, t.sectionIdx, streamID)
+		}
+
+		end := start + 1
+		for end < batch.Rows && batch.StreamID.Get(end) == streamID {
+			end++
+		}
+		runs = append(runs, streamRun{end: end, stream: stream})
+		start = end
+	}
+	return runs, nil
 }
 
 // TaskIterator streams read tasks from the planner to the reader. The planner fills it from a

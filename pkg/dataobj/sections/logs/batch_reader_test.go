@@ -165,6 +165,51 @@ func TestBatchReader(t *testing.T) {
 		require.NotEmpty(t, first)
 	})
 
+	t.Run("keeps every batch intact while later reads run on the same reader", func(t *testing.T) {
+		for name, predicates := range map[string][]RowPredicate{
+			"a predicate that keeps some of the rows":      {contains("error")},
+			"a predicate that every row passes":            {contains("level=")},
+			"no predicate, so every row passes":            nil,
+			"a predicate on the time that every row meets": {timeRange(0, 100_000, true, false)},
+		} {
+			render := func(batch *Batch) []string {
+				var (
+					record Record
+					out    = make([]string, 0, batch.Rows)
+				)
+				for i := range batch.Rows {
+					batch.Record(i, &record)
+					out = append(out, recordText(&record))
+				}
+				return out
+			}
+
+			reader := NewBatchReader(section)
+			require.NoError(t, reader.SetPredicates(predicates))
+			require.NoError(t, reader.Open(t.Context()))
+
+			var (
+				batches  []*Batch
+				rendered [][]string
+			)
+			for {
+				batch, err := reader.Read(t.Context(), new(memory.Allocator), 300)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(t, err)
+				batches = append(batches, batch)
+				rendered = append(rendered, render(batch))
+			}
+			require.NoError(t, reader.Close())
+			require.Greater(t, len(batches), 3, name)
+
+			for i, batch := range batches {
+				require.Equal(t, rendered[i], render(batch), "%s: batch %d", name, i)
+			}
+		}
+	})
+
 	t.Run("reads a section sorted by timestamp", func(t *testing.T) {
 		byTimestamp := buildBatchTestSection(t, SortTimestampDESC)
 		streams := []int64{3, 4}

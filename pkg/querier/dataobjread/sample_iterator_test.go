@@ -20,6 +20,32 @@ func TestSampleIterator(t *testing.T) {
 		return NewSampleIterator(reader, extractor)
 	}
 
+	// Parsed label values come from the line. The "parsed labels from the line" query has no outer
+	// aggregation, so it keeps every parsed label. A value kept past the next call to Next shows
+	// up as 0xFF bytes.
+	readerQueries := map[string]string{
+		"parsed labels from the line":     `count_over_time({app=~".+"} | logfmt | level="error" [1m])`,
+		"a grouping by a parsed label":    `sum by (level) (count_over_time({app=~".+"} | logfmt [1m]))`,
+		"a grouping by a metadata key":    `sum by (trace_id) (count_over_time({app=~".+"}[1m]))`,
+		"the length of the line":          `sum(bytes_over_time({app=~".+"}[1m]))`,
+		"a line filter the read pushes":   `sum(count_over_time({app=~".+"} |= "level=warn" [1m]))`,
+		"a line filter the read keeps":    `sum(count_over_time({app=~".+"} |~ "line=[1-3]+ " [1m]))`,
+		"a label filter on a parsed line": `sum by (stream) (count_over_time({app=~".+"} | logfmt | line > 30 [1m]))`,
+	}
+	for name, query := range readerQueries {
+		t.Run("emits the samples of the row reader for "+name+" while freed buffers are overwritten", func(t *testing.T) {
+			metrics := NewMetrics(nil)
+			fixture := newBufferTestFixture(t, query, newBufferTestStreams(t))
+
+			defer poisonOnPut.Store(poisonOnPut.Swap(true))
+			want := readAllSamples(t, fixture, metrics, query, false)
+			got := readAllSamples(t, fixture, metrics, query, true)
+
+			require.NotEmpty(t, want)
+			require.Equal(t, want, got)
+		})
+	}
+
 	t.Run("it emits one sample per line with the stream's streamHash", func(t *testing.T) {
 		reader := &fakeRecordReader{records: []LogRecord{
 			record(t, `{app="a"}`, 1, "one"),

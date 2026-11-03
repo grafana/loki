@@ -39,10 +39,18 @@ type objectsFixture struct {
 //
 // It builds a real index, so the descriptors carry the section indexes and stream IDs a query
 // would resolve. Use [createTestStoredObject] for a test that only needs an object in a bucket.
-func newObjectsFixture(t *testing.T, tenantStreams ...logproto.Stream) objectsFixture {
+func newObjectsFixture(t testing.TB, tenantStreams ...logproto.Stream) objectsFixture {
 	t.Helper()
 
-	builder := objtest.NewBuilder(t)
+	return newObjectsFixtureWithOptions(t, nil, tenantStreams...)
+}
+
+// newObjectsFixtureWithOptions is [newObjectsFixture] with options for the object builder, for
+// instance a small section size that splits the streams over several sections.
+func newObjectsFixtureWithOptions(t testing.TB, options []objtest.Option, tenantStreams ...logproto.Stream) objectsFixture {
+	t.Helper()
+
+	builder := objtest.NewBuilder(t, options...)
 	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
 
 	builder.Append(ctx, tenantStreams...)
@@ -78,7 +86,7 @@ func at(second int) time.Time { return epoch.Add(time.Duration(second) * time.Se
 
 // entry returns one log line at [at](second), with the given structured metadata as alternating
 // name and value arguments.
-func entry(t *testing.T, second int, line string, metadata ...string) push.Entry {
+func entry(t testing.TB, second int, line string, metadata ...string) push.Entry {
 	t.Helper()
 	require.Zero(t, len(metadata)%2, "metadata must be name and value pairs")
 

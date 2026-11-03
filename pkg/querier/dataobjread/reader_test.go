@@ -23,8 +23,7 @@ import (
 func TestLogReader(t *testing.T) {
 	metrics := NewMetrics(nil)
 
-	// bytes_over_time projects the message column, which these tests need: the line is the one
-	// field the row reader hands back out of a reused buffer.
+	// bytes_over_time projects the message column, which these tests need to read the lines.
 	const queryReturningLine = `bytes_over_time({app=~".+"}[1m])`
 
 	t.Run("it yields every record of every planned section", func(t *testing.T) {
@@ -40,10 +39,7 @@ func TestLogReader(t *testing.T) {
 		require.ElementsMatch(t, []string{"one", "two", "three"}, lines)
 	})
 
-	t.Run("a batch size below the row count still yields every distinct line", func(t *testing.T) {
-		// Each record's line comes out of a buffer the row reader reuses between reads, so a
-		// section read in several batches is what proves the reader copies it. With the copy
-		// removed, the earlier lines of a batch come back as the last line read.
+	t.Run("yields every distinct line when a batch size of one makes the section take ten reads", func(t *testing.T) {
 		var entries []push.Entry
 		want := make([]string, 0, 10)
 		for i := range 10 {
@@ -374,10 +370,17 @@ type readerFixture struct {
 }
 
 // newReaderFixture plans the read of query over streams.
-func newReaderFixture(t *testing.T, query string, streams ...logproto.Stream) readerFixture {
+func newReaderFixture(t testing.TB, query string, streams ...logproto.Stream) readerFixture {
 	t.Helper()
 
-	fixture := newObjectsFixture(t, streams...)
+	return newReaderFixtureWithOptions(t, nil, query, streams...)
+}
+
+// newReaderFixtureWithOptions is [newReaderFixture] with options for the object builder.
+func newReaderFixtureWithOptions(t testing.TB, options []objtest.Option, query string, streams ...logproto.Stream) readerFixture {
+	t.Helper()
+
+	fixture := newObjectsFixtureWithOptions(t, options, streams...)
 	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 	t.Cleanup(objects.release)
 
