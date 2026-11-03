@@ -4,6 +4,8 @@ package signin
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/signin/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
 )
@@ -47,6 +49,20 @@ type IntrospectOAuth2TokenWithIAMInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *IntrospectOAuth2TokenWithIAMInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.IntrospectOAuth2TokenWithIAMRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *IntrospectOAuth2TokenWithIAMInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Token != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMRequest_token, *v.Token)
+	}
+	if v.TokenTypeHint != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMRequest_tokenTypeHint, *v.TokenTypeHint)
+	}
+}
 func (in *IntrospectOAuth2TokenWithIAMInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.IsOAuthEndpoint = ptr.Bool(true)
@@ -116,13 +132,110 @@ type IntrospectOAuth2TokenWithIAMOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *IntrospectOAuth2TokenWithIAMOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.IntrospectOAuth2TokenWithIAMResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *IntrospectOAuth2TokenWithIAMOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AccountId != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_accountId, *v.AccountId)
+	}
+	if v.Active != nil {
+		s.WriteBool(schemas.IntrospectOAuth2TokenWithIAMResponse_active, *v.Active)
+	}
+	if v.Aud != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_aud, *v.Aud)
+	}
+	if v.ClientId != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_clientId, *v.ClientId)
+	}
+	if v.Exp != nil {
+		s.WriteInt64(schemas.IntrospectOAuth2TokenWithIAMResponse_exp, *v.Exp)
+	}
+	if v.Iat != nil {
+		s.WriteInt64(schemas.IntrospectOAuth2TokenWithIAMResponse_iat, *v.Iat)
+	}
+	if v.Iss != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_iss, *v.Iss)
+	}
+	if v.Jti != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_jti, *v.Jti)
+	}
+	if v.Nbf != nil {
+		s.WriteInt64(schemas.IntrospectOAuth2TokenWithIAMResponse_nbf, *v.Nbf)
+	}
+	if v.Resource != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_resource, *v.Resource)
+	}
+	if v.SigninSession != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_signinSession, *v.SigninSession)
+	}
+	if v.Sub != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_sub, *v.Sub)
+	}
+	if v.TokenType != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_tokenType, *v.TokenType)
+	}
+	if v.UserId != nil {
+		s.WriteString(schemas.IntrospectOAuth2TokenWithIAMResponse_userId, *v.UserId)
+	}
+}
+func (v *IntrospectOAuth2TokenWithIAMOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.IntrospectOAuth2TokenWithIAMResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_accountId:
+			v.AccountId = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_accountId, v.AccountId)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_active:
+			v.Active = new(bool)
+			return d.ReadBool(schemas.IntrospectOAuth2TokenWithIAMResponse_active, v.Active)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_aud:
+			v.Aud = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_aud, v.Aud)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_clientId:
+			v.ClientId = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_clientId, v.ClientId)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_exp:
+			v.Exp = new(int64)
+			return d.ReadInt64(schemas.IntrospectOAuth2TokenWithIAMResponse_exp, v.Exp)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_iat:
+			v.Iat = new(int64)
+			return d.ReadInt64(schemas.IntrospectOAuth2TokenWithIAMResponse_iat, v.Iat)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_iss:
+			v.Iss = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_iss, v.Iss)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_jti:
+			v.Jti = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_jti, v.Jti)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_nbf:
+			v.Nbf = new(int64)
+			return d.ReadInt64(schemas.IntrospectOAuth2TokenWithIAMResponse_nbf, v.Nbf)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_resource:
+			v.Resource = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_resource, v.Resource)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_signinSession:
+			v.SigninSession = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_signinSession, v.SigninSession)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_sub:
+			v.Sub = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_sub, v.Sub)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_tokenType:
+			v.TokenType = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_tokenType, v.TokenType)
+		case schemas.IntrospectOAuth2TokenWithIAMResponse_userId:
+			v.UserId = new(string)
+			return d.ReadString(schemas.IntrospectOAuth2TokenWithIAMResponse_userId, v.UserId)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationIntrospectOAuth2TokenWithIAMMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestjson1_serializeOpIntrospectOAuth2TokenWithIAM{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.IntrospectOAuth2TokenWithIAM, schemas.IntrospectOAuth2TokenWithIAMRequest, schemas.IntrospectOAuth2TokenWithIAMResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestjson1_deserializeOpIntrospectOAuth2TokenWithIAM{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.IntrospectOAuth2TokenWithIAM, schemas.IntrospectOAuth2TokenWithIAMRequest, schemas.IntrospectOAuth2TokenWithIAMResponse), output: &IntrospectOAuth2TokenWithIAMOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
