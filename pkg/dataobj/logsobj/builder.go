@@ -169,6 +169,11 @@ type Builder struct {
 	// clears it, so a limits change applies from the next object.
 	layouts map[string]streams.Layout
 
+	// lastStream holds the keys of the last appended stream. Callers append
+	// many records of one stream in a row, so it skips most key computations.
+	// Reset clears it, because the layouts it depends on change.
+	lastStream streamKeyMemo
+
 	// sortLogsMetrics and sortStreamsMetrics are never registered. They absorb
 	// the section metrics of the sort in FlushAndSort, which would otherwise
 	// count data that metrics already observed during the build.
@@ -328,51 +333,103 @@ func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Reco
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	sz := record.UncompressedSize()
-
-	singleRecordIter := func(yield func(entry logs.Record, size int64) bool) {
-		_ = yield(record, sz)
+	// AppendRecord skips appendAll, because an iterator over one record moves
+	// the record to the heap on every call.
+	layout := b.layoutFor(tenant)
+	keys, err := b.lastStream.keysFor(tenant, ls, layout)
+	if err != nil {
+		return err
 	}
-
-	return b.appendAll(tenant, ls, ingestionTime, singleRecordIter)
+	sb, lb := b.buildersFor(tenant, layout)
+	if err := b.appendEntry(tenant, ls, keys, sb, lb, record, record.UncompressedSize()); err != nil {
+		return err
+	}
+	b.markAppended(ingestionTime)
+	return nil
 }
 
 func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Time, entriesIter iter.Seq2[logs.Record, int64]) error {
 	layout := b.layoutFor(tenant)
-	streamSortKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
+	keys, err := b.lastStream.keysFor(tenant, ls, layout)
 	if err != nil {
-		return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
+		return err
 	}
-	streamHash := labels.StableHash(ls)
-	streamShard := layout.ShardLayout().BucketFromHash(streamHash)
 
 	sb, lb := b.buildersFor(tenant, layout)
 
 	for entry, size := range entriesIter {
-		entry.SchemaKey = streamSortKey
-		entry.ShardBucket = streamShard
-		entry.StreamHash = streamHash
-		entry.StreamID = sb.Record(ls, entry.Timestamp, size)
-
-		lb.Append(entry)
-
-		// If our logs section has gotten big enough, we want to flush it to the
-		// encoder and start a new section.
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := b.builder.Append(lb); err != nil {
-				return err
-			}
-			// We need to set the tenant again after flushing because the builder is reset.
-			lb.SetTenant(tenant)
+		if err := b.appendEntry(tenant, ls, keys, sb, lb, entry, size); err != nil {
+			return err
 		}
 	}
+	b.markAppended(recordTime)
+	return nil
+}
 
+// appendEntry appends one record of the stream with labels ls to sb and lb.
+func (b *Builder) appendEntry(tenant string, ls labels.Labels, keys streamKeys, sb *streams.Builder, lb *logs.Builder, entry logs.Record, size int64) error {
+	entry.SchemaKey = keys.schemaKey
+	entry.ShardBucket = keys.shard
+	entry.StreamHash = keys.hash
+	entry.StreamID = sb.Record(ls, entry.Timestamp, size)
+
+	lb.Append(entry)
+
+	// If our logs section has gotten big enough, we want to flush it to the
+	// encoder and start a new section.
+	if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(lb); err != nil {
+			return err
+		}
+		// We need to set the tenant again after flushing because the builder is reset.
+		lb.SetTenant(tenant)
+	}
+	return nil
+}
+
+// markAppended records an append of records received at recordTime.
+func (b *Builder) markAppended(recordTime time.Time) {
 	if b.earliestRecordTime.IsZero() || recordTime.Before(b.earliestRecordTime) {
 		b.earliestRecordTime = recordTime
 	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
-	return nil
+}
+
+// streamKeys are the per-stream values that every record of the stream carries.
+type streamKeys struct {
+	schemaKey string
+	hash      uint64
+	shard     uint32
+}
+
+// streamKeyMemo caches the [streamKeys] of one stream of one tenant.
+type streamKeyMemo struct {
+	valid  bool
+	tenant string
+	labels labels.Labels
+	keys   streamKeys
+}
+
+// keysFor returns the keys of the stream with labels ls in layout. layout
+// must be the layout of tenant in the current object.
+func (m *streamKeyMemo) keysFor(tenant string, ls labels.Labels, layout streams.Layout) (streamKeys, error) {
+	if m.valid && m.tenant == tenant && labels.Equal(m.labels, ls) {
+		return m.keys, nil
+	}
+	schemaKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
+	if err != nil {
+		*m = streamKeyMemo{}
+		return streamKeys{}, fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
+	}
+	hash := labels.StableHash(ls)
+	*m = streamKeyMemo{
+		valid:  true,
+		tenant: tenant,
+		labels: ls,
+		keys:   streamKeys{schemaKey: schemaKey, hash: hash, shard: layout.ShardLayout().BucketFromHash(hash)},
+	}
+	return m.keys, nil
 }
 
 func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
@@ -679,6 +736,7 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 	clear(b.layouts)
+	b.lastStream = streamKeyMemo{}
 
 	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0
