@@ -131,6 +131,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 			"-querier.dataobj-query-start-time="+dataObjQueryStart,
 			"-dataobj.enabled=true",
 			"-dataobj.storage-lag=0s",
+			"-dataobj-metastore.toc-resolver.enabled=false",
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
@@ -285,6 +286,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		"-dataobj.enabled=true",
 		"-querier.dataobj-query-start-time="+dataObjQueryStart,
 		"-dataobj.storage-lag=0s",
+		"-dataobj-metastore.toc-resolver.enabled=false",
 		"-dataobj.metadata-cache.embedded-cache.enabled=true",
 	)
 	require.NoError(t, tQuerier.Restart())

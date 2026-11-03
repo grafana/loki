@@ -11,11 +11,11 @@ import (
 func TestConfig_Validate(t *testing.T) {
 	const storageLag = 3 * time.Hour
 
-	t.Run("accepts the defaults of the flags", func(t *testing.T) {
+	t.Run("accepts the defaults of the flags, which enable the resolver", func(t *testing.T) {
 		var cfg Config
 		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-		cfg.TOCResolver.Enabled = true
 
+		require.True(t, cfg.TOCResolver.Enabled)
 		require.NoError(t, cfg.Validate(storageLag))
 	})
 
@@ -40,8 +40,8 @@ func TestTOCResolverConfig_Validate(t *testing.T) {
 	t.Run("accepts the defaults of the flags with the default storage lag", func(t *testing.T) {
 		var cfg Config
 		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-		cfg.TOCResolver.Enabled = true
 
+		require.True(t, cfg.TOCResolver.Enabled)
 		require.NoError(t, cfg.TOCResolver.Validate(storageLag))
 	})
 

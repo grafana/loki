@@ -62,7 +62,7 @@ type TOCResolverConfig struct {
 
 // RegisterFlagsWithPrefix registers the flags of the resolver with the given prefix.
 func (c *TOCResolverConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&c.Enabled, prefix+"enabled", false, "Experimental: Keep the table of contents (ToC) that queries requested recently in memory. Refresh them in the background, so a query rarely reads them from object storage. It has no effect unless -dataobj.enabled is set. Only the querier module uses it.")
+	f.BoolVar(&c.Enabled, prefix+"enabled", true, "Experimental: Keep the table of contents (ToC) that queries requested recently in memory. Refresh them in the background, so a query rarely reads them from object storage. It has no effect unless -dataobj.enabled is set. Only the querier module uses it.")
 	f.DurationVar(&c.RefreshInterval, prefix+"refresh-interval", time.Minute, "How often the resolver refreshes the ToCs in memory. A query reads a ToC that is older than twice this interval from object storage. A refresh reads through the data object metadata cache when one is configured (-dataobj.metadata-cache.*). The refresh accepts a cached ToC that is at most half this interval old. The interval must be at least one second, and twice the interval must not exceed a tenth of -dataobj.storage-lag.")
 	f.DurationVar(&c.ActiveWindow, prefix+"active-window", 5*time.Minute, "A ToC is refreshed while a query requested it within this time. The resolver drops a ToC that no query requested for longer. It must not be shorter than the refresh interval.")
 	_ = c.MaxMemoryCacheBytes.Set("64MB")

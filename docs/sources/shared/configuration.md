@@ -1098,7 +1098,7 @@ dataobj:
       # reads them from object storage. It has no effect unless -dataobj.enabled
       # is set. Only the querier module uses it.
       # CLI flag: -dataobj-metastore.toc-resolver.enabled
-      [enabled: <boolean> | default = false]
+      [enabled: <boolean> | default = true]
 
       # How often the resolver refreshes the ToCs in memory. A query reads a ToC
       # that is older than twice this interval from object storage. A refresh
@@ -1124,12 +1124,12 @@ dataobj:
       [max_memory_cache_bytes: <int> | default = 64MB]
 
   # Caches the metadata region of the log objects and index objects the querier
-  # reads, or the entire object if it is tiny. When
-  # -dataobj-metastore.toc-resolver.enabled is set, the cache also holds the
-  # tables of contents (ToCs) that the resolver refreshes. The cache is enabled
-  # when a backend is configured. Entries are keyed by object path, so the cache
-  # cannot differentiate entries between different buckets and clusters.
-  # Multiple installations must not share the same cache backend.
+  # reads, or the entire object if it is tiny. When the ToC resolver is enabled
+  # (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables
+  # of contents (ToCs) that the resolver refreshes. The cache is enabled when a
+  # backend is configured. Entries are keyed by object path, so the cache cannot
+  # differentiate entries between different buckets and clusters. Multiple
+  # installations must not share the same cache backend.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
