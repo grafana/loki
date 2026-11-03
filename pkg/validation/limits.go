@@ -125,6 +125,9 @@ type Limits struct {
 	LogLevelFields           []string            `yaml:"log_level_fields" json:"log_level_fields"`
 	LogLevelFromJSONMaxDepth int                 `yaml:"log_level_from_json_max_depth" json:"log_level_from_json_max_depth"`
 
+	// Trusted labels forced onto every stream from the X-Loki-Labels push header.
+	TrustedLabelsHeaderEnabled bool `yaml:"trusted_labels_header_enabled" json:"trusted_labels_header_enabled" category:"experimental"`
+
 	// Ingester enforced limits.
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
 	DelegateStreamLimits    bool             `yaml:"delegate_stream_limits_enabled" json:"delegate_stream_limits_enabled"`
@@ -442,6 +445,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"k8s_job_name",
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
+	f.BoolVar(&l.TrustedLabelsHeaderEnabled, "validation.trusted-labels-header-enabled", false, "Experimental: When enabled, Loki forces the labels sent in the X-Loki-Labels HTTP header (e.g. '{username=\"userA\"}') onto every stream of a push request, overriding body labels of the same name. This lets a trusted reverse proxy or gateway attach an authenticated identity to logs without rewriting the request body. The gateway must overwrite any client-supplied X-Loki-Labels header. Disabled by default; when disabled the header is ignored. Applies to the HTTP push (JSON and protobuf) and OTLP endpoints only.")
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, fmt.Sprintf("Discover the log level of each entry during ingestion and add it to Structured Metadata as %s, unless it is already present. The level is read from the first stream label or Structured Metadata field whose name is in log_level_fields (default: %s). Otherwise it is derived from the OTLP severity number, or from the log line: a JSON or logfmt field named in log_level_fields, then keywords. Recognized values (case insensitive) are normalized to 'trace', 'debug', 'info', 'warn', 'error', 'critical' or 'fatal'.", constants.LevelLabel, strings.Join(DefaultAllowedLevelFields, ", ")))
 	l.LogLevelFields = make([]string, len(DefaultAllowedLevelFields))
 	copy(l.LogLevelFields, DefaultAllowedLevelFields)
@@ -1175,6 +1179,12 @@ func (o *Overrides) DiscoverGenericFields(userID string) map[string][]string {
 
 func (o *Overrides) DiscoverServiceName(userID string) []string {
 	return o.getOverridesForUser(userID).DiscoverServiceName
+}
+
+// TrustedLabelsHeaderEnabled reports whether the X-Loki-Labels push header is honored for the
+// tenant. See the validation.trusted-labels-header-enabled flag.
+func (o *Overrides) TrustedLabelsHeaderEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).TrustedLabelsHeaderEnabled
 }
 
 func (o *Overrides) DiscoverLogLevels(userID string) bool {

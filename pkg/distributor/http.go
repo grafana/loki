@@ -122,6 +122,21 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		r = r.Clone(loghttppush.InjectBackfillShardContext(r.Context(), shard))
 	}
 
+	// If the tenant has the feature enabled and the X-Loki-Labels header is set, validate it and
+	// stash the labels in the request context so the format parsers (Loki and OTLP) force them onto
+	// every stream. When the feature is disabled the header is ignored entirely.
+	if d.validator.TrustedLabelsHeaderEnabled(tenantID) {
+		trustedLabels, ok, labelsErr := loghttppush.ExtractAndValidateTrustedLabels(r)
+		if labelsErr != nil {
+			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", labelsErr))
+			recordFail(http.StatusBadRequest, labelsErr.Error())
+			return
+		}
+		if ok {
+			r = r.Clone(loghttppush.InjectTrustedLabelsContext(r.Context(), trustedLabels))
+		}
+	}
+
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
 	// across all parsers for this HTTP request.
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
