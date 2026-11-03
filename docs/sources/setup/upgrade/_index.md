@@ -46,6 +46,10 @@ responses now include a top-level `stats` object containing the underlying log q
 statistics. Existing `fields`, `values`, and `limit` fields retain their format.
 Clients that validate response fields strictly must allow the new `stats` field.
 
+#### `ip()` label filters no longer keep lines with an `__error__` label
+
+An `ip()` label filter used to keep every log line that already carried an `__error__` label, without checking the address. It now compares the line like a numeric, duration, or bytes filter does. A line that failed in an earlier stage, such as `json`, usually has no value for the label, so the filter drops it. For example, `| json | addr = ip("10.0.0.0/8")` no longer returns the lines that failed to parse, and a metric query with this filter no longer fails on them. To keep those lines, combine the filter with an `__error__` filter, for example `| addr = ip("10.0.0.0/8") or __error__ != ""`.
+
 ## Further reading
 
 To upgrade to one of the versions of **Loki 4.x**, refer to [Upgrade Loki 4.x versions](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-4.x/).
