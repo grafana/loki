@@ -590,9 +590,13 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		if err != nil {
 			return err
 		}
-		defer checkpointCloser.Close()
-
+		// Close readers as soon as they are consumed; otherwise their file
+		// descriptors keep deleted segments alive until starting() returns,
+		// which can take long when the partition reader is catching up.
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
+		if err := checkpointCloser.Close(); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to close checkpoint reader", "err", err)
+		}
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
 			level.Error(i.logger).Log(
@@ -612,9 +616,10 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		if err != nil {
 			return err
 		}
-		defer segmentCloser.Close()
-
 		segmentRecoveryErr := RecoverWAL(ctx, segmentReader, recoverer)
+		if err := segmentCloser.Close(); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to close WAL segment reader", "err", err)
+		}
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(i.logger).Log(
