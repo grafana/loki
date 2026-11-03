@@ -47,11 +47,12 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 	b.Run(bm.name, func(b *testing.B) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
+		indexBucket := NewIndexBucket(bucket)
 
-		objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+		objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 		require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
-		metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+		metastoreTocWriter := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 
 		// Calculate how many streams per index file
 		streamsPerIndex := len(testStreams) / bm.indexFilesNum
@@ -196,14 +197,15 @@ func BenchmarkSections_PredicateMatchers(b *testing.B) {
 			b.Cleanup(func() { _ = closer.Close() })
 
 			bucket := objstore.NewInMemBucket()
+			indexBucket := NewIndexBucket(bucket)
 
-			objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+			objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 			require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
 			path, err := objUploader.Upload(context.Background(), obj)
 			require.NoError(b, err)
 
-			metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+			metastoreTocWriter := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 			err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 			require.NoError(b, err)
 

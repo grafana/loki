@@ -40,11 +40,6 @@ import (
 // because the index Calculator accepts only single-tenant objects.
 const Tenant = "objtest"
 
-// indexPrefix is where index objects and their table of contents live within the bucket.
-// metastore.Config's default IndexStoragePrefix matches it, so a metastore built over the
-// bucket finds them.
-const indexPrefix = "index/v0"
-
 // objectsPerIndex is the most logs objects that one index covers. [Builder.Close] starts a new
 // index when the current one reaches this count, or when the next object has another layout.
 const objectsPerIndex = 16
@@ -134,7 +129,7 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 	dir := t.TempDir()
 
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "tocs"), 0700), "could not create object toc directory")
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, indexPrefix, "tocs"), 0700), "could not create index toc directory")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, metastore.IndexStoragePrefix, "tocs"), 0700), "could not create index toc directory")
 
 	bucket, err := filesystem.NewBucket(dir)
 	require.NoError(t, err, "expected to be able to create bucket")
@@ -164,7 +159,7 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), options.overrides)
 	require.NoError(t, err, "expected to be able to create logs builder")
 
-	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexPrefix)
+	indexWriterBucket := metastore.NewIndexBucket(bucket)
 	logsMetastoreToc := newTableOfContentsWriter(bucket, logger)
 	indexMetastoreToc := newTableOfContentsWriter(indexWriterBucket, logger)
 
@@ -386,7 +381,7 @@ type Location struct {
 func (b *Builder) Location() Location {
 	return Location{
 		Bucket:      b.bucket,
-		IndexPrefix: indexPrefix,
+		IndexPrefix: metastore.IndexStoragePrefix,
 	}
 }
 
@@ -397,7 +392,6 @@ func (b *Builder) Metastore() *metastore.ObjectMetastore {
 
 	return metastore.NewObjectMetastore(
 		b.bucket,
-		metastore.Config{IndexStoragePrefix: indexPrefix},
 		b.logger,
 		metastore.NewObjectMetastoreMetrics(nil),
 	)

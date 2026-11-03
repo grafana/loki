@@ -596,7 +596,7 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 			metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(indexCache))
 		}
 
-		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics, metastoreOpts...)
+		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, logger, t.metastoreMetrics, metastoreOpts...)
 
 		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
@@ -2078,7 +2078,6 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Builder,
 		t.Cfg.DataObj.Uploader,
-		t.Cfg.DataObj.Metastore,
 		store,
 		t.scratchStore,
 		prometheus.DefaultRegisterer,
@@ -2109,13 +2108,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wrap with the same IndexStoragePrefix the dataobj-builder uses so
-	// compactor outputs and ToC reads land alongside the existing multi-tenant
-	// indexes namespace.
-	indexBucket := store
-	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
-		indexBucket = objstore.NewPrefixedBucket(store, prefix)
-	}
+	// The compactor outputs and the ToC reads use the same index prefix as the
+	// dataobj-builder.
+	indexBucket := metastore.NewIndexBucket(store)
 
 	reg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": componentName},
@@ -2181,14 +2176,10 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		return nil, err
 	}
 
-	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
-	// IndexMerge executor writes merged-index objects to the same namespace
-	// the ToC pointers (written by the planner via its prefixed indexBucket)
-	// resolve to.
-	indexBucket := store
-	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
-		indexBucket = objstore.NewPrefixedBucket(store, prefix)
-	}
+	// The IndexMerge executor writes merged-index objects under the index
+	// prefix. The ToC pointers that the planner writes resolve under the same
+	// prefix.
+	indexBucket := metastore.NewIndexBucket(store)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
 		Config: t.Cfg.DataObj.Compaction.Worker,
