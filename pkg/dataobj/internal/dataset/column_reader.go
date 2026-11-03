@@ -168,6 +168,17 @@ func (cr *columnReader) readPage(ctx context.Context, alloc *memory.Allocator, c
 	return arr, nil
 }
 
+// pageRanges returns the row range of each page of the column, in order.
+// The returned slice belongs to the reader and must not be modified.
+func (cr *columnReader) pageRanges(ctx context.Context) ([]rangeset.Range, error) {
+	if !cr.initialized {
+		if err := cr.init(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return cr.ranges, nil
+}
+
 // nextPage returns the page where cr.nextRow is contained. If cr.nextRow is
 // beyond the boundaries of the column, nextPage returns nil, -1, io.EOF.
 func (cr *columnReader) nextPage() (Page, int, error) {

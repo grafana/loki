@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"maps"
 	"slices"
 	"strconv"
 	"unsafe"
@@ -22,13 +21,7 @@ type RowReader struct {
 	sec   *Section
 	ready bool
 
-	matchIDs   map[int64]struct{}
-	predicates []RowPredicate
-
-	// Column projection. When projected is false, every recognized column is read.
-	projected    bool
-	projTypes    map[ColumnType]struct{}
-	projMetadata map[string]struct{}
+	readConfig
 
 	buf []dataset.Row
 
@@ -79,12 +72,7 @@ func (r *RowReader) MatchStreams(ids iter.Seq[int64]) error {
 		return fmt.Errorf("cannot change matched streams after reading has started")
 	}
 
-	if r.matchIDs == nil {
-		r.matchIDs = make(map[int64]struct{})
-	}
-	for id := range ids {
-		r.matchIDs[id] = struct{}{}
-	}
+	r.matchStreams(ids)
 	return nil
 }
 
@@ -125,20 +113,7 @@ func (r *RowReader) SetProjectedColumns(types []ColumnType, metadataNames []stri
 		return fmt.Errorf("cannot change projected columns after reading has started")
 	}
 
-	if len(types) == 0 && len(metadataNames) == 0 {
-		return fmt.Errorf("projection must select at least one column")
-	}
-
-	r.projTypes = make(map[ColumnType]struct{}, len(types))
-	for _, t := range types {
-		r.projTypes[t] = struct{}{}
-	}
-	r.projMetadata = make(map[string]struct{}, len(metadataNames))
-	for _, name := range metadataNames {
-		r.projMetadata[name] = struct{}{}
-	}
-	r.projected = true
-	return nil
+	return r.project(types, metadataNames)
 }
 
 // Read reads up to the next len(s) records from the reader and stores them
@@ -185,55 +160,9 @@ func unsafeString(data []byte) string {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dset, err := r.sec.makeDataset()
+	readerOpts, projectedSectionColumns, err := r.readerOptions(r.sec)
 	if err != nil {
-		return fmt.Errorf("creating section dataset: %w", err)
-	}
-
-	// datasetColumns and sectionColumns are parallel: datasetColumns[i] describes the same
-	// column as sectionColumns[i]. The projection below filters both together so they stay
-	// that way, because the reader addresses a row's values by position.
-	datasetColumns, sectionColumns := dset.Columns(), r.sec.Columns()
-
-	// The stream match and the predicates look their columns up among all the columns. So they
-	// work whether or not the projection lists those columns. Only the projected columns go
-	// into the records.
-	projectedDatasetColumns, projectedSectionColumns := datasetColumns, sectionColumns
-	if r.projected {
-		projectedDatasetColumns, projectedSectionColumns = projectColumns(datasetColumns, sectionColumns, r.projTypes, r.projMetadata)
-
-		// The section holds none of the projected columns, so every record would be empty. Report
-		// it here instead of reading rows that hold nothing.
-		if len(projectedDatasetColumns) == 0 {
-			return fmt.Errorf("none of the projected columns are present in the section")
-		}
-	}
-
-	// The matched stream IDs are not part of r.predicates, so build them as a separate
-	// predicate; RowReaderOptions.Predicates are ANDed together.
-	var predicates []dataset.Predicate
-	if p := streamIDPredicate(maps.Keys(r.matchIDs), datasetColumns, sectionColumns); p != nil {
-		predicates = append(predicates, p)
-	}
-
-	for _, predicate := range r.predicates {
-		p := translateLogsPredicate(predicate, datasetColumns, sectionColumns)
-
-		// A constant predicate that keeps every row constrains nothing, so drop it. One that
-		// drops every row stays: the dataset reader prunes it to an empty row range, so the
-		// read ends cleanly without touching object storage.
-		if keep, ok := dataset.IsConstPredicate(p); ok && keep {
-			continue
-		}
-
-		predicates = append(predicates, p)
-	}
-
-	readerOpts := dataset.RowReaderOptions{
-		Dataset:           dset,
-		ProjectedColumns:  projectedDatasetColumns,
-		Predicates:        predicates,
-		PrefetchAllOnOpen: true,
+		return err
 	}
 
 	if r.reader == nil {
@@ -283,12 +212,7 @@ func (r *RowReader) Reset(sec *Section) {
 	r.sec = sec
 	r.ready = false
 
-	clear(r.matchIDs)
-	r.predicates = nil
-
-	r.projected = false
-	clear(r.projTypes)
-	clear(r.projMetadata)
+	r.readConfig.reset()
 	r.projSectionColumns = nil
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first

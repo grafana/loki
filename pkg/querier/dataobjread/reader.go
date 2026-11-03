@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"runtime/debug"
-	"slices"
 	"sync"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/memory"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_server "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -220,6 +220,10 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 		return err
 	}
 
+	if columnarRead.Load() {
+		return r.runBatchTask(ctx, task, section, batchSize)
+	}
+
 	reader := logs.NewRowReader(section)
 	defer func() {
 		// Report a close failure only when nothing else failed, so the first error wins.
@@ -228,16 +232,7 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 		}
 	}()
 
-	if err := reader.SetProjectedColumns(task.columns, task.metadataNames); err != nil {
-		return err
-	}
-	if err := reader.MatchStreams(slices.Values(task.streamIDs)); err != nil {
-		return err
-	}
-	if err := reader.SetPredicates(task.rowPredicates()); err != nil {
-		return err
-	}
-	if err := reader.Open(ctx); err != nil {
+	if err := task.openScan(ctx, reader); err != nil {
 		return err
 	}
 
@@ -260,6 +255,49 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 		}
 		if n == 0 && errors.Is(readErr, io.EOF) {
 			return nil
+		}
+	}
+}
+
+// runBatchTask scans one logs section with the columnar reader. It reads the same rows as the
+// row reader of runTask and forwards them in the same batches.
+func (r *LogReader) runBatchTask(ctx context.Context, task ReadTask, section *logs.Section, batchSize int) (returnErr error) {
+	// The batch lives in this allocator. The records built from it copy what they keep, so the
+	// memory is free to reuse as soon as they exist.
+	var alloc memory.Allocator
+	defer alloc.Free()
+
+	reader := logs.NewBatchReader(section)
+	defer func() {
+		// Report a close failure only when nothing else failed, so the first error wins.
+		if closeErr := reader.Close(); returnErr == nil {
+			returnErr = closeErr
+		}
+	}()
+
+	if err := task.openScan(ctx, reader); err != nil {
+		return err
+	}
+
+	for {
+		alloc.Reclaim()
+		batch, err := reader.Read(ctx, &alloc, batchSize)
+		if errors.Is(err, io.EOF) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+
+		records, err := task.recordsFromBatch(batch)
+		if err != nil {
+			return err
+		}
+		if len(records) > 0 {
+			select {
+			case r.batches <- records:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 }

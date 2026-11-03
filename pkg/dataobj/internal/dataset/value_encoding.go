@@ -50,6 +50,13 @@ type valueDecoder interface {
 	Reset(data []byte)
 }
 
+// A valueSkipper is a [valueDecoder] that can move past values without
+// building an array for them.
+type valueSkipper interface {
+	// Skip advances past up to count values and returns the number it skipped.
+	Skip(count int) (int, error)
+}
+
 // registry stores known value encoders and decoders. We use a global variable
 // to track implementations to allow encoding implementations to be
 // self-contained in a single file.

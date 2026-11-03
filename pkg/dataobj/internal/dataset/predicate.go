@@ -82,11 +82,16 @@ type (
 		// KeepBatch must give the same result as Keep on every value. Keep gets a nil Value
 		// for a null value, so Keep must treat a nil and an empty value alike.
 		//
-		// The reader can call Keep instead of KeepBatch, so Keep must always be set. It does so for:
+		// The reader can call Keep instead of KeepBatch, so Keep must always be set. A [RowReader]
+		// does so for:
 		//   - the first predicate,
 		//   - a predicate inside And, Or or Not,
 		//   - a column that another predicate reads,
 		//   - a column that is not binary.
+		//
+		// A [BatchReader] calls KeepBatch for every binary column. It passes the values of
+		// the rows that earlier predicates kept, or all the values of a window if the
+		// earlier predicates kept most of them.
 		//
 		// KeepBatch must not retain values or dstIndexes after the call, and must not modify
 		// values. It must be safe for concurrent use.

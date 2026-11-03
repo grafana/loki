@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"slices"
 	"sync"
 	"time"
 
@@ -159,6 +161,87 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 			// the labels builder allocates its result, so forwarded metadata outlives
 			// the reader safely.
 			metadata: row.Metadata,
+		})
+	}
+	return out, nil
+}
+
+// sectionScan is the setup that the row reader and the columnar reader of a logs section share.
+type sectionScan interface {
+	SetProjectedColumns(types []logs.ColumnType, metadataNames []string) error
+	MatchStreams(ids iter.Seq[int64]) error
+	SetPredicates(p []logs.RowPredicate) error
+	Open(ctx context.Context) error
+}
+
+// openScan gives scan the streams, the columns and the predicates of the task, and opens it.
+func (t ReadTask) openScan(ctx context.Context, scan sectionScan) error {
+	if err := scan.SetProjectedColumns(t.columns, t.metadataNames); err != nil {
+		return err
+	}
+	if err := scan.MatchStreams(slices.Values(t.streamIDs)); err != nil {
+		return err
+	}
+	if err := scan.SetPredicates(t.rowPredicates()); err != nil {
+		return err
+	}
+	return scan.Open(ctx)
+}
+
+// recordsFromBatch is [ReadTask.records] for a batch of the columnar reader. It builds each
+// record from the arrays of the batch, without a row in between.
+func (t ReadTask) recordsFromBatch(batch *logs.Batch) ([]LogRecord, error) {
+	if batch.StreamID == nil || batch.Timestamp == nil {
+		return nil, fmt.Errorf("data object %q logs section %d returned a batch without the stream ID or timestamp column", t.objectPath, t.sectionIdx)
+	}
+	// The lines of a batch share one buffer, because the batch memory is reused for the next
+	// read and the records must not alias it. One allocation per batch replaces one per line.
+	// A record that outlives its batch keeps the whole buffer alive. A section with no message
+	// column has no Message array, and its lines read as empty.
+	var lines []byte
+	if t.needReturningLine && batch.Message != nil {
+		lines = make([]byte, 0, batch.Message.DataLen())
+	}
+
+	var (
+		out = make([]LogRecord, 0, batch.Rows)
+
+		// Rows of one stream are usually next to each other, so the last lookup is likely to
+		// serve the next row.
+		lastStreamID int64
+		lastStream   objectStream
+		haveLast     bool
+	)
+	for i := range batch.Rows {
+		if batch.StreamID.IsNull(i) || batch.Timestamp.IsNull(i) {
+			return nil, fmt.Errorf("data object %q logs section %d returned row %d without a stream ID or a timestamp", t.objectPath, t.sectionIdx, i)
+		}
+
+		streamID := batch.StreamID.Get(i)
+		if !haveLast || streamID != lastStreamID {
+			stream, ok := t.streams.admittedByID[streamID]
+			if !ok {
+				return nil, fmt.Errorf("data object %q logs section %d returned unexpected stream ID %d", t.objectPath, t.sectionIdx, streamID)
+			}
+			lastStreamID, lastStream, haveLast = streamID, stream, true
+		}
+		stream := lastStream
+
+		var line []byte
+		if lines != nil {
+			if value := batch.Message.Get(i); len(value) > 0 {
+				start := len(lines)
+				lines = append(lines, value...)
+				line = lines[start:len(lines):len(lines)]
+			}
+		}
+
+		out = append(out, LogRecord{
+			streamHash:   stream.streamHash,
+			streamLabels: stream.streamLabels,
+			timestamp:    batch.Timestamp.Get(i),
+			line:         line,
+			metadata:     batch.MetadataLabels(i),
 		})
 	}
 	return out, nil

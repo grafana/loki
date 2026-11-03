@@ -81,7 +81,7 @@ func (pr *pageReader) skipUnwantedRows(alloc *memory.Allocator) error {
 	defer tempAlloc.Free()
 
 	readCount := int(pr.nextRow - pr.pageRow)
-	_, err := pr.readColumnar(alloc, readCount, true)
+	_, err := pr.readColumnar(tempAlloc, readCount, true)
 	return err
 }
 
@@ -114,8 +114,17 @@ func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool
 
 	// Now fill up to presentCount values of concrete values.
 	if presentCount > 0 {
-		// TODO(rfratto): Add a "skip" mode to decoders to allow them to bypass
-		// building an array if it's not going to be used.
+		if skipper, ok := pr.valuesDec.(valueSkipper); ok && skip {
+			skipped, err := skipper.Skip(presentCount)
+			if err != nil {
+				return nil, err
+			} else if skipped != presentCount {
+				return nil, fmt.Errorf("unexpected number of skipped values: %d, expected: %d", skipped, presentCount)
+			}
+			pr.pageRow += int64(gotCount)
+			return nil, nil
+		}
+
 		values, err = pr.valuesDec.Decode(alloc, presentCount)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err

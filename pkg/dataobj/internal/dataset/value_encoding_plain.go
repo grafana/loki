@@ -101,65 +101,105 @@ func (dec *plainBytesDecoder) EncodingType() datasetmd.EncodingType {
 //
 // The return value is a [columnar.UTF8].
 func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
+	// A first pass over the length prefixes finds how many bytes the values need.
+	// It skips the value bytes, so it costs far less than the copy below. It lets
+	// the values buffer have the exact size, instead of the size of the whole
+	// page, which a window of a few rows would then waste.
 	var (
-		// Strings need a an offsets and a value buffer.
-		//
-		// Offsets are in pairs, so there's always one additional offset from the
-		// requested count.
-		//
-		// Meanwhile, there's no good way of knowing how many bytes we might need to
-		// store all the strings. It's probably better to overestimate so we have
-		// exactly one allocated reusable memory region than to have it grow a few
-		// times as we try to discover the true size.
+		found      int
+		totalBytes int
+	)
+	for off := dec.off; found < count; found++ {
+		size, end, err := nextPlainValue(dec.data, off)
+		if err != nil {
+			return nil, err
+		} else if end == off {
+			break
+		}
+		off = end
+		totalBytes += size
+	}
+	if found == 0 {
+		return nil, io.EOF
+	}
 
-		offsetsBuf = memory.NewBuffer[int32](alloc, count+1)
-		valuesBuf  = memory.NewBuffer[byte](alloc, len(dec.data))
+	var (
+		// Offsets are in pairs, so there's always one additional offset from the
+		// found count.
+		offsetsBuf = memory.NewBuffer[int32](alloc, found+1)
+		valuesBuf  = memory.NewBuffer[byte](alloc, totalBytes)
 
 		// It's going to be far more efficient for us to manipulate the output
 		// slices ourselves, so we'll do that here.
+		offsets = offsetsBuf.Data()[:found+1]
+		values  = valuesBuf.Data()[:totalBytes]
 
-		offsets = offsetsBuf.Data()[:count+1]
-		values  = valuesBuf.Data()[:len(dec.data)]
-
-		totalBytes int // Last offset to values written.
-	)
-
-	// Store state on stack to avoid indirection.
-	var (
+		// Store state on stack to avoid indirection.
 		data = dec.data
 		off  = dec.off
+
+		written int // Last offset to values written.
 	)
 	defer func() { dec.off = off }()
 
 	// First offset is always 0.
 	offsets[0] = 0
 
-	for i := range count {
+	for i := range found {
 		stringSize, uvarintSize := binary.Uvarint(data[off:])
-		if uvarintSize <= 0 {
-			if i == 0 {
-				return nil, io.EOF
-			}
-
-			return columnar.NewUTF8(
-				values[:totalBytes],
-				offsets[:i+1],
-				memory.Bitmap{},
-			), io.EOF
-		}
-
-		copied := copy(values[totalBytes:], data[off+uvarintSize:off+uvarintSize+int(stringSize)])
+		copied := copy(values[written:], data[off+uvarintSize:off+uvarintSize+int(stringSize)])
 
 		off += uvarintSize + copied
-		totalBytes += int(stringSize)
-		offsets[i+1] = int32(totalBytes)
+		written += int(stringSize)
+		offsets[i+1] = int32(written)
 	}
 
-	return columnar.NewUTF8(
-		values[:totalBytes],
-		offsets[:count+1],
-		memory.Bitmap{},
-	), nil
+	// The data ended before count values. The caller sees the values that exist
+	// together with io.EOF.
+	var err error
+	if found < count {
+		err = io.EOF
+	}
+	return columnar.NewUTF8(values[:written], offsets[:found+1], memory.Bitmap{}), err
+}
+
+// Skip advances past up to count values without copying them. It returns the
+// number of values skipped, which is lower than count only if the data ends
+// first.
+func (dec *plainBytesDecoder) Skip(count int) (int, error) {
+	var skipped int
+	for ; skipped < count; skipped++ {
+		_, end, err := nextPlainValue(dec.data, dec.off)
+		if err != nil {
+			return skipped, err
+		} else if end == dec.off {
+			break
+		}
+		dec.off = end
+	}
+	return skipped, nil
+}
+
+// nextPlainValue reads the length prefix of the value at offset off of data. It
+// returns the length of the value and the offset after the value. The offset
+// after the value equals off when the data ends at off.
+//
+// It returns an error if the prefix is malformed or if the value runs past the
+// end of data.
+func nextPlainValue(data []byte, off int) (size, end int, err error) {
+	valueSize, prefixSize := binary.Uvarint(data[off:])
+	switch {
+	case prefixSize == 0 && off == len(data):
+		return 0, off, nil
+	case prefixSize == 0:
+		return 0, off, fmt.Errorf("plain: truncated value length at offset %d", off)
+	case prefixSize < 0:
+		return 0, off, fmt.Errorf("plain: malformed value length at offset %d", off)
+	case valueSize > uint64(len(data)-off-prefixSize):
+		// Comparing as unsigned keeps a huge length from wrapping to a negative int.
+		return 0, off, fmt.Errorf("plain: value of %d bytes overruns the page", valueSize)
+	}
+	return int(valueSize), off + prefixSize + int(valueSize), nil
 }
 
 // Reset implements [valueDecoder]. It resets the decoder to read from data.
