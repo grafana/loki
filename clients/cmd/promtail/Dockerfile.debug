@@ -2,7 +2,7 @@
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile.debug .
 
-FROM grafana/loki-build-image:0.35.1 AS build
+FROM grafana/loki-build-image:0.35.2@sha256:a886ea5060ea423e0d608cdf7d7152ffd4811274ab6960786e2e971adcd73c98 AS build
 ARG GOARCH="amd64"
 COPY . /src/loki
 WORKDIR /src/loki
