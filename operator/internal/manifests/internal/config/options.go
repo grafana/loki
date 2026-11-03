@@ -233,7 +233,7 @@ const (
 )
 
 // ReplayMemoryCeiling calculates 50% of the ingester memory
-// for the ingester to use for the write-ahead-log capbability.
+// for the ingester to use for the write-ahead-log capability.
 func (w WriteAheadLog) ReplayMemoryCeiling() string {
 	value := max(int64(math.Ceil(float64(w.IngesterMemoryRequest)*float64(0.5))), minimumReplayCeiling)
 	return fmt.Sprintf("%d", value)

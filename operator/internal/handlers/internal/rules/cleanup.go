@@ -72,7 +72,7 @@ func removeRuler(ctx context.Context, c client.Client, stack client.ObjectKey) e
 	var ruler appsv1.StatefulSet
 	if err := c.Get(ctx, key, &ruler); err != nil {
 		if apierrors.IsNotFound(err) {
-			// resource doesnt exist, so nothing to do.
+			// resource does not exist, so nothing to do.
 			return nil
 		}
 		return kverrors.Wrap(err, "failed to lookup Statefulset", "name", key)
