@@ -42,6 +42,12 @@ func TestDecodeRow(t *testing.T) {
 		"fails when the partition overflows int32": {Values: []dataset.Value{
 			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(math.MaxInt32 + 1), dataset.Int64Value(1),
 		}},
+		"fails when the partition is negative": {Values: []dataset.Value{
+			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(-1), dataset.Int64Value(1),
+		}},
+		"fails when the watermark is negative": {Values: []dataset.Value{
+			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(1), dataset.Int64Value(-1),
+		}},
 		"fails when the watermark is nil": {Values: []dataset.Value{
 			dataset.BinaryValue([]byte("topic")), dataset.Int64Value(1), {},
 		}},

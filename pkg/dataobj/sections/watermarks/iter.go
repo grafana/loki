@@ -123,13 +123,13 @@ func decodeRow(columns []*Column, row dataset.Row, wm *Watermark) error {
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			// Partition 0 is valid, so reject only nil values.
+			// Partition 0 is valid, so reject nil and negative values.
 			if columnValue.IsNil() {
 				return fmt.Errorf("nil value for %s", column.Type)
 			}
 			partition := columnValue.Int64()
-			if partition < math.MinInt32 || partition > math.MaxInt32 {
-				return fmt.Errorf("value %d of %s overflows int32", partition, column.Type)
+			if partition < 0 || partition > math.MaxInt32 {
+				return fmt.Errorf("value %d of %s is negative or overflows int32", partition, column.Type)
 			}
 			wm.Partition = int32(partition)
 
@@ -137,11 +137,14 @@ func decodeRow(columns []*Column, row dataset.Row, wm *Watermark) error {
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			// Offset 0 is valid, so reject only nil values.
+			// Offset 0 is valid, so reject nil and negative values.
 			if columnValue.IsNil() {
 				return fmt.Errorf("nil value for %s", column.Type)
 			}
 			wm.Watermark = columnValue.Int64()
+			if wm.Watermark < 0 {
+				return fmt.Errorf("value %d of %s is negative", wm.Watermark, column.Type)
+			}
 
 		default:
 			return fmt.Errorf("unexpected column type %s", column.Type)
