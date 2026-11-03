@@ -78,6 +78,15 @@ func (r *release) addkeyver(key, vmax int16) {
 	r.reqs[key] = req{key: key, vmax: vmax}
 }
 
+func (r *release) setmin(key, vmin int16) {
+	req, ok := r.reqs[key]
+	if !ok {
+		panic(fmt.Sprintf("setmin on non-existent key %d", key))
+	}
+	req.vmin = vmin
+	r.reqs[key] = req
+}
+
 func reqsFromApiVersions(r *kmsg.ApiVersionsResponse) map[int16]req {
 	m := make(map[int16]req, len(r.ApiKeys))
 	for _, k := range r.ApiKeys {
@@ -119,18 +128,51 @@ func (vs *Versions) versionGuess2(cmp *release, opts ...VersionGuessOpt) guess {
 		opt.apply(&cfg)
 	}
 
+	skip := make(map[int16]bool, len(cfg.skipKeys))
+	for _, k := range cfg.skipKeys {
+		skip[k] = true
+	}
+
+	// Keys that exist nowhere in this comparison chain carry no signal for
+	// it. A merged Versions -- Stable unions broker, controller, and zk
+	// keys -- would otherwise register as "over" at every release of this
+	// chain merely for holding another kind's keys, and as soon as the
+	// chain's tip also carries something the merge lacks (an unreleased
+	// addkey at tip), every release judges under-and-over and the guess
+	// collapses to custom-unknown. Ignore keys outside the chain's key
+	// space entirely; a key the chain knows but a given release lacks
+	// still counts as over below.
+	chainKeys := make(map[int16]bool)
+	for r := cmp; r != nil; r = r.prior {
+		for k := range r.reqs {
+			chainKeys[k] = true
+		}
+	}
+
+	// Work on a copy: vs.reqs is the caller's map (we used to delete the
+	// skip keys from it, mutating the caller's Versions).
+	ours := make(map[int16]req, len(vs.reqs))
+	for k, r := range vs.reqs {
+		if skip[k] || !chainKeys[k] {
+			continue
+		}
+		ours[k] = r
+	}
+
 	// For comparison checking, we only check the max key version.
 	var higher *release
 	for {
-		for _, k := range cfg.skipKeys {
-			delete(cmp.reqs, k)
-			delete(vs.reqs, k)
+		cmpreqs := make(map[int16]req, len(cmp.reqs))
+		for k, r := range cmp.reqs {
+			if !skip[k] {
+				cmpreqs[k] = r
+			}
 		}
 
 		var under, equal, over bool
 
-		for k, req := range vs.reqs {
-			cmpreq, ok := cmp.reqs[k]
+		for k, req := range ours {
+			cmpreq, ok := cmpreqs[k]
 			if ok {
 				if req.vmax < cmpreq.vmax {
 					under = true
@@ -139,15 +181,15 @@ func (vs *Versions) versionGuess2(cmp *release, opts ...VersionGuessOpt) guess {
 				} else {
 					equal = true
 				}
-				delete(cmp.reqs, k)
+				delete(cmpreqs, k)
 			} else {
-				over = true // key we do not recognize: by definition the broker is higher than this cmp version
+				over = true // key this release predates: the broker is higher than this cmp version
 			}
 		}
 
 		// If our versions did not clear out what we are comparing against, we
 		// do not have all keys that we need for this version.
-		if len(cmp.reqs) > 0 {
+		if len(cmpreqs) > 0 {
 			under = true
 		}
 
@@ -1002,33 +1044,25 @@ func b40() *release {
 	now := b39().clone(4, 0)
 
 	// KIP-896
-	setmin := func(key, vmin int16) {
-		req, ok := now.reqs[key]
-		if !ok {
-			panic(fmt.Sprintf("setmin on non-existent key %d", key))
-		}
-		req.vmin = vmin
-		now.reqs[key] = req
-	}
-	setmin(1, 4)
-	setmin(2, 1)
-	setmin(8, 2)
-	setmin(9, 1)
-	setmin(11, 2)
-	setmin(19, 2)
-	setmin(20, 1)
-	setmin(23, 2)
-	setmin(27, 1)
-	setmin(29, 1)
-	setmin(30, 1)
-	setmin(31, 1)
-	setmin(32, 1)
-	setmin(34, 1)
-	setmin(35, 1)
-	setmin(38, 1)
-	setmin(39, 1)
-	setmin(40, 1)
-	setmin(41, 1)
+	now.setmin(1, 4)
+	now.setmin(2, 1)
+	now.setmin(8, 2)
+	now.setmin(9, 1)
+	now.setmin(11, 2)
+	now.setmin(19, 2)
+	now.setmin(20, 1)
+	now.setmin(23, 2)
+	now.setmin(27, 1)
+	now.setmin(29, 1)
+	now.setmin(30, 1)
+	now.setmin(31, 1)
+	now.setmin(32, 1)
+	now.setmin(34, 1)
+	now.setmin(35, 1)
+	now.setmin(38, 1)
+	now.setmin(39, 1)
+	now.setmin(40, 1)
+	now.setmin(41, 1)
 
 	now.incmax(0, 12) // 12 produce KAFKA-14563 755adf8a566 KIP-890
 	now.incmax(2, 10) // 10 list offsets KAFKA-15859 560076ba9e8 KIP-1075
@@ -1044,8 +1078,88 @@ func b40() *release {
 	return now
 }
 
+func b41() *release {
+	now := b40().clone(4, 1)
+
+	now.setmin(11, 0) // KAFKA-19444 487af011ca5 -- re-add JoinGroup v0 & v1
+
+	now.incmax(0, 13) // 13 produce KAFKA-10551 6f783f85362 KIP-516
+	now.incmax(1, 18) // 18 fetch KAFKA-14145 742b327025f KIP-1166
+	now.incmax(45, 1) // 1 alter partition assignments KAFKA-14121 cbd72cc216e KIP-860
+	now.incmax(66, 2) // 2 list transactions KAFKA-19073 0c1fbf3aebb KIP-1152
+	now.incmax(74, 1) // 1 list config resources (rename & extend) KAFKA-18904 c26b09c6092 KIP-1142
+
+	// 8f82f14a483 for v0, KAFKA-16713 66147d5de7c KIP-932 for v1
+	now.addkeyver(76, 1) // 1 share group heartbeat
+	now.addkeyver(77, 1) // 1 share group describe
+	now.addkeyver(78, 1) // 1 share fetch
+	now.addkeyver(79, 1) // 1 share acknowledge
+	// v0 of the four share group requests was never advertised: 4.0 marked
+	// it unstable, and 4.1 released them at v1 only.
+	now.setmin(76, 1)
+	now.setmin(77, 1)
+	now.setmin(78, 1)
+	now.setmin(79, 1)
+
+	// KAFKA-16950 fecbfb81332 KIP-932
+	now.addkey(83) // 0 initialize share group state
+	now.addkey(84) // 0 read share group state
+	now.addkey(85) // 0 write share group state
+	now.addkey(86) // 0 delete share group state
+	now.addkey(87) // 0 read share group state summary
+
+	now.addkey(90) // 0 describe share group offsets e3e4c179592, then KAFKA-16720 952113e8e0e KIP-932
+	now.addkey(91) // 0 alter share group offsets KAFKA-16717 6a6b80215d8 KIP-932
+	now.addkey(92) // 0 delete share group offsets KAFKA-16718 63229a768ce KIP-932
+
+	return now
+}
+
+func b42() *release {
+	now := b41().clone(4, 2)
+
+	now.incmax(2, 11) // 11 list offsets KAFKA-17108 8d93d1096c2 KIP-1023
+	now.incmax(8, 10) // 10 offset commit KAFKA-19186 9599143bfd9 KIP-848
+	now.incmax(9, 10) // 10 offset fetch KAFKA-19186 9599143bfd9 KIP-848
+	now.incmax(27, 2) // 2 write txn markers KAFKA-19446 faad21fcb9a KIP-1228
+	now.incmax(78, 2) // 2 share fetch KAFKA-19814 05c9322ba9c KIP-1206, KIP-1222
+	now.incmax(79, 2) // 2 share acknowledge KAFKA-19814 05c9322ba9c KIP-1222
+	now.incmax(80, 1) // 1 add raft voter KAFKA-19400 93447d5b883 KIP-1186
+	now.incmax(85, 1) // 1 write share group state KAFKA-19797 b900f2fe5a0 KIP-1226
+	now.incmax(87, 1) // 1 read share group state summary KAFKA-19799 5571821240 KIP-1226
+	now.incmax(90, 1) // 1 describe share group offsets KAFKA-19800 1146f97770c KIP-1226
+
+	now.addkey(88) // 0 streams group heartbeat KAFKA-19869 497072a5644 KIP-1071
+	now.addkey(89) // 0 streams group describe KAFKA-19869 497072a5644 KIP-1071
+
+	return now
+}
+
+func b43() *release {
+	now := b42().clone(4, 3)
+
+	now.incmax(35, 5) // 5 describe log dirs KAFKA-19774 a45d36ca5d KIP-1066
+
+	return now
+}
+
+func b44() *release {
+	now := b43().clone(4, 4)
+
+	now.incmax(18, 5) // 5 api versions KAFKA-20246 0ef4a4c80e KIP-1242
+	now.incmax(28, 6) // 6 txn offset commit KAFKA-20444 7562044781 KIP-1319
+	now.incmax(42, 3) // 3 delete groups KAFKA-20620 7997c9ebe0 KIP-1331
+	now.incmax(88, 1) // 1 streams group heartbeat KAFKA-20620 7997c9ebe0 KIP-1331
+	now.incmax(89, 1) // 1 streams group describe KAFKA-20620 7997c9ebe0 KIP-1331
+
+	now.addkey(93) // 0 streams group topology description update KAFKA-20620 7997c9ebe0 KIP-1331
+	now.addkey(94) // 0 unregister controller KAFKA-20395 c274a7348f
+
+	return now
+}
+
 func btip() *release {
-	return b40()
+	return b44()
 }
 
 ///////////////////////////////
@@ -1214,26 +1328,18 @@ func c40() *release {
 	now := c39().clone(4, 0)
 
 	// KIP-896
-	setmin := func(key, vmin int16) {
-		req, ok := now.reqs[key]
-		if !ok {
-			panic(fmt.Sprintf("setmin on non-existent key %d", key))
-		}
-		req.vmin = vmin
-		now.reqs[key] = req
-	}
-	setmin(1, 4)
-	setmin(19, 2)
-	setmin(20, 1)
-	setmin(29, 1)
-	setmin(30, 1)
-	setmin(31, 1)
-	setmin(32, 1)
-	setmin(38, 1)
-	setmin(39, 1)
-	setmin(40, 1)
-	setmin(41, 1)
-	setmin(56, 2)
+	now.setmin(1, 4)
+	now.setmin(19, 2)
+	now.setmin(20, 1)
+	now.setmin(29, 1)
+	now.setmin(30, 1)
+	now.setmin(31, 1)
+	now.setmin(32, 1)
+	now.setmin(38, 1)
+	now.setmin(39, 1)
+	now.setmin(40, 1)
+	now.setmin(41, 1)
+	now.setmin(56, 2)
 	delete(now.reqs, 7)
 
 	now.incmax(52, 2) // KAFKA-17641 b73e31eb159 KIP-996 adds PreVote to Vote
@@ -1243,6 +1349,41 @@ func c40() *release {
 	return now
 }
 
+func c41() *release {
+	now := c40().clone(4, 1)
+
+	now.incmax(1, 18)
+	now.incmax(45, 1)
+
+	return now
+}
+
+func c42() *release {
+	now := c41().clone(4, 2)
+
+	now.incmax(80, 1) // 1 add raft voter KAFKA-19400 93447d5b883 KIP-1186
+
+	return now
+}
+
+func c43() *release {
+	now := c42().clone(4, 3)
+
+	now.incmax(63, 2) // 2 broker heartbeat KAFKA-19774 a45d36ca5d KIP-1066
+
+	return now
+}
+
+func c44() *release {
+	now := c43().clone(4, 4)
+
+	now.incmax(18, 5) // 5 api versions KAFKA-20246 0ef4a4c80e KIP-1242
+
+	now.addkey(94) // 0 unregister controller KAFKA-20395 c274a7348f
+
+	return now
+}
+
 func ctip() *release {
-	return c40()
+	return c44()
 }

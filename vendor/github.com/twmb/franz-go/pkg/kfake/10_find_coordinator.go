@@ -1,25 +1,43 @@
 package kfake
 
 import (
-	"net"
+	"encoding/base64"
 	"strconv"
+	"strings"
 
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// FindCoordinator: v0-6
+//
+// Supports coordinator types:
+// * 0: Group coordinator
+// * 1: Transaction coordinator
+// * 2: Share coordinator (KIP-932)
+//
+// Version notes:
+// * v1: CoordinatorType, ThrottleMillis
+// * v3: Flexible versions
+// * v4: Multiple coordinator keys in single request (KIP-699)
+// * v6: Share groups (KIP-932) - coordinator type 2
+
 func init() { regKey(10, 0, 6) }
 
-func (c *Cluster) handleFindCoordinator(kreq kmsg.Request) (kmsg.Response, error) {
-	req := kreq.(*kmsg.FindCoordinatorRequest)
+func (c *Cluster) handleFindCoordinator(creq *clientReq) (kmsg.Response, error) {
+	req := creq.kreq.(*kmsg.FindCoordinatorRequest)
 	resp := req.ResponseKind().(*kmsg.FindCoordinatorResponse)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
 	}
 
 	var unknown bool
-	if req.CoordinatorType != 0 && req.CoordinatorType != 1 {
+	if req.CoordinatorType != 0 && req.CoordinatorType != 1 && req.CoordinatorType != 2 {
+		unknown = true
+	}
+	// Share coordinator (type 2) requires FindCoordinator v6+.
+	if req.CoordinatorType == 2 && req.Version < 6 {
 		unknown = true
 	}
 
@@ -48,14 +66,77 @@ func (c *Cluster) handleFindCoordinator(kreq kmsg.Request) (kmsg.Response, error
 			continue
 		}
 
-		b := c.coordinator(key)
-		host, port, _ := net.SplitHostPort(b.ln.Addr().String())
-		iport, _ := strconv.Atoi(port)
+		// ACL check based on coordinator type
+		var e *kerr.Error
+		switch req.CoordinatorType {
+		case 0: // Group
+			e = c.deny(creq, key, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe, faultKey{group: key})
+		case 1: // Transaction
+			e = c.deny(creq, key, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationDescribe, faultKey{txnID: key})
+		case 2: // Share (KIP-932): requires CLUSTER CLUSTER_ACTION
+			// (matching Java's KafkaApis.handleFindCoordinatorRequest
+			// which calls authHelper.authorizeClusterOperation(CLUSTER_ACTION)).
+			e = c.denyCluster(creq, kmsg.ACLOperationClusterAction, shareCoordinatorFaultKey(key))
+		}
+		if e != nil {
+			sc.ErrorCode = e.Code
+			continue
+		}
 
+		// Share keys must be groupId:topicId:partition; the real broker
+		// validates this and rejects e.g. a bare group id (#1330).
+		if req.CoordinatorType == 2 && !validShareCoordinatorKey(key) {
+			sc.ErrorCode = kerr.InvalidRequest.Code
+			continue
+		}
+
+		b := c.coordinator(key)
 		sc.NodeID = b.node
-		sc.Host = host
-		sc.Port = int32(iport)
+		sc.Host, sc.Port = b.hostport()
 	}
 
 	return resp, nil
+}
+
+// shareCoordinatorFaultKey names the group, topic, and partition of a share
+// coordinator key, as far as the key parses. The topic ID is Kafka's base64
+// form.
+func shareCoordinatorFaultKey(key string) faultKey {
+	tokens := strings.Split(key, ":")
+	n := len(tokens)
+	if n < 3 {
+		return faultKey{}
+	}
+	k := faultKey{group: strings.Join(tokens[:n-2], ":")}
+	if id, err := base64.RawURLEncoding.DecodeString(tokens[n-2]); err == nil && len(id) == len(k.topicID) {
+		copy(k.topicID[:], id)
+	}
+	if p, err := strconv.Atoi(tokens[n-1]); err == nil {
+		k = k.part(int32(p))
+	}
+	return k
+}
+
+// validShareCoordinatorKey reports whether key is a groupId:topicId:partition
+// SharePartitionKey, mirroring SharePartitionKey.getInstance: split on ":", the
+// last token is an integer partition, the prior is the topic id, the rest a
+// non-empty group id. We do not decode the topic-id UUID.
+func validShareCoordinatorKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	tokens := strings.Split(key, ":")
+	if len(tokens) < 3 {
+		return false
+	}
+	if strings.TrimSpace(strings.Join(tokens[:len(tokens)-2], ":")) == "" {
+		return false
+	}
+	if tokens[len(tokens)-2] == "" {
+		return false
+	}
+	if _, err := strconv.Atoi(tokens[len(tokens)-1]); err != nil {
+		return false
+	}
+	return true
 }

@@ -1,19 +1,38 @@
 package kfake
 
 import (
+	"maps"
+	"slices"
 	"strconv"
 
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// DescribeConfigs: v0-4
+//
+// Supported resource types:
+// * BROKER (2)
+// * TOPIC (4)
+// * CLIENT_METRICS (16)
+// * GROUP (32)
+//
+// Version notes:
+// * v1: ConfigSynonyms in response
+// * v2: ThrottleMillis
+// * v3: ConfigType and ConfigDocumentation in response
+// * v4: Flexible versions
+
 func init() { regKey(32, 0, 4) }
 
-func (c *Cluster) handleDescribeConfigs(b *broker, kreq kmsg.Request) (kmsg.Response, error) {
-	req := kreq.(*kmsg.DescribeConfigsRequest)
-	resp := req.ResponseKind().(*kmsg.DescribeConfigsResponse)
+func (c *Cluster) handleDescribeConfigs(creq *clientReq) (kmsg.Response, error) {
+	var (
+		b    = creq.cc.b
+		req  = creq.kreq.(*kmsg.DescribeConfigsRequest)
+		resp = req.ResponseKind().(*kmsg.DescribeConfigsResponse)
+	)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
 	}
 
@@ -36,6 +55,7 @@ func (c *Cluster) handleDescribeConfigs(b *broker, kreq kmsg.Request) (kmsg.Resp
 			rc.ReadOnly = rc.Source == kmsg.ConfigSourceStaticBrokerConfig
 			rc.IsDefault = rc.Source == kmsg.ConfigSourceDefaultConfig || rc.Source == kmsg.ConfigSourceStaticBrokerConfig
 			rc.IsSensitive = sensitive
+			rc.ConfigType = configTypes[k] // v3+: defaults to 0 (UNKNOWN) if not in map
 
 			// We walk configs from static to default to dynamic,
 			// if this config already exists previously, we move
@@ -77,6 +97,10 @@ outer:
 		rr := &req.Resources[i]
 		switch rr.ResourceType {
 		case kmsg.ConfigResourceTypeBroker:
+			if e := c.denyCluster(creq, kmsg.ACLOperationDescribeConfigs, brokerConfigFaultKey(b, rr.ResourceName)); e != nil {
+				doner(rr.ResourceName, rr.ResourceType, e.Code)
+				continue outer
+			}
 			id := int32(-1)
 			if rr.ResourceName != "" {
 				iid, err := strconv.Atoi(rr.ResourceName)
@@ -91,6 +115,10 @@ outer:
 			filter(rr, r)
 
 		case kmsg.ConfigResourceTypeTopic:
+			if e := c.deny(creq, rr.ResourceName, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribeConfigs, faultKey{topic: rr.ResourceName, resource: rr.ResourceName}); e != nil {
+				doner(rr.ResourceName, rr.ResourceType, e.Code)
+				continue
+			}
 			if _, ok := c.data.tps.gett(rr.ResourceName); !ok {
 				doner(rr.ResourceName, rr.ResourceType, kerr.UnknownTopicOrPartition.Code)
 				continue
@@ -99,10 +127,61 @@ outer:
 			c.data.configs(rr.ResourceName, rfn(r))
 			filter(rr, r)
 
+		case kmsg.ConfigResourceTypeClientMetrics:
+			// A subscription is a cluster resource, like a broker:
+			// DescribeConfigs on CLUSTER. A name with no
+			// subscription answers every key at its default, as
+			// Kafka does; only an empty name is an error.
+			if e := c.denyCluster(creq, kmsg.ACLOperationDescribeConfigs, faultKey{resource: rr.ResourceName}); e != nil {
+				doner(rr.ResourceName, rr.ResourceType, e.Code)
+				continue
+			}
+			if rr.ResourceName == "" {
+				doner(rr.ResourceName, rr.ResourceType, kerr.InvalidRequest.Code)
+				continue
+			}
+			sub := c.clientMetrics[rr.ResourceName]
+			r := doner(rr.ResourceName, rr.ResourceType, 0)
+			emit := rfn(r)
+			for _, k := range slices.Sorted(maps.Keys(validClientMetricsConfigs)) {
+				if v, dynamic := sub[k]; dynamic {
+					emit(k, v, kmsg.ConfigSourceClientMetricsConfig, false)
+					continue
+				}
+				def := validClientMetricsConfigs[k]
+				emit(k, &def, kmsg.ConfigSourceDefaultConfig, false)
+			}
+			filter(rr, r)
+
+		case kmsg.ConfigResourceTypeGroupConfig:
+			if e := c.deny(creq, rr.ResourceName, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribeConfigs, faultKey{group: rr.ResourceName, resource: rr.ResourceName}); e != nil {
+				doner(rr.ResourceName, rr.ResourceType, e.Code)
+				continue
+			}
+			r := doner(rr.ResourceName, rr.ResourceType, 0)
+			emit := rfn(r)
+			for k := range validGroupConfigs {
+				v, dynamic := c.groupConfigs[rr.ResourceName][k]
+				src := kmsg.ConfigSourceDefaultConfig
+				if dynamic {
+					src = kmsg.ConfigSourceGroupConfig
+				}
+				emit(k, v, src, false)
+			}
+			filter(rr, r)
+
 		default:
 			doner(rr.ResourceName, rr.ResourceType, kerr.InvalidRequest.Code)
 		}
 	}
 
 	return resp, nil
+}
+
+// brokerConfigFaultKey is the fault key for a BROKER config resource. A name
+// that is another node's ID is answered INVALID_REQUEST here, so the resource
+// is misrouted.
+func brokerConfigFaultKey(b *broker, name string) faultKey {
+	id, err := strconv.Atoi(name)
+	return faultKey{resource: name, misrouted: name != "" && err == nil && int32(id) != b.node}
 }

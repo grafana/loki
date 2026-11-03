@@ -36,7 +36,7 @@ type Reader struct {
 	src     io.Reader        // source reader
 	num     int              // concurrency level
 	frame   *lz4stream.Frame // frame being read
-	data    []byte           // block buffer allocated in non concurrent mode
+	data    []byte           // block buffer allocated in non-concurrent mode
 	reads   chan []byte      // pending data
 	idx     int              // size of pending data
 	handler func(int)
@@ -63,7 +63,7 @@ func (r *Reader) Apply(options ...Option) (err error) {
 	return
 }
 
-// Size returns the size of the underlying uncompressed data, if set in the stream.
+// Size returns the size of the current frame's uncompressed data, if set in the stream.
 func (r *Reader) Size() int {
 	switch r.state.state {
 	case readState, closedState:
@@ -94,7 +94,7 @@ func (r *Reader) init() error {
 	}
 	r.reads = data
 	r.idx = 0
-	size := r.frame.Descriptor.Flags.BlockSizeIndex()
+	size := r.frame.BlockSizeIndex()
 	r.data = size.Get()
 	r.cum = 0
 	return nil
@@ -117,6 +117,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	for len(buf) > 0 {
 		var bn int
 		if r.idx == 0 {
+		read:
 			if r.isNotConcurrent() {
 				bn, err = r.read(buf)
 			} else {
@@ -129,12 +130,29 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 			}
 			switch err {
 			case nil:
+			case lz4errors.ErrEndOfStream:
+
+				// Read Checksum.
+				err = r.frame.CloseR(r.src)
+				if err != nil {
+					return
+				}
+
+				// Check for a new stream.
+				r.Reset(r.src)
+				if err = r.init(); r.state.next(err) {
+					return
+				}
+
+				goto read
 			case io.EOF:
 				if er := r.frame.CloseR(r.src); er != nil {
 					err = er
 				}
 				lz4block.Put(r.data)
 				r.data = nil
+				// reset frame to release the buffer held by Block
+				r.frame.Reset(r.num)
 				return
 			default:
 				return
@@ -156,10 +174,10 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	return
 }
 
-// read uncompresses the next block as follow:
-// - if buf has enough room, the block is uncompressed into it directly
-//   and the lenght of used space is returned
-// - else, the uncompress data is stored in r.data and 0 is returned
+// read uncompresses the next block as follows:
+//   - if buf has enough room, the block is uncompressed into it directly
+//     and the length of used space is returned
+//   - else, the uncompressed data is stored in r.data and 0 is returned
 func (r *Reader) read(buf []byte) (int, error) {
 	block := r.frame.Blocks.Block
 	_, err := block.Read(r.frame, r.src, r.cum)
@@ -169,9 +187,13 @@ func (r *Reader) read(buf []byte) (int, error) {
 	var direct bool
 	dst := r.data[:cap(r.data)]
 	if len(buf) >= len(dst) {
-		// Uncompress directly into buf.
+		// Decompress directly into buf.
+		// trim r.data as it is not needed now
+		r.data = r.data[:0]
 		direct = true
-		dst = buf
+		// No more than a block, so that a block that decompresses to
+		// more than the frame's block size is rejected as it is otherwise.
+		dst = buf[:len(dst)]
 	}
 	dst, err = block.Uncompress(r.frame, dst, r.dict, true)
 	if err != nil {
@@ -179,16 +201,14 @@ func (r *Reader) read(buf []byte) (int, error) {
 	}
 	if !r.frame.Descriptor.Flags.BlockIndependence() {
 		if len(r.dict)+len(dst) > 128*1024 {
-			preserveSize := 64*1024 - len(dst)
-			if preserveSize < 0 {
-				preserveSize = 0
-			}
+			preserveSize := max(64*1024-len(dst), 0)
 			r.dict = r.dict[len(r.dict)-preserveSize:]
 		}
 		r.dict = append(r.dict, dst...)
 	}
 	r.cum += uint32(len(dst))
 	if direct {
+		r.data = r.data[:0]
 		return len(dst), nil
 	}
 	r.data = dst
@@ -199,10 +219,8 @@ func (r *Reader) read(buf []byte) (int, error) {
 // initial state from NewReader, but instead reading from reader.
 // No access to reader is performed.
 func (r *Reader) Reset(reader io.Reader) {
-	if r.data != nil {
-		lz4block.Put(r.data)
-		r.data = nil
-	}
+	lz4block.Put(r.data)
+	r.data = nil
 	r.frame.Reset(r.num)
 	r.state.reset()
 	r.src = reader
@@ -212,10 +230,16 @@ func (r *Reader) Reset(reader io.Reader) {
 // WriteTo efficiently uncompresses the data from the Reader underlying source to w.
 func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	switch r.state.state {
+	case readState:
 	case closedState, errorState:
 		return 0, r.state.err
 	case newState:
 		if err = r.init(); r.state.next(err) {
+			if err == io.EOF {
+				// An empty source is an empty stream; WriteTo reports
+				// success rather than io.EOF.
+				err = nil
+			}
 			return
 		}
 	default:
@@ -223,18 +247,27 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	defer r.state.nextd(&err)
 
-	var data []byte
-	if r.isNotConcurrent() {
-		size := r.frame.Descriptor.Flags.BlockSizeIndex()
-		data = size.Get()
-		defer lz4block.Put(data)
+	if r.idx > 0 {
+		// A previous Read left part of the current block unconsumed.
+		var bn int
+		bn, err = w.Write(r.data[r.idx:])
+		n += int64(bn)
+		r.idx = 0
+		if err != nil {
+			return
+		}
+		r.handler(bn)
 	}
+
 	for {
 		var bn int
 		var dst []byte
+	read:
 		if r.isNotConcurrent() {
-			bn, err = r.read(data)
-			dst = data[:bn]
+			// Uncompress into r.data, which init sizes for every frame.
+			_, err = r.read(nil)
+			dst = r.data
+			bn = len(dst)
 		} else {
 			lz4block.Put(dst)
 			dst = <-r.reads
@@ -246,6 +279,21 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 		}
 		switch err {
 		case nil:
+		case lz4errors.ErrEndOfStream:
+			// Read Checksum.
+			err = r.frame.CloseR(r.src)
+			if err != nil {
+				return
+			}
+			// Check for a new stream.
+			r.Reset(r.src)
+			if err = r.init(); r.state.next(err) {
+				if err == io.EOF {
+					err = nil
+				}
+				return
+			}
+			goto read
 		case io.EOF:
 			err = r.frame.CloseR(r.src)
 			return

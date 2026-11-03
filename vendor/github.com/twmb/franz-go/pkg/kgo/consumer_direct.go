@@ -1,5 +1,7 @@
 package kgo
 
+import "maps"
+
 type directConsumer struct {
 	cfg    *cfg
 	tps    *topicsPartitions           // data for topics that the user assigned
@@ -31,9 +33,7 @@ func (c *consumer) initDirect() {
 			d.m.add(topic, partition)
 		}
 		p := make(map[int32]Offset, len(partitions))
-		for partition, offset := range partitions {
-			p[partition] = offset
-		}
+		maps.Copy(p, partitions)
 		d.ps[topic] = p
 	}
 	for topic := range d.cfg.topics {
@@ -43,9 +43,9 @@ func (c *consumer) initDirect() {
 	d.tps.storeTopics(topics) // prime topics to load if non-regex (this is of no benefit if regex)
 }
 
-// For SetOffsets, unlike the group consumer, we just blindly translate the
-// input EpochOffsets into Offsets, and those will be set directly.
-func (*directConsumer) getSetAssigns(setOffsets map[string]map[int32]EpochOffset) (assigns map[string]map[int32]Offset) {
+// applySetOffsets for a direct consumer blindly translates EpochOffsets into
+// Offsets. Unlike the group consumer, there is no uncommitted map to check.
+func (*directConsumer) applySetOffsets(setOffsets map[string]map[int32]EpochOffset) (assigns map[string]map[int32]Offset) {
 	assigns = make(map[string]map[int32]Offset)
 	for topic, partitions := range setOffsets {
 		set := make(map[int32]Offset)
@@ -76,33 +76,30 @@ func (d *directConsumer) findNewAssignments() map[string]map[int32]Offset {
 
 		// If the above detected that we want to keep this topic, we
 		// set all partitions as usable.
-		//
-		// For internal partitions, we only allow consuming them if
-		// the topic is explicitly specified.
-		if useTopic {
-			partitions := topicPartitions.load()
-			if d.cfg.regex && partitions.isInternal || len(partitions.partitions) == 0 {
-				continue
-			}
-			toUseTopic := make(map[int32]Offset, len(partitions.partitions))
-			for partition := range partitions.partitions {
-				toUseTopic[int32(partition)] = d.cfg.startOffset
-			}
-			toUse[topic] = toUseTopic
+		if !useTopic {
+			continue
 		}
+		partitions := topicPartitions.load()
+		if len(partitions.partitions) == 0 {
+			continue
+		}
+		toUseTopic := make(map[int32]Offset, len(partitions.partitions))
+		for partition := range partitions.partitions {
+			toUseTopic[int32(partition)] = d.cfg.startOffset
+		}
+		toUse[topic] = toUseTopic
+	}
 
-		// Lastly, if this topic has some specific partitions pinned,
-		// we set those. We only use partitions from topics that have
-		// not been purged.
-		for topic := range d.m {
-			for partition, offset := range d.ps[topic] {
-				toUseTopic, exists := toUse[topic]
-				if !exists {
-					toUseTopic = make(map[int32]Offset, 10)
-					toUse[topic] = toUseTopic
-				}
-				toUseTopic[partition] = offset
+	// If any topic has specific partitions pinned (from ConsumePartitions
+	// or AddConsumePartitions), add them.
+	for topic := range d.m {
+		for partition, offset := range d.ps[topic] {
+			toUseTopic, exists := toUse[topic]
+			if !exists {
+				toUseTopic = make(map[int32]Offset, 10)
+				toUse[topic] = toUseTopic
 			}
+			toUseTopic[partition] = offset
 		}
 	}
 

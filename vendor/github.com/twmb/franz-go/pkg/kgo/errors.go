@@ -7,18 +7,19 @@ import (
 	"io"
 	"net"
 	"os"
+	"syscall"
 
 	"github.com/twmb/franz-go/pkg/kerr"
 )
 
 // IsRetryableBrokerErr returns whether the client considers an error from a
-// broker retrayble. This returns true specifically if the client thinks it can
+// broker retryable. This returns true specifically if the client thinks it can
 // retry whatever it was just trying to do with a broker. It returns false in
 // all other cases.
 //
-// This can used external to the library to help filter errors if use kgo
-// hooks: errors may be sent to hooks before the client retries whatever it was
-// just attempting.
+// This can be used external to the library to help filter errors when using
+// kgo hooks: errors may be sent to hooks before the client retries whatever it
+// was just attempting.
 func IsRetryableBrokerErr(err error) bool {
 	return isRetryableBrokerErr(err)
 }
@@ -54,36 +55,59 @@ func isRetryableBrokerErr(err error) bool {
 	// We favor testing os.SyscallError first, because net.OpError _always_
 	// implements Temporary, so if we test that first, it'll return false
 	// in many cases when we want to return true from os.SyscallError.
-	if se := (*os.SyscallError)(nil); errors.As(err, &se) {
-		// If a dial fails, potentially we could retry if the resolver
-		// had a temporary hiccup, but we will err on the side of this
-		// being a slightly less temporary error.
+	if _, ok := errors.AsType[*os.SyscallError](err); ok {
+		// Non-timeout dial errors are deliberately *not* retryable here.
+		// The carve-out forces every caller that wants dial-error retry
+		// behavior to opt in explicitly, because the right recovery
+		// strategy varies by call site:
+		//
+		//   - Single bad seed bootstrap: should fail fast so the user
+		//     finds out about the typo'd address.
+		//   - cl.broker() unpinned admin: should rotate to a different
+		//     broker via shouldRetryNext, which calls cl.broker()'s
+		//     built-in rotation.
+		//   - Cached controller/coordinator: should clear the cache and
+		//     re-resolve, then retry (handled by failDial).
+		//   - Broker pinned by ID (Broker.RetriableRequest): should retry
+		//     the same broker bounded by retryTimeout (also failDial).
+		//   - Sink (produce) and source (fetch): should refresh metadata
+		//     and remap to the new partition leader (handled at the
+		//     sink/source call sites).
+		//
+		// Returning true here would lump all of these into a generic
+		// retry loop and silently mask the call-site recovery behavior.
 		return !isDialNonTimeoutErr(err)
 	}
 	// EOF can be returned if a broker kills a connection unexpectedly, and
 	// we can retry that. Same for ErrClosed.
-	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+	//
+	// ErrUnexpectedEOF is EOF's mid-frame sibling and does NOT satisfy
+	// errors.Is(err, io.EOF): a graceful FIN landing inside a
+	// length-prefixed frame (broker shutting down mid-write, an LB or
+	// proxy draining) makes io.ReadFull return it. Without matching it
+	// here, this one disconnect shape -- alone among all of them (RST is
+	// a SyscallError, boundary FIN is io.EOF, refused is a dial error) --
+	// surfaced after zero retries: group sessions tore down, and a
+	// metadata request dying mid-read reached bumpRepeatedLoadErr with
+	// netErr=false, insta-failing buffered records on a transient
+	// network event.
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		// If the FIRST read is EOF, that is usually not a good sign,
 		// often it's from bad SASL. We err on the side of pessimism
 		// and do not retry.
-		if ee := (*ErrFirstReadEOF)(nil); errors.As(err, &ee) {
+		if ee, ok := errors.AsType[*ErrFirstReadEOF](err); ok && !ee.retry {
 			return false
 		}
 		return true
 	}
 	// We could have a retryable producer ID failure, which then bubbled up
 	// as errProducerIDLoadFail so as to be retried later.
-	if pe := (*errProducerIDLoadFail)(nil); errors.As(err, &pe) {
+	if _, ok := errors.AsType[*errProducerIDLoadFail](err); ok {
 		return true
 	}
 	// We could have chosen a broker, and then a concurrent metadata update
 	// could have removed it.
 	if errors.Is(err, errChosenBrokerDead) {
-		return true
-	}
-	// A broker kept giving us short sasl lifetimes, so we killed the
-	// connection ourselves. We can retry on a new connection.
-	if errors.Is(err, errSaslReauthLoop) {
 		return true
 	}
 	// We really should not get correlation mismatch, but if we do, we can
@@ -94,28 +118,55 @@ func isRetryableBrokerErr(err error) bool {
 	// We sometimes load the controller before issuing requests, and the
 	// cluster may not yet be ready and will return -1 for the controller.
 	// We can backoff and retry and hope the cluster has stabilized.
-	if ce := (*errUnknownController)(nil); errors.As(err, &ce) {
+	if _, ok := errors.AsType[*errUnknownController](err); ok {
 		return true
 	}
 	// Same thought for a non-existing coordinator.
-	if ce := (*errUnknownCoordinator)(nil); errors.As(err, &ce) {
+	if _, ok := errors.AsType[*errUnknownCoordinator](err); ok {
 		return true
 	}
-	var tempErr interface{ Temporary() bool }
-	if errors.As(err, &tempErr) {
+	if tempErr, ok := errors.AsType[interface {
+		error
+		Temporary() bool
+	}](err); ok {
 		return tempErr.Temporary()
 	}
 	return false
 }
 
 func isDialNonTimeoutErr(err error) bool {
-	var ne *net.OpError
-	return errors.As(err, &ne) && ne.Op == "dial" && !ne.Timeout()
+	ne, ok := errors.AsType[*net.OpError](err)
+	return ok && ne.Op == "dial" && !ne.Timeout()
 }
 
 func isAnyDialErr(err error) bool {
-	var ne *net.OpError
-	return errors.As(err, &ne) && ne.Op == "dial"
+	ne, ok := errors.AsType[*net.OpError](err)
+	return ok && ne.Op == "dial"
+}
+
+// isPermanentDialErr reports whether a dial error is a hard configuration
+// problem that no amount of retrying will fix. We treat the following as
+// permanent:
+//
+//   - DNS NXDOMAIN: the host genuinely does not exist.
+//   - EACCES / EPERM: local socket permission denied.
+//
+// Everything else dial-shaped (ECONNREFUSED, EHOSTUNREACH, ENETUNREACH,
+// dial timeouts, ...) is considered transient. ECONNREFUSED in particular
+// is the canonical signal that a broker is mid-restart (the listener is
+// closed before the JVM exits, and not yet bound after it starts) and is
+// the most common dial error worth retrying.
+func isPermanentDialErr(err error) bool {
+	if !isAnyDialErr(err) {
+		return false
+	}
+	if dnsErr, ok := errors.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
+		return true
+	}
+	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
+		return true
+	}
+	return false
 }
 
 func isContextErr(err error) bool {
@@ -134,8 +185,7 @@ func isSkippableBrokerErr(err error) bool {
 	if errors.Is(err, errUnknownBroker) {
 		return true
 	}
-	var ne *net.OpError
-	if errors.As(err, &ne) && !isContextErr(err) {
+	if _, ok := errors.AsType[*net.OpError](err); ok && !isContextErr(err) {
 		return true
 	}
 	return false
@@ -150,14 +200,10 @@ var (
 	// know about (maybe missing from metadata responses now).
 	errUnknownBroker = errors.New("unknown broker")
 
-	// A temporary error returned when a broker chosen for a request is
-	// stopped due to a concurrent metadata response.
-	errChosenBrokerDead = errors.New("the internal broker struct chosen to issue this request has died--either the broker id is migrating or no longer exists")
-
-	// If a broker repeatedly gives us tiny sasl lifetimes, we fail a
-	// request after a few tries to forcefully kill the connection and
-	// restart a new connection ourselves.
-	errSaslReauthLoop = errors.New("the broker is repeatedly giving us sasl lifetimes that are too short to write a request")
+	// A temporary error returned when a broker connection has died,
+	// either from a metadata update or from the connection closing
+	// while a request was in-flight.
+	errChosenBrokerDead = errors.New("the broker connection has died and the request will be retried on a new connection")
 
 	// A temporary error returned when Kafka replies with a different
 	// correlation ID than we were expecting for the request the client
@@ -172,6 +218,10 @@ var (
 	// Returned if a connection has loaded broker ApiVersions and knows
 	// that the broker cannot handle the request to-be-issued request.
 	errBrokerTooOld = errors.New("broker is too old; the broker has already indicated it will not know how to handle the request")
+
+	// A response is larger than BrokerMaxReadBytes. For fetches, this is
+	// a record batch too large for the client to ever read.
+	errResponseTooLarge = errors.New("response exceeds BrokerMaxReadBytes")
 
 	// Returned when trying to call group functions when the client is not
 	// assigned a group.
@@ -189,9 +239,35 @@ var (
 	// Returned for all buffered produce records when a user purges topics.
 	errPurged = errors.New("topic purged while buffered")
 
+	errMergedBatchUnsupported = errors.New("merged batch cannot be sent: the partition moved to a broker that does not support the batch's compression or record format")
+
 	errMissingMetadataPartition = errors.New("metadata update is missing a partition that we were previously using")
 
 	errNoCommittedOffset = errors.New("partition has no prior committed offset")
+
+	// Returned when a ListOffsets success response carries a negative
+	// offset, which no legitimate listing produces. Non-retryable so the
+	// broker misbehavior surfaces in polls; the load is still retried.
+	errNegativeListedOffset = errors.New("broker replied to a ListOffsets request with an invalid negative offset")
+
+	// errResetAfterUndefinedEpoch is our own signal to reset a cursor by
+	// time after an epoch validation could not answer.
+	errResetAfterUndefinedEpoch = errors.New("resetting by time after an undefined epoch offset")
+
+	errFetchNoProgress = errors.New("fetch response contained record batches but none contained or exceeded the requested offset")
+
+	// Injected as a fake errored fetch when an OffsetFetch response
+	// repeatedly omits a partition we requested; the group coordinator
+	// answers every requested partition, so an omission is a broker bug
+	// that would otherwise leave the partition silently unconsumed for
+	// the rest of the group session.
+	errOffsetFetchOmitted = errors.New("broker repeatedly omitted a requested partition from an OffsetFetch response")
+
+	// Returned by the 848 heartbeat closure when it detects an assignment
+	// change. The heartbeat loop treats this like RebalanceInProgress but
+	// suppresses further heartbeat requests so that a second heartbeat
+	// cannot see stale assignment state and miss a revocation.
+	errReassigned848 = errors.New("848 reassignment detected")
 
 	//////////////
 	// EXTERNAL //
@@ -238,8 +314,9 @@ var (
 // the connection truly was severed before a response was received), but this
 // error can help you quickly check common problems.
 type ErrFirstReadEOF struct {
-	kind uint8
-	err  error
+	kind  uint8
+	err   error
+	retry bool
 }
 
 type errProducerIDLoadFail struct {
@@ -256,16 +333,19 @@ func (e *errProducerIDLoadFail) Error() string {
 func (e *errProducerIDLoadFail) Unwrap() error { return e.err }
 
 const (
-	firstReadSASL uint8 = iota
+	firstReadDial uint8 = iota
 	firstReadTLS
+	firstReadSASL
 )
 
 func (e *ErrFirstReadEOF) Error() string {
 	switch e.kind {
+	case firstReadDial:
+		return "broker closed the connection immediately after a dial, which often happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
 	case firstReadTLS:
-		return "broker closed the connection immediately after a dial, which happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
+		return "broker closed the connection immediately during api versions negotiation, which often happens when the broker requires TLS but the client is using plaintext: is TLS missing?"
 	default: // firstReadSASL
-		return "broker closed the connection immediately after a request was issued, which happens when SASL is required but not provided: is SASL missing?"
+		return "broker closed the connection immediately after a request was issued, which often happens when SASL is required but not provided: is SASL missing?"
 	}
 }
 
@@ -286,14 +366,22 @@ type ErrDataLoss struct {
 	// ConsumedToEpoch is the epoch for the offset the client was currently
 	// consuming.
 	ConsumedToEpoch int32
-	// ResetTo is what the client reset the partition to; everything from
-	// ResetTo to ConsumedTo was lost.
+	// ResetTo is what the client reset the partition to. If the client
+	// located where the log diverged, everything from ResetTo to ConsumedTo
+	// was lost. If it could not, [ConsumeResetOffset] chose ResetTo and
+	// records below ResetTo may also have been replaced.
 	ResetTo int64
 	// ResetToEpoch is the epoch the client was reset to.
 	ResetToEpoch int32
 }
 
 func (e *ErrDataLoss) Error() string {
+	if e.ResetTo == e.ConsumedTo {
+		return fmt.Sprintf("topic %s partition %d lost records;"+
+			" the client consumed to offset %d epoch %d and resumed there,"+
+			" but records below that offset may have been replaced and were not re-read",
+			e.Topic, e.Partition, e.ConsumedTo, e.ConsumedToEpoch)
+	}
 	return fmt.Sprintf("topic %s partition %d lost records;"+
 		" the client consumed to offset %d epoch %d but was reset to offset %d epoch %d",
 		e.Topic, e.Partition, e.ConsumedTo, e.ConsumedToEpoch, e.ResetTo, e.ResetToEpoch)
@@ -345,6 +433,34 @@ func (e *ErrGroupSession) Error() string {
 
 func (e *ErrGroupSession) Unwrap() error { return e.Err }
 
+// ErrDecompressTooLarge is returned from PollFetches when a batch would
+// decompress to more than [MaxDecompressBatchBytes]. The client stops
+// consuming the partition: it is not fetched again until you [SetOffsets]
+// it past the batch, to NextOffset. Alternatively, create a new client with
+// a larger bound.
+type ErrDecompressTooLarge struct {
+	// Topic is the topic the batch is in.
+	Topic string
+	// Partition is the partition the batch is in.
+	Partition int32
+	// Offset is the batch's first offset.
+	Offset int64
+	// Epoch is the leader epoch of the batch. Use SetOffsets with {Epoch,
+	// NextOffset} to skip this batch.
+	Epoch int32
+	// NextOffset is the offset after the batch's last record, i.e., where
+	// to SetOffsets to skip the batch.
+	NextOffset int64
+}
+
+func (e *ErrDecompressTooLarge) Error() string {
+	return fmt.Sprintf("topic %s partition %d: the batch at offset %d decompresses to more than MaxDecompressBatchBytes;"+
+		" consuming stopped, use SetOffsets to skip to offset %d",
+		e.Topic, e.Partition, e.Offset, e.NextOffset)
+}
+
+func (*ErrDecompressTooLarge) Unwrap() error { return ErrMaxDecompress }
+
 type errDecompress struct {
 	err error
 }
@@ -356,8 +472,11 @@ func (e *errDecompress) Error() string {
 func (e *errDecompress) Unwrap() error { return e.err }
 
 func isDecompressErr(err error) bool {
-	var ed *errDecompress
-	return errors.As(err, &ed)
+	if err == nil {
+		return false
+	}
+	_, ok := errors.AsType[*errDecompress](err)
+	return ok
 }
 
 func errCodeMessage(code int16, errMessage *string) error {
@@ -373,6 +492,24 @@ func errCodeMessage(code int16, errMessage *string) error {
 type errApiVersionsReset struct {
 	err error
 }
+
+// errShareConsumerLeft is reported via shareAckCallback for any
+// Record.Ack or MarkAcks call made after LeaveGroup has begun
+// closing the share consumer. Unexported on purpose: there is no
+// importable sentinel for users to errors.Is against, because the
+// situation is non-actionable -- the broker session is gone. Users
+// should treat this as fatal-for-this-record and not retry.
+var errShareConsumerLeft = errors.New("share consumer has left the group; ack will not be delivered")
+
+// errBrokerOmittedAckPartition is reported via shareAckCallback when
+// the broker's ShareFetch or ShareAcknowledge response did not echo a
+// partition we sent acks for. The broker did not return a Kafka error
+// code for the partition; it simply omitted it from the response,
+// which is a protocol violation. Unexported on purpose: like
+// errShareConsumerLeft, there is no importable sentinel for users to
+// errors.Is against. The condition is non-actionable per-record;
+// the right user response is to log and treat the ack as failed.
+var errBrokerOmittedAckPartition = errors.New("broker omitted partition from share fetch response that we sent acks for")
 
 func (e *errApiVersionsReset) Error() string { return e.err.Error() }
 func (e *errApiVersionsReset) Unwrap() error { return e.err }

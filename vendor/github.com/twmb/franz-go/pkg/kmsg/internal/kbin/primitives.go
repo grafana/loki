@@ -88,6 +88,12 @@ func UvarintLen(u uint32) int {
 	return int(uvarintLens[byte(bits.Len32(u))])
 }
 
+// VarlongLen returns how long i would be if it were varlong encoded.
+func VarlongLen(i int64) int {
+	u := uint64(i)<<1 ^ uint64(i>>63)
+	return uvarlongLen(u)
+}
+
 func uvarlongLen(u uint64) int {
 	return int(uvarintLens[byte(bits.Len64(u))])
 }

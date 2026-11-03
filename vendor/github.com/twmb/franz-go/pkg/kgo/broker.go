@@ -1,6 +1,7 @@
 package kgo
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -11,14 +12,17 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kbin"
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"github.com/twmb/franz-go/pkg/sasl"
 )
@@ -33,6 +37,17 @@ type pinReq struct {
 var ctxPinReq = func() *string { v := "pin_req"; return &v }()
 
 type forceOpenReq struct{ kmsg.Request }
+
+// reauthDrainReq is an internal sentinel pushed through the broker's request
+// ring by a connection's handleResps worker as it exits with a sasl
+// reauthentication pending. It runs handleReauthDrain on the broker worker
+// goroutine: reauthenticate now that no reads are in flight, then replay the
+// requests that parked while the pipeline drained. The embedded kmsg.Request
+// is nil and never used; handleReq dispatches on the type before touching it.
+type reauthDrainReq struct {
+	kmsg.Request
+	cxn *brokerCxn
+}
 
 type promisedReq struct {
 	ctx     context.Context
@@ -135,10 +150,12 @@ type broker struct {
 	addr string // net.JoinHostPort(meta.Host, meta.Port)
 	meta BrokerMetadata
 
-	// versions tracks the first load of an ApiVersions. We store this
-	// after the first connect, which helps speed things up on future
-	// reconnects (across any of the three broker connections) because we
-	// will never look up API versions for this broker again.
+	// versions tracks the broker's last loaded ApiVersions. Every new
+	// connection re-issues ApiVersions and re-stores the result (see
+	// brokerCxn.init), but the stored value serves request version
+	// resolution across all five broker connections and client-level
+	// capability checks (supportsKeyVersion, supportsFeature) without
+	// opening a connection.
 	versions atomic.Value // *brokerVersions
 
 	// The cxn fields each manage a single tcp connection to one broker.
@@ -156,37 +173,57 @@ type broker struct {
 	cxnGroup   *brokerCxn
 	cxnSlow    *brokerCxn
 
-	reapMu sync.Mutex // held when modifying a brokerCxn
+	reapMu xsync.Mutex // held when modifying a brokerCxn
 
 	// reqs manages incoming message requests.
-	reqs ringReq
+	reqs ring[promisedReq]
 	// dead is an atomic so a backed up reqs cannot block broker stoppage.
-	dead atomicBool
+	dead atomic.Bool
 }
 
-// brokerVersions is loaded once (and potentially a few times concurrently if
-// multiple connections are opening at once) and then forever stored for a
+// brokerVersions is loaded on every connection (and potentially a few times
+// concurrently if multiple connections are opening at once) and stored for a
 // broker.
 type brokerVersions struct {
-	maxVers  [kmsg.MaxKey + 1]int16
-	minVers  [kmsg.MaxKey + 1]int16
+	maxVers  map[int16]int16
+	minVers  map[int16]int16
 	features map[string]int16
+
+	// learnedAt is when we last began ApiVersions at our own max version
+	// and learned this broker's from the reply. A connection that begins
+	// at the cached version instead carries the time over, so that we ask
+	// at our own max again once the cache is relearnVersionsAfter old.
+	learnedAt time.Time
 }
 
-func newBrokerVersions() *brokerVersions {
+// relearnVersionsAfter is how long a connection begins ApiVersions at the
+// max version a broker previously told us before we ask at our own max
+// again. A broker upgraded in place is asked to check the cluster and node
+// we expect (KIP-1242) within this long.
+const relearnVersionsAfter = time.Hour
+
+func (v *brokerVersions) maxVersion(key int16) int16 {
+	if version, ok := v.maxVers[key]; ok {
+		return version
+	}
+	return -1
+}
+
+func (v *brokerVersions) minVersion(key int16) int16 {
+	if version, ok := v.minVers[key]; ok {
+		return version
+	}
+	return -1
+}
+
+func newBrokerVersions(capacity int) *brokerVersions {
 	v := &brokerVersions{
+		maxVers:  make(map[int16]int16, capacity),
+		minVers:  make(map[int16]int16, capacity),
 		features: make(map[string]int16),
-	}
-	for i := range &v.maxVers {
-		v.maxVers[i] = -1
-	}
-	for i := range &v.minVers {
-		v.minVers[i] = -1
 	}
 	return v
 }
-
-func (*brokerVersions) len() int { return kmsg.MaxKey + 1 }
 
 func (b *broker) loadVersions() *brokerVersions {
 	loaded := b.versions.Load()
@@ -212,6 +249,17 @@ func unknownSeedID(seedNum int) int32 {
 }
 
 func (cl *Client) newBroker(nodeID int32, host string, port int32, rack *string) *broker {
+	// Clone the Rack *string so the broker owns its own pointer. A
+	// user-issued cl.Request(MetadataRequest) is hijacked through
+	// fetchMetadata, which builds brokers from the response and then
+	// returns that same response to the user: a user writing *Rack
+	// through their response would race every internal deref of
+	// b.meta.Rack (brokerRacks, dups in RequestCachedMetadata,
+	// meta.equals on a later metadata update).
+	if rack != nil {
+		r := *rack
+		rack = &r
+	}
 	return &broker{
 		cl: cl,
 
@@ -233,14 +281,20 @@ func (b *broker) stopForever() {
 
 	b.reqs.die() // no more pushing
 
+	// Snapshot the connections under reapMu but die outside of it: die
+	// runs the user's OnBrokerDisconnect hook, and a hook must not run
+	// under reapMu (a hook that waits on anything that itself needs
+	// reapMu, e.g. a concurrent request's loadConnection, would
+	// deadlock). b.dead is already set above and loadConnection re-checks
+	// it under reapMu before storing, so no new connection can be stored
+	// after this snapshot.
 	b.reapMu.Lock()
-	defer b.reapMu.Unlock()
+	cxns := []*brokerCxn{b.cxnNormal, b.cxnProduce, b.cxnFetch, b.cxnGroup, b.cxnSlow}
+	b.reapMu.Unlock()
 
-	b.cxnNormal.die()
-	b.cxnProduce.die()
-	b.cxnFetch.die()
-	b.cxnGroup.die()
-	b.cxnSlow.die()
+	for _, cxn := range cxns {
+		cxn.die()
+	}
 }
 
 // do issues a request to the broker, eventually calling the response
@@ -256,10 +310,10 @@ func (b *broker) do(
 
 	first, dead := b.reqs.push(pr)
 
-	if first {
-		go b.handleReqs(pr)
-	} else if dead {
+	if dead {
 		promise(nil, errChosenBrokerDead)
+	} else if first {
+		go b.handleReqs(pr)
 	}
 }
 
@@ -277,7 +331,22 @@ func (b *broker) waitResp(ctx context.Context, req kmsg.Request) (kmsg.Response,
 	return resp, err
 }
 
+// growStack grows a goroutine's stack while it has one frame. Our request
+// and response workers exit when idle, so each new one starts with the
+// minimum stack and would otherwise grow it midway through serializing or
+// compressing, copying every frame above it. CockroachDB's growstack package
+// does the same.
+//
+//go:noinline
+func growStack() {
+	const size = 4 << 10
+	var b [size]byte
+	b[0] = 1
+	runtime.KeepAlive(&b)
+}
+
 func (b *broker) handleReqs(pr promisedReq) {
+	growStack()
 	var more, dead bool
 start:
 	if dead {
@@ -294,6 +363,11 @@ start:
 
 func (b *broker) handleReq(pr promisedReq) {
 	req := pr.req
+	if r, ok := req.(*reauthDrainReq); ok {
+		b.handleReauthDrain(r.cxn)
+		pr.promise(nil, nil) // internal sentinel; the promise is a no-op
+		return
+	}
 	var cxn *brokerCxn
 	var retriedOnNewConnection bool
 start:
@@ -314,15 +388,15 @@ start:
 
 	v := b.loadVersions()
 
-	if int(req.Key()) > v.len() || b.cl.cfg.maxVersions != nil && !b.cl.cfg.maxVersions.HasKey(req.Key()) {
+	if b.cl.cfg.maxVersions != nil && !b.cl.cfg.maxVersions.HasKey(req.Key()) {
 		pr.promise(nil, errUnknownRequestKey)
 		return
 	}
 
-	// If v.maxVers[0] is non-negative, then we loaded API
+	// If v.maxVersion(0) is non-negative, then we loaded API
 	// versions. If the version for this request is negative, we
 	// know the broker cannot handle this request.
-	if v.maxVers[0] >= 0 && v.maxVers[req.Key()] < 0 {
+	if v.maxVersion(0) >= 0 && v.maxVersion(req.Key()) < 0 {
 		pr.promise(nil, errBrokerTooOld)
 		return
 	}
@@ -340,10 +414,10 @@ start:
 
 	// If we have no broker versions, we are pinned pre 0.10.0 and did not
 	// issue ApiVersions.
-	if brokerMax := v.maxVers[req.Key()]; brokerMax >= 0 && brokerMax < ourMax {
+	if brokerMax := v.maxVersion(req.Key()); brokerMax >= 0 && brokerMax < ourMax {
 		ourMax = brokerMax
 	}
-	if brokerMin := v.minVers[req.Key()]; brokerMin >= 0 && brokerMin > ourMin {
+	if brokerMin := v.minVersion(req.Key()); brokerMin >= 0 && brokerMin > ourMin {
 		ourMin = brokerMin
 	}
 
@@ -390,17 +464,61 @@ start:
 	}
 	req.SetVersion(ourMax)
 
-	if !cxn.expiry.IsZero() && time.Now().After(cxn.expiry) {
-		// If we are after the reauth time, try to reauth. We
-		// can only have an expiry if we went the authenticate
-		// flow, so we know we are authenticating again.
+	if !cxn.expiry.IsZero() && time.Now().After(cxn.expiry) && !cxn.hasDiscard {
+		// If we are after the reauth time, reauthenticate, for KIP-368.
+		// We can only have an expiry if we went the authenticate flow,
+		// so we know we are authenticating again.
 		//
+		// Reauthenticating reads the handshake and authenticate
+		// responses on this goroutine, so it requires that nothing
+		// else can be reading the connection:
+		//
+		//   * If any response is in flight (resps is non-empty -- an
+		//     element stays in the ring while handleResps processes
+		//     it), handleResps is reading this connection and our read
+		//     would race it byte-by-byte, interleaving the two
+		//     responses' bytes between the two readers. We park this
+		//     request (and every following request for this connection)
+		//     so the pipeline drains -- under sustained pipelining the
+		//     pipeline never goes empty on its own, so we must stop
+		//     feeding it. Our expiry is deliberately pessimistic (2-5%
+		//     early, 1s floor; see doSasl), so the in-flight responses
+		//     are on a still-valid session and the drain (bounded by
+		//     their read timeouts) fits the margin. handleResps pushes
+		//     a reauthDrainReq as it exits; handleReauthDrain then
+		//     reauthenticates and replays the parked requests in
+		//     order. Only this connection parks: the broker worker
+		//     keeps serving its other connections. The Java client
+		//     similarly holds the channel's queued send while
+		//     reauthenticating, and it too only begins with no write
+		//     in progress.
+		//
+		//     Ordering of the pending store vs the empty check below
+		//     matters: we store before checking, and handleResps reads
+		//     the flag after its final dropPeek. empty() and dropPeek
+		//     both take the ring mutex, so if we observe a non-empty
+		//     ring, our store happens-before the drain's flag read and
+		//     a parked request can never miss its drain signal.
+		//
+		//   * acks=0 produce connections run a discard goroutine that
+		//     owns all reads forever (hasDiscard, checked above), so
+		//     in-place reauth is never possible: loadConnection
+		//     recreates expired discard connections instead, and a
+		//     fresh connection authenticates in init. We can still get
+		//     here if the connection's lifetime is shorter than our
+		//     pessimism (the fresh connection is already "expired");
+		//     issuing the request on the just-authenticated connection
+		//     is correct, and the next request picks up a new one.
+		cxn.reauthPending.Store(true)
+		if cxn.anyParked() || !cxn.resps.empty() {
+			cxn.park(pr)
+			return
+		}
+		cxn.reauthPending.Store(false)
 		// Some implementations (AWS) occasionally fail for
 		// unclear reasons (principals change, somehow). If
 		// we receive SASL_AUTHENTICATION_FAILED, we retry
 		// once on a new connection. See #249.
-		//
-		// For KIP-368.
 		cxn.cl.cfg.logger.Log(LogLevelDebug, "sasl expiry limit reached, reauthenticating", "broker", logID(cxn.b.meta.NodeID))
 		if err := cxn.sasl(); err != nil {
 			cxn.die()
@@ -428,6 +546,20 @@ start:
 	}
 
 	if _, isForceOpen := req.(*forceOpenReq); isForceOpen {
+		// The connection is already fully open: loadConnection ran init
+		// (dial, ApiVersions, SASL). On an acks=0 produce connection the
+		// discard goroutine owns all reads (hasDiscard), so issuing a
+		// response-expecting request here would start a second reader
+		// (handleResps, via waitResp below) that races the discard read on
+		// the same socket -- the two io.ReadFulls split one byte stream,
+		// the same concurrent-reader hazard the expiry arm and
+		// loadConnection already avoid for reauthentication. The connection
+		// is warm; report success without probing it (init already proved
+		// the connection works end to end).
+		if cxn.hasDiscard {
+			pr.promise(nil, nil)
+			return
+		}
 		// We issue ApiVersions with v0; we could try to bound the
 		// version by going to the start above, but it really does
 		// not matter much.
@@ -470,9 +602,17 @@ start:
 	corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(pr.ctx, pr.enqueue, req)
 
 	if writeErr != nil {
-		pr.promise(nil, writeErr)
 		cxn.die()
 		cxn.hookWriteE2E(req.Key(), bytesWritten, writeWait, timeToWrite, writeErr)
+		// If we wrote 0 bytes, the broker never saw the request.
+		// Safe to retry once on a new connection, same as the
+		// loadConnection retry above. Does not count against the
+		// client's retry budget.
+		if bytesWritten == 0 && !retriedOnNewConnection {
+			retriedOnNewConnection = true
+			goto start
+		}
+		pr.promise(nil, writeErr)
 		return
 	}
 
@@ -523,7 +663,7 @@ func newBufPool() bufPool {
 func (p bufPool) get() []byte  { return (*p.p.Get().(*[]byte))[:0] }
 func (p bufPool) put(b []byte) { p.p.Put(&b) }
 
-// loadConection returns the broker's connection, creating it if necessary
+// loadConnection returns the broker's connection, creating it if necessary
 // and returning an error of if that fails.
 func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerCxn, error) {
 	var (
@@ -532,12 +672,18 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		isFetchCxn   bool
 		reqKey       = req.Key()
 		_, isTimeout = req.(kmsg.TimeoutRequest)
+		reuse        = true
 	)
 	switch {
 	case reqKey == 0:
 		pcxn = &b.cxnProduce
 		isProduceCxn = true
-	case reqKey == 1:
+	case reqKey == 1 || reqKey == 78 || reqKey == 79:
+		// Fetch and ShareFetch long-poll. ShareAcknowledge shares the
+		// ShareFetch connection: the broker ties a share session to it
+		// and releases the member's records when it closes, so acks
+		// and renews keep it from going idle. The share source sends
+		// one of the two at a time.
 		pcxn = &b.cxnFetch
 		isFetchCxn = true
 	case reqKey == 11 || reqKey == 14: // join || sync
@@ -546,14 +692,40 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		pcxn = &b.cxnSlow
 	}
 
+	// Do not reuse a connection that has been idle for longer than idle
+	// timeout; kill it instead. Same for an acks=0 produce connection
+	// whose sasl session expired: the discard goroutine owns all reads on
+	// it, so in-place reauthentication (which reads handshake responses)
+	// is impossible -- a fresh connection authenticates in init.
 	if *pcxn != nil && !(*pcxn).dead.Load() {
+		cxn := *pcxn
+		expired := cxn.hasDiscard && !cxn.expiry.IsZero() && time.Now().After(cxn.expiry)
+		if cxn.isIdleTimeout(b.cl.cfg.connIdleTimeout) || expired {
+			// die() in a goroutine to avoid blocking
+			go cxn.die()
+			reuse = false
+		}
+	}
+
+	if reuse && *pcxn != nil && !(*pcxn).dead.Load() {
 		return *pcxn, nil
 	}
 
+	// A stopped broker never comes back (stopForever is final): a metadata
+	// update or rebootstrap removed it. Fail fast rather than dial an
+	// address we no longer trust; the request retries on a live broker.
+	if b.dead.Load() {
+		return nil, errChosenBrokerDead
+	}
+
 	var tries int
-	start := time.Now()
 doConnect:
 	tries++
+	// start, conn, and err are declared per attempt so that each attempt's
+	// deferred OnBrokerConnect hook reports that attempt's connection,
+	// error, and duration (a backward goto over := re-executes the
+	// declaration; prior attempts' defers keep their own variables).
+	start := time.Now()
 	conn, err := b.connect(ctx)
 	defer func() {
 		since := time.Since(start)
@@ -573,21 +745,21 @@ doConnect:
 
 		addr:   b.addr,
 		conn:   conn,
+		br:     bufio.NewReaderSize(conn, 4<<10),
 		deadCh: make(chan struct{}),
 	}
+	cxn.unwatchClientCtx = context.AfterFunc(b.cl.ctx, func() { conn.SetDeadline(time.Now()) })
 	if err = cxn.init(isProduceCxn, tries); err != nil {
 		// EventHubs does not handle v4 and resets the connection. We
 		// retry twice. On the first and second attempt, we try our max
 		// version possible (as should be allowed). On the third try,
-		// we downgrade to v0.
-		if er := (*errApiVersionsReset)(nil); errors.As(err, &er) {
-			if tries < 3 {
-				tries++
-				goto doConnect
-			}
+		// we downgrade to v0 (see requestAPIVersions).
+		if _, ok := errors.AsType[*errApiVersionsReset](err); ok && tries < 3 {
+			cxn.die()
+			goto doConnect
 		}
 		b.cl.cfg.logger.Log(LogLevelDebug, "connection initialization failed", "addr", b.addr, "broker", logID(b.meta.NodeID), "err", err)
-		cxn.closeConn()
+		cxn.die()
 		return nil, err
 	}
 	b.cl.cfg.logger.Log(LogLevelDebug, "connection initialized successfully", "addr", b.addr, "broker", logID(b.meta.NodeID))
@@ -599,8 +771,33 @@ doConnect:
 	}
 
 	b.reapMu.Lock()
-	defer b.reapMu.Unlock()
+
+	// If stopForever ran while we were connecting, the broker is
+	// dead and we must not store the connection. stopForever reads
+	// cxnProduce/etc under reapMu before killing them, but if the
+	// connection was nil at that time (we were mid-connect), it was
+	// not seen. Without this check, the connection escapes destruction
+	// and a produce request succeeds on a connection that will never
+	// be reused, which -- combined with other connections from other
+	// broker objects for the same nodeID -- breaks the single-
+	// connection-per-broker ordering guarantee that Kafka requires
+	// for idempotent produce.
+	//
+	// die runs the user's OnBrokerDisconnect hook, so it runs after the
+	// unlock (see stopForever for why). We die rather than just close the
+	// conn even though the connection was never stored: for an acks=0
+	// produce connection, init above already spawned the discard goroutine,
+	// which owns all reads. Closing the conn wakes its read with an error,
+	// and it dies the connection as it exits -- die's dead swap is what
+	// keeps the two teardowns from both closing deadCh (see #1377).
+	if b.dead.Load() {
+		b.reapMu.Unlock()
+		cxn.die()
+		return nil, errChosenBrokerDead
+	}
+
 	*pcxn = cxn
+	b.reapMu.Unlock()
 	return cxn, nil
 }
 
@@ -644,16 +841,20 @@ func (cl *Client) reapConnections(idleTimeout time.Duration) (total int) {
 }
 
 func (b *broker) reapConnections(idleTimeout time.Duration) (total int) {
+	// Snapshot under reapMu, evaluate and die outside: die runs the
+	// user's OnBrokerDisconnect hook, which must not run under reapMu
+	// (see stopForever).
 	b.reapMu.Lock()
-	defer b.reapMu.Unlock()
-
-	for _, cxn := range []*brokerCxn{
+	cxns := []*brokerCxn{
 		b.cxnNormal,
 		b.cxnProduce,
 		b.cxnFetch,
 		b.cxnGroup,
 		b.cxnSlow,
-	} {
+	}
+	b.reapMu.Unlock()
+
+	for _, cxn := range cxns {
 		if cxn == nil || cxn.dead.Load() {
 			continue
 		}
@@ -664,14 +865,7 @@ func (b *broker) reapConnections(idleTimeout time.Duration) (total int) {
 		//
 		// - produce can write but never read
 		// - fetch can hang for a while reading (infrequent writes)
-
-		lastWrite := time.Unix(0, cxn.lastWrite.Load())
-		lastRead := time.Unix(0, cxn.lastRead.Load())
-
-		writeIdle := time.Since(lastWrite) > idleTimeout && !cxn.writing.Load()
-		readIdle := time.Since(lastRead) > idleTimeout && !cxn.reading.Load()
-
-		if writeIdle && readIdle {
+		if cxn.isIdleTimeout(idleTimeout) {
 			cxn.die()
 			total++
 		}
@@ -687,7 +881,7 @@ func (b *broker) connect(ctx context.Context) (net.Conn, error) {
 		if !errors.Is(err, ErrClientClosed) && !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "operation was canceled") {
 			if errors.Is(err, io.EOF) {
 				b.cl.cfg.logger.Log(LogLevelWarn, "unable to open connection to broker due to an immediate EOF, which often means the client is using TLS when the broker is not expecting it (is TLS misconfigured?)", "addr", b.addr, "broker", logID(b.meta.NodeID), "err", err)
-				return nil, &ErrFirstReadEOF{kind: firstReadTLS, err: err}
+				return nil, &ErrFirstReadEOF{kind: firstReadDial, err: err, retry: b.cl.cfg.alwaysRetryEOF}
 			}
 			b.cl.cfg.logger.Log(LogLevelWarn, "unable to open connection to broker", "addr", b.addr, "broker", logID(b.meta.NodeID), "err", err)
 		}
@@ -700,7 +894,11 @@ func (b *broker) connect(ctx context.Context) (net.Conn, error) {
 // brokerCxn manages an actual connection to a Kafka broker. This is separate
 // the broker struct to allow lazy connection (re)creation.
 type brokerCxn struct {
-	throttleUntil atomicI64 // atomic nanosec
+	br *bufio.Reader // wraps conn for more efficient size + body reading; read br, not conn
+
+	unwatchClientCtx func() bool // unhooks the client context (canceled on Close) from killing the conn
+
+	throttleUntil atomic.Int64 // atomic nanosec
 
 	conn net.Conn
 
@@ -717,36 +915,110 @@ type brokerCxn struct {
 	// The following four fields are used for connection reaping.
 	// Write is only updated in one location; read is updated in three
 	// due to readConn, readConnAsync, and discard.
-	lastWrite atomicI64
-	lastRead  atomicI64
-	writing   atomicBool
-	reading   atomicBool
+	lastWrite atomic.Int64
+	lastRead  atomic.Int64
+	writing   atomic.Bool
+	reading   atomic.Bool
 
 	successes uint64
 
+	sizeBuf [4]byte // reused in readConn, tiny win
+
 	// resps manages reading kafka responses.
-	resps ringResp
+	resps ring[promisedResp]
 	// dead is an atomic so that a backed up resps cannot block cxn death.
-	dead atomicBool
-	// closed in cloneConn; allows throttle waiting to quit
+	dead atomic.Bool
+	// closed in die; allows throttle waiting to quit
 	deadCh chan struct{}
+	// hasDiscard is set during init (before the connection is shared) if
+	// this is an acks=0 produce connection running the discard goroutine.
+	// The discard goroutine owns all reads on the connection, so sasl
+	// reauthentication can never happen in place; see handleReq and
+	// loadConnection.
+	hasDiscard bool
+
+	// reauthPending is set by the broker worker when the sasl expiry has
+	// passed but responses are still in flight (handleResps owns reads,
+	// so reauthenticating would race it). While pending, requests for
+	// this connection park instead of being written, so the pipeline
+	// drains; handleResps pushes a reauthDrainReq as it exits to
+	// reauthenticate and replay them. See handleReq's expiry arm for the
+	// store/load ordering argument.
+	reauthPending atomic.Bool
+
+	// parkMu guards parked/parkFailed. parked holds requests, in arrival
+	// order, that are waiting for a pending reauthentication; order
+	// matters for idempotent produce, whose sequence numbers were
+	// assigned at request build. die fails everything parked (and marks
+	// parkFailed) so a dead connection cannot strand requests.
+	parkMu     xsync.Mutex
+	parked     []promisedReq
+	parkFailed bool
+}
+
+// park holds a request destined for this connection while a sasl
+// reauthentication is pending; handleReauthDrain replays parked requests in
+// order once the pipeline drains. If the connection already died (die fails
+// everything parked), the request fails immediately with the same retryable
+// error that ring-queued requests receive on broker death.
+func (cxn *brokerCxn) park(pr promisedReq) {
+	cxn.parkMu.Lock()
+	if cxn.parkFailed {
+		cxn.parkMu.Unlock()
+		pr.promise(nil, errChosenBrokerDead)
+		return
+	}
+	cxn.parked = append(cxn.parked, pr)
+	n := len(cxn.parked)
+	cxn.parkMu.Unlock()
+	cxn.cl.cfg.logger.Log(LogLevelDebug, "sasl expiry limit reached but responses are in flight, parking request until the pipeline drains", "broker", logID(cxn.b.meta.NodeID), "parked_reqs", n)
+}
+
+func (cxn *brokerCxn) anyParked() bool {
+	cxn.parkMu.Lock()
+	defer cxn.parkMu.Unlock()
+	return len(cxn.parked) > 0
+}
+
+func (cxn *brokerCxn) takeParked() []promisedReq {
+	cxn.parkMu.Lock()
+	defer cxn.parkMu.Unlock()
+	parked := cxn.parked
+	cxn.parked = nil
+	return parked
+}
+
+func (cxn *brokerCxn) failParked() {
+	cxn.parkMu.Lock()
+	parked := cxn.parked
+	cxn.parked = nil
+	cxn.parkFailed = true
+	cxn.parkMu.Unlock()
+	for _, pr := range parked {
+		pr.promise(nil, errChosenBrokerDead)
+	}
 }
 
 func (cxn *brokerCxn) init(isProduceCxn bool, tries int) error {
-	hasVersions := cxn.b.loadVersions() != nil
-	if !hasVersions {
-		if cxn.b.cl.cfg.maxVersions == nil || cxn.b.cl.cfg.maxVersions.HasKey(18) {
-			if err := cxn.requestAPIVersions(tries); err != nil {
-				if !errors.Is(err, ErrClientClosed) && !isRetryableBrokerErr(err) {
-					cxn.cl.cfg.logger.Log(LogLevelError, "unable to request api versions", "broker", logID(cxn.b.meta.NodeID), "err", err)
-				}
-				return err
+	// We always send ApiVersions on every new connection, even if we have
+	// already cached the broker's versions from a previous connection.
+	// ApiVersions is how we advertise our ClientSoftwareName/Version to the
+	// broker for the lifetime of this connection (KIP-714 client metrics
+	// match on these). If we skip it on a reused-broker connection, that
+	// connection registers as "unknown" software on the broker side, and
+	// any broker-side metric subscriptions scoped to our software name
+	// silently miss it. See twmb/franz-go#1296.
+	if cxn.b.cl.cfg.maxVersions == nil || cxn.b.cl.cfg.maxVersions.HasKey(18) {
+		if err := cxn.requestAPIVersions(tries); err != nil {
+			if !errors.Is(err, ErrClientClosed) && !isRetryableBrokerErr(err) {
+				cxn.cl.cfg.logger.Log(LogLevelError, "unable to request api versions", "broker", logID(cxn.b.meta.NodeID), "err", err)
 			}
-		} else {
-			// We have a max versions, and it indicates no support
-			// for ApiVersions. We just store a default -1 set.
-			cxn.b.storeVersions(newBrokerVersions())
+			return err
 		}
+	} else if cxn.b.loadVersions() == nil {
+		// We have a max versions, and it indicates no support for
+		// ApiVersions. We just store a default empty map (once).
+		cxn.b.storeVersions(newBrokerVersions(0))
 	}
 
 	if err := cxn.sasl(); err != nil {
@@ -757,13 +1029,14 @@ func (cxn *brokerCxn) init(isProduceCxn bool, tries int) error {
 	}
 
 	if isProduceCxn && cxn.cl.cfg.acks.val == 0 {
+		cxn.hasDiscard = true
 		go cxn.discard() // see docs on discard for why we do this
 	}
 	return nil
 }
 
 func (cxn *brokerCxn) requestAPIVersions(tries int) error {
-	maxVersion := int16(4)
+	maxVersion := int16(5)
 	if tries >= 3 { // on the third try, we pin to v0; see above in cxn initialization
 		maxVersion = 0
 	} else if cxn.cl.cfg.maxVersions != nil {
@@ -777,11 +1050,32 @@ func (cxn *brokerCxn) requestAPIVersions(tries int) error {
 		}
 	}
 
+	// A broker we connected to before told us its ApiVersions max. If it
+	// is below ours, begin there: a request above the broker's max is
+	// answered UNSUPPORTED_VERSION and retried, one extra round trip per
+	// connection. Once the cache is old enough, we ask at our own max
+	// again in case the broker was upgraded.
+	learnedAt := time.Now()
+	if v := cxn.b.loadVersions(); v != nil && time.Since(v.learnedAt) < relearnVersionsAfter {
+		if cached := v.maxVersion(18); cached >= 0 && cached < maxVersion {
+			maxVersion = cached
+			learnedAt = v.learnedAt
+		}
+	}
+
 start:
 	req := kmsg.NewPtrApiVersionsRequest()
 	req.Version = maxVersion
 	req.ClientSoftwareName = cxn.cl.cfg.softwareName
 	req.ClientSoftwareVersion = cxn.cl.cfg.softwareVersion
+	// KIP-1242: name the cluster and node we expect to reach. Seeds have
+	// no node ID and get neither.
+	if maxVersion >= 5 && cxn.b.meta.NodeID >= 0 {
+		if clusterID := cxn.cl.clusterID.Load(); clusterID != nil {
+			req.ClusterID = clusterID
+			req.NodeID = cxn.b.meta.NodeID
+		}
+	}
 	cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing api versions request", "broker", logID(cxn.b.meta.NodeID), "version", maxVersion)
 	corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
 	if writeErr != nil {
@@ -793,8 +1087,11 @@ start:
 	// api versions does *not* use flexible response headers; see comment in promisedResp
 	rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, false, rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
 	if err != nil {
-		if strings.HasSuffix(err.Error(), "connection reset by peer") {
+		if errno, ok := errors.AsType[syscall.Errno](err); ok && isConnReset(errno) {
 			return &errApiVersionsReset{err}
+		} else if errors.Is(err, io.EOF) {
+			cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker received EOF during api versions discovery, which often happens when the broker requires TLS and the client is not using it (is TLS misconfigured?)", "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
+			err = &ErrFirstReadEOF{kind: firstReadTLS, err: err, retry: cxn.b.cl.cfg.alwaysRetryEOF}
 		}
 		return err
 	}
@@ -809,7 +1106,9 @@ start:
 	//
 	// Pre Kafka 2.4, we have to retry the request with version 0.
 	// Post, Kafka replies with the version we should retry with (KIP-511).
+	var sawUnsupportedVersion bool
 	if rawResp[1] == 35 {
+		sawUnsupportedVersion = true
 		if maxVersion == 0 {
 			return errors.New("broker replied with UNSUPPORTED_VERSION to an ApiVersions request of version 0")
 		}
@@ -824,11 +1123,21 @@ start:
 			cxn.cl.cfg.logger.Log(LogLevelDebug, "broker does not know our ApiVersions version, downgrading to version 0 and retrying", "broker", logID(cxn.b.meta.NodeID))
 			goto start
 		case len(resp.ApiKeys) == 1 && resp.ApiKeys[0].ApiKey == 18:
-			maxVersion = resp.ApiKeys[0].MaxVersion
-			cxn.cl.cfg.logger.Log(LogLevelDebug, fmt.Sprintf("broker does not know our ApiVersions version but replied version %[1]d, downgrading to version %[1]d and retrying", maxVersion), "broker", logID(cxn.b.meta.NodeID))
-			goto start
+			// KIP-511: the broker replies with the version we should
+			// retry with. Only accept a strictly lower, non-negative
+			// version: a real broker advertises less than what it
+			// just rejected, and accepting anything else would let a
+			// buggy/hostile broker keep us in this downgrade loop
+			// forever (the init path runs on no request context, so
+			// only client close would stop it).
+			if v := resp.ApiKeys[0].MaxVersion; v >= 0 && v < maxVersion {
+				maxVersion = v
+				cxn.cl.cfg.logger.Log(LogLevelDebug, fmt.Sprintf("broker does not know our ApiVersions version but replied version %[1]d, downgrading to version %[1]d and retrying", maxVersion), "broker", logID(cxn.b.meta.NodeID))
+				goto start
+			}
+			return fmt.Errorf("broker replied with UNSUPPORTED_VERSION to our v%d ApiVersions request but advertised non-downgrade version %d", maxVersion, resp.ApiKeys[0].MaxVersion)
 		default:
-			// Should not hit this case, but we hope the broker replied with all keys
+			// The broker replied with all keys; nothing to downgrade to, we use them.
 		}
 		resp = req.ResponseKind().(*kmsg.ApiVersionsResponse)
 		resp.Version = 0
@@ -837,15 +1146,27 @@ start:
 	if err = resp.ReadFrom(rawResp); err != nil {
 		return fmt.Errorf("unable to read ApiVersions response: %w", err)
 	}
+	// Checked before ApiKeys below: an error can come with an empty key table.
+	if !sawUnsupportedVersion {
+		if err := kerr.ErrorForCode(resp.ErrorCode); err != nil {
+			// The broker is not who our metadata says it is. Drop
+			// every discovered broker and rediscover the cluster
+			// from the seeds; the request that opened this
+			// connection retries once metadata has refreshed.
+			if errors.Is(err, kerr.RebootstrapRequired) && req.ClusterID != nil {
+				cxn.cl.rebootstrapMisrouted(cxn.b, *req.ClusterID)
+				return errChosenBrokerDead
+			}
+			return err
+		}
+	}
 	if len(resp.ApiKeys) == 0 {
 		return errors.New("ApiVersions response invalidly contained no ApiKeys")
 	}
 
-	v := newBrokerVersions()
+	v := newBrokerVersions(len(resp.ApiKeys))
+	v.learnedAt = learnedAt
 	for _, key := range resp.ApiKeys {
-		if key.ApiKey > kmsg.MaxKey || key.ApiKey < 0 {
-			continue
-		}
 		v.maxVers[key.ApiKey] = key.MaxVersion
 		v.minVers[key.ApiKey] = key.MinVersion
 	}
@@ -871,9 +1192,16 @@ func (cxn *brokerCxn) sasl() error {
 	req := kmsg.NewPtrSASLHandshakeRequest()
 
 start:
-	if mechanism.Name() != "GSSAPI" && v.maxVers[req.Key()] >= 0 {
+	// KIP-152 establishes the modern SASL flow: ApiVersions, then
+	// SaslHandshake, then SaslAuthenticate for all mechanisms. The
+	// legacy raw GSSAPI flow (where GSSAPI clients could skip the
+	// handshake) only worked when GSSAPI bytes were the *first* packet
+	// on the connection. Since we send ApiVersions first, we must send
+	// SaslHandshake for all mechanisms including GSSAPI. KIP-896 removed
+	// support for the legacy raw GSSAPI protocol entirely in Kafka 4.0.
+	if v.maxVersion(req.Key()) >= 0 {
 		req.Mechanism = mechanism.Name()
-		req.Version = v.maxVers[req.Key()]
+		req.Version = v.maxVersion(req.Key())
 		cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing SASLHandshakeRequest", "broker", logID(cxn.b.meta.NodeID))
 		corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
 		if writeErr != nil {
@@ -960,39 +1288,38 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 		} else {
 			req := kmsg.NewPtrSASLAuthenticateRequest()
 			req.SASLAuthBytes = clientWrite
-			req.Version = cxn.b.loadVersions().maxVers[req.Key()]
+			req.Version = cxn.b.loadVersions().maxVersion(req.Key())
 			cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing SASLAuthenticate", "broker", logID(cxn.b.meta.NodeID), "version", req.Version, "step", step)
 
 			// Lifetime: we take the timestamp before we write our
 			// request; see usage below for why.
 			prereq = time.Now()
 			corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
-
-			// As mentioned above, we could have one final write
-			// without reading a response back (kerberos). If this
-			// is the case, we need to e2e.
-			if writeErr != nil || done {
+			if writeErr != nil {
 				cxn.hookWriteE2E(req.Key(), bytesWritten, writeWait, timeToWrite, writeErr)
-				if writeErr != nil {
-					return writeErr
-				}
+				return writeErr
 			}
-			if !done {
-				rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, req.IsFlexible(), rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
-				if err != nil {
-					return err
-				}
-				resp := req.ResponseKind().(*kmsg.SASLAuthenticateResponse)
-				if err = resp.ReadFrom(rawResp); err != nil {
-					return err
-				}
 
-				if err := errCodeMessage(resp.ErrorCode, resp.ErrorMessage); err != nil {
-					return err
-				}
-				challenge = resp.SASLAuthBytes
-				lifetimeMillis = resp.SessionLifetimeMillis
+			// Unlike the raw SASL path, SaslAuthenticate always has
+			// a response for every request. Per KIP-152, "server
+			// always sends a response to each SASL_AUTHENTICATE
+			// request". We must read this response even when the
+			// SASL session is complete to avoid leaving data in the
+			// connection buffer.
+			rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, req.IsFlexible(), rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
+			if err != nil {
+				return err
 			}
+			resp := req.ResponseKind().(*kmsg.SASLAuthenticateResponse)
+			if err = resp.ReadFrom(rawResp); err != nil {
+				return err
+			}
+
+			if err := errCodeMessage(resp.ErrorCode, resp.ErrorMessage); err != nil {
+				return err
+			}
+			challenge = resp.SASLAuthBytes
+			lifetimeMillis = resp.SessionLifetimeMillis
 		}
 
 		clientWrite = nil
@@ -1005,6 +1332,16 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 	}
 
 	if lifetimeMillis > 0 {
+		// A hostile/buggy broker can reply with a lifetime so large
+		// that converting it to a time.Duration overflows, wrapping
+		// the expiry into the past and forcing a reauth before every
+		// request. Anything beyond a year never matters for a real
+		// connection; clamp.
+		const maxLifetimeMillis = 365 * 24 * int64(time.Hour/time.Millisecond)
+		if lifetimeMillis > maxLifetimeMillis {
+			lifetimeMillis = maxLifetimeMillis
+		}
+
 		// Lifetime is problematic. We need to be a bit pessimistic.
 		//
 		// We want a lowerbound: we use 1s (arbitrary), but if 1.1x our
@@ -1027,10 +1364,7 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 		// every second after, we add between 0.05s or 0.08s to our
 		// backoff. At 12hr, we reauth ~24 to 28min before the
 		// lifetime.
-		usePessimismMillis := maxPessimismMillis
-		if minPessimismMillis > maxPessimismMillis {
-			usePessimismMillis = minPessimismMillis
-		}
+		usePessimismMillis := max(minPessimismMillis, maxPessimismMillis)
 		useLifetimeMillis := lifetimeMillis - int64(usePessimismMillis)
 
 		// Subtracting our min pessimism may result in our connection
@@ -1046,6 +1380,14 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 			"lifetime_pessimism", time.Duration(usePessimismMillis)*time.Millisecond,
 			"reauthenticate_in", cxn.expiry.Sub(now),
 		)
+	} else {
+		// No (or zero) lifetime means the broker does not require
+		// reauthentication, KIP-368. If a previous authenticate on
+		// this connection set an expiry (reauth was enabled then, e.g.
+		// before a dynamic broker config change), clear it: keeping
+		// the old, already-passed expiry would re-run the full sasl
+		// flow before every subsequent request on this connection.
+		cxn.expiry = time.Time{}
 	}
 	return nil
 }
@@ -1083,7 +1425,7 @@ func (cxn *brokerCxn) writeRequest(ctx context.Context, enqueuedForWritingAt tim
 			if writeErr != nil {
 				after.Stop()
 				writeWait = time.Since(enqueuedForWritingAt)
-				return
+				return corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
 			}
 		}
 	}
@@ -1109,14 +1451,14 @@ func (cxn *brokerCxn) writeRequest(ctx context.Context, enqueuedForWritingAt tim
 	}
 
 	if writeErr != nil {
-		return
+		return corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
 	}
 	corrID = cxn.corrID
 	cxn.corrID++
 	if cxn.corrID < 0 {
 		cxn.corrID = 0
 	}
-	return
+	return corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
 }
 
 func (cxn *brokerCxn) writeConn(
@@ -1134,38 +1476,52 @@ func (cxn *brokerCxn) writeConn(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if cxn.cl.ctx.Err() != nil {
+		return 0, 0, 0, time.Time{}, ErrClientClosed
+	}
 	if timeout > 0 {
 		cxn.conn.SetWriteDeadline(time.Now().Add(timeout))
 	}
 	defer cxn.conn.SetWriteDeadline(time.Time{})
-	writeDone := make(chan struct{})
-	go func() {
-		defer close(writeDone)
-		writeStart := time.Now()
-		bytesWritten, writeErr = cxn.conn.Write(buf)
-		// As soon as we are done writing, we track that we have now
-		// enqueued this request for reading.
-		readEnqueue = time.Now()
-		writeWait = writeStart.Sub(enqueuedForWritingAt)
-		timeToWrite = readEnqueue.Sub(writeStart)
-	}()
-	select {
-	case <-writeDone:
-	case <-cxn.cl.ctx.Done():
-		cxn.conn.SetWriteDeadline(time.Now())
-		<-writeDone
-		if writeErr != nil {
+	stop := cxn.watchCtxCancel(ctx, cxn.conn.SetWriteDeadline)
+	writeStart := time.Now()
+	bytesWritten, writeErr = cxn.conn.Write(buf)
+	// As soon as we are done writing, we track that we have now
+	// enqueued this request for reading.
+	readEnqueue = time.Now()
+	writeWait = writeStart.Sub(enqueuedForWritingAt)
+	timeToWrite = readEnqueue.Sub(writeStart)
+	ctxInterrupted := stop()
+	if writeErr != nil {
+		if cxn.cl.ctx.Err() != nil {
 			writeErr = ErrClientClosed
-		}
-	case <-ctx.Done():
-		cxn.conn.SetWriteDeadline(time.Now())
-		<-writeDone
-		if writeErr != nil && ctx.Err() != nil {
+		} else if ctxInterrupted && ctx.Err() != nil {
 			writeErr = ctx.Err()
 			maybeUpdateCtxErr(cxn.cl.ctx, ctx, &writeErr)
 		}
 	}
-	return
+	return bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
+}
+
+// watchCtxCancel watches ctx in a context.AfterFunc. If ctx is canceled,
+// deadlineFn is called. The returned func stops watching ctx and returns
+// whether deadlineFn was called.
+func (cxn *brokerCxn) watchCtxCancel(ctx context.Context, deadlineFn func(time.Time) error) func() bool {
+	if ctx.Done() == nil || ctx == cxn.cl.ctx {
+		return func() bool { return false }
+	}
+	fired := make(chan struct{})
+	stopFn := context.AfterFunc(ctx, func() {
+		deadlineFn(time.Now())
+		close(fired)
+	})
+	return func() bool {
+		if stopFn() {
+			return false
+		}
+		<-fired
+		return true
+	}
 }
 
 func (cxn *brokerCxn) readConn(
@@ -1182,52 +1538,45 @@ func (cxn *brokerCxn) readConn(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if cxn.cl.ctx.Err() != nil {
+		return 0, nil, 0, 0, ErrClientClosed
+	}
 	if timeout > 0 {
 		cxn.conn.SetReadDeadline(time.Now().Add(timeout))
 	}
 	defer cxn.conn.SetReadDeadline(time.Time{})
-	readDone := make(chan struct{})
-	go func() {
-		defer close(readDone)
-		sizeBuf := make([]byte, 4)
-		readStart := time.Now()
-		defer func() {
-			timeToRead = time.Since(readStart)
-			readWait = readStart.Sub(enqueuedForReadingAt)
-		}()
-		if nread, err = io.ReadFull(cxn.conn, sizeBuf); err != nil {
-			return
-		}
-		var size int32
-		if size, err = cxn.parseReadSize(sizeBuf); err != nil {
-			return
-		}
-		buf = make([]byte, size)
-		var nread2 int
-		nread2, err = io.ReadFull(cxn.conn, buf)
-		nread += nread2
-		buf = buf[:nread2]
-		if err != nil {
-			return
-		}
-	}()
-	select {
-	case <-readDone:
-	case <-cxn.cl.ctx.Done():
-		cxn.conn.SetReadDeadline(time.Now())
-		<-readDone
-		if err != nil {
+	stop := cxn.watchCtxCancel(ctx, cxn.conn.SetReadDeadline)
+	readStart := time.Now()
+	nread, buf, err = cxn.readSizeAndBody()
+	timeToRead = time.Since(readStart)
+	readWait = readStart.Sub(enqueuedForReadingAt)
+	ctxInterrupted := stop()
+	if err != nil {
+		if cxn.cl.ctx.Err() != nil {
 			err = ErrClientClosed
-		}
-	case <-ctx.Done():
-		cxn.conn.SetReadDeadline(time.Now())
-		<-readDone
-		if err != nil && ctx.Err() != nil {
+		} else if ctxInterrupted && ctx.Err() != nil {
 			err = ctx.Err()
 			maybeUpdateCtxErr(cxn.cl.ctx, ctx, &err)
 		}
 	}
-	return
+	return nread, buf, readWait, timeToRead, err
+}
+
+func (cxn *brokerCxn) readSizeAndBody() (int, []byte, error) {
+	nread, err := io.ReadFull(cxn.br, cxn.sizeBuf[:])
+	if err != nil {
+		return nread, nil, err
+	}
+	size, err := cxn.parseReadSize(cxn.sizeBuf[:])
+	if err != nil {
+		return nread, nil, err
+	}
+	buf := make([]byte, size)
+	// Past what br already holds, bufio reads a body larger than its 4KiB
+	// buffer straight into buf, so, on a large body, at most 4KiB is copied
+	// twice.
+	nread2, err := io.ReadFull(cxn.br, buf)
+	return nread + nread2, buf[:nread2], err
 }
 
 // Parses a length 4 slice and enforces the min / max read size based off the
@@ -1264,7 +1613,7 @@ func (cxn *brokerCxn) parseReadSize(sizeBuf []byte) (int32, error) {
 			}
 			return 0, fmt.Errorf("invalid large response size %d > limit %d; the first three bytes received appear to be a tls alert record for %s; is this a plaintext connection speaking to a tls endpoint?", size, maxSize, versionGuess)
 		}
-		return 0, fmt.Errorf("invalid large response size %d > limit %d", size, maxSize)
+		return 0, fmt.Errorf("invalid large response size %d > limit %d: %w", size, maxSize, errResponseTooLarge)
 	}
 	return size, nil
 }
@@ -1319,6 +1668,14 @@ func (cxn *brokerCxn) readResponse(
 	}
 
 	if readErr != nil {
+		// A metadata update can retire this broker while a response read is
+		// blocked. stopForever calls die, which marks the connection dead
+		// before closing it; the read then wakes with a platform-specific
+		// socket error. Return the same retryable error as requests queued
+		// behind this read, unless the client or request itself was canceled.
+		if cxn.dead.Load() && cxn.cl.ctx.Err() == nil && !isContextErr(readErr) {
+			return nil, errChosenBrokerDead
+		}
 		return nil, readErr
 	}
 	if len(buf) < 4 {
@@ -1338,27 +1695,27 @@ func (cxn *brokerCxn) readResponse(
 	return buf[4:], nil
 }
 
-// closeConn is the one place we close broker connections. This is always done
-// in either die, which is called when handleResps returns, or if init fails,
-// which means we did not succeed enough to start handleResps.
-func (cxn *brokerCxn) closeConn() {
+// die is the one place we close broker connections, and it replies to all
+// requests awaiting responses appropriately, including requests parked for a
+// pending reauthentication. It is callable from anywhere and at any point in a
+// connection's life: read/write errors, reaping, broker stoppage, init failure,
+// and loadConnection's ApiVersions-reset retry and dead-broker arm. The dead
+// swap is what makes every one of those safe -- deadCh can only be closed once,
+// no matter how many goroutines race to tear the connection down.
+func (cxn *brokerCxn) die() {
+	if cxn == nil || cxn.dead.Swap(true) {
+		return
+	}
 	cxn.cl.cfg.hooks.each(func(h Hook) {
 		if h, ok := h.(HookBrokerDisconnect); ok {
 			h.OnBrokerDisconnect(cxn.b.meta, cxn.conn)
 		}
 	})
+	cxn.unwatchClientCtx()
 	cxn.conn.Close()
 	close(cxn.deadCh)
-}
-
-// die kills a broker connection (which could be dead already) and replies to
-// all requests awaiting responses appropriately.
-func (cxn *brokerCxn) die() {
-	if cxn == nil || cxn.dead.Swap(true) {
-		return
-	}
-	cxn.closeConn()
 	cxn.resps.die()
+	cxn.failParked()
 }
 
 // waitResp, called serially by a broker's handleReqs, manages handling a
@@ -1420,7 +1777,7 @@ func (cxn *brokerCxn) discard() {
 			err        error
 			timeToRead time.Duration
 
-			deadlineMu  sync.Mutex
+			deadlineMu  xsync.Mutex
 			deadlineSet bool
 
 			readDone = make(chan struct{})
@@ -1450,7 +1807,7 @@ func (cxn *brokerCxn) discard() {
 
 		go func() {
 			defer close(readDone)
-			if nread, err = io.ReadFull(cxn.conn, discardBuf[:4]); err != nil {
+			if nread, err = io.ReadFull(cxn.br, discardBuf[:4]); err != nil {
 				if i == 0 && errors.Is(err, os.ErrDeadlineExceeded) {
 					firstTimeout = true
 				}
@@ -1481,9 +1838,9 @@ func (cxn *brokerCxn) discard() {
 				if int(size) < len(discard) {
 					discard = discard[:size]
 				}
-				nread2, err = cxn.conn.Read(discard)
+				nread2, err = cxn.br.Read(discard)
 				nread += nread2
-				size -= int32(nread2) // nread2 max is 128
+				size -= int32(nread2) // nread2 max is len(discardBuf), 256
 			}
 		}()
 
@@ -1511,6 +1868,7 @@ func (cxn *brokerCxn) discard() {
 
 // handleResps serially handles all broker responses for an single connection.
 func (cxn *brokerCxn) handleResps(pr promisedResp) {
+	growStack()
 	var more, dead bool
 start:
 	if dead {
@@ -1523,6 +1881,60 @@ start:
 	pr, more, dead = cxn.resps.dropPeek()
 	if more {
 		goto start
+	}
+
+	// The ring is empty and this worker is exiting: no read is in flight
+	// and none can start (only the broker worker pushes responses, and it
+	// parks requests for this connection while a reauth is pending). If a
+	// reauth is pending, signal the broker worker to perform it and
+	// replay the parked requests. If the broker is stopping, the failed
+	// push is fine: stopForever dies every connection, and die fails
+	// everything parked.
+	if cxn.reauthPending.Load() {
+		cxn.b.do(cxn.cl.ctx, &reauthDrainReq{cxn: cxn}, func(kmsg.Response, error) {})
+	}
+}
+
+// handleReauthDrain runs on the broker worker goroutine when a connection
+// with a pending reauthentication has drained its in-flight responses (its
+// handleResps worker pushed this sentinel as it exited). No reads can be in
+// flight: handleResps exited, only this goroutine starts another (by writing
+// a request), and every request for this connection since the expiry passed
+// was parked. Reauthenticate and replay the parked requests in their
+// original order -- order matters for idempotent produce, whose sequence
+// numbers were assigned at request build.
+func (b *broker) handleReauthDrain(cxn *brokerCxn) {
+	// A sentinel can be spurious: the quiet-connection reauth arm stores
+	// the pending flag and clears it just after, and a concurrently
+	// exiting handleResps can observe the transient true. That alone is
+	// a harmless no-op below -- but if the broker also hands out
+	// immediately-expiring lifetimes, a request queued behind this
+	// sentinel's push may have re-parked by now with a NEW response in
+	// flight (the inline arm's own request), so "drained" no longer
+	// holds. If anything is in flight, touch nothing: that response's
+	// handleResps exit re-signals (the parker stored the pending flag
+	// before observing the non-empty ring, so the exit cannot miss it)
+	// and the re-signal finds the connection actually quiet.
+	if !cxn.resps.empty() {
+		return
+	}
+
+	// Take the parked requests before a possible die below: a failed
+	// reauth must not fail them, it replays them through the normal path,
+	// which builds a fresh connection with a fresh authentication -- the
+	// same recovery the in-place reauth arm provides via its
+	// retry-on-new-connection. (If the connection died earlier, die
+	// already failed everything parked and this take returns nil.)
+	parked := cxn.takeParked()
+	if cxn.reauthPending.Swap(false) && !cxn.dead.Load() {
+		cxn.cl.cfg.logger.Log(LogLevelDebug, "sasl expiry limit reached and responses have drained, reauthenticating", "broker", logID(cxn.b.meta.NodeID), "parked_reqs", len(parked))
+		if err := cxn.sasl(); err != nil {
+			cxn.cl.cfg.logger.Log(LogLevelDebug, "sasl reauth failed, killing connection; any parked requests retry on a new connection", "broker", logID(cxn.b.meta.NodeID), "err", err)
+			cxn.die()
+		}
+	}
+	for _, pr := range parked {
+		b.handleReq(pr)
 	}
 }
 
@@ -1540,14 +1952,23 @@ func (cxn *brokerCxn) handleResp(pr promisedResp) {
 		pr.readEnqueue,
 	)
 	if err != nil {
-		if !errors.Is(err, ErrClientClosed) && !errors.Is(err, context.Canceled) {
-			if cxn.successes > 0 || len(cxn.b.cl.cfg.sasls) > 0 {
-				cxn.b.cl.cfg.logger.Log(LogLevelDebug, "read from broker errored, killing connection", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "successful_reads", cxn.successes, "err", err)
-			} else {
-				cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker errored, killing connection after 0 successful responses (is SASL missing?)", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
-				if err == io.EOF { // specifically avoid checking errors.Is to ensure this is not already wrapped
-					err = &ErrFirstReadEOF{kind: firstReadSASL, err: err}
+		if !errors.Is(err, errChosenBrokerDead) {
+			if !errors.Is(err, ErrClientClosed) && !errors.Is(err, context.Canceled) {
+				if cxn.successes > 0 || len(cxn.b.cl.cfg.sasls) > 0 {
+					cxn.b.cl.cfg.logger.Log(LogLevelDebug, "read from broker errored, killing connection", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "successful_reads", cxn.successes, "err", err)
+				} else {
+					cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker errored, killing connection after 0 successful responses (is SASL missing?)", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
+					if err == io.EOF || err == io.ErrUnexpectedEOF { // specifically avoid checking errors.Is to ensure this is not already wrapped
+						// ErrUnexpectedEOF gets the same first-read
+						// pessimism: now that it is retryable in
+						// isRetryableBrokerErr, a mid-frame close on
+						// the very first read (bad SASL cutting us off
+						// mid-response) must not retry forever either.
+						err = &ErrFirstReadEOF{kind: firstReadSASL, err: err, retry: cxn.b.cl.cfg.alwaysRetryEOF}
+					}
 				}
+			} else {
+				cxn.b.cl.cfg.logger.Log(LogLevelDebug, "read from broker canceled, closing connection and killing any other in-flight requests on this connection", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
 			}
 		}
 		pr.promise(nil, err)
@@ -1570,6 +1991,14 @@ func (cxn *brokerCxn) handleResp(pr promisedResp) {
 	if readErr == nil {
 		if throttleResponse, ok := pr.resp.(kmsg.ThrottleResponse); ok {
 			millis, throttlesAfterResp := throttleResponse.Throttle()
+			// A throttle is honored in full with NO upper cap (KIP-219),
+			// matching Java's NetworkClient. millis <= 0 is ignored; a
+			// positive value - even a hostile near-MaxInt32 (~24.8 days) -
+			// delays the next write on this connection (writeRequest), which
+			// selects on the request ctx and client Close, so the wait is
+			// always interruptible and holds no lock. Capping it would break
+			// the quota mechanism; an absurd throttle is equivalent to a slow
+			// broker, which is always possible. Do not add a cap.
 			if millis > 0 {
 				if pr.resp.Key() == 0 {
 					cxn.b.cl.metrics.observeTime(&cxn.b.cl.metrics.pThrottle, int64(millis))
@@ -1591,4 +2020,13 @@ func (cxn *brokerCxn) handleResp(pr promisedResp) {
 	}
 
 	pr.promise(pr.resp, readErr)
+}
+
+func (cxn *brokerCxn) isIdleTimeout(idleTimeout time.Duration) bool {
+	lastWrite := time.Unix(0, cxn.lastWrite.Load())
+	lastRead := time.Unix(0, cxn.lastRead.Load())
+
+	writeIdle := time.Since(lastWrite) > idleTimeout && !cxn.writing.Load()
+	readIdle := time.Since(lastRead) > idleTimeout && !cxn.reading.Load()
+	return writeIdle && readIdle
 }
