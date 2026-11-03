@@ -15,6 +15,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"net"
 	"net/url"
@@ -157,9 +158,7 @@ func (cfg *Config) Clone() *Config {
 	}
 	if len(cp.Params) > 0 {
 		cp.Params = make(map[string]string, len(cfg.Params))
-		for k, v := range cfg.Params {
-			cp.Params[k] = v
-		}
+		maps.Copy(cp.Params, cfg.Params)
 	}
 	if cfg.pubKey != nil {
 		cp.pubKey = &rsa.PublicKey{
@@ -265,13 +264,19 @@ func (cfg *Config) FormatDSN() string {
 	}
 
 	// [protocol[(address)]]
-	if len(cfg.Net) > 0 {
-		buf.WriteString(cfg.Net)
-		if len(cfg.Addr) > 0 {
-			buf.WriteByte('(')
-			buf.WriteString(cfg.Addr)
-			buf.WriteByte(')')
+	if len(cfg.Addr) > 0 {
+		net := cfg.Net
+		if net == "" {
+			net = "tcp"
 		}
+		buf.WriteString(net)
+		buf.WriteByte('(')
+		buf.WriteString(cfg.Addr)
+		buf.WriteByte(')')
+	} else if cfg.Net != "" && cfg.Net != "tcp" {
+		// Preserve an explicit non-default protocol when there's no
+		// address, so e.g. Net="unix" still round-trips.
+		buf.WriteString(cfg.Net)
 	}
 
 	// /dbname
@@ -414,7 +419,7 @@ func ParseDSN(dsn string) (cfg *Config, err error) {
 					if dsn[j] == '@' {
 						// username[:password]
 						// Find the first ':' in dsn[:j]
-						for k = 0; k < j; k++ {
+						for k = 0; k < j; k++ { // We cannot use k = range j here, because we use dsn[:k] below
 							if dsn[k] == ':' {
 								cfg.Passwd = dsn[k+1 : j]
 								break
@@ -477,7 +482,7 @@ func ParseDSN(dsn string) (cfg *Config, err error) {
 // parseDSNParams parses the DSN "query string"
 // Values must be url.QueryEscape'ed
 func parseDSNParams(cfg *Config, params string) (err error) {
-	for _, v := range strings.Split(params, "&") {
+	for v := range strings.SplitSeq(params, "&") {
 		key, value, found := strings.Cut(v, "=")
 		if !found {
 			continue
