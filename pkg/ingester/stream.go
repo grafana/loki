@@ -106,25 +106,7 @@ type chunkDesc struct {
 	ingestedAt time.Time
 }
 
-// observeRecordTimestamp keeps the highest record timestamp that fed the chunk. That doesn't
-// depend on the order records are applied in, so replicas consuming the same records end up with
-// the same value for the same chunk, and the chunk is deduplicated.
-//
-// That holds for most duplicate entries too: they are not added to the chunk twice, but their
-// record timestamp still counts. The exception is a duplicate of the stream's last line, which is
-// discarded before its record timestamp is counted. Replicas apply records with several workers,
-// so they can apply them in a different order. For example, with a push of a single line A that
-// the client retries:
-//
-//	R1 (10:00): [A]
-//	R2 (10:01): [A]  (retry of R1)
-//
-//	replica 1 applies R1, then R2: stores A from R1, discards it from R2 -> 10:00
-//	replica 2 applies R2, then R1: stores A from R2, discards it from R1 -> 10:01
-//
-// Both replicas hold the same entries but stamp different values, so the chunk is stored twice.
-// Fixing it would mean counting the timestamps of discarded records and writing them to the WAL,
-// so a restart remembers them. We don't think the edge case is worth the extra complexity.
+// observeRecordTimestamp keeps the highest record timestamp that fed the chunk.
 func (c *chunkDesc) observeRecordTimestamp(ts time.Time) {
 	if ts.After(c.ingestedAt) {
 		c.ingestedAt = ts
@@ -410,8 +392,6 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		if dup {
 			s.handleLoggingOfDuplicateEntry(entries[i])
 		}
-		// Duplicates count too: the entry is stored once, by whichever record is processed first,
-		// and that order can differ between replicas.
 		if hasRecordTs {
 			chunk.observeRecordTimestamp(recordTs)
 		}
