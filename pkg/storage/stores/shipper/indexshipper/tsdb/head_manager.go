@@ -850,7 +850,7 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	idx = NewTSDBIndex(tenant.Index())
 	// tenantHeads.Bounds() spans every tenant, so MultiIndex cannot tell that
 	// this tenant's head misses the query window.
-	if !Overlap(idx, newBounds(from, through)) {
+	if !overlapIndex(idx, newBounds(from, through)) {
 		return nil, false
 	}
 
