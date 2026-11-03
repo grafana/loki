@@ -996,6 +996,27 @@ func TestCompactTenantIndexes(t *testing.T) {
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.indexMergeFailedGroupsTotal.WithLabelValues("acme")))
 	})
 
+	t.Run("returns only the group error when shutdown cancels a later group", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(ctx)
+		taskErr := errors.New("task failed")
+		var calls atomic.Int32
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			if calls.Inc() == 1 {
+				return nil, taskErr
+			}
+			cancel()
+			return nil, context.Canceled
+		}}
+		c, replacer, entries := newTwoGroupCoordinator(t, runner)
+
+		_, err := c.compactTenantIndexes(cancelCtx, "acme", window, entries)
+		require.ErrorIs(t, err, taskErr)
+		require.NotErrorIs(t, err, context.Canceled)
+		require.Len(t, runner.snapshot(), 2)
+		require.Empty(t, replacer.snapshot())
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.indexMergeFailedGroupsTotal.WithLabelValues("acme")))
+	})
+
 	t.Run("publishes the merged index when a task fails once and its retry succeeds", func(t *testing.T) {
 		bucket := overlappingIndexesBucket(ctx, t, window, "acme", "indexes/a", "indexes/b")
 		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
@@ -1823,6 +1844,31 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 }
 
 func TestRunIndexMergePhase(t *testing.T) {
+	t.Run("returns an error and records a failed cycle when a group fails before shutdown cancels a later group", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		window := imWindow()
+		bucket := objstore.NewInMemBucket()
+		entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
+		tocEntries := make([]testIndex, len(entries))
+		for i, e := range entries {
+			tocEntries[i] = testIndex{path: e.Path, start: e.Start, end: e.End}
+		}
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": tocEntries})
+		var calls atomic.Int32
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			if calls.Inc() == 1 {
+				return nil, errors.New("task failed")
+			}
+			cancel()
+			return nil, context.Canceled
+		}}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
+	})
+
 	t.Run("returns an error and records a compacted cycle when one layout group fails and another swaps", func(t *testing.T) {
 		ctx := context.Background()
 		window := imWindow()

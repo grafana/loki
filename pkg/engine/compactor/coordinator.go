@@ -519,28 +519,31 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 	// A failed group does not stop the other groups, because groups never
 	// merge with each other. The returned error joins the group errors.
 	//
-	// When ctx is done, no new group starts. If no group failed, the error is
-	// ctx.Err(). Otherwise the error joins only the group errors, so the
-	// caller treats a group failure during shutdown as a failure.
+	// Shutdown starts no new group and does not count as a group failure. If
+	// a group failed before the shutdown, the error joins only the group
+	// errors, so the caller treats the phase as failed, not as interrupted.
 	var total compactionStats
 	var errs []error
+	stop := func(shutdownErr error) (compactionStats, error) {
+		if len(errs) > 0 {
+			return total, errors.Join(errs...)
+		}
+		return total, shutdownErr
+	}
 	for key, groupIndexEntries := range groups {
 		if err := ctx.Err(); err != nil {
-			if len(errs) > 0 {
-				break
-			}
-			return total, err
+			return stop(err)
 		}
 		stats, err := c.compactTenantIndexesGroup(ctx, tenant, window, groupIndexEntries)
 		if err != nil {
+			if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+				return stop(err)
+			}
 			err = fmt.Errorf("layout group %s: %w", key, err)
 			errs = append(errs, err)
-			// A group that shutdown cancelled did not fail.
-			if ctx.Err() == nil || !errors.Is(err, context.Canceled) {
-				level.Warn(c.logger).Log("msg", "index-merge: layout group failed",
-					"tenant", tenant, "window", window, "indexes", len(groupIndexEntries), "err", err)
-				c.metrics.indexMergeFailedGroupsTotal.WithLabelValues(tenant).Inc()
-			}
+			level.Warn(c.logger).Log("msg", "index-merge: layout group failed",
+				"tenant", tenant, "window", window, "indexes", len(groupIndexEntries), "err", err)
+			c.metrics.indexMergeFailedGroupsTotal.WithLabelValues(tenant).Inc()
 			continue
 		}
 		total = total.Merge(stats)
