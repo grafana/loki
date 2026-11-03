@@ -281,7 +281,7 @@ Index entries from the other replicas still cover the same log data, unless you 
 
 #### Distributor Max Receive Limits for uncompressed bytes
 
-The next Loki release introduces a new configuration option (i.e. `-distributor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
+Loki 4.0 introduces a new configuration option (i.e. `-distributor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
 
 Supported clients should check the configuration options for max send message size if applicable.
 
