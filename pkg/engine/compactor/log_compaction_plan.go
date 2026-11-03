@@ -56,16 +56,14 @@ type logTaskStats struct {
 	oldestTimestamp time.Time
 }
 
-// physicalPlans returns one physical plan per task, in task order.
-//
-// Each call builds new plans with new node IDs. The scheduler requires unique
-// node IDs, so every execution of p must call physicalPlans again.
-func (p logCompactionPlan) physicalPlans(tenant string) []*physical.Plan {
-	plans := make([]*physical.Plan, len(p.tasks))
+// dispatchTasks returns the tasks of p in task order. Go cannot convert a
+// []logCompactionTask to a []dispatchTask directly.
+func (p logCompactionPlan) dispatchTasks() []dispatchTask {
+	tasks := make([]dispatchTask, len(p.tasks))
 	for i, task := range p.tasks {
-		plans[i] = task.physicalPlan(tenant, p.window)
+		tasks[i] = task
 	}
-	return plans
+	return tasks
 }
 
 // tocEntries returns one ToC entry per task, in task order. The entry paths
@@ -80,8 +78,7 @@ func (p logCompactionPlan) tocEntries() []metastore.TableOfContentsEntry {
 
 // logCompactionTask is one unit of work in a log compaction plan.
 type logCompactionTask interface {
-	// physicalPlan returns a new single-root physical plan for the task.
-	physicalPlan(tenant string, window time.Time) *physical.Plan
+	dispatchTask
 
 	// tocEntry returns the ToC entry for the artifact of the task, without a
 	// path.
@@ -92,18 +89,20 @@ type logCompactionTask interface {
 	logStats() logTaskStats
 }
 
-// logMergeTask merges the runs of spec into new log objects.
+// logMergeTask merges the runs of spec into new log objects for the ToC window
+// that starts at window.
 type logMergeTask struct {
-	spec  *compactionv2pb.TaskSpec
-	entry metastore.TableOfContentsEntry
+	window time.Time
+	spec   *compactionv2pb.TaskSpec
+	entry  metastore.TableOfContentsEntry
 }
 
-func newLogMergeTask(spec *compactionv2pb.TaskSpec) logMergeTask {
-	return logMergeTask{spec: spec, entry: runsToCEntry(spec.Runs)}
+func newLogMergeTask(window time.Time, spec *compactionv2pb.TaskSpec) logMergeTask {
+	return logMergeTask{window: window, spec: spec, entry: runsToCEntry(spec.Runs)}
 }
 
-func (t logMergeTask) physicalPlan(tenant string, window time.Time) *physical.Plan {
-	return buildLogMergePlan(tenant, window, t.spec)
+func (t logMergeTask) physicalPlan(tenant string) *physical.Plan {
+	return buildLogMergePlan(tenant, t.window, t.spec)
 }
 
 func (t logMergeTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
@@ -134,7 +133,7 @@ type indexFilterTask struct {
 	entry           metastore.TableOfContentsEntry
 }
 
-func (t indexFilterTask) physicalPlan(tenant string, _ time.Time) *physical.Plan {
+func (t indexFilterTask) physicalPlan(tenant string) *physical.Plan {
 	return buildIndexFilterPlan(tenant, t.sourceIndexPath, t.objectPaths)
 }
 

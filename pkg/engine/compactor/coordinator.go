@@ -69,12 +69,13 @@ func newCoordinator(
 	run := func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 		return runPlan(ctx, logger, runner, opts, plan)
 	}
+	metrics := newCoordinatorMetrics(reg)
 	return &coordinator{
 		cfg:             cfg,
 		logger:          logger,
 		bucket:          bucket,
-		indexDispatcher: &planDispatcher{runPlan: run, limit: cfg.MaxRunningCompactionTasks},
-		logDispatcher:   &planDispatcher{runPlan: run, limit: cfg.LogMaxRunningCompactionTasks},
+		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, metrics),
+		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, metrics),
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,
@@ -82,7 +83,7 @@ func newCoordinator(
 		},
 		clock:                    time.Now,
 		sleep:                    sleepUntil,
-		metrics:                  newCoordinatorMetrics(reg),
+		metrics:                  metrics,
 		limits:                   limits,
 		logMergePlanningStrategy: logMergePlanningStrategy,
 	}, nil
@@ -188,6 +189,11 @@ type layoutKey struct {
 	schemaLabels string
 	shardBuckets uint32
 	streamOrder  streams.StreamOrder
+}
+
+// String returns k in a form for logs and errors.
+func (k layoutKey) String() string {
+	return fmt.Sprintf("{schema=%q shards=%d order=%v}", k.schemaLabels, k.shardBuckets, k.streamOrder)
 }
 
 func newLayoutKey(layout streams.Layout) layoutKey {
@@ -318,7 +324,7 @@ func (c *coordinator) planLogMerge(
 		singleObjectRuns: singleRuns,
 	}
 	for _, spec := range specs {
-		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
+		plan.tasks = append(plan.tasks, newLogMergeTask(window, spec))
 	}
 	if len(unmergedRuns) > 0 {
 		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmergedRuns))
@@ -389,7 +395,7 @@ func (c *coordinator) executeLogCompaction(
 	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
 	// worker time, and the next pass repeats them.
 	ctx = context.WithoutCancel(ctx)
-	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.physicalPlans(tenant))
+	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.dispatchTasks())
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
@@ -486,6 +492,8 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 // Indexes are grouped by stream layout, so indexes in different groups never
 // merge. It skips corrupt indexes, so they do not block the other indexes of
 // the tenant.
+//
+// The stats count every group that succeeded, even when the error is non-nil.
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	groups := make(map[layoutKey][]indexEntry)
 	for _, entry := range entries {
@@ -506,18 +514,36 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		groups[key] = append(groups[key], entry)
 	}
 
+	// A failed group does not stop the other groups, because groups never
+	// merge with each other. The returned error joins the group errors.
+	//
+	// When ctx is done, no new group starts. If no group failed, the error is
+	// ctx.Err(). Otherwise the error joins only the group errors, so the
+	// caller treats a group failure during shutdown as a failure.
 	var total compactionStats
-	for _, groupIndexEntries := range groups {
+	var errs []error
+	for key, groupIndexEntries := range groups {
 		if err := ctx.Err(); err != nil {
+			if len(errs) > 0 {
+				break
+			}
 			return total, err
 		}
 		stats, err := c.compactTenantIndexesGroup(ctx, tenant, window, groupIndexEntries)
 		if err != nil {
-			return total, err
+			err = fmt.Errorf("layout group %s: %w", key, err)
+			errs = append(errs, err)
+			// A group that shutdown cancelled did not fail.
+			if ctx.Err() == nil || !errors.Is(err, context.Canceled) {
+				level.Warn(c.logger).Log("msg", "index-merge: layout group failed",
+					"tenant", tenant, "window", window, "indexes", len(groupIndexEntries), "err", err)
+				c.metrics.indexMergeFailedGroupsTotal.WithLabelValues(tenant).Inc()
+			}
+			continue
 		}
 		total = total.Merge(stats)
 	}
-	return total, nil
+	return total, errors.Join(errs...)
 }
 
 // skipCorruptIndex records that phase skipped the corrupt index at path.
@@ -556,14 +582,14 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	for _, entry := range entries {
 		entriesByPath[entry.Path] = entry
 	}
-	plans := make([]*physical.Plan, len(tasks))
+	dispatchTasks := make([]dispatchTask, len(tasks))
 	newEntries := make([]metastore.TableOfContentsEntry, len(tasks))
 	for i, task := range tasks {
 		start, end, err := indexTaskBounds(task, entriesByPath)
 		if err != nil {
 			return compactionStats{}, fmt.Errorf("build index ToC entries: task %d: %w", i, err)
 		}
-		plans[i] = buildIndexMergePlan(tenant, window, task)
+		dispatchTasks[i] = indexMergeTask{window: window, spec: task}
 		newEntries[i] = metastore.TableOfContentsEntry{
 			StartTime: start.UTC(),
 			EndTime:   end.UTC(),
@@ -574,7 +600,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
 	// worker time, and the next pass repeats them.
 	ctx = context.WithoutCancel(ctx)
-	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
+	artifacts, err := c.indexDispatcher.Run(ctx, tenant, dispatchTasks)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
@@ -759,7 +785,13 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 		}
 		level.Warn(c.logger).Log("msg", "index-merge phase failed",
 			"tenant", tenant, "window", window, "err", err)
-		c.metrics.observeTenantCycle(tenant, "failed", dur, compactionStats{})
+		// A failed group does not undo the swaps of the other groups, so the
+		// cycle still counts as compacted when any group swapped.
+		if stats.added > 0 {
+			c.metrics.observeTenantCycle(tenant, "compacted", dur, stats)
+		} else {
+			c.metrics.observeTenantCycle(tenant, "failed", dur, compactionStats{})
+		}
 		return phaseOutcomeError
 	}
 	// compactTenantIndexes returns zero stats for every no-op success. A real

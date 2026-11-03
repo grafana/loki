@@ -18,17 +18,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-// buildIndexMergePlan returns a single-root physical.Plan holding exactly one
-// IndexMerge node. Each coordinator cycle runs ⌈P/K⌉ such plans
-// concurrently — one per sorted pile of index sections.
+// buildIndexMergePlan returns a single-root physical.Plan with one IndexMerge
+// node for task.
 func buildIndexMergePlan(
 	tenant string,
 	window time.Time,
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
-		// Each call mints a fresh NodeID so racing builds don't collide on the
-		// scheduler's manifest registry.
+		// Each call makes a new NodeID, because the scheduler rejects a node
+		// ID that it already saw.
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
@@ -39,13 +38,25 @@ func buildIndexMergePlan(
 	return physical.FromGraph(g)
 }
 
+// indexMergeTask merges the index runs of spec into one new index for the ToC
+// window that starts at window.
+type indexMergeTask struct {
+	window time.Time
+	spec   *compactionv2pb.TaskSpec
+}
+
+func (t indexMergeTask) physicalPlan(tenant string) *physical.Plan {
+	return buildIndexMergePlan(tenant, t.window, t.spec)
+}
+
 func buildLogMergePlan(
 	tenant string,
 	window time.Time,
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.LogMerge{
-		// Each call mints a fresh NodeID so racing builds don't collide
+		// Each call makes a new NodeID, because the scheduler rejects a node
+		// ID that it already saw.
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),

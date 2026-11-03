@@ -1150,6 +1150,12 @@ dataobj:
     # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
     [logs_max_running_compaction_tasks: <int> | default = 16]
 
+    # Experimental: Number of times the coordinator runs a failed compaction
+    # task again. A retry starts immediately, with no backoff. 0 disables
+    # retries.
+    # CLI flag: -dataobj.compaction.task-max-retries
+    [task_max_retries: <int> | default = 3]
+
     # Experimental: Coordinator main-loop cadence.
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]

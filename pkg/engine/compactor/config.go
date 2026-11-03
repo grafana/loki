@@ -35,6 +35,11 @@ type Config struct {
 	// rejected at config validation.
 	LogMaxRunningCompactionTasks int `yaml:"logs_max_running_compaction_tasks"`
 
+	// TaskMaxRetries is how many times the coordinator runs a failed
+	// compaction task again. A retry starts immediately, with no backoff. Zero
+	// disables retries. Validate rejects negative values.
+	TaskMaxRetries int `yaml:"task_max_retries"`
+
 	// PollingInterval is the cadence of the coordinator's main loop. Each
 	// tick reads the most-recent ToC and plans compaction per tenant.
 	PollingInterval time.Duration `yaml:"polling_interval"`
@@ -177,6 +182,7 @@ type WorkerConfig struct {
 const (
 	defaultMaxRunningCompactionTasks    = 16
 	defaultLogMaxRunningCompactionTasks = 16
+	defaultTaskMaxRetries               = 3
 	defaultEndpoint                     = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
@@ -206,6 +212,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.LogMaxRunningCompactionTasks, prefix+"logs.max-running-compaction-tasks",
 		defaultLogMaxRunningCompactionTasks,
 		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
+	f.IntVar(&cfg.TaskMaxRetries, prefix+"task-max-retries", defaultTaskMaxRetries,
+		"Experimental: Number of times the coordinator runs a failed compaction task again. A retry starts immediately, with no backoff. 0 disables retries.")
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
 	f.DurationVar(&cfg.MinBackoff, prefix+"min-backoff", defaultMinBackoff,
@@ -283,6 +291,9 @@ func (cfg *Config) Validate() error {
 	if cfg.LogMaxRunningCompactionTasks < 0 {
 		return errInvalidLogMaxRunningCompactionTasks
 	}
+	if cfg.TaskMaxRetries < 0 {
+		return errInvalidTaskMaxRetries
+	}
 	if cfg.Scheduler.Endpoint == "" {
 		return errEmptySchedulerEndpoint
 	}
@@ -325,6 +336,7 @@ func (cfg *Config) Validate() error {
 var (
 	errInvalidMaxRunningCompactionTasks    = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
 	errInvalidLogMaxRunningCompactionTasks = errors.New("dataobj.compaction.logs.max_running_compaction_tasks must be >= 0")
+	errInvalidTaskMaxRetries               = errors.New("dataobj.compaction.task_max_retries must be >= 0")
 	errEmptySchedulerEndpoint              = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -191,20 +192,40 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		PlanVersion:          1,
 		Scheduler:            SchedulerConfig{Endpoint: defaultEndpoint},
 	}
+	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
+	logger := log.NewNopLogger()
 	return &coordinator{
 		cfg:             cfg,
-		logger:          log.NewNopLogger(),
+		logger:          logger,
 		bucket:          bucket,
-		indexDispatcher: &planDispatcher{runPlan: runner.run, limit: 4},
-		logDispatcher:   &planDispatcher{runPlan: runner.run},
+		indexDispatcher: newPlanDispatcher(logger, runner.run, 4, cfg.TaskMaxRetries, metrics),
+		logDispatcher:   newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, metrics),
 		publisher:       &tocPublisher{writer: replacer, timeout: 30 * time.Second},
 		clock:           clock,
 		sleep:           sleepUntil,
-		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
+		metrics:         metrics,
 		limits:          limits,
 
 		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, cfg.LogMaxRunsPerTask),
 	}
+}
+
+func TestNewCoordinator(t *testing.T) {
+	t.Run("passes the task retry limit and the concurrency limits to the dispatchers", func(t *testing.T) {
+		cfg := Config{
+			MaxRunningCompactionTasks:    5,
+			LogMaxRunningCompactionTasks: 7,
+			TaskMaxRetries:               2,
+			LogMaxRunsPerTask:            2,
+		}
+
+		c, err := newCoordinator(cfg, log.NewNopLogger(), objstore.NewInMemBucket(), nil, nil, prometheus.NewRegistry(), newFakeLimits())
+		require.NoError(t, err)
+		require.Equal(t, 5, c.indexDispatcher.limit)
+		require.Equal(t, 7, c.logDispatcher.limit)
+		require.Equal(t, 2, c.indexDispatcher.maxRetries)
+		require.Equal(t, 2, c.logDispatcher.maxRetries)
+	})
 }
 
 func newTestLogMergePlanningStrategy(t *testing.T, k int) *v2.SizeLeveledStrategy {
@@ -476,7 +497,7 @@ func TestPlanLogCompaction(t *testing.T) {
 			merge, ok := task.(logMergeTask)
 			require.True(t, ok)
 			require.Equal(t, wantRanges[i], merge.spec.KeyRange)
-			require.Equal(t, []string{"logs/log-0", "logs/log-1"}, planObjectPaths(t, merge.physicalPlan("acme", window)))
+			require.Equal(t, []string{"logs/log-0", "logs/log-1"}, planObjectPaths(t, merge.physicalPlan("acme")))
 		}
 	})
 
@@ -536,7 +557,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Len(t, plan.tasks, 2)
 		merge, ok := plan.tasks[0].(logMergeTask)
 		require.True(t, ok)
-		require.Equal(t, []string{"logs/small-0", "logs/small-1"}, planObjectPaths(t, merge.physicalPlan("acme", window)))
+		require.Equal(t, []string{"logs/small-0", "logs/small-1"}, planObjectPaths(t, merge.physicalPlan("acme")))
 		filter, ok := plan.tasks[1].(indexFilterTask)
 		require.True(t, ok)
 		var want []string
@@ -629,10 +650,10 @@ func TestExecuteLogCompaction(t *testing.T) {
 		window:      window,
 		sourceIndex: indexEntry{Path: "indexes/source"},
 		tasks: []logCompactionTask{
-			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+			newLogMergeTask(window, &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/a"}}},
 			}}),
-			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+			newLogMergeTask(window, &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b"}}},
 			}}),
 		},
@@ -703,6 +724,22 @@ func TestExecuteLogCompaction(t *testing.T) {
 		require.Equal(t, []string{"indexes/source"}, swaps[0].oldPaths)
 		requireEntriesMatchCalls(t, runner.snapshot(), swaps[0].newEntries)
 		require.Empty(t, plan.tasks[0].tocEntry().Path, "execution leaves the plan unchanged")
+	})
+
+	t.Run("swaps the source index when a task fails once and its retry succeeds", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		runner.failOnCall = 1
+		c.logDispatcher.maxRetries = 1
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
+		require.NoError(t, err)
+		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, stats)
+		require.Len(t, runner.snapshot(), 3)
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		for _, entry := range swaps[0].newEntries {
+			require.NotEqual(t, "indexes/tenants/test/aa/artifact-01", entry.Path, "the failed attempt must not be published")
+		}
 	})
 
 	t.Run("builds new physical plans with new node IDs on every execution", func(t *testing.T) {
@@ -785,8 +822,45 @@ func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	var entries []indexEntry
+	entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
 
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	result, err := c.compactTenantIndexes(ctx, "acme", window, entries)
+	require.NoError(t, err)
+	require.Equal(t, compactionStats{removed: 4, added: 2, dispatched: 2}, result)
+
+	calls := runner.snapshot()
+	require.Len(t, calls, 2)
+	for _, call := range calls {
+		root, err := call.plan.Root()
+		require.NoError(t, err)
+		node, ok := root.(*physical.IndexMerge)
+		require.True(t, ok)
+		var schemas = make(map[string]bool)
+		for _, run := range node.Runs {
+			for _, section := range run.Sections {
+				if strings.Contains(section.ObjectPath, "label:service_name") {
+					schemas["label:service_name"] = true
+				}
+				if strings.Contains(section.ObjectPath, "label:cluster") {
+					schemas["label:cluster"] = true
+				}
+			}
+		}
+		require.Len(t, schemas, 1, "one IndexMerge task must contain only one sort schema")
+	}
+	require.Len(t, replacer.snapshot(), 2, "each schema group is swapped independently")
+}
+
+// seedTwoSchemaIndexes writes two overlapping indexes for each of the sort
+// schemas label:service_name and label:cluster. Each index path contains its
+// schema. The indexes form two layout groups that plan one IndexMerge task
+// each.
+func seedTwoSchemaIndexes(ctx context.Context, t *testing.T, bucket objstore.Bucket, window time.Time) []indexEntry {
+	t.Helper()
+	var entries []indexEntry
 	for _, schema := range []string{"label:service_name", "label:cluster"} {
 		for i := range 2 {
 			path := fmt.Sprintf("indexes/%s/%d", schema, i)
@@ -835,35 +909,90 @@ func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
 			entries = append(entries, indexEntry{Path: path, Start: window, End: window.Add(time.Hour)})
 		}
 	}
+	return entries
+}
 
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	result, err := c.compactTenantIndexes(ctx, "acme", window, entries)
-	require.NoError(t, err)
-	require.Equal(t, compactionStats{removed: 4, added: 2, dispatched: 2}, result)
-
-	calls := runner.snapshot()
-	require.Len(t, calls, 2)
-	for _, call := range calls {
-		root, err := call.plan.Root()
-		require.NoError(t, err)
-		node, ok := root.(*physical.IndexMerge)
-		require.True(t, ok)
-		var schemas = make(map[string]bool)
-		for _, run := range node.Runs {
-			for _, section := range run.Sections {
-				if strings.Contains(section.ObjectPath, "label:service_name") {
-					schemas["label:service_name"] = true
-				}
-				if strings.Contains(section.ObjectPath, "label:cluster") {
-					schemas["label:cluster"] = true
-				}
-			}
-		}
-		require.Len(t, schemas, 1, "one IndexMerge task must contain only one sort schema")
+func TestCompactTenantIndexes(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	newTwoGroupCoordinator := func(t *testing.T, runner *fakeRunner) (*coordinator, *fakeReplacer, []indexEntry) {
+		t.Helper()
+		bucket := objstore.NewInMemBucket()
+		entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		return c, replacer, entries
 	}
-	require.Len(t, replacer.snapshot(), 2, "each schema group is swapped independently")
+
+	t.Run("compacts the other layout groups and returns an error when one group fails", func(t *testing.T) {
+		// Groups run one after another with one task each, so the first call
+		// fails the first group.
+		runner := &fakeRunner{failOnCall: 1}
+		c, replacer, entries := newTwoGroupCoordinator(t, runner)
+
+		stats, err := c.compactTenantIndexes(ctx, "acme", window, entries)
+		require.ErrorContains(t, err, "fakeRunner: forced failure on call")
+		require.ErrorContains(t, err, "layout group {schema=")
+		require.Equal(t, compactionStats{removed: 2, added: 1, dispatched: 1}, stats)
+		require.Len(t, runner.snapshot(), 2)
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		require.Len(t, swaps[0].oldPaths, 2)
+		schema := path.Dir(swaps[0].oldPaths[0])
+		require.Equal(t, schema, path.Dir(swaps[0].oldPaths[1]), "one swap replaces the indexes of one layout group")
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.indexMergeFailedGroupsTotal.WithLabelValues("acme")))
+	})
+
+	t.Run("does not compact the next layout group and returns the context error when the context is cancelled", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(ctx)
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return nil, context.Canceled
+		}}
+		c, replacer, entries := newTwoGroupCoordinator(t, runner)
+
+		stats, err := c.compactTenantIndexes(cancelCtx, "acme", window, entries)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, stats)
+		require.Len(t, runner.snapshot(), 1)
+		require.Empty(t, replacer.snapshot())
+		require.Zero(t, testutil.ToFloat64(c.metrics.indexMergeFailedGroupsTotal.WithLabelValues("acme")))
+	})
+
+	t.Run("returns the group error instead of the context error when a group fails before the context is cancelled", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(ctx)
+		taskErr := errors.New("task failed")
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return nil, taskErr
+		}}
+		c, replacer, entries := newTwoGroupCoordinator(t, runner)
+
+		_, err := c.compactTenantIndexes(cancelCtx, "acme", window, entries)
+		require.ErrorIs(t, err, taskErr)
+		require.NotErrorIs(t, err, context.Canceled)
+		require.Len(t, runner.snapshot(), 1)
+		require.Empty(t, replacer.snapshot())
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.indexMergeFailedGroupsTotal.WithLabelValues("acme")))
+	})
+
+	t.Run("publishes the merged index when a task fails once and its retry succeeds", func(t *testing.T) {
+		bucket := overlappingIndexesBucket(ctx, t, window, "acme", "indexes/a", "indexes/b")
+		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
+		require.NoError(t, err)
+		runner := &fakeRunner{failOnCall: 1}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		c.indexDispatcher.maxRetries = 1
+
+		stats, err := c.compactTenantIndexes(ctx, "acme", window, indexes)
+		require.NoError(t, err)
+		require.Equal(t, compactionStats{removed: 2, added: 1, dispatched: 1}, stats)
+		require.Len(t, runner.snapshot(), 2)
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		require.Equal(t, "indexes/tenants/test/aa/artifact-02", swaps[0].newEntries[0].Path)
+	})
 }
 
 func TestCompactTenant_DoesNotMergeIndexesAcrossShardLayouts(t *testing.T) {
@@ -1423,17 +1552,17 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		seed       func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error))
-		fail       func(workflow.Options, *physical.Plan) bool
-		wantActors []string
+		name          string
+		seed          func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error))
+		fail          func(workflow.Options, *physical.Plan) bool
+		plannedActors []string
 	}{
 		{name: "index merge publishes nothing when one task fails", seed: indexMerge, fail: failObject("indexes/c"),
-			wantActors: []string{"index-merge", "index-merge"}},
+			plannedActors: []string{"index-merge", "index-merge"}},
 		{name: "log compaction publishes nothing when the index filter fails", seed: equalRuns, fail: failActor("index-filter"),
-			wantActors: []string{"log-merge", "index-filter"}},
+			plannedActors: []string{"log-merge", "index-filter"}},
 		{name: "log compaction publishes nothing when a merge fails in the same batch as the index filter", seed: equalRuns, fail: failActor("log-merge"),
-			wantActors: []string{"log-merge", "index-filter"}},
+			plannedActors: []string{"log-merge", "index-filter"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1456,7 +1585,10 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			for _, call := range runner.snapshot() {
 				actors = append(actors, call.opts.Actor[len(call.opts.Actor)-1])
 			}
-			require.ElementsMatch(t, test.wantActors, actors)
+			// A task can skip its attempt when a sibling task already failed,
+			// so the calls are a subset of the planned tasks.
+			require.Subset(t, test.plannedActors, actors)
+			require.LessOrEqual(t, len(actors), len(test.plannedActors))
 			require.ErrorIs(t, err, taskErr)
 			require.Equal(t, compactionStats{}, got)
 			require.Empty(t, replacer.snapshot())
@@ -1671,6 +1803,25 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 }
 
 func TestRunIndexMergePhase(t *testing.T) {
+	t.Run("returns an error and records a compacted cycle when one layout group fails and another swaps", func(t *testing.T) {
+		ctx := context.Background()
+		window := imWindow()
+		bucket := objstore.NewInMemBucket()
+		entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
+		tocEntries := make([]testIndex, len(entries))
+		for i, e := range entries {
+			tocEntries[i] = testIndex{path: e.Path, start: e.Start, end: e.End}
+		}
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": tocEntries})
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, &fakeRunner{failOnCall: 1}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Len(t, replacer.snapshot(), 1)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")))
+		require.Zero(t, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
+	})
+
 	t.Run("returns an error, records a failed cycle and leaves the ToC without the merged index when another writer removed one of the source indexes first", func(t *testing.T) {
 		ctx := context.Background()
 		window := imWindow()

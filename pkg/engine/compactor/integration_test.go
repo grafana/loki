@@ -664,19 +664,20 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	run := func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 		return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
 	}
+	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
 	return &coordinator{
 		cfg:             compactionCfg,
 		logger:          log.NewNopLogger(),
 		bucket:          bucket,
-		indexDispatcher: &planDispatcher{runPlan: run, limit: compactionCfg.MaxRunningCompactionTasks},
-		logDispatcher:   &planDispatcher{runPlan: run, limit: compactionCfg.LogMaxRunningCompactionTasks},
+		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, metrics),
+		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, metrics),
 		publisher: &tocPublisher{
 			writer:  metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			timeout: compactionCfg.ToCConsolidateTimeout,
 			dryRun:  compactionCfg.DryRun,
 		},
 		clock:   func() time.Time { return now },
-		metrics: newCoordinatorMetrics(prometheus.NewRegistry()),
+		metrics: metrics,
 
 		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, compactionCfg.LogMaxRunsPerTask),
 	}
@@ -688,7 +689,7 @@ func TestDeletionSweepDispatch(t *testing.T) {
 		defer cancel()
 		c := newIntegrationCoordinator(ctx, t, objstore.NewInMemBucket(), time.Now(), nil)
 
-		_, err := c.logDispatcher.Run(ctx, "acme", []*physical.Plan{buildDeletionSweepPlan("acme")})
+		_, err := c.logDispatcher.Run(ctx, "acme", []dispatchTask{planFuncTask(buildDeletionSweepPlan)})
 		require.ErrorContains(t, err, "deletion-sweep job:")
 		require.ErrorContains(t, err, "DeletionSweep: not implemented")
 	})

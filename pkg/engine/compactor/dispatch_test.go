@@ -4,9 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -16,27 +21,42 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
+// planFuncTask is a dispatchTask that builds its plan with the function.
+type planFuncTask func(tenant string) *physical.Plan
+
+func (f planFuncTask) physicalPlan(tenant string) *physical.Plan { return f(tenant) }
+
 func TestPlanDispatcherRun(t *testing.T) {
-	plans := []*physical.Plan{
-		buildIndexMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
-		buildIndexMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
-		buildIndexMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
+	// Each task has its own window, so the window identifies the task of a
+	// plan across attempts.
+	tasks := []dispatchTask{
+		indexMergeTask{window: time.Unix(0, 0), spec: &compactionv2pb.TaskSpec{}},
+		indexMergeTask{window: time.Unix(0, 1), spec: &compactionv2pb.TaskSpec{}},
+		indexMergeTask{window: time.Unix(0, 2), spec: &compactionv2pb.TaskSpec{}},
 	}
-	pathOf := func(plan *physical.Plan) string {
-		for i, p := range plans {
-			if p == plan {
-				return fmt.Sprintf("indexes/out-%d", i)
-			}
+	// taskOf panics instead of failing t, because runners call it outside
+	// the test goroutine.
+	taskOf := func(plan *physical.Plan) int64 {
+		root, err := plan.Root()
+		if err != nil {
+			panic(err)
 		}
-		return ""
+		return root.(*physical.IndexMerge).ToCWindowStart
+	}
+	newDispatcher := func(run runFunc, maxRetries int) (*planDispatcher, *coordinatorMetrics) {
+		metrics := newCoordinatorMetrics(prometheus.NewRegistry())
+		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, metrics), metrics
+	}
+	attempts := func(m *coordinatorMetrics, outcome string) float64 {
+		return testutil.ToFloat64(m.taskAttemptsTotal.WithLabelValues("index-merge", outcome))
 	}
 
-	t.Run("returns artifacts in plan order", func(t *testing.T) {
-		d := &planDispatcher{runPlan: func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-			return &v2.ResultArtifact{Path: pathOf(plan)}, nil
-		}}
+	t.Run("returns artifacts in task order", func(t *testing.T) {
+		d, _ := newDispatcher(func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			return &v2.ResultArtifact{Path: fmt.Sprintf("indexes/out-%d", taskOf(plan))}, nil
+		}, 0)
 
-		artifacts, err := d.Run(context.Background(), "acme", plans)
+		artifacts, err := d.Run(t.Context(), "acme", tasks)
 		require.NoError(t, err)
 		require.Equal(t, []v2.ResultArtifact{
 			{Path: "indexes/out-0"},
@@ -45,36 +65,38 @@ func TestPlanDispatcherRun(t *testing.T) {
 		}, artifacts)
 	})
 
-	t.Run("runs each plan as the tenant with the actor of its root node", func(t *testing.T) {
+	t.Run("runs each task as the tenant with the actor of its root node", func(t *testing.T) {
 		runner := &fakeRunner{}
-		d := &planDispatcher{runPlan: runner.run}
-		mixed := []*physical.Plan{
-			buildLogMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
-			buildIndexFilterPlan("acme", "indexes/source", []string{"logs/a"}),
-			buildDeletionSweepPlan("acme"),
+		d, _ := newDispatcher(runner.run, 0)
+		mixed := []dispatchTask{
+			newLogMergeTask(time.Time{}, &compactionv2pb.TaskSpec{}),
+			indexFilterTask{sourceIndexPath: "indexes/source", objectPaths: []string{"logs/a"}},
+			planFuncTask(buildDeletionSweepPlan),
 		}
 
-		_, err := d.Run(context.Background(), "acme", mixed)
+		_, err := d.Run(t.Context(), "acme", mixed)
 		require.NoError(t, err)
-		actors := map[*physical.Plan][]string{}
+		var actors [][]string
 		for _, call := range runner.snapshot() {
 			require.Equal(t, "acme", call.opts.Tenant)
-			actors[call.plan] = call.opts.Actor
+			actors = append(actors, call.opts.Actor)
 		}
-		require.Equal(t, map[*physical.Plan][]string{
-			mixed[0]: {"compaction", "log-merge"},
-			mixed[1]: {"compaction", "index-filter"},
-			mixed[2]: {"compaction", "deletion-sweep"},
+		require.ElementsMatch(t, [][]string{
+			{"compaction", "log-merge"},
+			{"compaction", "index-filter"},
+			{"compaction", "deletion-sweep"},
 		}, actors)
 	})
 
-	t.Run("fails a plan without a root node", func(t *testing.T) {
+	t.Run("fails a task whose plan has no root node without running it", func(t *testing.T) {
 		runner := &fakeRunner{}
-		d := &planDispatcher{runPlan: runner.run}
+		d, _ := newDispatcher(runner.run, 3)
 
-		_, err := d.Run(t.Context(), "acme", []*physical.Plan{physical.FromGraph(dag.Graph[physical.Node]{})})
+		_, err := d.Run(t.Context(), "acme", []dispatchTask{planFuncTask(func(string) *physical.Plan {
+			return physical.FromGraph(dag.Graph[physical.Node]{})
+		})})
 		require.EqualError(t, err, "compaction plan root: plan has no root node")
-		require.Empty(t, runner.snapshot(), "a plan without a root must not run")
+		require.Empty(t, runner.snapshot())
 	})
 
 	for _, tc := range []struct {
@@ -83,19 +105,19 @@ func TestPlanDispatcherRun(t *testing.T) {
 		err      error
 		wantErr  string
 	}{
-		{name: "fails when a plan returns no artifact and no error", wantErr: "index-merge job produced no result artifact"},
-		{name: "fails when a plan returns an artifact with an empty path", artifact: &v2.ResultArtifact{}, wantErr: "index-merge job:"},
-		{name: "fails when a plan returns an error with an artifact", artifact: &v2.ResultArtifact{Path: "indexes/unpublished"}, err: errors.New("boom"), wantErr: "index-merge job: boom"},
+		{name: "fails when a task returns no artifact and no error", wantErr: "index-merge job produced no result artifact"},
+		{name: "fails when a task returns an artifact with an empty path", artifact: &v2.ResultArtifact{}, wantErr: "index-merge job:"},
+		{name: "fails when a task returns an error with an artifact", artifact: &v2.ResultArtifact{Path: "indexes/unpublished"}, err: errors.New("boom"), wantErr: "index-merge job: boom"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := &planDispatcher{runPlan: func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-				if plan == plans[1] {
+			d, _ := newDispatcher(func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+				if taskOf(plan) == 1 {
 					return tc.artifact, tc.err
 				}
-				return &v2.ResultArtifact{Path: pathOf(plan)}, nil
-			}}
+				return &v2.ResultArtifact{Path: "indexes/out"}, nil
+			}, 0)
 
-			artifacts, err := d.Run(context.Background(), "acme", plans)
+			artifacts, err := d.Run(t.Context(), "acme", tasks)
 			require.ErrorContains(t, err, tc.wantErr)
 			if tc.err != nil {
 				require.ErrorIs(t, err, tc.err)
@@ -103,4 +125,111 @@ func TestPlanDispatcherRun(t *testing.T) {
 			require.Nil(t, artifacts)
 		})
 	}
+
+	t.Run("returns the artifact of a retry after a failed attempt", func(t *testing.T) {
+		runner := &fakeRunner{failOnCall: 1}
+		d, metrics := newDispatcher(runner.run, 1)
+
+		artifacts, err := d.Run(t.Context(), "acme", tasks[:1])
+		require.NoError(t, err)
+		require.Equal(t, []v2.ResultArtifact{{Path: "indexes/tenants/test/aa/artifact-02"}}, artifacts)
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeSuccess))
+		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeFailed))
+	})
+
+	t.Run("runs a failing task once and reports one attempt when retries are disabled", func(t *testing.T) {
+		runner := &fakeRunner{err: errors.New("boom")}
+		d, metrics := newDispatcher(runner.run, 0)
+
+		_, err := d.Run(t.Context(), "acme", tasks[:1])
+		require.EqualError(t, err, "index-merge job: boom (attempts: 1)")
+		require.Len(t, runner.snapshot(), 1)
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
+		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeRetry))
+	})
+
+	t.Run("retries a task whose attempt returned no artifact", func(t *testing.T) {
+		var calls atomic.Int32
+		d, metrics := newDispatcher(func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			if calls.Add(1) == 1 {
+				return nil, nil
+			}
+			return &v2.ResultArtifact{Path: "indexes/out"}, nil
+		}, 1)
+
+		artifacts, err := d.Run(t.Context(), "acme", tasks[:1])
+		require.NoError(t, err)
+		require.Equal(t, []v2.ResultArtifact{{Path: "indexes/out"}}, artifacts)
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeSuccess))
+	})
+
+	t.Run("builds a new plan for each attempt", func(t *testing.T) {
+		runner := &fakeRunner{err: errors.New("boom")}
+		d, _ := newDispatcher(runner.run, 2)
+
+		_, err := d.Run(t.Context(), "acme", tasks[:1])
+		require.Error(t, err)
+		calls := runner.snapshot()
+		require.Len(t, calls, 3)
+		seen := map[ulid.ULID]struct{}{}
+		for _, call := range calls {
+			root, err := call.plan.Root()
+			require.NoError(t, err)
+			seen[root.ID()] = struct{}{}
+		}
+		require.Len(t, seen, 3)
+	})
+
+	t.Run("fails the run when a task fails on every attempt", func(t *testing.T) {
+		runner := &fakeRunner{err: errors.New("boom")}
+		d, metrics := newDispatcher(runner.run, 2)
+
+		artifacts, err := d.Run(t.Context(), "acme", tasks[:1])
+		require.EqualError(t, err, "index-merge job: boom (attempts: 3)")
+		require.Nil(t, artifacts)
+		require.Len(t, runner.snapshot(), 3)
+		require.Equal(t, 2.0, attempts(metrics, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
+		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeSuccess))
+	})
+
+	t.Run("does not retry a task that a failed sibling task cancelled", func(t *testing.T) {
+		started := make(chan struct{})
+		var siblingCalls atomic.Int32
+		d, metrics := newDispatcher(func(ctx context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			if taskOf(plan) == 0 {
+				<-started
+				return nil, errors.New("boom")
+			}
+			if siblingCalls.Add(1) == 1 {
+				close(started)
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}, 1)
+
+		_, err := d.Run(t.Context(), "acme", tasks[:2])
+		require.EqualError(t, err, "index-merge job: boom (attempts: 2)")
+		require.Equal(t, int32(1), siblingCalls.Load())
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
+		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeSuccess))
+	})
+
+	t.Run("does not retry a task when the context is cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return nil, context.Canceled
+		}}
+		d, metrics := newDispatcher(runner.run, 3)
+
+		_, err := d.Run(ctx, "acme", tasks[:1])
+		require.ErrorIs(t, err, context.Canceled)
+		require.Len(t, runner.snapshot(), 1)
+		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeRetry))
+		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeFailed))
+	})
 }

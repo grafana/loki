@@ -112,3 +112,26 @@ func TestConfig_LogMaxKeySize(t *testing.T) {
 		require.Zero(t, parse(t, "--dataobj.compaction.logs.max-key-size=0").LogMaxKeySize)
 	})
 }
+
+func TestConfig_TaskMaxRetriesValidation(t *testing.T) {
+	base := func(t *testing.T, args ...string) Config {
+		t.Helper()
+		var cfg Config
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		cfg.RegisterFlagsWithPrefix("dataobj.compaction.", fs)
+		require.NoError(t, fs.Parse(args))
+		cfg.Enabled = true
+		return cfg
+	}
+
+	t.Run("accepts zero, which disables retries", func(t *testing.T) {
+		cfg := base(t, "--dataobj.compaction.task-max-retries=0")
+		require.Equal(t, 0, cfg.TaskMaxRetries)
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("rejects a negative value", func(t *testing.T) {
+		cfg := base(t, "--dataobj.compaction.task-max-retries=-1")
+		require.ErrorIs(t, cfg.Validate(), errInvalidTaskMaxRetries)
+	})
+}
