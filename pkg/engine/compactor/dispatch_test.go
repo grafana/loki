@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
@@ -152,7 +152,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 	t.Run("retries a task whose attempt returned no artifact", func(t *testing.T) {
 		var calls atomic.Int32
 		d, metrics := newDispatcher(func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
-			if calls.Add(1) == 1 {
+			if calls.Inc() == 1 {
 				return nil, nil
 			}
 			return &v2.ResultArtifact{Path: "indexes/out"}, nil
@@ -203,7 +203,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 				<-started
 				return nil, errors.New("boom")
 			}
-			if siblingCalls.Add(1) == 1 {
+			if siblingCalls.Inc() == 1 {
 				close(started)
 			}
 			<-ctx.Done()
@@ -216,6 +216,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
 		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
 		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeSuccess))
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeCancelled))
 	})
 
 	t.Run("fails a task without a retry when it fails after the context is cancelled", func(t *testing.T) {
@@ -237,7 +238,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 	t.Run("runs the tasks to completion when the context is cancelled before they start", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		var runCtxErr atomic.Value
+		var runCtxErr atomic.Error
 		d, _ := newDispatcher(func(runCtx context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 			if err := runCtx.Err(); err != nil {
 				runCtxErr.Store(err)
@@ -248,6 +249,27 @@ func TestPlanDispatcherRun(t *testing.T) {
 		artifacts, err := d.Run(ctx, "acme", tasks[:2])
 		require.NoError(t, err)
 		require.Equal(t, []v2.ResultArtifact{{Path: "indexes/out-0"}, {Path: "indexes/out-1"}}, artifacts)
-		require.Nil(t, runCtxErr.Load(), "attempts must not see the cancellation of the caller")
+		require.NoError(t, runCtxErr.Load(), "attempts must not see the cancellation of the caller")
+	})
+
+	t.Run("returns the artifact of a retry that is running when the context is cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		var calls atomic.Int32
+		var runCtxErr atomic.Error
+		d, metrics := newDispatcher(func(runCtx context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+			if calls.Inc() == 1 {
+				return nil, errors.New("boom")
+			}
+			cancel()
+			runCtxErr.Store(runCtx.Err())
+			return &v2.ResultArtifact{Path: "indexes/out"}, nil
+		}, 2)
+
+		artifacts, err := d.Run(ctx, "acme", tasks[:1])
+		require.NoError(t, err)
+		require.Equal(t, []v2.ResultArtifact{{Path: "indexes/out"}}, artifacts)
+		require.NoError(t, runCtxErr.Load(), "the retry must not see the cancellation of the caller")
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeSuccess))
 	})
 }

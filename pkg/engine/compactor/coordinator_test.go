@@ -756,7 +756,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		}
 
 		_, err := c.executeLogCompaction(ctx, "acme", plan)
-		require.ErrorContains(t, err, "retries stopped: context canceled")
+		require.ErrorContains(t, err, "(attempts: 1, retries stopped: context canceled)")
 		require.NotErrorIs(t, err, context.Canceled)
 		require.LessOrEqual(t, len(runner.snapshot()), len(plan.tasks))
 		require.Empty(t, replacer.snapshot())
@@ -932,6 +932,18 @@ func seedTwoSchemaIndexes(ctx context.Context, t *testing.T, bucket objstore.Buc
 	return entries
 }
 
+// seedTwoSchemaIndexesInToC is seedTwoSchemaIndexes, plus a ToC for window
+// that lists the indexes.
+func seedTwoSchemaIndexesInToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, window time.Time) {
+	t.Helper()
+	entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
+	tocEntries := make([]testIndex, len(entries))
+	for i, e := range entries {
+		tocEntries[i] = testIndex{path: e.Path, start: e.Start, end: e.End}
+	}
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": tocEntries})
+}
+
 func TestCompactTenantIndexes(t *testing.T) {
 	ctx := context.Background()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
@@ -945,8 +957,6 @@ func TestCompactTenantIndexes(t *testing.T) {
 	}
 
 	t.Run("compacts the other layout groups and returns an error when one group fails", func(t *testing.T) {
-		// Groups run one after another with one task each, so the first call
-		// fails the first group.
 		runner := &fakeRunner{failOnCall: 1}
 		c, replacer, entries := newTwoGroupCoordinator(t, runner)
 
@@ -979,7 +989,7 @@ func TestCompactTenantIndexes(t *testing.T) {
 		require.Zero(t, testutil.ToFloat64(c.metrics.indexMergeFailedGroupsTotal.WithLabelValues("acme")))
 	})
 
-	t.Run("returns the group error instead of the context error when a group fails before the context is cancelled", func(t *testing.T) {
+	t.Run("returns the group error instead of the context error when a group fails after shutdown begins", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		taskErr := errors.New("task failed")
 		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
@@ -987,9 +997,27 @@ func TestCompactTenantIndexes(t *testing.T) {
 			return nil, taskErr
 		}}
 		c, replacer, entries := newTwoGroupCoordinator(t, runner)
+		c.indexDispatcher.maxRetries = 0
 
 		_, err := c.compactTenantIndexes(cancelCtx, "acme", window, entries)
 		require.ErrorIs(t, err, taskErr)
+		require.NotErrorIs(t, err, context.Canceled)
+		require.Len(t, runner.snapshot(), 1)
+		require.Empty(t, replacer.snapshot())
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.indexMergeFailedGroupsTotal.WithLabelValues("acme")))
+	})
+
+	t.Run("counts a failed group and returns its error when shutdown stops the retries of its task", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(ctx)
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return nil, errors.New("task failed")
+		}}
+		c, replacer, entries := newTwoGroupCoordinator(t, runner)
+		c.indexDispatcher.maxRetries = 1
+
+		_, err := c.compactTenantIndexes(cancelCtx, "acme", window, entries)
+		require.ErrorContains(t, err, "task failed (attempts: 1, retries stopped: context canceled)")
 		require.NotErrorIs(t, err, context.Canceled)
 		require.Len(t, runner.snapshot(), 1)
 		require.Empty(t, replacer.snapshot())
@@ -1844,17 +1872,30 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 }
 
 func TestRunIndexMergePhase(t *testing.T) {
+	t.Run("returns an error and records a failed cycle when shutdown stops the retries of a failing task", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		window := imWindow()
+		bucket := objstore.NewInMemBucket()
+		seedTwoSchemaIndexesInToC(ctx, t, bucket, window)
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			cancel()
+			return nil, errors.New("task failed")
+		}}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		c.indexDispatcher.maxRetries = 1
+
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Len(t, runner.snapshot(), 1)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
+	})
+
 	t.Run("returns an error and records a failed cycle when a group fails before shutdown cancels a later group", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		window := imWindow()
 		bucket := objstore.NewInMemBucket()
-		entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
-		tocEntries := make([]testIndex, len(entries))
-		for i, e := range entries {
-			tocEntries[i] = testIndex{path: e.Path, start: e.Start, end: e.End}
-		}
-		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": tocEntries})
+		seedTwoSchemaIndexesInToC(ctx, t, bucket, window)
 		var calls atomic.Int32
 		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
 			if calls.Inc() == 1 {
@@ -1873,12 +1914,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		ctx := context.Background()
 		window := imWindow()
 		bucket := objstore.NewInMemBucket()
-		entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
-		tocEntries := make([]testIndex, len(entries))
-		for i, e := range entries {
-			tocEntries[i] = testIndex{path: e.Path, start: e.Start, end: e.End}
-		}
-		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": tocEntries})
+		seedTwoSchemaIndexesInToC(ctx, t, bucket, window)
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, &fakeRunner{failOnCall: 1}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 

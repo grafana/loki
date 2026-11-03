@@ -689,9 +689,12 @@ func TestDeletionSweepDispatch(t *testing.T) {
 		defer cancel()
 		c := newIntegrationCoordinator(ctx, t, objstore.NewInMemBucket(), time.Now(), nil)
 
+		require.Positive(t, c.cfg.TaskMaxRetries)
+
 		_, err := c.logDispatcher.Run(ctx, "acme", []dispatchTask{planFuncTask(buildDeletionSweepPlan)})
 		require.ErrorContains(t, err, "deletion-sweep job:")
 		require.ErrorContains(t, err, "DeletionSweep: not implemented")
+		require.ErrorContains(t, err, fmt.Sprintf("(attempts: %d)", c.cfg.TaskMaxRetries+1), "every retry must run on the worker")
 	})
 }
 

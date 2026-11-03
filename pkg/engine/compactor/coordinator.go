@@ -107,9 +107,10 @@ func sleepUntil(ctx context.Context, d time.Duration) {
 // window's ToC and is enabled for compaction. It re-checks every
 // PollingInterval until ctx is cancelled, then waits for all workers to exit.
 //
-// Cancelling ctx stops new dispatches. A dispatch in progress runs to its ToC
-// swap, so Run returns after the slowest one finishes. Nothing bounds that
-// wait; the process supervisor must allow for it.
+// Cancelling ctx stops new dispatches and retries. A dispatch in progress
+// runs its tasks to completion, then swaps the ToC if every task succeeded.
+// Run returns after the slowest one finishes. Nothing bounds that wait, so
+// the process supervisor must allow for it.
 func (c *coordinator) Run(ctx context.Context) error {
 	level.Info(c.logger).Log(
 		"msg", "starting dataobj compaction coordinator",
@@ -193,7 +194,7 @@ type layoutKey struct {
 
 // String returns k in a form for logs and errors.
 func (k layoutKey) String() string {
-	return fmt.Sprintf("{schema=%q shards=%d order=%v}", k.schemaLabels, k.shardBuckets, k.streamOrder)
+	return fmt.Sprintf("{schema=%q shards=%d order=%d}", k.schemaLabels, k.shardBuckets, k.streamOrder)
 }
 
 func newLayoutKey(layout streams.Layout) layoutKey {
@@ -391,15 +392,14 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex.Path)
 	}
 
-	// Run keeps the tasks running when ctx is cancelled, and uses ctx only to
-	// stop retries.
+	// Pass ctx so shutdown stops retries.
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.dispatchTasks())
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
 	// Detach from cancellation so the ToC swap publishes the finished tasks.
-	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
-	// worker time, and the next pass repeats them.
+	// Shutdown and a tenant stop both cancel ctx. An unpublished result
+	// wastes the worker time, and the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
 	entries := plan.tocEntries()
 	if err := assignArtifactPaths(entries, artifacts); err != nil {
@@ -517,11 +517,13 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 	}
 
 	// A failed group does not stop the other groups, because groups never
-	// merge with each other. The returned error joins the group errors.
+	// merge with each other.
 	//
-	// Shutdown starts no new group and does not count as a group failure. If
-	// a group failed before the shutdown, the error joins only the group
-	// errors, so the caller treats the phase as failed, not as interrupted.
+	// Shutdown starts no new group. A group error that wraps context.Canceled
+	// during shutdown is an interruption, not a group failure. A task whose
+	// retries stopped at shutdown is a group failure. If a group failed, the
+	// error joins only the group errors, so the caller treats the phase as
+	// failed, not as interrupted.
 	var total compactionStats
 	var errs []error
 	stop := func(shutdownErr error) (compactionStats, error) {
@@ -601,15 +603,14 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		}
 	}
 
-	// Run keeps the tasks running when ctx is cancelled, and uses ctx only to
-	// stop retries.
+	// Pass ctx so shutdown stops retries.
 	artifacts, err := c.indexDispatcher.Run(ctx, tenant, dispatchTasks)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
 	// Detach from cancellation so the ToC swap publishes the finished tasks.
-	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
-	// worker time, and the next pass repeats them.
+	// Shutdown and a tenant stop both cancel ctx. An unpublished result
+	// wastes the worker time, and the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
 	if err := assignArtifactPaths(newEntries, artifacts); err != nil {
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)

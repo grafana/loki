@@ -64,7 +64,7 @@ type coordinatorMetrics struct {
 	tasksTotal *prometheus.CounterVec // tenant
 
 	// taskAttemptsTotal counts attempts to run a compaction task.
-	taskAttemptsTotal *prometheus.CounterVec // actor, outcome=success|retry|failed
+	taskAttemptsTotal *prometheus.CounterVec // actor, outcome=success|retry|failed|cancelled
 
 	// cycleDurationSeconds measures wall-clock duration of one worker-loop phase
 	// iteration (IndexMerge or LogMerge).
@@ -154,7 +154,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		taskAttemptsTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_task_attempts_total",
-			Help: "Attempts to run a compaction task, by actor and outcome. success = the attempt returned a valid artifact, retry = the attempt failed and the task runs again, failed = the attempt failed and the task runs no more, because it has no retries left or the planner is shutting down. Attempts cancelled by a failed sibling task are not counted.",
+			Help: "Attempts to run a compaction task, by actor and outcome. success = the attempt returned a valid artifact, retry = the attempt failed and the task runs again, failed = the attempt failed and the task runs no more, because it has no retries left or the coordinator is shutting down, cancelled = the attempt ended after a failed sibling task cancelled the dispatch.",
 		}, []string{labelActor, labelOutcome}),
 		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",

@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/go-kit/log"
@@ -21,8 +22,9 @@ type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Pla
 // physical plan.
 type dispatchTask interface {
 	// physicalPlan returns a new single-root physical plan for the task. Each
-	// call must return new node IDs, because the scheduler rejects a node ID
-	// that it already saw. A retry therefore calls physicalPlan again.
+	// call must return new node IDs, so each attempt has its own plan and the
+	// logs tell attempts apart by node ID. Run calls physicalPlan once per
+	// attempt.
 	physicalPlan(tenant string) *physical.Plan
 }
 
@@ -31,6 +33,9 @@ const (
 	attemptOutcomeSuccess = "success"
 	attemptOutcomeRetry   = "retry"
 	attemptOutcomeFailed  = "failed"
+	// attemptOutcomeCancelled counts an attempt that ended after a failed
+	// sibling task cancelled the Run. The task ends with no other outcome.
+	attemptOutcomeCancelled = "cancelled"
 )
 
 // planDispatcher runs compaction tasks concurrently and validates their
@@ -38,8 +43,8 @@ const (
 type planDispatcher struct {
 	logger  log.Logger
 	runPlan runFunc
-	// limit caps how many tasks run at once. A value <= 0 means no cap.
-	// it is applied locally for each call to Run, not globally for the dispatcher.
+	// limit caps how many tasks run at once. A value <= 0 means no cap. The
+	// cap applies to each call to Run, not to the dispatcher as a whole.
 	limit int
 	// maxRetries is how many times a failed task runs again before it fails
 	// the Run. Zero disables retries.
@@ -62,15 +67,15 @@ func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int
 //
 // A failed task runs again at once, up to maxRetries times, with a new plan.
 // There is no wait between attempts: a task runs for minutes, so a short wait
-// does not spread load. The tenant loop backs off after a failed Run.
+// does not spread load. The tenant loop backs off after a failed phase.
 //
-// Run returns an error if any task fails after its retries, and then returns
+// Run returns an error if any task fails with no retry left, and then returns
 // no artifacts. The first such failure cancels the tasks that are still
 // running.
 //
-// Cancelling ctx does not stop the tasks, so a dispatch in progress can still
-// reach its ToC swap. Cancelling ctx stops only the retries: a task that fails
-// after ctx is done fails the Run at once.
+// Cancelling ctx does not stop the tasks. Tasks that did not start yet still
+// start, so Run returns only after every task finishes. Cancelling ctx stops
+// only the retries: a task that fails after ctx is done fails the Run at once.
 //
 // Each attempt must return a valid artifact or an error:
 //
@@ -106,14 +111,14 @@ func (d *planDispatcher) Run(ctx context.Context, tenant string, tasks []dispatc
 }
 
 // runTask runs task until an attempt succeeds, the retries run out, or ctx is
-// done. It does not retry when retriesStopped returns an error. Retries do not
-// classify errors, because worker errors reach the coordinator as plain
-// strings. A plan without a valid root node fails at once, because a retry
-// builds the same plan.
+// done. Run cancels ctx only when a sibling task fails. runTask does not retry
+// when retriesStopped returns an error. Retries do not classify errors,
+// because worker errors reach the coordinator as plain strings. A plan without
+// a valid root node fails at once, because a retry builds the same plan.
 func (d *planDispatcher) runTask(ctx context.Context, retriesStopped func() error, logger log.Logger, tenant string, task dispatchTask) (*v2.ResultArtifact, error) {
 	for attempt := 1; ; attempt++ {
-		// A done ctx means a sibling task failed, so an attempt cannot
-		// succeed. Stop before the attempt registers a workflow.
+		// A done ctx means a sibling task failed, so Run discards any result.
+		// Stop before the attempt registers a workflow.
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -132,6 +137,15 @@ func (d *planDispatcher) runTask(ctx context.Context, retriesStopped func() erro
 			return artifact, nil
 		}
 		if ctx.Err() != nil {
+			d.attempts.WithLabelValues(actor, attemptOutcomeCancelled).Inc()
+			// A real error here is not the first error of the Run, so Run
+			// drops it. Log it so that the failure stays visible.
+			lvl := level.Warn
+			if errors.Is(err, context.Canceled) {
+				lvl = level.Debug
+			}
+			lvl(logger).Log("msg", "compaction task attempt ended after a sibling task failed",
+				"actor", actor, "node_id", root.ID(), "attempt", attempt, "err", err)
 			return nil, err
 		}
 		attemptLogger := log.With(logger, "actor", actor, "node_id", root.ID(), "attempt", attempt, "max_retries", d.maxRetries, "err", err)

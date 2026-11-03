@@ -26,8 +26,8 @@ func buildIndexMergePlan(
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
-		// Each call makes a new NodeID, because the scheduler rejects a node
-		// ID that it already saw.
+		// Each call makes a new NodeID, so each attempt of a task has its own
+		// node ID.
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
@@ -55,8 +55,8 @@ func buildLogMergePlan(
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.LogMerge{
-		// Each call makes a new NodeID, because the scheduler rejects a node
-		// ID that it already saw.
+		// Each call makes a new NodeID, so each attempt of a task has its own
+		// node ID.
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
