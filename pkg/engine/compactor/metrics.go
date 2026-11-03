@@ -89,6 +89,10 @@ type coordinatorMetrics struct {
 	// corruptIndexesTotal counts each time a phase skips a corrupt index.
 	corruptIndexesTotal *prometheus.CounterVec // tenant, phase
 
+	// logMergeSkippedMergesTotal counts planned log merges that the planner
+	// skipped because a sort prefix was too large.
+	logMergeSkippedMergesTotal *prometheus.CounterVec // tenant
+
 	// lastPlanTimestampSeconds is when a LogMerge phase of a tenant last
 	// planned every index in every window without an error.
 	lastPlanTimestampSeconds *prometheus.GaugeVec // tenant
@@ -167,6 +171,10 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_corrupt_indexes_total",
 			Help: "Times a compaction phase skipped an index because its sections do not share one stream layout, or its layout cannot be read. Each phase that reads the index increments it again, so a nonzero rate means a corrupt index is still in the ToC.",
 		}, []string{labelTenant, labelPhase}),
+		logMergeSkippedMergesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_skipped_merges_total",
+			Help: "Planned log merges that the planner skipped because one stream sort prefix holds more than logs.max-key-size bytes. Each LogMerge phase that plans the index increments it again, so a nonzero rate means a window that stays less compacted.",
+		}, []string{labelTenant}),
 		lastPlanTimestampSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_last_plan_timestamp_seconds",
 			Help: "Unix time when a LogMerge phase of the tenant last planned every index in every compacted window without an error. When it is old, loki_dataobj_compaction_pending_log_bytes is stale or incomplete.",
@@ -270,6 +278,7 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
 	m.logMergeFailedIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.corruptIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.logMergeSkippedMergesTotal.DeleteLabelValues(tenant)
 	m.indexesRemovedTotal.DeleteLabelValues(tenant)
 	m.indexesAddedTotal.DeleteLabelValues(tenant)
 	m.tasksTotal.DeleteLabelValues(tenant)

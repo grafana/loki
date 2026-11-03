@@ -249,7 +249,8 @@ func (c *coordinator) compactTenantLogs(
 // Compaction never changes the layout of an object.
 //
 // planLogCompaction returns a plan with no work if the index has no sections
-// for tenant, is below the minimum compaction size, or needs no compaction.
+// for tenant, is below the minimum compaction size, needs no compaction, or
+// has a sort prefix above the maximum key size in every planned merge.
 func (c *coordinator) planLogCompaction(
 	ctx context.Context,
 	tenant string,
@@ -288,6 +289,15 @@ func (c *coordinator) planLogMerge(
 	}
 
 	keys := newSectionKeySizes(sections)
+	merges, skipped := c.skipOversizedMerges(entryLogger, tenant, keys, merges)
+	if len(merges) == 0 {
+		return logCompactionPlan{}, nil
+	}
+	unmergedRuns := skipped
+	for _, run := range unmerged {
+		unmergedRuns = append(unmergedRuns, &compactionv2pb.RunRef{Sections: run.Sections()})
+	}
+
 	var splitter logTaskSplitter = newNoopLogTaskSplitter(keys)
 	if c.cfg.LogMaxTaskSize > 0 {
 		splitter = newSizeLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), keys)
@@ -297,7 +307,7 @@ func (c *coordinator) planLogMerge(
 		specs = append(specs, splitter.split(merge)...)
 	}
 
-	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmerged))
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmergedRuns))
 	logMergeTaskDetails(entryLogger, specs)
 
 	plan := logCompactionPlan{
@@ -308,10 +318,43 @@ func (c *coordinator) planLogMerge(
 	for _, spec := range specs {
 		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
 	}
-	if len(unmerged) > 0 {
-		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmerged))
+	if len(unmergedRuns) > 0 {
+		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmergedRuns))
 	}
 	return plan, nil
+}
+
+// skipOversizedMerges removes the merges whose largest sort prefix is above
+// cfg.LogMaxKeySize, and returns the runs of the removed merges.
+//
+// A merge writes all records of one sort prefix into one object, and the task
+// splitter cannot cut a sort prefix. Such a merge makes an object too large
+// for a worker, so its tasks fail on every attempt. A failed task also cancels
+// the other tasks of the plan, so the whole index never compacts.
+//
+// The returned runs must stay unmerged, because no task rewrites their data.
+func (c *coordinator) skipOversizedMerges(logger log.Logger, tenant string, keys sectionKeySizes, merges []*compactionv2pb.TaskSpec) (kept []*compactionv2pb.TaskSpec, skipped []*compactionv2pb.RunRef) {
+	if c.cfg.LogMaxKeySize == 0 {
+		return merges, nil
+	}
+	for _, merge := range merges {
+		key, size := keys.largestKey(merge.Runs)
+		if size <= uint64(c.cfg.LogMaxKeySize) {
+			kept = append(kept, merge)
+			continue
+		}
+		level.Warn(logger).Log(
+			"msg", "log-compaction: skipping merge, because a sort prefix is larger than the maximum key size",
+			"runs", len(merge.Runs),
+			"shard_bucket", key.prefix.ShardBucket,
+			"sort_prefix", strings.Join(key.labels, ","),
+			"size", size,
+			"max_key_size", uint64(c.cfg.LogMaxKeySize),
+		)
+		c.metrics.logMergeSkippedMergesTotal.WithLabelValues(tenant).Inc()
+		skipped = append(skipped, merge.Runs...)
+	}
+	return kept, skipped
 }
 
 // executeLogCompaction dispatches the tasks of plan and swaps its source index
@@ -382,12 +425,10 @@ func (c *coordinator) existsInToC(ctx context.Context, tenant string, window tim
 
 // indexFilterForUnmerged returns an IndexFilter task that keeps only the
 // unmerged runs from sourceIndex. Its ToC entry spans the unmerged runs.
-func indexFilterForUnmerged(sourceIndex indexEntry, unmerged []v2.Run) indexFilterTask {
-	runRefs := make([]*compactionv2pb.RunRef, len(unmerged))
+func indexFilterForUnmerged(sourceIndex indexEntry, unmerged []*compactionv2pb.RunRef) indexFilterTask {
 	var objectPaths []string
-	for i, run := range unmerged {
-		runRefs[i] = &compactionv2pb.RunRef{Sections: run.Sections()}
-		for _, section := range run.Sections() {
+	for _, run := range unmerged {
+		for _, section := range run.Sections {
 			objectPaths = append(objectPaths, section.ObjectPath)
 		}
 	}
@@ -396,7 +437,7 @@ func indexFilterForUnmerged(sourceIndex indexEntry, unmerged []v2.Run) indexFilt
 	return indexFilterTask{
 		sourceIndexPath: sourceIndex.Path,
 		objectPaths:     objectPaths,
-		entry:           runsToCEntry(runRefs),
+		entry:           runsToCEntry(unmerged),
 	}
 }
 
