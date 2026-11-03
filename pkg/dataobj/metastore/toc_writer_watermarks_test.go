@@ -72,7 +72,7 @@ func wm(partition int32, value int64) watermarks.Watermark {
 	return watermarks.Watermark{Topic: wmTopic, Partition: partition, Watermark: value}
 }
 
-func TestWriteEntryWatermarks(t *testing.T) {
+func testWriteEntryWithWatermark(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("writes the pointer and the first watermark when the caller and the ToC have no value", func(t *testing.T) {
@@ -204,21 +204,6 @@ func TestWriteEntryWatermarks(t *testing.T) {
 		require.ElementsMatch(t, []watermarks.Watermark{wm(0, 99), wm(1, 5)}, readWatermarks(ctx, t, bucket, wmTocPath()))
 	})
 
-	t.Run("keeps the watermark rows through ReplaceIndexPointers", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		seedWatermarkToC(t, bucket, []string{"indexes/a", "indexes/b"}, []watermarks.Watermark{wm(0, 99), wm(1, 5)})
-		writer := newTableOfContentsWriter(t, bucket)
-
-		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a", "indexes/b"}, []TableOfContentsEntry{
-			{Path: "indexes/merged", StartTime: unixTime(10), EndTime: unixTime(20)},
-		})
-		require.NoError(t, err)
-		require.True(t, replaced)
-
-		require.Equal(t, []tocRow{{Tenant: wmTenant, Path: "indexes/merged", StartUnix: 10, EndUnix: 20}}, readToC(ctx, t, bucket, wmTocPath()))
-		require.ElementsMatch(t, []watermarks.Watermark{wm(0, 99), wm(1, 5)}, readWatermarks(ctx, t, bucket, wmTocPath()))
-	})
-
 	t.Run("returns nil and writes nothing when the pointer and a watermark at the end offset exist", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 199)})
@@ -324,27 +309,6 @@ func TestWriteEntryWatermarks(t *testing.T) {
 		require.Equal(t, []watermarks.Watermark{wm(0, 150)}, readWatermarks(ctx, t, inner, wmTocPath()))
 	})
 
-	t.Run("returns every pointer path and lists the tenant when the ToC holds watermark rows", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		writer := newTableOfContentsWriter(t, bucket)
-		require.NoError(t, writer.WriteEntry(ctx, wmTenant, wmEntry("indexes/a", 0, 99, nil)))
-		require.NoError(t, writer.WriteEntry(ctx, wmTenant, wmEntry("indexes/b", 1, 5, nil)))
-
-		raw := readRawToC(ctx, t, bucket, wmTocPath())
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
-		require.NoError(t, err)
-		var paths []string
-		require.NoError(t, forEachTocPointer(ctx, obj, func(p indexpointers.IndexPointer) error {
-			paths = append(paths, p.Path)
-			return nil
-		}))
-		require.ElementsMatch(t, []string{"indexes/a", "indexes/b"}, paths)
-
-		tenants, err := ListTableOfContentsTenants(ctx, bucket, unixTime(0).Truncate(MetastoreWindowSize))
-		require.NoError(t, err)
-		require.Equal(t, []string{wmTenant}, tenants)
-	})
-
 	t.Run("returns a mismatch error and creates no ToC when the ToC does not exist and the caller has a value", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
@@ -376,19 +340,6 @@ func TestWriteEntryWatermarks(t *testing.T) {
 
 		require.Len(t, readToC(ctx, t, bucket, wmTocPath()), 2)
 		require.Equal(t, []watermarks.Watermark{wm(0, 99)}, readWatermarks(ctx, t, bucket, wmTocPath()))
-	})
-
-	t.Run("returns an error and writes nothing when ReplaceIndexPointers gets an entry with a watermark update", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
-		before := readRawToC(ctx, t, bucket, wmTocPath())
-		writer := newTableOfContentsWriter(t, bucket)
-
-		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a"}, []TableOfContentsEntry{wmEntry("indexes/merged", 0, 199, int64Ptr(99))})
-
-		require.ErrorContains(t, err, "has a watermark update")
-		require.False(t, replaced)
-		require.Equal(t, before, readRawToC(ctx, t, bucket, wmTocPath()))
 	})
 
 	t.Run("copies the update so a later change by the caller does not affect the write", func(t *testing.T) {

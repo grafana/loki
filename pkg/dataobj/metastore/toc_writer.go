@@ -54,9 +54,8 @@ var (
 )
 
 // ErrWatermarkMismatch means the watermark in a ToC differs from the value the
-// caller expected. Another process probably wrote the same Kafka partition. Use
-// [errors.Is] to detect it and [errors.As] with [*WatermarkMismatchError] to
-// read the values.
+// caller expected. Another process probably wrote the same Kafka partition.
+// [*WatermarkMismatchError] holds the values.
 var ErrWatermarkMismatch = errors.New("ToC watermark differs from the expected value")
 
 // WatermarkMismatchError describes a failed watermark check. It wraps
@@ -72,6 +71,7 @@ type WatermarkMismatchError struct {
 	Actual *int64
 }
 
+// Error describes the topic, the partition and both values.
 func (e *WatermarkMismatchError) Error() string {
 	return fmt.Sprintf("%s: topic %q partition %d: expected %s, ToC holds %s",
 		ErrWatermarkMismatch, e.Topic, e.Partition, formatWatermark(e.Expected), formatWatermark(e.Actual))
@@ -351,8 +351,11 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 // in remove. Otherwise it writes nothing. If a ToC doesn't exist yet and
 // remove is not empty, the change does not create it.
 //
-// If watermark is set, the change also applies only if the watermark check
-// passes, and it raises the watermark. See [TableOfContentsWriter.WriteEntry].
+// If watermark is set, the change applies only if the ToC watermark of the
+// topic and partition equals watermark.Expected. A missing row equals a nil
+// Expected. The change then raises the watermark to watermark.EndOffset. If the
+// ToC holds every entry to add and a watermark at or above EndOffset, the
+// change is already applied.
 type tocChange struct {
 	remove    map[string]struct{}
 	add       []TableOfContentsEntry
@@ -591,7 +594,6 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	raiseWatermark := false
 	if u := change.watermark; u != nil {
 		// Run this before the mismatch check. An earlier attempt that wrote the
 		// change and lost the response left a watermark at or above EndOffset,
@@ -602,7 +604,6 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		if !sameWatermark(current, u.Expected) {
 			return nil, &WatermarkMismatchError{Topic: u.Topic, Partition: u.Partition, Expected: u.Expected, Actual: current}
 		}
-		raiseWatermark = current == nil || *current < u.EndOffset
 	}
 
 	var added int
@@ -621,9 +622,9 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	// The change removes no paths, adds no pointers and does not raise the
-	// watermark, so the ToC already holds it.
-	if len(removed) == 0 && added == 0 && !raiseWatermark {
+	// A change with a watermark update always writes here. If it adds no
+	// pointer, the pointer is held and the watermark is lower or missing.
+	if len(removed) == 0 && added == 0 && change.watermark == nil {
 		return nil, errChangeAlreadyApplied
 	}
 
