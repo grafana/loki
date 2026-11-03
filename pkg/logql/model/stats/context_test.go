@@ -458,6 +458,8 @@ func TestResult_Merge_LoglineStats(t *testing.T) {
 	res.Merge(skipped)
 	res.Merge(narrowed)
 	res.Merge(narrowed)
+	res.Merge(Result{Logline: &Logline{PassthroughRequests: 1}})
+	res.Merge(Result{Logline: &Logline{PassthroughRequests: 3}})
 	res.Merge(Result{Logline: lookup})
 	// A second lookup-level value must not overwrite the first.
 	res.Merge(Result{Logline: &Logline{Outcome: "lookup_failed", HintStatus: "error", HintWaitTime: 1, HintRanges: 5, IOBytes: 1}})
@@ -466,6 +468,7 @@ func TestResult_Merge_LoglineStats(t *testing.T) {
 	expected := *lookup
 	expected.SkippedRequests = 1
 	expected.NarrowedRequests = 2
+	expected.PassthroughRequests = 4
 	require.Equal(t, &expected, res.Logline)
 	require.Equal(t, int64(26), res.Index.ShardPlannedChunks)
 	require.Equal(t, int64(4), res.Index.ShardPlannedChunksScanned)

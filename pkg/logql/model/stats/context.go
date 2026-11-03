@@ -383,6 +383,7 @@ func (i Index) ChunkFilterRatio() (float64, bool) {
 func (l *Logline) Merge(m Logline) {
 	l.SkippedRequests += m.SkippedRequests
 	l.NarrowedRequests += m.NarrowedRequests
+	l.PassthroughRequests += m.PassthroughRequests
 
 	keepFirst(&l.Outcome, m.Outcome)
 	keepFirst(&l.HintStatus, m.HintStatus)
