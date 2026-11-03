@@ -238,7 +238,7 @@ require (
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
-	github.com/gophercloud/gophercloud/v2 v2.12.0 // indirect
+	github.com/gophercloud/gophercloud/v2 v2.15.0 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/grafana/otel-profiling-go v0.7.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect

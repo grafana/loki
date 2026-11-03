@@ -19,6 +19,9 @@ to return. It's an error both when multiple endpoints match the provided
 criteria and when none do. The minimum that can be specified is a Type, but you
 will also often need to specify a Name and/or a Region depending on what's
 available on your OpenStack deployment.
+
+Deprecated: This function does not respect the [gophercloud.EndpointOpts.Version] parameter,
+which can result in random endpoints being selected. Use [V2Endpoint] instead.
 */
 func V2EndpointURL(catalog *tokens2.ServiceCatalog, opts gophercloud.EndpointOpts) (string, error) {
 	// Extract Endpoints from the catalog entries that match the requested Type, Name if provided, and Region if provided.
@@ -66,6 +69,9 @@ to return. It's an error both when multiple endpoints match the provided
 criteria and when none do. The minimum that can be specified is a Type, but you
 will also often need to specify a Name and/or a Region depending on what's
 available on your OpenStack deployment.
+
+Deprecated: This function does not respect the [gophercloud.EndpointOpts.Version] parameter,
+which can result in random endpoint being selected. Use [V3Endpoint] instead.
 */
 func V3EndpointURL(catalog *tokens3.ServiceCatalog, opts gophercloud.EndpointOpts) (string, error) {
 	if opts.Availability != gophercloud.AvailabilityAdmin &&

@@ -401,6 +401,13 @@ func (opts *AuthOptions) ToTokenV3CreateMap(scope map[string]any) (map[string]an
 // ToTokenV3ScopeMap builds a scope from AuthOptions and satisfies interface in
 // the v3 tokens package.
 func (opts *AuthOptions) ToTokenV3ScopeMap() (map[string]any, error) {
+	// Application credentials carry an implicit project scope in Keystone.
+	// Sending an explicit scope alongside them results in a 401 error:
+	// "Application credentials cannot request a scope."
+	if opts.ApplicationCredentialID != "" || opts.ApplicationCredentialName != "" {
+		return nil, nil
+	}
+
 	// For backwards compatibility.
 	// If AuthOptions.Scope was not set, try to determine it.
 	// This works well for common scenarios.
