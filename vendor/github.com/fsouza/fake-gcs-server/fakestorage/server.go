@@ -42,15 +42,16 @@ const defaultPublicHost = "storage.googleapis.com"
 //
 // It provides a fake implementation of the Google Cloud Storage API.
 type Server struct {
-	backend      backend.Storage
-	uploads      sync.Map
-	transport    *muxTransport
-	ts           *httptest.Server
-	handler      http.Handler
-	options      Options
-	externalURL  string
-	publicHost   string
-	eventManager notification.EventManager
+	backend              backend.Storage
+	uploads              sync.Map
+	transport            *muxTransport
+	ts                   *httptest.Server
+	handler              http.Handler
+	options              Options
+	externalURL          string
+	publicHost           string
+	eventManager         notification.EventManager
+	notificationRegistry *notification.NotificationRegistry
 }
 
 // NewServer creates a new instance of the server, pre-loaded with the given
@@ -220,12 +221,13 @@ func newServer(options Options) (*Server, error) {
 	}
 
 	s := Server{
-		backend:      backendStorage,
-		uploads:      sync.Map{},
-		externalURL:  options.ExternalURL,
-		publicHost:   publicHost,
-		options:      options,
-		eventManager: &notification.PubsubEventManager{},
+		backend:              backendStorage,
+		uploads:              sync.Map{},
+		externalURL:          options.ExternalURL,
+		publicHost:           publicHost,
+		options:              options,
+		eventManager:         &notification.PubsubEventManager{},
+		notificationRegistry: notification.NewNotificationRegistry(options.Writer),
 	}
 	s.buildMuxer()
 	_, err = s.seed()
@@ -266,9 +268,15 @@ func (s *Server) buildMuxer() {
 		r.Path("/b").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.createBucketByPost))
 		r.Path("/b/").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.createBucketByPost))
 		r.Path("/b/{bucketName}").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.getBucket))
+		r.Path("/b/{bucketName}/storageLayout").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.getBucketStorageLayout))
 		r.Path("/b/{bucketName}").Methods(http.MethodPatch).HandlerFunc(jsonToHTTPHandler(s.updateBucket))
 		r.Path("/b/{bucketName}").Methods(http.MethodPost).Headers("X-HTTP-Method-Override", "PATCH").HandlerFunc(jsonToHTTPHandler(s.updateBucket))
 		r.Path("/b/{bucketName}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteBucket))
+		r.Path("/b/{bucketName}/acl").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listBucketACL))
+		r.Path("/b/{bucketName}/acl").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.setBucketACL))
+		r.Path("/b/{bucketName}/acl/{entity}").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.getBucketACL))
+		r.Path("/b/{bucketName}/acl/{entity}").Methods(http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.setBucketACL))
+		r.Path("/b/{bucketName}/acl/{entity}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteBucketACL))
 		r.Path("/b/{bucketName}/o").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listObjects))
 		r.Path("/b/{bucketName}/o/").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listObjects))
 		r.Path("/b/{bucketName}/o/{objectName:.+}").Methods(http.MethodPatch).HandlerFunc(jsonToHTTPHandler(s.patchObject))
@@ -282,6 +290,10 @@ func (s *Server) buildMuxer() {
 		r.Path("/b/{sourceBucket}/o/{sourceObject:.+}/{copyType:rewriteTo|copyTo}/b/{destinationBucket}/o/{destinationObject:.+}").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.rewriteObject))
 		r.Path("/b/{bucketName}/o/{destinationObject:.+}/compose").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.composeObject))
 		r.Path("/b/{bucketName}/o/{objectName:.+}").Methods(http.MethodPut, http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.updateObject))
+		r.Path("/b/{bucketName}/notificationConfigs").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.insertNotification))
+		r.Path("/b/{bucketName}/notificationConfigs").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listNotifications))
+		r.Path("/b/{bucketName}/notificationConfigs/{notificationId}").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.getNotification))
+		r.Path("/b/{bucketName}/notificationConfigs/{notificationId}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteNotification))
 	}
 
 	// Internal / update server configuration
@@ -458,6 +470,7 @@ func (s *Server) Stop() {
 	if s.ts != nil {
 		s.ts.Close()
 	}
+	s.notificationRegistry.Close()
 }
 
 // URL returns the server URL.

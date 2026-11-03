@@ -450,7 +450,8 @@ func (s *Subscriber) Receive(ctx context.Context, f func(context.Context, *Messa
 						if iter.enableTracing {
 							schedulerSpan.End()
 							// Start the process span, and augment the done function to end this span and record events.
-							otelCtx, ps = startSpan(otelCtx, processSpanName, s.ID())
+							opts := getProcessSpanAttributes(s.c.projectID, s.name, m)
+							otelCtx, ps = startSpan(otelCtx, processSpanName, s.ID(), opts...)
 							old := ackh.doneFunc
 							ackh.doneFunc = func(ackID string, ack bool, r *ipubsub.AckResult, receiveTime time.Time) {
 								var eventString string

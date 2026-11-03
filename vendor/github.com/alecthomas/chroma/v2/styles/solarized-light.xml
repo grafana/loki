@@ -1,5 +1,5 @@
 <style name="solarized-light">
-  <entry type="Background" style="bg:#eee8d5"/>
+  <entry type="Background" style="bg:#fdf6e3"/>
   <entry type="Keyword" style="#859900"/>
   <entry type="KeywordConstant" style="bold"/>
   <entry type="KeywordNamespace" style="bold #dc322f"/>
