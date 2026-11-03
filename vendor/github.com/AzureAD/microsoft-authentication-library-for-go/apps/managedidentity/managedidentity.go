@@ -10,6 +10,7 @@ without using credentials.
 package managedidentity
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -61,11 +62,11 @@ const (
 	wwwAuthenticateHeaderName    = "www-authenticate"
 
 	// UAMI query parameter name
-	miQueryParameterClientId       = "client_id"
-	miQueryParameterObjectId       = "object_id"
-	miQueryParameterPrincipalId    = "principal_id"
-	miQueryParameterResourceIdIMDS = "msi_res_id"
-	miQueryParameterResourceId     = "mi_res_id"
+	miQueryParameterClientId      = "client_id"
+	miQueryParameterObjectId      = "object_id"
+	miQueryParameterPrincipalId   = "principal_id"
+	miQueryParameterMsiResourceId = "msi_res_id"
+	miQueryParameterResourceId    = "mi_res_id"
 
 	// IMDS
 	imdsDefaultEndpoint           = "http://169.254.169.254/metadata/identity/oauth2/token"
@@ -177,6 +178,7 @@ type Client struct {
 	httpClient         ops.HTTPClient
 	miType             ID
 	source             Source
+	serviceFabricURL   string
 	authParams         authority.AuthParams
 	retryPolicyEnabled bool
 	canRefresh         *atomic.Value
@@ -198,11 +200,46 @@ func WithClaims(claims string) AcquireTokenOption {
 	}
 }
 
-// WithHTTPClient allows for a custom HTTP client to be set.
+// WithHTTPClient allows for a custom HTTP client to be set. Flows that must configure the
+// transport underlying the client (for example, Service Fabric certificate pinning) require a
+// [ClientConfigurer], because a plain ops.HTTPClient exposes no way to apply those requirements;
+// pass a [ClientConfigurer] here and MSAL will invoke it to install the configuration it needs.
+//
+// Only the Service Fabric source currently consumes a [ClientConfigurer]; every other managed
+// identity source treats the value as a plain ops.HTTPClient and never calls ConfigureClient.
 func WithHTTPClient(httpClient ops.HTTPClient) ClientOption {
 	return func(c *Client) {
 		c.httpClient = httpClient
 	}
+}
+
+// ClientConfigurer is an [ops.HTTPClient] that lets MSAL install the transport and client
+// configuration a flow requires, such as Service Fabric certificate pinning. Pass one to
+// [WithHTTPClient] and MSAL will call ConfigureClient during [New].
+//
+// Only the Service Fabric managed identity source consumes a ClientConfigurer. For every other
+// source MSAL uses the value directly as an ops.HTTPClient and does not call ConfigureClient, so
+// implementations should not rely on ConfigureClient being invoked outside Service Fabric.
+//
+// Implementations of ConfigureClient must:
+//   - call augment exactly once, synchronously, before ConfigureClient returns, passing the
+//     non-nil client MSAL should build upon;
+//   - route every subsequent Do call through the client augment returns, without bypassing its
+//     transport, TLS configuration, or redirect policy;
+//   - forward CloseIdleConnections to that same client;
+//   - return any error augment reports and complete all configuration before returning.
+//
+// MSAL fails closed: if augment reports an error, [New] returns it even when ConfigureClient
+// discards the error and returns nil, so a misconfigured client is never returned.
+//
+// MSAL calls ConfigureClient once, during [New]; a ClientConfigurer need not be safe for
+// concurrent configuration. An implementation may wrap additional middleware around the client
+// augment returns so long as requests still traverse the augmented transport and redirect policy.
+type ClientConfigurer interface {
+	ops.HTTPClient
+	// ConfigureClient receives augment, which derives the client MSAL requires from the supplied
+	// base client. See [ClientConfigurer] for the contract implementations must satisfy.
+	ConfigureClient(augment func(*http.Client) (*http.Client, error)) error
 }
 
 func WithRetryPolicyDisabled() ClientOption {
@@ -223,11 +260,6 @@ func New(id ID, options ...ClientOption) (Client, error) {
 
 	// Check for user-assigned restrictions based on the source
 	switch source {
-	case AzureArc:
-		switch id.(type) {
-		case UserAssignedClientID, UserAssignedResourceID, UserAssignedObjectID:
-			return Client{}, errors.New("Azure Arc doesn't support user-assigned managed identities")
-		}
 	case AzureML:
 		switch id.(type) {
 		case UserAssignedObjectID, UserAssignedResourceID:
@@ -273,6 +305,45 @@ func New(id ID, options ...ClientOption) (Client, error) {
 	}
 	for _, option := range options {
 		option(&client)
+	}
+	if source == ServiceFabric {
+		serviceFabricURL, err := serviceFabricEndpoint()
+		if err != nil {
+			return Client{}, err
+		}
+
+		switch tt := client.httpClient.(type) {
+		case ClientConfigurer:
+			augmentCalls := 0
+			var augmentErr error
+			err = tt.ConfigureClient(func(c *http.Client) (*http.Client, error) {
+				augmentCalls++
+				var configured *http.Client
+				configured, augmentErr = serviceFabricCertificateVerifiedHTTPClient(c)
+				return configured, augmentErr
+			})
+			// Fail closed: if augment failed, New must return that error even when
+			// ConfigureClient ignores it, so a caller never receives a client that lacks
+			// the mandatory certificate pinning and redirect policy.
+			if err == nil {
+				err = augmentErr
+			}
+			if err == nil && augmentCalls != 1 {
+				return Client{}, fmt.Errorf("ConfigureClient must call augment exactly once to install the Service Fabric client, got %d calls", augmentCalls)
+			}
+		case *http.Client:
+			var serviceFabricClient *http.Client
+			serviceFabricClient, err = serviceFabricCertificateVerifiedHTTPClient(tt)
+			client.httpClient = serviceFabricClient
+		default:
+			return Client{}, errors.New("Service Fabric managed identity requires an *http.Client or a ClientConfigurer")
+		}
+
+		if err != nil {
+			return Client{}, err
+		}
+
+		client.serviceFabricURL = serviceFabricURL
 	}
 	fakeAuthInfo, err := authority.NewInfoFromAuthorityURI("https://login.microsoftonline.com/managed_identity", false, true)
 	if err != nil {
@@ -414,7 +485,7 @@ func (c Client) acquireTokenForAzureML(ctx context.Context, resource string) (Au
 }
 
 func (c Client) acquireTokenForServiceFabric(ctx context.Context, resource string) (AuthResult, error) {
-	req, err := createServiceFabricAuthRequest(ctx, resource)
+	req, err := createServiceFabricAuthRequest(ctx, c.serviceFabricURL, resource)
 	if err != nil {
 		return AuthResult{}, err
 	}
@@ -426,7 +497,7 @@ func (c Client) acquireTokenForServiceFabric(ctx context.Context, resource strin
 }
 
 func (c Client) acquireTokenForAzureArc(ctx context.Context, resource string) (AuthResult, error) {
-	req, err := createAzureArcAuthRequest(ctx, resource, "")
+	req, err := createAzureArcAuthRequest(ctx, c.miType, resource, "")
 	if err != nil {
 		return AuthResult{}, err
 	}
@@ -435,7 +506,8 @@ func (c Client) acquireTokenForAzureArc(ctx context.Context, resource string) (A
 	if err != nil {
 		return AuthResult{}, err
 	}
-	defer response.Body.Close()
+	// The response body is unused; a close error can't change its status or headers.
+	_ = response.Body.Close()
 
 	if response.StatusCode != http.StatusUnauthorized {
 		return AuthResult{}, fmt.Errorf("expected a 401 response, received %d", response.StatusCode)
@@ -446,7 +518,7 @@ func (c Client) acquireTokenForAzureArc(ctx context.Context, resource string) (A
 		return AuthResult{}, err
 	}
 
-	secondRequest, err := createAzureArcAuthRequest(ctx, resource, string(secret))
+	secondRequest, err := createAzureArcAuthRequest(ctx, c.miType, resource, string(secret))
 	if err != nil {
 		return AuthResult{}, err
 	}
@@ -455,7 +527,75 @@ func (c Client) acquireTokenForAzureArc(ctx context.Context, resource string) (A
 	if err != nil {
 		return AuthResult{}, err
 	}
+	if err := verifyAzureArcUserAssignedIdentity(c.miType, tokenResponse); err != nil {
+		return AuthResult{}, err
+	}
 	return authResultFromToken(c.authParams, tokenResponse)
+}
+
+// setUserAssignedQueryParam adds the user-assigned identity selector to params. Azure Arc and IMDS
+// both use the IMDS "msi_res_id" spelling for the resource id; a system-assigned identity adds
+// nothing. An unsupported ID type is rejected (New already validates the caller's input).
+func setUserAssignedQueryParam(params url.Values, id ID) error {
+	switch t := id.(type) {
+	case UserAssignedClientID:
+		params.Set(miQueryParameterClientId, string(t))
+	case UserAssignedResourceID:
+		params.Set(miQueryParameterMsiResourceId, string(t))
+	case UserAssignedObjectID:
+		params.Set(miQueryParameterObjectId, string(t))
+	case systemAssignedValue:
+	default:
+		return fmt.Errorf("unsupported type %T", id)
+	}
+	return nil
+}
+
+// verifyAzureArcUserAssignedIdentity fails closed when a user-assigned identity was requested
+// but Azure Arc did not confirm it in the token response. A legacy Azure Arc agent ignores the
+// client_id / msi_res_id / object_id selector and silently returns the machine's system-assigned
+// identity. An agent that supports user-assigned managed identity echoes the identity it used in
+// the token response; when that echo is missing or does not match the requested selector, MSAL
+// must not hand back a token for a different identity than the one requested.
+func verifyAzureArcUserAssignedIdentity(id ID, token accesstokens.TokenResponse) error {
+	// Reuse the request selector mapping so the request and validation stay in lock-step.
+	selector := url.Values{}
+	if err := setUserAssignedQueryParam(selector, id); err != nil {
+		return err
+	}
+	if len(selector) == 0 {
+		// System-assigned: there is no requested identity to confirm.
+		return nil
+	}
+	var name, requested string
+	for k := range selector {
+		name, requested = k, selector.Get(k)
+	}
+	// Accept either resource-id spelling on the echo as a safety net; Azure Arc returns msi_res_id.
+	keys := []string{name}
+	if name == miQueryParameterMsiResourceId {
+		keys = append(keys, miQueryParameterResourceId)
+	}
+	echoed := additionalStringField(token.AdditionalFields, keys...)
+	// Compare case-insensitively: client_id / object_id are GUIDs, and an ARM resource id can
+	// legitimately differ in segment casing.
+	if echoed == "" || !strings.EqualFold(echoed, requested) {
+		return errors.New("azure arc did not confirm the requested user-assigned managed identity in the token response; the agent likely does not support user-assigned managed identities and returned the system-assigned identity")
+	}
+	return nil
+}
+
+// additionalStringField returns the first non-empty string value among the given keys from a
+// token response's additional (untyped) fields.
+func additionalStringField(fields map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := fields[k]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 func authResultFromToken(authParams authority.AuthParams, token accesstokens.TokenResponse) (AuthResult, error) {
@@ -490,32 +630,72 @@ func contains[T comparable](list []T, element T) bool {
 	return false
 }
 
+// bufferResponseBody reads resp.Body fully into memory and replaces it with an
+// in-memory reader. This lets the caller consume the response after the
+// per-attempt context that produced it has been canceled. See issue #634.
+func bufferResponseBody(resp *http.Response) error {
+	if resp == nil || resp.Body == nil {
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	// A close error can't change the result after the response body has been consumed.
+	_ = resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	return nil
+}
+
 // retry performs an HTTP request with retries based on the provided options.
 func (c Client) retry(maxRetries int, req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var err error
+	// cancelPrev cancels the context of the previous attempt. It is invoked only
+	// after that attempt's body has been drained, so the transport connection can
+	// still be reused, while avoiding the resource retention of deferring every
+	// per-attempt cancel until retry() returns.
+	var cancelPrev context.CancelFunc
+	retrylist := retryStatusCodes
+	if c.source == DefaultToIMDS {
+		retrylist = retryCodesForIMDS
+	}
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		tryCtx, tryCancel := context.WithTimeout(req.Context(), time.Minute)
-		defer tryCancel()
 		if resp != nil && resp.Body != nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			// The previous response is discarded, so a close error is non-actionable.
+			_ = resp.Body.Close()
 		}
+		if cancelPrev != nil {
+			cancelPrev()
+		}
+		cancelPrev = tryCancel
 		cloneReq := req.Clone(tryCtx)
 		resp, err = c.httpClient.Do(cloneReq)
-		retrylist := retryStatusCodes
-		if c.source == DefaultToIMDS {
-			retrylist = retryCodesForIMDS
-		}
-		if err == nil && !contains(retrylist, resp.StatusCode) {
-			return resp, nil
+		succeeded := err == nil && !contains(retrylist, resp.StatusCode)
+		if succeeded || attempt == maxRetries-1 {
+			// Buffer the body into memory while tryCtx is still alive so the
+			// caller can read resp.Body after we cancel this attempt's context.
+			// Without this, the deferred/explicit cancel would race the caller's
+			// read and surface as "context canceled" on an otherwise successful
+			// response. See issue #634.
+			if bufErr := bufferResponseBody(resp); bufErr != nil && err == nil {
+				err = bufErr
+			}
+			tryCancel()
+			return resp, err
 		}
 		select {
 		case <-time.After(time.Second):
 		case <-req.Context().Done():
 			err = req.Context().Err()
+			tryCancel()
 			return resp, err
 		}
+	}
+	if cancelPrev != nil {
+		cancelPrev()
 	}
 	return resp, err
 }
@@ -534,7 +714,8 @@ func (c Client) getTokenForRequest(req *http.Request, resource string) (accessto
 		return r, err
 	}
 	responseBytes, err := io.ReadAll(resp.Body)
-	defer resp.Body.Close()
+	// A close error can't change the result after the response body has been consumed.
+	_ = resp.Body.Close()
 	if err != nil {
 		return r, err
 	}
@@ -566,6 +747,12 @@ func (c Client) getTokenForRequest(req *http.Request, resource string) (accessto
 			Err: fmt.Errorf("error parsing the json error: %s", err),
 		}
 	}
+	// Capture the raw response fields so source-specific logic (such as the Azure Arc
+	// user-assigned identity echo check) can read fields the typed response drops.
+	var additionalFields map[string]interface{}
+	if json.Unmarshal(responseBytes, &additionalFields) == nil {
+		r.AdditionalFields = additionalFields
+	}
 	r.GrantedScopes.Slice = append(r.GrantedScopes.Slice, resource)
 
 	return r, err
@@ -573,6 +760,7 @@ func (c Client) getTokenForRequest(req *http.Request, resource string) (accessto
 
 func createAppServiceAuthRequest(ctx context.Context, id ID, resource string) (*http.Request, error) {
 	identityEndpoint := os.Getenv(identityEndpointEnvVar)
+	// #nosec G704 -- IDENTITY_ENDPOINT is supplied by the App Service managed identity host.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, identityEndpoint, nil)
 	if err != nil {
 		return nil, err
@@ -605,19 +793,12 @@ func createIMDSAuthRequest(ctx context.Context, id ID, resource string) (*http.R
 	msiParameters.Set(apiVersionQueryParameterName, imdsAPIVersion)
 	msiParameters.Set(resourceQueryParameterName, resource)
 
-	switch t := id.(type) {
-	case UserAssignedClientID:
-		msiParameters.Set(miQueryParameterClientId, string(t))
-	case UserAssignedResourceID:
-		msiParameters.Set(miQueryParameterResourceIdIMDS, string(t))
-	case UserAssignedObjectID:
-		msiParameters.Set(miQueryParameterObjectId, string(t))
-	case systemAssignedValue: // not adding anything
-	default:
-		return nil, fmt.Errorf("unsupported type %T", id)
+	if err := setUserAssignedQueryParam(msiParameters, id); err != nil {
+		return nil, err
 	}
 
 	msiEndpoint.RawQuery = msiParameters.Encode()
+	// #nosec G704 -- imdsDefaultEndpoint is a library constant for the Azure IMDS link-local endpoint.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, msiEndpoint.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating http request %s", err)
@@ -629,7 +810,7 @@ func createIMDSAuthRequest(ctx context.Context, id ID, resource string) (*http.R
 	return req, nil
 }
 
-func createAzureArcAuthRequest(ctx context.Context, resource string, key string) (*http.Request, error) {
+func createAzureArcAuthRequest(ctx context.Context, id ID, resource string, key string) (*http.Request, error) {
 	identityEndpoint := os.Getenv(identityEndpointEnvVar)
 	if identityEndpoint == "" {
 		identityEndpoint = azureArcEndpoint
@@ -644,7 +825,14 @@ func createAzureArcAuthRequest(ctx context.Context, resource string, key string)
 	msiParameters.Set(apiVersionQueryParameterName, azureArcAPIVersion)
 	msiParameters.Set(resourceQueryParameterName, resource)
 
+	// Azure Arc honors the IMDS msi_res_id spelling for the resource-id selector; the mi_res_id
+	// spelling is silently ignored and returns the system-assigned identity.
+	if err := setUserAssignedQueryParam(msiParameters, id); err != nil {
+		return nil, err
+	}
+
 	msiEndpoint.RawQuery = msiParameters.Encode()
+	// #nosec G704 -- IDENTITY_ENDPOINT is supplied by the Azure Arc managed identity host.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, msiEndpoint.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating http request %s", err)

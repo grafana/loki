@@ -175,14 +175,12 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		}
 		e.Left = lhsMapped
 		return e, nil
+	case *syntax.LabelAggregationExpr:
+		// Temporal splitting of HLL estimates is unsafe; keep as-is.
+		return e, nil
 	case *syntax.LiteralExpr:
 		return e, nil
 	case *syntax.VectorExpr:
-		return e, nil
-	case *syntax.MultiVariantExpr:
-		// TODO(twhitney): we should be able to handle multi-variant expressions but creating
-		// multiple expression with of() statements that match the sub-range and concatenating
-		// the result
 		return e, nil
 	default:
 		// ConcatSampleExpr and DownstreamSampleExpr are not supported input expression types

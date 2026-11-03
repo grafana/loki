@@ -5,14 +5,23 @@ import (
 	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
+
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 )
 
 type mockLimits struct {
 	MaxGlobalStreams int
-	IngestionRate    float64
+	// UnlimitedGlobalStreams makes MaxGlobalStreamsPerUser return 0, which
+	// means no limit and which the MaxGlobalStreams default cannot express.
+	UnlimitedGlobalStreams bool
+	IngestionRate          float64
+	ShardStreamsConfig     shardstreams.Config
 }
 
 func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
+	if m.UnlimitedGlobalStreams {
+		return 0
+	}
 	if m.MaxGlobalStreams != 0 {
 		return m.MaxGlobalStreams
 	}
@@ -32,6 +41,10 @@ func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
 
 func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_ string, _ string) (int, bool) {
 	return 0, false
+}
+
+func (m *mockLimits) PolicyShardStreams(_, _ string) (shardstreams.Config, bool) {
+	return m.ShardStreamsConfig, false
 }
 
 // mockKafka mocks a [kgo.Client]. The zero value is usable.

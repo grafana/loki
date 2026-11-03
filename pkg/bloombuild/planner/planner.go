@@ -65,7 +65,8 @@ func New(
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Planner, error) {
-	utillog.WarnExperimentalUse("Bloom Planner", logger)
+	utillog.WarnExperimentalUse("Bloom Planner", logger) // still increase experimental features counter despite being deprecated
+	level.Warn(logger).Log("msg", "bloom planner is deprecated and will be removed in a future release")
 
 	tsdbStore, err := common.NewTSDBStores("bloom-planner", schemaCfg, storeCfg, storageMetrics, logger)
 	if err != nil {
@@ -753,7 +754,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 				p.tasksQueue.Release(task.ProtoTask)
 				level.Error(logger).Log(
 					"msg", "task failed after max retries",
-					"retries", task.timesEnqueued.Load(),
+					"attempt", task.timesEnqueued.Load(),
 					"maxRetries", maxRetries,
 					"err", err,
 				)
@@ -763,6 +764,12 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 				}
 				continue
 			}
+
+			level.Error(logger).Log(
+				"msg", "task attempt failed",
+				"attempt", task.timesEnqueued.Load(),
+				"err", err,
+			)
 
 			// Re-queue the task if the builder is failing to process the tasks
 			if err := p.enqueueTask(task); err != nil {
@@ -777,10 +784,9 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			}
 
 			p.metrics.tasksRequeued.Inc()
-			level.Error(logger).Log(
-				"msg", "error forwarding task to builder, Task requeued",
-				"retries", task.timesEnqueued.Load(),
-				"err", err,
+			level.Debug(logger).Log(
+				"msg", "task requeued",
+				"next_attempt", task.timesEnqueued.Load(),
 			)
 			continue
 		}

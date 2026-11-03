@@ -18,31 +18,42 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
+
+const prefetchBytes = 2 * 1024 * 1024
+
+// errCorruptIndex reports an index whose sections of one tenant do not share
+// one stream layout, or whose layout cannot be read. No retry can fix it, so
+// compaction skips it.
+var errCorruptIndex = errors.New("corrupt index")
 
 // indexEntry is one index object listed in a ToC for a particular tenant.
 type indexEntry struct {
-	Path                 string
-	Start                time.Time
-	End                  time.Time
-	FileSize             uint64
-	UncompressedLogsSize uint64
+	Path  string
+	Start time.Time
+	End   time.Time
 }
 
-type sortKey struct {
-	labels    []string
-	timestamp int64
+// logSortPrefix is the planner key for log sections. It orders by the shared
+// [streams.SortPrefix], so planner order matches stream ID order in objects.
+// labels keeps the separate schema values for [compactionv2pb.SectionRef].
+type logSortPrefix struct {
+	prefix streams.SortPrefix
+	labels []string
 }
 
-func compareSortKey(a, b sortKey) int {
-	if n := slices.Compare(a.labels, b.labels); n != 0 {
-		return n
-	}
-	return cmp.Compare(a.timestamp, b.timestamp)
+func newLogSortPrefix(shard uint32, labels []string) logSortPrefix {
+	return logSortPrefix{prefix: streams.NewSortPrefix(shard, labels), labels: labels}
+}
+
+func compareLogSortPrefix(a, b logSortPrefix) int {
+	return a.prefix.Compare(b.prefix)
 }
 
 type indexSortKey struct {
@@ -71,14 +82,11 @@ func indexKey(row postings.Row) indexSortKey {
 	}
 }
 
-// tenantIndexes maps tenant ID → ordered list of indexes the ToC references
-// for that tenant. Slice order reflects ToC enumeration order and is not
-// part of the contract — callers must not rely on it for correctness.
-type tenantIndexes map[string][]indexEntry
-
-// loadTenantIndexes returns the window's ToC entries grouped by tenant.
-func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time) (tenantIndexes, error) {
-	tocPath := metastore.TableOfContentsPath(window.UTC().Truncate(metastore.MetastoreWindowSize))
+// loadTenantIndexes returns the entries of the tenant's ToC for the window.
+// Entry order reflects ToC enumeration order and is not part of the contract
+// — callers must not rely on it for correctness.
+func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time, tenant string) ([]indexEntry, error) {
+	tocPath := metastore.TableOfContentsPath(tenant, window.UTC().Truncate(metastore.MetastoreWindowSize))
 
 	r, err := bucket.Get(ctx, tocPath)
 	if err != nil {
@@ -96,23 +104,26 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 	}
 
 	// Hoist the Reader and the per-batch decode scratch above the section
-	// loop. A ToC has one indexpointers section per tenant; in large
-	// deployments that can be hundreds. Reader.Reset(...) at each iteration
-	// reuses the reader's internal allocator + record-batch state — matches
-	// the upstream pattern in metastore/iter.go's forEachIndexPointer.
+	// loop. Reader.Reset(...) at each iteration reuses the reader's internal
+	// allocator + record-batch state — matches the upstream pattern in
+	// metastore/iter.go's forEachIndexPointer.
 	var reader indexpointers.Reader
 	defer reader.Close()
 	const batchSize = 1024
 	scratch := make([]indexEntry, batchSize)
 
-	out := make(tenantIndexes, len(obj.Tenants()))
+	var out []indexEntry
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
-		tenant := section.Tenant
+		// ToCs are written per tenant, so another tenant's section means the
+		// metastore is corrupt. Compacting it could merge indexes across tenants.
+		if section.Tenant != tenant {
+			panic(fmt.Sprintf("ToC %s of tenant %q holds a section of tenant %q", tocPath, tenant, section.Tenant))
+		}
 		entries, err := readAllIndexPointers(ctx, &reader, scratch, section)
 		if err != nil {
 			return nil, fmt.Errorf("read indexpointers for tenant %s: %w", tenant, err)
 		}
-		out[tenant] = append(out[tenant], entries...)
+		out = append(out, entries...)
 	}
 
 	return out, nil
@@ -124,8 +135,7 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 //
 // Mirrors pkg/dataobj/metastore.forEachIndexPointer's structure but drops
 // the user.ExtractOrgID tenant filter and the WhereTimeRangeOverlapsWith
-// predicate — the compactor reads every row from every tenant in the
-// most-recent ToC.
+// predicate — the compactor reads every row of the tenant's ToC.
 func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scratch []indexEntry, section *dataobj.Section) ([]indexEntry, error) {
 	sec, err := indexpointers.Open(ctx, section)
 	if err != nil {
@@ -182,22 +192,6 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 					}
 					scratch[rIdx].End = time.Unix(0, int64(values.Value(rIdx)))
 				}
-			case indexpointers.ColumnTypeFileSize:
-				values := col.(*array.Int64)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].FileSize = uint64(values.Value(rIdx))
-				}
-			case indexpointers.ColumnTypeUncompressedLogsSize:
-				values := col.(*array.Int64)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].UncompressedLogsSize = uint64(values.Value(rIdx))
-				}
 			}
 		}
 
@@ -222,7 +216,7 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 
 	var reads []sectionRead
 	for _, entry := range entries {
-		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, 0)
+		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
 		if err != nil {
 			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}
@@ -336,11 +330,49 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 	return columns, nil
 }
 
-// logSectionRefsFor returns one bounded reference per log section indexed by idxPath.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
-	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
+// indexLayout returns the stream layout of the data objects that obj indexes
+// for tenant. ok is false if the index has no stats section for tenant. It
+// returns an error that wraps errCorruptIndex if the sections of the index do
+// not share one layout, or if the layout cannot be read.
+func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath string) (layout streams.Layout, ok bool, err error) {
+	layout, ok, err = indexobj.TenantLayout(ctx, obj, tenant)
+	if errors.Is(err, indexobj.ErrMixedLayouts) || errors.Is(err, indexobj.ErrInvalidLayout) {
+		return streams.Layout{}, false, fmt.Errorf("%w: index %s: %w", errCorruptIndex, idxPath, err)
+	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
+		return streams.Layout{}, false, fmt.Errorf("read stream layout tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+	return layout, ok, nil
+}
+
+// indexLayoutAt opens the index at idxPath and returns its layout as
+// indexLayout does.
+func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) (streams.Layout, bool, error) {
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
+	if err != nil {
+		return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+	return indexLayout(ctx, obj, tenant, idxPath)
+}
+
+// logSectionRefsFor returns one bounded reference per log section indexed by
+// idxPath. It returns an error that wraps errCorruptIndex if the sections of
+// the index do not share one stream layout.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], error) {
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
+	if err != nil {
+		return nil, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+	layout, ok, err := indexLayout(ctx, obj, tenant, idxPath)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+	labelNames, err := schemaLabelNames(layout.SchemaLabels())
+	if err != nil {
+		return nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	type sectionID struct {
@@ -349,12 +381,9 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	}
 
 	var (
-		schema     []string
-		labelNames []string
-		schemaName string
-		reader     stats.Reader
+		reader stats.Reader
 
-		bySection = make(map[sectionID]*v2.Section[sortKey])
+		bySection = make(map[sectionID]*v2.Section[logSortPrefix])
 	)
 	defer reader.Close()
 
@@ -367,18 +396,18 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
-			return nil, nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
-			return nil, nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
 			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+				return nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
 			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
@@ -388,20 +417,10 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			rows := scratch[:numRows]
 			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
-				return nil, nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
 			for _, stat := range rows[:n] {
-				if schemaName == "" && len(bySection) == 0 {
-					schemaName = stat.SortSchema
-					schema, labelNames, err = parseSortSchema(stat.SortSchema)
-					if err != nil {
-						return nil, nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
-					}
-				} else if stat.SortSchema != schemaName {
-					return nil, nil, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
-				}
-
 				var labels []string
 				if len(labelNames) > 0 {
 					labels = make([]string, len(labelNames))
@@ -409,35 +428,37 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						labels[i] = stat.Labels[name]
 					}
 				}
-				minKey := sortKey{labels: labels, timestamp: stat.MinTimestamp}
-				maxKey := sortKey{labels: labels, timestamp: stat.MaxTimestamp}
+				key := newLogSortPrefix(stat.ShardBucket, labels)
+				keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
 				if !ok {
-					bySection[id] = &v2.Section[sortKey]{
+					bySection[id] = &v2.Section[logSortPrefix]{
 						Ref: &compactionv2pb.SectionRef{
 							ObjectPath:       stat.ObjectPath,
 							SectionIndex:     stat.SectionIndex,
-							MinKey:           minKey.labels,
-							MaxKey:           maxKey.labels,
-							MinTimestamp:     minKey.timestamp,
-							MaxTimestamp:     maxKey.timestamp,
+							MinKey:           key.labels,
+							MaxKey:           key.labels,
+							MinTimestamp:     stat.MinTimestamp,
+							MaxTimestamp:     stat.MaxTimestamp,
 							UncompressedSize: stat.UncompressedSize,
 						},
-						Min: minKey,
-						Max: maxKey,
+						Min:  key,
+						Max:  key,
+						Keys: []v2.KeySize[logSortPrefix]{keySize},
 					}
 					continue
 				}
+				bounded.Keys = append(bounded.Keys, keySize)
 
-				if compareSortKey(minKey, bounded.Min) < 0 {
-					bounded.Min = minKey
-					bounded.Ref.MinKey = minKey.labels
+				if compareLogSortPrefix(key, bounded.Min) < 0 {
+					bounded.Min = key
+					bounded.Ref.MinKey = key.labels
 				}
-				if compareSortKey(maxKey, bounded.Max) > 0 {
-					bounded.Max = maxKey
-					bounded.Ref.MaxKey = maxKey.labels
+				if compareLogSortPrefix(key, bounded.Max) > 0 {
+					bounded.Max = key
+					bounded.Ref.MaxKey = key.labels
 				}
 				bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
 				bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
@@ -450,30 +471,29 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
-	refs := make([]v2.Section[sortKey], 0, len(bySection))
+	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
 	for _, ref := range bySection {
 		refs = append(refs, *ref)
 	}
-	slices.SortFunc(refs, func(a, b v2.Section[sortKey]) int {
+	slices.SortFunc(refs, func(a, b v2.Section[logSortPrefix]) int {
 		if n := strings.Compare(a.Ref.ObjectPath, b.Ref.ObjectPath); n != 0 {
 			return n
 		}
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
-	return refs, schema, nil
+	return refs, nil
 }
 
-func parseSortSchema(value string) (schema, labelNames []string, _ error) {
-	for entry := range strings.SplitSeq(value, ",") {
-		if entry == "" {
-			continue
-		}
+// schemaLabelNames returns the label names of the fully-qualified schema
+// labels, in order.
+func schemaLabelNames(schemaLabels []string) ([]string, error) {
+	var labelNames []string
+	for _, entry := range schemaLabels {
 		typ, name, ok := strings.Cut(entry, ":")
 		if !ok || typ != "label" || name == "" {
-			return nil, nil, fmt.Errorf("invalid log sort key %q", entry)
+			return nil, fmt.Errorf("invalid log sort key %q", entry)
 		}
-		schema = append(schema, entry)
 		labelNames = append(labelNames, name)
 	}
-	return schema, labelNames, nil
+	return labelNames, nil
 }

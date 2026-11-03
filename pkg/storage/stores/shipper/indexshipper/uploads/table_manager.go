@@ -25,6 +25,7 @@ type TableManager interface {
 	AddIndex(tableName, userID string, index index.Index) error
 	ForEach(tableName, userID string, callback index.ForEachIndexCallback) error
 	// UploadTables synchronously uploads all tables to object storage, returning any upload error.
+	// Concurrent calls run one at a time.
 	UploadTables(ctx context.Context) error
 }
 
@@ -36,6 +37,11 @@ type tableManager struct {
 	tablesMtx sync.RWMutex
 	metrics   *metrics
 	logger    log.Logger
+
+	// uploadMtx serializes UploadTables. Indexes only take read locks while
+	// uploading, so without it two callers (such as /flush/tenant and the
+	// periodic loop) upload the same index files at the same time.
+	uploadMtx sync.Mutex
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -54,14 +60,11 @@ func NewTableManager(cfg Config, storageClient storage.Client, reg prometheus.Re
 		cancel:        cancel,
 	}
 
-	go tm.loop()
+	tm.wg.Go(tm.loop)
 	return &tm, nil
 }
 
 func (tm *tableManager) loop() {
-	tm.wg.Add(1)
-	defer tm.wg.Done()
-
 	if err := tm.UploadTables(context.Background()); err != nil {
 		level.Error(tm.logger).Log("msg", "failed to upload tables", "phase", "startup", "err", err)
 	}
@@ -140,8 +143,12 @@ func (tm *tableManager) ForEach(tableName, userID string, callback index.ForEach
 }
 
 // UploadTables synchronously uploads all tables to object storage, returning any
-// upload error. It is also invoked periodically by loop().
+// upload error. It is also invoked periodically by loop(). Concurrent calls run
+// one at a time.
 func (tm *tableManager) UploadTables(ctx context.Context) error {
+	tm.uploadMtx.Lock()
+	defer tm.uploadMtx.Unlock()
+
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 

@@ -67,9 +67,11 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // PrepareBloomColumn initializes the bloom filter for a specific column. Must
 // be called before any ObserveBloomPosting calls for the given
-// (objectPath, sectionIndex, columnName) combination.
-func (b *Builder) PrepareBloomColumn(objectPath string, sectionIndex int64, columnName string, estimatedCardinality uint) {
-	b.blooms.PrepareColumn(objectPath, sectionIndex, columnName, estimatedCardinality)
+// (objectPath, sectionIndex, columnName) combination. shardBuckets is stored
+// on the entry immediately so a prepared-but-unobserved column still records
+// the object's shard factor.
+func (b *Builder) PrepareBloomColumn(objectPath string, sectionIndex int64, columnName string, estimatedCardinality uint, shardBuckets int64) {
+	b.blooms.PrepareColumn(objectPath, sectionIndex, columnName, estimatedCardinality, shardBuckets)
 }
 
 // ObserveLabelPosting records a label posting observation. Multiple

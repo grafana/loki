@@ -31,12 +31,22 @@ type Config struct {
 	Password flagext.Secret `yaml:"password"`
 }
 
-// Clientv3Facade is a subset of all Etcd client operations that are required
-// to implement an Etcd version of kv.Client
+// Clientv3Facade is the Etcd v3 KV and watcher surface supported by Client.
 type Clientv3Facade interface {
-	clientv3.KV
-	clientv3.Watcher
+	// Keep the method set explicit so additions to upstream interfaces don't
+	// expand this facade and break its in-memory implementation.
+	Put(ctx context.Context, key, val string, opts ...clientv3.OpOption) (*clientv3.PutResponse, error)
+	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error)
+	Delete(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.DeleteResponse, error)
+	Compact(ctx context.Context, rev int64, opts ...clientv3.CompactOption) (*clientv3.CompactResponse, error)
+	Do(ctx context.Context, op clientv3.Op) (clientv3.OpResponse, error)
+	Txn(ctx context.Context) clientv3.Txn
+	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan
+	RequestProgress(ctx context.Context) error
+	Close() error
 }
+
+var _ Clientv3Facade = (*clientv3.Client)(nil)
 
 // Client implements kv.Client for etcd.
 type Client struct {

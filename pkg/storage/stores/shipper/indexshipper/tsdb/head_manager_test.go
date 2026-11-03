@@ -194,6 +194,52 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 
 }
 
+// Test_TenantHeads_LabelsOutsideTenantBounds covers label queries whose window
+// overlaps the heads (because of another tenant's data) but misses this
+// tenant's head. They must return nothing rather than series with no data in
+// the window, or series the matchers exclude.
+func Test_TenantHeads_LabelsOutsideTenantBounds(t *testing.T) {
+	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	chks := index.ChunkMetas{{MinTime: 1000, MaxTime: 2000, KB: 1, Entries: 1}}
+	for _, s := range []string{`{app="db", env="prod"}`, `{app="web", env="dev"}`} {
+		ls := mustParseLabels(s)
+		h.Append("tenant", ls, labels.StableHash(ls), chks)
+	}
+	// Another tenant's data widens the heads' bounds over every window below.
+	other := mustParseLabels(`{app="other"}`)
+	h.Append("other", other, labels.StableHash(other), index.ChunkMetas{{MinTime: 0, MaxTime: 5000, KB: 1, Entries: 1}})
+
+	eq := labels.MustNewMatcher(labels.MatchEqual, "app", "db")
+	// A non-literal regex, so it is resolved by scanning the label's values.
+	excludeEq := labels.MustNewMatcher(labels.MatchNotRegexp, "app", "d.*")
+
+	for _, tc := range []struct {
+		desc          string
+		from, through model.Time
+		matchers      []*labels.Matcher
+		names, values []string
+	}{
+		{desc: "before head", from: 0, through: 500, matchers: []*labels.Matcher{eq}},
+		{desc: "after head", from: 3000, through: 4000, matchers: []*labels.Matcher{eq}},
+		{desc: "window ends on head start", from: 0, through: 1000, matchers: []*labels.Matcher{eq}},
+		{desc: "window starts on head end", from: 2000, through: 3000, matchers: []*labels.Matcher{eq}, names: []string{"app", "env"}, values: []string{"prod"}},
+		{desc: "before head, contradictory", from: 0, through: 500, matchers: []*labels.Matcher{eq, excludeEq}},
+		{desc: "before head, no matchers", from: 0, through: 500},
+		{desc: "overlaps head", from: 1500, through: 2500, matchers: []*labels.Matcher{eq}, names: []string{"app", "env"}, values: []string{"prod"}},
+		{desc: "overlaps head, contradictory", from: 1500, through: 2500, matchers: []*labels.Matcher{eq, excludeEq}},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			names, err := h.LabelNames(context.Background(), "tenant", tc.from, tc.through, tc.matchers...)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.names, names)
+
+			values, err := h.LabelValues(context.Background(), "tenant", tc.from, tc.through, "env", tc.matchers...)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.values, values)
+		})
+	}
+}
+
 // test head recover from wal
 func Test_HeadManager_RecoverHead(t *testing.T) {
 	now := time.Now()
@@ -280,6 +326,134 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 	}
 
+}
+
+// Test_HeadManager_RecoverHead_IngestedAt asserts that a chunk's ingestion
+// timestamp survives WAL replay once the WAL is written as
+// WalRecordChunksV2. Without it, an index built from a recovered head would
+// drop the timestamp that an index built from the same data without a restart
+// carries, and retention would silently fall back to expiring those chunks by
+// their log timestamps.
+func Test_HeadManager_RecoverHead_IngestedAt(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	const user = "tenant1"
+	ls := mustParseLabels(`{foo="bar", __backfill__="true"}`)
+	chks := index.ChunkMetas{
+		// A backfilled chunk, stamped at flush time.
+		{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6, IngestedAt: now.UnixMilli()},
+		// A live chunk in the same record keeps the zero value.
+		{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
+	}
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
+	require.Nil(t, err)
+	require.Nil(t, w.Log(&WALRecord{
+		UserID:      user,
+		Fingerprint: labels.StableHash(ls),
+		Series:      record.RefSeries{Ref: chunks.HeadSeriesRef(0), Labels: ls},
+		Chks:        ChunkMetasRecord{Chks: chks, Ref: 0},
+	}))
+	require.Nil(t, w.Stop())
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
+
+	want := chks
+	if CurrentChunksRec < WalRecordChunksV2 {
+		// The encoder still writes the layout without ingestion timestamps,
+		// so replay zeroes them. Remove once CurrentChunksRec is
+		// WalRecordChunksV2.
+		want = index.ChunkMetas{
+			{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6},
+			{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
+		}
+	}
+
+	var recovered index.ChunkMetas
+	require.Nil(t, mgr.activeHeads.forAll(func(u string, _ labels.Labels, _ uint64, c index.ChunkMetas) error {
+		require.Equal(t, user, u)
+		recovered = append(recovered, c...)
+		return nil
+	}))
+	require.Equal(t, want, recovered)
+}
+
+// Test_HeadManager_Append_ConcurrentCallsReplaySafely is a regression test
+// for the appendMtx fix: many goroutines call the real, public
+// HeadManager.Append concurrently, racing to create several brand-new
+// streams, with no manual scheduling to force any particular interleaving.
+func Test_HeadManager_Append_ConcurrentCallsReplaySafely(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	const (
+		user       = "tenant1"
+		numStreams = 8
+		numWriters = 25 // concurrent writers racing to create each stream
+	)
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	errs := make(chan error, numStreams*numWriters)
+	var wg sync.WaitGroup
+	for s := 0; s < numStreams; s++ {
+		ls := mustParseLabels(fmt.Sprintf(`{foo="bar", stream="%d"}`, s))
+		fp := labels.StableHash(ls)
+		for writer := 0; writer < numWriters; writer++ {
+			wg.Go(func() {
+				chks := index.ChunkMetas{{MinTime: int64(writer + 1), MaxTime: int64(writer + 2), Checksum: uint32(writer)}}
+				if err := mgr.Append(user, ls, fp, chks); err != nil {
+					errs <- err
+				}
+			})
+		}
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	// Stop (flush+close) the WAL mgr.Append wrote into, without going through
+	// a full Rotate/build/truncate cycle, so we can replay the raw file from
+	// disk exactly as a restart would.
+	require.Nil(t, mgr.active.Stop())
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Equal(t, 1, len(grp.wals))
+
+	fresh := newTenantHeads(now, defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	require.NoError(t, recoverHead(mgr.name, mgr.dir, fresh, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
+
+	for s := 0; s < numStreams; s++ {
+		refs, err := fresh.GetChunkRefs(
+			context.Background(),
+			user,
+			0, math.MaxInt64,
+			nil, nil,
+			labels.MustNewMatcher(labels.MatchEqual, "stream", fmt.Sprintf("%d", s)),
+		)
+		require.NoError(t, err)
+		require.Len(t, refs, numWriters, "stream %d: expected every concurrent writer's chunk to survive replay", s)
+	}
 }
 
 // test head recover from corrupted wal
@@ -498,6 +672,44 @@ func Test_HeadManager_RotateAndBuild(t *testing.T) {
 	require.Equal(t, 1, mgr.builds, "tick right after a forced flush should not build again")
 }
 
+// Test_HeadManager_RotateAndBuild_SamePeriodDoesNotDeleteActiveWAL guards
+// against a regression where two rotations landing in the same rotation
+// period (e.g. two forced flushes via /flush/tenant less than
+// defaultRotationPeriod apart) would delete the newly-active WAL: the old
+// truncation logic removed every WAL directory on disk that mapped to the
+// built head's period bucket, rather than only the one WAL that head was
+// actually built from.
+func Test_HeadManager_RotateAndBuild_SamePeriodDoesNotDeleteActiveWAL(t *testing.T) {
+	dir := t.TempDir()
+
+	// Anchor both rotations inside the same 15-minute rotation-period
+	// bucket, mimicking two forced flushes landing less than
+	// defaultRotationPeriod apart.
+	bucketStart := defaultRotationPeriod.TimeForPeriod(defaultRotationPeriod.PeriodFor(time.Now()))
+	t0 := bucketStart.Add(time.Minute)
+	t1 := bucketStart.Add(5 * time.Minute)
+	require.Equal(t, defaultRotationPeriod.PeriodFor(t0), defaultRotationPeriod.PeriodFor(t1),
+		"t0 and t1 must land in the same rotation period for this test to exercise the race")
+
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.NoError(t, util.EnsureDirectory(d))
+	}
+	require.NoError(t, hm.Rotate(t0)) // initialize active head (usually done by Start())
+	require.DirExists(t, walPath(hm.name, hm.dir, t0))
+
+	// Force a second rotation at t1, still within t0's period bucket: this
+	// rotates out and builds the t0 head, and t1 becomes the new active head.
+	require.NoError(t, hm.rotateAndBuild(t1, true))
+	require.Equal(t, 1, mgr.builds, "the t0 head should have been built exactly once")
+
+	require.NoDirExists(t, walPath(hm.name, hm.dir, t0), "the built-out t0 WAL should have been removed")
+	require.DirExists(t, walPath(hm.name, hm.dir, t1),
+		"the newly active t1 WAL must survive truncation of the t0 WAL that shares its period bucket")
+}
+
 // Test_HeadManager_Flush exercises the public, channel-triggered Flush() end to
 // end: the request is serviced on the running loop goroutine.
 func Test_HeadManager_Flush(t *testing.T) {
@@ -518,7 +730,7 @@ func Test_HeadManager_Flush(t *testing.T) {
 	ls := mustParseLabels(`{foo="bar"}`)
 	require.NoError(t, hm.Append("tenant1", ls, labels.StableHash(ls), []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 3}}))
 
-	require.NoError(t, hm.Flush())
+	require.NoError(t, hm.Flush(context.Background()))
 	require.Equal(t, 1, mgr.builds, "Flush should rotate and build the active head exactly once")
 }
 
@@ -828,7 +1040,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger())
+				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
 				require.Nil(t, err)
 				refs, err := store.GetChunkRefs(
 					context.Background(),
@@ -909,4 +1121,146 @@ func BenchmarkTenantHeads(b *testing.B) {
 
 		})
 	}
+}
+
+// Test_HeadManager_ForcedRotationsWithinOneSecond requires rotations requested
+// within one second to still give every head its own start second (its WAL dir and
+// TSDB name are derived from it), and truncating each rotated-out head's WAL to
+// never remove the active one.
+func Test_HeadManager_ForcedRotationsWithinOneSecond(t *testing.T) {
+	dir := t.TempDir()
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.NoError(t, util.EnsureDirectory(d))
+	}
+
+	now := time.Now().Truncate(time.Second).Add(100 * time.Millisecond)
+	require.NoError(t, hm.Rotate(now))
+
+	seen := map[int64]struct{}{hm.activeHeads.start.Unix(): {}}
+	for i := 1; i <= 5; i++ {
+		require.NoError(t, hm.rotateAndBuild(now.Add(time.Duration(i)*time.Millisecond), true))
+
+		start := hm.activeHeads.start.Unix()
+		require.NotContains(t, seen, start, "rotation %d reused a head start second", i)
+		seen[start] = struct{}{}
+		require.DirExists(t, walPath(storeName, dir, hm.activeHeads.start), "rotation %d: active WAL must survive truncating the previous one", i)
+	}
+	require.Equal(t, 5, mgr.builds)
+}
+
+// Test_HeadManager_PeriodicRotationRightAfterFlush covers the reverse order: a forced
+// flush in the last second of a period, then the periodic tick just after the
+// boundary. Period boundaries fall on whole seconds, so the two heads always start
+// in different seconds without any adjustment.
+func Test_HeadManager_PeriodicRotationRightAfterFlush(t *testing.T) {
+	dir := t.TempDir()
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.NoError(t, util.EnsureDirectory(d))
+	}
+
+	boundary := hm.period.TimeForPeriod(hm.period.PeriodFor(time.Now()))
+	require.NoError(t, hm.Rotate(boundary.Add(-time.Minute)))
+
+	require.NoError(t, hm.rotateAndBuild(boundary.Add(-100*time.Millisecond), true)) // /flush/tenant
+	forced := hm.activeHeads.start
+
+	hm.tick(boundary.Add(100 * time.Millisecond)) // periodic rotation, 200ms later
+	periodic := hm.activeHeads.start
+	require.Equal(t, 2, mgr.builds, "the tick after the boundary rotates and builds the forced head")
+	require.Greater(t, periodic.Unix(), forced.Unix())
+	require.Equal(t, boundary.Unix(), periodic.Unix(), "no adjustment needed: the periodic head starts at the boundary second")
+}
+
+// Test_HeadManager_FlushHonorsContext requires Flush to return once its context is
+// done instead of blocking until the loop goroutine is free.
+func Test_HeadManager_FlushHonorsContext(t *testing.T) {
+	dir := t.TempDir()
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.NoError(t, util.EnsureDirectory(d))
+	}
+	require.NoError(t, hm.Rotate(time.Now()))
+
+	// The loop isn't running, so the request is never picked up.
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	require.ErrorIs(t, hm.Flush(ctx), context.DeadlineExceeded)
+	require.Equal(t, 0, mgr.builds, "nothing flushed when the request was never picked up")
+}
+
+// TestStore_BackToBackFlushesShipDistinctIndexes flushes the index twice in quick
+// succession, as repeated /flush/tenant calls do. Each flush must ship its own TSDB
+// (the two must not share a name and overwrite each other), and a querier reading
+// only object storage must see the chunks indexed before either flush.
+func TestStore_BackToBackFlushesShipDistinctIndexes(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	dir := t.TempDir()
+
+	schemaCfg := config.SchemaConfig{Configs: []config.PeriodConfig{{
+		From:       config.DayTime{Time: model.TimeFromUnixNano(now.Add(-72 * time.Hour).UnixNano())},
+		Schema:     "v13",
+		IndexType:  types.IndexTypeTSDB,
+		ObjectType: types.StorageTypeFileSystem,
+		IndexTables: config.IndexPeriodicTableConfig{PeriodicTableConfig: config.PeriodicTableConfig{
+			Prefix: "index_",
+			Period: 24 * time.Hour,
+		}},
+	}}}
+	tableRange := schemaCfg.Configs[0].GetIndexTableNumberRange(config.DayTime{Time: model.TimeFromUnixNano(now.Add(48 * time.Hour).UnixNano())})
+	table := schemaCfg.Configs[0].IndexTables.TableFor(model.TimeFromUnixNano(now.UnixNano()))
+
+	objDir := filepath.Join(dir, "objects")
+	objClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objDir})
+	require.NoError(t, err)
+
+	newStore := func(name string, mode indexshipper.Mode) *store {
+		cfg := indexshipper.Config{}
+		flagext.DefaultValues(&cfg)
+		cfg.Mode = mode
+		cfg.ActiveIndexDirectory = filepath.Join(dir, name, "active")
+		cfg.CacheLocation = filepath.Join(dir, name, "cache")
+		cfg.IngesterName = name
+		cfg.IngesterDBRetainPeriod = 15 * time.Minute
+		rw, stop, err := NewStore("tsdb", "index/", cfg, schemaCfg, objClient, &zeroValueLimits{}, tableRange, nil, nil, log.NewNopLogger())
+		require.NoError(t, err)
+		t.Cleanup(stop)
+		return rw.(*store)
+	}
+
+	ingester := newStore("ingester", indexshipper.ModeWriteOnly)
+	for i, lbls := range []string{`{foo="a"}`, `{foo="b"}`} {
+		ls := mustParseLabels(lbls)
+		through := model.TimeFromUnixNano(now.UnixNano())
+		chk := chunk.Chunk{
+			ChunkRef: logproto.ChunkRef{UserID: "tenant1", Fingerprint: labels.StableHash(ls), From: through - 1, Through: through, Checksum: uint32(i + 1)},
+			Metric:   ls,
+			Data:     dummyChunkData{},
+		}
+		require.NoError(t, ingester.IndexChunk(ctx, chk.From, chk.Through, chk))
+		require.NoError(t, ingester.FlushIndexes(ctx))
+	}
+
+	objects, err := os.ReadDir(filepath.Join(objDir, "index", table))
+	require.NoError(t, err)
+	require.Len(t, objects, 2, "each flush ships its own TSDB")
+
+	querier := newStore("querier", indexshipper.ModeReadOnly)
+	refs, err := querier.GetChunkRefs(ctx, "tenant1",
+		model.TimeFromUnixNano(now.Add(-time.Hour).UnixNano()), model.TimeFromUnixNano(now.Add(time.Hour).UnixNano()),
+		chunk.NewPredicate([]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+")}, nil))
+	require.NoError(t, err)
+	var checksums []uint32
+	for _, r := range refs {
+		checksums = append(checksums, r.Checksum)
+	}
+	require.ElementsMatch(t, []uint32{1, 2}, checksums)
 }

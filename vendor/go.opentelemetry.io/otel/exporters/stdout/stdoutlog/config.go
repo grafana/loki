@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package stdoutlog // import "go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
+package stdoutlog
 
 import (
 	"io"
@@ -16,19 +16,19 @@ var (
 
 // config contains options for the STDOUT exporter.
 type config struct {
-	// Writer is the destination.  If not set, os.Stdout is used.
+	// Writer is the destination. If not set, os.Stdout is used.
 	Writer io.Writer
 
-	// PrettyPrint will encode the output into readable JSON. Default is
+	// PrettyPrint will encode the output into readable JSON. The default is
 	// false.
 	PrettyPrint bool
 
-	// Timestamps specifies if timestamps should be printed. Default is
+	// Timestamps specifies whether timestamps should be printed. The default is
 	// true.
 	Timestamps bool
 }
 
-// newConfig creates a validated Config configured with options.
+// newConfig creates a config from options.
 func newConfig(options []Option) config {
 	cfg := config{
 		Writer:      defaultWriter,
@@ -72,7 +72,7 @@ func (o prettyPrintOption) apply(cfg config) config {
 	return cfg
 }
 
-// WithoutTimestamps sets the export stream to not include timestamps.
+// WithoutTimestamps excludes timestamps from the export stream.
 func WithoutTimestamps() Option {
 	return timestampsOption(false)
 }

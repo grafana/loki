@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -21,7 +22,7 @@ var objectsMtime = time.Now().Local()
 type mockObjectClient struct {
 	client.ObjectClient
 	errResp        error
-	listCallsCount int
+	listCallsCount atomic.Int64
 	listDelay      time.Duration
 }
 
@@ -45,7 +46,7 @@ func newMockObjectClient(t *testing.T, objects []string) *mockObjectClient {
 func (m *mockObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	defer func() {
 		time.Sleep(m.listDelay)
-		m.listCallsCount++
+		m.listCallsCount.Add(1)
 	}()
 
 	if m.errResp != nil {
@@ -150,14 +151,14 @@ func TestCachedObjectClient(t *testing.T) {
 	// list tables
 	objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), "", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
+	require.Equal(t, int64(1), objectClient.listCallsCount.Load())
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{"table1", "table2", "table3"}, commonPrefixes)
 
 	// list objects in all 3 tables
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table1/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 2, objectClient.listCallsCount)
+	require.Equal(t, int64(2), objectClient.listCallsCount.Load())
 	require.Equal(t, []client.StorageObject{
 		{Key: "table1/db1.gz", ModifiedAt: objectsMtime},
 		{Key: "table1/db2.gz", ModifiedAt: objectsMtime},
@@ -166,7 +167,7 @@ func TestCachedObjectClient(t *testing.T) {
 
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 3, objectClient.listCallsCount)
+	require.Equal(t, int64(3), objectClient.listCallsCount.Load())
 	require.Equal(t, []client.StorageObject{
 		{Key: "table2/db1.gz", ModifiedAt: objectsMtime},
 	}, objects)
@@ -174,14 +175,14 @@ func TestCachedObjectClient(t *testing.T) {
 
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 4, objectClient.listCallsCount)
+	require.Equal(t, int64(4), objectClient.listCallsCount.Load())
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{"table3/user1"}, commonPrefixes)
 
 	// list user objects from table2 and table3, which should not make any new list calls
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/user1/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 4, objectClient.listCallsCount)
+	require.Equal(t, int64(4), objectClient.listCallsCount.Load())
 	require.Equal(t, []client.StorageObject{
 		{
 			Key:        "table2/user1/db1.gz",
@@ -192,7 +193,7 @@ func TestCachedObjectClient(t *testing.T) {
 
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user1/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 4, objectClient.listCallsCount)
+	require.Equal(t, int64(4), objectClient.listCallsCount.Load())
 	require.Equal(t, []client.StorageObject{
 		{Key: "table3/user1/db1.gz", ModifiedAt: objectsMtime},
 		{Key: "table3/user1/db2.gz", ModifiedAt: objectsMtime},
@@ -202,14 +203,14 @@ func TestCachedObjectClient(t *testing.T) {
 	// list non-existent table
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table4/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 5, objectClient.listCallsCount)
+	require.Equal(t, int64(5), objectClient.listCallsCount.Load())
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
 	// list non-existent user
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user2/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 5, objectClient.listCallsCount)
+	require.Equal(t, int64(5), objectClient.listCallsCount.Load())
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 }
@@ -262,7 +263,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedObjects, objects)
 			require.Equal(t, tc.expectedCommonPrefixes, commonPrefixes)
-			expectedListCallsCount := objectClient.listCallsCount
+			expectedListCallsCount := objectClient.listCallsCount.Load()
 
 			// timeout the cache and call List concurrently with objectClient throwing an error
 			// objectClient must receive just one request and all the cachedObjectClient.List calls should get an error
@@ -278,7 +279,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 					defer wg.Done()
 					_, _, err := cachedObjectClient.List(context.Background(), tc.prefix, "", false)
 					require.Error(t, err)
-					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount)
+					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount.Load())
 				}()
 			}
 
@@ -294,7 +295,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 					defer wg.Done()
 					objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), tc.prefix, "", false)
 					require.NoError(t, err)
-					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount)
+					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount.Load())
 					require.Equal(t, tc.expectedObjects, objects)
 					require.Equal(t, tc.expectedCommonPrefixes, commonPrefixes)
 				}()
@@ -302,4 +303,64 @@ func TestCachedObjectClient_errors(t *testing.T) {
 			wg.Wait()
 		})
 	}
+}
+
+func TestCachedObjectClient_ListConcurrentRefresh(t *testing.T) {
+	objectClient := newMockObjectClient(t, []string{
+		"table1/db1.gz",
+		"table1/user1/db1.gz",
+		"table1/user1/db2.gz",
+		"table1/user2/db1.gz",
+	})
+	cached := newCachedObjectClient(objectClient)
+
+	_, _, err := cached.List(context.Background(), "", "", false)
+	require.NoError(t, err)
+	_, _, err = cached.List(context.Background(), "table1/", "", false)
+	require.NoError(t, err)
+
+	const (
+		readers    = 8
+		iterations = 100
+	)
+	var wg sync.WaitGroup
+	wg.Add(readers + 1)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			cached.RefreshIndexTableNamesCache(context.Background())
+			cached.RefreshIndexTableCache(context.Background(), "table1")
+		}
+	}()
+
+	for i := 0; i < readers; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				objects, prefixes, err := cached.List(context.Background(), "table1/", "", false)
+				require.NoError(t, err)
+				for _, o := range objects {
+					_ = o.Key
+				}
+				for _, p := range prefixes {
+					_ = string(p)
+				}
+
+				objects, _, err = cached.List(context.Background(), "table1/user1/", "", false)
+				require.NoError(t, err)
+				for _, o := range objects {
+					_ = o.Key
+				}
+
+				_, prefixes, err = cached.List(context.Background(), "", "", false)
+				require.NoError(t, err)
+				for _, p := range prefixes {
+					_ = string(p)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
 }

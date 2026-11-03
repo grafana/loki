@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,13 +33,14 @@ import (
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/internal/optional"
-	"github.com/google/uuid"
 	"github.com/googleapis/gax-go/v2/callctx"
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	raw "google.golang.org/api/storage/v1"
+	"google.golang.org/api/transport"
 	htransport "google.golang.org/api/transport/http"
 )
 
@@ -70,6 +71,7 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client st
 	config := newStorageConfig(o...)
 
 	var creds *auth.Credentials
+	var googleCreds *google.Credentials
 	// In general, it is recommended to use raw.NewService instead of htransport.NewClient
 	// since raw.NewService configures the correct default endpoints when initializing the
 	// internal http client. However, in our case, "NewRangeReader" in reader.go needs to
@@ -91,6 +93,9 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client st
 		if err == nil {
 			creds = c
 			o = append(o, option.WithAuthCredentials(creds))
+		} else if gc, err := transport.Creds(ctx, o...); err == nil {
+			googleCreds = gc
+			o = append(o, option.WithCredentials(googleCreds))
 		}
 	} else {
 		var hostURL *url.URL
@@ -118,18 +123,14 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client st
 	}
 	s.clientOption = o
 
-	// htransport selects the correct endpoint among WithEndpoint (user override), WithDefaultEndpointTemplate, and WithDefaultMTLSEndpoint.
-	hc, ep, err := htransport.NewClient(ctx, s.clientOption...)
-	if err != nil {
-		return nil, fmt.Errorf("dialing: %w", err)
-	}
-
 	var clientMetrics *clientMetrics
 	var metricsCleanup func()
 	if isOtelMetricsEnabled(&config) {
 		var project string
 		if creds != nil {
 			project, _ = creds.ProjectID(ctx)
+		} else if googleCreds != nil {
+			project = googleCreds.ProjectID
 		}
 		clientMetrics, metricsCleanup = initClientMetrics(ctx, project, &config)
 	}
@@ -139,6 +140,17 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client st
 				metricsCleanup()
 			}
 		}()
+	}
+
+	if clientMetrics != nil && creds != nil {
+		creds = wrapAuthCredentials(creds, clientMetrics)
+		s.clientOption = append(s.clientOption, option.WithAuthCredentials(creds))
+	}
+
+	// htransport selects the correct endpoint among WithEndpoint (user override), WithDefaultEndpointTemplate, and WithDefaultMTLSEndpoint.
+	hc, ep, err := htransport.NewClient(ctx, s.clientOption...)
+	if err != nil {
+		return nil, fmt.Errorf("dialing: %w", err)
 	}
 
 	// Clone the http.Client to avoid modifying the original one if it was provided by the user.
@@ -971,7 +983,6 @@ func (c *httpStorageClient) NewRangeReader(ctx context.Context, params *newRange
 }
 
 func (c *httpStorageClient) newRangeReaderXML(ctx context.Context, params *newRangeReaderParams, s *settings) (r *Reader, err error) {
-	requestID := uuid.New()
 	u := &url.URL{
 		Scheme:  c.scheme,
 		Host:    c.xmlHost,
@@ -995,50 +1006,35 @@ func (c *httpStorageClient) newRangeReaderXML(ctx context.Context, params *newRa
 		return nil, err
 	}
 
+	// req is reused across retry attempts and setHeadersFromCtx merges
+	// x-goog-api-client values into the existing header. Snapshot the value
+	// set before any attempt and restore it on each attempt so tokens from
+	// earlier attempts (e.g. gccl-attempt-count/1) do not leak into later ones.
+	baseXGoogHeader := slices.Clone(req.Header.Values(xGoogHeaderKey))
+
 	reopen := readerReopen(ctx, req.Header, params, s,
 		func(ctx context.Context) (*http.Response, error) {
+			req.Header.Del(xGoogHeaderKey)
+			for _, v := range baseXGoogHeader {
+				req.Header.Add(xGoogHeaderKey, v)
+			}
 			setHeadersFromCtx(ctx, req.Header)
 
 			if c.dynamicReadReqStallTimeout == nil {
 				return c.hc.Do(req.WithContext(ctx))
 			}
 
-			cancelCtx, cancel := context.WithCancel(ctx)
-			var (
-				res *http.Response
-				err error
-			)
-
-			done := make(chan bool)
-			go func() {
-				reqStartTime := time.Now()
-				res, err = c.hc.Do(req.WithContext(cancelCtx))
-				if err == nil {
-					reqLatency := time.Since(reqStartTime)
-					c.dynamicReadReqStallTimeout.update(params.bucket, reqLatency)
-				} else if errors.Is(err, context.Canceled) {
-					// context.Canceled means operation took more than current dynamicTimeout,
-					// hence should be increased.
-					c.dynamicReadReqStallTimeout.increase(params.bucket)
-				}
-				done <- true
-			}()
-
-			// Wait until stall timeout or request is successful.
-			stallTimeout := c.dynamicReadReqStallTimeout.getValue(params.bucket)
-			timer := time.After(stallTimeout)
-			select {
-			case <-timer:
-				log.Printf("[%s] stalled read-req cancelled after %fs", requestID, stallTimeout.Seconds())
-				cancel()
-				<-done
+			var res *http.Response
+			err := executeWithReadStallTimeout(ctx, c.dynamicReadReqStallTimeout, params.bucket, func(ctx context.Context) error {
+				var err error
+				res, err = c.hc.Do(req.WithContext(ctx))
+				return err
+			}, func(stallTimeout time.Duration) {
+				c.metrics.recordStallDuration(ctx, stallTimeout, "ReadObject", "http", stripPort(req.URL.Host))
 				if res != nil && res.Body != nil {
 					res.Body.Close()
 				}
-				return res, context.DeadlineExceeded
-			case <-done:
-				cancel = nil
-			}
+			})
 			return res, err
 		},
 		func() error { return setConditionsHeaders(req.Header, params.conds) },
@@ -1763,14 +1759,18 @@ func setHeadersFromCtx(ctx context.Context, header http.Header) {
 		// Merge x-goog-api-client values into a single space-separated value.
 		if strings.EqualFold(k, xGoogHeaderKey) {
 			alreadySetValues := header.Values(xGoogHeaderKey)
-			vals = append(vals, alreadySetValues...)
-
-			if len(vals) > 0 {
-				xGoogHeader := vals[0]
-				for _, v := range vals[1:] {
-					xGoogHeader = strings.Join([]string{xGoogHeader, v}, " ")
+			var uniqueVals []string
+			for _, list := range [][]string{vals, alreadySetValues} {
+				for _, v := range list {
+					for _, part := range strings.Fields(v) {
+						if !slices.Contains(uniqueVals, part) {
+							uniqueVals = append(uniqueVals, part)
+						}
+					}
 				}
-				header.Set(k, xGoogHeader)
+			}
+			if len(uniqueVals) > 0 {
+				header.Set(k, strings.Join(uniqueVals, " "))
 			}
 		} else {
 			for _, v := range vals {

@@ -1,5 +1,134 @@
 # Changes
 
+## 2.8.0 - 2026-10-11
+
+- String caching now uses buckets to improve concurrent decoding. On 64-bit
+  systems, the table grows from 64 KiB to 72 KiB and is allocated only when an
+  eligible string is decoded. Entry capacity grows from 4,096 to 7,168, which
+  can also increase retained string memory. Pull request by James Ranson.
+  GitHub #252.
+- Standalone `mmdbdata.NewDecoder` calls now default to no string cache.
+  This reduces setup cost for short-lived decoders. Use the new
+  `mmdbdata.WithStringCache()` option for repeated reads through a retained
+  decoder or its cursors. Without the option, repeated string reads can
+  allocate more and run slower. Cursors supplied by a `Reader` continue to
+  share its caching policy.
+- Added `mmdbdata.Decoder.CursorAt(offset)` to read independent records from
+  one buffer without changing the decoder's position. The cursors share its
+  string cache and can be read concurrently while the buffer remains valid
+  and unchanged.
+- Reduced `maxminddb-gen` generation and test time by reusing loaded dependencies
+  during output validation, avoiding duplicate syntax work, and omitting unused
+  parser metadata. Full type checking and generated-output validation remain
+  enabled. Validation normalizes paths from package loaders to avoid false
+  duplicate declarations. GitHub #256.
+- Reduced reflection decoding overhead for string struct fields, including
+  fields read through database pointers, while retaining existing validation
+  and custom unmarshaling behavior.
+- Shared string-cache handling between map keys and decoded string values.
+- Fixed `Reader.Verify()` accepting invalid UTF-8 values overwritten by
+  duplicate map keys. Verification now checks every encoded string in the data
+  and metadata sections, including overwritten values.
+- Fixed `maxminddb-gen` rejecting fields that use type aliases of supported
+  types, including aliases in nested containers.
+- Fixed `maxminddb-gen` panicking when a byte slice or its elements use an
+  imported type alias.
+- Fixed `maxminddb-gen` emitting inaccessible type names for imported container
+  aliases with private element or map key types. Generated helpers infer those
+  types while retaining allocation, overflow, and size checks.
+- Fixed `maxminddb-gen` emitting private byte aliases in constraints for nested
+  byte slice aliases.
+- Fixed `maxminddb-gen` emitting inaccessible types for imported aliases whose
+  generic arguments contain private types, fields, or methods.
+
+## 2.7.0 - 2026-09-29
+
+- Go 1.26 or later is now required. CI now tests Go 1.26 and 1.27.
+- Fixed `Reader.Verify()` rejecting a search-tree record that points to a value
+  nested in another data record. The MaxMind DB spec permits this, and
+  mmdbwriter can write such databases. GitHub #250.
+- Decoding now rejects extended type bytes 0 and 250 through 255, which the
+  MaxMind DB spec does not define. Before, they decoded as other types. For
+  example, `0x00 0xfb` decoded as a string.
+- `Reader.Verify()` now rejects a data pointer that points into the middle of a
+  field.
+- `Reader.Verify()` now also checks the metadata section. Its pointers must
+  point to the start of a field, and all data after the metadata map must be
+  valid values.
+
+## 2.6.0 - 2026-09-07
+
+- Fixed a denial-of-service issue where a crafted database could use repeated
+  pointers to cause excessive CPU and memory use during reflection decoding.
+  The decoder now limits decoding work and decoded payload size.
+- Made search-tree verification visit shared subtrees only once, bounding work
+  while still rejecting cycles and overlong paths.
+- Added the `maxsize:N` struct-tag option to limit maps, arrays, strings, and
+  bytes in reflection and generated decoders, plus bounded cursor reads.
+  Field names containing commas must now be single-quoted.
+- Made generated decoders reject duplicate recognized map keys.
+- Added `mmdbdata.Cursor.Offset()` to retrieve a value's resolved control-byte
+  offset for caching within a database. It returns an error when resolution
+  fails; the legacy `Decoder.Offset()` retains its original-offset fallback.
+- Improved performance:
+  - Reduced 28-bit search-tree lookup overhead with single-word node reads.
+  - Extended bounded cursor string fast paths to wider data pointers.
+  - Avoided repeated reflection dispatch for pointer-backed strings.
+  - Inlined compact header reads when skipping values during budgeted decoding.
+  - Avoided repeated type dispatch for unsigned integers decoded into `any`.
+  - Cached validated struct-field matches to speed up repeated decoding.
+
+## 2.5.0 - 2026-08-08
+
+- Deprecated the legacy `mmdbdata.Unmarshaler` callback,
+  `UnmarshalMaxMindDB(*mmdbdata.Decoder) error`. It remains supported throughout
+  v2, but new handwritten decoders should implement
+  `mmdbdata.CursorUnmarshaler` so nested decoding can return a proven successor
+  without rescanning the value. When a type implements both interfaces, the
+  cursor callback takes precedence. Removal is planned for v3. GitHub #224.
+  Legacy callbacks must not retain the supplied decoder or its iterators after
+  returning; decoder instances may now be pooled and reused.
+- Added the optional `maxminddb-gen` command for reproducible generation of
+  reflection-free decoders for application-owned types, together with cursor
+  primitives that avoid rescanning completely consumed containers and a
+  pool-free cursor unmarshaling interface whose opaque successor supports
+  single-pass nested custom decoding. The command discovers exported structs in
+  its input source file and writes a matching
+  `<source>_maxminddb.go` file by default while preserving build constraints and
+  recognized filename build suffixes. Generated struct decoders use lightweight
+  counted map traversal and compact pointer-string fast paths. Output-path
+  migrations ignore superseded generated methods while analyzing replacements,
+  MaxMind tag validation remains isolated from unrelated tags, and output
+  replacement requires an exact generated ownership marker.
+- Fixed valid four-byte data pointers whose ignored high address bits produce
+  control values 29 through 31 so they are not misread as extended value sizes.
+- Fixed the string cache so overlapping string encodings that share a payload
+  offset remain distinct and cannot return the wrong cached string or map key.
+- Fixed nested struct fields containing a non-map value so decoding reports the
+  correct type error at the field offset instead of retrying from the record
+  root.
+- Reduced IPv4 and IPv6 lookup time for databases with 28-bit search-tree
+  records.
+- Reduced allocations when recurring decoded strings share a primary cache
+  slot.
+- Reduced struct decoding time by using compact field-name fingerprints before
+  falling back to full string hashing.
+- Rejected impossible or malformed large container sizes before allocating
+  destination maps and slices, while reducing preflight overhead for common
+  strings and booleans and avoiding preflight when caller-provided slice
+  capacity already prevents an allocation.
+- Kept readers reachable through memory-mapped lookup, decode, and iteration
+  operations so runtime cleanup cannot unmap active data.
+- Reduced opening memory by decoding metadata without a string cache and added
+  `DisableStringCache` for readers that favor lower memory over repeated-decode
+  allocation savings.
+- Released decoder-owned data and cache references when a reader is closed.
+- Rejected invalid `netip.Addr` lookup values.
+- Made verification reject invalid UTF-8 strings and made empty-value filtering
+  reject pointer-to-pointer records consistently with other decoder paths.
+- Corrected cold-cache and concurrent-lookup benchmarks so they measure steady
+  cache misses and lookup work rather than warm caches and goroutine setup.
+
 ## 2.4.1 - 2026-06-28
 
 - Fixed `Result.Decode` and `Result.DecodePath` after `Reader.Close` so stale

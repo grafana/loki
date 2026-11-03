@@ -43,6 +43,9 @@ const (
 	F_SETLK64             = 6
 	F_SETLKW              = 7
 	F_SETLKW64            = 7
+	F_OFD_GETLK           = 36
+	F_OFD_SETLK           = 37
+	F_OFD_SETLKW          = 38
 	F_SETOWN              = 8
 	F_SHLCK               = 8
 	F_TEST                = 3

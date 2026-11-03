@@ -1,3 +1,35 @@
+# v1.13.23 (2026-10-27)
+
+* **Dependency Update**: Update to smithy-go v1.28.7.
+
+# v1.13.22 (2026-10-22)
+
+* **Bug Fix**: Update smithy-go to v1.28.6
+
+# v1.13.21 (2026-10-09.2)
+
+* **Dependency Update**: Update to smithy-go v1.28.5.
+
+# v1.13.20 (2026-10-08)
+
+* **Dependency Update**: Update to smithy-go v1.28.4.
+
+# v1.13.19 (2026-08-26)
+
+* **Dependency Update**: Update to smithy-go v1.28.0.
+
+# v1.13.18 (2026-08-25)
+
+* **Dependency Update**: Update to smithy-go v1.27.10.
+
+# v1.13.17 (2026-08-14)
+
+* **Dependency Update**: Update to smithy-go v1.27.8.
+
+# v1.13.16 (2026-08-10)
+
+* **Dependency Update**: Update to smithy-go v1.27.7.
+
 # v1.13.15 (2026-07-31.2)
 
 * **Dependency Update**: Upgrade to smithy-go v1.27.6 to fix various serde issues in HTTP binding services.

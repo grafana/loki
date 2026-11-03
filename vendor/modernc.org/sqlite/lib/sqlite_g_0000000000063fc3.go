@@ -4,8 +4,6 @@
 
 package sqlite3
 
-const HUGE = 0
-
 const INT_FAST8_MAX = 127
 
 const INT_FAST8_MIN = -128

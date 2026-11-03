@@ -109,8 +109,8 @@ func (r *Reader) Columns() []*Column { return r.opts.Columns }
 // (via [Reader.Reset]) so it is valid before [Reader.Open] is called.
 func (r *Reader) Schema() *arrow.Schema { return r.schema }
 
-// Reset reuses the Reader with new options. Schema is rebuilt here, matching
-// streams.Reader so Schema() is valid before Open.
+// Reset reuses the Reader with new options. Reset rebuilds Schema so that
+// Schema() is valid before Open.
 func (r *Reader) Reset(opts ReaderOptions) {
 	if r.alloc == nil {
 		r.alloc = memoryv2.NewAllocator(nil)
@@ -202,11 +202,11 @@ func (r *Reader) init(ctx context.Context) error {
 	}
 
 	innerOptions := dataset.RowReaderOptions{
-		Dataset:      dset,
-		Columns:      dset.Columns(),
-		Predicates:   preds,
-		Prefetch:     true,
-		StatsTracker: r.opts.StatsTracker,
+		Dataset:           dset,
+		ProjectedColumns:  dset.Columns(),
+		Predicates:        preds,
+		PrefetchAllOnOpen: true,
+		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
 		r.inner = columnar.NewReaderAdapter(innerOptions)
@@ -260,6 +260,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeInvalid:          arrow.Null,
 	ColumnTypeKind:             arrow.PrimitiveTypes.Int64,
 	ColumnTypeObjectPath:       arrow.BinaryTypes.String,
+	ColumnTypeShardBuckets:     arrow.PrimitiveTypes.Int64,
 	ColumnTypeSectionIndex:     arrow.PrimitiveTypes.Int64,
 	ColumnTypeColumnName:       arrow.BinaryTypes.String,
 	ColumnTypeLabelValue:       arrow.BinaryTypes.String,
@@ -268,6 +269,8 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeUncompressedSize: arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeMinShardBucket:   arrow.PrimitiveTypes.Int64,
+	ColumnTypeMaxShardBucket:   arrow.PrimitiveTypes.Int64,
 }
 
 func columnToField(col *Column) arrow.Field {

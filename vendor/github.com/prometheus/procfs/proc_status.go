@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // ProcStatus provides status information about the process,
@@ -100,7 +100,7 @@ type ProcStatus struct {
 
 // NewStatus returns the current status information of the process.
 func (p Proc) NewStatus() (ProcStatus, error) {
-	data, err := util.ReadFileNoStat(p.path("status"))
+	data, err := parsers.ReadFileNoStat(p.path("status"))
 	if err != nil {
 		return ProcStatus{}, err
 	}
@@ -135,7 +135,7 @@ func (p Proc) NewStatus() (ProcStatus, error) {
 	return s, nil
 }
 
-func (s *ProcStatus) fillStatus(k string, vString string, vUint uint64, vUintBytes uint64) error {
+func (s *ProcStatus) fillStatus(k, vString string, vUint, vUintBytes uint64) error {
 	switch k {
 	case "Tgid":
 		s.TGID = int(vUint)
@@ -261,7 +261,6 @@ func calcCpusAllowedList(cpuString string) []uint64 {
 			cpu, _ := strconv.ParseUint(l[0], 10, 64)
 			g = append(g, cpu)
 		}
-
 	}
 
 	slices.Sort(g)

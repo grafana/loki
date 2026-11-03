@@ -5,3 +5,5 @@
 package sqlite3
 
 const O_LARGEFILE = 131072
+
+const WCHAR_MIN = 2147483648

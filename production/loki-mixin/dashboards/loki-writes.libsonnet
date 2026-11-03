@@ -95,8 +95,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             )
                           )
                         )
-                        .addRowIf(
-                          $._config.tsdb,
+                        .addRow(
                           $.row('Distributor - Structured Metadata')
                           .addPanel(
                             $.newQueryPanel('Per Total Received Bytes') +

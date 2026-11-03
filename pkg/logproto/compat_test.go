@@ -27,7 +27,8 @@ func TestJsoniterMarshalForSample(t *testing.T) {
 }
 
 func TestStdlibJsonMarshalForSample(t *testing.T) {
-	testMarshalling(t, json.Marshal, "json: error calling MarshalJSON for type logproto.LegacySample: test sample")
+	// Go 1.26 reports logproto.LegacySample; Go 1.27 reports *logproto.LegacySample.
+	testMarshalling(t, json.Marshal, "json: error calling MarshalJSON for type")
 }
 
 func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {
@@ -39,7 +40,8 @@ func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error)
 	require.Equal(t, `[98.765,"12345"]`, string(out))
 
 	_, err = marshalFn(LegacySample{Value: math.NaN(), TimestampMs: 0})
-	require.EqualError(t, err, expectedError)
+	require.ErrorContains(t, err, expectedError)
+	require.ErrorContains(t, err, "test sample")
 
 	// If not testing, we get normal output.
 	isTesting = false

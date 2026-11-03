@@ -18,6 +18,7 @@
 package credentials
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -85,6 +86,21 @@ type CredContext struct {
 	// Endpoint specifies the MinIO endpoint that will be used if no
 	// explicit endpoint is provided.
 	Endpoint string
+
+	// Context is the optional caller context. Cancellation and deadlines
+	// on it propagate to the HTTP requests the built-in providers make
+	// to fetch credentials, in addition to any provider-level timeout
+	// bound. A nil Context means no caller cancellation applies.
+	Context context.Context
+}
+
+// requestContext returns the caller context carried by cc, or
+// context.Background() when no Context is set.
+func (cc *CredContext) requestContext() context.Context {
+	if cc.Context == nil {
+		return context.Background()
+	}
+	return cc.Context
 }
 
 // A Expiry provides shared expiration logic to be used by credentials

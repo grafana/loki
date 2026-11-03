@@ -15,6 +15,10 @@ func (d *Decoder) wrapError(err error) error {
 // wrapErrorAtOffset wraps an error with context at a specific offset.
 // Used when the error occurs at a different offset than the decoder's current position.
 func (*Decoder) wrapErrorAtOffset(err error, offset uint) error {
+	return wrapErrorAtOffset(err, offset)
+}
+
+func wrapErrorAtOffset(err error, offset uint) error {
 	if err == nil {
 		return nil
 	}

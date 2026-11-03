@@ -50,12 +50,13 @@ make test-fuzz                                 # run fuzz tests
 - Always run Loki package tests `gotest -v ./pkg/...` before commiting
 - Focus on "why", rather than "what" in the commit message and PR description
 - Follow conventional commits format: `<type>(<scope>): Your change` (note the uppercase after colon)
+- Never approve, merge or enable auto-merge on Renovate PRs that touch `operator/**` — they risk breaking the operator build and are left for the operator maintainers to apply
 
 ## Documentation Standards
 
 - Follow the Grafana [Writers' Toolkit](https://grafana.com/docs/writers-toolkit/) Style Guide
 - Use CommonMark flavor of markdown for documentation
-- Create LIDs (Loki Improvement Documents) for large functionality changes
+- Create Github issues for large functionality changes
 - Document upgrading steps in `docs/sources/setup/upgrade/_index.md`
 - Preview docs locally with `make docs` from the `/docs` directory
 - Include examples and clear descriptions for public APIs

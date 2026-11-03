@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"reflect"
 	"regexp"
 	"sync"
@@ -18,11 +19,13 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/logql"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -30,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 func TestLimits(t *testing.T) {
@@ -150,7 +154,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -166,9 +170,7 @@ func Test_seriesLimiter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
-		},
+		Plan:      testutil.MustPlan(`rate({app="foo"} |= "foo"[1m])`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -303,263 +305,6 @@ func Test_seriesLimiterDrilldown(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
-	for _, test := range []struct {
-		name             string
-		req              *LokiRequest
-		resp             *LokiPromResponse
-		expectedResponse *LokiPromResponse
-		expectedWarnings []string
-	}{
-		{
-			name: "single variant under limit should not exceed limit",
-			req: &LokiRequest{
-				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
-			},
-			resp: createPromResponse([][]seriesLabels{
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-			}),
-			expectedResponse: createPromResponse([][]seriesLabels{
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-			}),
-		},
-		{
-			name: "multiple variants under limit should not exceed limit",
-			req: &LokiRequest{
-				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
-			},
-			resp: createPromResponse([][]seriesLabels{
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-			}),
-			expectedResponse: createPromResponse([][]seriesLabels{
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-			}),
-		},
-		{
-			name: "single variant over the limit should exceed limit",
-			req: &LokiRequest{
-				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
-			},
-			resp: createPromResponse([][]seriesLabels{
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app4"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-			}),
-			expectedResponse: createPromResponse([][]seriesLabels{
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-			}),
-			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
-		},
-		{
-			name: "multiple variants over the limit should exceed limit",
-			req: &LokiRequest{
-				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
-			},
-			resp: createPromResponse([][]seriesLabels{
-				{
-					{Name: "app", Value: "foo"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "app", Value: "bar"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app4"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app5"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-			}),
-			expectedResponse: createPromResponse([][]seriesLabels{
-				{
-					{Name: "app", Value: "foo"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "app", Value: "bar"},
-					{Name: constants.VariantLabel, Value: "0"},
-				},
-				{
-					{Name: "job", Value: "app1"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app2"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-				{
-					{Name: "job", Value: "app3"},
-					{Name: constants.VariantLabel, Value: "1"},
-				},
-			}),
-			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
-		},
-	} {
-
-		t.Run(test.name, func(t *testing.T) {
-			middleware := newSeriesLimiter(3)
-			mock := variantMockHandler{
-				response: test.resp,
-			}
-			handler := middleware.Wrap(mock)
-
-			metadata, ctx := metadata.NewContext(context.Background())
-
-			resp, err := handler.Do(ctx, &LokiRequest{})
-			require.NoError(t, err)
-			require.EqualValues(t, test.expectedResponse.Response.Data, resp.(*LokiPromResponse).Response.Data)
-
-			if test.expectedWarnings != nil {
-				require.Equal(t, test.expectedWarnings, metadata.Warnings())
-			}
-		})
-	}
-}
-
-type seriesLabels = logproto.LabelAdapter
-
-// variantMockHandler is a mock implementation of queryrangebase.Handler
-type variantMockHandler struct {
-	response *LokiPromResponse
-}
-
-func (m variantMockHandler) Do(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-	// For testing, we'll return the predefined responses
-	// This is just a mock - in a real case, the handler would return
-	// different responses based on the request
-	if m.response != nil {
-		return m.response, nil
-	}
-	// Return empty response by default
-	return createPromResponse(nil), nil
-}
-
-func createPromResponse(series [][]seriesLabels) *LokiPromResponse {
-	result := make([]queryrangebase.SampleStream, len(series))
-	for i, labels := range series {
-		result[i] = queryrangebase.SampleStream{
-			Labels:  labels,
-			Samples: []logproto.LegacySample{{Value: 1.0}},
-		}
-	}
-
-	return &LokiPromResponse{
-		Response: &queryrangebase.PrometheusResponse{
-			Data: queryrangebase.PrometheusData{
-				ResultType: "matrix",
-				Result:     result,
-			},
-		},
-	}
-}
-
 func Test_MaxQueryParallelism(t *testing.T) {
 	maxQueryParallelism := 2
 
@@ -651,8 +396,119 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	require.Error(t, err)
 }
 
+// requireSentinelClassification asserts the contract every in-process rejection
+// keeps: the sentinel survives to the classifier, and wrapping it in changed
+// neither the status nor the message the client is served.
+func requireSentinelClassification(t *testing.T, err error, sentinel error, wantCategory, wantReason string, wantStatus int, wantMessage string) {
+	t.Helper()
+
+	require.ErrorIs(t, err, sentinel)
+
+	category, reason := server.ClassifyFailure(err)
+	require.Equal(t, wantCategory, category)
+	require.Equal(t, wantReason, reason)
+
+	status, clientErr := server.ClientHTTPStatusAndError(err)
+	require.Equal(t, wantStatus, status)
+	require.Equal(t, wantMessage, clientErr.Error())
+}
+
+// Test_MaxQueryParallelismDisableClassification pins the classification of the
+// 429 the frontend returns when a tenant has no query parallelism left.
+func Test_MaxQueryParallelismDisableClassification(t *testing.T) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
+	})
+	// The queryData value statsHTTPMiddleware installs marks this as a real user
+	// query, which is what makes the failed-query usage line eligible.
+	data := &queryData{}
+	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, data), "foo")
+
+	lines := captureFailedQueryUsage(t)
+	countBefore := failedQueryUsageCount(t, server.FailureThrottled)
+
+	query := `{app="foo"} |= "bar"`
+	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: 0},
+		testSchemas,
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return next
+		}),
+	).Do(ctx, &LokiRequest{Query: query, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
+	require.Error(t, err)
+
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryParallelism,
+		server.FailureThrottled, "max_query_parallelism",
+		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
+
+	// Rejected before the wrapped middleware chain runs, but still reported.
+	line := lines.only(t)
+	requireFailedQueryUsageShape(t, line)
+	require.Equal(t, query, line["query"])
+	require.Equal(t, fmt.Sprint(util.HashedQuery(query)), line["query_hash"])
+	require.Equal(t, logql.QueryTypeFilter, line["query_type"])
+	require.Equal(t, string(logql.RangeType), line["range_type"])
+	require.Equal(t, time.Hour.String(), line["length"])
+	require.Equal(t, "429", line["status"])
+	require.Equal(t, "0B", line["total_bytes"])
+	require.Equal(t, server.FailureThrottled, line["failure_category"])
+	require.Equal(t, "max_query_parallelism", line["failure_reason"])
+	require.Equal(t, "foo", line["org_id"])
+	require.Equal(t, countBefore+1, failedQueryUsageCount(t, server.FailureThrottled))
+	require.False(t, data.recorded)
+}
+
+// Test_MaxQueryParallelismNoUsageLineForMetadataQuery pins the type gate on the
+// pre-chain path: series queries also go through NewLimitedRoundTripper, but
+// they carry no query usage bytes, so they get no line.
+func Test_MaxQueryParallelismNoUsageLineForMetadataQuery(t *testing.T) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
+	})
+	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, &queryData{}), "foo")
+
+	lines := captureFailedQueryUsage(t)
+	countBefore := failedQueryUsageCount(t, server.FailureThrottled)
+
+	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: 0},
+		testSchemas,
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return next
+		}),
+	).Do(ctx, &LokiSeriesRequest{Match: []string{`{app="foo"}`}, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
+
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryParallelism,
+		server.FailureThrottled, "max_query_parallelism",
+		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
+	require.Empty(t, lines.all())
+	require.Equal(t, countBefore, failedQueryUsageCount(t, server.FailureThrottled))
+}
+
+// Test_MaxQueryLengthClassification drives the real limitsMiddleware, where
+// max_query_length is enforced, and pins the classification of its rejection.
+func Test_MaxQueryLengthClassification(t *testing.T) {
+	called := false
+	h := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		called = true
+		return nil, nil
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	_, err := NewLimitsMiddleware(fakeLimits{maxQueryLength: 24 * time.Hour}).Wrap(h).Do(ctx, &LokiRequest{
+		Query:   `{app="foo"}`,
+		StartTs: testTime.Add(-48 * time.Hour),
+		EndTs:   testTime,
+		Path:    "/loki/api/v1/query_range",
+	})
+	require.Error(t, err)
+	require.False(t, called)
+
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryLength,
+		server.FailureLimit, "max_query_length",
+		http.StatusBadRequest, "the query time range exceeds the limit (query length: 48h0m0s, limit: 1d)")
+}
+
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
@@ -670,9 +526,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{app="foo"} |= "foo"`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -896,14 +750,6 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 func Test_MaxQuerySize(t *testing.T) {
 	const statsBytes = 1000
 
-	schemas := []config.PeriodConfig{
-		{
-			// TSDB -> Time -2 days
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.IndexTypeTSDB,
-		},
-	}
-
 	for _, tc := range []struct {
 		desc       string
 		query      string
@@ -1003,16 +849,14 @@ func Test_MaxQuerySize(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			middlewares := []queryrangebase.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
-				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
+				NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
+				NewQuerierSizeLimiterMiddleware(testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
 			}
 
 			_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
@@ -1032,12 +876,6 @@ func Test_MaxQuerySize(t *testing.T) {
 func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 	// a sentinal query value to control when our mock stats handler returns context stats
 	ctxSentinal := `{context="true"}`
-	schemas := []config.PeriodConfig{
-		{
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.IndexTypeTSDB,
-		},
-	}
 
 	for _, tc := range []struct {
 		desc              string
@@ -1134,9 +972,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
@@ -1150,7 +986,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 			}
 
 			middlewares := []queryrangebase.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
+				NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
 					maxQueryBytesRead: tc.limit,
 				}, statsHandler),
 			}
@@ -1194,11 +1030,11 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 	}{
 		{
 			desc:       "QuerySizeLimiter",
-			middleware: NewQuerySizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+			middleware: NewQuerySizeLimiterMiddleware(engineOpts, util_log.Logger, lim, statsHandler),
 		},
 		{
 			desc:       "QuerierSizeLimiter",
-			middleware: NewQuerierSizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+			middleware: NewQuerierSizeLimiterMiddleware(engineOpts, util_log.Logger, lim, statsHandler),
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -1276,4 +1112,62 @@ func TestAcquireWithTiming(t *testing.T) {
 	// Check that the waiting time for the third request is larger than 0 milliseconds and less than 10 milliseconds
 	require.Greater(t, waiting3, 0*time.Nanosecond)
 	require.Less(t, waiting3, 10*time.Millisecond)
+}
+
+func metricResponseWithScanUsage(bytesScanned int64, series ...string) *LokiPromResponse {
+	response := &LokiPromResponse{
+		Statistics: stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: bytesScanned}}}},
+		Response:   &queryrangebase.PrometheusResponse{Status: "success", Data: queryrangebase.PrometheusData{ResultType: "matrix"}},
+	}
+	response.Statistics.ComputeSummary(time.Second, 0, 0)
+	for _, name := range series {
+		response.Response.Data.Result = append(response.Response.Data.Result, queryrangebase.SampleStream{
+			Labels: []logproto.LabelAdapter{{Name: "series", Value: name}},
+		})
+	}
+	return response
+}
+
+func TestSeriesLimiterPreservesRejectedUsage(t *testing.T) {
+	for _, drilldown := range []bool{false, true} {
+		t.Run(fmt.Sprintf("drilldown=%t", drilldown), func(t *testing.T) {
+			ctx := context.Background()
+			if drilldown {
+				ctx = httpreq.InjectQueryTags(ctx, "Source="+constants.LogsDrilldownAppName)
+			}
+			_, ctx = metadata.NewContext(ctx)
+			discardedWork, ctx := stats.NewDiscardedWorkContext(ctx)
+			calls := 0
+			limiter := newSeriesLimiter(1).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+				calls++
+				return metricResponseWithScanUsage(50, "a", "b"), nil
+			}))
+			response, err := limiter.Do(ctx, &LokiRequest{})
+			if drilldown {
+				// Drilldown returns a response with a warning instead of failing;
+				// its usage must stay on that response to avoid counting it twice.
+				require.NoError(t, err)
+				require.NotNil(t, response)
+				require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed, "successful response owns its usage")
+			} else {
+				require.ErrorContains(t, err, "maximum number of series")
+				require.Nil(t, response)
+				require.Equal(t, int64(50), discardedWork.Result().Summary.TotalBytesProcessed)
+				// Once rejected, further requests are rejected before execution.
+				response, err = limiter.Do(ctx, &LokiRequest{})
+				require.ErrorContains(t, err, "maximum number of series")
+				require.Nil(t, response)
+				require.Equal(t, 1, calls)
+				require.Equal(t, int64(50), discardedWork.Result().Summary.TotalBytesProcessed)
+			}
+		})
+	}
+	discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
+	limiter := newSeriesLimiter(1).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		return metricResponseWithScanUsage(100, "a"), nil
+	}))
+	response, err := limiter.Do(ctx, &LokiRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
 }

@@ -269,16 +269,16 @@ func makeValue(k Kind, lt *format.LogicalType, v reflect.Value) Value {
 	switch v.Type() {
 	case reflect.TypeOf(time.Time{}):
 		unit := Nanosecond.TimeUnit()
-		if lt != nil && lt.Timestamp != nil {
-			unit = lt.Timestamp.Unit
+		if ts, ok := logicalTypeOf[*format.TimestampType](lt); ok {
+			unit = ts.Unit
 		}
 
 		t := v.Interface().(time.Time)
 		var val int64
-		switch {
-		case unit.Millis != nil:
+		switch unit.Value.(type) {
+		case *format.MilliSeconds:
 			val = t.UnixMilli()
-		case unit.Micros != nil:
+		case *format.MicroSeconds:
 			val = t.UnixMicro()
 		default:
 			val = t.UnixNano()
@@ -337,7 +337,7 @@ func makeValue(k Kind, lt *format.LogicalType, v reflect.Value) Value {
 	case FixedLenByteArray:
 		switch v.Kind() {
 		case reflect.String:
-			if lt.UUID != nil { // uuid
+			if logicalTypeIs[*format.UUIDType](lt) { // uuid
 				uuidStr := v.String()
 				encoded, err := uuid.MustParse(uuidStr).MarshalBinary()
 				if err != nil {
@@ -788,7 +788,7 @@ func (v Value) String() string {
 	case Float:
 		return strconv.FormatFloat(float64(v.float()), 'g', -1, 32)
 	case Double:
-		return strconv.FormatFloat(v.double(), 'g', -1, 32)
+		return strconv.FormatFloat(v.double(), 'g', -1, 64)
 	case ByteArray, FixedLenByteArray:
 		return string(v.byteArray())
 	default:
@@ -802,12 +802,66 @@ func (v Value) GoString() string { return fmt.Sprintf("%#v", v) }
 // Level returns v with the repetition level, definition level, and column index
 // set to the values passed as arguments.
 //
-// The method panics if either argument is negative.
+// The method panics if any argument is negative or exceeds its maximum
+// (MaxRepetitionLevel, MaxDefinitionLevel, MaxColumnIndex respectively).
+//
+// To mutate a single level field in place, see SetRepetitionLevel,
+// SetDefinitionLevel, and SetColumnIndex, which the compiler can inline.
 func (v Value) Level(repetitionLevel, definitionLevel, columnIndex int) Value {
-	v.repetitionLevel = makeRepetitionLevel(repetitionLevel)
-	v.definitionLevel = makeDefinitionLevel(definitionLevel)
-	v.columnIndex = ^makeColumnIndex(columnIndex)
+	// MaxRepetitionLevel and MaxDefinitionLevel are both math.MaxUint8, so the
+	// two levels are bounds-checked with a single comparison: ORing them keeps
+	// the result in range only if both operands are; a negative value converts
+	// to a large uint and trips the check as well.
+	if uint(repetitionLevel)|uint(definitionLevel) > MaxRepetitionLevel ||
+		uint(columnIndex) > MaxColumnIndex {
+		panicLevelOutOfRange(repetitionLevel, definitionLevel, columnIndex)
+	}
+	v.repetitionLevel = byte(repetitionLevel)
+	v.definitionLevel = byte(definitionLevel)
+	v.columnIndex = ^uint16(columnIndex)
 	return v
+}
+
+// SetRepetitionLevel sets the repetition level of v to the given value.
+//
+// Unlike Level, which sets all three level fields and returns a new Value, this
+// method mutates a single field in place through a pointer receiver. Avoiding
+// the value copy keeps it small enough for the compiler to inline, which lets
+// the bounds check be eliminated entirely when the argument is provably in range
+// (for example when forwarding an existing repetition level). Mutating a slice
+// element in place (values[i].SetRepetitionLevel(...)) makes it a good fit for
+// hot loops.
+//
+// The method panics if level is negative or greater than MaxRepetitionLevel.
+func (v *Value) SetRepetitionLevel(level int) {
+	if uint(level) > MaxRepetitionLevel {
+		panicRepetitionLevelOutOfRange(level)
+	}
+	v.repetitionLevel = byte(level)
+}
+
+// SetDefinitionLevel sets the definition level of v to the given value.
+//
+// See SetRepetitionLevel for the rationale behind the single-field setters.
+//
+// The method panics if level is negative or greater than MaxDefinitionLevel.
+func (v *Value) SetDefinitionLevel(level int) {
+	if uint(level) > MaxDefinitionLevel {
+		panicDefinitionLevelOutOfRange(level)
+	}
+	v.definitionLevel = byte(level)
+}
+
+// SetColumnIndex sets the column index of v to the given value.
+//
+// See SetRepetitionLevel for the rationale behind the single-field setters.
+//
+// The method panics if columnIndex is negative or greater than MaxColumnIndex.
+func (v *Value) SetColumnIndex(columnIndex int) {
+	if uint(columnIndex) > MaxColumnIndex {
+		panicColumnIndexOutOfRange(columnIndex)
+	}
+	v.columnIndex = ^uint16(columnIndex)
 }
 
 // Clone returns a copy of v which does not share any pointers with it.
@@ -1092,4 +1146,46 @@ type FixedLenByteArrayWriter interface {
 	// items in the column. The method errors if the length of the input values
 	// is not a multiple of the expected item size.
 	WriteFixedLenByteArrays(values []byte) (int, error)
+}
+
+// BE128Reader is an interface implemented by ValueReader instances which
+// expose the content of a column of 128-bit big-endian byte array values.
+type BE128Reader interface {
+	// Read 128-bit big-endian values into the buffer passed as argument,
+	// returning the number of values read.
+	//
+	// The method returns io.EOF when all values have been read.
+	ReadBE128s(values [][16]byte) (int, error)
+}
+
+// BE128Writer is an interface implemented by ValueWriter instances which
+// support writing columns of 128-bit big-endian byte array values.
+type BE128Writer interface {
+	// Write 128-bit big-endian values.
+	//
+	// The method returns the number of values written, and any error that
+	// occurred while writing the values.
+	WriteBE128s(values [][16]byte) (int, error)
+}
+
+// UUIDReader is an interface implemented by ValueReader instances which
+// expose the content of a column of UUID values stored as 16-byte
+// FIXED_LEN_BYTE_ARRAY with the UUID logical type.
+type UUIDReader interface {
+	// Read UUID values into the buffer passed as argument, returning the
+	// number of values read.
+	//
+	// The method returns io.EOF when all values have been read.
+	ReadUUIDs(values []uuid.UUID) (int, error)
+}
+
+// UUIDWriter is an interface implemented by ValueWriter instances which
+// support writing columns of UUID values stored as 16-byte
+// FIXED_LEN_BYTE_ARRAY with the UUID logical type.
+type UUIDWriter interface {
+	// Write UUID values.
+	//
+	// The method returns the number of values written, and any error that
+	// occurred while writing the values.
+	WriteUUIDs(values []uuid.UUID) (int, error)
 }

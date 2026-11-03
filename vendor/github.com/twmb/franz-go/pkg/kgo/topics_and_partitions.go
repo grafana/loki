@@ -422,9 +422,25 @@ func (cl *Client) storePartitionsUpdate(topic string, l *topicPartitions, lv *to
 	// the waiting goroutine that a try happened. It is possible the
 	// goroutine is quitting and will not be draining unknownWait, so we do
 	// not require the send.
-	if len(lv.partitions) == 0 && kerr.IsRetriable(lv.loadErr) {
+	//
+	// A load with NO error and NO partitions gets the same treatment with
+	// a synthesized error. Conformant brokers answer unknown topics with
+	// an error and existing topics with at least one partition, but a
+	// buggy broker or proxy can reply ErrorCode 0 with an empty partition
+	// array; the comprehensive-partition check in fetchTopicMetadata
+	// passes vacuously on empty, so loadErr is nil here. Falling through
+	// would hit the fatal-or-partition arm below and promise every
+	// buffered record with a NIL error: fabricated success (offset 0..n,
+	// producer id 0) for records that were never sent anywhere. We
+	// synthesize UnknownTopicOrPartition so the waiter both retries and
+	// counts the try against the max-unknown-failures bound.
+	if len(lv.partitions) == 0 && (lv.loadErr == nil || kerr.IsRetriable(lv.loadErr)) {
+		err := lv.loadErr
+		if err == nil {
+			err = kerr.UnknownTopicOrPartition
+		}
 		select {
-		case unknown.wait <- lv.loadErr:
+		case unknown.wait <- err:
 		default:
 		}
 		return
@@ -670,6 +686,10 @@ func (old *topicPartition) migrateCursorTo( //nolint:revive // old/new naming ma
 		old.cursor.use()
 		css.reloadOffsets.addLoad(old.cursor.topic, old.cursor.partition, loadTypeEpoch, offsetLoad{
 			replica: -1,
+			// If the validation answers UNDEFINED_EPOCH_OFFSET, the reset it
+			// issues is by the last consumed timestamp; see
+			// loadEpochsForBrokerLoad.
+			ooorMilli: old.cursor.lastConsumedMilli(),
 			Offset: Offset{
 				at:    old.cursor.offset,
 				epoch: old.cursor.lastConsumedEpoch,
@@ -685,6 +705,31 @@ func (old *topicPartition) migrateCursorTo( //nolint:revive // old/new naming ma
 
 func (tp *topicPartition) migrateShareCursorTo(cl *Client, new *topicPartition) {
 	c := tp.shareCursor
+	new.shareCursor = c
+
+	// Relocating the cursor between sources races the share consumer's
+	// leave. leave waits for every share worker to exit (sc.workers == 0),
+	// then drains each source's cursors via closeShareSession, iterating a
+	// snapshot of the source list taken after that barrier. A relocation that
+	// removes the cursor from its old source before that source is drained,
+	// and lands it on an already-drained source (or on one created after the
+	// snapshot), leaves the cursor's pending acks on a source nothing will
+	// drain: sc.pendingAcks never returns to 0 (FlushAcks hangs) and the held
+	// records release only via the broker's acquisition-lock timeout.
+	//
+	// Register the migration as a share worker so leave's barrier waits for an
+	// in-flight migration before it snapshots and drains, mirroring
+	// applyMovesBlocking on the CurrentLeader-hint path; the metadata-merge
+	// path here is the only other share-cursor relocation. If the consumer is already dying,
+	// incWorker returns false: skip the swap and leave the cursor on its
+	// current source, which closeShareSession then drains. new.shareCursor is
+	// assigned above either way, so the stored partition data is always valid.
+	sc := cl.consumer.s
+	if !sc.incWorker() {
+		return
+	}
+	defer sc.decWorker()
+
 	cl.sinksAndSourcesMu.Lock()
 	sns := cl.sinksAndSources[new.leader]
 	cl.sinksAndSourcesMu.Unlock()
@@ -693,12 +738,12 @@ func (tp *topicPartition) migrateShareCursorTo(cl *Client, new *topicPartition) 
 	}
 	c.source.Store(sns.source)
 	sns.source.addShareCursor(c)
-	new.shareCursor = c
 }
 
 type kip951move struct {
 	recBufs map[*recBuf]topicPartitionData
 	cursors map[*cursor]topicPartitionData
+	stale   map[*recBuf]struct{}
 	brokers []BrokerMetadata
 }
 
@@ -714,12 +759,35 @@ func (k *kip951move) hasRecBuf(rb *recBuf) bool {
 	return ok
 }
 
+// hasStaleRecBuf returns whether the broker sent a CurrentLeader hint for this
+// buffer that does not move us. We still want the normal retry wait, we just
+// do not want to block the retry on a metadata update that can only tell us
+// what we already know.
+func (k *kip951move) hasStaleRecBuf(rb *recBuf) bool {
+	if k == nil {
+		return false
+	}
+	_, ok := k.stale[rb]
+	return ok
+}
+
 func (k *kip951move) maybeAddProducePartition(resp *kmsg.ProduceResponse, p *kmsg.ProduceResponseTopicPartition, rb *recBuf) bool {
 	if resp.GetVersion() < 10 ||
 		p.ErrorCode != kerr.NotLeaderForPartition.Code ||
 		len(resp.Brokers) == 0 ||
 		p.CurrentLeader.LeaderID < 0 ||
 		p.CurrentLeader.LeaderEpoch < 0 {
+		return false
+	}
+	// Only a newer epoch moves us. An equal or older epoch, whatever leader
+	// it names, retries after the normal backoff; doMove says why. The
+	// endpoints in the response are as stale as the epoch, so we only
+	// record them for a hint we act on.
+	if p.CurrentLeader.LeaderEpoch <= rb.leaderEpoch {
+		if k.stale == nil {
+			k.stale = make(map[*recBuf]struct{})
+		}
+		k.stale[rb] = struct{}{}
 		return false
 	}
 	if len(k.brokers) == 0 {
@@ -752,6 +820,9 @@ func (k *kip951move) maybeAddFetchPartition(resp *kmsg.FetchResponse, p *kmsg.Fe
 		return false
 	}
 
+	if p.CurrentLeader.LeaderEpoch <= c.leaderEpoch { // as in maybeAddProducePartition
+		return false
+	}
 	if len(k.brokers) == 0 {
 		for _, rb := range resp.Brokers {
 			b := BrokerMetadata{
@@ -809,6 +880,17 @@ func (k *kip951move) ensureBrokers(cl *Client) {
 	// new objects with new connections, which breaks the single-
 	// connection-per-broker ordering guarantee that Kafka requires
 	// for idempotent/transactional produce.
+	// Replaced brokers are stopped after brokersMu is released: stopForever
+	// fires the user's OnBrokerDisconnect hook synchronously, and a hook
+	// re-entering the client would deadlock on the held write lock (see
+	// updateBrokers for the walkthrough).
+	var stopped []*broker
+	defer func() {
+		for _, b := range stopped {
+			b.stopForever()
+		}
+	}()
+
 	cl.brokersMu.Lock()
 	defer cl.brokersMu.Unlock()
 
@@ -831,7 +913,7 @@ func (k *kip951move) ensureBrokers(cl *Client) {
 			}
 			found = true
 			if !existing.meta.equals(nb) {
-				existing.stopForever()
+				stopped = append(stopped, existing)
 				cl.brokers[i] = cl.newBroker(b.NodeID, b.Host, b.Port, b.Rack)
 				changed = true
 			}
@@ -873,8 +955,8 @@ func (k *kip951move) doMove(cl *Client) {
 	// topicPartitionsData struct. Moving a single partition requires some
 	// deep copying.
 
-	// oldNew pairs what NEEDS to be atomically updated (old; left value)
-	// with the value that WILL be stored (new; right value).
+	// oldNew pairs what needs to be atomically updated (old; left value)
+	// with the value that will be stored (new; right value).
 	type oldNew struct {
 		l *topicPartitions
 		r *topicPartitionsData
@@ -906,17 +988,38 @@ func (k *kip951move) doMove(cl *Client) {
 	// mutex. The actual migration is done in the migrate function (see
 	// below).
 	//
-	// A migration is not needed if the old value has a higher leader
-	// epoch.  If the leader epoch is equal, we check if the leader is the
-	// same (this allows easier injection of failures in local testing).  A
-	// higher epoch can come from a concurrent metadata update that
-	// actually performed the move first.
-	modifyP := func(d *topicPartitionsData, partition int32, td topicPartitionData) (old, new *topicPartition, modified bool) {
-		old = d.partitions[partition]
-		if old.leaderEpoch > td.leaderEpoch {
+	// A migration is only needed if the hint carries a newer leader
+	// epoch. An equal or older epoch can come from a concurrent metadata
+	// update that already performed the move, or from a broker whose
+	// answer is behind: the not_leader error and the CurrentLeader hint
+	// are two separate reads inside the broker and nothing keeps them
+	// consistent, so a broker can name the leader we already use. An equal
+	// epoch at a different leader is refused too: two brokers naming each
+	// other at one epoch would otherwise move us back and forth with no
+	// wait between attempts. The staging checks make the same comparison,
+	// as does the Java client.
+	//
+	// The hint was staged from a produce/fetch response and we are applied
+	// asynchronously: between staging and now, the user can purge the
+	// topic and re-add it (a produce or AddConsumeTopics recreates the
+	// topic with zero partitions until metadata loads), so the partition
+	// index can be out of range, and even in range the object at this
+	// index can belong to the new topic incarnation rather than the one
+	// whose response produced the hint. The owns check pins object
+	// identity: the records/cursor pointer is preserved across legitimate
+	// metadata updates and prior moves (the migrate functions copy it into
+	// the new topicPartition), so a mismatch can only mean purge+re-add -
+	// skip, and let the live incarnation resolve its own leader via
+	// metadata.
+	modifyP := func(d *topicPartitionsData, partition int32, td topicPartitionData, owns func(*topicPartition) bool) (old, new *topicPartition, modified bool) {
+		if int(partition) < 0 || int(partition) >= len(d.partitions) {
 			return nil, nil, false
 		}
-		if old.leaderEpoch == td.leaderEpoch && old.leader == td.leader {
+		old = d.partitions[partition]
+		if !owns(old) {
+			return nil, nil, false
+		}
+		if old.leaderEpoch >= td.leaderEpoch {
 			return nil, nil, false
 		}
 
@@ -963,7 +1066,7 @@ func (k *kip951move) doMove(cl *Client) {
 			if !ok {
 				continue // perhaps concurrently purged
 			}
-			old, new, modified := modifyP(lr.r, recBuf.partition, td)
+			old, new, modified := modifyP(lr.r, recBuf.partition, td, func(tp *topicPartition) bool { return tp.records == recBuf })
 			if modified {
 				cl.cfg.logger.Log(LogLevelInfo, "moving producing partition due to kip-951 not_leader_for_partition",
 					"topic", recBuf.topic,
@@ -994,7 +1097,7 @@ func (k *kip951move) doMove(cl *Client) {
 			if !ok {
 				continue // perhaps concurrently purged
 			}
-			old, new, modified := modifyP(lr.r, cursor.partition, td)
+			old, new, modified := modifyP(lr.r, cursor.partition, td, func(tp *topicPartition) bool { return tp.cursor == cursor })
 			if modified {
 				cl.cfg.logger.Log(LogLevelInfo, "moving consuming partition due to kip-951 not_leader_for_partition",
 					"topic", cursor.topic,

@@ -46,6 +46,22 @@ func (cfg *PropagationDelayTrackerConfig) RegisterFlagsWithPrefix(f *flag.FlagSe
 	f.DurationVar(&cfg.LogBeaconsLatencyLongerThan, prefix+"log-beacons-latency-longer-than", 0, "Log warning when beacon propagation delay exceeds this threshold. 0 disables logging.")
 }
 
+// Validate validates the propagation delay tracker configuration.
+func (cfg *PropagationDelayTrackerConfig) Validate() error {
+	// Only validate if enabled.
+	if !cfg.Enabled {
+		return nil
+	}
+
+	if cfg.BeaconInterval <= 0 {
+		return fmt.Errorf("propagation delay tracker beacon interval must be greater than 0")
+	}
+	if cfg.BeaconLifetime <= 0 {
+		return fmt.Errorf("propagation delay tracker beacon lifetime must be greater than 0")
+	}
+	return nil
+}
+
 // PropagationDelayTracker is a service that tracks gossip propagation delay across
 // the memberlist cluster by periodically publishing beacons and measuring
 // how long it takes for beacons to propagate.

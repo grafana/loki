@@ -19,28 +19,25 @@
 package server
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 // RouteAndProcess routes the incoming RPC to a configured route in the route
 // table and also processes the RPC by running the incoming RPC through any HTTP
 // Filters configured.
-func RouteAndProcess(ctx context.Context) error {
+func RouteAndProcess(ss grpc.ServerStream) (grpc.ServerStream, error) {
+	ctx := ss.Context()
 	conn := transport.GetConnection(ctx)
 	cw, ok := conn.(*connWrapper)
 	if !ok {
-		return errors.New("missing virtual hosts in incoming context")
+		return nil, errors.New("missing virtual hosts in incoming context")
 	}
 
 	rc := cw.urc.Load()
@@ -51,51 +48,50 @@ func RouteAndProcess(ctx context.Context) error {
 		if logger.V(2) {
 			logger.Infof("RPC on connection with xDS Configuration error: %v", rc.err)
 		}
-		return status.Error(codes.Unavailable, fmt.Sprintf("error from xDS configuration for matched route configuration: %v", rc.err))
+		return nil, rc.statusErrWithNodeID(codes.Unavailable, "error from xDS configuration for matched route configuration: %v", rc.err)
 	}
 
 	mn, ok := grpc.Method(ctx)
 	if !ok {
-		return errors.New("missing method name in incoming context")
+		return nil, rc.statusErrWithNodeID(codes.Internal, "missing method name in incoming context")
 	}
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return errors.New("missing metadata in incoming context")
+		return nil, rc.statusErrWithNodeID(codes.Internal, "missing metadata in incoming context")
 	}
-	// A41 added logic to the core grpc implementation to guarantee that once
-	// the RPC gets to this point, there will be a single, unambiguous authority
-	// present in the header map.
+	// A41 added logic to the core grpc implementation to guarantee that once the
+	// RPC gets to this point, there will be a single, unambiguous authority
+	// present in the header map. But add a defensive check to ensure authority
+	// header is present.
 	authority := md.Get(":authority")
-	// authority[0] is safe because of the guarantee mentioned above.
+	if len(authority) == 0 {
+		return nil, rc.statusErrWithNodeID(codes.Internal, "no :authority header present")
+	}
 	vh := findBestMatchingVirtualHostServer(authority[0], rc.vhs)
 	if vh == nil {
-		return rc.statusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Virtual Host")
+		return nil, rc.statusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Virtual Host")
 	}
 
 	var rwi *routeWithInterceptors
-	rpcInfo := iresolver.RPCInfo{
-		Context: ctx,
-		Method:  mn,
-	}
 	for _, r := range vh.routes {
-		if r.matcher.Match(rpcInfo) {
+		if r.matcher.Match(mn, md) {
 			// "NonForwardingAction is expected for all Routes used on
 			// server-side; a route with an inappropriate action causes RPCs
 			// matching that route to fail with UNAVAILABLE." - A36
 			if r.actionType != xdsresource.RouteActionNonForwardingAction {
-				return rc.statusErrWithNodeID(codes.Unavailable, "the incoming RPC matched to a route that was not of action type non forwarding")
+				return nil, rc.statusErrWithNodeID(codes.Unavailable, "the incoming RPC matched to a route that was not of action type non forwarding")
 			}
 			rwi = &r
 			break
 		}
 	}
 	if rwi == nil {
-		return rc.statusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Route")
+		return nil, rc.statusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Route")
 	}
-	if err := rwi.interceptor.AllowRPC(ctx); err != nil {
-		return rc.statusErrWithNodeID(codes.PermissionDenied, "Incoming RPC is not allowed: %v", err)
+	if rwi.interceptor != nil {
+		return rwi.interceptor.InterceptRPC(ss)
 	}
-	return nil
+	return ss, nil
 }
 
 // findBestMatchingVirtualHostServer returns the virtual host whose domains field best

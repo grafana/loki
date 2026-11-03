@@ -456,6 +456,7 @@ func verifyIndexForEach(t *testing.T, expectedIndexes []string, forEachFunc func
 		// get the reader for the index.
 		readSeeker, err := idx.Reader()
 		require.NoError(t, err)
+		defer func() { require.NoError(t, readSeeker.Close()) }()
 
 		// seek it to 0
 		_, err = readSeeker.Seek(0, 0)

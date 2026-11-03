@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "pkg/push/push.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/logproto";
+
+// InternalPushRequest is an internal representation of a push request, in which log entries are nested under the OTLP
+// resource and scope attributes that apply to them rather than each carrying its own copy.
+message InternalPushRequest {
+  repeated InternalStreamAdapter streams = 1 [
+    (gogoproto.jsontag) = "streams",
+    (gogoproto.nullable) = false
+  ];
+  // format in which streams are ingested - loki or otlp
+  string format = 2 [(gogoproto.jsontag) = "format"];
+}
+
+// InternalStreamAdapter is one stream: a label set, its hash, and every entry of the stream
+// nested beneath the attributes that apply to it.
+message InternalStreamAdapter {
+  string labels = 1 [(gogoproto.jsontag) = "labels"];
+  // hash contains the original hash of the stream.
+  //
+  // The numbering here is deliberately incompatible with StreamAdapter rather than aligned
+  // with it. hash is a varint at field 2, where StreamAdapter holds its length delimited
+  // entries, and resourceLogs is length delimited at field 3, where StreamAdapter holds its
+  // varint hash. A record of either format therefore fails to decode as the other with a
+  // wire type error, instead of decoding to a stream with no entries and silently
+  // discarding every line. That is what allows a consumer to attempt this message first and
+  // fall back on error, which is how records written before the rollout are read without a
+  // version marker.
+  uint64 hash = 2 [(gogoproto.jsontag) = "-"];
+  // resourceLogs carries every entry of the stream, so a stream that shares nothing still
+  // carries one group whose attribute lists are both empty.
+  repeated ResourceLogs resourceLogs = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "-"
+  ];
+}
+
+// ResourceLogs holds one OTLP resource's attributes and the scopes that emitted beneath it.
+message ResourceLogs {
+  repeated LabelPairAdapter attrs = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.LabelAdapter",
+    (gogoproto.jsontag) = "attrs"
+  ];
+  repeated ScopeLogs scopeLogs = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "scopeLogs"
+  ];
+}
+
+// ScopeLogs holds one OTLP instrumentation scope's attributes and the entries it emitted.
+//
+// An entry keeps only the structured metadata it arrived with. Its resource and scope
+// attributes are the ones enclosing it here.
+message ScopeLogs {
+  repeated LabelPairAdapter attrs = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.LabelAdapter",
+    (gogoproto.jsontag) = "attrs"
+  ];
+  repeated EntryAdapter entries = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "entries",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Entry"
+  ];
+}

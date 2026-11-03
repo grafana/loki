@@ -151,55 +151,75 @@ func (q *Queue) retryFailedJobs() {
 		case <-q.stop:
 			return
 		case <-ticker.C:
-			var jobsToRetry []string
-
-			q.processingJobsMtx.Lock()
-			now := time.Now()
-			for jobID, pj := range q.processingJobs {
-				if pj.attemptsLeft <= 0 {
-					level.Error(util_log.Logger).Log("msg", "job ran out of attempts, dropping it", "jobID", jobID)
-					q.metrics.jobsDropped.Inc()
-
-					delete(q.processingJobs, jobID)
-					continue
-				}
-				timeout := q.builders[pj.job.Type].jobTimeout
-				if pj.lastAttemptFailed || now.Sub(pj.dequeued) > timeout {
-					jobsToRetry = append(jobsToRetry, jobID)
-				}
-			}
-			q.processingJobsMtx.Unlock()
+			jobsToRetry := q.findJobsToRetry(time.Now())
 
 			for _, jobID := range jobsToRetry {
-				reason := "timeout"
-				q.processingJobsMtx.Lock()
-				pj := q.processingJobs[jobID]
-				if pj.lastAttemptFailed {
-					reason = "failed"
+				job, reason, ok := q.prepareJobForRetry(jobID)
+				if !ok {
+					continue
 				}
-
-				// reset the dequeued time so that the timeout is calculated from the time when the job is sent for processing.
-				q.processingJobs[jobID].dequeued = time.Now()
-				q.processingJobs[jobID].lastAttemptFailed = false
-				q.processingJobs[jobID].attemptsLeft--
-				q.processingJobsMtx.Unlock()
 
 				// Requeue the job
 				select {
 				case <-q.stop:
 					return
-				case q.queue <- pj.job:
+				case q.queue <- job:
 					q.metrics.jobRetries.WithLabelValues(reason).Inc()
 					level.Warn(util_log.Logger).Log(
 						"msg", "requeued job",
 						"job_id", jobID,
-						"job_type", pj.job.Type,
+						"job_type", job.Type,
 						"reason", reason,
 					)
 				}
 			}
 		}
 	}
+}
+
+func (q *Queue) findJobsToRetry(now time.Time) []string {
+	var jobsToRetry []string
+
+	q.processingJobsMtx.Lock()
+	defer q.processingJobsMtx.Unlock()
+
+	for jobID, pj := range q.processingJobs {
+		if pj.attemptsLeft <= 0 {
+			level.Error(util_log.Logger).Log("msg", "job ran out of attempts, dropping it", "jobID", jobID)
+			q.metrics.jobsDropped.Inc()
+
+			delete(q.processingJobs, jobID)
+			continue
+		}
+		timeout := q.builders[pj.job.Type].jobTimeout
+		if pj.lastAttemptFailed || now.Sub(pj.dequeued) > timeout {
+			jobsToRetry = append(jobsToRetry, jobID)
+		}
+	}
+
+	return jobsToRetry
+}
+
+func (q *Queue) prepareJobForRetry(jobID string) (*grpc.Job, string, bool) {
+	q.processingJobsMtx.Lock()
+	defer q.processingJobsMtx.Unlock()
+
+	pj, exists := q.processingJobs[jobID]
+	if !exists {
+		return nil, "", false
+	}
+
+	reason := "timeout"
+	if pj.lastAttemptFailed {
+		reason = "failed"
+	}
+
+	// Reset the dequeued time so that the timeout is calculated from the time when the job is sent for processing.
+	pj.dequeued = time.Now()
+	pj.lastAttemptFailed = false
+	pj.attemptsLeft--
+
+	return pj.job, reason, true
 }
 
 func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {

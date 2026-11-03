@@ -51,6 +51,7 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 		{
 			"kind.int64":              int64(KindLabel),
 			"object_path.utf8":        "/tenant/abc/obj1",
+			"shard_buckets.int64":     int64(0),
 			"section_index.int64":     int64(0),
 			"column_name.utf8":        "env",
 			"label_value.utf8":        "value1",
@@ -58,6 +59,8 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(4096),
 			"min_timestamp.timestamp": timeVal,
 			"max_timestamp.timestamp": timeVal,
+			"min_shard_bucket.int64":  int64(0),
+			"max_shard_bucket.int64":  int64(0),
 		},
 	}
 
@@ -72,6 +75,41 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 	require.True(t, checkBit(bitmaps[0], 7), "bit 7 should be set")
 	require.True(t, checkBit(bitmaps[0], 15), "bit 15 should be set")
 	require.False(t, checkBit(bitmaps[0], 0), "bit 0 should not be set")
+}
+
+func TestMergeBuilder_AppendLabelEntry_ShardBuckets(t *testing.T) {
+	t.Run("a merged label row keeps the shard bucket range of the source row", func(t *testing.T) {
+		source := NewBuilder(nil, 0, 0, 1<<20)
+		for streamID, bucket := range map[int64]uint32{1: 3, 2: 9} {
+			source.ObserveLabelPosting(LabelObservation{
+				ObjectPath: "/o", SectionIndex: 0, ColumnName: "env", LabelValue: "prod",
+				StreamID: streamID, Timestamp: time.Unix(0, 10).UTC(), ShardBucket: bucket,
+			})
+		}
+		sourceSections := flushAndOpenSections(t, source)
+		require.Len(t, sourceSections, 1)
+
+		reader := NewReader(ReaderOptions{Columns: sourceSections[0].Columns()})
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { _ = reader.Close() })
+
+		merge := NewMergeBuilder(nil, 0, 0, 1<<20)
+		rows := NewRowReader(t.Context(), reader)
+		var merged int
+		for rows.Next() {
+			require.NoError(t, merge.AppendLabelEntry(rows.At().LabelEntry()))
+			merged++
+		}
+		require.NoError(t, rows.Err())
+		require.Equal(t, 1, merged)
+
+		mergedSections := flushMergeBuilderAndOpenSections(t, merge)
+		require.Len(t, mergedSections, 1)
+		got, _ := readAllRows(t, mergedSections[0])
+		require.Len(t, got, 1)
+		require.Equal(t, int64(3), got[0]["min_shard_bucket.int64"])
+		require.Equal(t, int64(9), got[0]["max_shard_bucket.int64"])
+	})
 }
 
 // TestMergeBuilder_AppendBloomEntry_RoundTrip verifies that appended bloom
@@ -117,6 +155,7 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 		{
 			"kind.int64":              int64(KindBloom),
 			"object_path.utf8":        "/tenant/abc/obj2",
+			"shard_buckets.int64":     int64(0),
 			"section_index.int64":     int64(1),
 			"column_name.utf8":        "service_name",
 			"label_value.utf8":        nil,
@@ -124,6 +163,8 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(8192),
 			"min_timestamp.timestamp": timeVal,
 			"max_timestamp.timestamp": timeVal,
+			"min_shard_bucket.int64":  nil,
+			"max_shard_bucket.int64":  nil,
 		},
 	}
 

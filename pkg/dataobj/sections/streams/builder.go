@@ -37,11 +37,16 @@ type Stream struct {
 
 	// Total number of log records in the stream.
 	Rows int
+
+	// ShardBucket is the bucket that the builder's [ShardLayout] assigned
+	// to Labels, in [0, Buckets()).
+	ShardBucket int64
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.
 func (s *Stream) Reset() {
 	s.ID = 0
+	s.ShardBucket = 0
 	s.Labels = labels.EmptyLabels()
 	s.MinTimestamp = time.Time{}
 	s.MaxTimestamp = time.Time{}
@@ -63,6 +68,13 @@ type Builder struct {
 	lastID       atomic.Int64
 	lookup       map[uint64][]*Stream
 
+	// shardLayout selects the shard bucket of each stream.
+	shardLayout ShardLayout
+
+	// layout is the layout that Flush records in the section metadata, or nil
+	// to record none. Reset clears it.
+	layout *Layout
+
 	// The optional tenant that owns the builder. If specified, the section
 	// must only contain streams owned by the tenant, and no other tenants.
 	tenant string
@@ -74,14 +86,18 @@ type Builder struct {
 	globalMinTimestamp time.Time // Minimum timestamp across all streams, used for metrics.
 	globalMaxTimestamp time.Time // Maximum timestamp across all streams, used for metrics.
 
-	// orderedStreams is used for consistently iterating over the list of
-	// streams. It contains streamed added in append order.
+	// ordered holds the streams in append order, so iteration over them is
+	// deterministic.
 	ordered []*Stream
 }
 
-// NewBuilder creates a new sterams section builder. The pageSize argument
-// specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
+// NewBuilder creates a new streams section builder. pageSize is the target
+// page size in bytes. shardLayout selects the shard bucket of each stream
+// that the builder adds.
+//
+// The builder records no layout until SetLayout is called, and again after
+// [Builder.Reset].
+func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardLayout) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
@@ -89,9 +105,26 @@ func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
 		metrics:      metrics,
 		pageSize:     pageSize,
 		pageRowCount: pageRowCount,
+		shardLayout:  shardLayout,
 		lookup:       make(map[uint64][]*Stream, 1024),
 		ordered:      make([]*Stream, 0, 1024),
 	}
+}
+
+// SetLayout makes b record layout in the section metadata on Flush. The
+// layout applies until the next [Builder.Reset].
+//
+// SetLayout panics if layout has another shard layout than b, because the
+// shard buckets of the streams would not match the recorded layout. It also
+// panics if layout is the zero value.
+func (b *Builder) SetLayout(layout Layout) {
+	if layout.shardLayout != b.shardLayout {
+		panic("streams: SetLayout called with another shard layout than the builder")
+	}
+	if layout.streamOrder == StreamOrderUnspecified {
+		panic("streams: SetLayout called with a layout that has no stream order")
+	}
+	b.layout = &layout
 }
 
 // Tenant returns the optional tenant that owns the builder.
@@ -151,6 +184,7 @@ func (b *Builder) AppendValue(val Stream) {
 	newStream.Reset()
 
 	newStream.ID = val.ID
+	newStream.ShardBucket = val.ShardBucket
 	newStream.MinTimestamp, newStream.MaxTimestamp = val.MinTimestamp, val.MaxTimestamp
 	newStream.UncompressedSize = val.UncompressedSize
 	newStream.Labels = val.Labels
@@ -179,18 +213,20 @@ func (b *Builder) EstimatedSize() int {
 	// 4. Assume (conservative) 2x compression ratio of all label values.
 
 	var (
-		idDeltaSize        = streamio.VarintSize(1)
-		timestampDeltaSize = streamio.VarintSize(int64(time.Second))
-		rowDeltaSize       = streamio.VarintSize(500)
+		idDeltaSize          = streamio.VarintSize(1)
+		shardBucketDeltaSize = streamio.VarintSize(1)
+		timestampDeltaSize   = streamio.VarintSize(int64(time.Second))
+		rowDeltaSize         = streamio.VarintSize(500)
 	)
 
 	var sizeEstimate int
 
-	sizeEstimate += len(b.ordered) * idDeltaSize        // ID
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Min timestamp
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Max timestamp
-	sizeEstimate += len(b.ordered) * rowDeltaSize       // Rows
-	sizeEstimate += b.currentLabelsSize / 2             // All labels (2x compression ratio)
+	sizeEstimate += len(b.ordered) * idDeltaSize          // ID
+	sizeEstimate += len(b.ordered) * shardBucketDeltaSize // Shard bucket
+	sizeEstimate += len(b.ordered) * timestampDeltaSize   // Min timestamp
+	sizeEstimate += len(b.ordered) * timestampDeltaSize   // Max timestamp
+	sizeEstimate += len(b.ordered) * rowDeltaSize         // Rows
+	sizeEstimate += b.currentLabelsSize / 2               // All labels (2x compression ratio)
 
 	return sizeEstimate
 }
@@ -220,6 +256,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
+	newStream.ShardBucket = int64(b.shardLayout.BucketFromHash(hash))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)
@@ -260,6 +297,9 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	}
 
 	columnarEnc.SetTenant(b.tenant)
+	if b.layout != nil {
+		columnarEnc.SetSortInfo(NewSortInfo(*b.layout, nil))
+	}
 
 	n, err = columnarEnc.Flush(w)
 	if err == nil {
@@ -280,6 +320,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
+	}
+	shardBucketBuilder, err := numberColumnBuilder(ColumnTypeShardBucket, b.pageSize, b.pageRowCount)
+	if err != nil {
+		return fmt.Errorf("creating shard bucket column: %w", err)
 	}
 	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
@@ -335,6 +379,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	for i, stream := range b.ordered {
 		// Append only fails if the rows are out-of-order, which can't happen here.
 		_ = idBuilder.Append(i, dataset.Int64Value(stream.ID))
+		_ = shardBucketBuilder.Append(i, dataset.Int64Value(stream.ShardBucket))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(stream.MinTimestamp.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(stream.MaxTimestamp.UnixNano()))
 		_ = rowsCountBuilder.Append(i, dataset.Int64Value(int64(stream.Rows)))
@@ -377,6 +422,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		if err != nil {
 			return fmt.Errorf("encoding label column: %w", err)
 		}
+	}
+
+	if err := encodeColumn(enc, ColumnTypeShardBucket, shardBucketBuilder); err != nil {
+		return fmt.Errorf("encoding shard bucket column: %w", err)
 	}
 
 	return nil
@@ -436,6 +485,7 @@ func (b *Builder) Reset() {
 	}
 	clear(b.lookup)
 	b.tenant = ""
+	b.layout = nil
 	b.ordered = sliceclear.Clear(b.ordered)
 	b.currentLabelsSize = 0
 	b.globalMinTimestamp = time.Time{}

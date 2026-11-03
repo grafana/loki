@@ -35,7 +35,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{}
-	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger(), queryrange.DefaultCodec)
+	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger(), NewMetrics(cfg, nil), queryrange.DefaultCodec)
 	running := atomic.NewBool(false)
 	go func() {
 		running.Store(true)

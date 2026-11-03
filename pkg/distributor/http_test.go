@@ -3,23 +3,27 @@ package distributor
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/grafana/dskit/concurrency"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -28,6 +32,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
+	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -74,235 +79,25 @@ func TestDistributorRingHandler(t *testing.T) {
 	})
 }
 
-func TestRequestParserWrapping(t *testing.T) {
-	t.Run("it calls the parser wrapper if there is one", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		var called bool
-		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
-			called = true
-			return requestParser
-		}
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
-
-		// unprocessable code because there are no streams in the request.
-		require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
-		require.True(t, called)
-	})
-
-	t.Run("it returns 204 when the parser wrapper filteres all log lines", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		var called bool
-		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
-			called = true
-			return requestParser
-		}
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrAllLogsFiltered
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.True(t, called)
-		require.Equal(t, http.StatusNoContent, rec.Code)
-	})
-
-	t.Run("it handles request body too large error with positive content length", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		// Set a positive content length
-		req.ContentLength = 1000
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrRequestBodyTooLarge
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-	})
-
-	t.Run("it handles request body too large error with negative content length", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		// Set a negative content length to test our guard clause
-		req.ContentLength = -1
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrRequestBodyTooLarge
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		// The test should complete without panicking
-	})
-}
-
-func TestPushHandlerMaxRecvMsgSize(t *testing.T) {
-	const line = "the quick brown fox jumps over the lazy dog"
+func TestPushHandlerMaxPushSize(t *testing.T) {
+	line := strings.Repeat("a ", 1000)
 
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	limits.RejectOldSamples = false
+	_ = limits.MaxPushSize.Set("1000")
 	distributors, _ := prepare(t, 1, 3, limits, nil)
-	distributors[0].cfg.MaxRecvMsgSize = 10
 
-	t.Run("protobuf returns 413", func(t *testing.T) {
-		body, err := proto.Marshal(&logproto.PushRequest{
+	newPushRequest := func() *logproto.PushRequest {
+		return &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
 					Labels:  `{foo="bar"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: line}},
 				},
 			},
-		})
-		require.NoError(t, err)
-		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
-
-		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
-		ctx := user.InjectOrgID(t.Context(), "test")
-		req = req.WithContext(ctx)
-		req.Header.Set("Content-Type", "application/x-protobuf")
-
-		// The metric is a global counter shared across tests, so measure the
-		// delta produced by this request rather than an absolute value.
-		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
-		before := testutil.ToFloat64(discardedBytes)
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
-	})
-
-	t.Run("snappy compressed protobuf returns 413", func(t *testing.T) {
-		protoBytes, err := proto.Marshal(&logproto.PushRequest{
-			Streams: []logproto.Stream{
-				{
-					Labels:  `{foo="bar"}`,
-					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: line}},
-				},
-			},
-		})
-		require.NoError(t, err)
-		body := snappy.Encode(nil, protoBytes)
-		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
-
-		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
-		ctx := user.InjectOrgID(t.Context(), "test")
-		req = req.WithContext(ctx)
-		req.Header.Set("Content-Type", "application/x-protobuf")
-
-		// The metric is a global counter shared across tests, so measure the
-		// delta produced by this request rather than an absolute value.
-		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
-		before := testutil.ToFloat64(discardedBytes)
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
-	})
-
-	t.Run("Loki JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
-
-		// NOTE: this currently returns 400, not 413: an oversized JSON body is
-		// truncated by the max-recv-msg-size LimitReader and fails to decode
-		// before any size check maps to ErrRequestBodyTooLarge. We assert 413
-		// here as the desired behavior.
-		body := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
-		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
-
-		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
-		ctx := user.InjectOrgID(t.Context(), "test")
-		req = req.WithContext(ctx)
-		req.Header.Set("Content-Type", "application/json")
-
-		// The metric is a global counter shared across tests, so measure the
-		// delta produced by this request rather than an absolute value.
-		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
-		before := testutil.ToFloat64(discardedBytes)
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
-	})
-
-	t.Run("OTLP JSON returns 413", func(t *testing.T) {
-		otlpLogs := plog.NewLogs()
-		rl := otlpLogs.ResourceLogs().AppendEmpty()
-		rl.Resource().Attributes().PutStr("service.name", "test-service")
-		lr := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
-		lr.Body().SetStr(line)
-		lr.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
-		body, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalJSON()
-		require.NoError(t, err)
-		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
-
-		req := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
-		ctx := user.InjectOrgID(t.Context(), "test")
-		req = req.WithContext(ctx)
-		req.Header.Set("Content-Type", "application/json")
-
-		// The metric is a global counter shared across tests, so measure the
-		// delta produced by this request rather than an absolute value.
-		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.OTLP)
-		before := testutil.ToFloat64(discardedBytes)
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, push.ParseOTLPRequest, push.OTLPError, constants.OTLP)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
-	})
-}
-
-func TestPushHandlerMaxDecompressedSize(t *testing.T) {
-	const line = "the quick brown fox jumps over the lazy dog"
-
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-	limits.RejectOldSamples = false
-	distributors, _ := prepare(t, 1, 3, limits, nil)
-	distributors[0].cfg.MaxDecompressedSize = 10
+		}
+	}
 
 	withGzip := func(t *testing.T, b []byte) []byte {
 		t.Helper()
@@ -314,112 +109,727 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 		return buf.Bytes()
 	}
 
-	t.Run("snappy compressed protobuf returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
-		protoBytes, err := proto.Marshal(&logproto.PushRequest{
+	for _, tc := range []struct {
+		name            string
+		path            string
+		contentType     string
+		contentEncoding string
+		format          string
+		parser          push.RequestParser
+		errorWriter     push.ErrorWriter
+		buildBody       func(t *testing.T) []byte
+	}{
+		{
+			name:        "plain proto returns 413 because its over max size",
+			path:        "/loki/api/v1/push",
+			contentType: "application/x-protobuf",
+			format:      constants.Loki,
+			parser:      push.ParseLokiRequest,
+			errorWriter: push.HTTPError,
+			buildBody: func(_ *testing.T) []byte {
+				body, err := proto.Marshal(newPushRequest())
+				require.NoError(t, err)
+				return body
+			},
+		},
+		{
+			name:        "Plain JSON returns 413 because its over max size",
+			path:        "/loki/api/v1/push",
+			contentType: "application/json",
+			format:      constants.Loki,
+			parser:      push.ParseLokiRequest,
+			errorWriter: push.HTTPError,
+			buildBody: func(_ *testing.T) []byte {
+				return []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
+			},
+		},
+		{
+			name:        "Plain OTLP returns 413 because its over max size",
+			path:        "/otlp/v1/logs",
+			contentType: "application/json",
+			format:      constants.OTLP,
+			parser:      push.NewOTLPRequestParser(false),
+			errorWriter: push.OTLPError,
+			buildBody: func(t *testing.T) []byte {
+				otlpLogs := plog.NewLogs()
+				rl := otlpLogs.ResourceLogs().AppendEmpty()
+				rl.Resource().Attributes().PutStr("service.name", "test-service")
+				lr := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+				lr.Body().SetStr(line)
+				lr.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+				body, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalJSON()
+				require.NoError(t, err)
+				return body
+			},
+		},
+		{
+			name:        "snappy compressed protobuf returns 413 because the decompressed data is over max size",
+			path:        "/loki/api/v1/push",
+			contentType: "application/x-protobuf",
+			format:      constants.Loki,
+			parser:      push.ParseLokiRequest,
+			errorWriter: push.HTTPError,
+			buildBody: func(t *testing.T) []byte {
+				protoBytes, err := proto.Marshal(newPushRequest())
+				require.NoError(t, err)
+				return snappy.Encode(nil, protoBytes)
+			},
+		},
+		{
+			name:            "gzip compressed Loki JSON returns 413 because the decompressed size is over max size",
+			path:            "/loki/api/v1/push",
+			contentType:     "application/json",
+			contentEncoding: "gzip",
+			format:          constants.Loki,
+			parser:          push.ParseLokiRequest,
+			errorWriter:     push.HTTPError,
+			buildBody: func(t *testing.T) []byte {
+				lokiJSON := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
+				return withGzip(t, lokiJSON)
+			},
+		},
+		{
+			name:            "gzip compressed OTLP JSON returns 413 because the decompressed size is over max size",
+			path:            "/otlp/v1/logs",
+			contentType:     "application/json",
+			contentEncoding: "gzip",
+			format:          constants.OTLP,
+			parser:          push.NewOTLPRequestParser(false),
+			errorWriter:     push.OTLPError,
+			buildBody: func(t *testing.T) []byte {
+				otlpLogs := plog.NewLogs()
+				rl := otlpLogs.ResourceLogs().AppendEmpty()
+				rl.Resource().Attributes().PutStr("service.name", "test-service")
+				lr := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+				lr.Body().SetStr(line)
+				lr.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+				otlpJSON, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalJSON()
+				require.NoError(t, err)
+				return withGzip(t, otlpJSON)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := tc.buildBody(t)
+
+			req := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewReader(body))
+			ctx := user.InjectOrgID(t.Context(), "test")
+			req = req.WithContext(ctx)
+			req.Header.Set("Content-Type", tc.contentType)
+			if tc.contentEncoding != "" {
+				req.Header.Set("Content-Encoding", tc.contentEncoding)
+			}
+
+			// The metric is a global counter shared across tests, so measure the
+			// delta produced by this request rather than an absolute value.
+			discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", tc.format)
+			before := testutil.ToFloat64(discardedBytes)
+
+			rec := httptest.NewRecorder()
+			distributors[0].pushHandler(rec, req, tc.parser, tc.errorWriter, tc.format)
+
+			require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+			require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+		})
+	}
+}
+
+func TestPushHandlerNegativeSizeHandling(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	// A custom parser that reports negative sizes, to exercise the guard clause in recordPush
+	// that prevents a panic when incrementing Prometheus counters.
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.InternalPushRequest, *push.Stats, error) {
+		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
 					Labels:  `{foo="bar"}`,
-					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: line}},
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test line"}},
 				},
 			},
+		}
+
+		stats := push.NewPushStats()
+		stats.LogLinesBytes[""] = map[time.Duration]int64{time.Hour: -100}
+		stats.StructuredMetadataBytes[""] = map[time.Duration]int64{time.Hour: -200}
+
+		return logproto.FromPushRequest(req), stats, nil
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	require.NotPanics(t, func() {
+		d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+	})
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(0), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "1", "false", "", constants.Loki)))
+	require.Equal(t, float64(0), testutil.ToFloat64(d.m.structuredMetadataBytesIngested.WithLabelValues("test", "1", "false", "", constants.Loki)))
+}
+
+func TestPushHandlerAllLogsFilteredRecordsMetrics(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	// A parser that reports some bytes/lines seen before filtering everything out, then
+	// returns ErrAllLogsFiltered. Regression test for: the ErrAllLogsFiltered branch in
+	// pushHandler used to return before recordParsedRequest was ever called, silently
+	// dropping the ingest metrics below for any request that hit this path.
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.InternalPushRequest, *push.Stats, error) {
+		req := &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{Labels: `{foo="bar"}`},
+			},
+		}
+
+		stats := push.NewPushStats()
+		stats.LogLinesBytes[""] = map[time.Duration]int64{0: 8}
+		stats.PolicyNumLines[""] = 1
+
+		return logproto.FromPushRequest(req), stats, push.ErrAllLogsFiltered
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(8), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "", constants.Loki)))
+}
+
+// TestPushHandlerAllLogsFilteredNilStats verifies pushHandler doesn't panic when a
+// RequestParser returns ErrAllLogsFiltered without populating req/pushStats, since not
+// every RequestParser implementation is guaranteed to do so.
+func TestPushHandlerAllLogsFilteredNilStats(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.InternalPushRequest, *push.Stats, error) {
+		return nil, nil, push.ErrAllLogsFiltered
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	require.NotPanics(t, func() {
+		d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+	})
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestPushHandlerRecordsIngestMetrics(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	line := "fizzbuzz"
+	body := fmt.Sprintf(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "%d", %q, {"name1": "value1"} ] ] }]}`, time.Now().UnixNano(), line)
+
+	// bytesReceivedStats, structuredMetadataBytesReceivedStats and linesReceivedStats are process-wide
+	// usage-stats counters that other tests in this package may have already incremented; capture the
+	// current values as the baseline so the deltas below are correct regardless of test execution order.
+	previousBytesReceived := bytesReceivedStats.Value()["total"].(int64)
+	previousStructuredMetadataBytesReceived := structuredMetadataBytesReceivedStats.Value()["total"].(int64)
+	previousLinesReceived := linesReceivedStats.Value()["total"].(int64)
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	structuredMetadataBytes := float64(len("name1") + len("value1"))
+	logLineBytes := float64(len(line))
+
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "", constants.Loki)))
+	require.Equal(t, structuredMetadataBytes, testutil.ToFloat64(d.m.structuredMetadataBytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, logLineBytes+structuredMetadataBytes, testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, logLineBytes+structuredMetadataBytes, testutil.ToFloat64(d.m.expandedBytesIngested.WithLabelValues("test", constants.Loki)))
+
+	require.Equal(t, int64(1), linesReceivedStats.Value()["total"].(int64)-previousLinesReceived)
+	require.Equal(t, int64(structuredMetadataBytes), structuredMetadataBytesReceivedStats.Value()["total"].(int64)-previousStructuredMetadataBytesReceived)
+	require.Equal(t, int64(logLineBytes+structuredMetadataBytes), bytesReceivedStats.Value()["total"].(int64)-previousBytesReceived)
+}
+
+// TestPushHandlerRecordsIngestMetricsMultiplePolicies is a regression test for coverage lost
+// when pkg/loghttp/push/push_test.go's old TestParseRequest table (which asserted metric label
+// values directly) was replaced: it only ever exercised a single stream under a single,
+// empty-string policy. This reproduces the deleted multi-policy case (streams resolving to
+// "dev", "prod", and an unmatched "" policy in one request), asserting that each policy's
+// bytes/lines land on distinct, correctly-scoped label combinations rather than being merged
+// into the wrong bucket.
+func TestPushHandlerRecordsIngestMetricsMultiplePolicies(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"dev":  []*validation.PriorityStream{{Selector: `{environment="dev"}`, Priority: 1}},
+		"prod": []*validation.PriorityStream{{Selector: `{environment="prod"}`, Priority: 1}},
+	}
+	require.NoError(t, limits.Validate())
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	now := time.Now().UnixNano()
+	body := fmt.Sprintf(
+		`{"streams": [`+
+			`{ "stream": { "foo": "bar", "environment": "dev" }, "values": [ [ "%d", "devline" ] ] },`+
+			`{ "stream": { "foo": "bar", "environment": "prod" }, "values": [ [ "%d", "prodline" ] ] },`+
+			`{ "stream": { "foo": "bar", "other": "x" }, "values": [ [ "%d", "unmatched" ] ] }`+
+			`]}`,
+		now, now, now,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	// Each policy's bytes/lines land on their own label combination, independent of the others.
+	require.Equal(t, float64(len("devline")), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "dev", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "dev", constants.Loki)))
+
+	require.Equal(t, float64(len("prodline")), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "prod", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "prod", constants.Loki)))
+
+	require.Equal(t, float64(len("unmatched")), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "", constants.Loki)))
+}
+
+// TestPushHandlerRecordsIngestMetricsInternalStream is a regression test for coverage lost
+// alongside the multi-policy case above: pkg/loghttp/push/push_test.go used to assert that a
+// stream carrying the aggregated-metric label drives is_internal_stream="true" on the
+// resulting ingest metrics. HasInternalStreams is computed once per request (not per-stream),
+// so this uses a request containing only the internal stream to keep the assertion unambiguous.
+func TestPushHandlerRecordsIngestMetricsInternalStream(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	now := time.Now().UnixNano()
+	body := fmt.Sprintf(`{"streams": [{ "stream": { "__aggregated_metric__": "stuff", "foo": "bar" }, "values": [ [ "%d", "aggline" ] ] }]}`, now)
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	require.Equal(t, float64(len("aggline")), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "true", "", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "true", "", constants.Loki)))
+}
+
+func TestPushHandlerLogPushRequestStreams(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	// Capture the log output.
+	out := &concurrency.SyncBuffer{}
+	d.logger = log.NewLogfmtLogger(out)
+
+	labelValues := []string{"bar", "baz"}
+	labels := make([]string, 0, len(labelValues))
+	for _, v := range labelValues {
+		labels = append(labels, fmt.Sprintf("{foo=%q}", v))
+	}
+	b, err := proto.Marshal(makeWriteRequestWithLabels(1, 10, labels, false, false, false))
+	require.NoError(t, err)
+	b = snappy.Encode(nil, b)
+
+	for _, tc := range []struct {
+		name             string
+		cfg              runtime.Config
+		forwardedFor     string
+		expectedLines    int
+		expectedFields   []string
+		unexpectedFields []string
+	}{
+		{
+			name:          "logs nothing when disabled",
+			cfg:           runtime.Config{},
+			expectedLines: 0,
+		},
+		{
+			name:             "logs one line per stream when enabled",
+			cfg:              runtime.Config{LogPushRequestStreams: true},
+			expectedLines:    2,
+			expectedFields:   []string{"level=debug", "org_id=test", "mostRecentLagMs=", "policy="},
+			unexpectedFields: []string{"presumedAgentIp", `streamSizeBytes="0 B"`},
+		},
+		{
+			name:             "logs the first X-Forwarded-For address as the presumed agent IP",
+			cfg:              runtime.Config{LogPushRequestStreams: true},
+			forwardedFor:     "10.0.0.1, 10.0.0.2",
+			expectedLines:    2,
+			expectedFields:   []string{"presumedAgentIp=10.0.0.1"},
+			unexpectedFields: []string{"10.0.0.2"},
+		},
+		{
+			name: "logs when the presumed agent IP is in the filter list",
+			cfg: runtime.Config{
+				LogPushRequestStreams:       true,
+				FilterPushRequestStreamsIPs: []string{"10.0.0.1"},
+			},
+			forwardedFor:  "10.0.0.1, 10.0.0.2",
+			expectedLines: 2,
+		},
+		{
+			name: "logs nothing when the presumed agent IP is not in the filter list",
+			cfg: runtime.Config{
+				LogPushRequestStreams:       true,
+				FilterPushRequestStreamsIPs: []string{"10.0.0.1"},
+			},
+			forwardedFor:  "10.0.0.9",
+			expectedLines: 0,
+		},
+		{
+			name: "logs nothing when the filter list is set but there is no presumed agent IP",
+			cfg: runtime.Config{
+				LogPushRequestStreams:       true,
+				FilterPushRequestStreamsIPs: []string{"10.0.0.1"},
+			},
+			expectedLines: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out.Reset()
+
+			d.tenantConfigs, err = runtime.NewTenantConfigs(&fakeTenantConfigProvider{cfg: tc.cfg})
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(b))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", "application/x-protobuf")
+			req.Header.Set("Content-Encoding", "snappy")
+			if tc.forwardedFor != "" {
+				req.Header.Set("X-Forwarded-For", tc.forwardedFor)
+			}
+
+			rec := httptest.NewRecorder()
+			d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+			require.Equal(t, http.StatusNoContent, rec.Code)
+
+			// Filter just "push request streams" lines from the output.
+			lines := strings.Split(out.String(), "\n")
+			containsLines := make([]string, 0, len(lines))
+			for _, line := range lines {
+				if strings.Contains(line, "msg=\"push request streams\"") {
+					containsLines = append(containsLines, line)
+				}
+			}
+			require.Len(t, containsLines, tc.expectedLines)
+
+			for i, line := range containsLines {
+				require.Contains(t, line, fmt.Sprintf("foo=\\\"%s\\\"", labelValues[i]))
+				for _, field := range tc.expectedFields {
+					require.Contains(t, line, field)
+				}
+				for _, field := range tc.unexpectedFields {
+					require.NotContains(t, line, field)
+				}
+			}
 		})
-		require.NoError(t, err)
-		body := snappy.Encode(nil, protoBytes)
-		require.Greater(t, int64(len(protoBytes)), distributors[0].cfg.MaxDecompressedSize)
+	}
+}
 
-		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
-		ctx := user.InjectOrgID(t.Context(), "test")
-		req = req.WithContext(ctx)
-		req.Header.Set("Content-Type", "application/x-protobuf")
-		req.Header.Set("Content-Encoding", "snappy")
+type fakeTenantConfigProvider struct {
+	cfg runtime.Config
+}
 
-		// The metric is a global counter shared across tests, so measure the
-		// delta produced by this request rather than an absolute value.
-		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
-		before := testutil.ToFloat64(discardedBytes)
+func (p *fakeTenantConfigProvider) TenantConfig(_ string) *runtime.Config {
+	return &p.cfg
+}
 
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+func TestOTLPPushHandlerAttributeExpansion(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		metadataSize  int
+		metadataCount int
+		kafkaEnabled  bool
+		status        int
+	}{
+		{name: "accepted", metadataSize: 1024, metadataCount: 10, status: http.StatusNoContent},
+		{name: "accepted with Kafka and ingesters", metadataSize: 1024, metadataCount: 10, kafkaEnabled: true, status: http.StatusNoContent},
+		{name: "shared metadata exceeds size limit", metadataSize: 14, metadataCount: 10, status: http.StatusBadRequest},
+		{name: "shared metadata exceeds count limit", metadataSize: 1024, metadataCount: 2, status: http.StatusBadRequest},
+	} {
+		for _, deferExpansion := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/deferExpansion=%t", tc.name, deferExpansion), func(t *testing.T) {
+				// set the configurations
+				var cfg Config
+				flagext.DefaultValues(&cfg)
+				require.False(t, cfg.OTLPConfig.DeferAttributeExpansion)
+				lim := &validation.Limits{}
+				flagext.DefaultValues(lim)
+				lim.SetGlobalOTLPConfig(cfg.OTLPConfig)
+				lim.DiscoverLogLevels = false
+				lim.MaxStructuredMetadataSize = loki_flagext.ByteSize(tc.metadataSize)
+				lim.MaxStructuredMetadataEntriesCount = tc.metadataCount
+				ing := &mockIngester{}
+				distributors, _ := prepareButDontStart(t, 1, 3, lim, func(string) (ring_client.PoolClient, error) { return ing, nil })
+				d := distributors[0]
+				d.cfg.OTLPConfig.DeferAttributeExpansion = deferExpansion
+				tee := &mockTee{}
+				d.tee = tee
+				producer := &mockKafkaProducer{}
+				if tc.kafkaEnabled {
+					d.cfg.KafkaEnabled = true
+					d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1024
+					d.kafkaWriter = producer
+				}
+				startAndWaitRunningDistributors(t, distributors)
 
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
-	})
+				// prepare the otlp push request
+				logs := plog.NewLogs()
+				resource := logs.ResourceLogs().AppendEmpty()
+				resource.Resource().Attributes().PutStr("service.name", "test-service")
+				resource.Resource().Attributes().PutStr("resource.key", "resource")
+				scope := resource.ScopeLogs().AppendEmpty()
+				scope.Scope().Attributes().PutStr("scope.key", "scope")
+				at := time.Now().UTC()
+				for i := range 2 {
+					record := scope.LogRecords().AppendEmpty()
+					record.SetTimestamp(pcommon.Timestamp(at.Add(time.Duration(i) * time.Second).UnixNano()))
+					record.Body().SetStr(fmt.Sprint(i))
+					record.Attributes().PutStr("entry.key", "entry")
+				}
+				body, err := plogotlp.NewExportRequestFromLogs(logs).MarshalProto()
+				require.NoError(t, err)
 
-	t.Run("gzip compressed Loki JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
-		lokiJSON := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
-		body := withGzip(t, lokiJSON)
-		require.Greater(t, int64(len(lokiJSON)), distributors[0].cfg.MaxDecompressedSize)
+				// send the push request
+				req := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
+				req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+				req.Header.Set("Content-Type", "application/x-protobuf")
+				response := httptest.NewRecorder()
+				d.OTLPPushHandler(response, req)
+				require.Equal(t, tc.status, response.Code, response.Body.String())
 
-		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
-		ctx := user.InjectOrgID(t.Context(), "test")
-		req = req.WithContext(ctx)
+				// if the push is expected to fail, ingesters should not receive any data
+				if tc.status != http.StatusNoContent {
+					require.Nil(t, ing.Peek())
+					return
+				}
+
+				// read the data pushed to mock ingester and verify it
+				got := ing.Peek()
+				require.NotNil(t, got)
+				require.Len(t, got.Streams, 1)
+				require.Equal(t, `{service_name="test-service"}`, got.Streams[0].Labels)
+				require.Len(t, got.Streams[0].Entries, 2)
+				for i, entry := range got.Streams[0].Entries {
+					require.Equal(t, fmt.Sprint(i), entry.Line)
+					require.True(t, at.Add(time.Duration(i)*time.Second).Equal(entry.Timestamp))
+					require.ElementsMatch(t, []logproto.LabelAdapter{
+						{Name: "entry_key", Value: "entry"},
+						{Name: "resource_key", Value: "resource"},
+						{Name: "scope_key", Value: "scope"},
+					}, entry.StructuredMetadata)
+				}
+				if tc.kafkaEnabled {
+					require.Len(t, producer.records, 1)
+					var nested logproto.InternalStreamAdapter
+					if deferExpansion {
+						require.NoError(t, nested.Unmarshal(producer.records[0].Value))
+						require.Equal(t, []logproto.LabelAdapter{{Name: "resource_key", Value: "resource"}}, nested.ResourceLogs[0].Attrs)
+						require.Equal(t, []logproto.LabelAdapter{{Name: "scope_key", Value: "scope"}}, nested.ResourceLogs[0].ScopeLogs[0].Attrs)
+					} else {
+						require.Error(t, nested.Unmarshal(producer.records[0].Value))
+					}
+					decoder, err := kafka.NewDecoder()
+					require.NoError(t, err)
+					decoded, err := decoder.DecodeWithoutLabels(producer.records[0].Value)
+					require.NoError(t, err)
+					require.Equal(t, got.Streams[0].Labels, decoded.Labels)
+					require.Equal(t, got.Streams[0].Hash, decoded.Hash)
+					require.Len(t, decoded.Entries, len(got.Streams[0].Entries))
+					for i, entry := range decoded.Entries {
+						want := got.Streams[0].Entries[i]
+						require.True(t, want.Timestamp.Equal(entry.Timestamp))
+						require.Equal(t, want.Line, entry.Line)
+						require.ElementsMatch(t, want.StructuredMetadata, entry.StructuredMetadata)
+					}
+				}
+				tee.mu.Lock()
+				defer tee.mu.Unlock()
+				require.Len(t, tee.duplicated, 1)
+				res := tee.duplicated[0][0].Stream.ResourceLogs[0]
+				if !deferExpansion {
+					require.Empty(t, res.Attrs)
+					require.Empty(t, res.ScopeLogs[0].Attrs)
+				} else {
+					require.Equal(t, []logproto.LabelAdapter{{Name: "resource_key", Value: "resource"}}, res.Attrs)
+					require.Equal(t, []logproto.LabelAdapter{{Name: "scope_key", Value: "scope"}}, res.ScopeLogs[0].Attrs)
+					require.Equal(t, []logproto.LabelAdapter{{Name: "entry_key", Value: "entry"}}, []logproto.LabelAdapter(res.ScopeLogs[0].Entries[0].StructuredMetadata))
+				}
+			})
+		}
+	}
+}
+
+func TestOTLPPushHandlerValidation(t *testing.T) {
+	type record struct {
+		route string
+		age   time.Duration
+	}
+	type forwardedEntry struct {
+		labels    string
+		line      string
+		timestamp int64
+	}
+	for _, tc := range []struct {
+		name           string
+		service        string
+		records        []record
+		maxValueLength int
+		status         int
+		accepted       []int // Record indexes expected at the ingester.
+	}{
+		{name: "empty request", status: http.StatusUnprocessableEntity},
+		{name: "resource with no logs", service: "svc", status: http.StatusUnprocessableEntity},
+		{name: "valid", service: "svc", records: []record{{route: "ok"}}, status: http.StatusNoContent, accepted: []int{0}},
+		{name: "non UTF-8 log label value", service: "svc", records: []record{{route: "\xff"}}, status: http.StatusUnprocessableEntity},
+		{name: "mixed UTF-8 and non UTF-8 log label values", service: "svc", records: []record{{route: "ok"}, {route: "\xff"}}, status: http.StatusNoContent, accepted: []int{0}},
+		{name: "non UTF-8 resource label value", service: "\xff", records: []record{{route: "ok"}}, status: http.StatusUnprocessableEntity},
+		{name: "resource label value exceeds limit", service: "toolong", records: []record{{route: "ok"}}, maxValueLength: 4, status: http.StatusBadRequest},
+		{name: "all log label values exceed limit", service: "svc", records: []record{{route: "toolong"}}, maxValueLength: 4, status: http.StatusBadRequest},
+		{name: "some log label values exceed limit", service: "svc", records: []record{{route: "ok"}, {route: "toolong"}}, maxValueLength: 4, status: http.StatusBadRequest, accepted: []int{0}},
+		{name: "all entries too old", service: "svc", records: []record{{route: "ok", age: 200 * time.Hour}}, status: http.StatusBadRequest},
+		{name: "some entries too old", service: "svc", records: []record{{route: "ok"}, {route: "ok", age: 200 * time.Hour}}, status: http.StatusBadRequest, accepted: []int{0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now().UTC()
+			logs := plog.NewLogs()
+			if tc.service != "" {
+				resource := logs.ResourceLogs().AppendEmpty()
+				resource.Resource().Attributes().PutStr("service.name", tc.service)
+				scope := resource.ScopeLogs().AppendEmpty()
+				for i, r := range tc.records {
+					logRecord := scope.LogRecords().AppendEmpty()
+					logRecord.SetTimestamp(pcommon.Timestamp(now.Add(-r.age).UnixNano()))
+					logRecord.Body().SetStr(fmt.Sprintf("entry-%d", i))
+					logRecord.Attributes().PutStr("route", r.route)
+				}
+			}
+			body, err := plogotlp.NewExportRequestFromLogs(logs).MarshalProto()
+			require.NoError(t, err)
+
+			var want []forwardedEntry
+			for _, i := range tc.accepted {
+				r := tc.records[i]
+				want = append(want, forwardedEntry{
+					labels:    fmt.Sprintf("{route=%q, service_name=%q}", r.route, tc.service),
+					line:      fmt.Sprintf("entry-%d", i),
+					timestamp: now.Add(-r.age).UnixNano(),
+				})
+			}
+
+			for _, deferExpansion := range []bool{false, true} {
+				t.Run(fmt.Sprintf("deferExpansion=%t", deferExpansion), func(t *testing.T) {
+					var cfg Config
+					flagext.DefaultValues(&cfg)
+					lim := &validation.Limits{}
+					flagext.DefaultValues(lim)
+					lim.SetGlobalOTLPConfig(cfg.OTLPConfig)
+					lim.OTLPConfig.LogAttributes = []push.AttributesConfig{{Action: push.IndexLabel, Attributes: []string{"route"}}}
+					lim.DiscoverLogLevels = false
+					if tc.maxValueLength > 0 {
+						lim.MaxLabelValueLength = tc.maxValueLength
+					}
+					ing := &mockIngester{}
+					distributors, _ := prepareButDontStart(t, 1, 3, lim, func(string) (ring_client.PoolClient, error) { return ing, nil })
+					d := distributors[0]
+					d.cfg.OTLPConfig.DeferAttributeExpansion = deferExpansion
+					startAndWaitRunningDistributors(t, distributors)
+
+					req := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
+					req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+					req.Header.Set("Content-Type", "application/x-protobuf")
+					response := httptest.NewRecorder()
+					d.OTLPPushHandler(response, req)
+					require.Equal(t, tc.status, response.Code, response.Body.String())
+
+					var got []forwardedEntry
+					if request := ing.Peek(); request != nil {
+						for _, stream := range request.Streams {
+							for _, entry := range stream.Entries {
+								got = append(got, forwardedEntry{labels: stream.Labels, line: entry.Line, timestamp: entry.Timestamp.UnixNano()})
+							}
+						}
+					}
+					require.ElementsMatch(t, want, got)
+					if len(want) == 0 {
+						require.Nil(t, ing.Peek())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDistributorMaxInflightBytesLimit(t *testing.T) {
+	validationLimits := &validation.Limits{}
+	flagext.DefaultValues(validationLimits)
+	distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+	d := distributors[0]
+
+	newRequest := func() *http.Request {
+		body := fmt.Sprintf(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "%d", %q ] ] }]}`, time.Now().UnixNano(), strings.Repeat("a", 1025))
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+		req = req.WithContext(user.InjectOrgID(req.Context(), "test"))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Content-Encoding", "gzip")
+		return req
+	}
 
-		// The metric is a global counter shared across tests, so measure the
-		// delta produced by this request rather than an absolute value.
-		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
-		before := testutil.ToFloat64(discardedBytes)
+	bytesReceived := func() float64 {
+		return testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki))
+	}
 
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	rec := httptest.NewRecorder()
+	d.PushHandler(rec, newRequest())
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(1025), bytesReceived())
 
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
-	})
+	// Set the max inflight bytes to 1KB and simulate 1KB already inflight, the request should be rejected.
+	d.cfg.MaxInflightBytes = 1024
+	d.inflightBytes.Store(1024)
+	rec = httptest.NewRecorder()
+	d.PushHandler(rec, newRequest())
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), errServiceUnavailableMaxLoad.Error())
+	// The request was rejected before parsing, so its bytes must not be counted as received.
+	require.Equal(t, float64(1025), bytesReceived())
 
-	t.Run("gzip compressed OTLP JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
-		otlpLogs := plog.NewLogs()
-		rl := otlpLogs.ResourceLogs().AppendEmpty()
-		rl.Resource().Attributes().PutStr("service.name", "test-service")
-		lr := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
-		lr.Body().SetStr(line)
-		lr.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
-		otlpJSON, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalJSON()
-		require.NoError(t, err)
-		body := withGzip(t, otlpJSON)
-		require.Greater(t, int64(len(otlpJSON)), distributors[0].cfg.MaxDecompressedSize)
-
-		req := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
-		ctx := user.InjectOrgID(t.Context(), "test")
-		req = req.WithContext(ctx)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Content-Encoding", "gzip")
-
-		// The metric is a global counter shared across tests, so measure the
-		// delta produced by this request rather than an absolute value.
-		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.OTLP)
-		before := testutil.ToFloat64(discardedBytes)
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, push.ParseOTLPRequest, push.OTLPError, constants.OTLP)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
-	})
-}
-
-type fakeParser struct {
-	parseErr error
-}
-
-func newFakeParser() *fakeParser {
-	return &fakeParser{}
-}
-
-func (p *fakeParser) parseRequest(
-	_ string,
-	_ *http.Request,
-	_ push.Limits,
-	_ *runtime.TenantConfigs,
-	_ int,
-	_ int64,
-	_ push.UsageTracker,
-	_ push.StreamResolver,
-	_ log.Logger,
-) (*logproto.PushRequest, *push.Stats, error) {
-	return &logproto.PushRequest{}, &push.Stats{}, p.parseErr
+	// Once the inflight bytes drop below the limit the request is accepted again.
+	d.inflightBytes.Store(0)
+	rec = httptest.NewRecorder()
+	d.PushHandler(rec, newRequest())
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(2050), bytesReceived())
 }

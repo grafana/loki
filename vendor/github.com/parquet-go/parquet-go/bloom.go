@@ -64,18 +64,30 @@ func (v Value) hash(h bloom.Hash) uint64 {
 	}
 }
 
+// The bloom filter spec only defines one algorithm and one hash function; a
+// header carrying anything else comes from a writer we do not understand.
+func isSplitBlockAlgorithm(header *format.BloomFilterHeader) bool {
+	_, ok := header.Algorithm.Value.(*format.SplitBlockAlgorithm)
+	return ok
+}
+
+func isXxHash(header *format.BloomFilterHeader) bool {
+	_, ok := header.Hash.Value.(*format.XxHash)
+	return ok
+}
+
 func newBloomFilter(file io.ReaderAt, offset int64, header *format.BloomFilterHeader) (*FileBloomFilter, error) {
-	if header.Algorithm.Block == nil || header.Hash.XxHash == nil {
+	if !isSplitBlockAlgorithm(header) || !isXxHash(header) {
 		return nil, nil
 	}
-	switch {
-	case header.Compression.Uncompressed != nil:
+	switch header.Compression.Value.(type) {
+	case *format.BloomFilterUncompressed:
 		return &FileBloomFilter{
 			SectionReader: *io.NewSectionReader(file, offset, int64(header.NumBytes)),
 			hash:          bloom.XXH64{},
 			check:         bloom.CheckSplitBlock,
 		}, nil
-	case header.Compression.GZip != nil:
+	case *format.BloomFilterGzip:
 		// Decompress lazily on the first Check call so that opening a file with
 		// PrefetchBloomFilters(false) does not perform any extra I/O at open time.
 		compressedSize := int64(header.NumBytes)
@@ -120,18 +132,18 @@ func newBloomFilter(file io.ReaderAt, offset int64, header *format.BloomFilterHe
 // fails, we return nil so the read silently skips the filter rather than
 // failing the whole file open.
 func newBloomFilterFromBytes(header *format.BloomFilterHeader, bits []byte) *FileBloomFilter {
-	if header.Algorithm.Block == nil || header.Hash.XxHash == nil {
+	if !isSplitBlockAlgorithm(header) || !isXxHash(header) {
 		return nil
 	}
-	switch {
-	case header.Compression.Uncompressed != nil:
+	switch header.Compression.Value.(type) {
+	case *format.BloomFilterUncompressed:
 		r := bytes.NewReader(bits)
 		return &FileBloomFilter{
 			SectionReader: *io.NewSectionReader(r, 0, int64(len(bits))),
 			hash:          bloom.XXH64{},
 			check:         bloom.CheckSplitBlock,
 		}
-	case header.Compression.GZip != nil:
+	case *format.BloomFilterGzip:
 		decompressed, err := LookupCompressionCodec(format.Gzip).Decode(nil, bits)
 		if err != nil {
 			return nil
@@ -202,16 +214,16 @@ func (f splitBlockFilter) Size(numValues int64) int {
 func bloomFilterHeader(filter BloomFilterColumn, codec compress.Codec) (header format.BloomFilterHeader) {
 	switch filter.(type) {
 	case splitBlockFilter:
-		header.Algorithm.Block = &format.SplitBlockAlgorithm{}
+		header.Algorithm.Value = &format.SplitBlockAlgorithm{}
 	}
 	switch filter.Hash().(type) {
 	case bloom.XXH64:
-		header.Hash.XxHash = &format.XxHash{}
+		header.Hash.Value = &format.XxHash{}
 	}
 	if codec != nil && codec.CompressionCodec() == format.Gzip {
-		header.Compression.GZip = &format.BloomFilterGzip{}
+		header.Compression.Value = &format.BloomFilterGzip{}
 	} else {
-		header.Compression.Uncompressed = &format.BloomFilterUncompressed{}
+		header.Compression.Value = &format.BloomFilterUncompressed{}
 	}
 	return header
 }

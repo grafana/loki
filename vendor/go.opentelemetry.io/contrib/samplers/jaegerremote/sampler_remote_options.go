@@ -16,7 +16,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package jaegerremote // import "go.opentelemetry.io/contrib/samplers/jaegerremote"
+package jaegerremote
 
 import (
 	"fmt"
@@ -204,7 +204,7 @@ func WithAttributesDisabled() Option {
 	})
 }
 
-// samplingStrategyParser creates a Option that initializes sampling strategy parser.
+// withSamplingStrategyParser creates a Option that initializes sampling strategy parser.
 func withSamplingStrategyParser(parser samplingStrategyParser) Option {
 	return optionFunc(func(c *config) {
 		c.samplingParser = parser

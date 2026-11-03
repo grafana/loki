@@ -146,7 +146,7 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 
 		address = cfg.FrontendAddress
 		grpcCfg = cfg.NewQueryFrontendGRPCClientConfig
-		processor = newFrontendProcessor(cfg, handler, logger, codec)
+		processor = newFrontendProcessor(cfg, handler, logger, metrics, codec)
 	default:
 		return nil, errors.New("unable to start the querier worker, need to configure one of frontend_address, scheduler_address, or a ring config in the query_scheduler config block")
 	}

@@ -1,8 +1,6 @@
 package log
 
-import (
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-)
+import logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 
 type KeepLabels struct {
 	labels []NamedLabelMatcher
@@ -19,7 +17,7 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 
 	// TODO: Reuse buf?
 	for _, lb := range lbls.UnsortedLabels(nil) {
-		if isSpecialLabel(lb.Name) {
+		if logqlerr.IsPipelineErrorLabel(lb.Name) {
 			continue
 		}
 
@@ -44,15 +42,11 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 	return line, true
 }
 
-func (kl *KeepLabels) RequiredLabelNames() []string {
-	return []string{}
+// Hints implements Stage.
+func (kl *KeepLabels) Hints() StageHints {
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
-func isSpecialLabel(lblName string) bool {
-	switch lblName {
-	case logqlmodel.ErrorLabel, logqlmodel.ErrorDetailsLabel, logqlmodel.PreserveErrorLabel:
-		return true
-	}
-
-	return false
+func (kl *KeepLabels) RequiredLabelNames() []string {
+	return []string{}
 }

@@ -331,6 +331,35 @@ func (m *StatsConfig) validate(all bool) error {
 
 	}
 
+	if all {
+		switch v := interface{}(m.GetAllowDefaultTagOverrides()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, StatsConfigValidationError{
+					field:  "AllowDefaultTagOverrides",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, StatsConfigValidationError{
+					field:  "AllowDefaultTagOverrides",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetAllowDefaultTagOverrides()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return StatsConfigValidationError{
+				field:  "AllowDefaultTagOverrides",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return StatsConfigMultiError(errors)
 	}
@@ -973,6 +1002,8 @@ func (m *StatsdSink) validate(all bool) error {
 
 	// no validation rules for Prefix
 
+	// no validation rules for ScaleHistogramUnitsToMilliseconds
+
 	oneofStatsdSpecifierPresent := false
 	switch v := m.StatsdSpecifier.(type) {
 	case *StatsdSink_Address:
@@ -1159,6 +1190,8 @@ func (m *DogStatsdSink) validate(all bool) error {
 		}
 
 	}
+
+	// no validation rules for ScaleHistogramUnitsToMilliseconds
 
 	oneofDogStatsdSpecifierPresent := false
 	switch v := m.DogStatsdSpecifier.(type) {

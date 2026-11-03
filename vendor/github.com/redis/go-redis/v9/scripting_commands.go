@@ -60,8 +60,16 @@ func (c cmdable) eval(ctx context.Context, name, payload string, keys []string, 
 		cmd.SetFirstKeyPos(3)
 	}
 	_ = c(ctx, cmd)
-	if err := cmd.Err(); err != nil {
-		if HasErrorPrefix(err, "NOSCRIPT") {
+	// Normalize NOSCRIPT to ErrNoScript for Script.Run/RunRO's EVAL fallback,
+	// but only when the result is already readable: on the deferred
+	// autopipeline face the call above merely enqueues, and reading the outcome
+	// here would await execution — making the whole Eval family synchronous on
+	// a face whose contract is to return immediately (review finding by codex
+	// on #3942). When the result is still pending the normalization is skipped;
+	// Script.Run/RunRO also match the raw NOSCRIPT prefix, so the fallback
+	// keeps working on that face.
+	if cmd.resultReady() {
+		if err := cmd.rawErr(); err != nil && HasErrorPrefix(err, "NOSCRIPT") {
 			cmd.SetErr(ErrNoScript)
 		}
 	}

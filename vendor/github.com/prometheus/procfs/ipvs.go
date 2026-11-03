@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // IPVSStats holds IPVS statistics, as exposed by the kernel in `/proc/net/ip_vs_stats`.
@@ -66,7 +66,7 @@ type IPVSBackendStatus struct {
 
 // IPVSStats reads the IPVS statistics from the specified `proc` filesystem.
 func (fs FS) IPVSStats() (IPVSStats, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path("net/ip_vs_stats"))
+	data, err := parsers.ReadFileNoStat(fs.proc.Path("net/ip_vs_stats"))
 	if err != nil {
 		return IPVSStats{}, err
 	}
@@ -148,6 +148,9 @@ func parseIPVSBackendStatus(file io.Reader) ([]IPVSBackendStatus, error) {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) == 0 {
 			continue
+		}
+		if len(fields) < 2 {
+			return nil, fmt.Errorf("%w: Malformed line %q", ErrFileParse, scanner.Text())
 		}
 		switch {
 		case fields[0] == "IP" || fields[0] == "Prot" || fields[1] == "RemoteAddress:Port":

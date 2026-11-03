@@ -154,34 +154,34 @@ func TestAppendQueryTagsHeader(t *testing.T) {
 	}{
 		{
 			name:       "sets tags when header is empty",
-			additional: "goldfish_correlation_id=test-uuid",
-			expected:   "goldfish_correlation_id=test-uuid",
+			additional: "correlation_id=test-uuid",
+			expected:   "correlation_id=test-uuid",
 			expectedKV: []any{
-				"goldfish_correlation_id",
+				"correlation_id",
 				"test-uuid",
 			},
 		},
 		{
 			name:       "preserves existing tags when appending",
 			existing:   "Source=logvolhist",
-			additional: "goldfish_correlation_id=test-uuid",
-			expected:   "Source=logvolhist,goldfish_correlation_id=test-uuid",
+			additional: "correlation_id=test-uuid",
+			expected:   "Source=logvolhist,correlation_id=test-uuid",
 			expectedKV: []any{
 				"source",
 				"logvolhist",
-				"goldfish_correlation_id",
+				"correlation_id",
 				"test-uuid",
 			},
 		},
 		{
 			name:       "sanitizes existing and appended tags",
 			existing:   "Source=log+volhist",
-			additional: "goldfish_correlation_id=test/uuid",
-			expected:   "Source=log_volhist,goldfish_correlation_id=test_uuid",
+			additional: "correlation_id=test/uuid",
+			expected:   "Source=log_volhist,correlation_id=test_uuid",
 			expectedKV: []any{
 				"source",
 				"log_volhist",
-				"goldfish_correlation_id",
+				"correlation_id",
 				"test_uuid",
 			},
 		},

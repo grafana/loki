@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/prometheus/common/model"
 )
 
@@ -51,14 +52,21 @@ func DefaultTransport(config HTTPConfig) (*http.Transport, error) {
 	}
 	tlsConfig.InsecureSkipVerify = config.InsecureSkipVerify
 
-	return &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).DialContext,
+	dialFn := (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+		DualStack: true,
+	}).DialContext
+	// conntrack exports metrics for every connection attempted, failed, etc.
+	dialFn = conntrack.NewDialContextFunc(
+		conntrack.DialWithDialContextFunc(dialFn),
+		// Can be overwritten with conntrack.DialNameToContext.
+		conntrack.DialWithName("objstore"),
+	)
 
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialFn,
 		MaxIdleConns:          config.MaxIdleConns,
 		MaxIdleConnsPerHost:   config.MaxIdleConnsPerHost,
 		IdleConnTimeout:       time.Duration(config.IdleConnTimeout),

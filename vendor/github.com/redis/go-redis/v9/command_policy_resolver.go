@@ -109,6 +109,13 @@ var defaultPolicies = map[module]map[commandName]*routing.CommandPolicy{
 			Request:  routing.ReqDefault,
 			Response: routing.RespDefaultKeyless,
 		},
+		"aliaslist": {
+			Request:  routing.ReqDefault,
+			Response: routing.RespDefaultKeyless,
+			Tips: map[string]string{
+				routing.ReadOnlyCMD: "",
+			},
+		},
 		"info": {
 			Request:  routing.ReqDefault,
 			Response: routing.RespDefaultKeyless,
@@ -156,6 +163,26 @@ var defaultPolicies = map[module]map[commandName]*routing.CommandPolicy{
 	},
 }
 
+// defaultPolicyKeyless reports whether name (e.g. "ft.aliaslist") is registered
+// in the static policy table as a plain keyless command: default request
+// routing with a keyless response policy. Commands whose slot comes from a key
+// (RespDefaultHashSlot, e.g. ft.suglen) or with special request routing
+// (ReqSpecial, e.g. ft.cursor) are excluded — their key position must still be
+// resolved. cmdFirstKeyPosWithInfo consults this so the initial slot
+// computation on a cold command-info cache matches the policy the router
+// applies once the command reaches routeAndRun.
+func defaultPolicyKeyless(name string) bool {
+	i := strings.IndexByte(name, '.')
+	if i < 0 {
+		return false
+	}
+	policy, ok := defaultPolicies[name[:i]][name[i+1:]]
+	if !ok {
+		return false
+	}
+	return policy.Request == routing.ReqDefault && policy.Response == routing.RespDefaultKeyless
+}
+
 type CommandInfoResolveFunc func(ctx context.Context, cmd Cmder) *routing.CommandPolicy
 
 type commandInfoResolver struct {
@@ -173,10 +200,14 @@ func NewDefaultCommandPolicyResolver() *commandInfoResolver {
 	return NewCommandInfoResolver(func(ctx context.Context, cmd Cmder) *routing.CommandPolicy {
 		module := "core"
 		command := cmd.Name()
-		cmdParts := strings.Split(command, ".")
-		if len(cmdParts) == 2 {
-			module = cmdParts[0]
-			command = cmdParts[1]
+		// Split on the first '.' without allocating (strings.Split allocates a slice
+		// on every call; this resolver runs on the hot per-command path — twice per
+		// command for the autopipeline cluster gates — so the allocation showed up in
+		// CPU profiles). Only a single module.command form is recognized, matching the
+		// prior len==2 check.
+		if dot := strings.IndexByte(command, '.'); dot >= 0 && strings.IndexByte(command[dot+1:], '.') < 0 {
+			module = command[:dot]
+			command = command[dot+1:]
 		}
 
 		if policy, ok := defaultPolicies[module][command]; ok {

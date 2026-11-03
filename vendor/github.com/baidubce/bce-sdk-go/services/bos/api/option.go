@@ -25,11 +25,14 @@ const (
 	optionPostField  optionType = "PostField"     // URL parameter
 	optionBosContext optionType = "BosContext"
 	optionBceClient  optionType = "BceClient"
+	// the caller supplied sink of the response metadata
+	optionResponseCommon optionType = "ResponseCommon"
 
 	// option key
-	API_VERSION_KEY = "API_VERSION"
-	HTTP_CLIENT_KEY = "HTTP_CLIENT"
-	ENABLE_CALC_MD5 = "ENABLE_CALC_MD5"
+	API_VERSION_KEY       = "API_VERSION"
+	HTTP_CLIENT_KEY       = "HTTP_CLIENT"
+	ENABLE_CALC_MD5       = "ENABLE_CALC_MD5"
+	RESPONSE_METADATA_KEY = "RESPONSE_METADATA"
 )
 
 type (
@@ -81,6 +84,30 @@ func AddCrc64Check(req *BosRequest, resp *BosResponse) {
 
 func HTTPClient(httpClient *net_http.Client) Option {
 	return setBceClient(HTTP_CLIENT_KEY, httpClient)
+}
+
+// WithResponseCommon registers a caller owned struct which the SDK fills with the
+// request id, the debug id and the http status code of the response. It works for every
+// BOS api, including the ones only returning an error, and it is filled on both success
+// and failure as long as an http response has been received.
+//
+//	var meta api.ResponseCommon
+//	err := client.DeleteBucket("my-bucket", api.WithResponseCommon(&meta))
+//	fmt.Println(meta.RequestId)
+//
+// Passing nil is a no-op. The given struct must not be shared by concurrent calls. For
+// the composite apis issuing several requests internally, it holds the metadata of the
+// last request.
+func WithResponseCommon(meta *ResponseCommon) Option {
+	// do not reuse setSpecifiedTagParam here: its nil check does not catch a typed nil
+	// pointer boxed in an interface value
+	if meta == nil {
+		return nil
+	}
+	return func(params map[string]optionValue) error {
+		params[RESPONSE_METADATA_KEY] = optionValue{meta, optionResponseCommon}
+		return nil
+	}
 }
 
 func EnableCalcMd5(value bool) Option {
@@ -510,6 +537,10 @@ func handleOptions(request *BosRequest, options []Option) error {
 			request.SetHeader(k, v.Value.(string))
 		} else if v.Type == optionParam {
 			request.SetParam(k, v.Value.(string))
+		} else if v.Type == optionResponseCommon {
+			if meta, ok := v.Value.(*ResponseCommon); ok {
+				request.ResponseCommon = meta
+			}
 		}
 	}
 	if aclMethods > 1 {
@@ -553,6 +584,10 @@ func handleBosContextOptions(ctx *BosContext, options []Option) error {
 				ctx.ApiVersion = v.Value.(string)
 			} else if k == ENABLE_CALC_MD5 {
 				ctx.EnableCalcMd5 = v.Value.(bool)
+			}
+		} else if v.Type == optionResponseCommon {
+			if meta, ok := v.Value.(*ResponseCommon); ok {
+				ctx.ResponseCommon = meta
 			}
 		}
 	}

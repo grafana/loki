@@ -1,9 +1,9 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package observ provides observability metrics for OTLP log exporters.
+// Package observ provides observability metrics for the stdout log exporter.
 // This is an experimental feature controlled by the x.Observability feature flag.
-package observ // import "go.opentelemetry.io/otel/exporters/stdout/stdoutlog/internal/observ"
+package observ
 
 import (
 	"context"
@@ -18,8 +18,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog/internal"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
-	"go.opentelemetry.io/otel/semconv/v1.41.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"go.opentelemetry.io/otel/semconv/v1.43.0/otelconv"
 )
 
 const (
@@ -30,8 +30,8 @@ const (
 	// being instrumented.
 	//
 	// The STDOUT log exporter is not a standardized OTel component type, so
-	// it uses the Go package prefixed type name to ensure uniqueness and
-	// identity.
+	// it uses the Go type name prefixed by the package path to ensure
+	// uniqueness and identity.
 	ComponentType = "go.opentelemetry.io/otel/exporters/stdout/stdoutlog.Exporter"
 
 	// Version is the current version of this instrumentation.
@@ -86,7 +86,7 @@ type Instrumentation struct {
 	setOpt metric.MeasurementOption
 }
 
-// GetComponentName returns the constant name for the exporter with the
+// GetComponentName returns the component name for the exporter with the
 // provided id.
 func GetComponentName(id int64) string {
 	return fmt.Sprintf("%s/%d", ComponentType, id)
@@ -101,7 +101,7 @@ func getAttrs(id int64) []attribute.KeyValue {
 	return attrs
 }
 
-// NewInstrumentation returns instrumentation for stdlog exporter.
+// NewInstrumentation returns instrumentation for the stdoutlog exporter.
 func NewInstrumentation(id int64) (*Instrumentation, error) {
 	if !x.Observability.Enabled() {
 		return nil, nil
@@ -181,8 +181,9 @@ type ExportOp struct {
 // The success parameter is the number of logs exported successfully.
 // Any error encountered during export is provided as err.
 //
-// If err is not nil, End records failed log exports as count-success with the
-// error.type attribute set from err.
+// If err is not nil, End records the difference between the attempted and
+// successful log counts as failed log exports, with the error.type attribute
+// set from err.
 func (e ExportOp) End(success int64, err error) {
 	inflightLogsEnable := e.inst.inflight.Enabled(e.ctx)
 	exportedLogsEnable := e.inst.exported.Enabled(e.ctx)

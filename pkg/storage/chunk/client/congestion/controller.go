@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
@@ -158,14 +158,7 @@ func (a *AIMDController) IsObjectNotFoundErr(err error) bool {
 }
 
 func (a *AIMDController) IsRetryableErr(err error) bool {
-	retryable := a.inner.IsRetryableErr(err)
-	if !retryable {
-		if !errors.Is(err, context.Canceled) {
-			a.metrics.nonRetryableErrors.Inc()
-		}
-	}
-
-	return retryable
+	return a.inner.IsRetryableErr(err)
 }
 
 func (a *AIMDController) Stop() {

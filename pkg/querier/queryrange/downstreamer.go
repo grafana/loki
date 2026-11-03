@@ -15,8 +15,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
@@ -62,6 +63,7 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 			AST: params.GetExpression(),
 		},
 		StoreChunks:    params.GetStoreChunks(),
+		HintRanges:     params.GetHintRanges(),
 		CachingOptions: params.CachingOptions(),
 	}
 }
@@ -169,7 +171,16 @@ func (in instance) For(
 	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
 ) ([]logqlmodel.Result, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	discardedUsage := &discardedResponseStats[int]{}
+	defer func() {
+		cancel()
+		uncollectedStats, hasUncollectedStats := discardedUsage.finalize()
+		if hasUncollectedStats {
+			// DownstreamEvaluator records the statistics returned by acc.Result().
+			// Add only responses that were never passed to acc.Accumulate here.
+			stats.JoinDiscardedWork(ctx, uncollectedStats)
+		}
+	}()
 
 	ch := make(chan logql.Resp)
 
@@ -182,6 +193,16 @@ func (in instance) For(
 			if err != nil {
 				return err
 			}
+			// Retain usage before delivery: a sibling failure or cancellation can
+			// discard this completed result before it reaches the accumulator.
+			responseStats := res.Statistics
+			// Match the accumulators: default to one shard only if no count was
+			// supplied. Preserve existing counts so the number of accounted shards
+			// does not depend on whether this result reaches the accumulator.
+			if responseStats.Summary.Shards == 0 {
+				responseStats.Summary.Shards = 1
+			}
+			discardedUsage.recordStatistics(i, responseStats)
 			response := logql.Resp{
 				I:   i,
 				Res: res,
@@ -214,8 +235,8 @@ func (in instance) For(
 	for {
 		select {
 		case <-ctx.Done():
-			// Return early if the context is canceled
-			return acc.Result(), ctx.Err()
+			// Report the cancellation cause so a real failure wins over a generic cancellation.
+			return acc.Result(), context.Cause(ctx)
 		case resp, ok := <-ch:
 			if !ok {
 				// Channel closed, we're done
@@ -229,6 +250,10 @@ func (in instance) For(
 				continue
 			}
 			err = acc.Accumulate(ctx, resp.Res, resp.I)
+			// Accumulate retains the statistics even when it returns an error.
+			// Remove them from the tracker to avoid counting them again. Responses
+			// skipped by the error check above stay in the tracker until finalization.
+			discardedUsage.markResponseCollected(resp.I)
 		}
 	}
 }

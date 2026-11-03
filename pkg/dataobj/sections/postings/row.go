@@ -28,6 +28,7 @@ func CompareRows(a, b Row) int {
 type Row struct {
 	Kind             PostingKind // KindLabel or KindBloom
 	ObjectPath       string
+	ShardBuckets     int64
 	SectionIndex     int64
 	ColumnName       string
 	LabelValue       string // empty for KindBloom rows
@@ -36,6 +37,8 @@ type Row struct {
 	UncompressedSize int64
 	MinTimestamp     int64 // unix nanos
 	MaxTimestamp     int64 // unix nanos
+	MinShardBucket   uint32
+	MaxShardBucket   uint32
 }
 
 // LabelEntry converts the Row to a [LabelEntry]. The caller should only call
@@ -43,6 +46,7 @@ type Row struct {
 func (r Row) LabelEntry() LabelEntry {
 	return LabelEntry{
 		ObjectPath:       r.ObjectPath,
+		ShardBuckets:     r.ShardBuckets,
 		SectionIndex:     r.SectionIndex,
 		ColumnName:       r.ColumnName,
 		LabelValue:       r.LabelValue,
@@ -50,6 +54,8 @@ func (r Row) LabelEntry() LabelEntry {
 		MinTimestamp:     r.MinTimestamp,
 		MaxTimestamp:     r.MaxTimestamp,
 		UncompressedSize: r.UncompressedSize,
+		MinShardBucket:   r.MinShardBucket,
+		MaxShardBucket:   r.MaxShardBucket,
 	}
 }
 
@@ -58,6 +64,7 @@ func (r Row) LabelEntry() LabelEntry {
 func (r Row) BloomEntry() BloomEntry {
 	return BloomEntry{
 		ObjectPath:       r.ObjectPath,
+		ShardBuckets:     r.ShardBuckets,
 		SectionIndex:     r.SectionIndex,
 		ColumnName:       r.ColumnName,
 		BloomFilter:      r.BloomFilter,
@@ -74,6 +81,7 @@ func (e LabelEntry) Row() Row {
 	return Row{
 		Kind:             KindLabel,
 		ObjectPath:       e.ObjectPath,
+		ShardBuckets:     e.ShardBuckets,
 		SectionIndex:     e.SectionIndex,
 		ColumnName:       e.ColumnName,
 		LabelValue:       e.LabelValue,
@@ -81,6 +89,8 @@ func (e LabelEntry) Row() Row {
 		MinTimestamp:     e.MinTimestamp,
 		MaxTimestamp:     e.MaxTimestamp,
 		UncompressedSize: e.UncompressedSize,
+		MinShardBucket:   e.MinShardBucket,
+		MaxShardBucket:   e.MaxShardBucket,
 	}
 }
 
@@ -90,6 +100,7 @@ func (e BloomEntry) Row() Row {
 	return Row{
 		Kind:             KindBloom,
 		ObjectPath:       e.ObjectPath,
+		ShardBuckets:     e.ShardBuckets,
 		SectionIndex:     e.SectionIndex,
 		ColumnName:       e.ColumnName,
 		BloomFilter:      e.BloomFilter,
@@ -139,6 +150,10 @@ func DecodeRow(batch arrow.RecordBatch, columns ColumnIndex, rowIndex int) Row {
 		result.ObjectPath = col.(*array.String).Value(rowIndex)
 	}
 
+	if col := getColumn("shard_buckets.int64"); col != nil && !col.IsNull(rowIndex) {
+		result.ShardBuckets = col.(*array.Int64).Value(rowIndex)
+	}
+
 	if col := getColumn("section_index.int64"); col != nil && !col.IsNull(rowIndex) {
 		result.SectionIndex = col.(*array.Int64).Value(rowIndex)
 	}
@@ -169,6 +184,14 @@ func DecodeRow(batch arrow.RecordBatch, columns ColumnIndex, rowIndex int) Row {
 
 	if col := getColumn("max_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {
 		result.MaxTimestamp = int64(col.(*array.Timestamp).Value(rowIndex))
+	}
+
+	if col := getColumn("min_shard_bucket.int64"); col != nil && !col.IsNull(rowIndex) {
+		result.MinShardBucket = uint32(col.(*array.Int64).Value(rowIndex))
+	}
+
+	if col := getColumn("max_shard_bucket.int64"); col != nil && !col.IsNull(rowIndex) {
+		result.MaxShardBucket = uint32(col.(*array.Int64).Value(rowIndex))
 	}
 
 	return result

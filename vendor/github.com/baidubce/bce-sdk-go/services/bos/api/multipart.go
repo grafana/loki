@@ -122,6 +122,7 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 		return nil, resp.ServiceError()
 	}
 	result := &InitiateMultipartUploadResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -361,6 +362,7 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 		return nil, resp.ServiceError()
 	}
 	result := &CopyObjectResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -437,6 +439,7 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 		return nil, resp.ServiceError()
 	}
 	result := &CompleteMultipartUploadResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -540,6 +543,7 @@ func ListParts(cli bce.Client, bucket, object, uploadId string, args *ListPartsA
 		return nil, resp.ServiceError()
 	}
 	result := &ListPartsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -594,6 +598,7 @@ func ListMultipartUploads(cli bce.Client, bucket string, args *ListMultipartUplo
 		return nil, resp.ServiceError()
 	}
 	result := &ListMultipartUploadsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}

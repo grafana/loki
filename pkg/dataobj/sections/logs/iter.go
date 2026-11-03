@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
@@ -52,9 +51,9 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 		}
 
 		r := dataset.NewRowReader(dataset.RowReaderOptions{
-			Dataset:  dset,
-			Columns:  columns,
-			Prefetch: true,
+			Dataset:           dset,
+			ProjectedColumns:  columns,
+			PrefetchAllOnOpen: true,
 		})
 		defer r.Close()
 
@@ -62,7 +61,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			return err
 		}
 
-		var rows [1]dataset.Row
+		var rows [1024]dataset.Row
 		var record Record
 		for {
 			n, err := r.Read(ctx, rows[:])
@@ -73,7 +72,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			}
 
 			for _, row := range rows[:n] {
-				err := DecodeRow(section.Columns(), row, &record, nil)
+				err := DecodeRow(section.Columns(), row, &record)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -106,22 +105,28 @@ func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
 // to determine the column type. The list of columns must match the columns
 // used to create the row.
 //
-// The sym argument is used for reusing metadata strings between calls to
-// DecodeRow. If sym is nil, metadata strings are always allocated.
-func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
+// DecodeRow resets record first, so a field whose column is absent from columns comes back
+// as its zero value rather than keeping what a previous row left there.
+func DecodeRow(columns []*Column, row dataset.Row, record *Record) error {
+	record.Reset()
+
 	labelBuilder := labelpool.Get()
 	defer labelpool.Put(labelBuilder)
+
+	// Sections store metadata columns sorted by name, so labels usually
+	// arrive sorted. Track the order to skip the sort in that case.
+	var (
+		labelsSorted = true
+		lastLabel    string
+	)
 
 	for columnIndex, columnValue := range row.Values {
 		column := columns[columnIndex]
 
-		if columnValue.IsNil() || columnValue.IsZero() {
-			switch column.Type {
-			case ColumnTypeMessage:
-				// Clear the message field so callers that reuse the Record
-				// don't see stale line data from a previous row.
-				record.Line = record.Line[:0]
-			}
+		// Only a nil value is an absent cell. A physical zero is a real value: an INT64 zero
+		// is a timestamp at the Unix epoch, and an empty BINARY is an empty line or an explicitly
+		// empty metadata value. The cases below decode all of those.
+		if columnValue.IsNil() {
 			continue
 		}
 
@@ -136,30 +141,37 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Timestamp = time.Unix(0, columnValue.Int64())
+			record.Timestamp = time.Unix(0, columnValue.Int64()).UTC()
 
 		case ColumnTypeMetadata:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
-			if sym != nil {
-				labelBuilder.Add(column.Name, sym.Get(unsafeString(columnValue.Binary())))
-			} else {
-				labelBuilder.Add(column.Name, string(columnValue.Binary()))
+			// An empty value is kept as a label. The key is present on the line, it just
+			// holds no value, and the chunk path surfaces that as a distinct label too.
+			if column.Name < lastLabel {
+				labelsSorted = false
 			}
+			lastLabel = column.Name
+			labelBuilder.Add(column.Name, metadataValue(columnValue.Binary()))
 
 		case ColumnTypeMessage:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
+
+			// An empty line goes through the copy as well, which truncates the field. A
+			// reused Record must not keep the previous row's line.
 			line := columnValue.Binary()
 			record.Line = slicegrow.Copy(record.Line, line)
 		}
 	}
 
 	// Commit the final metadata to the record.
-	labelBuilder.Sort()
+	if !labelsSorted {
+		labelBuilder.Sort()
+	}
 	record.Metadata = labelBuilder.Labels()
 	return nil
 }

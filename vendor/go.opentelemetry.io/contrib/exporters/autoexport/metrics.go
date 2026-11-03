@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package autoexport // import "go.opentelemetry.io/contrib/exporters/autoexport"
+package autoexport
 
 import (
 	"context"
@@ -242,8 +242,8 @@ func (rws readerWithServer) Shutdown(ctx context.Context) error {
 }
 
 func getenv(key, fallback string) string {
-	result, ok := os.LookupEnv(key)
-	if !ok {
+	result := os.Getenv(key)
+	if result == "" {
 		return fallback
 	}
 	return result

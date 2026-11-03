@@ -233,9 +233,12 @@ func (b *MapBuilder) AppendNull() {
 
 // AppendNulls adds null map entry to the array.
 func (b *MapBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+
+	b.adjustStructBuilderLen()
+	b.listBuilder.AppendNulls(n)
 }
 
 func (b *MapBuilder) SetNull(i int) {
@@ -247,9 +250,12 @@ func (b *MapBuilder) AppendEmptyValue() {
 }
 
 func (b *MapBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+
+	b.adjustStructBuilderLen()
+	b.listBuilder.AppendEmptyValues(n)
 }
 
 // Reserve enough space for n maps
@@ -258,6 +264,8 @@ func (b *MapBuilder) Reserve(n int) { b.listBuilder.Reserve(n) }
 // Resize adjust the space allocated by b to n map elements. If n is greater than
 // b.Cap(), additional memory will be allocated. If n is smaller, the allocated memory may be reduced.
 func (b *MapBuilder) Resize(n int) { b.listBuilder.Resize(n) }
+
+func (b *MapBuilder) truncate(n int) { b.listBuilder.truncate(n) }
 
 // AppendValues is for bulk appending a group of elements with offsets provided
 // and validity booleans provided.
@@ -286,11 +294,9 @@ func (b *MapBuilder) adjustStructBuilderLen() {
 			arrow.ErrInvalid, sb.Len(), keyLen))
 	}
 	if sb.Len() < keyLen {
-		valids := make([]bool, keyLen-sb.Len())
-		for i := range valids {
-			valids[i] = true
-		}
-		sb.AppendValues(valids)
+		missing := keyLen - sb.Len()
+		sb.Reserve(missing)
+		sb.unsafeAppendBoolsToBitmap(nil, missing)
 	}
 }
 

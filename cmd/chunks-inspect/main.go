@@ -104,6 +104,10 @@ func printFile(filename string, blockDetails, printLines, storeBlocks bool) {
 			fmt.Printf("Block %4d: digest compressed: %02x, original: %02x\n", ix, sha256.Sum256(b.rawData), sha256.Sum256(b.originalData))
 		}
 
+		if b.parseErr != nil {
+			fmt.Printf("Block %4d: FAILED to parse, recovered %d of %d entries: %v\n", ix, len(b.entries), b.numEntries, b.parseErr)
+		}
+
 		totalSize += len(b.originalData)
 
 		if printLines {

@@ -1,6 +1,6 @@
 version: "2"
 run:
-  go: "1.25"
+  go: "1.26"
   tests: true
   allow-parallel-runners: true
 linters:
@@ -16,6 +16,7 @@ linters:
     - gochecknoglobals
     - gocognit
     - godox
+    - gomodguard
     - gosmopolitan
     - inamedparam
     - interfacebloat
@@ -153,6 +154,13 @@ linters:
       check-exported: true
   exclusions:
     warn-unused: true
+    rules:
+      - linters:
+          - recvcheck
+        path: models.go
+        # Generated unmarshaling must mutate pointer receivers, while the
+        # existing model inspection methods intentionally use values.
+        text: 'methods of ".*" use pointer receiver and non-pointer receiver'
 formatters:
   enable:
     - gci
@@ -167,4 +175,5 @@ formatters:
         - default
         - prefix(github.com/oschwald/maxminddb-golang)
     gofumpt:
-      extra-rules: true
+      extra:
+        group-params: true

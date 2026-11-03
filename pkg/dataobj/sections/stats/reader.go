@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -71,6 +72,16 @@ func (s *Section) init() error {
 	}
 
 	return nil
+}
+
+// Layout returns the stream layout that the section records. ok is false if
+// the section records none, as sections written before stats sections
+// recorded a layout do.
+//
+// Layout returns an error if the recorded layout is not one that
+// [streams.NewLayout] can produce.
+func (s *Section) Layout() (layout streams.Layout, ok bool, err error) {
+	return streams.LayoutFromSortInfo(s.inner.SortInfo())
 }
 
 // Columns returns the set of Columns in the section. The slice of returned
@@ -230,9 +241,9 @@ func (r *Reader) init(ctx context.Context) error {
 	}
 
 	innerOptions := dataset.RowReaderOptions{
-		Dataset:  dset,
-		Columns:  dset.Columns(),
-		Prefetch: true,
+		Dataset:           dset,
+		ProjectedColumns:  dset.Columns(),
+		PrefetchAllOnOpen: true,
 	}
 	if r.inner == nil {
 		r.inner = columnar.NewReaderAdapter(innerOptions)
@@ -271,6 +282,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeObjectPath:       arrow.BinaryTypes.String,
 	ColumnTypeSectionIndex:     arrow.PrimitiveTypes.Int64,
 	ColumnTypeSortSchema:       arrow.BinaryTypes.String,
+	ColumnTypeShardBucket:      arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeRowCount:         arrow.PrimitiveTypes.Int64,

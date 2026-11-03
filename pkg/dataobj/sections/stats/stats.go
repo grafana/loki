@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // sectionType identifies stats sections in a data object (unexported, matching existing convention).
@@ -31,6 +32,7 @@ const (
 	ColumnTypeRowCount                           // "row_count"
 	ColumnTypeUncompressedSize                   // "uncompressed_size"
 	ColumnTypeLabel                              // "label" — dynamic; tag carries label name
+	ColumnTypeShardBucket                        // "__shard_bucket__"
 )
 
 var columnTypeNames = map[ColumnType]string{
@@ -43,6 +45,7 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeRowCount:         "row_count",
 	ColumnTypeUncompressedSize: "uncompressed_size",
 	ColumnTypeLabel:            "label",
+	ColumnTypeShardBucket:      "__shard_bucket__",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -67,6 +70,8 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeUncompressedSize, nil
 	case "label":
 		return ColumnTypeLabel, nil
+	case "__shard_bucket__":
+		return ColumnTypeShardBucket, nil
 	}
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
 }
@@ -86,9 +91,11 @@ func CheckSection(section *dataobj.Section) bool {
 }
 
 // Stat represents a single row in the stats section.
+// A row contains information about a single sortable bucket: (Shard, Tenant Sort Schema)
 type Stat struct {
 	ObjectPath       string
 	SectionIndex     int64
+	ShardBucket      uint32
 	SortSchema       string
 	Labels           map[string]string // Label values keyed by sort schema key name
 	MinTimestamp     int64             // UnixNano
@@ -97,8 +104,9 @@ type Stat struct {
 	UncompressedSize int64
 }
 
-// SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.
-type SectionEncoder func(rows []Stat, enc *columnar.Encoder) error
+// SectionEncoder encodes a batch of sorted Stat rows of layout into a columnar
+// encoder, and records layout in the section metadata.
+type SectionEncoder func(rows []Stat, layout streams.Layout, enc *columnar.Encoder) error
 
 // schemaLabelNames parses a comma-separated fully-qualified sort schema
 // ("label:svc,label:cluster") into its bare label names ("svc", "cluster").

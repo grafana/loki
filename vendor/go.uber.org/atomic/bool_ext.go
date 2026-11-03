@@ -41,7 +41,7 @@ func boolToInt(b bool) uint32 {
 func (b *Bool) Toggle() (old bool) {
 	for {
 		old := b.Load()
-		if b.CAS(old, !old) {
+		if b.CompareAndSwap(old, !old) {
 			return old
 		}
 	}

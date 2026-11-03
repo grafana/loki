@@ -898,6 +898,8 @@ These errors occur when queries are administratively blocked.
 
 The query matches a configured block rule. Administrators create tenant policies and rate limiting rules to block specific queries or query patterns to protect the cluster from expensive or problematic queries.
 
+Refer to [Block unwanted queries](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/blocking-queries/) for details on how to configure and troubleshoot these policies.
+
 **Resolution:**
 
 * **Check with your Loki administrator** about blocked queries and to review policy settings.
@@ -914,10 +916,10 @@ limits_config:
   blocked_queries:
     - pattern: ".*"          # Regex pattern to match
       regex: true
-      types:                 # Query types to block
-        - metric
-        - filter
-      hash: 0               # Or block specific query hash
+      types: metric,filter   # Query types to block (comma-separated)
+      hash: 2943214005       # Or block by query hash instead of pattern
+      query_tags:            # Optionally also require X-Query-Tags to match
+        source: grafana
 ```
 
 **Properties:**
@@ -954,38 +956,32 @@ Query parallelism is set to 0, effectively disabling queries for the tenant.
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
-### Error: Multi variant queries disabled
+### Error: Parse error on a `variants()` query
 
-Multi variant queries are an experimental feature that enables support for running multiple query variants over the same underlying data. For example, running both a `rate()` and `count_over_time()` query over the same range selector.
+Multi variant queries were an experimental feature that ran multiple query variants over the same underlying data. For example, running both a `rate()` and a `count_over_time()` query over the same range selector. The feature was removed, and `variants()` is no longer part of LogQL.
 
 **Error message:**
 
-`multi variant queries are disabled for this instance`
+A parse error, for example `parse error at line 1, col 1: syntax error: unexpected IDENTIFIER`.
 
 **Cause:**
 
-The query uses the variants feature, but it's disabled for the tenant or instance.
+The query uses a `variants()` expression.
 
 **Resolution:**
 
-* **Remove variant expressions** from the query.
-* **Enable the feature** if needed:
-
-   ```yaml
-   limits_config:
-     enable_multi_variant_queries: true  #default is false
-   ```
+**Rewrite the query** as separate queries, one per variant. For example, replace `variants(rate({app="foo"}[5m]), count_over_time({app="foo"}[5m])) of ({app="foo"}[5m])` with a `rate({app="foo"}[5m])` query and a `count_over_time({app="foo"}[5m])` query.
 
 **Properties:**
 
-- Enforced by: Query Engine
-- Retryable: No (until feature is enabled)
+- Enforced by: Query Frontend
+- Retryable: No
 - HTTP status: 400 Bad Request
-- Configurable per tenant: Yes
+- Configurable per tenant: No
 
 ## Pipeline processing errors
 
-Pipeline errors occur during log line processing but don't cause query failures. Instead, affected log lines are annotated with error labels.
+Pipeline errors occur during log line processing. For log queries, these errors don't cause query failures: affected log lines are annotated with error labels instead. For metric queries, an errored sample fails the query unless a `__error__` label filter in the pipeline says to keep it; see [Pipeline Errors in Metric Queries](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_reference/#pipeline-errors-in-metric-queries).
 
 ### Understanding pipeline errors
 
@@ -1073,7 +1069,7 @@ Multi-tenancy is enabled but no tenant ID was provided in the request.
 
 - Enforced by: Loki API
 - Retryable: Yes (with tenant ID)
-- HTTP status: 400 Bad Request
+- HTTP status: 401 Unauthorized
 - Configurable per tenant: No
 
 ### Error: Authentication configuration conflict

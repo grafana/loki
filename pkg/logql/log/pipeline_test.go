@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func TestNoopPipeline(t *testing.T) {
@@ -348,7 +348,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 				NewJSONParser(false),
 				NewDropLabels([]NamedLabelMatcher{
 					{
-						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
+						labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, errLogfmt),
 						"",
 					},
 					{
@@ -373,13 +373,13 @@ func TestDropLabelsPipeline(t *testing.T) {
 				labels.FromStrings("level", "info",
 					"ts", "2020-10-18T18:04:22.147378997Z",
 					"caller", "metrics.go:81",
-					logqlmodel.ErrorLabel, errJSON,
-					logqlmodel.ErrorDetailsLabel, "Value looks like object, but can't find closing '}' symbol",
+					logqlerr.ErrorLabel, errJSON,
+					logqlerr.ErrorDetailsLabel, "Value looks like object, but can't find closing '}' symbol",
 				),
 				labels.FromStrings("namespace", "prod",
 					"pod_uuid", "foo",
 					"pod_deployment_ref", "foobar",
-					logqlmodel.ErrorDetailsLabel, "logfmt syntax error at pos 2 : unexpected '\"'",
+					logqlerr.ErrorDetailsLabel, "logfmt syntax error at pos 2 : unexpected '\"'",
 				),
 			},
 		},
@@ -559,6 +559,87 @@ func TestUnsafeGetBytes(t *testing.T) {
 	}
 }
 
+func TestStages_RequiredLabelNames(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stages Stages
+		want   []string
+	}{
+		{
+			name:   "returns the names every stage reads, in stage order, including those before a parser",
+			stages: Stages{labelEqualFilter("a"), NewLogfmtParser(false, false), labelEqualFilter("b")},
+			want:   []string{"a", "b"},
+		},
+		{
+			name:   "returns a name once, at its first position, when several stages read it",
+			stages: Stages{labelEqualFilter("a"), labelEqualFilter("b"), labelEqualFilter("a")},
+			want:   []string{"a", "b"},
+		},
+		{
+			name:   "returns the names a line_format template reads",
+			stages: Stages{mustStage(NewFormatter("{{.msg}}")), labelEqualFilter("a")},
+			want:   []string{"msg", "a"},
+		},
+		{
+			name:   "returns nothing when no stage reads a label",
+			stages: Stages{mustFilter(NewFilter("x", LineMatchEqual)).ToStage(), NewLogfmtParser(false, false)},
+			want:   []string{},
+		},
+		{
+			name:   "returns nothing for no stages",
+			stages: nil,
+			want:   []string{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.stages.RequiredLabelNames())
+		})
+	}
+}
+
+func TestStages_RequiredLabelNamesForParsers(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stages Stages
+		want   []string
+	}{
+		{
+			name:   "leaves out the names a label filter reads before the first parser",
+			stages: Stages{labelEqualFilter("a"), NewLogfmtParser(false, false), labelEqualFilter("b")},
+			want:   []string{"b"},
+		},
+		{
+			name:   "starts the list at a numeric label filter, because it can set __error__",
+			stages: Stages{labelEqualFilter("a"), NewNumericLabelFilter(LabelFilterGreaterThan, "n", 1), labelEqualFilter("b")},
+			want:   []string{"n", "b"},
+		},
+		{
+			name:   "starts the list at a filter on __error__",
+			stages: Stages{labelEqualFilter("a"), labelEqualFilter(logqlerr.ErrorLabel), labelEqualFilter("b")},
+			want:   []string{logqlerr.ErrorLabel, "b"},
+		},
+		{
+			name:   "keeps the names a line_format reads after the first parser",
+			stages: Stages{labelEqualFilter("a"), NewLogfmtParser(false, false), mustStage(NewFormatter("{{.msg}}")), labelEqualFilter("b")},
+			want:   []string{"msg", "b"},
+		},
+		{
+			name:   "returns each name once, at its first position, after the first parser",
+			stages: Stages{labelEqualFilter("a"), NewLogfmtParser(false, false), labelEqualFilter("b"), labelEqualFilter("a"), labelEqualFilter("b")},
+			want:   []string{"b", "a"},
+		},
+		{
+			name:   "returns nothing when no stage can modify labels or reads the error label",
+			stages: Stages{labelEqualFilter("a"), labelEqualFilter("b")},
+			want:   []string{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.stages.RequiredLabelNamesForParsers())
+		})
+	}
+}
+
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 
@@ -571,7 +652,7 @@ func Benchmark_Pipeline(b *testing.B) {
 		),
 		mustNewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("caller_foo", "caller"), NewTemplateLabelFmt("new", "{{.query_type}}:{{.range_type}}")}),
 		NewJSONParser(false),
-		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON)),
+		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, errJSON)),
 		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
 	}
 	p := NewPipeline(stages)
@@ -621,10 +702,10 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.Process(0, line, labels.EmptyLabels())
-			if ok && len(samples) > 0 {
-				resSample = samples[0].Value
-				resLbs = samples[0].Labels
+			sample, ok := ex.Process(0, line, labels.EmptyLabels())
+			if ok {
+				resSample = sample.Value
+				resLbs = sample.Labels
 				resMatches = true
 			} else {
 				resMatches = false
@@ -634,10 +715,10 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
-			if ok && len(samples) > 0 {
-				resSample = samples[0].Value
-				resLbs = samples[0].Labels
+			sample, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
+			if ok {
+				resSample = sample.Value
+				resLbs = sample.Labels
 				resMatches = true
 			} else {
 				resMatches = false
@@ -652,10 +733,10 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.Process(0, line, labels.EmptyLabels())
-			if ok && len(samples) > 0 {
-				resSample = samples[0].Value
-				resLbs = samples[0].Labels
+			sample, ok := ex.Process(0, line, labels.EmptyLabels())
+			if ok {
+				resSample = sample.Value
+				resLbs = sample.Labels
 				resMatches = true
 			} else {
 				resMatches = false
@@ -665,16 +746,20 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
-			if ok && len(samples) > 0 {
-				resSample = samples[0].Value
-				resLbs = samples[0].Labels
+			sample, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
+			if ok {
+				resSample = sample.Value
+				resLbs = sample.Labels
 				resMatches = true
 			} else {
 				resMatches = false
 			}
 		}
 	})
+}
+
+func labelEqualFilter(name string) LabelFilterer {
+	return NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, name, "x"))
 }
 
 func mustFilter(f Filterer, err error) Filterer {
@@ -733,8 +818,8 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 			b.Fatalf("resulting line not ok: %s\n", line)
 		}
 
-		if resLbs.Labels().Get(logqlmodel.ErrorLabel) != errJSON {
-			b.Fatalf("no %s label found: %+v\n", logqlmodel.ErrorLabel, resLbs.Labels())
+		if resLbs.Labels().Get(logqlerr.ErrorLabel) != errJSON {
+			b.Fatalf("no %s label found: %+v\n", logqlerr.ErrorLabel, resLbs.Labels())
 		}
 	}
 }

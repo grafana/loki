@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // Builder accumulates [Stat] rows and encodes them into a section via a
@@ -22,6 +23,10 @@ type Builder struct {
 	tenant  string
 	encode  SectionEncoder
 
+	// layout is the stream layout of the data objects that the rows describe.
+	// Every section the builder writes records it.
+	layout streams.Layout
+
 	rows          []Stat
 	estimatedSize int
 }
@@ -29,12 +34,20 @@ type Builder struct {
 // NewBuilder creates a new Builder.
 // encode is the [SectionEncoder] to use for encoding rows.
 // metrics may be nil to disable instrumentation.
-func NewBuilder(metrics *Metrics, encode SectionEncoder) *Builder {
+//
+// layout is the stream layout of the data objects that the rows describe.
+// Every section that the builder writes records it, and the rows must use
+// its schema labels as their SortSchema.
+func NewBuilder(metrics *Metrics, encode SectionEncoder, layout streams.Layout) *Builder {
 	return &Builder{
 		metrics: metrics,
 		encode:  encode,
+		layout:  layout,
 	}
 }
+
+// Layout returns the stream layout that the builder records.
+func (b *Builder) Layout() streams.Layout { return b.layout }
 
 // SetTenant sets the tenant for this builder.
 func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
@@ -58,11 +71,11 @@ func (b *Builder) EstimatedSize() int {
 }
 
 // statSize is the per-row size heuristic:
-//   - 5 int64 columns × 8 bytes = 40 bytes (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-//   - len(ObjectPath) + len(SortSchema) bytes for fixed string columns
+//   - 6 int64 columns × 8 bytes = 48 bytes
+//   - fixed string columns
 //   - sum of len(k)+len(v) for all entries in Labels
 func statSize(r Stat) int {
-	total := 5 * 8
+	total := 6 * 8
 	total += len(r.ObjectPath) + len(r.SortSchema)
 	for k, v := range r.Labels {
 		total += len(k) + len(v)
@@ -82,6 +95,9 @@ func (b *Builder) Reset() {
 //
 // Both rows must share the same SortSchema.
 func Compare(a, b Stat) int {
+	if a.ShardBucket != b.ShardBucket {
+		return cmp.Compare(a.ShardBucket, b.ShardBucket)
+	}
 	for fqn := range strings.SplitSeq(a.SortSchema, ",") {
 		typ, key, ok := strings.Cut(fqn, ":")
 		if !ok || typ != "label" || key == "" {
@@ -123,7 +139,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	var enc columnar.Encoder
 	defer enc.Reset()
 
-	if err := b.encode(b.rows, &enc); err != nil {
+	if err := b.encode(b.rows, b.layout, &enc); err != nil {
 		return 0, fmt.Errorf("encoding stats: %w", err)
 	}
 

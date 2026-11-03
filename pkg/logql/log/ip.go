@@ -63,6 +63,15 @@ func (f *IPLineFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, 
 	return line, f.filterTy(line, f.ty)
 }
 
+// Hints implements Stage.
+func (f *IPLineFilter) Hints() StageHints {
+	return StageHints{
+		// It matches the IP in the line, never touching labels.
+		CanModifyLabels: false,
+		CanModifyLine:   false,
+	}
+}
+
 // `RequiredLabelNames` implements `Stage` interface
 func (f *IPLineFilter) RequiredLabelNames() []string {
 	return []string{} // empty for line filter
@@ -107,6 +116,18 @@ func (f *IPLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	return line, f.filterTy(line, f.Ty, lbs)
 }
 
+// Hints implements Stage.
+func (f *IPLabelFilter) Hints() StageHints {
+	// An invalid pattern is rejected when the stage is built, not here.
+	return StageHints{
+		// It only reads a label value to match against the IP pattern, never writing a label.
+		CanModifyLabels: false,
+		// The parser rejects an ip filter on __error__ or __error_details__, so it never reads the error.
+		ReadsErrorLabel: false,
+		CanModifyLine:   false,
+	}
+}
+
 func (f *IPLabelFilter) isLabelFilterer() {}
 
 // `RequiredLabelNames` implements `Stage` interface
@@ -121,10 +142,6 @@ func (f *IPLabelFilter) PatternError() error {
 }
 
 func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilder) bool {
-	if lbs.HasErr() {
-		// why `true`?. if there's an error only the string matchers can filter out.
-		return true
-	}
 	input, ok := lbs.Get(f.Label)
 	if !ok {
 		// we have not found the label.

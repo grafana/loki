@@ -12,6 +12,7 @@ type ratestoreMetrics struct {
 	rateRefreshFailures *prometheus.CounterVec
 	streamCount         prometheus.Gauge
 	expiredCount        prometheus.Counter
+	activeCount         *prometheus.GaugeVec
 	maxStreamShardCount prometheus.Gauge
 	streamShardCount    prometheus.Histogram
 	maxStreamRate       prometheus.Gauge
@@ -37,6 +38,11 @@ func newRateStoreMetrics(reg prometheus.Registerer) *ratestoreMetrics {
 			Name:      "rate_store_expired_streams_total",
 			Help:      "The number of streams that have been expired by the ratestore",
 		}),
+		activeCount: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "rate_store_active_streams",
+			Help:      "The number of non-expired streams per tenant known to the rate store. Sharded streams are combined",
+		}, []string{"tenant"}),
 		maxStreamShardCount: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "rate_store_max_stream_shards",

@@ -344,9 +344,11 @@ func serialize(p *Profile) []byte {
 // Write writes the profile as a gzip-compressed marshaled protobuf.
 func (p *Profile) Write(w io.Writer) error {
 	zw := gzip.NewWriter(w)
-	defer zw.Close()
-	_, err := zw.Write(serialize(p))
-	return err
+	if _, err := zw.Write(serialize(p)); err != nil {
+		_ = zw.Close()
+		return err
+	}
+	return zw.Close()
 }
 
 // WriteUncompressed writes the profile as a marshaled protobuf.

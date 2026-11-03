@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 func TestTableManager_RunCompaction(t *testing.T) {
@@ -215,6 +216,73 @@ func TestTablesManager_TableLocking(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+type listTablesErrClient struct {
+	storage.Client
+	err error
+}
+
+func (c listTablesErrClient) ListTables(context.Context) ([]string, error) {
+	return nil, c.err
+}
+
+func TestTablesManager_RunCompactionOperationTotal(t *testing.T) {
+	listErr := errors.New("RequestCanceled: request context canceled")
+
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	expiredCtx, cancelExpired := context.WithDeadline(context.Background(), time.Now())
+	defer cancelExpired()
+
+	for _, tc := range []struct {
+		name             string
+		ctx              context.Context
+		applyRetention   bool
+		expectedFailures float64
+	}{
+		{name: "compaction fails", ctx: context.Background(), expectedFailures: 1},
+		{name: "compaction canceled", ctx: canceledCtx},
+		{name: "compaction deadline exceeded", ctx: expiredCtx, expectedFailures: 1},
+		{name: "retention fails", ctx: context.Background(), applyRetention: true, expectedFailures: 1},
+		{name: "retention canceled", ctx: canceledCtx, applyRetention: true},
+		{name: "retention deadline exceeded", ctx: expiredCtx, applyRetention: true, expectedFailures: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			periodConfigs := []config.PeriodConfig{
+				{
+					From:       config.DayTime{Time: model.Time(0)},
+					IndexType:  "dummy",
+					ObjectType: "fs_01",
+					IndexTables: config.IndexPeriodicTableConfig{
+						PathPrefix: "index/",
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: indexTablePrefix,
+							Period: config.ObjectStorageIndexRequiredPeriod,
+						}},
+				},
+			}
+			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
+			require.NoError(t, err)
+
+			compactor := setupTestCompactor(t, map[config.DayTime]client.ObjectClient{periodConfigs[0].From: objectClient}, periodConfigs, tempDir)
+			for from, sc := range compactor.tablesManager.storeContainers {
+				sc.indexStorageClient = listTablesErrClient{Client: sc.indexStorageClient, err: listErr}
+				compactor.tablesManager.storeContainers[from] = sc
+			}
+
+			err = compactor.tablesManager.runCompaction(tc.ctx, tc.applyRetention)
+			require.ErrorIs(t, err, listErr)
+
+			operationTotal := compactor.metrics.compactTablesOperationTotal
+			if tc.applyRetention {
+				operationTotal = compactor.metrics.applyRetentionOperationTotal
+			}
+			require.Equal(t, tc.expectedFailures, testutil.ToFloat64(operationTotal.WithLabelValues(statusFailure)))
+			require.Equal(t, float64(0), testutil.ToFloat64(operationTotal.WithLabelValues(statusSuccess)))
 		})
 	}
 }

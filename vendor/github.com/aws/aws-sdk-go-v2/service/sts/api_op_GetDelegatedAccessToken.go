@@ -6,7 +6,6 @@ import (
 	"context"
 	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Exchanges a trade-in token for temporary Amazon Web Services credentials with
@@ -53,6 +52,8 @@ type GetDelegatedAccessTokenOutput struct {
 	// The policy size is calculated as the sum of all the session policies and
 	// permission boundaries attached to the session. If the packed size exceeds 100%,
 	// the request fails.
+	//
+	// Deprecated: Deprecated. This field is not populated for GetDelegatedAccessToken.
 	PackedPolicySize *int32
 
 	// Metadata pertaining to the operation's result.
@@ -71,12 +72,6 @@ func (c *Client) addOperationGetDelegatedAccessTokenMiddlewares(stack *middlewar
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -86,19 +81,10 @@ func (c *Client) addOperationGetDelegatedAccessTokenMiddlewares(stack *middlewar
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetDelegatedAccessTokenValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetDelegatedAccessToken"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

@@ -168,6 +168,9 @@ func shouldRetry(err error, retryTimeout bool) bool {
 		return true
 	}
 
+	// Other server errors are not retried. This includes the logical
+	// -SEARCH_TIMEOUT (search-on-timeout fail): retrying would just repeat the
+	// same expensive query.
 	return false
 }
 

@@ -31,7 +31,7 @@ func Unmarshal(dst Cloneable, sources ...Source) error {
 	if len(sources) == 0 {
 		panic("No sources supplied to cfg.Unmarshal(). This is most likely a programming issue and should never happen. Check the code!")
 	}
-	if reflect.ValueOf(dst).Kind() != reflect.Ptr {
+	if reflect.ValueOf(dst).Kind() != reflect.Pointer {
 		return ErrNotPointer
 	}
 

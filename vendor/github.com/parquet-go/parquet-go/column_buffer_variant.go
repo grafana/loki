@@ -7,8 +7,6 @@ import (
 	"github.com/parquet-go/parquet-go/variant"
 )
 
-// writeValueFuncOfVariant handles writing Go values to variant column buffers.
-// Dispatches to unshredded or shredded variant handling.
 func writeValueFuncOfVariant(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	if isUnshreddedVariant(node) {
 		return writeValueFuncOfUnshreddedVariant(columnIndex, node)
@@ -16,7 +14,6 @@ func writeValueFuncOfVariant(columnIndex uint16, node Node) (uint16, writeValueF
 	return writeValueFuncOfShreddedVariant(columnIndex, node)
 }
 
-// writeValueFuncOfUnshreddedVariant handles the simple 2-column variant.
 func writeValueFuncOfUnshreddedVariant(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	metadataColumnIndex := columnIndex
 	valueColumnIndex := columnIndex + 1
@@ -29,127 +26,102 @@ func writeValueFuncOfUnshreddedVariant(columnIndex uint16, node Node) (uint16, w
 	}
 }
 
-// writeValueFuncOfShreddedVariant handles the 3-field shredded variant.
+// writeValueFuncOfShreddedVariant writes Go values into a shredded variant
+// group per the Variant Shredding specification. It shares the shredding
+// logic with the row-based write path (variant_shredded_write.go) by
+// shredding into a scratch column buffer and flushing the resulting values
+// with their levels to the column buffers.
 func writeValueFuncOfShreddedVariant(columnIndex uint16, node Node) (uint16, writeValueFunc) {
-	// Fields are sorted alphabetically: metadata, typed_value, value
-	var metadataColumnIndex, valueColumnIndex, typedValueStartColumn uint16
-	var typedValueLeafCount uint16
-	var typedValueNode Node
-
-	col := columnIndex
-	for _, f := range node.Fields() {
-		n := numLeafColumnsOf(f)
-		switch f.Name() {
-		case "metadata":
-			metadataColumnIndex = col
-			col += n
-		case "typed_value":
-			typedValueStartColumn = col
-			typedValueNode = f
-			typedValueLeafCount = n
-			col += n
-		case "value":
-			valueColumnIndex = col
-			col += n
+	// Schemas that cannot be written to (e.g. missing the metadata column)
+	// may still be read from; fail when a row is written, not at build time.
+	group, err := buildShreddedVariantGroup(node, 0, 0, 0)
+	if err == nil && group.metadataCol < 0 {
+		err = fmt.Errorf("variant: shredded variant group has no metadata field")
+	}
+	if err != nil {
+		numCols := numLeafColumnsOf(node)
+		return columnIndex + numCols, func([]ColumnBuffer, columnLevels, reflect.Value) {
+			panic(fmt.Sprintf("invalid shredded variant schema: %v", err))
 		}
 	}
-	nextColumnIndex := col
-
-	typedInner := Required(typedValueNode)
-	matcher := buildShreddedMatcher(typedInner)
+	nextColumnIndex := columnIndex + uint16(group.numCols)
 
 	return nextColumnIndex, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
-		metadata, val := variantMarshalOrNull(value)
-		columns[metadataColumnIndex].writeByteArray(levels, metadata)
-
-		goVal := extractGoValue(value)
-		if goVal != nil && matcher.canShred(goVal) {
-			// Write null to value column
-			columns[valueColumnIndex].writeNull(levels)
-			// Write typed value (increment def level for optional wrapper)
-			typedLevels := levels
-			typedLevels.definitionLevel++
-			writeShredded(columns, typedLevels, typedValueStartColumn, &matcher, goVal)
-		} else {
-			// Write variant bytes to value column
-			valueLevels := levels
-			valueLevels.definitionLevel++
-			columns[valueColumnIndex].writeByteArray(valueLevels, val)
-			// Write null to all typed_value columns
-			for col := typedValueStartColumn; col < typedValueStartColumn+typedValueLeafCount; col++ {
-				columns[col].writeNull(levels)
+		// An invalid value means an enclosing optional/repeated wrapper is
+		// null for this row: the whole variant group is null.
+		if !value.IsValid() {
+			for col := range group.numCols {
+				columns[columnIndex+uint16(col)].writeNull(levels)
 			}
+			return
 		}
-	}
-}
 
-// writeShredded writes a shredded value to the column buffers.
-func writeShredded(columns []ColumnBuffer, levels columnLevels, startColumn uint16, m *shreddedMatcher, v any) {
-	if m.isPrimitive() {
-		pv := goValueToParquetValue(v, m.kind())
-		col := columns[startColumn]
-		switch m.kind() {
-		case Boolean:
-			col.writeBoolean(levels, pv.Boolean())
-		case Int32:
-			col.writeInt32(levels, pv.Int32())
-		case Int64:
-			col.writeInt64(levels, pv.Int64())
-		case Float:
-			col.writeFloat(levels, pv.Float())
-		case Double:
-			col.writeDouble(levels, pv.Double())
-		case ByteArray:
-			col.writeByteArray(levels, pv.ByteArray())
-		default:
-			col.writeByteArray(levels, pv.ByteArray())
-		}
-		return
-	}
-	if m.isGroup() {
-		writeShreddedObject(columns, levels, startColumn, m, v)
-	}
-}
-
-func writeShreddedObject(columns []ColumnBuffer, levels columnLevels, startColumn uint16, m *shreddedMatcher, v any) {
-	obj, ok := v.(map[string]any)
-	if !ok {
-		return
-	}
-
-	col := startColumn
-	for _, f := range m.fields {
-		// Within each field's sub-group, fields are sorted alphabetically:
-		// typed_value comes before value.
-		typedValueCol := col
-		typedCount := f.matcher.leafCount
-		valueCol := col + typedCount
-		nextFieldCol := valueCol + 1
-
-		fieldVal, exists := obj[f.name]
-		if exists && fieldVal != nil && f.matcher.canShred(fieldVal) {
-			columns[valueCol].writeNull(levels)
-			typedLevels := levels
-			typedLevels.definitionLevel++
-			writeShredded(columns, typedLevels, typedValueCol, &f.matcher, fieldVal)
-		} else if exists && fieldVal != nil {
-			valueLevels := levels
-			valueLevels.definitionLevel++
-			metadata, val, err := variant.Marshal(fieldVal)
+		var v variant.Value
+		if metaBytes, valBytes, ok := extractRawVariantStruct(value); ok {
+			m, err := variant.DecodeMetadata(metaBytes)
 			if err != nil {
-				panic(fmt.Sprintf("variant marshal field %q: %v", f.name, err))
+				panic(fmt.Sprintf("variant metadata: %v", err))
 			}
-			combined := encodeFieldVariant(metadata, val)
-			columns[valueCol].writeByteArray(valueLevels, combined)
-			for c := typedValueCol; c < typedValueCol+typedCount; c++ {
-				columns[c].writeNull(levels)
+			if v, err = variant.Decode(m, valBytes); err != nil {
+				panic(fmt.Sprintf("variant decode: %v", err))
 			}
 		} else {
-			for c := typedValueCol; c < nextFieldCol; c++ {
-				columns[c].writeNull(levels)
+			var err error
+			if v, err = variant.ValueOf(extractGoValue(value)); err != nil {
+				panic(fmt.Sprintf("variant marshal: %v", err))
 			}
 		}
 
-		col = nextFieldCol
+		var b variant.MetadataBuilder
+		addVariantFieldNames(&b, v)
+
+		// One backing slab gives every scratch column capacity for the
+		// common one-value-per-column case without a per-column allocation;
+		// only columns under a repeated list can grow past it.
+		scratch := make([][]Value, group.numCols)
+		slab := make([]Value, len(scratch))
+		for i := range scratch {
+			scratch[i] = slab[i : i : i+1]
+		}
+		group.write(scratch, 0, &b, v, true, shredLevels{
+			baseDef: int(levels.definitionLevel),
+			baseRep: int(levels.repetitionDepth),
+			rep:     levels.repetitionLevel,
+		})
+
+		_, metadata := b.Build()
+		columns[columnIndex+uint16(group.metadataCol)].writeByteArray(levels, metadata)
+
+		for col, values := range scratch {
+			if col == group.metadataCol {
+				continue
+			}
+			buffer := columns[columnIndex+uint16(col)]
+			for _, val := range values {
+				valueLevels := columnLevels{
+					repetitionDepth: levels.repetitionDepth,
+					repetitionLevel: val.repetitionLevel,
+					definitionLevel: val.definitionLevel,
+				}
+				if val.IsNull() {
+					buffer.writeNull(valueLevels)
+					continue
+				}
+				switch val.Kind() {
+				case Boolean:
+					buffer.writeBoolean(valueLevels, val.Boolean())
+				case Int32:
+					buffer.writeInt32(valueLevels, val.Int32())
+				case Int64:
+					buffer.writeInt64(valueLevels, val.Int64())
+				case Float:
+					buffer.writeFloat(valueLevels, val.Float())
+				case Double:
+					buffer.writeDouble(valueLevels, val.Double())
+				default:
+					buffer.writeByteArray(valueLevels, val.ByteArray())
+				}
+			}
+		}
 	}
 }

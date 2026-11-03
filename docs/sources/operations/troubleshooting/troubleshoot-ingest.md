@@ -79,6 +79,42 @@ The tenant has exceeded their configured ingestion rate limit. This is a global 
 - HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
 
+### Error: `per_stream_rate_limit`
+
+**Error message:**
+
+`Per stream rate limit exceeded (limit: <limit>/sec) while attempting to ingest for stream '<stream_labels>' totaling <bytes>, consider splitting a stream via additional labels or contact your Loki administrator to see if the limit can be increased`
+
+**Cause:**
+
+A single stream has exceeded its own rate limit. Each stream has a rate limit applied to it to prevent individual streams from overwhelming the set of ingesters it is distributed to. This limit is enforced by the ingester, not the distributor.
+
+**Default configuration:**
+
+- `per_stream_rate_limit`: 3 MB/sec
+- `per_stream_rate_limit_burst`: 15 MB
+
+**Resolution:**
+
+* **Split the stream** into several smaller streams by adding more distinguishing labels, so the write volume is spread across more streams.
+
+* **Reduce the rate of writes to the stream**, for example with an Alloy `stage.limit` block.
+
+* **Increase the per-stream limits** (we typically recommend no higher than 5MB for `per_stream_rate_limit` and 20MB for `per_stream_rate_limit_burst`):
+
+   ```yaml
+   limits_config:
+     per_stream_rate_limit: 5MB
+     per_stream_rate_limit_burst: 20MB
+   ```
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: Yes
+- HTTP status: 429 Too Many Requests
+- Configurable per tenant: Yes
+
 ### Error: `stream_limit`
 
 **Error message:**
@@ -310,6 +346,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 
 **Default configuration:**
 
+- Loki always accepts out-of-order writes; the per-tenant `unordered_writes` setting and the `-ingester.unordered-writes` flag that used to control this have been removed.
 - `max_chunk_age`: 2 hours
 - Acceptable timestamp window: 1 hour behind the newest entry (half of `max_chunk_age`)
 
@@ -334,7 +371,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 - Enforced by: Ingester
 - Retryable: No
 - HTTP status: 400 Bad Request
-- Configurable per tenant: No (for `max_chunk_age`)
+- Configurable per tenant: No, `max_chunk_age` is global only.
 
 ### Error: `greater_than_max_sample_age`
 
@@ -530,11 +567,11 @@ This validation is always enabled and cannot be disabled. Duplicate label names 
 
 **Cause:**
 
-The HTTP compressed push request body exceeds the configured limit in your gateway/reverse proxy or service that fronts Loki after decompression.
+This error message can come from two different places: a gateway/reverse proxy in front of Loki enforcing its own body-size limit, or Loki's distributor rejecting a push request that exceeds its own configured limit (`limits_config.max_push_size`) before it can parse the streams out of the body.
 
 **Default configuration:**
 
-- Loki server max request body size: Configured at the HTTP server level
+- Loki distributor push size: `limits_config.max_push_size` (CLI flag `-distributor.max-push-size`), default 2 GB. Applies to both the compressed and decompressed size of the request, and is configurable per tenant.
 - Nginx gateway (Helm): `gateway.nginxConfig.clientMaxBodySize` (default: 4 MB)
 - Alloy default batch size: 1 MB
 
@@ -542,14 +579,16 @@ The HTTP compressed push request body exceeds the configured limit in your gatew
 
 * **Split large batches** into smaller, more frequent requests.
 
-* **Increase batch limit** Increase the allowed body size on your gateway/reverse proxy.  For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
+* **Increase the gateway/reverse proxy limit**. For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
+
+* **Increase `limits_config.max_push_size`** if the error is coming from Loki's distributor rather than a gateway, and your cluster has the resources to handle larger requests.
 
 **Properties:**
 
-- Enforced by: Distributor
+- Enforced by: Gateway/reverse proxy, or the distributor via `max_push_size`
 - Retryable: No
 - HTTP status: 413 Request Entity Too Large
-- Configurable per tenant: No
+- Configurable per tenant: Yes, for `max_push_size`. No, for gateway/reverse proxy limits.
 
 ## Storage errors
 
@@ -648,13 +687,14 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
 
 **Cause:**
 
-The disk where the WAL is stored has run out of space. When this occurs, Loki continues accepting writes but doesn't log them to the WAL, losing durability guarantees.
+By default, the ingester monitors disk usage on the volume that stores the WAL and rejects new writes once usage reaches 90% of capacity (`-ingester.wal-disk-full-threshold`), so that it never accepts data it cannot persist. This error and the associated log message describe a different, rarer case: the disk still filled up completely, either because this throttling is disabled (threshold set to `0`), or because a write reached the disk in the short window before the check could catch it. In that case, the ingester continues accepting writes but doesn't log them to the WAL, losing durability guarantees for those entries.
 
 **Default configuration:**
 
 - WAL enabled by default
 - WAL location: configured by `-ingester.wal-dir`
 - Checkpoint interval: `ingester.checkpoint-duration` (default: 5 minutes)
+- Disk full throttling threshold: `ingester.wal-disk-full-threshold` (default: 0.9, meaning 90%)
 
 **Resolution:**
 
@@ -665,6 +705,8 @@ The disk where the WAL is stored has run out of space. When this occurs, Loki co
    ```promql
    loki_ingester_wal_disk_full_failures_total > 0
    ```
+
+   This counter increases both when disk usage crosses the throttling threshold and when a WAL write fails because the disk is completely full. It does not count each individual throttled write, so also watch the gauge `loki_ingester_wal_disk_usage_percent` to see how close the disk is to the threshold.
 
 * **Reduce log volume** to decrease WAL growth.
 
@@ -685,7 +727,7 @@ The disk where the WAL is stored has run out of space. When this occurs, Loki co
 - Configurable per tenant: No
 
 {{< admonition type="note" >}}
-The WAL sacrifices durability for availability - it won't reject writes when the disk is full. After disk space is restored, durability guarantees resume. Use metric `loki_ingester_wal_disk_usage_percent` to monitor disk usage.
+This section describes the disk becoming completely full. In normal operation, the ingester's disk usage throttle (`-ingester.wal-disk-full-threshold`, default 90%) rejects writes to that ingester before the disk actually fills up, so that durability guarantees are preserved. Because Loki replicates each write to multiple ingesters, a client write can still succeed even while one ingester is throttled. Use metric `loki_ingester_wal_disk_usage_percent` to monitor disk usage.
 {{< /admonition >}}
 
 ### Error: WAL corruption
@@ -853,6 +895,48 @@ Common triggers include:
 - Enforced by: gRPC logging middleware (dskit)
 - Retryable: N/A (the original client is no longer waiting for a response)
 - HTTP status: 499 (non-standard, client closed request)
+- Configurable per tenant: No
+
+### Error: Kafka producer backpressure
+
+These errors occur only when the distributor is configured to write to Kafka (`-distributor.kafka-writes-enabled=true`),
+and indicate that the Kafka producer could not keep up with the incoming write volume.
+
+**Error messages:**
+
+- `records have timed out before they were able to be produced`
+- `the maximum amount of records are buffered, cannot buffer more`
+
+**Cause:**
+
+The distributor's Kafka producer wasn't able to deliver records to the Kafka brokers within `kafka_config.write_timeout`,
+or the amount of unacknowledged, buffered data reached `kafka_config.producer_max_buffered_bytes`. Both are transient
+backpressure conditions: the Kafka brokers or the network path to them are slower than the rate at which the distributor
+is trying to produce records, for example during a broker rollout, a partition rebalance, or a broker-side incident.
+
+**Default configuration:**
+
+- `kafka_config.write_timeout` (`-kafka.write-timeout`): 10s
+- `kafka_config.producer_max_buffered_bytes` (`-kafka.producer-max-buffered-bytes`): 1 GiB (0 disables the limit)
+
+**Resolution:**
+
+* **Implement retry logic** with exponential backoff in your client.
+* **Check Kafka broker health and load** (under-replicated partitions, broker CPU/disk/network saturation, ongoing rollouts).
+* **Increase `kafka_config.write_timeout`** if brokers are healthy but consistently slow to acknowledge writes:
+
+   ```yaml
+   kafka_config:
+     write_timeout: 20s
+   ```
+
+   Ensure that this remains less than the distributor's `-distributor.write-timeout` (default: 30s) to avoid distributor-level timeouts.
+
+**Properties:**
+
+- Enforced by: Distributor (Kafka producer)
+- Retryable: Yes
+- HTTP status: 500 Internal Server Error
 - Configurable per tenant: No
 
 ### Error: Service unavailable

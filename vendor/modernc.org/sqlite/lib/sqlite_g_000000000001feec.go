@@ -11,15 +11,17 @@ type Ttimeval = struct {
 
 /* Shared memory instance */
 type TunixInodeInfo = struct {
-	FfileId       TunixFileId
-	FpLockMutex   uintptr
-	FnShared      int32
-	FnLock        int32
-	FeFileLock    uint8
-	FbProcessLock uint8
-	FpUnused      uintptr
-	FnRef         int32
-	FpShmNode     uintptr
-	FpNext        uintptr
-	FpPrev        uintptr
+	FfileId          TunixFileId
+	FpLockMutex      uintptr
+	FnShared         int32
+	FnLock           int32
+	FeFileLock       uint8
+	FbProcessLock    uint8
+	FbLockIsReadOnly uint8
+	FhLock           int32
+	FpUnused         uintptr
+	FnRef            int32
+	FpShmNode        uintptr
+	FpNext           uintptr
+	FpPrev           uintptr
 }

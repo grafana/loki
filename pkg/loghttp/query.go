@@ -16,9 +16,9 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -123,6 +123,9 @@ func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
 				return err
 			}
 			s.Entries = entries
+		default:
+			// return error when parsing unknown field
+			return errors.New("found unknown field: " + string(key))
 		}
 		return nil
 	})

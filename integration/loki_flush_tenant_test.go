@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 // TestFlushTenant exercises the POST /flush/tenant ingester endpoint end to end:
@@ -38,7 +40,7 @@ import (
 // PUT /sync-indexes, which refreshes that cache and downloads the new index.
 func TestFlushTenant(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())

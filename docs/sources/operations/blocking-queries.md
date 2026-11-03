@@ -36,12 +36,13 @@ overrides:
 
       # block queries originating from specific sources via X-Query-Tags
       # Keys and values are matched case-insensitively.
-      - pattern: '.*'             # optional; if pattern and regex are omittied they will default to '.*' and true
+      - pattern: '.*'             # optional; if pattern and regex are omitted they will default to '.*' and true
         regex: true
         query_tags:
           source: grafana
           feature: beta
 ```
+
 {{< admonition type="note" >}}
 Changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime-configuration-file).
 {{< /admonition >}}
@@ -60,13 +61,30 @@ is logged with every query request in the `query-frontend` and `querier` logs, f
 level=info ts=2023-03-30T09:08:15.2614555Z caller=metrics.go:152 component=frontend org_id=29 latency=fast 
 query="{stream=\"stdout\",pod=\"loki-canary-9w49x\"}" query_hash=2943214005 query_type=limited range_type=range ...
 ```
+
 {{< admonition type="note" >}}
-The order of patterns is preserved, so the first matching pattern will be used.
+The order of patterns is preserved, and Loki stops at the first rule whose `pattern` or `hash` matches the query text.
+If that rule's `types` or `query_tags` constraints then don't match, the query is **not** blocked, and Loki does not continue checking any later rules, even if a later rule would have matched and blocked the query.
+
+For example, with this configuration:
+
+```yaml
+overrides:
+  "tenant-id":
+    blocked_queries:
+      - pattern: '{env="prod"}'
+        types: metric
+      - pattern: '{env="prod"}'
+```
+
+A query for `{env="prod"}` (a `limited` query) matches the first rule's pattern, but not its `types: metric` constraint, so it is not blocked. Loki does not fall through to the second rule, which has no `types` restriction and would otherwise have blocked it. To block a query with more than one rule that share a pattern, combine the constraints into a single rule instead of relying on a later rule as a fallback.
 {{< /admonition >}}
 
 ## Observing blocked queries
 
 Blocked queries are logged, as well as counted in the `loki_blocked_queries` metric on a per-tenant basis.
+
+A blocked query fails with an HTTP `400 Bad Request` response and the error message `query blocked by policy`. Retrying the same query will fail as long as the matching block rule remains in place.
 
 When a policy matches by pattern/hash/regex, Loki logs whether the query type and request tags matched that policy:
 
@@ -82,7 +100,16 @@ level=debug msg="query blocker tags mismatch: missing or mismatched key" key=fea
 
 ## Scope
 
-Queries received via the API and executed as [alerting/recording rules](../../alert/) will be blocked.
+Query blocking is enforced by the LogQL query engine when it evaluates a query. This covers:
+
+- Range and instant queries sent to the `/loki/api/v1/query` and `/loki/api/v1/query_range` API endpoints.
+- [Alerting and recording rules](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/), in both local and remote rule evaluation modes. Remote evaluation sends the rule's query back through the query frontend and querier, so it is blocked the same way as an API query.
+- The `/loki/api/v1/detected_fields` endpoint. The query frontend converts a `detected_fields` request into an internal `query_range` request and sends it through the same code path as a regular filter or limited query, so the underlying query is subject to the same block rules.
+
+Query blocking does **not** apply to:
+
+- Log tailing (the `/loki/api/v1/tail` endpoint). Tailing reads from the ingesters and the store without using the query engine, so no block policy is applied.
+- Metadata endpoints, such as `labels`, `series`, `index/stats`, `index/volume`, and `detected_labels`. These endpoints don't run a LogQL expression through the query engine, so there is nothing for the query blocker to match against.
 
 ## Tag-based blocking
 
@@ -94,7 +121,7 @@ You can scope a blocked query rule to requests that include specific key=value p
 - Matching rules:
   - Keys are matched case-insensitively (the server lowercases keys).
   - Values are matched case-insensitively.
-  - All specified `tags:` pairs in the rule must be present in the request to apply the block.
+  - All specified `query_tags:` pairs in the rule must be present in the request to apply the block.
 
 Examples:
 
@@ -113,3 +140,23 @@ overrides:
         query_tags:
           source: grafana
 ```
+
+### Ruler query tags
+
+When the ruler evaluates alerting and recording rules in remote evaluation mode (`-ruler.evaluation.mode=remote`), it automatically sets `X-Query-Tags` on the query it sends to `source=ruler,rule_name=<rule name>,rule_type=<rule type>`.
+You can match on these tags to block or scope a policy to rule evaluations specifically, for example:
+
+```yaml
+overrides:
+  "tenant-id":
+    blocked_queries:
+      # block all queries that come from rule evaluation
+      - query_tags:
+          source: ruler
+```
+
+{{< admonition type="note" >}}
+The ruler doesn't set `X-Query-Tags` in local evaluation mode, so you can't match on these tags there.
+
+Be careful when you match on `rule_name`, because a rule name that contains a comma or an equals sign doesn't survive tag parsing. A comma ends the value early, so `rule_name=my,rule` is read as `rule_name=my`. An equals sign makes the pair invalid, so `rule_name=a=b` is dropped completely. Refer to [Tag-based blocking](#tag-based-blocking) for the full parsing rules.
+{{< /admonition >}}

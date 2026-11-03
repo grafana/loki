@@ -25,21 +25,21 @@ func TimestampAdjusted(unit TimeUnit, isAdjustedToUTC bool) Node {
 	// Use pre-allocated instances for common cases
 	timeUnit := unit.TimeUnit()
 	if isAdjustedToUTC {
-		switch {
-		case timeUnit.Millis != nil:
+		switch timeUnit.Value.(type) {
+		case *format.MilliSeconds:
 			return Leaf(&timestampMilliAdjustedToUTC)
-		case timeUnit.Micros != nil:
+		case *format.MicroSeconds:
 			return Leaf(&timestampMicroAdjustedToUTC)
-		case timeUnit.Nanos != nil:
+		case *format.NanoSeconds:
 			return Leaf(&timestampNanoAdjustedToUTC)
 		}
 	} else {
-		switch {
-		case timeUnit.Millis != nil:
+		switch timeUnit.Value.(type) {
+		case *format.MilliSeconds:
 			return Leaf(&timestampMilliNotAdjustedToUTC)
-		case timeUnit.Micros != nil:
+		case *format.MicroSeconds:
 			return Leaf(&timestampMicroNotAdjustedToUTC)
-		case timeUnit.Nanos != nil:
+		case *format.NanoSeconds:
 			return Leaf(&timestampNanoNotAdjustedToUTC)
 		}
 	}
@@ -49,56 +49,82 @@ func TimestampAdjusted(unit TimeUnit, isAdjustedToUTC bool) Node {
 
 var timestampMilliAdjustedToUTC = timestampType{
 	IsAdjustedToUTC: true,
-	Unit:            format.TimeUnit{Millis: new(format.MilliSeconds)},
+	Unit:            format.TimeUnit{Value: new(format.MilliSeconds)},
 }
 
 var timestampMicroAdjustedToUTC = timestampType{
 	IsAdjustedToUTC: true,
-	Unit:            format.TimeUnit{Micros: new(format.MicroSeconds)},
+	Unit:            format.TimeUnit{Value: new(format.MicroSeconds)},
 }
 
 var timestampNanoAdjustedToUTC = timestampType{
 	IsAdjustedToUTC: true,
-	Unit:            format.TimeUnit{Nanos: new(format.NanoSeconds)},
+	Unit:            format.TimeUnit{Value: new(format.NanoSeconds)},
 }
 
 var timestampMilliNotAdjustedToUTC = timestampType{
 	IsAdjustedToUTC: false,
-	Unit:            format.TimeUnit{Millis: new(format.MilliSeconds)},
+	Unit:            format.TimeUnit{Value: new(format.MilliSeconds)},
 }
 
 var timestampMicroNotAdjustedToUTC = timestampType{
 	IsAdjustedToUTC: false,
-	Unit:            format.TimeUnit{Micros: new(format.MicroSeconds)},
+	Unit:            format.TimeUnit{Value: new(format.MicroSeconds)},
 }
 
 var timestampNanoNotAdjustedToUTC = timestampType{
 	IsAdjustedToUTC: false,
-	Unit:            format.TimeUnit{Nanos: new(format.NanoSeconds)},
+	Unit:            format.TimeUnit{Value: new(format.NanoSeconds)},
 }
 
 var timestampMilliAdjustedToUTCLogicalType = format.LogicalType{
-	Timestamp: (*format.TimestampType)(&timestampMilliAdjustedToUTC),
+	Value: (*format.TimestampType)(&timestampMilliAdjustedToUTC),
 }
 
 var timestampMicroAdjustedToUTCLogicalType = format.LogicalType{
-	Timestamp: (*format.TimestampType)(&timestampMicroAdjustedToUTC),
+	Value: (*format.TimestampType)(&timestampMicroAdjustedToUTC),
 }
 
 var timestampNanoAdjustedToUTCLogicalType = format.LogicalType{
-	Timestamp: (*format.TimestampType)(&timestampNanoAdjustedToUTC),
+	Value: (*format.TimestampType)(&timestampNanoAdjustedToUTC),
 }
 
 var timestampMilliNotAdjustedToUTCLogicalType = format.LogicalType{
-	Timestamp: (*format.TimestampType)(&timestampMilliNotAdjustedToUTC),
+	Value: (*format.TimestampType)(&timestampMilliNotAdjustedToUTC),
 }
 
 var timestampMicroNotAdjustedToUTCLogicalType = format.LogicalType{
-	Timestamp: (*format.TimestampType)(&timestampMicroNotAdjustedToUTC),
+	Value: (*format.TimestampType)(&timestampMicroNotAdjustedToUTC),
 }
 
 var timestampNanoNotAdjustedToUTCLogicalType = format.LogicalType{
-	Timestamp: (*format.TimestampType)(&timestampNanoNotAdjustedToUTC),
+	Value: (*format.TimestampType)(&timestampNanoNotAdjustedToUTC),
+}
+
+// canonicalTimestampType maps a decoded TimestampType onto the instance this
+// package already declares for it. See canonicalIntType.
+func canonicalTimestampType(t *format.TimestampType) *timestampType {
+	if t.IsAdjustedToUTC {
+		switch t.Unit.Value.(type) {
+		case *format.MilliSeconds:
+			return &timestampMilliAdjustedToUTC
+		case *format.MicroSeconds:
+			return &timestampMicroAdjustedToUTC
+		case *format.NanoSeconds:
+			return &timestampNanoAdjustedToUTC
+		}
+	} else {
+		switch t.Unit.Value.(type) {
+		case *format.MilliSeconds:
+			return &timestampMilliNotAdjustedToUTC
+		case *format.MicroSeconds:
+			return &timestampMicroNotAdjustedToUTC
+		case *format.NanoSeconds:
+			return &timestampNanoNotAdjustedToUTC
+		}
+	}
+	// No unit, or one we do not know; keep the value the file carried.
+	return (*timestampType)(t)
 }
 
 type timestampType format.TimestampType
@@ -142,15 +168,15 @@ func (t *timestampType) LogicalType() *format.LogicalType {
 	case &timestampNanoNotAdjustedToUTC:
 		return &timestampNanoNotAdjustedToUTCLogicalType
 	default:
-		return &format.LogicalType{Timestamp: (*format.TimestampType)(t)}
+		return &format.LogicalType{Value: (*format.TimestampType)(t)}
 	}
 }
 
 func (t *timestampType) ConvertedType() *deprecated.ConvertedType {
-	switch {
-	case t.Unit.Millis != nil:
+	switch t.Unit.Value.(type) {
+	case *format.MilliSeconds:
 		return &convertedTypes[deprecated.TimestampMillis]
-	case t.Unit.Micros != nil:
+	case *format.MicroSeconds:
 		return &convertedTypes[deprecated.TimestampMicros]
 	default:
 		return nil
@@ -200,17 +226,11 @@ func (t *timestampType) AssignValue(dst reflect.Value, src Value) error {
 
 		unit := Nanosecond.TimeUnit()
 		lt := t.LogicalType()
-		if lt != nil && lt.Timestamp != nil {
-			unit = lt.Timestamp.Unit
+		if ts, ok := logicalTypeOf[*format.TimestampType](lt); ok {
+			unit = ts.Unit
 		}
 
-		nanos := src.int64()
-		switch {
-		case unit.Millis != nil:
-			nanos = nanos * 1e6
-		case unit.Micros != nil:
-			nanos = nanos * 1e3
-		}
+		nanos := src.int64() * int64(timeUnitDuration(unit))
 
 		val := time.Unix(0, nanos).UTC()
 		dst.Set(reflect.ValueOf(val))
@@ -225,17 +245,11 @@ func (t *timestampType) AssignValue(dst reflect.Value, src Value) error {
 
 		unit := Nanosecond.TimeUnit()
 		lt := t.LogicalType()
-		if lt != nil && lt.Timestamp != nil {
-			unit = lt.Timestamp.Unit
+		if ts, ok := logicalTypeOf[*format.TimestampType](lt); ok {
+			unit = ts.Unit
 		}
 
-		nanos := src.int64()
-		switch {
-		case unit.Millis != nil:
-			nanos = nanos * 1e6
-		case unit.Micros != nil:
-			nanos = nanos * 1e3
-		}
+		nanos := src.int64() * int64(timeUnitDuration(unit))
 
 		val := time.Unix(0, nanos).UTC()
 		ptr := &val

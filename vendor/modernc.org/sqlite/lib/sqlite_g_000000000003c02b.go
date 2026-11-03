@@ -10,6 +10,20 @@ import (
 	"modernc.org/libc"
 )
 
+func Xsqlite3_initialize(tls *libc.TLS) (r int32) {
+	/* If this build does not support writable static data (WSD) natively
+	 ** then we have to invoke the (application-supplied) WSD initialization
+	 ** routine before doing anything else. */
+	if libc.AtomicLoadPInt32(uintptr(unsafe.Pointer(&_sqlite3Config))+340) != 0 {
+		/* SQLite has already been initialized.  Fast early-out. */
+		return SQLITE_OK
+	} else {
+		/* Invoke sqlite3Initialize() to do the actual work. */
+		return _sqlite3Initialize(tls)
+	}
+	return r
+}
+
 func _sqlite3MutexInit(tls *libc.TLS) (r int32) {
 	mu.Lock()
 	defer mu.Unlock()

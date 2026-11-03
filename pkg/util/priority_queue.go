@@ -13,7 +13,7 @@ type PriorityQueue struct {
 	cond        *sync.Cond
 	closing     bool
 	closed      bool
-	hit         map[string]struct{}
+	hit         map[string]Op
 	queue       queue
 	lengthGauge prometheus.Gauge
 }
@@ -47,7 +47,7 @@ func (q *queue) Pop() interface{} {
 // NewPriorityQueue makes a new priority queue.
 func NewPriorityQueue(lengthGauge prometheus.Gauge) *PriorityQueue {
 	pq := &PriorityQueue{
-		hit:         map[string]struct{}{},
+		hit:         map[string]Op{},
 		lengthGauge: lengthGauge,
 	}
 	pq.cond = sync.NewCond(&pq.lock)
@@ -77,13 +77,22 @@ func (pq *PriorityQueue) DiscardAndClose() {
 	defer pq.lock.Unlock()
 	pq.closed = true
 	pq.queue = nil
-	pq.hit = map[string]struct{}{}
+	pq.hit = map[string]Op{}
 	pq.cond.Broadcast()
 }
 
 // Enqueue adds an operation to the queue in priority order. Returns
 // true if added; false if the operation was already on the queue.
 func (pq *PriorityQueue) Enqueue(op Op) bool {
+	return pq.EnqueueOrMerge(op, nil)
+}
+
+// EnqueueOrMerge adds an operation to the queue in priority order. If an
+// operation with the same key is already on the queue, op is dropped and onDup,
+// if not nil, is called with the queued operation while the queue is locked, so
+// the caller can merge op's state into it. onDup must not call back into the
+// queue. Returns true if op was added; false if it was already on the queue.
+func (pq *PriorityQueue) EnqueueOrMerge(op Op, onDup func(existing Op)) bool {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
@@ -91,12 +100,14 @@ func (pq *PriorityQueue) Enqueue(op Op) bool {
 		panic("enqueue on closed queue")
 	}
 
-	_, enqueued := pq.hit[op.Key()]
-	if enqueued {
+	if existing, enqueued := pq.hit[op.Key()]; enqueued {
+		if onDup != nil {
+			onDup(existing)
+		}
 		return false
 	}
 
-	pq.hit[op.Key()] = struct{}{}
+	pq.hit[op.Key()] = op
 	heap.Push(&pq.queue, op)
 	pq.cond.Broadcast()
 	if pq.lengthGauge != nil {

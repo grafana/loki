@@ -13,8 +13,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // Type alias for backward compatibility
@@ -45,6 +45,8 @@ func (MatchersExpr) isExpr()               {}
 func (PipelineExpr) isExpr()               {}
 func (RangeAggregationExpr) isExpr()       {}
 func (VectorAggregationExpr) isExpr()      {}
+func (LabelAggregationExpr) isExpr()       {}
+func (CountDistinctSketchExpr) isExpr()    {}
 func (LiteralExpr) isExpr()                {}
 func (VectorExpr) isExpr()                 {}
 func (LabelReplaceExpr) isExpr()           {}
@@ -62,7 +64,6 @@ func (LogfmtExpressionParserExpr) isExpr() {}
 func (LogRangeExpr) isExpr()               {}
 func (OffsetExpr) isExpr()                 {} //nolint:unused // sealed-interface marker
 func (UnwrapExpr) isExpr()                 {} //nolint:unused // sealed-interface marker
-func (MultiVariantExpr) isExpr()           {}
 
 // LogSelectorExpr is a expression filtering and returning logs.
 type LogSelectorExpr interface {
@@ -84,7 +85,10 @@ func (VectorExpr) isLogSelectorExpr()     {}
 // SampleExpr is a LogQL expression filtering logs and returning metric samples
 type SampleExpr interface {
 	Selector() (LogSelectorExpr, error)
-	Extractors() ([]SampleExtractor, error)
+	// Extractor returns the extractor to pull samples out of log lines. It is nil
+	// for expressions that produce samples without reading logs, such as a literal
+	// or a vector.
+	Extractor() (SampleExtractor, error)
 	MatcherGroups() ([]MatcherRange, error)
 
 	Expr
@@ -92,12 +96,13 @@ type SampleExpr interface {
 	isSampleExpr()
 }
 
-func (RangeAggregationExpr) isSampleExpr()  {}
-func (VectorAggregationExpr) isSampleExpr() {}
-func (LiteralExpr) isSampleExpr()           {}
-func (VectorExpr) isSampleExpr()            {}
-func (LabelReplaceExpr) isSampleExpr()      {}
-func (MultiVariantExpr) isSampleExpr()      {}
+func (RangeAggregationExpr) isSampleExpr()    {}
+func (VectorAggregationExpr) isSampleExpr()   {}
+func (LabelAggregationExpr) isSampleExpr()    {}
+func (CountDistinctSketchExpr) isSampleExpr() {}
+func (LiteralExpr) isSampleExpr()             {}
+func (VectorExpr) isSampleExpr()              {}
+func (LabelReplaceExpr) isSampleExpr()        {}
 
 // StageExpr is an expression defining a single step into a log pipeline
 type StageExpr interface {
@@ -220,7 +225,7 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 	for _, e := range m.reorderStages() {
 		p, err := e.Stage()
 		if err != nil {
-			return nil, logqlmodel.NewStageError(e.String(), err)
+			return nil, logqlerr.NewStageError(e.String(), err)
 		}
 		if p == log.NoopStage {
 			continue
@@ -257,10 +262,10 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 			result = append(result, f)
 		case *LineFilterExpr:
 			lineFilters = append(lineFilters, f)
-		case *LineFmtExpr:
-			// line_format modifies the contents of the line so any line filter
-			// originally after a line_format must still be after the same
-			// line_format.
+		case *LineFmtExpr, *DecolorizeExpr:
+			// line_format and decolorize modify the contents of the line so any
+			// line filter originally after one of them must still be after the
+			// same stage.
 
 			notLineFilters = append(notLineFilters, f)
 
@@ -305,6 +310,185 @@ func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 		}
 	}
 	return current
+}
+
+// PushableLineFilters returns, as one filter, the line filters that can run before every other
+// stage. These are the line filters before the first stage that can modify the line.
+//
+// It returns nil when no such filter exists or when the filters keep every line.
+func (m MultiStageExpr) PushableLineFilters() (log.Filterer, error) {
+	pushable, _, err := m.splitPushableLineFilterStages()
+	if err != nil {
+		return nil, err
+	}
+
+	filters := make([]log.Filterer, 0, len(pushable))
+	for _, s := range pushable {
+		f, err := s.Filter()
+		if err != nil {
+			return nil, logqlerr.NewStageError(s.String(), err)
+		}
+		filters = append(filters, f)
+	}
+
+	if f := log.NewAndFilters(filters); f != log.TrueFilter {
+		return f, nil
+	}
+	return nil, nil
+}
+
+// WithoutPushableLineFilters returns m without the line filter stages before the first stage that
+// can modify the line. It also removes a filter that keeps every line, which PushableLineFilters
+// leaves out of its result.
+func (m MultiStageExpr) WithoutPushableLineFilters() (MultiStageExpr, error) {
+	_, rest, err := m.splitPushableLineFilterStages()
+	return rest, err
+}
+
+// WithoutPushableLineFilters returns a copy of expr whose pipeline has no stage that
+// [MultiStageExpr.WithoutPushableLineFilters] removes. It returns nil when expr has no such stage.
+// It never changes expr.
+func WithoutPushableLineFilters(expr SampleExpr) (SampleExpr, error) {
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+	pipeline, ok := selector.(*PipelineExpr)
+	if !ok {
+		return nil, nil
+	}
+	rest, err := pipeline.MultiStages.WithoutPushableLineFilters()
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) == len(pipeline.MultiStages) {
+		return nil, nil
+	}
+
+	clone, err := Clone[SampleExpr](expr)
+	if err != nil {
+		return nil, err
+	}
+	cloneSelector, err := clone.Selector()
+	if err != nil {
+		return nil, err
+	}
+	clonePipeline, ok := cloneSelector.(*PipelineExpr)
+	if !ok {
+		return nil, fmt.Errorf("the clone of %q lost its pipeline", expr)
+	}
+
+	// Do not reuse rest. Its stages are the nodes of expr, and building a pipeline from them changes
+	// those nodes.
+	clonePipeline.MultiStages, err = clonePipeline.MultiStages.WithoutPushableLineFilters()
+	if err != nil {
+		return nil, err
+	}
+	return clone, nil
+}
+
+// splitPushableLineFilterStages splits m at the first stage that can modify the line. It returns
+// the line filter stages before that stage, and the remaining stages of m without them.
+func (m MultiStageExpr) splitPushableLineFilterStages() (pushable []*LineFilterExpr, rest MultiStageExpr, err error) {
+	var (
+		allLineFilters     []*LineFilterExpr
+		chainedLineFilters = map[*LineFilterExpr]struct{}{}
+	)
+
+	for i, e := range m {
+		if f, ok := e.(*LineFilterExpr); ok {
+			allLineFilters = append(allLineFilters, f)
+
+			// Mark every filter that f reaches through Left. Filter on f already covers them.
+			for l := f.Left; l != nil; l = l.Left {
+				chainedLineFilters[l] = struct{}{}
+			}
+			continue
+		}
+
+		s, err := e.Stage()
+		if err != nil {
+			return nil, nil, logqlerr.NewStageError(e.String(), err)
+		}
+		rest = append(rest, e)
+		if s.Hints().CanModifyLine {
+			rest = append(rest, m[i+1:]...)
+			break
+		}
+	}
+
+	// Drop every filter that another filter reaches through Left. Filter on the last link of a chain
+	// already covers the filters before it, so keeping both would run those filters twice.
+	for _, f := range allLineFilters {
+		if _, ok := chainedLineFilters[f]; !ok {
+			pushable = append(pushable, f)
+		}
+	}
+	return pushable, rest, nil
+}
+
+// PushableLabelFilters returns the label filters that are safe to push down to the storage layer,
+// because they run before any stage that can change a label, such as a parser, and neither read
+// nor set an error.
+//
+// It returns nil when no such filter exists.
+func (m MultiStageExpr) PushableLabelFilters() ([]log.LabelFilterer, error) {
+	// pushableFilter returns the part of f that neither sets nor reads the error label, or nil when
+	// nothing is left. A label filter can modify labels only by setting the error label.
+	//
+	// A row that fails one side of an and also fails the and, so the other side alone is safe.
+	// An or passes a row that either side passes, so an or with one unsafe side is dropped whole.
+	var pushableFilter func(f log.LabelFilterer) log.LabelFilterer
+	pushableFilter = func(f log.LabelFilterer) log.LabelFilterer {
+		hints := f.Hints()
+		if !hints.CanModifyLabels && !hints.ReadsErrorLabel {
+			return f
+		}
+
+		binary, ok := f.(*log.BinaryLabelFilter)
+		if !ok || !binary.And {
+			return nil
+		}
+
+		left := pushableFilter(binary.Left)
+		right := pushableFilter(binary.Right)
+		switch {
+		case left == nil:
+			return right
+		case right == nil:
+			return left
+		default:
+			return log.NewAndLabelFilter(left, right)
+		}
+	}
+
+	var filters []log.LabelFilterer
+
+	for _, e := range m {
+		if _, ok := e.(*LineFilterExpr); ok {
+			continue
+		}
+
+		s, err := e.Stage()
+		if err != nil {
+			return nil, logqlerr.NewStageError(e.String(), err)
+		}
+
+		if f, ok := e.(*LabelFilterExpr); ok {
+			// A label filter writes at most the error label, so it does not end the list. The
+			// filters after it still read the stored labels.
+			if kept := pushableFilter(f.LabelFilterer); kept != nil {
+				filters = append(filters, kept)
+			}
+			continue
+		}
+
+		// A stage that can change a label ends the list. Later filters read the changed labels.
+		if s.Hints().CanModifyLabels {
+			break
+		}
+	}
+	return filters, nil
 }
 
 func (m MultiStageExpr) String() string {
@@ -421,8 +605,7 @@ func (e *PipelineExpr) HasFilter() bool {
 		case *LabelFilterExpr:
 			return true
 		case *LineFilterExpr:
-			// ignore empty matchers as they match everything
-			if (v.Ty != log.LineMatchEqual && v.Ty != log.LineMatchRegexp) || v.Match != "" {
+			if v.hasFilter() {
 				return true
 			}
 		default:
@@ -481,7 +664,27 @@ func newOrLineFilterExpr(left, right *LineFilterExpr) *LineFilterExpr {
 	}
 
 	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
-		left.Or = right
+		// The left hand may already carry an Or chain. If we simply replace left.Or
+		// we would overwrite existing filters. Instead, we need to find the tail of
+		// the Or chain (if any) and add the right hand to it.
+		//
+		// To be clear, we don't enter this case just with or-ed strings. A string
+		// can continue an "or" chain in the grammar, so a chain of strings builds
+		// its whole tail in one pass, and left.Or is nil here.
+		//
+		// The case where this can happen is when there's ip() involved. ip() cannot
+		// continue a chain in the grammar. The parser attaches operands one at a time
+		// instead, so left already carries a chain by the second attach.
+		//
+		// For example, given the linter filter `ip("a") or ip("b") or ip("c")`, it
+		// reaches this branch twice:
+		// - First with left=`ip("a")`, right=`ip("b")`
+		// - Then with left=`ip("a") or ip("b")`, right=`ip("c")`
+		tail := left
+		for tail.Or != nil {
+			tail = tail.Or
+		}
+		tail.Or = right
 		right.IsOrChild = true
 		return left
 	}
@@ -537,6 +740,21 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 		Or:         right.Or,
 		IsOrChild:  right.IsOrChild,
 	}
+}
+
+// hasFilter returns true if any filter in the chain, including or branches,
+// can filter out lines.
+func (e *LineFilterExpr) hasFilter() bool {
+	if e == nil {
+		return false
+	}
+	// Filters that build to log.TrueFilter, such as |= "" and |~ ".*",
+	// match everything. Such an or branch does not make its group match
+	// everything, because building the or filter drops it.
+	if f, err := newLineFilterer(e.LineFilter); err != nil || f != log.TrueFilter {
+		return true
+	}
+	return e.Left.hasFilter() || e.Or.hasFilter()
 }
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
@@ -607,28 +825,14 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 		var next log.Filterer
 		var err error
 		if curr.Or != nil {
-			next, err = newOrFilter(curr)
-			if err != nil {
-				return nil, err
-			}
-			acc = append(acc, next)
+			next, err = newOrLineFilter(curr)
 		} else {
-			switch curr.Op {
-			case OpFilterIP:
-				next, err := log.NewIPLineFilter(curr.Match, curr.Ty)
-				if err != nil {
-					return nil, err
-				}
-				acc = append(acc, next)
-			default:
-				next, err = log.NewFilter(curr.Match, curr.Ty)
-				if err != nil {
-					return nil, err
-				}
-
-				acc = append(acc, next)
-			}
+			next, err = newLineFilterer(curr.LineFilter)
 		}
+		if err != nil {
+			return nil, err
+		}
+		acc = append(acc, next)
 	}
 
 	if len(acc) == 1 {
@@ -644,14 +848,26 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	return log.NewAndFilters(acc), nil
 }
 
-func newOrFilter(f *LineFilterExpr) (log.Filterer, error) {
-	orFilter, err := log.NewFilter(f.Match, f.Ty)
+// newLineFilterer returns the Filterer for a single line filter node.
+func newLineFilterer(f LineFilter) (log.Filterer, error) {
+	switch f.Op {
+	case "":
+		return log.NewFilter(f.Match, f.Ty)
+	case OpFilterIP:
+		return log.NewIPLineFilter(f.Match, f.Ty)
+	default:
+		return nil, fmt.Errorf("unknown line filter op %q", f.Op)
+	}
+}
+
+func newOrLineFilter(f *LineFilterExpr) (log.Filterer, error) {
+	orFilter, err := newLineFilterer(f.LineFilter)
 	if err != nil {
 		return nil, err
 	}
 
 	for or := f.Or; or != nil; or = or.Or {
-		filter, err := log.NewFilter(or.Match, or.Ty)
+		filter, err := newLineFilterer(or.LineFilter)
 		if err != nil {
 			return nil, err
 		}
@@ -726,13 +942,13 @@ func newLabelParserExpr(op, param string) *LineParserExpr {
 	if op == OpParserTypeRegexp {
 		_, err := log.NewRegexpParser(param)
 		if err != nil {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid regexp parser: %s", err.Error()), 0, 0))
+			panic(logqlerr.NewParseError(fmt.Sprintf("invalid regexp parser: %s", err.Error()), 0, 0))
 		}
 	}
 	if op == OpParserTypePattern {
 		_, err := log.NewPatternParser(param)
 		if err != nil {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid pattern parser: %s", err.Error()), 0, 0))
+			panic(logqlerr.NewParseError(fmt.Sprintf("invalid pattern parser: %s", err.Error()), 0, 0))
 		}
 	}
 
@@ -795,13 +1011,14 @@ func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
 func (e *LabelFilterExpr) Accept(v RootVisitor) { v.VisitLabelFilter(e) }
 
 func (e *LabelFilterExpr) Stage() (log.Stage, error) {
-	switch ip := e.LabelFilterer.(type) {
+	switch f := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
-		return ip, ip.PatternError()
+		return f, f.PatternError()
 	case *log.NoopLabelFilter:
 		return log.NoopStage, nil
+	default:
+		return e.LabelFilterer, nil
 	}
-	return e.LabelFilterer, nil
 }
 
 func (e *LabelFilterExpr) String() string {
@@ -1093,9 +1310,49 @@ func (l *LogfmtExpressionParserExpr) String() string {
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
-		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
+		panic(logqlerr.NewParseError(err.Error(), 0, 0))
 	}
 	return m
+}
+
+func mustNewNumericLabelFilter(t log.LabelFilterType, name string, lit *LiteralExpr) log.LabelFilterer {
+	v, err := lit.Value()
+	if err != nil {
+		panic(err)
+	}
+	f := log.NewNumericLabelFilter(t, name, v)
+	mustNotCompareReservedErrorLabel(name, f)
+	return f
+}
+
+func mustNewDurationLabelFilter(t log.LabelFilterType, name string, d time.Duration) log.LabelFilterer {
+	f := log.NewDurationLabelFilter(t, name, d)
+	mustNotCompareReservedErrorLabel(name, f)
+	return f
+}
+
+func mustNewBytesLabelFilter(t log.LabelFilterType, name string, b uint64) log.LabelFilterer {
+	f := log.NewBytesLabelFilter(t, name, b)
+	mustNotCompareReservedErrorLabel(name, f)
+	return f
+}
+
+func mustNewIPLabelFilter(pattern, name string, t log.LabelFilterType) log.LabelFilterer {
+	f := log.NewIPLabelFilter(pattern, name, t)
+	mustNotCompareReservedErrorLabel(name, f)
+	return f
+}
+
+// mustNotCompareReservedErrorLabel panics if name is __error__ or
+// __error_details__.
+func mustNotCompareReservedErrorLabel(name string, filter fmt.Stringer) {
+	if name != logqlerr.ErrorLabel && name != logqlerr.ErrorDetailsLabel {
+		return
+	}
+	panic(logqlerr.NewParseError(fmt.Sprintf(
+		"%s is a string label and cannot be compared with %s; use a string comparison instead, for example %s=\"\" or %s!=\"\"",
+		name, filter.String(), name, name,
+	), 0, 0))
 }
 
 type UnwrapExpr struct {
@@ -1162,6 +1419,23 @@ func (r *LogRangeExpr) Walk(f WalkFn) {
 
 func (r *LogRangeExpr) Accept(v RootVisitor) {
 	v.VisitLogRange(r)
+}
+
+// HasUnwrapPostFilterOnErrorLabel reports whether a post filter of the unwrap depends on the error
+// of the line.
+func (r *LogRangeExpr) HasUnwrapPostFilterOnErrorLabel() bool {
+	if r.Unwrap == nil {
+		return false
+	}
+
+	for _, f := range r.Unwrap.PostFilters {
+		// ReadsErrorLabel is true for any filter that depends on the error of the line, whether it
+		// asks to keep or to drop the errored lines.
+		if f.Hints().ReadsErrorLabel {
+			return true
+		}
+	}
+	return false
 }
 
 // WithoutUnwrap returns a copy of the log range without the unwrap statement.
@@ -1309,14 +1583,12 @@ const (
 	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
 	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 
-	OpTypeCountMinSketch = "__count_min_sketch__"
+	OpTypeCountMinSketch      = "__count_min_sketch__"
+	OpTypeCountDistinctSketch = "__count_distinct_sketch__"
 
 	// probabilistic aggregations
-	OpTypeApproxTopK = "approx_topk"
-
-	// variants
-	OpVariants = "variants"
-	VariantsOf = "of"
+	OpTypeApproxTopK          = "approx_topk"
+	OpTypeApproxCountDistinct = "approx_count_distinct"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1353,18 +1625,18 @@ func newRangeAggregationExpr(left *LogRangeExpr, operation string, gr *Grouping,
 	var params *float64
 	if stringParams != nil {
 		if operation != OpRangeTypeQuantile && operation != OpRangeTypeQuantileSketch {
-			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
+			return &RangeAggregationExpr{err: logqlerr.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
 		}
 		var err error
 		params = new(float64)
 		*params, err = strconv.ParseFloat(*stringParams, 64)
 		if err != nil {
-			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter for operation %s: %s", operation, err), 0, 0)}
+			return &RangeAggregationExpr{err: logqlerr.NewParseError(fmt.Sprintf("invalid parameter for operation %s: %s", operation, err), 0, 0)}
 		}
 
 	} else {
 		if operation == OpRangeTypeQuantile {
-			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
+			return &RangeAggregationExpr{err: logqlerr.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
 		}
 	}
 	e := &RangeAggregationExpr{
@@ -1373,8 +1645,8 @@ func newRangeAggregationExpr(left *LogRangeExpr, operation string, gr *Grouping,
 		Grouping:  gr,
 		Params:    params,
 	}
-	if err := e.validate(); err != nil {
-		return &RangeAggregationExpr{err: logqlmodel.NewParseError(err.Error(), 0, 0)}
+	if err := e.Validate(); err != nil {
+		return &RangeAggregationExpr{err: logqlerr.NewParseError(err.Error(), 0, 0)}
 	}
 	return e
 }
@@ -1403,7 +1675,7 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 	return nil, nil
 }
 
-func (e RangeAggregationExpr) validate() error {
+func (e RangeAggregationExpr) Validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
@@ -1430,10 +1702,6 @@ func (e RangeAggregationExpr) validate() error {
 	default:
 		return fmt.Errorf("invalid aggregation %s without unwrap", e.Operation)
 	}
-}
-
-func (e RangeAggregationExpr) Validate() error {
-	return e.validate()
 }
 
 // impls Stringer
@@ -1476,6 +1744,223 @@ func (e *RangeAggregationExpr) Walk(f WalkFn) {
 
 func (e *RangeAggregationExpr) Accept(v RootVisitor) { v.VisitRangeAggregation(e) }
 
+// LabelAggregationExpr approximates aggregations over distinct values of a
+// label or extracted field (for example approx_count_distinct).
+type LabelAggregationExpr struct {
+	Left      *LogRangeExpr
+	Grouping  *Grouping
+	Operation string
+	Label     string
+	err       error
+}
+
+func mustNewLabelAggregationExpr(operation, label string, gr *Grouping, left *LogRangeExpr) SampleExpr {
+	e := &LabelAggregationExpr{
+		Left:      left,
+		Grouping:  gr,
+		Operation: operation,
+		Label:     label,
+	}
+	if err := e.Validate(); err != nil {
+		return &LabelAggregationExpr{err: logqlerr.NewParseError(err.Error(), 0, 0)}
+	}
+	return e
+}
+
+func (e *LabelAggregationExpr) Validate() error {
+	if e.err != nil {
+		return e.err
+	}
+	switch e.Operation {
+	case OpTypeApproxCountDistinct:
+	default:
+		return fmt.Errorf("unsupported label aggregation operation: %s()", e.Operation)
+	}
+	if e.Label == "" {
+		return fmt.Errorf("%s() requires a non-empty field name", e.Operation)
+	}
+	if e.Left == nil {
+		return fmt.Errorf("%s() requires a log query with a duration, for example {job=\"app\"}[1d]", e.Operation)
+	}
+	if e.Left.Interval <= 0 {
+		return fmt.Errorf("%s() requires a positive duration, for example [1d]", e.Operation)
+	}
+	if e.Left.Unwrap != nil {
+		return fmt.Errorf("unwrap is not supported for %s()", e.Operation)
+	}
+	if e.Grouping != nil && e.Grouping.Without {
+		return fmt.Errorf("without is not supported for %s()", e.Operation)
+	}
+	if e.Grouping != nil {
+		for _, g := range e.Grouping.Groups {
+			if g == e.Label {
+				return fmt.Errorf("%s() cannot group by the counted field %q", e.Operation, e.Label)
+			}
+		}
+	}
+	return nil
+}
+
+func (e *LabelAggregationExpr) Selector() (LogSelectorExpr, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	return e.Left.Left, nil
+}
+
+func (e *LabelAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	xs := e.Left.Left.Matchers()
+	if len(xs) > 0 {
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: e.Left.Interval,
+				Offset:   e.Left.Offset,
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func (e *LabelAggregationExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(e.Operation)
+	sb.WriteString("(")
+	sb.WriteString(e.Label)
+	sb.WriteString(",")
+	sb.WriteString(e.Left.String())
+	sb.WriteString(")")
+	if e.Grouping != nil {
+		sb.WriteString(e.Grouping.String())
+	}
+	return sb.String()
+}
+
+func (e *LabelAggregationExpr) Shardable(topLevel bool) bool {
+	return shardableOps[e.Operation] && e.Left.Shardable(topLevel)
+}
+
+func (e *LabelAggregationExpr) Walk(f WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.Left != nil {
+		e.Left.Walk(f)
+	}
+}
+
+func (e *LabelAggregationExpr) Accept(v RootVisitor) { v.VisitLabelAggregation(e) }
+
+// CountDistinctSketchExpr is an internal shard-child expression that returns
+// mergeable HyperLogLog sketches. Shards must return sketches, not derived estimates
+type CountDistinctSketchExpr struct {
+	Left     *LogRangeExpr
+	Grouping *Grouping
+	Label    string
+	err      error
+}
+
+// NewCountDistinctSketchExpr builds an internal sketch-producing expression.
+func NewCountDistinctSketchExpr(label string, left *LogRangeExpr, gr *Grouping) *CountDistinctSketchExpr {
+	return &CountDistinctSketchExpr{
+		Left:     left,
+		Grouping: gr,
+		Label:    label,
+	}
+}
+
+// NewCountDistinctSketchFromLabelAggregation converts a public label
+// aggregation into its sketch-producing form for sharded evaluation.
+func NewCountDistinctSketchFromLabelAggregation(e *LabelAggregationExpr) *CountDistinctSketchExpr {
+	return NewCountDistinctSketchExpr(e.Label, e.Left, e.Grouping)
+}
+
+// Validate reports whether the internal sketch expression is well-formed.
+func (e *CountDistinctSketchExpr) Validate() error {
+	if e.err != nil {
+		return e.err
+	}
+	if e.Label == "" {
+		return fmt.Errorf("%s() requires a non-empty field name", OpTypeCountDistinctSketch)
+	}
+	if e.Left == nil {
+		return fmt.Errorf("%s() requires a log query with a duration, for example {job=\"app\"}[1d]", OpTypeCountDistinctSketch)
+	}
+	if e.Left.Interval <= 0 {
+		return fmt.Errorf("%s() requires a positive duration, for example [1d]", OpTypeCountDistinctSketch)
+	}
+	if e.Left.Unwrap != nil {
+		return fmt.Errorf("unwrap is not supported for %s()", OpTypeCountDistinctSketch)
+	}
+	if e.Grouping != nil && e.Grouping.Without {
+		return fmt.Errorf("without is not supported for %s()", OpTypeCountDistinctSketch)
+	}
+	if e.Grouping != nil {
+		for _, g := range e.Grouping.Groups {
+			if g == e.Label {
+				return fmt.Errorf("%s() cannot group by the counted field %q", OpTypeCountDistinctSketch, e.Label)
+			}
+		}
+	}
+	return nil
+}
+
+func (e *CountDistinctSketchExpr) Selector() (LogSelectorExpr, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	return e.Left.Left, nil
+}
+
+func (e *CountDistinctSketchExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	xs := e.Left.Left.Matchers()
+	if len(xs) > 0 {
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: e.Left.Interval,
+				Offset:   e.Left.Offset,
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func (e *CountDistinctSketchExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpTypeCountDistinctSketch)
+	sb.WriteString("(")
+	sb.WriteString(e.Label)
+	sb.WriteString(",")
+	sb.WriteString(e.Left.String())
+	sb.WriteString(")")
+	if e.Grouping != nil {
+		sb.WriteString(e.Grouping.String())
+	}
+	return sb.String()
+}
+
+func (e *CountDistinctSketchExpr) Shardable(_ bool) bool {
+	return false
+}
+
+func (e *CountDistinctSketchExpr) Walk(f WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.Left != nil {
+		e.Left.Walk(f)
+	}
+}
+
+func (e *CountDistinctSketchExpr) Accept(v RootVisitor) { v.VisitCountDistinctSketch(e) }
+
 // Grouping struct represents the grouping by/without label(s) for vector aggregators and range vector aggregators.
 // The representation is as follows:
 //   - No Grouping (labels dismissed): <operation> (<expr>) => Grouping{Without: false, Groups: nil}
@@ -1484,6 +1969,11 @@ func (e *RangeAggregationExpr) Accept(v RootVisitor) { v.VisitRangeAggregation(e
 //   - Grouping without empty label set: <operation> without () (<expr>) => Grouping{Without: true, Groups: []}
 //   - Grouping without label set: <operation> without (<labels...>) (<expr>) => Grouping{Without: true, Groups: [<labels...>]}
 type Grouping struct {
+	// Groups is in the order the query text wrote it, not sorted.
+	//
+	// A Grouping may be shared by more than one node and access concurrently,
+	// so it's not safe to change or sort Groups in place. A consumer that needs
+	// sorted order must sort its own copy.
 	Groups  []string
 	Without bool
 }
@@ -1533,22 +2023,22 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 	switch operation {
 	case OpTypeBottomK, OpTypeTopK, OpTypeApproxTopK:
 		if params == nil {
-			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
+			return &VectorAggregationExpr{err: logqlerr.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
 		}
 		p, err = strconv.Atoi(*params)
 		if err != nil {
-			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0)}
+			return &VectorAggregationExpr{err: logqlerr.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0)}
 		}
 		if p <= 0 {
-			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0)}
+			return &VectorAggregationExpr{err: logqlerr.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0)}
 		}
 		if operation == OpTypeApproxTopK && gr != nil {
-			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("grouping not allowed for %s aggregation", operation), 0, 0)}
+			return &VectorAggregationExpr{err: logqlerr.NewParseError(fmt.Sprintf("grouping not allowed for %s aggregation", operation), 0, 0)}
 		}
 
 	default:
 		if params != nil {
-			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *params), 0, 0)}
+			return &VectorAggregationExpr{err: logqlerr.NewParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *params), 0, 0)}
 		}
 	}
 	if gr == nil {
@@ -1576,27 +2066,27 @@ func (e *VectorAggregationExpr) Selector() (LogSelectorExpr, error) {
 	return e.Left.Selector()
 }
 
-func (e *VectorAggregationExpr) Extractors() ([]SampleExtractor, error) {
+func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	if e.err != nil {
 		return nil, e.err
 	}
 	// inject in the range vector extractor the outer groups to improve performance.
 	// This is only possible if the operation is a sum. Anything else needs all labels.
-	if r, ok := e.Left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.Operation, r.Operation) {
+	if r, ok := e.Left.(*RangeAggregationExpr); ok && CanInjectVectorGrouping(e.Operation, r.Operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.Grouping == nil {
-			ext, err := r.extractor(e.Grouping)
-			if err != nil {
-				return []SampleExtractor{}, err
-			}
-			return []SampleExtractor{ext}, nil
+			return r.extractor(e.Grouping)
 		}
 	}
-	return e.Left.Extractors()
+	return e.Left.Extractor()
 }
 
-// canInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
-func canInjectVectorGrouping(vecOp, rangeOp string) bool {
+// CanInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
+//
+// An injected grouping replaces the extractor's label set at extraction time. It reaches the
+// extractor only when the range aggregation carries no grouping of its own, because that one
+// wins.
+func CanInjectVectorGrouping(vecOp, rangeOp string) bool {
 	if vecOp != OpTypeSum {
 		return false
 	}
@@ -1817,7 +2307,7 @@ func (e *BinOpExpr) Accept(v RootVisitor) { v.VisitBinOp(e) }
 func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
-		return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
+		return &BinOpExpr{err: logqlerr.NewParseError(fmt.Sprintf(
 			"unexpected type for left leg of binary operation (%s): %T",
 			op,
 			lhs,
@@ -1826,7 +2316,7 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 
 	right, ok := rhs.(SampleExpr)
 	if !ok {
-		return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
+		return &BinOpExpr{err: logqlerr.NewParseError(fmt.Sprintf(
 			"unexpected type for right leg of binary operation (%s): %T",
 			op,
 			rhs,
@@ -1854,7 +2344,7 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 	if IsLogicalBinOp(op) {
 
 		if lOk {
-			return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
+			return &BinOpExpr{err: logqlerr.NewParseError(fmt.Sprintf(
 				"unexpected literal for left leg of logical/set binary operation (%s): %f",
 				op,
 				leftVal,
@@ -1862,7 +2352,7 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 		}
 
 		if rOk {
-			return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
+			return &BinOpExpr{err: logqlerr.NewParseError(fmt.Sprintf(
 				"unexpected literal for right leg of logical/set binary operation (%s): %f",
 				op,
 				rightVal,
@@ -2120,7 +2610,7 @@ type LiteralExpr struct {
 func mustNewLiteralExpr(s string, invert bool) *LiteralExpr {
 	n, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		err = logqlmodel.NewParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0)
+		err = logqlerr.NewParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0)
 	}
 
 	if invert {
@@ -2148,8 +2638,8 @@ func (e *LiteralExpr) Accept(v RootVisitor)                   { v.VisitLiteral(e
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)        { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher            { return nil }
 func (e *LiteralExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err }
-func (e *LiteralExpr) Extractors() ([]log.SampleExtractor, error) {
-	return []log.SampleExtractor{}, e.err
+func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) {
+	return nil, e.err
 }
 func (e *LiteralExpr) Value() (float64, error) {
 	if e.err != nil {
@@ -2193,7 +2683,7 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 	re, err := regexp.Compile("^(?:" + regex + ")$")
 	if err != nil {
 		return &LabelReplaceExpr{
-			err: logqlmodel.NewParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0),
+			err: logqlerr.NewParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0),
 		}
 	}
 	return &LabelReplaceExpr{
@@ -2220,11 +2710,11 @@ func (e *LabelReplaceExpr) MatcherGroups() ([]MatcherRange, error) {
 	return e.Left.MatcherGroups()
 }
 
-func (e *LabelReplaceExpr) Extractors() ([]SampleExtractor, error) {
+func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
 	if e.err != nil {
-		return []SampleExtractor{}, e.err
+		return nil, e.err
 	}
-	return e.Left.Extractors()
+	return e.Left.Extractor()
 }
 
 func (e *LabelReplaceExpr) Shardable(_ bool) bool {
@@ -2287,7 +2777,8 @@ var shardableOps = map[string]bool{
 	OpTypeMax:   true,
 	OpTypeMin:   true,
 
-	OpTypeApproxTopK: true,
+	OpTypeApproxTopK:          true,
+	OpTypeApproxCountDistinct: true,
 
 	// range vector ops
 	OpRangeTypeAvg:       true,
@@ -2310,6 +2801,13 @@ var shardableOps = map[string]bool{
 type MatcherRange struct {
 	Matchers         []*labels.Matcher
 	Interval, Offset time.Duration
+}
+
+// Widen shifts the bounds back by this group's range and offset. The start
+// moves by interval+offset and the end moves by offset. A log selector has
+// both durations zero, so its bounds stay put.
+func (m MatcherRange) Widen(from, through time.Time) (time.Time, time.Time) {
+	return from.Add(-(m.Interval + m.Offset)), through.Add(-m.Offset)
 }
 
 func MatcherGroups(expr Expr) ([]MatcherRange, error) {
@@ -2338,7 +2836,7 @@ type VectorExpr struct {
 func NewVectorExpr(scalar string) *VectorExpr {
 	n, err := strconv.ParseFloat(scalar, 64)
 	if err != nil {
-		err = logqlmodel.NewParseError(fmt.Sprintf("unable to parse vectorExpr as a float: %s", err.Error()), 0, 0)
+		err = logqlerr.NewParseError(fmt.Sprintf("unable to parse vectorExpr as a float: %s", err.Error()), 0, 0)
 	}
 	return &VectorExpr{
 		Val: n,
@@ -2376,7 +2874,7 @@ func (e *VectorExpr) Pipeline() (log.Pipeline, error)        { return log.NewNoo
 func (e *VectorExpr) Matchers() []*labels.Matcher            { return nil }
 func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err }
 
-func (e *VectorExpr) Extractors() ([]log.SampleExtractor, error) { return []log.SampleExtractor{}, nil }
+func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
 	e.Walk(func(e Expr) bool {
@@ -2386,6 +2884,14 @@ func ReducesLabels(e Expr) (conflict bool) {
 				conflict = true
 			}
 		case *VectorAggregationExpr:
+			if groupingReducesLabels(expr.Grouping) {
+				conflict = true
+			}
+		case *LabelAggregationExpr:
+			if groupingReducesLabels(expr.Grouping) {
+				conflict = true
+			}
+		case *CountDistinctSketchExpr:
 			if groupingReducesLabels(expr.Grouping) {
 				conflict = true
 			}
@@ -2464,6 +2970,10 @@ func HasNonAdditiveAggr(e Expr) (found bool) {
 				found = true
 				return false
 			}
+		case *LabelAggregationExpr, *CountDistinctSketchExpr:
+			// HLL estimates are non-additive across shards.
+			found = true
+			return false
 		}
 		return true
 	})
@@ -2471,193 +2981,10 @@ func HasNonAdditiveAggr(e Expr) (found bool) {
 }
 
 func groupingReducesLabels(grp *Grouping) bool {
-	if grp == nil {
+	if grp == nil || grp.Noop() {
 		return false
 	}
 
-	// both without(foo) and by (bar) have the potential
-	// to reduce labels
-	if len(grp.Groups) > 0 {
-		return true
-	}
-
-	return false
-}
-
-// VariantsExpr is a LogQL expression that can produce multiple streams, defined by a set of variants,
-// over a single log selector.
-//
-//sumtype:decl
-type VariantsExpr interface {
-	Extractors() ([]SampleExtractor, error)
-	Interval() time.Duration
-	LogRange() *LogRangeExpr
-	MatcherGroups() ([]MatcherRange, error)
-	Matchers() []*labels.Matcher
-	Offset() time.Duration
-	SetVariant(i int, e SampleExpr) error
-	Variants() []SampleExpr
-	Selector() (LogSelectorExpr, error)
-	Expr
-}
-
-type MultiVariantExpr struct {
-	logRange *LogRangeExpr
-	variants []SampleExpr
-	err      error
-}
-
-func NewMultiVariantExpr(
-	logRange *LogRangeExpr,
-	variants []SampleExpr,
-) MultiVariantExpr {
-	return MultiVariantExpr{
-		logRange: logRange,
-		variants: variants,
-	}
-}
-
-func (m *MultiVariantExpr) LogRange() *LogRangeExpr {
-	return m.logRange
-}
-
-func (m *MultiVariantExpr) SetLogSelector(e *LogRangeExpr) {
-	m.logRange = e
-}
-
-func (m *MultiVariantExpr) Matchers() []*labels.Matcher {
-	return m.logRange.Left.Matchers()
-}
-
-func (m *MultiVariantExpr) Interval() time.Duration {
-	return m.logRange.Interval
-}
-
-func (m *MultiVariantExpr) Offset() time.Duration {
-	return m.logRange.Offset
-}
-
-func (m *MultiVariantExpr) Variants() []SampleExpr {
-	return m.variants
-}
-
-func (m *MultiVariantExpr) AddVariant(v SampleExpr) {
-	m.variants = append(m.variants, v)
-}
-
-func (m *MultiVariantExpr) SetVariant(i int, v SampleExpr) error {
-	if i >= len(m.variants) {
-		return fmt.Errorf("variant index out of range")
-	}
-
-	m.variants[i] = v
-	return nil
-}
-
-func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
-	if !m.logRange.Shardable(topLevel) {
-		return false
-	}
-
-	for _, v := range m.variants {
-		if !v.Shardable(topLevel) {
-			return false
-		}
-	}
-
+	// by (foo), without (foo), and by () all reduce the label set.
 	return true
-}
-
-func (m *MultiVariantExpr) Walk(f WalkFn) {
-	if !f(m) {
-		return
-	}
-
-	if m.logRange != nil {
-		m.logRange.Walk(f)
-	}
-
-	for _, v := range m.variants {
-		v.Walk(f)
-	}
-}
-
-func (m *MultiVariantExpr) String() string {
-	var sb strings.Builder
-	sb.WriteString(OpVariants)
-	sb.WriteString("(")
-	for i, v := range m.variants {
-		sb.WriteString(v.String())
-		if i+1 != len(m.variants) {
-			sb.WriteString(", ")
-		}
-	}
-	sb.WriteString(") ")
-
-	sb.WriteString(VariantsOf)
-	sb.WriteString(" (")
-	sb.WriteString(m.logRange.String())
-	sb.WriteString(")")
-
-	return sb.String()
-}
-
-func (m *MultiVariantExpr) Accept(v RootVisitor) {
-	v.VisitVariants(m)
-}
-
-// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
-func (m *MultiVariantExpr) Pretty(level int) string {
-	s := Indent(level)
-
-	s += OpVariants + "(\n"
-
-	variants := make([]string, 0, len(m.variants))
-	for _, v := range m.variants {
-		variants = append(variants, v.Pretty(level+1))
-	}
-
-	for i, v := range variants {
-		s += v
-		// LogQL doesn't allow `,` at the end of last argument.
-		if i < len(variants)-1 {
-			s += ","
-		}
-		s += "\n"
-	}
-
-	s += Indent(level) + ") of (\n"
-	s += m.logRange.Pretty(level + 1)
-	s += Indent(level) + "\n)"
-
-	return s
-}
-
-func (m *MultiVariantExpr) MatcherGroups() ([]MatcherRange, error) {
-	xs := m.Matchers()
-	if len(xs) > 0 {
-		return []MatcherRange{
-			{
-				Matchers: xs,
-				Interval: m.Interval(),
-				Offset:   m.Offset(),
-			},
-		}, nil
-	}
-	return nil, nil
-}
-
-func (m *MultiVariantExpr) Selector() (LogSelectorExpr, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-
-	return m.logRange.Left, nil
-}
-
-func newVariantsExpr(variants []SampleExpr, logRange *LogRangeExpr) VariantsExpr {
-	return &MultiVariantExpr{
-		variants: variants,
-		logRange: logRange,
-	}
 }

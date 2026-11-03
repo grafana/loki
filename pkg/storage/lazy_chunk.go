@@ -37,6 +37,7 @@ func (c *LazyChunk) Iterator(
 	direction logproto.Direction,
 	pipeline log.StreamPipeline,
 	nextChunk *LazyChunk,
+	hintRanges iter.HintTimeRanges,
 ) (iter.EntryIterator, error) {
 	// If the chunk is not already loaded, then error out.
 	if c.Chunk.Data == nil {
@@ -44,7 +45,7 @@ func (c *LazyChunk) Iterator(
 	}
 
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
-	blocks := lokiChunk.Blocks(from, through)
+	blocks := filterBlocksByHintRanges(lokiChunk.Blocks(from, through), hintRanges)
 	if len(blocks) == 0 {
 		return iter.NoopEntryIterator, nil
 	}
@@ -84,11 +85,11 @@ func (c *LazyChunk) Iterator(
 	}
 
 	if direction == logproto.FORWARD {
-		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(its),
+		return iter.NewHintEntryIterator(iter.NewTimeRangedIterator(
+			iter.NewChainedIterator(its),
 			from,
 			through,
-		), nil
+		), hintRanges), nil
 	}
 	for i, it := range its {
 		r, err := iter.NewEntryReversedIter(
@@ -106,7 +107,7 @@ func (c *LazyChunk) Iterator(
 		its[i], its[j] = its[j], its[i]
 	}
 
-	return iter.NewNonOverlappingIterator(its), nil
+	return iter.NewHintEntryIterator(iter.NewChainedIterator(its), hintRanges), nil
 }
 
 // SampleIterator returns an sample iterator.
@@ -116,7 +117,8 @@ func (c *LazyChunk) SampleIterator(
 	ctx context.Context,
 	from, through time.Time,
 	nextChunk *LazyChunk,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
+	hintRanges iter.HintTimeRanges,
 ) (iter.SampleIterator, error) {
 	// If the chunk is not already loaded, then error out.
 	if c.Chunk.Data == nil {
@@ -124,7 +126,7 @@ func (c *LazyChunk) SampleIterator(
 	}
 
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
-	blocks := lokiChunk.Blocks(from, through)
+	blocks := filterBlocksByHintRanges(lokiChunk.Blocks(from, through), hintRanges)
 	if len(blocks) == 0 {
 		return iter.NoopSampleIterator, nil
 	}
@@ -140,7 +142,7 @@ func (c *LazyChunk) SampleIterator(
 		// if the block is overlapping cache it with the next chunk boundaries.
 		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
 			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
-			it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, extractors...), b.Entries())
+			it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, extractor), b.Entries())
 			its = append(its, it)
 			if c.overlappingSampleBlocks == nil {
 				c.overlappingSampleBlocks = make(map[int]iter.CacheSampleIterator)
@@ -160,15 +162,29 @@ func (c *LazyChunk) SampleIterator(
 			}
 		}
 		// non-overlapping block with the next chunk are not cached.
-		its = append(its, b.SampleIterator(ctx, extractors...))
+		its = append(its, b.SampleIterator(ctx, extractor))
 	}
 
 	// build the final iterator bound to the requested time range.
-	return iter.NewTimeRangedSampleIterator(
-		iter.NewNonOverlappingSampleIterator(its),
+	return iter.NewHintSampleIterator(iter.NewTimeRangedSampleIterator(
+		iter.NewChainedSampleIterator(its),
 		from.UnixNano(),
 		through.UnixNano(),
-	), nil
+	), hintRanges), nil
+}
+
+func filterBlocksByHintRanges(blocks []chunkenc.Block, hintRanges iter.HintTimeRanges) []chunkenc.Block {
+	if !hintRanges.Enabled() {
+		return blocks
+	}
+
+	filtered := make([]chunkenc.Block, 0, len(blocks))
+	for _, block := range blocks {
+		if hintRanges.OverlapsClosed(time.Unix(0, block.MinTime()), time.Unix(0, block.MaxTime())) {
+			filtered = append(filtered, block)
+		}
+	}
+	return filtered
 }
 
 func IsBlockOverlapping(b chunkenc.Block, with *LazyChunk, direction logproto.Direction) bool {

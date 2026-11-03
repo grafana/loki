@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 var tokens = map[string]int{
@@ -80,10 +80,6 @@ var tokens = map[string]int{
 
 	// keep labels
 	OpKeep: KEEP,
-
-	// variants
-	OpVariants: VARIANTS,
-	VariantsOf: OF,
 }
 
 var parserFlags = map[string]struct{}{
@@ -125,7 +121,8 @@ var functionTokens = map[string]int{
 	OpTypeSortDesc: SORT_DESC,
 	OpLabelReplace: LABEL_REPLACE,
 
-	OpTypeApproxTopK: APPROX_TOPK,
+	OpTypeApproxTopK:          APPROX_TOPK,
+	OpTypeApproxCountDistinct: APPROX_COUNT_DISTINCT,
 
 	// conversion Op
 	OpConvBytes:           BYTES_CONV,
@@ -138,7 +135,7 @@ var functionTokens = map[string]int{
 
 type lexer struct {
 	Scanner
-	errs    []logqlmodel.ParseError
+	errs    []logqlerr.ParseError
 	builder strings.Builder
 }
 
@@ -258,7 +255,7 @@ func (l *lexer) Lex(lval *syntaxSymType) int {
 }
 
 func (l *lexer) Error(msg string) {
-	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
+	l.errs = append(l.errs, logqlerr.NewParseError(msg, l.Line, l.Column))
 }
 
 // tryScanFlag scans for a parser flag and returns it on success
@@ -384,7 +381,7 @@ func tryScanBytes(number string, l *Scanner) (uint64, bool) {
 
 func isBytesSizeRune(r rune) bool {
 	// Accept: B, kB, MB, GB, TB, PB, KB, KiB, MiB, GiB, TiB, PiB
-	// Do not accept: EB, ZB, YB, PiB, ZiB and YiB. They are not supported since the value migh not be represented in an uint64
+	// Do not accept: EB, ZB, YB, EiB, ZiB and YiB. They are not supported since the value migh not be represented in an uint64
 	switch r {
 	case 'B', 'i', 'k', 'K', 'M', 'G', 'T', 'P':
 		return true

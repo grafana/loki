@@ -2,10 +2,12 @@ package ring
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -52,6 +54,25 @@ func timeToUnixSecons(t time.Time) int64 {
 		return 0
 	}
 	return t.Unix()
+}
+
+// maxFutureTimestampSkew is how far ahead of the local clock a timestamp in a ring entry
+// may be before Merge treats it as written by a node with a skewed clock.
+const maxFutureTimestampSkew = 10 * time.Minute
+
+// futureTimestampLimit returns the latest unix timestamp Merge accepts at the given time.
+func futureTimestampLimit(now time.Time) int64 {
+	return now.Add(maxFutureTimestampSkew).Unix()
+}
+
+// localMergeTimestamp returns the timestamp Merge compares incoming timestamps against for a local
+// entry. A local timestamp beyond limit was written by a node with a clock too far ahead, so it loses
+// against any valid incoming timestamp, including zero.
+func localMergeTimestamp(ts, limit int64) int64 {
+	if ts > limit {
+		return -1
+	}
+	return ts
 }
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
@@ -203,6 +224,10 @@ func (i *InstanceDesc) IsReady(now time.Time, heartbeatTimeout time.Duration) er
 // it will choose more recent state from the two rings, and put that into this ring.
 // There is one exception: we accept LEFT state even if Timestamp hasn't changed.
 //
+// Timestamps more than maxFutureTimestampSkew ahead of the local clock are considered
+// to come from a node with a skewed clock: such incoming entries are ignored, and such
+// local entries are replaced by any other incoming entry, so that the ring can recover.
+//
 // localCAS flag tells the merge that it can use incoming ring as a full state, and detect
 // missing ingesters based on it. Ingesters from incoming ring will cause ingester
 // to be marked as LEFT and gossiped about.
@@ -244,18 +269,25 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 
 	var updated []string
 	tokensChanged := false
+	timestampLimit := futureTimestampLimit(now)
 
 	for name, oing := range otherIngesterMap {
+		if oing.Timestamp > timestampLimit {
+			// Written by a node with a clock too far ahead. Accepting it would block all later updates.
+			continue
+		}
+
 		ting := thisIngesterMap[name]
-		// ting.Timestamp will be 0, if there was no such ingester in our version
-		if oing.Timestamp > ting.Timestamp {
+		// thisTimestamp will be 0, if there was no such ingester in our version
+		thisTimestamp := localMergeTimestamp(ting.Timestamp, timestampLimit)
+		if oing.Timestamp > thisTimestamp {
 			if !tokensEqual(ting.Tokens, oing.Tokens) {
 				tokensChanged = true
 			}
 			oing.Tokens = append([]uint32(nil), oing.Tokens...) // make a copy of tokens
 			thisIngesterMap[name] = oing
 			updated = append(updated, name)
-		} else if oing.Timestamp == ting.Timestamp && ting.State != LEFT && oing.State == LEFT {
+		} else if oing.Timestamp == thisTimestamp && ting.State != LEFT && oing.State == LEFT {
 			// we accept LEFT even if timestamp hasn't changed
 			thisIngesterMap[name] = oing // has no tokens already
 			updated = append(updated, name)
@@ -469,9 +501,21 @@ func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 	return
 }
 
-// Clone returns a deep copy of the ring state.
+// Clone returns a copy of the ring state. The returned Desc and its Ingesters map are
+// safe to modify (entries can be added, removed or replaced), but reference-type fields
+// inside InstanceDesc (Tokens, Versions) share their underlying storage with the
+// original, so they must be treated as read-only.
+//
+// It's hand-written instead of using the reflection-based proto.Clone because it runs on
+// the memberlist hot path (once per watcher notification), where reflection is a
+// significant CPU cost on rings with thousands of instances. Sharing Tokens and Versions
+// storage is not a behavior change: gogo's proto.Clone shallow-copies non-nullable map
+// values, so it shared those fields too.
 func (d *Desc) Clone() memberlist.Mergeable {
-	return proto.Clone(d).(*Desc)
+	if d == nil {
+		return (*Desc)(nil)
+	}
+	return &Desc{Ingesters: maps.Clone(d.Ingesters)}
 }
 
 func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
@@ -687,9 +731,17 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 			return Different
 		}
 
-		for ix, t := range ing.Tokens {
-			if oing.Tokens[ix] != t {
-				return Different
+		// Consecutive ring states usually share the token slice storage for instances
+		// whose tokens didn't change: the memberlist KV store only replaces map entries
+		// of changed instances, and Desc clones share the Tokens backing arrays. When
+		// both slices point at the same storage, they are equal without comparing the
+		// elements. This is only a fast path: slices with different storage but equal
+		// content still compare as equal below.
+		if unsafe.SliceData(ing.Tokens) != unsafe.SliceData(oing.Tokens) {
+			for ix, t := range ing.Tokens {
+				if oing.Tokens[ix] != t {
+					return Different
+				}
 			}
 		}
 

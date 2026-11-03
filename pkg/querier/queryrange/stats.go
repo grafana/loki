@@ -7,30 +7,52 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/middleware"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 type ctxKeyType string
 
 const ctxKey ctxKeyType = "stats"
+
+type internalRequestKeyType struct{}
+
+// WithInternalRequest marks a request that a middleware sends on behalf of the
+// user's query, such as the logline index stats gate. StatsCollectorMiddleware
+// never records such a request as the query's metrics.go line, so if the query
+// later fails, the internal request is not logged in its place.
+func WithInternalRequest(ctx context.Context) context.Context {
+	return context.WithValue(ctx, internalRequestKeyType{}, true)
+}
+
+func isInternalRequest(ctx context.Context) bool {
+	internal, _ := ctx.Value(internalRequestKeyType{}).(bool)
+	return internal
+}
 
 const (
 	queryTypeLog            = "log"
@@ -51,6 +73,19 @@ var (
 	})
 
 	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
+
+	// failedQueryUsageRecordedTotal counts the lines logFailedQueryUsage emits,
+	// one per line, even when the configured log level hides them.
+	failedQueryUsageRecordedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_failed_query_usage_recorded_total",
+		Help:      "Total count of failed-query usage stats lines recorded (zero-usage lines included), by failure category.",
+	}, []string{"category"})
+
+	// failedQueryUsageLogger is a variable so tests can capture the emitted line.
+	failedQueryUsageLogger = func(ctx context.Context) log.Logger {
+		return util_log.WithContext(ctx, log.With(util_log.Logger, "component", "frontend"))
+	}
 )
 
 // recordQueryMetrics will be called from Query Frontend middleware chain for any type of query.
@@ -61,7 +96,7 @@ func recordQueryMetrics(data *queryData) {
 
 	switch data.queryType {
 	case queryTypeLog, queryTypeMetric:
-		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result)
+		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result, nil)
 	case queryTypeLabel:
 		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.QueryString(), data.status, *data.statistics)
 	case queryTypeSeries:
@@ -74,8 +109,23 @@ func recordQueryMetrics(data *queryData) {
 		logql.RecordDetectedFieldsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
 	case queryTypeDetectedLabels:
 		logql.RecordDetectedLabelsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
+	case queryTypeShards, queryTypeQueryPatterns:
+		// No frontend recorder: the querier records index-shards usage and
+		// patterns queries carry none. Listed so they skip the error branch below.
 	default:
 		level.Error(logger).Log("msg", "failed to record query metrics", "err", fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got %s", data.queryType))
+	}
+}
+
+// recordsQueryUsageBytes reports whether the given query type carries query
+// usage bytes at all. Reporting usage is the entire point of the failed-query
+// line, so no other type gets one: it could only report zeroes.
+func recordsQueryUsageBytes(queryType string) bool {
+	switch queryType {
+	case queryTypeLog, queryTypeMetric:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -102,13 +152,52 @@ type queryData struct {
 	recorded            bool
 	estimatedQueryBytes int64
 	indexStatsMu        sync.Mutex
-	indexStatsBytesSeen map[indexStatsRequestKey]struct{}
+	indexStatsRanges    []indexStatsRange
 }
 
-type indexStatsRequestKey struct {
+// indexStatsRange is one IndexStats lookup observed on a query. Nested ranges
+// with the same matchers are not separate haystacks: a full-query lookup and
+// later per-split lookups cover the same bytes.
+type indexStatsRange struct {
 	from     model.Time
 	through  model.Time
 	matchers string
+	bytes    int64
+}
+
+func (r indexStatsRange) covers(other indexStatsRange) bool {
+	return r.matchers == other.matchers && r.from <= other.from && r.through >= other.through
+}
+
+// mergeIndexStatsRange keeps the covering set of IndexStats ranges: a range is
+// dropped when a same-matcher range already spans it, and a newly covering
+// range replaces the nested ranges it contains. Remaining (non-overlapping)
+// ranges are summed. Compaction is in place so append can grow the slice
+// instead of allocating a copy on every insert.
+func mergeIndexStatsRange(ranges []indexStatsRange, next indexStatsRange) []indexStatsRange {
+	for _, existing := range ranges {
+		if existing.covers(next) {
+			return ranges
+		}
+	}
+
+	n := 0
+	for _, existing := range ranges {
+		if next.covers(existing) {
+			continue
+		}
+		ranges[n] = existing
+		n++
+	}
+	return append(ranges[:n], next)
+}
+
+func sumIndexStatsBytes(ranges []indexStatsRange) int64 {
+	var total int64
+	for _, r := range ranges {
+		total += r.bytes
+	}
+	return total
 }
 
 func (d *queryData) recordEstimatedQueryBytes(req *logproto.IndexStatsRequest, responseBytes uint64) {
@@ -119,22 +208,13 @@ func (d *queryData) recordEstimatedQueryBytes(req *logproto.IndexStatsRequest, r
 	d.indexStatsMu.Lock()
 	defer d.indexStatsMu.Unlock()
 
-	if d.indexStatsBytesSeen == nil {
-		d.indexStatsBytesSeen = make(map[indexStatsRequestKey]struct{})
-	}
-
-	key := indexStatsRequestKey{
+	d.indexStatsRanges = mergeIndexStatsRange(d.indexStatsRanges, indexStatsRange{
 		from:     req.From,
 		through:  req.Through,
 		matchers: req.Matchers,
-	}
-
-	if _, seen := d.indexStatsBytesSeen[key]; seen {
-		return
-	}
-
-	d.indexStatsBytesSeen[key] = struct{}{}
-	d.estimatedQueryBytes += int64(responseBytes)
+		bytes:    int64(responseBytes),
+	})
+	d.estimatedQueryBytes = sumIndexStatsBytes(d.indexStatsRanges)
 }
 
 func IndexStatsContextCollectorMiddleware() queryrangebase.Middleware {
@@ -199,9 +279,20 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
 			middlewareStats, statsCtx := stats.NewContext(ctx)
 
+			// Collect usage from discarded responses, even if the root query succeeds.
+			discardedWork, statsCtx := stats.NewDiscardedWorkContext(statsCtx)
+
 			// execute the request
 			resp, err := next.Do(statsCtx, req)
 			if err != nil {
+				// The query failed, but sub-queries that succeeded before the
+				// failure may have processed significant data.
+				// data is set only for requests that came through the HTTP stats
+				// middleware, i.e. real user queries: internal users of the
+				// tripperware get no line.
+				if data != nil {
+					logFailedQueryUsage(ctx, req, err, discardedWork, start)
+				}
 				return resp, err
 			}
 
@@ -266,7 +357,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &r.Response.Statistics
 					queryType = queryTypeShards
 				case *DetectedFieldsResponse:
-					responseStats = &stats.Result{} // TODO: support stats in detected fields
+					responseStats = &r.Statistics
 					totalEntries = 1
 					queryType = queryTypeDetectedFields
 				case *QueryPatternsResponse:
@@ -283,6 +374,21 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			if responseStats != nil {
+				// A later interval can finish one shard and then fail on another.
+				// The completed shard's statistics survive in discardedWork even
+				// though the interval returns an error. Interval responses are processed
+				// in order, so an earlier interval can satisfy the line limit before
+				// that error is seen. Include the discarded work in the successful
+				// root response; writes after this snapshot remain outside the report.
+				discardedStats := discardedWork.Result()
+				// Failed shards or attempts can belong to the same time intervals
+				// as the successful response. This aggregate has no interval
+				// identities, so adding its split count could count those intervals
+				// twice. Recover the work without adding another time partition.
+				discardedStats.Summary.Splits = 0
+				discardedStats.Summary.TotalEntriesReturned = 0
+				responseStats.Merge(discardedStats)
+
 				if data != nil && data.estimatedQueryBytes > responseStats.Summary.EstimatedQueryBytes &&
 					(queryType == queryTypeLog || queryType == queryTypeMetric) {
 					responseStats.Summary.EstimatedQueryBytes = data.estimatedQueryBytes
@@ -296,7 +402,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
 				logger.LogKV(responseStats.KVList()...)
 			}
-			if data != nil {
+			if data != nil && !isInternalRequest(ctx) {
 				data.recorded = true
 				data.statistics = responseStats
 				data.result = res
@@ -318,6 +424,113 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			return resp, nil
 		})
 	})
+}
+
+// logFailedQueryUsage emits the failed-query usage line: what the query consumed
+// before failing, plus the classified failure cause and the request context
+// used to identify the query in regular query stats logs.
+func logFailedQueryUsage(
+	ctx context.Context,
+	req queryrangebase.Request,
+	err error,
+	discardedWork *stats.DiscardedWorkContext,
+	start time.Time,
+) {
+	if !recordsQueryUsageBytes(queryTypeFromRequest(req)) {
+		return
+	}
+	p, errReq := ParamsFromRequest(req)
+	if errReq != nil {
+		return
+	}
+
+	// Only discardedWork is read here: middlewareStats may still have sub-queries
+	// writing to it, so snapshotting it would be a data race.
+	discardedStats := discardedWork.Result()
+	discardedStats.ComputeSummary(time.Since(start), 0, 0)
+
+	category, reason := server.ClassifyFailure(err)
+	// The canonical mapping, so the logged status is the one the client is served.
+	status, _ := server.ClientHTTPStatusAndError(err)
+	query := p.QueryString()
+
+	logValues := []any{
+		"msg", "failed query usage",
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"query_type", loggedQueryType(ctx, req),
+		"range_type", string(logql.GetRangeType(p)),
+		"length", p.End().Sub(p.Start()),
+		"start_delta", time.Since(p.Start()),
+		"end_delta", time.Since(p.End()),
+		"step", p.Step(),
+		"limit", p.Limit(),
+		"status", strconv.Itoa(status),
+		"duration", stats.ConvertSecondsToNanoseconds(discardedStats.Summary.ExecTime),
+		"total_bytes", util.HumanizeBytes(uint64(discardedStats.Summary.TotalBytesProcessed)),
+		"failure_category", category,
+		"failure_reason", reason,
+	}
+	// Match regular query logs: attribution such as source, user and dashboard
+	// is supplied through query tags and logged with lowercase field names.
+	logValues = append(logValues, httpreq.TagsToKeyValues(httpreq.ExtractQueryTagsFromContext(ctx))...)
+	level.Info(failedQueryUsageLogger(ctx)).Log(logValues...)
+
+	failedQueryUsageRecordedTotal.WithLabelValues(category).Inc()
+}
+
+// logFailedQueryUsageForRejection emits the failed-query usage line for
+// rejections raised before the request reaches StatsCollectorMiddleware, so a
+// classified failure gets a line wherever in the path it is raised. Nothing ran
+// yet, hence the empty usage and zero duration.
+func logFailedQueryUsageForRejection(ctx context.Context, req queryrangebase.Request, err error) {
+	// Same gate as the middleware: only requests tracked by the HTTP stats
+	// middleware, i.e. real user queries, get a line.
+	if data, _ := ctx.Value(ctxKey).(*queryData); data == nil {
+		return
+	}
+	logFailedQueryUsage(ctx, req, err, &stats.DiscardedWorkContext{}, time.Now())
+}
+
+// loggedQueryType returns the query type in the taxonomy the regular stats line
+// uses (logql.QueryType), so both lines aggregate by the same values. It parses
+// the expression from the request because logql.Params.GetExpression assumes a
+// query plan the request may not carry.
+func loggedQueryType(ctx context.Context, req queryrangebase.Request) string {
+	expr, err := syntax.ParseExpr(req.GetQuery())
+	if err != nil {
+		return ""
+	}
+	queryType, err := logql.QueryType(expr)
+	if err != nil {
+		return ""
+	}
+	// Mirror the remap the regular stats line applies to datasample queries.
+	queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
+	if queryType == logql.QueryTypeFilter && strings.Contains(queryTags, "datasample") {
+		queryType = logql.QueryTypeLimited
+	}
+	return queryType
+}
+
+// queryTypeFromRequest derives the query type from the request alone, for the
+// error path where there is no response to switch on. Only the request types
+// that carry query usage bytes are recognised; every other type, including one
+// added later, returns "" and so gets no failed-query usage line.
+func queryTypeFromRequest(req queryrangebase.Request) string {
+	switch req.(type) {
+	case *LokiRequest, *LokiInstantRequest:
+		// Distinguish log from metric queries by the expression type.
+		if expr, err := syntax.ParseExpr(req.GetQuery()); err == nil {
+			if _, ok := expr.(syntax.SampleExpr); ok {
+				return queryTypeMetric
+			}
+		}
+		return queryTypeLog
+	default:
+		return ""
+	}
 }
 
 // interceptor implements WriteHeader to intercept status codes. WriteHeader

@@ -293,12 +293,11 @@ func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient
 		return err
 	}
 
-	t.mtx.Lock()
-	defer t.mtx.Unlock()
-
-	t.commonObjects = t.commonObjects[:0]
-	t.userObjects = map[string][]client.StorageObject{}
-	t.userIDs = t.userIDs[:0]
+	// Build a new snapshot so callers holding previously returned slices
+	// are not racing with in-place appends on the cached backing arrays.
+	commonObjects := []client.StorageObject{}
+	userObjects := map[string][]client.StorageObject{}
+	userIDs := []client.StorageCommonPrefix{}
 
 	for _, object := range objects {
 		// The s3 client can also return the directory itself in the ListObjects.
@@ -312,16 +311,22 @@ func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient
 		}
 
 		if len(ss) == 2 {
-			t.commonObjects = append(t.commonObjects, object)
+			commonObjects = append(commonObjects, object)
 		} else {
 			userID := ss[1]
-			if len(t.userObjects[userID]) == 0 {
-				t.userIDs = append(t.userIDs, client.StorageCommonPrefix(path.Join(t.name, userID)))
+			if len(userObjects[userID]) == 0 {
+				userIDs = append(userIDs, client.StorageCommonPrefix(path.Join(t.name, userID)))
 			}
-			t.userObjects[userID] = append(t.userObjects[userID], object)
+			userObjects[userID] = append(userObjects[userID], object)
 		}
 	}
 
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+
+	t.commonObjects = commonObjects
+	t.userObjects = userObjects
+	t.userIDs = userIDs
 	t.cacheBuiltAt = time.Now()
 	return nil
 }

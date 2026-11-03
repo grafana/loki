@@ -48,10 +48,15 @@ const (
 
 // Request headers to be ignored while calculating seed signature for
 // a request.
+//
+// Per AWS SigV4 specification:
+//
+//	"If the Content-Type header is present in the request, you must add it
+//	to the CanonicalHeaders list."
+//	https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv-create-signed-request.html
 var ignoredStreamingHeaders = map[string]bool{
 	"Authorization": true,
 	"User-Agent":    true,
-	"Content-Type":  true,
 }
 
 // getSignedChunkLength - calculates the length of chunk metadata
@@ -132,8 +137,8 @@ func prepareStreamingRequest(req *http.Request, sessionToken string, dataLen int
 		for k := range req.Trailer {
 			req.Header.Add("X-Amz-Trailer", strings.ToLower(k))
 		}
-		req.TransferEncoding = []string{"aws-chunked"}
 	}
+	setAwsChunkedContentEncoding(req)
 
 	if sessionToken != "" {
 		req.Header.Set("X-Amz-Security-Token", sessionToken)

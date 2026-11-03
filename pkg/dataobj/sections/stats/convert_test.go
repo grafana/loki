@@ -13,7 +13,7 @@ import (
 func TestFromRecordBatch_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name,label:job"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -24,6 +24,7 @@ func TestFromRecordBatch_RoundTrip(t *testing.T) {
 		MaxTimestamp:     200,
 		RowCount:         5,
 		UncompressedSize: 50,
+		ShardBucket:      7,
 	})
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj2",
@@ -83,6 +84,7 @@ func TestFromRecordBatch_RoundTrip(t *testing.T) {
 	require.Equal(t, int64(200), r1.MaxTimestamp)
 	require.Equal(t, int64(5), r1.RowCount)
 	require.Equal(t, int64(50), r1.UncompressedSize)
+	require.Equal(t, uint32(7), r1.ShardBucket)
 
 	r2, ok := byPath["/obj2"]
 	require.True(t, ok, "expected a row for /obj2")
@@ -99,7 +101,7 @@ func TestFromRecordBatch_RoundTrip(t *testing.T) {
 func TestFromRecordBatch_ParityWithDecodeRow(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name,label:job"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -164,7 +166,7 @@ func TestFromRecordBatch_ParityWithDecodeRow(t *testing.T) {
 func TestFromRecordBatch_DestShorterThanBatch(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -235,7 +237,7 @@ func TestFromRecordBatch_DestShorterThanBatch(t *testing.T) {
 func TestFromRecordBatch_ReusedDestNoStaleValues(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",

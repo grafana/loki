@@ -1,6 +1,7 @@
 package parquet
 
 import (
+	"bytes"
 	"encoding/binary"
 
 	"github.com/parquet-go/parquet-go/deprecated"
@@ -226,12 +227,170 @@ func compareRowsFuncOfIndexColumns(compareFuncs []func(Row, Row) int) func(Row, 
 
 //go:noinline
 func compareRowsFuncOfIndexAscending(columnIndex uint16, typ Type) func(Row, Row) int {
-	return func(row1, row2 Row) int { return typ.Compare(row1[columnIndex], row2[columnIndex]) }
+	switch t := typ.(type) {
+	case int32Type:
+		return func(row1, row2 Row) int {
+			return compareInt32(row1[columnIndex].int32(), row2[columnIndex].int32())
+		}
+	case uint32Type:
+		return func(row1, row2 Row) int {
+			return compareUint32(row1[columnIndex].uint32(), row2[columnIndex].uint32())
+		}
+	case int64Type:
+		return func(row1, row2 Row) int {
+			return compareInt64(row1[columnIndex].int64(), row2[columnIndex].int64())
+		}
+	case uint64Type:
+		return func(row1, row2 Row) int {
+			return compareUint64(row1[columnIndex].uint64(), row2[columnIndex].uint64())
+		}
+	case floatType:
+		return func(row1, row2 Row) int {
+			return compareFloat32(row1[columnIndex].float(), row2[columnIndex].float())
+		}
+	case doubleType:
+		return func(row1, row2 Row) int {
+			return compareFloat64(row1[columnIndex].double(), row2[columnIndex].double())
+		}
+	case booleanType:
+		return func(row1, row2 Row) int {
+			return compareBool(row1[columnIndex].boolean(), row2[columnIndex].boolean())
+		}
+	case byteArrayType, *stringType, fixedLenByteArrayType, *enumType, *geographyType, *bsonType, *geometryType, *jsonType:
+		return func(row1, row2 Row) int {
+			return bytes.Compare(row1[columnIndex].byteArray(), row2[columnIndex].byteArray())
+		}
+	case be128Type, *uuidType:
+		return func(row1, row2 Row) int {
+			return compareBE128(row1[columnIndex].be128(), row2[columnIndex].be128())
+		}
+	case *dateType:
+		return func(row1, row2 Row) int {
+			return compareInt32(row1[columnIndex].int32(), row2[columnIndex].int32())
+		}
+	case *timestampType:
+		return func(row1, row2 Row) int {
+			return compareInt64(row1[columnIndex].int64(), row2[columnIndex].int64())
+		}
+	case *timeType:
+		if t.useInt32() {
+			return func(row1, row2 Row) int {
+				return compareInt32(row1[columnIndex].int32(), row2[columnIndex].int32())
+			}
+		} else {
+			return func(row1, row2 Row) int {
+				return compareInt64(row1[columnIndex].int64(), row2[columnIndex].int64())
+			}
+		}
+	case *intType:
+		if t.BitWidth == 64 {
+			if t.IsSigned {
+				return func(row1, row2 Row) int {
+					return compareInt64(row1[columnIndex].int64(), row2[columnIndex].int64())
+				}
+			} else {
+				return func(row1, row2 Row) int {
+					return compareUint64(row1[columnIndex].uint64(), row2[columnIndex].uint64())
+				}
+			}
+		} else {
+			if t.IsSigned {
+				return func(row1, row2 Row) int {
+					return compareInt32(row1[columnIndex].int32(), row2[columnIndex].int32())
+				}
+			} else {
+				return func(row1, row2 Row) int {
+					return compareUint32(row1[columnIndex].uint32(), row2[columnIndex].uint32())
+				}
+			}
+		}
+	default:
+		return func(row1, row2 Row) int { return typ.Compare(row1[columnIndex], row2[columnIndex]) }
+	}
 }
 
 //go:noinline
 func compareRowsFuncOfIndexDescending(columnIndex uint16, typ Type) func(Row, Row) int {
-	return func(row1, row2 Row) int { return -typ.Compare(row1[columnIndex], row2[columnIndex]) }
+	switch t := typ.(type) {
+	case int32Type:
+		return func(row1, row2 Row) int {
+			return -compareInt32(row1[columnIndex].int32(), row2[columnIndex].int32())
+		}
+	case uint32Type:
+		return func(row1, row2 Row) int {
+			return -compareUint32(row1[columnIndex].uint32(), row2[columnIndex].uint32())
+		}
+	case int64Type:
+		return func(row1, row2 Row) int {
+			return -compareInt64(row1[columnIndex].int64(), row2[columnIndex].int64())
+		}
+	case uint64Type:
+		return func(row1, row2 Row) int {
+			return -compareUint64(row1[columnIndex].uint64(), row2[columnIndex].uint64())
+		}
+	case floatType:
+		return func(row1, row2 Row) int {
+			return -compareFloat32(row1[columnIndex].float(), row2[columnIndex].float())
+		}
+	case doubleType:
+		return func(row1, row2 Row) int {
+			return -compareFloat64(row1[columnIndex].double(), row2[columnIndex].double())
+		}
+	case booleanType:
+		return func(row1, row2 Row) int {
+			return -compareBool(row1[columnIndex].boolean(), row2[columnIndex].boolean())
+		}
+	case byteArrayType, *stringType, fixedLenByteArrayType, *enumType, *geographyType, *bsonType, *geometryType, *jsonType:
+		return func(row1, row2 Row) int {
+			return -bytes.Compare(row1[columnIndex].byteArray(), row2[columnIndex].byteArray())
+		}
+	case be128Type, *uuidType:
+		return func(row1, row2 Row) int {
+			return -compareBE128(row1[columnIndex].be128(), row2[columnIndex].be128())
+		}
+	case *dateType:
+		return func(row1, row2 Row) int {
+			return -compareInt32(row1[columnIndex].int32(), row2[columnIndex].int32())
+		}
+	case *timestampType:
+		return func(row1, row2 Row) int {
+			return -compareInt64(row1[columnIndex].int64(), row2[columnIndex].int64())
+		}
+	case *timeType:
+		if t.useInt32() {
+			return func(row1, row2 Row) int {
+				return -compareInt32(row1[columnIndex].int32(), row2[columnIndex].int32())
+			}
+		} else {
+			return func(row1, row2 Row) int {
+				return -compareInt64(row1[columnIndex].int64(), row2[columnIndex].int64())
+			}
+		}
+	case *intType:
+		if t.BitWidth == 64 {
+			if t.IsSigned {
+				return func(row1, row2 Row) int {
+					return -compareInt64(row1[columnIndex].int64(), row2[columnIndex].int64())
+				}
+			} else {
+				return func(row1, row2 Row) int {
+					return -compareUint64(row1[columnIndex].uint64(), row2[columnIndex].uint64())
+				}
+			}
+		} else {
+			if t.IsSigned {
+				return func(row1, row2 Row) int {
+					return -compareInt32(row1[columnIndex].int32(), row2[columnIndex].int32())
+				}
+			} else {
+				return func(row1, row2 Row) int {
+					return -compareUint32(row1[columnIndex].uint32(), row2[columnIndex].uint32())
+				}
+			}
+		}
+	default:
+		return func(row1, row2 Row) int { return -typ.Compare(row1[columnIndex], row2[columnIndex]) }
+	}
 }
 
 //go:noinline

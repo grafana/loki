@@ -8,7 +8,7 @@ weight:
 
 Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.  
 This component emits and periodically queries for logs, making sure that Loki is ingesting logs without any data loss.
-When something is wrong with Loki, the Canary often provides the first indication. 
+When something is wrong with Loki, the Canary often provides the first indication.
 
 Loki Canary generates artificial log lines.
 These log lines are sent to the Loki cluster.
@@ -60,17 +60,22 @@ the entries in the internal array. If any of the entries are older than the
 duration specified by the `-wait` flag (defaulting to 60s), they are removed
 from the array and the `websocket_missing_entries` counter is incremented. An
 additional query is then made directly to Loki for any missing entries to
-determine if they are truly missing or only missing from the WebSocket. If
-missing entries are not found in the direct query, the `missing_entries` counter
-is incremented.
+determine if they are truly missing or only missing from the WebSocket.
 
-### Additional Queries
+This direct query is repeated every `-pruneinterval` (defaulting to 60s) for
+as long as an entry remains missing. Once an entry has been missing for longer
+than the duration specified by the `-max-wait` flag (defaulting to 5m), Loki
+Canary gives up on it, removes it from the list, and increments the
+`missing_entries` counter.
 
-#### Spot Check
+## Additional Queries
 
-Starting with version 1.6.0, the canary will spot check certain results over time
-to make sure they are present in Loki, this is helpful for testing the transition
-of inmemory logs in the ingester to the store to make sure nothing is lost.
+### Spot Check
+
+The canary spot checks certain results over time to make sure they are
+present in Loki. This is helpful for testing the transition of logs from
+in-memory storage in the ingester to the long-term store, to make sure
+nothing is lost.
 
 `-spot-check-interval` and `-spot-check-max` are used to tune this feature,
 `-spot-check-interval` will pull a log entry from the stream at this interval
@@ -85,17 +90,18 @@ means that after 4 hours of running the canary will have a list of 16 entries
 it will query every minute (default `spot-check-query-rate` interval is 1m),
 so be aware of the query load this can put on Loki if you have a lot of canaries.
 
-__NOTE:__ if you are using `out-of-order-percentage` to test ingestion of out-of-order
-log lines be sure not to set the two out of order time range flags too far in the past.
-The defaults are already enough to test this functionality properly, and setting them
+{{< admonition type="note" >}}
+If you are using `out-of-order-percentage` to test ingestion of out-of-order
+log lines, do not set the two out-of-order time range flags too far in the past.
+The defaults are already enough to test this functionality properly. Setting them
 too far in the past can cause issues with the spot check test.
-
+{{< /admonition >}}
 
 When using `out-of-order-percentage` you also need to make use of pipeline stages
 in your Alloy configuration in order to set the timestamps correctly as the logs are pushed
 to Loki. The [Alloy `loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) docs have examples of how to do this.
 
-#### Metric Test
+### Metric Test
 
 Loki Canary will run a metric query `count_over_time` to
 verify that the rate of logs being stored in Loki corresponds to the rate they are being
@@ -103,7 +109,10 @@ created by Loki Canary.
 
 `-metric-test-interval` and `-metric-test-range` are used to tune this feature, but
 by default every `1h` the canary will run a `count_over_time` instant-query to Loki
-for a range of `24h`.
+for a range of `24h`. The first metric test runs at a random time within the first
+`-metric-test-interval` after startup, so that many canaries started at the same
+time don't all query Loki simultaneously; subsequent tests run on the fixed
+interval.
 
 If the canary has not run for `-metric-test-range` (`24h`) the query range is adjusted
 to the amount of time the canary has been running such that the rate can be calculated
@@ -111,8 +120,11 @@ since the canary was started.
 
 The canary calculates what the expected count of logs would be for the range
 (also adjusting this based on canary runtime) and compares the expected result with
-the actual result returned from Loki.  The _difference_ is stored as the value in
-the gauge `loki_canary_metric_test_deviation`
+the actual result returned from Loki. The expected count is stored in the gauge
+`loki_canary_metric_test_expected` and the count Loki returned is stored in the
+gauge `loki_canary_metric_test_actual`. To see the _difference_, subtract one
+gauge from the other, which is what the Loki Canary dashboard in the Loki mixin
+does.
 
 It's expected that there will be some deviation, the method of creating an expected
 calculation based on the query rate compared to actual query data is imperfect
@@ -120,12 +132,58 @@ and will lead to a deviation of a few log entries.
 
 It's not expected for there to be a deviation of more than 3-4 log entries.
 
+### Cache Test
+
+Loki Canary can also check whether Loki's query result cache is returning results
+that are consistent with an uncached query. This is helpful for catching cache
+invalidation bugs, where a cached response no longer matches what Loki would
+return if the query were run again from scratch.
+
+`-cache-test-interval`, `-cache-test-range`, and `-cache-test-now` are used to tune
+this feature. By default, every `15m` the canary runs the same `count_over_time`
+instant-query twice against a fixed point in the past: once normally, and once with
+a `Cache-Control: no-cache` header to bypass the cache. `-cache-test-range` (default
+`24h`) sets the range of the query, and `-cache-test-now` (default `1h`) sets how far
+back from the current time the query's execution time (`--now`) is set, so that the
+test queries a stable window of data rather than a constantly moving one.
+
+Each attempt increments `loki_canary_cache_test_query_results_total`, labeled
+`status="success"` or `status="failure"`. If the cached and uncached results
+differ, `loki_canary_cache_test_query_results_diff_total` is incremented.
+
+Because the query window cannot start before the canary process itself started,
+the cache test is skipped (with a message logged to standard error) until
+`-cache-test-now` has elapsed since startup.
+
 ### Control
 
 Loki Canary responds to two endpoints to allow dynamic suspending/resuming of the
 canary process.  This can be useful if you'd like to quickly disable or reenable the
 canary.  To stop or start the canary issue an HTTP GET request against the `/suspend` or
 `/resume` endpoints.
+
+### Metrics
+
+Loki Canary exposes all of its metrics on `/metrics` in Prometheus format, on the
+port set by `-port` (default `3500`). In addition to the metrics named earlier on
+this page, Loki Canary exposes:
+
+- `loki_canary_entries_total`: total count of log entries written by the canary.
+- `loki_canary_duplicate_entries_total`: count of log entries received more than
+  once over the WebSocket.
+- `loki_canary_unexpected_entries_total`: count of log entries received that
+  were not expected, for example because they were already reported missing.
+- `loki_canary_ws_reconnects_total`: count of WebSocket reconnections.
+- `loki_canary_ws_pings_total`: count of ping messages received on the
+  WebSocket connection.
+- `loki_canary_otlp_validation_errors_total`: count of log entries read back
+  with a missing or mismatched OTLP `canary_timestamp` attribute. Only
+  incremented when `-push-protocol=otlp` is set. See [OTLP push
+  protocol](#otlp-push-protocol).
+- `loki_canary_metric_test_request_duration_seconds`: histogram of how long the
+  metric test query took to run.
+- `loki_canary_spot_check_request_duration_seconds`: histogram of how long the
+  spot check query took to run.
 
 ## Installation
 
@@ -175,20 +233,64 @@ docker run --rm \
 The metrics port (default `3500`) must be published so that Prometheus or Alloy can
 scrape it.
 
+### Bearer token authentication
+
+Use `-bearer-token-file` to add a bearer token to Loki requests. The canary
+rereads the file for each HTTP request and WebSocket reconnect, so projected
+Kubernetes service account tokens can rotate without restarting the canary.
+This option is mutually exclusive with `-user`.
+
+For a pod using the default service account token mount, pass:
+
+```shell
+-bearer-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token
+```
+
+### OTLP push protocol
+
+Use `-push-protocol=otlp` together with `-push=true` to have Loki Canary push
+its logs using the OTLP (OpenTelemetry Protocol) over HTTP, instead of Loki's
+native push format. Setting `-push-protocol` without `-push=true` causes the
+canary to exit with an error such as `-push-protocol requires -push=true`.
+
+In OTLP mode, the canary sends gzip-compressed OTLP log export requests to
+`/otlp/v1/logs`, instead of Snappy-compressed native push requests to
+`/loki/api/v1/push`.
+
+{{< admonition type="warning" >}}
+Loki only promotes a fixed default list of OTLP resource attributes (for
+example `service.name`) to index labels. The attributes the canary uses to
+build its own selector, `-labelname`/`-labelvalue` and
+`-streamname`/`-streamvalue`, are not in that default list. Unless the
+tenant's `otlp_config` is set up to index these attributes, Loki Canary's
+read-side queries (the WebSocket tail, the metric test, the cache test, and
+direct queries) will not find the logs it pushed. See [Send log data over the
+OTLP protocol](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/)
+for how to configure a tenant's `otlp_config` to index resource attributes as
+labels.
+{{< /admonition >}}
+
+Each OTLP log record also carries a `canary_timestamp` attribute. Loki Canary
+checks this attribute on every entry it reads back, both over the WebSocket
+and in direct queries, and increments
+`loki_canary_otlp_validation_errors_total` if the attribute is missing or
+does not match the timestamp in the log line.
+
 ### Kubernetes
 
 To run on Kubernetes, you can do something simple like:
 
-`kubectl run loki-canary --generator=run-pod/v1
---image=grafana/loki-canary:latest --restart=Never --image-pull-policy=IfNotPresent
---labels=name=loki-canary -- -addr=loki:3100`
+```shell
+kubectl run loki-canary --image=grafana/loki-canary:latest --restart=Never \
+  --image-pull-policy=IfNotPresent --labels=name=loki-canary -- -addr=loki:3100
+```
 
 Or you can do something more complex like deploy it as a DaemonSet, there is a
 Tanka setup for this in the `production` folder, you can import it using
 `jsonnet-bundler`:
 
 ```shell
-jb install github.com/grafana/loki-canary/production/ksonnet/loki-canary
+jb install github.com/grafana/loki/production/ksonnet/loki-canary
 ```
 
 Then in your Tanka environment's `main.jsonnet` you'll want something like
@@ -211,11 +313,12 @@ loki_canary {
   }
 }
 ```
+
 #### Examples
 
 Standalone Pod Implementation of loki-canary
 
-```
+```yaml
 ---
 apiVersion: v1
 kind: Pod
@@ -252,16 +355,19 @@ spec:
 
 DaemonSet Implementation of loki-canary
 
-```
+```yaml
 ---
 kind: DaemonSet
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 metadata:
   labels:
     app: loki-canary
     name: loki-canary
   name: loki-canary
 spec:
+  selector:
+    matchLabels:
+      app: loki-canary
   template:
     metadata:
       name: loki-canary
@@ -293,7 +399,6 @@ spec:
     targetPort: 3500
 ```
 
-
 ### From Source
 
 If the other options are not sufficient for your use case, you can compile
@@ -302,19 +407,19 @@ If the other options are not sufficient for your use case, you can compile
 1. Clone the source tree.
 
     ```bash
-    $ git clone https://github.com/grafana/loki
+    git clone https://github.com/grafana/loki
     ```
 
 1. Build the binary.
 
     ```bash
-    $ make loki-canary
+    make loki-canary
     ```
 
 1. Optional: Build the container image.
 
     ```bash
-    $ make loki-canary-image
+    make loki-canary-image
     ```
 
 ### Example invocations
@@ -322,7 +427,7 @@ If the other options are not sufficient for your use case, you can compile
 The following examples show common ways to run `loki-canary`. They use only flags
 that the binary accepts; see [Configuration](#configuration) for the full list.
 
-**1. Minimal local run (no authentication, no TLS)**
+#### Minimal local run (no authentication, no TLS)
 
 Write artificial logs to standard output, tail them back over a WebSocket, and
 expose metrics on the default port `3500`:
@@ -339,7 +444,7 @@ Alloy is still responsible for shipping the canary's standard output into Loki. 
 [Monolithic mode setup](#monolithic-mode-setup) for a complete Systemd plus Alloy
 example.
 
-**2. Push mode against an authenticated, multi-tenant Loki**
+#### Push mode against an authenticated, multi-tenant Loki
 
 Have the canary push its own logs directly to Loki instead of relying on a separate
 agent, using basic authentication and an `X-Scope-OrgID` tenant header:
@@ -357,10 +462,30 @@ loki-canary \
   -size=512
 ```
 
-When `-push=true` is set, the default value of `-streamvalue` becomes `push`
-instead of `stdout`.
+The `-streamvalue` flag defaults to `stdout` in standard-output mode, and to
+`push` when `-push=true`, unless you set it explicitly. If you rely on the
+stream label to distinguish push-mode canaries from stdout-mode canaries in
+your dashboards or alerts, set `-streamvalue` explicitly rather than
+depending on the default.
 
-**3. Run over TLS with a custom client certificate**
+#### Push mode using the OTLP protocol
+
+Push logs using OTLP over HTTP instead of Loki's native push format. The
+tenant's `otlp_config` must index the attributes built from
+`-labelname`/`-streamname` as labels, or the canary will not find its own
+logs when it reads them back. See [OTLP push
+protocol](#otlp-push-protocol) for details:
+
+```bash
+loki-canary \
+  -addr=loki.example.com:3100 \
+  -push=true \
+  -push-protocol=otlp \
+  -labelname=instance \
+  -labelvalue=loki-canary-otlp-1
+```
+
+#### Run over TLS with a custom client certificate
 
 Connect to a Loki endpoint that terminates TLS. Enabling `-tls` switches the
 WebSocket connection from `ws://` to `wss://`:
@@ -386,25 +511,39 @@ environment variable `LOKI_ADDRESS`, and if your Loki server uses TLS, `-tls=tru
 must also be provided. Note that using TLS will cause the WebSocket connection
 to use `wss://` instead of `ws://`.
 
+Use `-path-prefix` if Loki is served behind a URL path prefix, for example
+through a reverse proxy. The canary prepends this prefix to every request
+path it uses: the push endpoint, the WebSocket tail connection, and both
+query endpoints.
+
 The `-labelname` and `-labelvalue` flags should also be provided, as these are
 used by Loki Canary to filter the log stream to only process logs for the
 current instance of the canary. Ensure that the values provided to the flags are
 unique to each instance of Loki Canary. Grafana Labs' Tanka config
 accomplishes this by passing in the Pod name as the label value.
 
+Be aware that when `-labels` is set, it replaces the selector used for
+every query Loki Canary makes: the WebSocket tail connection, the metric test
+and cache test queries, and the direct queries that confirm missing entries
+and spot-check results. `-labelname`/`-labelvalue` and
+`-streamname`/`-streamvalue` are only used to build the selector when
+`-labels` is not set. If you use `-labels`, make sure it still matches the
+labels applied at ingestion time, because `-labelname`/`-streamname` have no
+effect once `-labels` is set.
+
 If Loki Canary reports a high number of `unexpected_entries`, Loki Canary may
 not be waiting long enough and the value for the `-wait` flag should be
 increased to a larger value than 60s.
 
-__Be aware__ of the relationship between `pruneinterval` and the `interval`.
+Be aware of the relationship between `pruneinterval` and the `interval`.
 For example, with an interval of 10ms (100 logs per second) and a prune interval
 of 60s, you will write 6000 logs per minute. If those logs were not received
 over the WebSocket, the canary will attempt to query Loki directly to see if
-they are completely lost. __However__ the query return is limited to 1000
+they are completely lost. However the query return is limited to 1000
 results so you will not be able to return all the logs even if they did make it
 to Loki.
 
-__Likewise__, if you lower the `pruneinterval` you risk causing a denial of
+Likewise, if you lower the `pruneinterval` you risk causing a denial of
 service attack as all your canaries attempt to query for missing logs at
 whatever your `pruneinterval` is defined at.
 
@@ -413,8 +552,16 @@ All options:
 ```
   -addr string
     	The Loki server URL:Port, e.g. loki:3100. Loki address can also be set using the environment variable LOKI_ADDRESS.
+  -bearer-token-file string
+    	File containing a bearer token to add to Loki requests. Mutually exclusive with -user
   -buckets int
     	Number of buckets in the response_latency histogram (default 10)
+  -cache-test-interval duration
+    	The interval the cache test query should be run (default 15m0s)
+  -cache-test-now duration
+    	Duration how far back from current time the execution time (--now) should be set for running this query in the cache test instant-query. (default 1h0m0s)
+  -cache-test-range duration
+    	The range value [24h] used in the cache test instant-query. (default 24h0m0s)
   -ca-file string
     	Client certificate authority for optional use with TLS connection to Loki
   -cert-file string
@@ -445,12 +592,16 @@ All options:
     	Percentage (0-100) of log entries that should be sent out of order.
   -pass string
     	Loki password. This credential should have both read and write permissions to Loki endpoints
+  -path-prefix string
+    	Path prefix for the Loki server
   -port int
     	Port which loki-canary should expose metrics (default 3500)
   -pruneinterval duration
     	Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki (default 1m0s)
   -push
     	Push the logs directly to given Loki address
+  -push-protocol string
+    	Write protocol: loki or otlp (requires -push) (default "loki")
   -query-append string
         LogQL filters to be appended to the Canary query e.g. '| json | line_format `{{.log}}`'  	
   -query-timeout duration
@@ -468,7 +619,7 @@ All options:
   -streamname string
     	The stream name for this instance of loki-canary to use in the log selector (default "stream")
   -streamvalue string
-    	The unique stream value for this instance of loki-canary to use in the log selector (default "stdout")
+    	The unique stream value for this instance of loki-canary to use in the log selector (defaults to "stdout", or "push" when -push=true)
   -tenant-id string
     	Tenant ID to be set in X-Scope-OrgID header.
   -tls
@@ -526,8 +677,10 @@ mismatch between what the canary writes and what it queries:
 - Each canary instance must use a unique `-labelvalue`. If two canaries share the
   same label value, they read each other's logs and report out-of-order or
   unexpected entries.
-- If you set `-labels`, remember it overwrites `-labelname` and `-streamname`. Make
-  sure the combined selector still matches the labels applied at ingestion time.
+- If you set `-labels`, remember it replaces the selector for every query the
+  canary makes, including the WebSocket tail. `-labelname`/`-streamname` have no
+  effect once `-labels` is set, so make sure the selector built from `-labels`
+  matches the labels applied at ingestion time.
 
 To confirm the selector, run the same query the canary builds (for example
 `{name="loki-canary", stream="stdout"}`) directly in Grafana or `logcli` and check
@@ -571,7 +724,7 @@ Create a systemd service file that writes Loki Canary's standard output to the f
 ```ini
 [Unit]
 Description=Loki Canary
-Documentation=https://grafana.com/docs/loki/latest/operations/loki-canary/
+Documentation=https://grafana.com/docs/loki/<LOKI_VERSION>/operations/loki-canary/
 
 [Service]
 User=loki
@@ -585,7 +738,7 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-`-labelname` and `-labelvalue` flags specify a label pair used to identify Loki Canary's logs. `-streamname` and `-streamvalue` flags specify an additional label pair and must be provided. The same values can be provided to both label pairs if no additional label exists. Labels can be added when Alloy scrapes the logs.
+`-labelname` and `-labelvalue` flags specify a label pair used to identify Loki Canary's logs. `-streamname` and `-streamvalue` flags specify an additional label pair; they default to `stream` and `stdout`, but can be set explicitly if you need a different value. The same values can be provided to both label pairs if no additional label exists. Labels can be added when Alloy scrapes the logs.
 
 ### Scrape logs
 

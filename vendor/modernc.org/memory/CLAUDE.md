@@ -36,18 +36,18 @@ Both constants are compile-time `false` by default, so the guarded code costs no
 
 Everything hangs off one invariant: **every mapping is `pageSize`-aligned (64 KiB, `pageSizeLog = 16`), so any allocated address masks down to its page header with `p &^ pageMask`.** There are no per-allocation headers and no address→metadata lookup on the hot path — `Free` and `UsableSize` recover everything from that single AND.
 
-`page` (`memory.go:86`) is the four-word header at the start of every mapping: `brk` (bump index), `log` (size class), `size` (bytes actually mapped), `used` (live slots). `init()` asserts `sizeof(page) % mallocAllign == 0`.
+`page` (`memory.go:99`) is the four-word header at the start of every mapping: `brk` (bump index), `log` (size class), `size` (bytes actually mapped), `used` (live slots). `init()` asserts `sizeof(page) % mallocAllign == 0`.
 
 Two allocation paths, discriminated by `page.log`:
 
 - **`log != 0` — shared page**, for `size <= maxSlotSize` (`1 << (pageSizeLog-2)` = 16 KiB). The request rounds up to a power-of-two slot no smaller than `mallocAllign` (`2*sizeof(uintptr)`); `log` is that exponent. A page holds `cap[log] = pageAvail / (1<<log)` slots handed out by bumping `brk`; `a.pages[log]` is the current carve target and is zeroed once it fills. Freed slots go on `a.lists[log]`, an intrusive doubly-linked list whose `node{prev,next}` is written *inside the free slot* — hence the two-word minimum slot size.
-- **`log == 0` — dedicated page**, for anything larger. One allocation per mapping at `pg + headerSize`, unmapped on `Free`. `log == 0` is a safe sentinel precisely because `mallocAllign` rounding makes the smallest real class `log` 4 on 64-bit, 3 on 32-bit.
+- **`log == 0` — dedicated page**, for anything larger. One allocation per mapping at `pg + headerSize`, released on `Free` (see Page retention). `log == 0` is a safe sentinel precisely because `mallocAllign` rounding makes the smallest real class `log` 4 on 64-bit, 3 on 32-bit.
 
 `a.regs` is the set of live mappings. It is touched only by `mmap`/`unmap`/`Close` (and by tests as a leak check), never on the allocation fast path.
 
-**Page draining** (`UintptrFree`, `memory.go:225-253`): when a shared page's `used` reaches 0, all `brk` of its slots are unlinked from the global `a.lists[log]` before the page is retained or unmapped. Skipping that walk would leave free-list nodes pointing into memory that is no longer on the list — or no longer mapped at all.
+**Page draining** (`UintptrFree`, `memory.go:340-356`): when a shared page's `used` reaches 0, all `brk` of its slots are unlinked from the global `a.lists[log]` before the page is retained or unmapped. Skipping that walk would leave free-list nodes pointing into memory that is no longer on the list — or no longer mapped at all.
 
-**Alignment costs syscalls** (`mmap_unix.go:29`): to get a 64 KiB-aligned result, `mmap` asks for `size + pageSize` and unmaps the misaligned head and the surplus tail — up to three syscalls per page acquisition. If the *tail* unmap is rejected by the kernel the code keeps the enlarged mapping rather than failing (fixes bigsort on linux/s390x, cznic/sqlite#207), so `page.size` may legitimately exceed what was requested. The `TODO` at `memory.go:112` is about reusing that surplus, which requires moving `cap` out of `Allocator` and into `page` so capacity becomes per-page.
+**Alignment costs syscalls** (`mmap_unix.go:34`): to get a 64 KiB-aligned result, `mmap` asks for `size + pageSize` and unmaps the misaligned head and the surplus tail — up to three syscalls per page acquisition. `Allocator.mmap` amortizes this for 64 KiB regions by acquiring `slabBatch` of them in one mapping and pooling the rest (unix only — `canCarve`). If the *tail* unmap is rejected by the kernel the code keeps the enlarged mapping rather than failing (fixes bigsort on linux/s390x, cznic/sqlite#207), so `page.size` may legitimately exceed what was requested. The `TODO` at `memory.go:206` is about reusing that surplus, which requires moving `cap` out of `Allocator` and into `page` so capacity becomes per-page.
 
 Windows gets alignment for free — `VirtualAlloc` is 64 KiB-granular — so `mmap_windows.go` just rounds up and returns.
 
@@ -65,7 +65,7 @@ The zero `Allocator` is ready to use and **is not goroutine-safe** — there is 
 
 ## Page retention
 
-`UintptrFree` does **not** unmap a shared page when its last slot is freed. It resets `brk` and keeps the page as its size class's carve target, so a workload that repeatedly drains a class no longer pays an `mmap` plus up to three `munmap`s per alloc/free pair. At most one empty page per class is held; `Trim` releases them and `Close` releases everything. Dedicated (`log == 0`) pages are still unmapped immediately.
+`UintptrFree` does **not** return an empty region to the OS eagerly. A drained shared page is kept as its size class's carve target; every other empty region — a drained page whose class already has a carve target, or a dedicated page — goes via `release` into `a.freed`, a pool keyed by region size and bounded by `maxFreedSize` (4 MiB plus the high-water mark of the live mapping). `Allocator.mmap` serves requests from the pool before mapping fresh, with request sizes collapsed into region classes (`mmapSize`) so pool hits are likely. `Trim` releases the carve targets and the pool; `Close` releases everything.
 
 This is why every test and benchmark calls `alloc.Trim()` before asserting `Allocs`/`Mmaps`/`Bytes`/`regs` are zero. Asserting after `Close` instead would be vacuous — `Close` ends with `*a = Allocator{}`, so every field reads zero regardless.
 

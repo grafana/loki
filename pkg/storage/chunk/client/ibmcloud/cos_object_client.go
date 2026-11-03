@@ -242,7 +242,6 @@ func buildCOSClient(cfg COSConfig, hedgingCfg hedging.Config, hedging bool) (*co
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
-			DualStack: true,
 		}).DialContext,
 		MaxIdleConns:          200,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,

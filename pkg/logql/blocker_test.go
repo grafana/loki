@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -35,7 +36,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: defaultQuery,
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"exact match all types with surrounding whitespace trimmed",
@@ -43,7 +44,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: fmt.Sprintf("       %s  ", defaultQuery),
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"exact match filter type only",
@@ -52,7 +53,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Pattern: `{app=~"foo|bar"} |= "baz"`,
 					Types:   []string{QueryTypeFilter},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"match from multiple patterns",
@@ -67,7 +68,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Pattern: `{app=~"foo|bar"} |= "baz"`,
 					Types:   []string{QueryTypeFilter},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"no block: exact match not matching filter type",
@@ -85,7 +86,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Pattern: ".*foo.*",
 					Regex:   true,
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"regex match multiple types",
@@ -95,7 +96,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Regex:   true,
 					Types:   []string{QueryTypeFilter, QueryTypeMetric},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"match all queries by type",
@@ -103,7 +104,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Types: []string{QueryTypeFilter, QueryTypeMetric},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"no block: match all queries by type",
@@ -129,7 +130,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Hash: util.HashedQuery(defaultQuery),
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"incorrect FNV32 hash does not match",
@@ -148,7 +149,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: defaultQuery, // should still be evaluated
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"second hash in list matches when first does not",
@@ -159,7 +160,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Hash: util.HashedQuery(defaultQuery), // matches
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"no blocked queries",
@@ -218,6 +219,70 @@ func TestEngine_BlockedQueries_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+func TestEngine_BlockedQueries_EmptyPatternLogging(t *testing.T) {
+	const query = `topk(1,rate(({app=~"foo|bar"})[1m]))`
+
+	for _, test := range []struct {
+		name           string
+		blocked        *validation.BlockedQuery
+		expectWarnMsg  string
+		expectNoWarnOf string
+	}{
+		{
+			name: "omit warning when empty pattern does not match type",
+			blocked: &validation.BlockedQuery{
+				Types: []string{QueryTypeLimited},
+			},
+			expectNoWarnOf: "query blocker matched with",
+		},
+		{
+			name: "warn when empty pattern blocks query",
+			blocked: &validation.BlockedQuery{
+				Types: []string{QueryTypeMetric},
+			},
+			expectWarnMsg: "query blocker matched with empty pattern policy",
+		},
+		{
+			name: "warn when explicit catch-all does not match type",
+			blocked: &validation.BlockedQuery{
+				Pattern: ".*",
+				Regex:   true,
+				Types:   []string{QueryTypeLimited},
+			},
+			expectWarnMsg: "query blocker matched with regex policy",
+		},
+		{
+			name: "warn with exact match policy for exact pattern",
+			blocked: &validation.BlockedQuery{
+				Pattern: query,
+			},
+			expectWarnMsg: "query blocker matched with exact match policy",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			limits := &fakeLimits{
+				maxSeries:      10,
+				blockedQueries: []*validation.BlockedQuery{test.blocked},
+			}
+			eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewLogfmtLogger(&buf))
+
+			params, err := NewLiteralParams(query, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+
+			_, _ = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+
+			logs := buf.String()
+			if test.expectWarnMsg != "" {
+				require.Contains(t, logs, test.expectWarnMsg)
+			}
+			if test.expectNoWarnOf != "" {
+				require.NotContains(t, logs, test.expectNoWarnOf)
+			}
+		})
+	}
+}
+
 func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 	limits := &fakeLimits{maxSeries: 10}
 	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewNopLogger())
@@ -241,7 +306,7 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 					Tags: map[string]string{"source": "grafana", "feature": "beta"},
 				},
 			},
-			expectedErr: logqlmodel.ErrBlocked,
+			expectedErr: logqlerr.ErrBlocked,
 		},
 		{
 			name:       "do not block when tags value mismatches",
@@ -268,7 +333,7 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 					Tags:    map[string]string{"source": "GRAFANA", "feature": "BETA"}, // case-insensitive
 				},
 			},
-			expectedErr: logqlmodel.ErrBlocked,
+			expectedErr: logqlerr.ErrBlocked,
 		},
 		{
 			name:       "do not block when types match but required tag key missing",

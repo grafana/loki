@@ -128,6 +128,16 @@ func (d *debugReader) BytesRead() int {
 	return d.r.BytesRead()
 }
 
+// Discard forwards discards to the wrapped reader. Without it, a
+// debug-wrapped bytes-backed reader would fall through to a throwaway
+// Reader() view and the discard would not advance the wrapped reader's
+// offset, silently desynchronizing the stream.
+func (d *debugReader) Discard(n int) (int, error) {
+	v, err := discard(d.r, n)
+	d.log("Discard", v, err)
+	return v, err
+}
+
 type debugWriter struct {
 	w Writer
 	l *log.Logger

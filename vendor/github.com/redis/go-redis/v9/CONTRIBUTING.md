@@ -35,9 +35,9 @@ Here's how to get started with your code contribution:
 3.  If you need a development environment, run `make docker.start`.
  
 > Note: this clones and builds the docker containers specified in `docker-compose.yml`, to understand more about
-> the infrastructure that will be started you can check the `docker-compose.yml`. You also have the possiblity
+> the infrastructure that will be started you can check the `docker-compose.yml`. You also have the possibility
 > to specify the redis image that will be pulled with the env variable `CLIENT_LIBS_TEST_IMAGE`.
-> By default the docker image that will be pulled and started is `redislabs/client-libs-test:8.2.1-pre`.
+> By default the docker image that will be pulled and started is `redislabs/client-libs-test:8.10.0`.
 > If you want to test with newer Redis version, using a newer version of `redislabs/client-libs-test` should work out of the box.
 
 4.  While developing, make sure the tests pass by running `make test` (if you have the docker containers running, `make test.ci` may be sufficient).
@@ -72,7 +72,14 @@ that you are using supported versions of Docker and go.
 ### Security Vulnerabilities
 
 **NOTE**: If you find a security vulnerability, do NOT open an issue.
-Email [Redis Open Source (<oss@redis.com>)](mailto:oss@redis.com) instead.
+
+If you believe you have found a security vulnerability, to ensure proper
+review and assessment, we kindly ask vulnerability reports be submitted
+through our
+[Redis Vulnerability Disclosure Program](https://redis.io/redis-responsible-vulnerability-disclosure/).
+Alternatively reach out via email to
+[security@redis.com](mailto:security@redis.com). See
+[SECURITY.md](SECURITY.md) for the full policy.
 
 In order to determine whether you are dealing with a security issue, ask
 yourself these two questions:
@@ -83,8 +90,8 @@ yourself these two questions:
 
 If the answer to either of those two questions are *yes*, then you're
 probably dealing with a security issue. Note that even if you answer
-*no*  to both questions, you may still be dealing with a security
-issue, so if you're unsure, just email [us](mailto:oss@redis.com).
+*no* to both questions, you may still be dealing with a security
+issue, so if you're unsure, report it through the channels above.
 
 ### Everything Else
 

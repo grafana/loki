@@ -14,7 +14,6 @@
 package tsdb
 
 import (
-	"math"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -27,19 +26,11 @@ import (
 
 // Index returns an IndexReader against the block.
 func (h *Head) Index() IndexReader {
-	return h.indexRange(math.MinInt64, math.MaxInt64)
-}
-
-func (h *Head) indexRange(mint, maxt int64) *headIndexReader {
-	if hmin := h.MinTime(); hmin > mint {
-		mint = hmin
-	}
-	return &headIndexReader{head: h, mint: mint, maxt: maxt}
+	return &headIndexReader{head: h}
 }
 
 type headIndexReader struct {
-	head       *Head
-	mint, maxt int64
+	head *Head
 }
 
 func (h *headIndexReader) Bounds() (int64, int64) {
@@ -52,19 +43,11 @@ func (h *headIndexReader) Close() error {
 	return nil
 }
 
-func (h *headIndexReader) Symbols() index.StringIter {
-	return h.head.postings.Symbols()
-}
-
 // LabelValues returns label values present in the head for the
-// specific label name that are within the time range mint to maxt.
+// specific label name.
 // If matchers are specified the returned result set is reduced
 // to label values of metrics matching the matchers.
 func (h *headIndexReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
-	if h.maxt < h.head.MinTime() || h.mint > h.head.MaxTime() {
-		return []string{}, nil
-	}
-
 	if len(matchers) == 0 {
 		return h.head.postings.LabelValues(name), nil
 	}
@@ -72,13 +55,8 @@ func (h *headIndexReader) LabelValues(name string, matchers ...*labels.Matcher) 
 	return labelValuesWithMatchers(h, name, matchers...)
 }
 
-// LabelNames returns all the unique label names present in the head
-// that are within the time range mint to maxt.
+// LabelNames returns all the unique label names present in the head.
 func (h *headIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
-	if h.maxt < h.head.MinTime() || h.mint > h.head.MaxTime() {
-		return []string{}, nil
-	}
-
 	if len(matchers) == 0 {
 		labelNames := h.head.postings.LabelNames()
 		sort.Strings(labelNames)
@@ -110,6 +88,24 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 	return p, nil
 }
 
+// NewSeriesScan implements IndexReader.
+//
+// The head keeps its series in memory, so there is nothing for a scan to
+// amortise across a pass and nothing for it to hold: headSeriesScan forwards
+// straight to the reader.
+func (h *headIndexReader) NewSeriesScan() index.SeriesScan {
+	return headSeriesScan{h}
+}
+
+// headSeriesScan is the no-op scan a headIndexReader hands out. Embedding the
+// reader promotes the series reads it already implements; only Close needs
+// overriding, because a scan borrows the reader rather than owning it.
+type headSeriesScan struct{ *headIndexReader }
+
+// Close is a no-op. Closing a scan must not close the reader it borrows, which
+// the embedded headIndexReader.Close would otherwise do.
+func (headSeriesScan) Close() error { return nil }
+
 // Series returns the series for the given reference.
 // lbls can be nil, to indicate that just the chunks are needed.
 func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
@@ -120,7 +116,9 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 		return 0, storage.ErrNotFound
 	}
 	if lbls != nil {
-		lbls.CopyFrom(s.ls)
+		// Share the series' labels, which are never modified, rather than CopyFrom: under
+		// slicelabels that reuses the caller's slice, which breaks the SeriesScan ownership rule.
+		*lbls = s.ls
 	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
@@ -146,7 +144,7 @@ func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64,
 		return 0, index.ChunkStats{}, storage.ErrNotFound
 	}
 	if len(by) == 0 {
-		lbls.CopyFrom(s.ls)
+		*lbls = s.ls // see Series
 	} else {
 		builder := labelpool.Get()
 
@@ -211,4 +209,10 @@ func (h *headIndexReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, err
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+// ShardPostings leaves head postings unchanged: head references are not ordered
+// by fingerprint. Callers check exact fingerprints when reading series.
+func (h *headIndexReader) ShardPostings(p index.Postings, _ index.FingerprintFilter) index.Postings {
+	return p
 }

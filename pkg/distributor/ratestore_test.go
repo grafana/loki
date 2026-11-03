@@ -4,22 +4,21 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/validation"
-
-	"github.com/stretchr/testify/require"
-
-	client2 "github.com/grafana/loki/v3/pkg/ingester/client"
-
-	"google.golang.org/grpc"
-
-	"github.com/grafana/loki/v3/pkg/logproto"
-
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/ring/client"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	client2 "github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestRateStore(t *testing.T) {
@@ -251,6 +250,41 @@ func TestRateStore(t *testing.T) {
 		_, afterNewPushRate := tc.rateStore.RateFor("tenant 1", 0)
 		require.EqualValues(t, weightedMovingAverageF(0, 1), afterNewPushRate)
 	})
+
+	t.Run("it reports the number of active streams per tenant", func(t *testing.T) {
+		tc := setup(true)
+		tc.ring.replicationSet = ring.ReplicationSet{
+			Instances: []ring.InstanceDesc{
+				{Addr: "ingester0"},
+			},
+		}
+
+		tc.clientPool.clients = map[string]client.PoolClient{
+			"ingester0": newRateClient([]*logproto.StreamRate{
+				// Two shards of the same stream count as one stream.
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25},
+				{Tenant: "tenant 1", StreamHash: 2, StreamHashNoShard: 0, Rate: 25},
+				{Tenant: "tenant 1", StreamHash: 3, StreamHashNoShard: 1, Rate: 25},
+				{Tenant: "tenant 2", StreamHash: 4, StreamHashNoShard: 2, Rate: 25},
+			}, 1),
+		}
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		require.NoError(t, testutil.GatherAndCompare(tc.reg, strings.NewReader(`
+			# HELP loki_rate_store_active_streams The number of non-expired streams per tenant known to the rate store. Sharded streams are combined
+			# TYPE loki_rate_store_active_streams gauge
+			loki_rate_store_active_streams{tenant="tenant 1"} 2
+			loki_rate_store_active_streams{tenant="tenant 2"} 1
+		`), "loki_rate_store_active_streams"))
+
+		// Once every stream of a tenant expired, the tenant series is removed.
+		tc.rateStore.rateKeepAlive = 1 * time.Millisecond
+		tc.ring.replicationSet = ring.ReplicationSet{}
+		time.Sleep(10 * time.Millisecond)
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		require.NoError(t, testutil.GatherAndCompare(tc.reg, strings.NewReader(``), "loki_rate_store_active_streams"))
+	})
 }
 
 var benchErr error
@@ -384,6 +418,7 @@ type testContext struct {
 	ring       *fakeRing
 	clientPool *fakeClientPool
 	rateStore  *rateStore
+	reg        *prometheus.Registry
 }
 
 func setup(shardingEnabled bool) *testContext {
@@ -394,10 +429,12 @@ func setupWithOverrides(overrides *fakeOverrides) *testContext {
 	ring := newFakeRing()
 	cp := newFakeClientPool()
 	cfg := RateStoreConfig{MaxParallelism: 5, IngesterReqTimeout: time.Second, StreamRateUpdateInterval: 10 * time.Millisecond}
+	reg := prometheus.NewPedanticRegistry()
 
 	return &testContext{
 		ring:       ring,
 		clientPool: cp,
-		rateStore:  NewRateStore(cfg, ring, cp, overrides, nil),
+		rateStore:  NewRateStore(cfg, ring, cp, overrides, reg),
+		reg:        reg,
 	}
 }

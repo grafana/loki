@@ -1,8 +1,8 @@
 local lokiRelease = import 'main.jsonnet';
 local build = lokiRelease.build;
 
-
-local buildImage = 'golang:1.24';
+local buildImage = std.extVar('BUILD_IMAGE');
+local goVersion = std.extVar('GO_VERSION');
 local dockerPluginDir = 'clients/cmd/docker-driver';
 
 {
@@ -22,6 +22,7 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
       distOptionalTargets=['dist/loki-linux-riscv64'],
       skipValidation=false,
       versioningStrategy='always-bump-patch',
+      goVersion=goVersion,
     ) + {
       name: 'Create Release PR',
     }, false, false
@@ -41,10 +42,28 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
       releaseRepo='grafana/loki-release',
       skipValidation=false,
       versioningStrategy='always-bump-patch',
+      goVersion=goVersion,
     ) + {
       name: 'Test Create Release PR Action',
       on+: {
         pull_request: {},
+      },
+      env+: {
+        IMAGE_PREFIX: 'us-docker.pkg.dev/grafanalabs-dev/docker-loki-dev/ci/${{ github.run_id }}',
+        PLUGIN_IMAGE_PREFIX: 'us-docker.pkg.dev/grafanalabs-dev/docker-loki-dev/ci/${{ github.run_id }}',
+      },
+      jobs+: {
+        publishImages: lokiRelease.release.publishImages(
+          needs=['loki', 'loki-docker-driver'],
+          sha='${{ github.sha }}',
+          isLatest='false',
+        ),
+        publishDockerPlugins: lokiRelease.release.publishDockerPlugins(
+          dockerPluginDir,
+          needs=['loki', 'loki-docker-driver'],
+          sha='${{ github.sha }}',
+          isLatest='false',
+        ),
       },
     }, false, false
   ),

@@ -42,7 +42,7 @@ type HookNewClient interface {
 	OnNewClient(*Client)
 }
 
-// HookClientClosed is called in Close or CloseAfterRebalance after a client
+// HookClientClosed is called in Close or CloseAllowingRebalance after a client
 // has been closed. This hook can be used to perform final cleanup work.
 type HookClientClosed interface {
 	// OnClientClosed is passed the client that has been closed, after
@@ -55,6 +55,9 @@ type HookClientClosed interface {
 //////////////////
 
 // HookBrokerConnect is called after a connection to a broker is opened.
+// This fires once per connection ATTEMPT, including internal retries: a
+// broker that refuses connections produces repeated calls (with err set),
+// not one.
 type HookBrokerConnect interface {
 	// OnBrokerConnect is passed the broker metadata, how long it took to
 	// dial and initialize the connection (issue ApiVersions and run through
@@ -176,7 +179,7 @@ type HookBrokerE2E interface {
 type HookBrokerThrottle interface {
 	// OnBrokerThrottle is passed the broker metadata, the imposed
 	// throttling interval, and whether the throttle was applied before
-	// Kafka responded to them request or after.
+	// Kafka responded to the request or after.
 	//
 	// For Kafka < 2.0, the throttle is applied before issuing a response.
 	// For Kafka >= 2.0, the throttle is applied after issuing a response.
@@ -380,8 +383,8 @@ type HookFetchRecordBuffered interface {
 
 // HookFetchRecordUnbuffered is called when a fetched record is unbuffered.
 //
-// A record can be internally discarded after being in some scenarios without
-// being polled, such as when the internal assignment changes.
+// A record can be internally discarded in some scenarios without being
+// polled, such as when the internal assignment changes.
 //
 // As an example, if using HookFetchRecordBuffered for a gauge of how many
 // record bytes are buffered ready to be polled, this hook can be used to
@@ -392,6 +395,11 @@ type HookFetchRecordUnbuffered interface {
 	// OnFetchRecordUnbuffered is passed a record that is being
 	// "unbuffered" within the client, and whether the record is being
 	// returned from polling.
+	//
+	// For polled records, this fires on the polling goroutine before the
+	// poll returns. For records discarded internally (an assignment
+	// invalidation dropping a buffered fetch), this fires asynchronously
+	// on a separate goroutine.
 	OnFetchRecordUnbuffered(r *Record, polled bool)
 }
 

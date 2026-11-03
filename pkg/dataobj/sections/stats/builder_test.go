@@ -86,14 +86,14 @@ func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
 
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
 	require.Zero(t, b.EstimatedSize(), "empty builder should have zero size")
 	require.Empty(t, b.rows, "empty builder should have no rows")
 }
 
 // TestBuilder_RoundTrip verifies stats round-trip correctly through on-disk encoding.
 func TestBuilder_RoundTrip(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
 
 	input := []Stat{
 		{
@@ -140,6 +140,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "/tenant/abc/obj2",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(1),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 500).UTC(),
@@ -150,6 +151,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "/tenant/abc/obj3",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(2),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 3000).UTC(),
@@ -160,6 +162,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "/tenant/abc/obj1",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 1000).UTC(),
@@ -175,7 +178,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 // TestBuilder_SortOrder verifies the sort order: label values in sort-schema order,
 // then MinTimestamp, then MaxTimestamp.
 func TestBuilder_SortOrder(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
 
 	// Intentionally appended out of order.
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "beta"}, MinTimestamp: 200})
@@ -192,6 +195,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -202,6 +206,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -212,6 +217,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
@@ -222,6 +228,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -232,6 +239,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 50).UTC(),
@@ -247,7 +255,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 // TestBuilder_AllSameServiceName verifies that rows with identical service_name
 // are sorted by MinTimestamp.
 func TestBuilder_AllSameServiceName(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
 
 	// Multiple rows with the same service_name, different timestamps.
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 300, ObjectPath: "c"})
@@ -262,6 +270,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "a",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -272,6 +281,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "b",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -282,6 +292,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "c",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
@@ -300,6 +311,7 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 	base := func() Stat {
 		return Stat{
 			SortSchema:   schema,
+			ShardBucket:  2,
 			Labels:       map[string]string{"service_name": "svc", "namespace": "ns"},
 			MinTimestamp: 100,
 			MaxTimestamp: 200,
@@ -316,6 +328,7 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 		name   string
 		mutate func(*Stat)
 	}{
+		{"shard bucket", func(s *Stat) { s.ShardBucket = 7 }},
 		{"first sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "zzz", "namespace": "ns"} }},
 		{"second sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "svc", "namespace": "zz"} }},
 		{"min timestamp", func(s *Stat) { s.MinTimestamp = 999 }},
@@ -357,12 +370,11 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 // produces rows whose order disagrees with the reader/verifier's expectation,
 // surfacing as "output stats not sorted".
 func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
-
 	// All rows share the same (service_name, MinTimestamp, MaxTimestamp).
 	// They differ only in ObjectPath and SectionIndex, and are appended in an
 	// order that the coarse (labels, minT, maxT) sort would leave untouched.
 	const schema = "label:service_name"
+	b := NewBuilder(nil, defaultEncoder, testLayout(schema))
 	labels := map[string]string{"service_name": "svc"}
 	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objB", SectionIndex: 0})
 	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objA", SectionIndex: 1})
@@ -376,6 +388,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "objA",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -386,6 +399,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "objA",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(1),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -396,6 +410,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "objB",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -410,7 +425,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 
 // TestBuilder_MissingServiceName verifies rows with empty/missing label values sort before non-empty ones.
 func TestBuilder_MissingServiceName(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
 
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": ""}, ObjectPath: "obj1", MinTimestamp: 100})
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, ObjectPath: "obj2", MinTimestamp: 200})
@@ -423,6 +438,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "obj1",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -433,6 +449,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "obj2",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -450,7 +467,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 func TestBuilder_SectionSplitting(t *testing.T) {
 	// Use a very small page size to force multiple pages.
 	smallEncoder := ColumnarSectionEncoder(100, 2)
-	b := NewBuilder(nil, smallEncoder)
+	b := NewBuilder(nil, smallEncoder, testLayout("label:service_name"))
 	b.SetTenant("test-tenant")
 
 	// Append first batch.
@@ -501,12 +518,11 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 
 // TestBuilder_LargeValues verifies large label and path values round-trip correctly.
 func TestBuilder_LargeValues(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
-
 	longPath := "/" + strings.Repeat("a", 10000)
 	longLabel := strings.Repeat("b", 5000)
 	longName := strings.Repeat("c", 2000)
 	longSchema := "label:" + longName
+	b := NewBuilder(nil, defaultEncoder, testLayout(longSchema))
 
 	b.Append(Stat{
 		ObjectPath:       longPath,
@@ -530,6 +546,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        longPath,
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(99),
 			"sort_schema.utf8":        longSchema,
 			"min_timestamp.timestamp": time.Unix(0, 1_000_000).UTC(),
@@ -544,7 +561,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 
 // TestBuilder_ResetAndReuse verifies that Reset clears all rows and the builder can be reused.
 func TestBuilder_ResetAndReuse(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
 	b.SetTenant("test-tenant")
 
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "first"}, MinTimestamp: 100})
@@ -564,6 +581,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -578,7 +596,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 
 // TestBuilder_EstimatedSize verifies EstimatedSize returns non-zero after appending.
 func TestBuilder_EstimatedSize(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("sch"))
 
 	require.Zero(t, b.EstimatedSize(), "empty builder should have zero estimated size")
 
@@ -588,14 +606,15 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 		Labels:     map[string]string{"sch": "svc"}, // key: 3 bytes, value: 3 bytes
 	})
 
-	// 5 * 8 = 40 for int64s (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 52
-	require.Equal(t, 52, b.EstimatedSize())
+	// 6 * 8 = 48 for numeric fields (SectionIndex, ShardBucket, MinTimestamp,
+	// MaxTimestamp, RowCount, UncompressedSize)
+	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 60
+	require.Equal(t, 60, b.EstimatedSize())
 }
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder state.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100})
 
 	obj, closer := buildObject(t, b)
@@ -609,7 +628,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 
 // TestBuilder_Type verifies that the section type is correct.
 func TestBuilder_Type(t *testing.T) {
-	b := NewBuilder(nil, defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
 	require.Equal(t, sectionType, b.Type())
 }
 
@@ -639,4 +658,16 @@ func TestOpen_WrongVersion(t *testing.T) {
 	_, err := Open(context.Background(), wrongVersion)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported section version")
+}
+
+func TestBuilder_Flush_SortSchema(t *testing.T) {
+	t.Run("returns an error when a row has another sort schema than the layout", func(t *testing.T) {
+		b := NewBuilder(nil, defaultEncoder, testLayout("label:service_name"))
+		b.SetTenant("tenant")
+		b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "a"}})
+		b.Append(Stat{SortSchema: "label:namespace", Labels: map[string]string{"namespace": "b"}})
+
+		objBuilder := dataobj.NewBuilder(nil)
+		require.ErrorContains(t, objBuilder.Append(b), `has sort schema "label:namespace", but the section layout has "label:service_name"`)
+	})
 }

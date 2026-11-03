@@ -6,7 +6,7 @@ You can use this `docker-compose` setup to run Docker for development or in prod
 
 - Running in [Simple Scalable Deployment](https://grafana.com/docs/loki/latest/fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode) mode with 3 replicas for `read` and `write` targets
 - Memberlist for [consistent hash](https://grafana.com/docs/loki/latest/fundamentals/architecture/rings/) ring
-- [Minio](https://min.io/) for S3-compatible storage for chunks & indexes
+- [Silo](https://github.com/pgsty/silo) for S3-compatible storage for chunks & indexes
 - nginx gateway which acts as a reverse-proxy to the read/write paths
 - Promtail for logs
   - An optional log-generator
@@ -33,7 +33,7 @@ graph LR
         QueryFrontend -.-> Querier
     end
 
-    subgraph Minio["Minio Storage"]
+    subgraph Silo["Silo Storage"]
         Chunks
         Indexes
     end

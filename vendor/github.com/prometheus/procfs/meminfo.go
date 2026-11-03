@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // Meminfo represents memory statistics.
@@ -210,7 +210,7 @@ type Meminfo struct {
 // Meminfo returns an information about current kernel/system memory statistics.
 // See https://www.kernel.org/doc/Documentation/filesystems/proc.txt
 func (fs FS) Meminfo() (Meminfo, error) {
-	b, err := util.ReadFileNoStat(fs.proc.Path("meminfo"))
+	b, err := parsers.ReadFileNoStat(fs.proc.Path("meminfo"))
 	if err != nil {
 		return Meminfo{}, err
 	}
@@ -228,6 +228,9 @@ func parseMemInfo(r io.Reader) (*Meminfo, error) {
 	s := bufio.NewScanner(r)
 	for s.Scan() {
 		fields := strings.Fields(s.Text())
+		if len(fields) < 2 || len(fields) > 3 {
+			return nil, fmt.Errorf("%w: Malformed line %q", ErrFileParse, s.Text())
+		}
 		var val, valBytes uint64
 
 		val, err := strconv.ParseUint(fields[1], 0, 64)

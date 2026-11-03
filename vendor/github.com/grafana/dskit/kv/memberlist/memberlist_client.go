@@ -33,6 +33,11 @@ const (
 	maxCasRetries              = 10          // max retries in CAS operation
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
 	watchPrefixBufferSize      = 128         // size of buffered channel for the WatchPrefix function
+
+	// lengthPrefixSize is the width of the big-endian uint32 length prefix on each marshalled
+	// KeyValuePair in the push/pull payload. Protobuf messages are not self-delimiting, so
+	// these prefixes are what let a receiver split the concatenated payload back into pairs.
+	lengthPrefixSize = 4
 )
 
 var supportedCompressionAlgorithms = []string{
@@ -188,6 +193,16 @@ type KVConfig struct {
 	// Size of the buffer for key watchers.
 	WatchPrefixBufferSize int `yaml:"watch_prefix_buffer_size" category:"advanced"`
 
+	// CasRetryMinBackoff and CasRetryMaxBackoff add a delay between CAS retries after
+	// a version mismatch. MinBackoff is the on/off toggle: 0 (its default) disables
+	// the delay regardless of MaxBackoff.
+	CasRetryMinBackoff time.Duration `yaml:"cas_retry_min_backoff" category:"experimental"`
+	CasRetryMaxBackoff time.Duration `yaml:"cas_retry_max_backoff" category:"experimental"`
+
+	// LocalStateCacheEnabled memoizes the serialized form of each store entry, so that
+	// push/pull sync doesn't re-encode unchanged entries on every pull.
+	LocalStateCacheEnabled bool `yaml:"local_state_cache_enabled" category:"experimental"`
+
 	TCPTransport TCPTransportConfig `yaml:",inline"`
 
 	// Zone-aware routing configuration.
@@ -239,6 +254,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.GossipToTheDeadTime, prefix+"memberlist.gossip-to-dead-nodes-time", mlDefaults.GossipToTheDeadTime, "How long to keep gossiping to dead nodes, to give them chance to refute their death.")
 	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", mlDefaults.DeadNodeReclaimTime, "How soon can dead node's name be reclaimed with new address. 0 to disable.")
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
+	f.BoolVar(&cfg.LocalStateCacheEnabled, prefix+"memberlist.local-state-cache-enabled", false, "Cache the serialized form of each key, so that push/pull sync doesn't re-encode entries that haven't changed since the last sync. Reduces CPU and lock contention in large clusters, at the cost of memory proportional to the size of the KV store.")
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
 	f.StringVar(&cfg.CompressionAlgorithm, prefix+"memberlist.compression-algorithm", string(memberlist.CompressionAlgorithmLZW), fmt.Sprintf("Compression algorithm used for outgoing messages when -memberlist.compression-enabled is true. Supported values: %s. Ignored when -memberlist.compression-enabled is false.", strings.Join(supportedCompressionAlgorithms, ", ")))
 	f.DurationVar(&cfg.NotifyInterval, prefix+"memberlist.notify-interval", 0, "How frequently to notify watchers when a key changes. Can reduce CPU activity in large memberlist deployments. 0 to notify without delay.")
@@ -250,6 +266,8 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.ClusterLabelVerificationDisabled, prefix+"memberlist.cluster-label-verification-disabled", mlDefaults.SkipInboundLabelCheck, "When true, memberlist doesn't verify that inbound packets and gossip streams have the cluster label matching the configured one. This verification should be disabled while rolling out the change to the configured cluster label in a live memberlist cluster.")
 	f.DurationVar(&cfg.BroadcastTimeoutForLocalUpdatesOnShutdown, prefix+"memberlist.broadcast-timeout-for-local-updates-on-shutdown", 10*time.Second, "Timeout for broadcasting all remaining locally-generated updates to other nodes when shutting down. Only used if there are nodes left in the memberlist cluster, and only applies to locally-generated updates, not to broadcast messages that are result of incoming gossip updates. 0 = no timeout, wait until all locally-generated updates are sent.")
 	f.IntVar(&cfg.WatchPrefixBufferSize, prefix+"memberlist.watch-prefix-buffer-size", watchPrefixBufferSize, "Size of the buffered channel for the WatchPrefix function.")
+	f.DurationVar(&cfg.CasRetryMinBackoff, prefix+"memberlist.cas-retry-min-backoff", 0, "Minimum delay between CAS retries after a version mismatch. 0 disables the delay.")
+	f.DurationVar(&cfg.CasRetryMaxBackoff, prefix+"memberlist.cas-retry-max-backoff", 10*time.Second, "Maximum delay between CAS retries after a version mismatch. Only takes effect if cas-retry-min-backoff is also set.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 	cfg.ZoneAwareRouting.RegisterFlagsWithPrefix(f, prefix+"memberlist.zone-aware-routing.")
@@ -277,7 +295,10 @@ func (cfg *KVConfig) Validate() error {
 	if cfg.CompressionAlgorithm != "" && !slices.Contains(supportedCompressionAlgorithms, cfg.CompressionAlgorithm) {
 		return fmt.Errorf("memberlist compression algorithm %q is not supported, valid values: %s", cfg.CompressionAlgorithm, strings.Join(supportedCompressionAlgorithms, ", "))
 	}
-	return cfg.ZoneAwareRouting.Validate()
+	if err := cfg.ZoneAwareRouting.Validate(); err != nil {
+		return err
+	}
+	return cfg.PropagationDelayTracker.Validate()
 }
 
 // GetRejoinSeedNodes returns the seed nodes to use for periodic rejoin.
@@ -320,12 +341,22 @@ type KV struct {
 	localBroadcasts  *memberlist.TransmitLimitedQueue // queue for messages generated locally
 	gossipBroadcasts *memberlist.TransmitLimitedQueue // queue for messages that we forward from other nodes
 
-	// Node metadata for zone-aware routing (nil if zone-aware routing is disabled).
-	nodeMeta []byte
+	// Node metadata and node selection delegate for zone-aware routing (nil if it's disabled).
+	nodeMeta            []byte
+	zoneAwareNodeSelect *zoneAwareNodeSelectionDelegate
 
 	// KV Store.
 	storeMu sync.RWMutex
 	store   map[string]ValueDesc
+
+	// localStateCache memoizes the serialized form of each store entry, so that a
+	// push/pull sync doesn't have to re-encode the whole store every time. It is keyed
+	// by store key and invalidated by ValueDesc.Version. Guarded by storeMu, like store.
+	localStateCache map[string]localStateCacheEntry
+
+	// lastLocalStateSize is the size of the payload the previous LocalState call produced,
+	// used to pre-size the next one's buffer. Guarded by storeMu.
+	lastLocalStateSize int
 
 	// Codec registry
 	codecs map[string]codec.Codec
@@ -364,6 +395,8 @@ type KV struct {
 	numberOfInvalidReceivedMessages     prometheus.Counter
 	numberOfDroppedMessages             prometheus.Counter
 	numberOfPulls                       prometheus.Counter
+	localStateCacheHits                 *prometheus.CounterVec
+	localStateCacheMisses               *prometheus.CounterVec
 	numberOfPushes                      prometheus.Counter
 	totalSizeOfPulls                    prometheus.Counter
 	totalSizeOfPushes                   prometheus.Counter
@@ -464,6 +497,7 @@ func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer 
 		registerer:       registerer,
 		provider:         dnsProvider,
 		store:            make(map[string]ValueDesc),
+		localStateCache:  make(map[string]localStateCacheEntry),
 		codecs:           make(map[string]codec.Codec),
 		watchers:         make(map[string][]chan string),
 		keyNotifications: make(map[string]struct{}),
@@ -584,7 +618,8 @@ func (m *KV) configureZoneAwareRouting(mlCfg *memberlist.Config) error {
 	m.nodeMeta = localMeta
 
 	// Set up the node selection delegate.
-	mlCfg.NodeSelection = newZoneAwareNodeSelectionDelegate(role, m.cfg.ZoneAwareRouting.Zone, m.logger, m.registerer)
+	m.zoneAwareNodeSelect = newZoneAwareNodeSelectionDelegate(role, m.cfg.ZoneAwareRouting.Zone, m.logger, m.registerer)
+	mlCfg.NodeSelection = m.zoneAwareNodeSelect
 
 	// The bridge always prefer another bridge as first node. If the bridge only push/pull to 1 node per interval, then
 	// it will only communicate to bridges, potentially leading to network partitioning if the gossiping is not
@@ -663,6 +698,11 @@ func (m *KV) running(ctx context.Context) error {
 	}
 
 	ok := m.joinMembersOnStartup(ctx)
+
+	if m.zoneAwareNodeSelect != nil {
+		m.zoneAwareNodeSelect.markJoined()
+	}
+
 	if !ok && m.cfg.AbortIfJoinFails {
 		return errFailedToJoinCluster
 	}
@@ -1295,6 +1335,11 @@ func (m *KV) Delete(key string) error {
 func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	var lastError error
 
+	var retryBackoff *backoff.Backoff
+	if m.cfg.CasRetryMinBackoff > 0 {
+		retryBackoff = backoff.New(ctx, backoff.Config{MinBackoff: m.cfg.CasRetryMinBackoff, MaxBackoff: m.cfg.CasRetryMaxBackoff})
+	}
+
 outer:
 	for retries := m.maxCasRetries; retries > 0; retries-- {
 		m.casAttempts.Inc()
@@ -1308,6 +1353,12 @@ outer:
 			case <-time.After(noChangeDetectedRetrySleep):
 				// ok
 			case <-ctx.Done():
+				lastError = ctx.Err()
+				break outer
+			}
+		} else if lastError != nil && retryBackoff != nil {
+			retryBackoff.Wait()
+			if ctx.Err() != nil {
 				lastError = ctx.Err()
 				break outer
 			}
@@ -1476,16 +1527,20 @@ func (m *KV) NotifyMsg(msg []byte) {
 		return
 	}
 
-	ch := m.getKeyWorkerChannel(kvPair.Key)
-	select {
-	case ch <- valueUpdate{value: kvPair.Value, codec: codec, messageSize: len(msg), deleted: kvPair.Deleted, updateTime: updateTime(kvPair.UpdateTimeMillis)}:
-	default:
+	update := valueUpdate{value: kvPair.Value, codec: codec, messageSize: len(msg), deleted: kvPair.Deleted, updateTime: updateTime(kvPair.UpdateTimeMillis)}
+	if !m.enqueueKeyUpdate(kvPair.Key, update) {
 		m.numberOfDroppedMessages.Inc()
 		level.Warn(m.logger).Log("msg", "notify queue full, dropping message", "key", kvPair.Key)
 	}
 }
 
-func (m *KV) getKeyWorkerChannel(key string) chan<- valueUpdate {
+// enqueueKeyUpdate hands the update over to the worker goroutine for the given key,
+// spawning the worker if it doesn't exist yet. It returns false if the worker's queue
+// is full and the update was dropped.
+//
+// The channel send happens while holding workersMu. This guarantees that no update
+// can be sent to a channel after stopKeyWorkers has closed it.
+func (m *KV) enqueueKeyUpdate(key string, update valueUpdate) bool {
 	m.workersMu.Lock()
 	defer m.workersMu.Unlock()
 
@@ -1497,13 +1552,24 @@ func (m *KV) getKeyWorkerChannel(key string) chan<- valueUpdate {
 
 		m.workersChannels[key] = ch
 	}
-	return ch
+
+	select {
+	case ch <- update:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
 	for {
 		select {
-		case update := <-workerCh:
+		case update, ok := <-workerCh:
+			if !ok {
+				// The channel was closed because the key was removed from the store.
+				// Stop the worker; if the key is seen again, a new worker will be spawned.
+				return
+			}
 			// we have a value update! Let's merge it with our current version for given key
 			mod, version, deleted, updated, err := m.mergeBytesValueForKey(key, update.value, update.codec, update.deleted, update.updateTime)
 
@@ -1535,11 +1601,54 @@ func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
 				m.broadcastNewValue(key, mod, version, update.codec, false, deleted, updated)
 			}
 
+			if version == 0 && !m.keyExists(key) {
+				// The update didn't (re)create the key in the store. This happens when
+				// the merge was a no-op (e.g. a tombstone received for a key that was
+				// already removed by cleanupObsoleteEntries), and also when the merge
+				// failed for a key we don't have. In both cases the cleanup will never
+				// run for this key and would never stop this worker, so it deregisters
+				// itself instead of staying around forever. If the key is seen again,
+				// a new worker is spawned.
+				if m.tryDeregisterKeyWorker(key, workerCh) {
+					return
+				}
+			}
+
 		case <-m.shutdown:
 			// stop running on shutdown
 			return
 		}
 	}
+}
+
+func (m *KV) keyExists(key string) bool {
+	m.storeMu.Lock()
+	defer m.storeMu.Unlock()
+
+	_, ok := m.store[key]
+	return ok
+}
+
+// tryDeregisterKeyWorker removes the worker's entry from workersChannels, and returns
+// true if the worker must stop. It returns false if the worker has to keep running,
+// either because more updates were enqueued to it in the meantime, or because it's not
+// the registered worker for the key anymore (stopKeyWorkers removed it already, in
+// which case the closed channel stops the worker instead).
+func (m *KV) tryDeregisterKeyWorker(key string, workerCh <-chan valueUpdate) bool {
+	m.workersMu.Lock()
+	defer m.workersMu.Unlock()
+
+	if ch, ok := m.workersChannels[key]; !ok || ch != workerCh {
+		return false
+	}
+
+	// Sends happen while holding workersMu, so the channel length cannot change here.
+	if len(workerCh) > 0 {
+		return false
+	}
+
+	delete(m.workersChannels, key)
+	return true
 }
 
 // GetBroadcasts is method from Memberlist Delegate interface
@@ -1563,6 +1672,33 @@ func (m *KV) GetBroadcasts(overhead, limit int) [][]byte {
 	return msgs
 }
 
+// localStateCacheEntry is the memoized wire form of a single store entry, ready to be
+// appended to the payload returned by LocalState.
+//
+// Entries are immutable once built: data is reused by every later pull that finds the entry
+// still current, so it must not be modified after the entry is stored.
+type localStateCacheEntry struct {
+	// version is the ValueDesc.Version this entry was built from. Almost every mutation of a
+	// store entry bumps that version (see mergeValueForKey, the only writer of m.store), and
+	// the version covers everything serialized below: the value, codec, deleted flag and
+	// update time. So a matching version means this serialized form is still current.
+	//
+	// The one mutation that does not bump the version is expired tombstone removal, which
+	// mergeValueForKey can do in place before returning early; it evicts the cache entry
+	// itself for that case.
+	//
+	// The version is local to this node and never crosses the wire, so versions assigned
+	// by different nodes are unrelated and are never compared against each other.
+	version uint
+
+	// data is the entry's wire form: the lengthPrefixSize prefix followed by the marshalled
+	// KeyValuePair. Caching it already framed is what makes a cache hit a single append:
+	// the payload is a plain concatenation of independently framed pairs, so a cached entry
+	// can be written verbatim. Were it one wrapper message, it would have to be re-marshalled
+	// in full every time.
+	data []byte
+}
+
 // LocalState is method from Memberlist Delegate interface
 //
 // This is "pull" part of push/pull sync (either periodic, or when new node joins the cluster).
@@ -1580,63 +1716,132 @@ func (m *KV) LocalState(_ bool) []byte {
 
 	// For each Key/Value pair in our store, we write
 	// [4-bytes length of marshalled KV pair] [marshalled KV pair]
-
+	//
+	// Serializing the whole store on every pull is expensive, and in a large cluster this
+	// runs often while holding storeMu exclusively, which starves the workers that merge
+	// incoming updates. So we reuse the serialized form of every entry that hasn't
+	// changed since the last pull.
 	buf := bytes.Buffer{}
+	// The payload is nearly the same size every time, so start with room for the last one
+	// to avoid repeatedly growing and copying the buffer while holding storeMu.
+	buf.Grow(m.lastLocalStateSize)
 	sent := time.Now()
 
-	kvPair := KeyValuePair{}
 	for key, val := range m.store {
 		if val.value == nil {
 			continue
 		}
 
-		codec := m.GetCodec(val.CodecID)
-		if codec == nil {
-			level.Error(m.logger).Log("msg", "failed to encode remote state: unknown codec for key", "codec", val.CodecID, "key", key)
+		entry, ok := m.localStateEntry(key, val)
+		if !ok {
+			// Reason already logged. Skip the key, but keep sending the rest of the store.
 			continue
 		}
 
-		encoded, err := codec.Encode(val.value)
-		if err != nil {
-			level.Error(m.logger).Log("msg", "failed to encode remote state", "err", err)
-			continue
+		buf.Write(entry.data)
+
+		// The sent message history is a troubleshooting aid, disabled by default, so the
+		// KeyValuePair it wants is rebuilt on demand rather than kept in every cache entry.
+		if m.cfg.MessageHistoryBufferBytes > 0 {
+			m.recordSentMessage(key, entry, val.Version, sent)
 		}
-
-		kvPair.Reset()
-		kvPair.Key = key
-		kvPair.Value = encoded
-		kvPair.Codec = val.CodecID
-		kvPair.Deleted = val.Deleted
-		kvPair.UpdateTimeMillis = updateTimeMillis(val.UpdateTime)
-
-		ser, err := kvPair.Marshal()
-		if err != nil {
-			level.Error(m.logger).Log("msg", "failed to serialize KV Pair", "err", err)
-			continue
-		}
-
-		if uint(len(ser)) > math.MaxUint32 {
-			level.Error(m.logger).Log("msg", "value too long", "key", key, "value_length", len(encoded))
-			continue
-		}
-
-		err = binary.Write(&buf, binary.BigEndian, uint32(len(ser)))
-		if err != nil {
-			level.Error(m.logger).Log("msg", "failed to write uint32 to buffer?", "err", err)
-			continue
-		}
-		buf.Write(ser)
-
-		m.addSentMessage(Message{
-			Time:    sent,
-			Size:    len(ser),
-			Pair:    kvPair, // Makes a copy of kvPair.
-			Version: val.Version,
-		})
 	}
 
+	m.lastLocalStateSize = buf.Len()
 	m.totalSizeOfPulls.Add(float64(buf.Len()))
 	return buf.Bytes()
+}
+
+// localStateEntry returns the wire form of a store entry, reusing the memoized one when the
+// cache is enabled and the entry hasn't changed since it was built. It returns false if the
+// entry cannot be serialized, having logged the reason.
+//
+// When the cache is disabled this is just buildLocalStateCacheEntry, so nothing is stored and
+// the cache metrics stay at zero, which distinguishes "disabled" from "enabled but thrashing".
+//
+// Callers must hold storeMu.
+func (m *KV) localStateEntry(key string, val ValueDesc) (localStateCacheEntry, bool) {
+	if !m.cfg.LocalStateCacheEnabled {
+		return m.buildLocalStateCacheEntry(key, val)
+	}
+
+	if entry, ok := m.localStateCache[key]; ok && entry.version == val.Version {
+		m.localStateCacheHits.WithLabelValues(key).Inc()
+		return entry, true
+	}
+
+	entry, ok := m.buildLocalStateCacheEntry(key, val)
+	if !ok {
+		return localStateCacheEntry{}, false
+	}
+
+	m.localStateCacheMisses.WithLabelValues(key).Inc()
+	m.localStateCache[key] = entry
+
+	return entry, true
+}
+
+// buildLocalStateCacheEntry serializes a single store entry. It returns false if the
+// entry cannot be serialized, having logged the reason.
+//
+// Callers must hold storeMu.
+func (m *KV) buildLocalStateCacheEntry(key string, val ValueDesc) (localStateCacheEntry, bool) {
+	codec := m.GetCodec(val.CodecID)
+	if codec == nil {
+		level.Error(m.logger).Log("msg", "failed to encode remote state: unknown codec for key", "codec", val.CodecID, "key", key)
+		return localStateCacheEntry{}, false
+	}
+
+	encoded, err := codec.Encode(val.value)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "failed to encode remote state", "err", err)
+		return localStateCacheEntry{}, false
+	}
+
+	pair := KeyValuePair{
+		Key:              key,
+		Value:            encoded,
+		Codec:            val.CodecID,
+		Deleted:          val.Deleted,
+		UpdateTimeMillis: updateTimeMillis(val.UpdateTime),
+	}
+
+	ser, err := pair.Marshal()
+	if err != nil {
+		level.Error(m.logger).Log("msg", "failed to serialize KV Pair", "err", err)
+		return localStateCacheEntry{}, false
+	}
+
+	if uint(len(ser)) > math.MaxUint32 {
+		level.Error(m.logger).Log("msg", "value too long", "key", key, "value_length", len(encoded))
+		return localStateCacheEntry{}, false
+	}
+
+	data := make([]byte, lengthPrefixSize+len(ser))
+	binary.BigEndian.PutUint32(data, uint32(len(ser)))
+	copy(data[lengthPrefixSize:], ser)
+
+	return localStateCacheEntry{version: val.Version, data: data}, true
+}
+
+// recordSentMessage appends to the sent message history buffer, reconstructing the
+// KeyValuePair from the entry's cached wire form. Only reached when that buffer is enabled,
+// so the unmarshal is paid only while troubleshooting.
+//
+// Callers must hold storeMu.
+func (m *KV) recordSentMessage(key string, entry localStateCacheEntry, version uint, sent time.Time) {
+	pair := KeyValuePair{}
+	if err := pair.Unmarshal(entry.data[lengthPrefixSize:]); err != nil {
+		level.Warn(m.logger).Log("msg", "failed to unmarshal cached KV Pair for message history", "key", key, "err", err)
+		return
+	}
+
+	m.addSentMessage(Message{
+		Time:    sent,
+		Size:    len(entry.data) - lengthPrefixSize,
+		Pair:    pair,
+		Version: version,
+	})
 }
 
 // MergeRemoteState is a method from the Memberlist Delegate interface.
@@ -1660,14 +1865,14 @@ func (m *KV) MergeRemoteState(data []byte, _ bool) {
 	// Data contains individual KV pairs (encoded as protobuf messages), each prefixed with 4 bytes length of KV pair:
 	// [4-bytes length of marshalled KV pair] [marshalled KV pair] [4-bytes length] [KV pair]...
 	for len(data) > 0 {
-		if len(data) < 4 {
+		if len(data) < lengthPrefixSize {
 			err = fmt.Errorf("not enough data left for another KV Pair: %d", len(data))
 			break
 		}
 
 		kvPairLength := binary.BigEndian.Uint32(data)
 
-		data = data[4:]
+		data = data[lengthPrefixSize:]
 
 		if len(data) < int(kvPairLength) {
 			err = fmt.Errorf("not enough data left for next KV Pair, expected %d, remaining %d bytes", kvPairLength, len(data))
@@ -1783,6 +1988,13 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, incomingValue
 		m.storeTombstones.WithLabelValues(key).Set(float64(total))
 		m.storeRemovedTombstones.WithLabelValues(key).Add(float64(removed))
 
+		// RemoveTombstones changed the stored value in place, but the paths below can return
+		// without bumping the version, which is what would otherwise invalidate the cache. So
+		// drop the entry here, to stop a later pull from sending the removed tombstones.
+		if removed > 0 {
+			delete(m.localStateCache, key)
+		}
+
 		// Remove tombstones from change too. If change turns out to be empty after this,
 		// we don't need to gossip the change. However, the local value will be always be updated.
 		//
@@ -1897,11 +2109,41 @@ func (m *KV) deleteSentReceivedMessages() {
 
 func (m *KV) cleanupObsoleteEntries() {
 	m.storeMu.Lock()
-	defer m.storeMu.Unlock()
-
+	var removedKeys []string
 	for k, v := range m.store {
 		if v.Deleted && time.Since(v.UpdateTime) > m.cfg.ObsoleteEntriesTimeout {
 			delete(m.store, k)
+			delete(m.localStateCache, k)
+			m.localStateCacheHits.DeleteLabelValues(k)
+			m.localStateCacheMisses.DeleteLabelValues(k)
+			removedKeys = append(removedKeys, k)
+		}
+	}
+	m.storeMu.Unlock()
+
+	m.stopKeyWorkers(removedKeys)
+}
+
+// stopKeyWorkers stops the update-processing worker goroutines for the given keys.
+// Workers of removed keys must be stopped: otherwise every key ever seen keeps a
+// goroutine alive for the lifetime of the process, which is a goroutine leak in
+// clusters where keys are created and deleted over time.
+func (m *KV) stopKeyWorkers(keys []string) {
+	if len(keys) == 0 {
+		return
+	}
+
+	m.workersMu.Lock()
+	defer m.workersMu.Unlock()
+
+	for _, k := range keys {
+		if ch, ok := m.workersChannels[k]; ok {
+			delete(m.workersChannels, k)
+			// Closing the channel is safe: enqueueKeyUpdate only sends while holding
+			// workersMu, so there is no concurrent sender, and no future sender can
+			// obtain this channel anymore. The worker drains any buffered updates
+			// and then exits.
+			close(ch)
 		}
 	}
 }

@@ -127,6 +127,9 @@ func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts List
 
 	// Return object owner information by default
 	fetchOwner := true
+	if opts.FetchOwner != nil {
+		fetchOwner = *opts.FetchOwner
+	}
 
 	return func(yield func(ObjectInfo) bool) {
 		if contextCanceled(ctx) {
@@ -154,7 +157,7 @@ func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts List
 
 			// Get list of objects a maximum of 1000 per request.
 			result, err := c.listObjectsV2Query(ctx, bucketName, opts.Prefix, continuationToken,
-				fetchOwner, opts.WithMetadata, delimiter, opts.StartAfter, opts.MaxKeys, opts.headers)
+				fetchOwner, opts.WithMetadata, opts.Unsorted, delimiter, opts.StartAfter, opts.MaxKeys, opts.requestHeaders())
 			if err != nil {
 				yield(ObjectInfo{Err: err})
 				return
@@ -206,10 +209,11 @@ func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts List
 // ?prefix - Limits the response to keys that begin with the specified prefix.
 // ?continuation-token - Used to continue iterating over a set of objects
 // ?metadata - Specifies if we want metadata for the objects as part of list operation.
+// ?unsorted - Specifies that the objects may be returned in any order, MinIO extension.
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?start-after - Sets a marker to start listing lexically at this key onwards.
 // ?max-keys - Sets the maximum number of keys returned in the response body.
-func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix, continuationToken string, fetchOwner, metadata bool, delimiter, startAfter string, maxkeys int, headers http.Header) (ListBucketV2Result, error) {
+func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix, continuationToken string, fetchOwner, metadata, unsorted bool, delimiter, startAfter string, maxkeys int, headers http.Header) (ListBucketV2Result, error) {
 	// Validate bucket name.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ListBucketV2Result{}, err
@@ -227,6 +231,10 @@ func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefi
 
 	if metadata {
 		urlValues.Set("metadata", "true")
+	}
+
+	if unsorted {
+		urlValues.Set("unsorted", "true")
 	}
 
 	// Set this conditionally if asked
@@ -296,6 +304,8 @@ func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefi
 			return listBucketResult, err
 		}
 		listBucketResult.Contents[i].LastModified = listBucketResult.Contents[i].LastModified.Truncate(time.Millisecond)
+		listBucketResult.Contents[i].UserMetadataStripped = stripUserMetadata(obj.UserMetadata)
+		listBucketResult.Contents[i].setChecksumAlgorithm()
 	}
 
 	for i, obj := range listBucketResult.CommonPrefixes {
@@ -341,7 +351,7 @@ func (c *Client) listObjects(ctx context.Context, bucketName string, opts ListOb
 			}
 
 			// Get list of objects a maximum of 1000 per request.
-			result, err := c.listObjectsQuery(ctx, bucketName, opts.Prefix, marker, delimiter, opts.MaxKeys, opts.headers)
+			result, err := c.listObjectsQuery(ctx, bucketName, opts.Prefix, marker, delimiter, opts.MaxKeys, opts.requestHeaders())
 			if err != nil {
 				yield(ObjectInfo{Err: err})
 				return
@@ -419,32 +429,35 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 			}
 			for _, version := range vers {
 				info := ObjectInfo{
-					ETag:              trimEtag(version.ETag),
-					Key:               version.Key,
-					LastModified:      version.LastModified.Truncate(time.Millisecond),
-					Size:              version.Size,
-					Owner:             version.Owner,
-					StorageClass:      version.StorageClass,
-					IsLatest:          version.IsLatest,
-					VersionID:         version.VersionID,
-					IsDeleteMarker:    version.isDeleteMarker,
-					UserTags:          version.UserTags,
-					UserMetadata:      version.UserMetadata,
-					Internal:          version.Internal,
-					NumVersions:       numVersions,
-					ChecksumAlgorithm: version.ChecksumAlgorithm,
-					ChecksumMode:      version.ChecksumType,
-					ChecksumCRC32:     version.ChecksumCRC32,
-					ChecksumCRC32C:    version.ChecksumCRC32C,
-					ChecksumSHA1:      version.ChecksumSHA1,
-					ChecksumSHA256:    version.ChecksumSHA256,
-					ChecksumCRC64NVME: version.ChecksumCRC64NVME,
-					ChecksumMD5:       version.ChecksumMD5,
-					ChecksumSHA512:    version.ChecksumSHA512,
-					ChecksumXXHash64:  version.ChecksumXXHash64,
-					ChecksumXXHash3:   version.ChecksumXXHash3,
-					ChecksumXXHash128: version.ChecksumXXHash128,
+					ETag:                 trimEtag(version.ETag),
+					Key:                  version.Key,
+					LastModified:         version.LastModified.Truncate(time.Millisecond),
+					Size:                 version.Size,
+					Owner:                version.Owner,
+					StorageClass:         version.StorageClass,
+					IsLatest:             version.IsLatest,
+					VersionID:            version.VersionID,
+					IsDeleteMarker:       version.isDeleteMarker,
+					UserTags:             version.UserTags,
+					UserMetadata:         version.UserMetadata,
+					UserMetadataStripped: version.UserMetadataStripped,
+					Internal:             version.Internal,
+					Restore:              version.Restore,
+					NumVersions:          numVersions,
+					ChecksumAlgorithm:    version.ChecksumAlgorithm,
+					ChecksumMode:         version.ChecksumType,
+					ChecksumCRC32:        version.ChecksumCRC32,
+					ChecksumCRC32C:       version.ChecksumCRC32C,
+					ChecksumSHA1:         version.ChecksumSHA1,
+					ChecksumSHA256:       version.ChecksumSHA256,
+					ChecksumCRC64NVME:    version.ChecksumCRC64NVME,
+					ChecksumMD5:          version.ChecksumMD5,
+					ChecksumSHA512:       version.ChecksumSHA512,
+					ChecksumXXHash64:     version.ChecksumXXHash64,
+					ChecksumXXHash3:      version.ChecksumXXHash3,
+					ChecksumXXHash128:    version.ChecksumXXHash128,
 				}
+				info.setChecksumAlgorithm()
 				if !yield(info) {
 					return false
 				}
@@ -582,7 +595,7 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName string,
 		bucketName:       bucketName,
 		queryValues:      urlValues,
 		contentSHA256Hex: emptySHA256Hex,
-		customHeader:     opts.headers,
+		customHeader:     opts.requestHeaders(),
 	})
 	defer closeResponse(resp)
 	if err != nil {
@@ -606,6 +619,7 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName string,
 		if err != nil {
 			return listObjectVersionsOutput, err
 		}
+		listObjectVersionsOutput.Versions[i].UserMetadataStripped = stripUserMetadata(obj.UserMetadata)
 	}
 
 	for i, obj := range listObjectVersionsOutput.CommonPrefixes {
@@ -695,6 +709,7 @@ func (c *Client) listObjectsQuery(ctx context.Context, bucketName, objectPrefix,
 			return listBucketResult, err
 		}
 		listBucketResult.Contents[i].LastModified = listBucketResult.Contents[i].LastModified.Truncate(time.Millisecond)
+		listBucketResult.Contents[i].setChecksumAlgorithm()
 	}
 
 	for i, obj := range listBucketResult.CommonPrefixes {
@@ -722,6 +737,15 @@ type ListObjectsOptions struct {
 	WithVersions bool
 	// Include objects metadata in the listing
 	WithMetadata bool
+	// Include the restore state of archived objects in the listing, as
+	// ObjectInfo.Restore. Ignored by servers that do not implement the
+	// x-amz-optional-object-attributes header.
+	WithRestoreStatus bool
+	// Unsorted allows the server to return the objects in any order, only
+	// honored by ListObjects V2 and incompatible with StartAfter. This is
+	// a MinIO extension, other S3 providers ignore it and keep returning a
+	// sorted listing. See ListUnsorted for the full semantics.
+	Unsorted bool
 	// Only list objects with the prefix
 	Prefix string
 	// Ignore '/' delimiter
@@ -738,7 +762,42 @@ type ListObjectsOptions struct {
 	// Use the deprecated list objects V1 API
 	UseV1 bool
 
+	// FetchOwner indicates whether to return object owner information.
+	// It defaults to true when unset.
+	FetchOwner *bool
+
 	headers http.Header
+}
+
+// checkUnsorted returns an error if the unsorted listing extension cannot be
+// honored for these options against a bucket in the given location. It is only
+// implemented by ListObjects V2, and its continuation token encodes a position
+// rather than a key, so there is nothing for 'StartAfter' to resolve against.
+func (o ListObjectsOptions) checkUnsorted(location string) error {
+	if !o.Unsorted {
+		return nil
+	}
+	if o.UseV1 || o.WithVersions || location == "snowball" {
+		return errInvalidArgument("unsorted listing is only supported by ListObjects V2")
+	}
+	if o.StartAfter != "" {
+		return errInvalidArgument("unsorted listing does not support StartAfter")
+	}
+	return nil
+}
+
+// requestHeaders returns the headers to send with a listing request, the
+// caller supplied ones plus the optional attributes the options ask for.
+func (o ListObjectsOptions) requestHeaders() http.Header {
+	if !o.WithRestoreStatus {
+		return o.headers
+	}
+	headers := o.headers.Clone()
+	if headers == nil {
+		headers = make(http.Header, 1)
+	}
+	headers.Set(amzOptionalObjectAttributes, restoreStatusAttribute)
+	return headers
 }
 
 // Set adds a key value pair to the options. The
@@ -770,6 +829,12 @@ func (c *Client) ListObjects(ctx context.Context, bucketName string, opts ListOb
 			return
 		}
 
+		location, _ := c.bucketLocCache.Get(bucketName)
+		if err := opts.checkUnsorted(location); err != nil {
+			objectStatCh <- ObjectInfo{Err: err}
+			return
+		}
+
 		var objIter iter.Seq[ObjectInfo]
 		switch {
 		case opts.WithVersions:
@@ -777,7 +842,6 @@ func (c *Client) ListObjects(ctx context.Context, bucketName string, opts ListOb
 		case opts.UseV1:
 			objIter = c.listObjects(ctx, bucketName, opts)
 		default:
-			location, _ := c.bucketLocCache.Get(bucketName)
 			if location == "snowball" {
 				objIter = c.listObjects(ctx, bucketName, opts)
 			} else {
@@ -812,6 +876,13 @@ func (c *Client) ListObjects(ctx context.Context, bucketName string, opts ListOb
 // Canceling the context the iterator will stop, if you wish to discard the yielding make sure
 // to cancel the passed context without that you might leak coroutines
 func (c *Client) ListObjectsIter(ctx context.Context, bucketName string, opts ListObjectsOptions) iter.Seq[ObjectInfo] {
+	location, _ := c.bucketLocCache.Get(bucketName)
+	if err := opts.checkUnsorted(location); err != nil {
+		return func(yield func(ObjectInfo) bool) {
+			yield(ObjectInfo{Err: err})
+		}
+	}
+
 	if opts.WithVersions {
 		return c.listObjectVersions(ctx, bucketName, opts)
 	}
@@ -822,13 +893,40 @@ func (c *Client) ListObjectsIter(ctx context.Context, bucketName string, opts Li
 	}
 
 	// Check whether this is snowball region, if yes ListObjectsV2 doesn't work, fallback to listObjectsV1.
-	if location, ok := c.bucketLocCache.Get(bucketName); ok {
-		if location == "snowball" {
-			return c.listObjects(ctx, bucketName, opts)
-		}
+	if location == "snowball" {
+		return c.listObjects(ctx, bucketName, opts)
 	}
 
 	return c.listObjectsV2(ctx, bucketName, opts)
+}
+
+// ListUnsorted returns an object list iterator, the objects are returned in
+// the order the server finds them instead of the lexical order mandated by
+// S3. Skipping the sort lets the server stream the listing as it is read from
+// each erasure set, which is substantially faster on large prefixes.
+//
+// This is a MinIO extension, S3 implementations that do not support it will
+// keep returning a regular lexically sorted listing. Unsorted listing is only
+// available on ListObjects V2, so 'UseV1', 'WithVersions' and snowball buckets
+// are rejected instead of silently falling back to a sorted listing.
+//
+// Pagination is positional, the continuation token encodes a position in the
+// listing and not a key, therefore 'StartAfter' cannot be honored and is
+// rejected as well.
+//
+//	api := client.New(....)
+//	for object := range api.ListUnsorted(ctx, "mytestbucket", minio.ListObjectsOptions{Prefix: "starthere", Recursive: true}) {
+//	    if object.Err != nil {
+//	        // handle the errors.
+//	    }
+//	    fmt.Println(object)
+//	}
+//
+// Canceling the context the iterator will stop, if you wish to discard the yielding make sure
+// to cancel the passed context without that you might leak coroutines
+func (c *Client) ListUnsorted(ctx context.Context, bucketName string, opts ListObjectsOptions) iter.Seq[ObjectInfo] {
+	opts.Unsorted = true
+	return c.ListObjectsIter(ctx, bucketName, opts)
 }
 
 // ListIncompleteUploads - List incompletely uploaded multipart objects.

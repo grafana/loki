@@ -1,5 +1,38 @@
 # Release History
 
+## 1.23.3 (2026-10-06)
+
+### Bugs Fixed
+
+* Fixed `arm.ResourceID.Location` being empty when the `locations` segment uses different casing.
+
+### Other Changes
+
+* Added `azure-deprecating` to the default set of allowed (non-redacted) response headers for logging.
+* Replaced internal default HTTP client with the one from `sdk/internal`.
+
+## 1.23.2 (2026-09-28)
+
+### Bugs Fixed
+
+* Fixed unmarshalling `datetime.RFC7231` to use a fixed `GMT` zone.
+
+## 1.23.1 (2026-08-27)
+
+### Other Changes
+
+* Upgraded dependencies.
+
+## 1.23.0 (2026-08-11)
+
+### Features Added
+
+* Helper method `runtime.NewRequestForNextLink` for creating requests for pageable operations that uses a next link.  It handles absolute and relative next links.
+
+### Bugs Fixed
+
+* Fixed an issue where `runtime.Pager[T].More` could return `true` indefinitely after `NextPage` failed to retrieve the first page, causing `for pager.More()` loops to spin. After a page fetch returns an error the `Pager` now enters a terminal state: `More` returns `false` and subsequent `NextPage` calls return the same error without invoking the fetcher again.
+
 ## 1.22.0 (2026-06-04)
 
 ### Features Added

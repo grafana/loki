@@ -212,6 +212,79 @@ done:
     MOVQ R9, max+32(FP)
     RET
 
+// func combinedBoundsInt64AVX512(data []int64) (min, max int64)
+TEXT ·combinedBoundsInt64AVX512(SB), NOSPLIT, $-40
+    MOVQ data_base+0(FP), AX
+    MOVQ data_len+8(FP), CX
+    XORQ SI, SI
+
+    MOVQ CX, DI
+    SHRQ $5, DI
+    SHLQ $5, DI
+    VPBROADCASTQ (AX), Z0
+    VPBROADCASTQ (AX), Z1
+    VPBROADCASTQ (AX), Z2
+    VPBROADCASTQ (AX), Z3
+loop32:
+    VMOVDQU64 (AX)(SI*8), Z4
+    VMOVDQU64 64(AX)(SI*8), Z5
+    VMOVDQU64 128(AX)(SI*8), Z6
+    VMOVDQU64 192(AX)(SI*8), Z7
+    VPMINSQ Z4, Z0, Z0
+    VPMAXSQ Z4, Z1, Z1
+    VPMINSQ Z5, Z2, Z2
+    VPMAXSQ Z5, Z3, Z3
+    VPMINSQ Z6, Z0, Z0
+    VPMAXSQ Z6, Z1, Z1
+    VPMINSQ Z7, Z2, Z2
+    VPMAXSQ Z7, Z3, Z3
+    ADDQ $32, SI
+    CMPQ SI, DI
+    JNE loop32
+
+    VPMINSQ Z2, Z0, Z0
+    VPMAXSQ Z3, Z1, Z1
+
+    VMOVDQU32 swap32+0(SB), Z2
+    VMOVDQU32 swap32+0(SB), Z3
+    VPERMI2D Z0, Z0, Z2
+    VPERMI2D Z1, Z1, Z3
+    VPMINSQ Y2, Y0, Y0
+    VPMAXSQ Y3, Y1, Y1
+
+    VMOVDQU32 swap32+32(SB), Y2
+    VMOVDQU32 swap32+32(SB), Y3
+    VPERMI2D Y0, Y0, Y2
+    VPERMI2D Y1, Y1, Y3
+    VPMINSQ X2, X0, X0
+    VPMAXSQ X3, X1, X1
+
+    VMOVDQU32 swap32+48(SB), X2
+    VMOVDQU32 swap32+48(SB), X3
+    VPERMI2D X0, X0, X2
+    VPERMI2D X1, X1, X3
+    VPMINSQ X2, X0, X0
+    VPMAXSQ X3, X1, X1
+    VZEROUPPER
+
+    MOVQ X0, R8
+    MOVQ X1, R9
+    CMPQ SI, CX
+    JE done
+loop:
+    MOVQ (AX)(SI*8), DX
+    CMPQ DX, R8
+    CMOVQLT DX, R8
+    CMPQ DX, R9
+    CMOVQGT DX, R9
+    INCQ SI
+    CMPQ SI, CX
+    JNE loop
+done:
+    MOVQ R8, min+24(FP)
+    MOVQ R9, max+32(FP)
+    RET
+
 // func combinedBoundsUint32(data []uint32) (min, max uint32)
 TEXT ·combinedBoundsUint32(SB), NOSPLIT, $-32
     MOVQ data_base+0(FP), AX

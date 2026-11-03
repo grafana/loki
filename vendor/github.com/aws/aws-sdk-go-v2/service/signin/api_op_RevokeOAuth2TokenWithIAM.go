@@ -4,20 +4,13 @@ package signin
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/signin/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Grants permission to revoke an OAuth 2.0 refresh token and its associated
-// refresh tokens
-//
-// Revokes a refresh_token issued by AWS Sign-In, invalidating the entire token
-// chain so that the refresh_token can no longer be used to mint new access_tokens.
-//
-// Idempotency: revoking an already-revoked, expired, or otherwise invalid token
-// still returns 200 OK with an empty body. Only the refresh_token type is
-// accepted.
+// Revokes an OAuth 2.0 refresh token and its associated token chain.
 func (c *Client) RevokeOAuth2TokenWithIAM(ctx context.Context, params *RevokeOAuth2TokenWithIAMInput, optFns ...func(*Options)) (*RevokeOAuth2TokenWithIAMOutput, error) {
 	if params == nil {
 		params = &RevokeOAuth2TokenWithIAMInput{}
@@ -38,8 +31,8 @@ func (c *Client) RevokeOAuth2TokenWithIAM(ctx context.Context, params *RevokeOAu
 // RFC 7009 §2.1 revocation request. Contains the refresh_token to revoke.
 type RevokeOAuth2TokenWithIAMInput struct {
 
-	// The refresh_token to revoke. Must be a refresh_token issued by AWS Sign-In
-	// (prefix "ASOR"); access_tokens are not accepted for revocation.
+	// The refresh token to revoke. Must be a refresh token issued by AWS Sign-In.
+	// Access tokens are not accepted for revocation.
 	//
 	// This member is required.
 	Token *string
@@ -47,6 +40,17 @@ type RevokeOAuth2TokenWithIAMInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RevokeOAuth2TokenWithIAMInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RevokeOAuth2TokenWithIAMRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RevokeOAuth2TokenWithIAMInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Token != nil {
+		s.WriteString(schemas.RevokeOAuth2TokenWithIAMRequest_token, *v.Token)
+	}
+}
 func (in *RevokeOAuth2TokenWithIAMInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.IsOAuthEndpoint = ptr.Bool(true)
@@ -63,22 +67,29 @@ type RevokeOAuth2TokenWithIAMOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RevokeOAuth2TokenWithIAMOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RevokeOAuth2TokenWithIAMResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RevokeOAuth2TokenWithIAMOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *RevokeOAuth2TokenWithIAMOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.RevokeOAuth2TokenWithIAMResponse, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationRevokeOAuth2TokenWithIAMMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestjson1_serializeOpRevokeOAuth2TokenWithIAM{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RevokeOAuth2TokenWithIAM, schemas.RevokeOAuth2TokenWithIAMRequest, schemas.RevokeOAuth2TokenWithIAMResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestjson1_deserializeOpRevokeOAuth2TokenWithIAM{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RevokeOAuth2TokenWithIAM, schemas.RevokeOAuth2TokenWithIAMRequest, schemas.RevokeOAuth2TokenWithIAMResponse), output: &RevokeOAuth2TokenWithIAMOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -88,19 +99,10 @@ func (c *Client) addOperationRevokeOAuth2TokenWithIAMMiddlewares(stack *middlewa
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpRevokeOAuth2TokenWithIAMValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "RevokeOAuth2TokenWithIAM"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

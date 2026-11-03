@@ -17,21 +17,21 @@ func (f fakeRun) Sections() []*compactionv2pb.SectionRef { return f.sections }
 func (f fakeRun) Size() uint64                           { return f.size }
 
 func TestPlan_EmptyInput(t *testing.T) {
-	require.Nil(t, Plan(nil, "tenantA", 3, nil))
-	require.Nil(t, Plan([]Run{}, "tenantA", 3, nil))
+	require.Nil(t, Plan(nil, "tenantA", 3))
+	require.Nil(t, Plan([]Run{}, "tenantA", 3))
 }
 
 func TestPlan_InvalidK_Panics(t *testing.T) {
 	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
-	require.PanicsWithValue(t, "k must be > 0, got 0", func() { Plan(runs, "tenantA", 0, nil) })
-	require.PanicsWithValue(t, "k must be > 0, got -1", func() { Plan(runs, "tenantA", -1, nil) })
+	require.PanicsWithValue(t, "k must be > 0, got 0", func() { Plan(runs, "tenantA", 0) })
+	require.PanicsWithValue(t, "k must be > 0, got -1", func() { Plan(runs, "tenantA", -1) })
 	// nil runs (typed []Run) with k<=0 still panics on k before the empty check.
-	require.PanicsWithValue(t, "k must be > 0, got 0", func() { Plan(nil, "tenantA", 0, nil) })
+	require.PanicsWithValue(t, "k must be > 0, got 0", func() { Plan(nil, "tenantA", 0) })
 }
 
 func TestPlan_SingleRun(t *testing.T) {
 	s := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0}
-	got := Plan([]Run{fakeRun{sections: []*compactionv2pb.SectionRef{s}}}, "tenantA", 8, nil)
+	got := Plan([]Run{fakeRun{sections: []*compactionv2pb.SectionRef{s}}}, "tenantA", 8)
 	require.Len(t, got, 1)
 	require.Equal(t, "tenantA", got[0].Tenant)
 	require.Len(t, got[0].Runs, 1)
@@ -42,7 +42,7 @@ func TestPlan_KGrouping_P10_K3(t *testing.T) {
 	for i := range runs {
 		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
 	}
-	got := Plan(runs, "tenantA", 3, nil)
+	got := Plan(runs, "tenantA", 3)
 	require.Len(t, got, 4) // ceil(10/3)
 	require.Len(t, got[0].Runs, 3)
 	require.Len(t, got[1].Runs, 3)
@@ -55,7 +55,7 @@ func TestPlan_KGreaterThanP(t *testing.T) {
 	for i := range runs {
 		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
 	}
-	got := Plan(runs, "tenantB", 100, nil)
+	got := Plan(runs, "tenantB", 100)
 	require.Len(t, got, 1)
 	require.Len(t, got[0].Runs, 3)
 }
@@ -63,29 +63,9 @@ func TestPlan_KGreaterThanP(t *testing.T) {
 func TestPlan_TenantPassThrough(t *testing.T) {
 	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
 	for _, tenant := range []string{"t1", "t2"} {
-		got := Plan(runs, tenant, 1, nil)
+		got := Plan(runs, tenant, 1)
 		require.Equal(t, tenant, got[0].Tenant)
 	}
-}
-
-func TestPlan_StampsSortSchema(t *testing.T) {
-	schema := []string{"label:service_name"}
-	runs := make([]Run, 3)
-	for i := range runs {
-		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
-	}
-	tasks := Plan(runs, "t1", 2, schema)
-	require.NotEmpty(t, tasks)
-	for _, ts := range tasks {
-		require.Equal(t, schema, ts.SortSchema)
-	}
-}
-
-func TestPlan_NilSortSchemaStaysEmpty(t *testing.T) {
-	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
-	tasks := Plan(runs, "t1", 2, nil)
-	require.NotEmpty(t, tasks)
-	require.Empty(t, tasks[0].SortSchema)
 }
 
 func TestRun_SizeAndSections(t *testing.T) {
@@ -108,19 +88,20 @@ func TestCalculateRuns_EmptyInput(t *testing.T) {
 	require.Empty(t, CalculateRuns([]Section[int](nil), func(a, b int) int { return a - b }))
 }
 
-func TestCalculateRuns_WrapsRunsAndSortsInPlace(t *testing.T) {
+func TestCalculateRuns_WrapsRunsWithoutMutatingInput(t *testing.T) {
 	a := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 5}
 	b := &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0, UncompressedSize: 7}
 	input := []Section[int]{
 		{Ref: b, Min: 30, Max: 40},
 		{Ref: a, Min: 10, Max: 20},
 	}
+	original := append([]Section[int](nil), input...)
 
 	runs := CalculateRuns(input, func(a, b int) int { return a - b })
 
 	require.Len(t, runs, 1)
 	require.Equal(t, uint64(12), runs[0].Size())
-	require.Equal(t, []Section[int]{{Ref: a, Min: 10, Max: 20}, {Ref: b, Min: 30, Max: 40}}, input)
+	require.Equal(t, original, input)
 }
 
 func TestBelowMinCompactionSize(t *testing.T) {

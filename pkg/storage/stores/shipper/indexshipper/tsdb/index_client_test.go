@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -319,4 +321,99 @@ type fakeLimits struct {
 
 func (f *fakeLimits) VolumeMaxSeries(_ string) int {
 	return f.volumeMaxSeries
+}
+
+func TestIndexShipperQuerier_ConcurrentChunkFilterer(t *testing.T) {
+	tempDir := t.TempDir()
+	tableRange := config.TableRange{
+		Start: 0,
+		End:   math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				}},
+		},
+	}
+	indexStart := model.TimeFromUnixNano(time.Now().Truncate(config.ObjectStorageIndexRequiredPeriod).UnixNano())
+	tables := map[string][]*TSDBFile{
+		tableRange.PeriodConfig.IndexTables.TableFor(indexStart): {
+			BuildIndex(t, tempDir, []LoadableSeries{
+				{
+					Labels: mustParseLabels(`{foo="bar"}`),
+					Chunks: buildChunkMetas(int64(indexStart), int64(indexStart+99)),
+				},
+			}),
+		},
+	}
+	q := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, tableRange)
+	idx := NewMultiIndex(IndexSlice{q, q})
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+
+	// Populate PeriodConfig.schemaInt before concurrent queries.
+	_, err := q.GetChunkRefs(context.Background(), "fake", indexStart, indexStart+100, nil, nil, matcher)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			idx.SetChunkFilterer(&filterAll{})
+			_, err := idx.GetChunkRefs(context.Background(), "fake", indexStart, indexStart+100, nil, nil, matcher)
+			require.NoError(t, err)
+		}()
+	}
+	wg.Wait()
+}
+
+type labelValuesIndex struct {
+	Index
+	labelValues func(...*labels.Matcher) ([]string, error)
+}
+
+func (i labelValuesIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, _ string, matchers ...*labels.Matcher) ([]string, error) {
+	return i.labelValues(matchers...)
+}
+
+func TestIndexClient_LabelValuesForMetricName(t *testing.T) {
+	metric := labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
+	shard := labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "0_of_2")
+	appMatcher := labels.MustNewMatcher(labels.MatchEqual, "app", "loki")
+	for _, tc := range []struct {
+		name      string
+		matchers  []*labels.Matcher
+		want      []*labels.Matcher
+		wantError bool
+	}{
+		{name: "no matchers"},
+		{name: "metric only", matchers: []*labels.Matcher{metric}},
+		{name: "shard only", matchers: []*labels.Matcher{shard}},
+		{name: "metric and shard", matchers: []*labels.Matcher{metric, shard}},
+		{name: "real matcher", matchers: []*labels.Matcher{appMatcher}, want: []*labels.Matcher{appMatcher}},
+		{name: "strip metric and shard", matchers: []*labels.Matcher{metric, shard, appMatcher}, want: []*labels.Matcher{appMatcher}},
+		{name: "invalid shard", matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "invalid")}, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			idx := labelValuesIndex{labelValues: func(matchers ...*labels.Matcher) ([]string, error) {
+				called = true
+				require.Len(t, matchers, len(tc.want))
+				for n, matcher := range tc.want {
+					require.Equal(t, matcher, matchers[n])
+				}
+				return []string{"loki"}, nil
+			}}
+			client := NewIndexClient(idx, IndexClientOptions{}, &fakeLimits{})
+			values, err := client.LabelValuesForMetricName(context.Background(), "tenant", 0, 100, "logs", "app", tc.matchers...)
+			if tc.wantError {
+				require.Error(t, err)
+				require.False(t, called)
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, called)
+			require.Equal(t, []string{"loki"}, values)
+		})
+	}
 }
