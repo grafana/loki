@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -87,15 +86,6 @@ var (
 	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
 	walStats           = analytics.NewString("ingester_wal")
 	activeTenantsStats = analytics.NewInt("ingester_active_tenants")
-)
-
-// Openers for the WAL replay readers. They are variables so tests can check
-// when the readers get closed.
-var (
-	openCheckpointReader = newCheckpointReader
-	openWALSegmentReader = func(dir string) (WALReader, io.Closer, error) {
-		return wal.NewWalReader(dir, -1)
-	}
 )
 
 // Config for an ingester.
@@ -596,7 +586,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		defer endReplay()
 
 		level.Info(i.logger).Log("msg", "recovering from checkpoint")
-		checkpointReader, checkpointCloser, err := openCheckpointReader(i.cfg.WAL.Dir, i.logger)
+		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir, i.logger)
 		if err != nil {
 			return err
 		}
@@ -622,7 +612,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		)
 
 		level.Info(i.logger).Log("msg", "recovering from WAL")
-		segmentReader, segmentCloser, err := openWALSegmentReader(i.cfg.WAL.Dir)
+		segmentReader, segmentCloser, err := wal.NewWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
 		}

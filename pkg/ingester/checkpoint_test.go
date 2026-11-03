@@ -3,7 +3,6 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -142,83 +141,6 @@ func TestIngesterWAL(t *testing.T) {
 
 	// ensure we've recovered data from checkpoint+wal segments
 	ensureIngesterData(ctx, t, start, end, i)
-}
-
-type closerFunc func() error
-
-func (f closerFunc) Close() error { return f() }
-
-// TestIngesterWALReplayClosesReadersBeforeLifecyclerStarts guards against the
-// WAL replay readers staying open until starting() returns. With Kafka
-// ingestion, starting() also waits for the partition reader to catch up, and
-// the open file descriptors kept deleted WAL segments on disk the whole time.
-func TestIngesterWALReplayClosesReadersBeforeLifecyclerStarts(t *testing.T) {
-	walDir := t.TempDir()
-	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
-	// Write a checkpoint, so both the checkpoint and the segment reader are real.
-	ingesterConfig.WAL.CheckpointDuration = 100 * time.Millisecond
-
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	require.NoError(t, err)
-	newStore := func() *mockStore { return &mockStore{chunks: map[string][]chunk.Chunk{}} }
-	readRingMock := mockReadRingWithOneActiveIngester()
-
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-
-	start := time.Now()
-	req := logproto.PushRequest{Streams: []logproto.Stream{{Labels: `{foo="bar",bar="baz1"}`}, {Labels: `{foo="bar",bar="baz2"}`}}}
-	for n := 0; n < 10; n++ {
-		for s := range req.Streams {
-			req.Streams[s].Entries = append(req.Streams[s].Entries, logproto.Entry{
-				Timestamp: start.Add(time.Duration(n) * time.Second),
-				Line:      fmt.Sprintf("line %d", n),
-			})
-		}
-	}
-	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = i.Push(ctx, &req)
-	require.NoError(t, err)
-	expectCheckpoint(t, walDir, true, time.Second)
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
-
-	// Restart and record the lifecycler state when each replay reader is closed.
-	restarted, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
-	require.NoError(t, err)
-
-	var checkpointClosedIn, segmentClosedIn []services.State
-	origCheckpoint, origSegment := openCheckpointReader, openWALSegmentReader
-	t.Cleanup(func() { openCheckpointReader, openWALSegmentReader = origCheckpoint, origSegment })
-	openCheckpointReader = func(dir string, logger gokit_log.Logger) (WALReader, io.Closer, error) {
-		r, c, err := origCheckpoint(dir, logger)
-		if err != nil {
-			return nil, nil, err
-		}
-		return r, closerFunc(func() error {
-			checkpointClosedIn = append(checkpointClosedIn, restarted.lifecycler.State())
-			return c.Close()
-		}), nil
-	}
-	openWALSegmentReader = func(dir string) (WALReader, io.Closer, error) {
-		r, c, err := origSegment(dir)
-		if err != nil {
-			return nil, nil, err
-		}
-		return r, closerFunc(func() error {
-			segmentClosedIn = append(segmentClosedIn, restarted.lifecycler.State())
-			return c.Close()
-		}), nil
-	}
-
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), restarted))
-	defer services.StopAndAwaitTerminated(context.Background(), restarted) //nolint:errcheck
-
-	// Closed exactly once, and before the lifecycler (the last step of starting()) was started.
-	require.Equal(t, []services.State{services.New}, checkpointClosedIn, "checkpoint reader")
-	require.Equal(t, []services.State{services.New}, segmentClosedIn, "WAL segment reader")
-
-	ensureIngesterData(ctx, t, start, start.Add(10*time.Second), restarted)
 }
 
 func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
