@@ -10,10 +10,11 @@ import (
 type NodeType uint32
 
 const (
-	NodeTypeInvalid     NodeType = iota // NodeTypeInvalid is an illegal NodeType.
-	NodeTypeIndexMerge                  // NodeTypeIndexMerge represents an [IndexMerge].
-	NodeTypeLogMerge                    // NodeTypeLogMerge represents a [LogMerge].
-	NodeTypeIndexFilter                 // NodeTypeIndexFilter represents an [IndexFilter].
+	NodeTypeInvalid       NodeType = iota // NodeTypeInvalid is an illegal NodeType.
+	NodeTypeIndexMerge                    // NodeTypeIndexMerge represents an [IndexMerge].
+	NodeTypeLogMerge                      // NodeTypeLogMerge represents a [LogMerge].
+	NodeTypeIndexFilter                   // NodeTypeIndexFilter represents an [IndexFilter].
+	NodeTypeDeletionSweep                 // NodeTypeDeletionSweep represents a [DeletionSweep].
 )
 
 // String returns a string representation of the NodeType.
@@ -25,6 +26,8 @@ func (t NodeType) String() string {
 		return "LogMerge"
 	case NodeTypeIndexFilter:
 		return "IndexFilter"
+	case NodeTypeDeletionSweep:
+		return "DeletionSweep"
 	default:
 		return "Invalid"
 	}
@@ -46,10 +49,12 @@ type Node interface {
 var _ Node = (*IndexMerge)(nil)
 var _ Node = (*LogMerge)(nil)
 var _ Node = (*IndexFilter)(nil)
+var _ Node = (*DeletionSweep)(nil)
 
-func (*IndexMerge) isNode()  {}
-func (*LogMerge) isNode()    {}
-func (*IndexFilter) isNode() {}
+func (*IndexMerge) isNode()    {}
+func (*LogMerge) isNode()      {}
+func (*IndexFilter) isNode()   {}
+func (*DeletionSweep) isNode() {}
 
 // Plan represents a physical execution plan as a directed acyclic graph (DAG).
 // It maintains the parent-child relationships between nodes.

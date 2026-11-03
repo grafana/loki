@@ -127,6 +127,10 @@ func (d *floatDecoder) decodeSlow(ctx *RuntimeContext, cursor, depth int64, p un
 		if err := validateNull(buf, cursor); err != nil {
 			return 0, err
 		}
+		if ctx.Option.V2&(V2Semantics|V2MergeWithLegacySemantics) == V2Semantics {
+			// the semantics of encoding/json/v2 decode null as the zero value, but with MergeWithLegacySemantics
+			d.op(p, 0)
+		}
 		return cursor + 4, nil
 	case c == '-' || c-'0' <= 9:
 		end, err := numberEnd(buf, cursor)
@@ -137,12 +141,8 @@ func (d *floatDecoder) decodeSlow(ctx *RuntimeContext, cursor, depth int64, p un
 		f, parseErr := strconv.ParseFloat(*(*string)(unsafe.Pointer(&b)), 64)
 		// a number of the grammar which ParseFloat fails is out of the range of float64
 		if inRange := parseErr == nil && !(d.is32 && overflowsFloat32(f)); !inRange {
-			ctx.numberTypeError(cursor, end, d.typ)
-			if storesFloatsOutOfRange {
-				// ±Inf, which ParseFloat returns, or which the conversion to a float32 makes
-				d.op(p, f)
-			}
-			return end, nil
+			// the value is left as it is, as encoding/json leaves it from Go 1.27.2
+			return ctx.numberError(cursor, end, d.typ)
 		}
 		d.op(p, f)
 		return end, nil

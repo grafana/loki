@@ -749,7 +749,7 @@ func TestDataObjStore_ShardingAcrossLayouts(t *testing.T) {
 		objects []testObject
 		want    []sampleRow
 	)
-	for objectIdx, buckets := range []uint32{1, 8, 32, 128} {
+	for objectIdx, buckets := range []uint32{1, 8, 32, 128, 256} {
 		second := 10*objectIdx + 1
 		objectStreams := make([]logproto.Stream, 0, streamCount)
 
@@ -799,14 +799,14 @@ func TestDataObjStore_ShardingAcrossLayouts(t *testing.T) {
 		}
 	}
 
-	t.Run("an unsharded query returns every sample once across objects of 1, 8, 32 and 128 buckets", func(t *testing.T) {
+	t.Run("an unsharded query returns every sample once across objects of 1, 8, 32, 128 and 256 buckets", func(t *testing.T) {
 		got := store.selectSamples(testCtx(t), query, at(0), at(100))
 
 		require.Equal(t, want, got)
 	})
 
 	for _, of := range []uint32{2, 8, 32, 64, 256} {
-		t.Run(fmt.Sprintf("%d power-of-two shards together return every sample once across objects of 1, 8, 32 and 128 buckets", of), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d power-of-two shards together return every sample once across objects of 1, 8, 32, 128 and 256 buckets", of), func(t *testing.T) {
 			shards := make([]string, 0, of)
 			for shard := range of {
 				shards = append(shards, powerOfTwoShard(shard, of).String())
@@ -817,7 +817,7 @@ func TestDataObjStore_ShardingAcrossLayouts(t *testing.T) {
 	}
 
 	for _, n := range []uint64{1, 3, 10} {
-		t.Run(fmt.Sprintf("%d bounded shards together return every sample once across objects of 1, 8, 32 and 128 buckets", n), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d bounded shards together return every sample once across objects of 1, 8, 32, 128 and 256 buckets", n), func(t *testing.T) {
 			requireEverySampleOnce(t, boundedShardsOfFingerprintSpace(n))
 		})
 	}
@@ -1232,7 +1232,7 @@ type metadataCacheSpy struct {
 }
 
 func newMetadataCacheSpy() *metadataCacheSpy {
-	return &metadataCacheSpy{inner: metadatacache.New(cache.NewMockCache(), 0, nil, nil)}
+	return &metadataCacheSpy{inner: metadatacache.NewCache(cache.NewMockCache(), 0, metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)}
 }
 
 func (s *metadataCacheSpy) GetOrLoadMetadataRegion(ctx context.Context, key string, load func(context.Context) ([]byte, error)) ([]byte, error) {

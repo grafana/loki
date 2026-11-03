@@ -31,12 +31,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -108,12 +110,15 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	return path
 }
 
-// getRecordingBucket records the names of every object read through Get.
+// getRecordingBucket records the names of every object read through Get, and counts the reads
+// through GetRange.
 type getRecordingBucket struct {
 	objstore.Bucket
 
 	mtx   sync.Mutex
 	names []string
+
+	rangeReads atomic.Int64
 }
 
 func (b *getRecordingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -121,6 +126,11 @@ func (b *getRecordingBucket) Get(ctx context.Context, name string) (io.ReadClose
 	b.names = append(b.names, name)
 	b.mtx.Unlock()
 	return b.Bucket.Get(ctx, name)
+}
+
+func (b *getRecordingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	b.rangeReads.Inc()
+	return b.Bucket.GetRange(ctx, name, off, length)
 }
 
 func (b *getRecordingBucket) tocReads() []string {
@@ -826,6 +836,54 @@ func TestObjectMetastore_Sections(t *testing.T) {
 		require.ErrorIs(t, err, errNoMatchers)
 		require.Empty(t, resp.Sections)
 		require.Empty(t, bucket.names)
+	})
+}
+
+func TestObjectMetastore_MetadataCache(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), tenantID)
+	request := SectionsRequest{
+		Start:    now.Add(-time.Hour),
+		End:      now.Add(time.Hour),
+		Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+	}
+
+	t.Run("resolves a cached index object without reading it from object storage", func(t *testing.T) {
+		inMem := objstore.NewInMemBucket()
+		addIndexObject(t, inMem, sectionOf("object-a"))
+		bucket := &getRecordingBucket{Bucket: inMem}
+		m, _ := newTestMetastoreWithCache(bucket)
+
+		cold, err := m.Sections(ctx, request)
+		require.NoError(t, err)
+		require.NotEmpty(t, cold.Sections)
+		require.Positive(t, bucket.rangeReads.Load())
+
+		bucket.rangeReads.Store(0)
+		warm, err := m.Sections(ctx, request)
+		require.NoError(t, err)
+		require.Zero(t, bucket.rangeReads.Load())
+		require.Equal(t, cold.Sections, warm.Sections)
+	})
+
+	t.Run("reads the ToC from object storage on every resolution and never caches it", func(t *testing.T) {
+		inMem := objstore.NewInMemBucket()
+		addIndexObject(t, inMem, sectionOf("object-a"))
+		bucket := &getRecordingBucket{Bucket: inMem}
+		m, memoryCache := newTestMetastoreWithCache(bucket)
+
+		_, err := m.Sections(ctx, request)
+		require.NoError(t, err)
+		tocReadsPerResolution := len(bucket.tocReads())
+		require.Positive(t, tocReadsPerResolution)
+
+		_, err = m.Sections(ctx, request)
+		require.NoError(t, err)
+
+		require.Len(t, bucket.tocReads(), 2*tocReadsPerResolution)
+		require.NotEmpty(t, memoryCache.GetInternal(), "the index object is cached, so the check below is not vacuous")
+		for key := range memoryCache.GetInternal() {
+			require.NotContains(t, key, TocPrefix)
+		}
 	})
 }
 
@@ -2055,4 +2113,12 @@ func (g *readGate) waitUntilLeft(t *testing.T) {
 
 func (g *readGate) open() {
 	close(g.release)
+}
+
+// newTestMetastoreWithCache returns a metastore that caches index objects in the returned in-memory
+// backend.
+func newTestMetastoreWithCache(bucket objstore.Bucket) (*ObjectMetastore, cache.MockCache) {
+	memoryCache := cache.NewMockCache()
+	metadataCache := metadatacache.NewCache(memoryCache, 0, metadatacache.KindIndex, metadatacache.NewMetrics(nil), nil)
+	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()), WithIndexMetadataCache(metadataCache)), memoryCache
 }
