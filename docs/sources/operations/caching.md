@@ -9,20 +9,20 @@ keywords:
 ---
 # Configure caches to speed up queries
 
-Loki supports caching for query results, chunks, and index lookups to speed up query performance and reduce calls to the storage layer. Memcached is included in the Loki Helm chart and enabled by default for the `chunksCache` and `resultsCache`.
+Loki supports caching for query results and chunks to speed up query performance and reduce calls to the storage layer. Memcached is included in the Loki Helm chart and enabled by default for the `chunksCache` and `resultsCache`.
 This section describes the recommended Memcached configuration to enable caching for chunks and query results.
 
 ## Cache backends
 
 Every cache in Loki (`chunk_cache_config`, `results_cache`, and so on) can use one of three interchangeable backends: Memcached, Redis, or an embedded (in-process) cache. Memcached is the backend used throughout this page and is the recommended choice for production, multi-replica deployments, because it is shared across all instances of a component. Redis is supported as an alternative external cache. The embedded cache stores data in the memory of the Loki process itself, so it isn't shared between replicas; it is best suited to single-binary or small deployments. Configure only one backend per cache. If you configure both Memcached and Redis for the same cache, Loki fails to start.
 
-If you don't configure Memcached or Redis for a cache, Loki automatically enables the embedded cache for it, so that caching still works out of the box. This applies to the chunks cache and to the results caches. It does not apply to the index queries cache or the write dedupe cache, which stay disabled unless you configure them. Because the embedded cache is per-process, this automatic fallback is not a substitute for Memcached or Redis in a deployment with more than one replica.
+If you don't configure Memcached or Redis for a cache, Loki automatically enables the embedded cache for it, so that caching still works out of the box. This applies to the chunks cache and to all six results caches. Because the embedded cache is per-process, this automatic fallback is not a substitute for Memcached or Redis in a deployment with more than one replica.
 
 For more information about which caching backend to use for each cache, refer to [Configure caches](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#cache_config) and [Components](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/components). For help diagnosing cache configuration problems, refer to [Troubleshoot operations](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-operations/).
 
 ### Results cache
 
-The results cache stores results so that Loki can reuse them on subsequent queries, and it supports negative caching for log queries. It is sometimes called the frontend cache in some configurations. The results cache is consulted by query-frontends. If the cached results are incomplete, the query frontend calculates the required sub-queries and sends them further along to be executed in queriers, then also caches those results.
+The results cache stores results so that Loki can reuse them on subsequent queries, and it supports negative caching for log queries. It is sometimes called the frontend cache in some configurations. The results cache is consulted by query frontends. If the cached results are incomplete, the query frontend calculates the required sub-queries and sends them further along to be executed in queriers, then also caches those results.
 To orchestrate all of the above, the results cache uses a query hash as the key that is computed and stored in the headers.
 
 The results cache is really a set of six independently configurable caches under `query_range`, one per query type:
@@ -38,8 +38,7 @@ The results cache is really a set of six independently configurable caches under
 
 If a per-query-type cache is enabled but its cache config is left empty, Loki falls back to the `results_cache` configuration for that query type. This means you only need to configure `results_cache` to get caching for all query types, and you only need to give a query type its own cache config if you want it to use a different Memcached, Redis, or embedded cache instance. For details of each supported request type, refer to the [Components section](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/components).
 
-The index lookup cache only supports the legacy BoltDB index storage and is configured to be in-memory by default.
-Since moving to the TSDB indexes the attached disks/persistent volumes are utilized as cache and in-memory index lookup cache is obsolete.
+The index lookup cache and the write dedupe cache were removed together with support for the legacy BoltDB index storage. For details, refer to the [upgrade guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/). TSDB, the only index type Loki now supports, doesn't use an index cache; for more information, refer to [Index Caching not required](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#index-caching-not-required).
 
 ### Chunks cache
 
@@ -47,10 +46,23 @@ The chunks are cached using the `chunkRef` as the cache key, which is the unique
 The chunk cache is consulted by queriers each time a set of `chunkRef`s are calculated to serve the query, before going to the storage layer.
 
 Query results are significantly smaller compared to chunks. As the Loki cluster gets bigger in ingested volume, the results cache can continue to perform, whereas the chunks cache will need to grow in proportion to demand more memory.
-To be able to support the growing needs of a cluster, in 2023 we introduced support for memcached-extstore. Extstore is an additional feature on Memcached which supports attaching SSD disks to memcached pods to maximize their capacity.
+To support the growing needs of a cluster, Loki added support for memcached-extstore. Extstore is a Memcached feature that supports attaching SSD disks to Memcached pods to maximize their capacity.
 
-Please see this [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) on Loki's experience with memcached-extstore for our SaaS offering, Grafana Cloud.
-For more information on how to tune memcached-extstore please consult the open source [memcached documentation](https://docs.memcached.org/advisories/grafanaloki/).
+For more information about Loki's experience with memcached-extstore for Grafana Cloud, refer to this [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/).
+For more information about how to tune memcached-extstore, refer to the open source [memcached documentation](https://docs.memcached.org/advisories/grafanaloki/).
+
+### Skip cache for old chunks
+
+The `skip_query_writeback_cache_older_than` setting in `chunk_store_config` (CLI flag: `-store.skip-query-writeback-older-than`) controls how far back chunks are eligible for caching. When set to a positive duration, chunks whose start time is older than that duration are not looked up in any cache tier and are not written back to the cache after being fetched from object storage. This prevents rarely queried historical data from evicting more frequently accessed recent chunks.
+
+A value of `0` (the default) disables this threshold, so that all chunks are cached regardless of age.
+
+```yaml
+chunk_store_config:
+  skip_query_writeback_cache_older_than: 72h
+```
+
+This setting applies to both the primary (L1) and L2 chunk caches. It is independent of `l2_chunk_cache_handoff`: chunks that fall within the handoff window are routed to the appropriate cache tier as usual, but chunks older than `skip_query_writeback_cache_older_than` bypass all cache tiers entirely.
 
 ### L2 chunks cache
 
@@ -76,10 +88,9 @@ If the Helm chart is used, the L2 cache is configured under `chunksCache.l2`, wh
 
 ## Before you begin
 
-- It is recommended to deploy separate Memcached type as separate components (`memcached_frontend` and `memcached_chunks`).
+- Deploy separate Memcached instances for the chunks cache and the results cache (`memcached_chunks` and `memcached_frontend` in Tanka deployments).
 - Use the Memcached image version shipped with the current release of the [Loki Helm chart](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml) (`memcached.image.tag`) rather than pinning to a specific version here, since the recommended version changes over time.
-- Consult the Loki ksonnet [memcached](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/memcached.libsonnet) deployment and the ksonnet [memcached library](https://github.com/grafana/jsonnet-libs/tree/master/memcached).
-- Index caching is not required for the [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#index-caching-not-required) index format.
+- Consult the Loki Tanka [memcached](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/memcached.libsonnet) deployment and the [memcached library](https://github.com/grafana/jsonnet-libs/tree/master/memcached).
 - For recommendations on scaling the cache, refer to the [Size the cluster](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/size/) page.
 
 ## Steps
@@ -90,14 +101,14 @@ To enable and configure Memcached:
    each as follows:
     1. Chunk cache
 
-       ```yaml
-       --memory-limit=4096 --max-item-size=2m --conn-limit=1024
+       ```text
+       --memory-limit=8192 --max-item-size=5m --conn-limit=16384
        ```
 
     1. Query result cache
 
-       ```yaml
-       --memory-limit=1024 --max-item-size=5m --conn-limit=1024
+       ```text
+       --memory-limit=1024 --max-item-size=5m --conn-limit=16384
        ```
 
 1. Configure Loki to use the cache.
