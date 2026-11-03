@@ -22,6 +22,7 @@ func (d *DeleteAclsRequest) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -31,9 +32,12 @@ func (d *DeleteAclsRequest) decode(pd packetDecoder, version int16) (err error) 
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	d.Filters = make([]*AclFilter, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		d.Filters[i] = new(AclFilter)
 		d.Filters[i].Version = int(version)
 		if err := d.Filters[i].decode(pd, version); err != nil {
@@ -41,7 +45,8 @@ func (d *DeleteAclsRequest) decode(pd packetDecoder, version int16) (err error) 
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (d *DeleteAclsRequest) key() int16 {
@@ -53,15 +58,28 @@ func (d *DeleteAclsRequest) version() int16 {
 }
 
 func (d *DeleteAclsRequest) headerVersion() int16 {
+	if d.Version >= 2 {
+		return 2
+	}
 	return 1
 }
 
 func (d *DeleteAclsRequest) isValidVersion() bool {
-	return d.Version >= 0 && d.Version <= 1
+	return d.Version >= 0 && d.Version <= 2
+}
+
+func (d *DeleteAclsRequest) isFlexible() bool {
+	return d.isFlexibleVersion(int16(d.Version))
+}
+
+func (d *DeleteAclsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (d *DeleteAclsRequest) requiredVersion() KafkaVersion {
 	switch d.Version {
+	case 2:
+		return V2_5_0_0
 	case 1:
 		return V2_0_0_0
 	default:

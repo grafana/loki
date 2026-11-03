@@ -30,15 +30,28 @@ func (d *DescribeAclsRequest) version() int16 {
 }
 
 func (d *DescribeAclsRequest) headerVersion() int16 {
+	if d.Version >= 2 {
+		return 2
+	}
 	return 1
 }
 
 func (d *DescribeAclsRequest) isValidVersion() bool {
-	return d.Version >= 0 && d.Version <= 1
+	return d.Version >= 0 && d.Version <= 2
+}
+
+func (d *DescribeAclsRequest) isFlexible() bool {
+	return d.isFlexibleVersion(int16(d.Version))
+}
+
+func (d *DescribeAclsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (d *DescribeAclsRequest) requiredVersion() KafkaVersion {
 	switch d.Version {
+	case 2:
+		return V2_5_0_0
 	case 1:
 		return V2_0_0_0
 	default:

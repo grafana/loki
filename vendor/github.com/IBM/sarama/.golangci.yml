@@ -17,6 +17,7 @@ linters:
   - govet
   - misspell
   - nilerr
+  - testifylint
   - unconvert
   - unused
   - whitespace

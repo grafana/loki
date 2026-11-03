@@ -25,6 +25,13 @@ func restrictApiVersion(pb protocolBody, brokerVersions apiVersionMap) error {
 		return nil
 	}
 
+	// an empty map means ApiVersions was never negotiated; a populated one that
+	// omits this key means the broker does not have the API and would close the
+	// connection on the request
+	if len(brokerVersions) > 0 {
+		return ErrUnsupportedVersion
+	}
+
 	return nil // no version ranges available, no restriction
 }
 
@@ -81,5 +88,10 @@ const (
 	apiKeyAlterClientQuotas            = 49
 	apiKeyDescribeUserScramCredentials = 50
 	apiKeyAlterUserScramCredentials    = 51
+	apiKeyUpdateFeatures               = 57
 	apiKeyDescribeCluster              = 60
+	apiKeyDescribeProducers            = 61
+	apiKeyDescribeTransactions         = 65
+	apiKeyListTransactions             = 66
+	apiKeyConsumerGroupDescribe        = 69
 )

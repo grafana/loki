@@ -51,7 +51,7 @@ func (r *DescribeLogDirsRequest) decode(pd packetDecoder, version int16) error {
 		return err
 	}
 
-	if n == -1 {
+	if n < 0 {
 		n = 0
 	}
 

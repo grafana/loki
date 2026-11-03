@@ -88,8 +88,11 @@ func (r *DescribeClusterResponse) decode(pd packetDecoder, version int16) error 
 	if err != nil {
 		return err
 	}
+	if brokerCount < 0 {
+		return errInvalidArrayLength
+	}
 	r.Brokers = make([]*DescribeClusterBroker, brokerCount)
-	for i := 0; i < brokerCount; i++ {
+	for i := range brokerCount {
 		broker := &DescribeClusterBroker{}
 		if err := broker.decode(pd, r.Version); err != nil {
 			return err

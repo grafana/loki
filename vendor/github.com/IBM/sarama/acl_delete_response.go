@@ -26,10 +26,12 @@ func (d *DeleteAclsResponse) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
 func (d *DeleteAclsResponse) decode(pd packetDecoder, version int16) (err error) {
+	d.Version = version
 	if d.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
@@ -38,16 +40,20 @@ func (d *DeleteAclsResponse) decode(pd packetDecoder, version int16) (err error)
 	if err != nil {
 		return err
 	}
-	d.FilterResponses = make([]*FilterResponse, n)
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
-	for i := 0; i < n; i++ {
+	d.FilterResponses = make([]*FilterResponse, n)
+	for i := range n {
 		d.FilterResponses[i] = new(FilterResponse)
 		if err := d.FilterResponses[i].decode(pd, version); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (d *DeleteAclsResponse) key() int16 {
@@ -59,15 +65,28 @@ func (d *DeleteAclsResponse) version() int16 {
 }
 
 func (d *DeleteAclsResponse) headerVersion() int16 {
+	if d.Version >= 2 {
+		return 1
+	}
 	return 0
 }
 
 func (d *DeleteAclsResponse) isValidVersion() bool {
-	return d.Version >= 0 && d.Version <= 1
+	return d.Version >= 0 && d.Version <= 2
+}
+
+func (d *DeleteAclsResponse) isFlexible() bool {
+	return d.isFlexibleVersion(d.Version)
+}
+
+func (d *DeleteAclsResponse) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (d *DeleteAclsResponse) requiredVersion() KafkaVersion {
 	switch d.Version {
+	case 2:
+		return V2_5_0_0
 	case 1:
 		return V2_0_0_0
 	default:
@@ -101,6 +120,7 @@ func (f *FilterResponse) encode(pe packetEncoder, version int16) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -118,15 +138,19 @@ func (f *FilterResponse) decode(pd packetDecoder, version int16) (err error) {
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 	f.MatchingAcls = make([]*MatchingAcl, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		f.MatchingAcls[i] = new(MatchingAcl)
 		if err := f.MatchingAcls[i].decode(pd, version); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 // MatchingAcl is a matching acl type
@@ -151,6 +175,7 @@ func (m *MatchingAcl) encode(pe packetEncoder, version int16) error {
 		return err
 	}
 
+	// empty tagged fields encoded in Acl
 	return nil
 }
 
@@ -172,5 +197,6 @@ func (m *MatchingAcl) decode(pd packetDecoder, version int16) (err error) {
 		return err
 	}
 
+	// empty tagged fields decoded in Acl
 	return nil
 }

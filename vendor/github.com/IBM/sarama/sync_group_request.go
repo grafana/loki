@@ -44,6 +44,10 @@ type SyncGroupRequest struct {
 	MemberId string
 	// GroupInstanceId contains the unique identifier of the consumer instance provided by end user.
 	GroupInstanceId *string
+	// ProtocolType contains the group protocol type.
+	ProtocolType *string
+	// ProtocolName contains the group protocol name.
+	ProtocolName *string
 	// GroupAssignments contains each assignment.
 	GroupAssignments []SyncGroupRequestAssignment
 }
@@ -65,6 +69,15 @@ func (s *SyncGroupRequest) encode(pe packetEncoder) (err error) {
 
 	if s.Version >= 3 {
 		if err := pe.putNullableString(s.GroupInstanceId); err != nil {
+			return err
+		}
+	}
+
+	if s.Version >= 5 {
+		if err := pe.putNullableString(s.ProtocolType); err != nil {
+			return err
+		}
+		if err := pe.putNullableString(s.ProtocolName); err != nil {
 			return err
 		}
 	}
@@ -102,11 +115,22 @@ func (s *SyncGroupRequest) decode(pd packetDecoder, version int16) (err error) {
 		}
 	}
 
+	if s.Version >= 5 {
+		if s.ProtocolType, err = pd.getNullableString(); err != nil {
+			return err
+		}
+		if s.ProtocolName, err = pd.getNullableString(); err != nil {
+			return err
+		}
+	}
+
 	if numAssignments, err := pd.getArrayLength(); err != nil {
 		return err
+	} else if numAssignments < 0 {
+		return errInvalidArrayLength
 	} else if numAssignments > 0 {
 		s.GroupAssignments = make([]SyncGroupRequestAssignment, numAssignments)
-		for i := 0; i < numAssignments; i++ {
+		for i := range numAssignments {
 			var block SyncGroupRequestAssignment
 			if err := block.decode(pd, s.Version); err != nil {
 				return err
@@ -135,7 +159,7 @@ func (r *SyncGroupRequest) headerVersion() int16 {
 }
 
 func (r *SyncGroupRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 4
+	return r.Version >= 0 && r.Version <= 5
 }
 
 func (r *SyncGroupRequest) isFlexible() bool {
@@ -148,6 +172,8 @@ func (r *SyncGroupRequest) isFlexibleVersion(version int16) bool {
 
 func (r *SyncGroupRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 5:
+		return V2_5_0_0
 	case 4:
 		return V2_4_0_0
 	case 3:

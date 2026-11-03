@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -14,35 +15,60 @@ import (
 // ErrClosedConsumerGroup is the error returned when a method is called on a consumer group that has been closed.
 var ErrClosedConsumerGroup = errors.New("kafka: tried to use a consumer group that was closed")
 
+// ErrSessionPartitionCountChanged is set as the cancellation cause of a consumer group
+// session context when the leader detects that the partition count for a subscribed topic
+// has changed, requiring a new session.
+var ErrSessionPartitionCountChanged = errors.New("kafka: partition count changed for subscribed topic")
+
+// ErrSessionConsumeClaimExited is set as the cancellation cause of a consumer group session
+// context when a ConsumeClaim goroutine exits, triggering the end of the session.
+var ErrSessionConsumeClaimExited = errors.New("kafka: ConsumeClaim goroutine exited")
+
+// ErrSessionHeartbeatFailed is set as the cancellation cause of a consumer group session
+// context when the heartbeat loop exits due to an unrecoverable error (e.g. coordinator
+// unreachable after retries).
+var ErrSessionHeartbeatFailed = errors.New("kafka: heartbeat loop failed")
+
+// ErrRebalanceTimedOut is set as the cancellation cause of a consumer group session
+// context when a ConsumeClaim did not return within Consumer.Group.Rebalance.Timeout
+// of the partition being revoked from it.
+var ErrRebalanceTimedOut = errors.New("kafka: ConsumeClaim did not exit within Consumer.Group.Rebalance.Timeout of being revoked")
+
+// errPartitionRevoked is set as the cancellation cause of a single claim's context
+// when the partition has been revoked by a cooperative rebalance. It is internal:
+// the session survives, and the handler is told by its Messages() channel closing.
+var errPartitionRevoked = errors.New("kafka: partition revoked by rebalance")
+
 // ConsumerGroup is responsible for dividing up processing of topics and partitions
 // over a collection of processes (the members of the consumer group).
 type ConsumerGroup interface {
 	// Consume joins a cluster of consumers for a given list of topics and
 	// starts a blocking ConsumerGroupSession through the ConsumerGroupHandler.
 	//
-	// The life-cycle of a session is represented by the following steps:
+	// A call to Consume follows this lifecycle:
 	//
-	// 1. The consumers join the group (as explained in https://kafka.apache.org/documentation/#intro_consumers)
-	//    and is assigned their "fair share" of partitions, aka 'claims'.
-	// 2. Before processing starts, the handler's Setup() hook is called to notify the user
-	//    of the claims and allow any necessary preparation or alteration of state.
-	// 3. For each of the assigned claims the handler's ConsumeClaim() function is then called
-	//    in a separate goroutine which requires it to be thread-safe. Any state must be carefully protected
-	//    from concurrent reads/writes.
-	// 4. The session will persist until one of the ConsumeClaim() functions exits. This can be either when the
-	//    parent context is canceled or when a server-side rebalance cycle is initiated.
-	// 5. Once all the ConsumeClaim() loops have exited, the handler's Cleanup() hook is called
-	//    to allow the user to perform any final tasks before a rebalance.
-	// 6. Finally, marked offsets are committed one last time before claims are released.
+	// 1. The consumer joins the group and receives its assigned topic partitions,
+	//    also known as claims.
+	// 2. The handler's Setup method runs before claim processing starts.
+	// 3. The handler's ConsumeClaim method runs in a separate goroutine for each
+	//    claim, so the handler must be safe for concurrent use.
+	// 4. When the session ends, Consume waits for the claims to return, calls the
+	//    handler's Cleanup method, and commits marked offsets before releasing them.
 	//
-	// Please note, that once a rebalance is triggered, sessions must be completed within
-	// Config.Consumer.Group.Rebalance.Timeout. This means that ConsumeClaim() functions must exit
-	// as quickly as possible to allow time for Cleanup() and the final offset commit. If the timeout
-	// is exceeded, the consumer will be removed from the group by Kafka, which will cause offset
-	// commit failures.
-	// This method should be called inside an infinite loop, when a
-	// server-side rebalance happens, the consumer session will need to be
-	// recreated to get the new claims.
+	// With an eager strategy, a rebalance ends the current session and this
+	// Consume call. The caller should invoke Consume from a loop to create the
+	// next session and receive the new claims.
+	//
+	// With a cooperative strategy, a rebalance updates the existing session:
+	//
+	//   - Setup runs on the first join and Cleanup runs when the member leaves.
+	//   - Retained claims keep running.
+	//   - A revoked claim has its Messages channel closed.
+	//   - Consume and the session context remain active across rebalances.
+	//
+	// A revoked ConsumeClaim must return within
+	// Config.Consumer.Group.Rebalance.Timeout. If it does not, Kafka may remove
+	// the member from the group and subsequent offset commits may fail.
 	Consume(ctx context.Context, topics []string, handler ConsumerGroupHandler) error
 
 	// Errors returns a read channel of errors that occurred during the consumer life-cycle.
@@ -79,12 +105,13 @@ type ConsumerGroup interface {
 type consumerGroup struct {
 	client Client
 
-	config          *Config
-	consumer        Consumer
-	groupID         string
-	groupInstanceId *string
-	memberID        string
-	errors          chan error
+	config           *Config
+	consumer         Consumer
+	groupID          string
+	groupInstanceId  *string
+	memberID         string
+	lastSessionCause error
+	errors           chan error
 
 	lock       sync.Mutex
 	errorsLock sync.RWMutex
@@ -92,6 +119,9 @@ type consumerGroup struct {
 	closeOnce  sync.Once
 
 	userData []byte
+
+	// protocol is fixed at construction from the configured balance strategies
+	protocol RebalanceProtocol
 
 	metricRegistry metrics.Registry
 }
@@ -129,6 +159,11 @@ func newConsumerGroup(groupID string, client Client) (ConsumerGroup, error) {
 		return nil, ConfigurationError("consumer groups require Version to be >= V0_10_2_0")
 	}
 
+	protocol, err := selectRebalanceProtocol(config.groupStrategies())
+	if err != nil {
+		return nil, err
+	}
+
 	consumer, err := newConsumer(client)
 	if err != nil {
 		return nil, err
@@ -142,6 +177,7 @@ func newConsumerGroup(groupID string, client Client) (ConsumerGroup, error) {
 		errors:         make(chan error, config.ChannelBufferSize),
 		closed:         make(chan none),
 		userData:       config.Consumer.Group.Member.UserData,
+		protocol:       protocol,
 		metricRegistry: newCleanupRegistry(config.MetricRegistry),
 	}
 	if config.Consumer.Group.InstanceId != "" && config.Version.IsAtLeast(V2_3_0_0) {
@@ -195,6 +231,14 @@ func (c *consumerGroup) Consume(ctx context.Context, topics []string, handler Co
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	// Close may have left the group between the check above and taking the
+	// lock; joining now would add a member that nothing ever removes
+	select {
+	case <-c.closed:
+		return ErrClosedConsumerGroup
+	default:
+	}
+
 	// Quick exit when no topics are provided
 	if len(topics) == 0 {
 		return fmt.Errorf("no topics provided")
@@ -209,8 +253,13 @@ func (c *consumerGroup) Consume(ctx context.Context, topics []string, handler Co
 	sess, err := c.newSession(ctx, topics, handler, c.config.Consumer.Group.Rebalance.Retry.Max)
 	if errors.Is(err, ErrClosedClient) {
 		return ErrClosedConsumerGroup
-	} else if err != nil {
+	}
+	if err != nil {
 		return err
+	}
+
+	if c.protocol == RebalanceProtocolCooperative {
+		return c.consumeCooperative(ctx, topics, sess)
 	}
 
 	// Wait for session exit signal or Close() call
@@ -220,7 +269,20 @@ func (c *consumerGroup) Consume(ctx context.Context, topics []string, handler Co
 	}
 
 	// Gracefully release session claims
-	return sess.release(true)
+	err = sess.release(true)
+
+	c.recordSessionCause(sess)
+
+	return err
+}
+
+// recordSessionCause keeps the reason for the next JoinGroup or LeaveGroup request
+func (c *consumerGroup) recordSessionCause(sess *consumerGroupSession) {
+	if cause := context.Cause(sess.ctx); !errors.Is(cause, context.Canceled) {
+		c.lastSessionCause = cause
+	} else {
+		c.lastSessionCause = nil
+	}
 }
 
 // Pause implements ConsumerGroup.
@@ -243,7 +305,7 @@ func (c *consumerGroup) ResumeAll() {
 	c.consumer.ResumeAll()
 }
 
-func (c *consumerGroup) retryNewSession(ctx context.Context, topics []string, handler ConsumerGroupHandler, retries int, refreshCoordinator bool) (*consumerGroupSession, error) {
+func (c *consumerGroup) retryJoinSync(ctx context.Context, topics []string, held *heldAssignment, retries int, refreshCoordinator bool) (*rebalanceResult, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -258,14 +320,30 @@ func (c *consumerGroup) retryNewSession(ctx context.Context, topics []string, ha
 			if retries <= 0 {
 				return nil, err
 			}
-			return c.retryNewSession(ctx, topics, handler, retries-1, true)
+			return c.retryJoinSync(ctx, topics, held, retries-1, true)
 		}
 	}
 
-	return c.newSession(ctx, topics, handler, retries-1)
+	return c.joinSync(ctx, topics, held, retries-1)
 }
 
-func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler ConsumerGroupHandler, retries int) (*consumerGroupSession, error) {
+type heldAssignment struct {
+	claims       map[string][]int32
+	generationID int32
+}
+
+type rebalanceResult struct {
+	memberID     string
+	generationID int32
+	claims       map[string][]int32
+
+	isLeader                     bool
+	allSubscribedTopicPartitions map[string][]int32
+	allSubscribedTopics          []string
+}
+
+// joinSync separates group negotiation from session lifetime so a session can survive a rejoin
+func (c *consumerGroup) joinSync(ctx context.Context, topics []string, held *heldAssignment, retries int) (*rebalanceResult, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -275,7 +353,7 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 			return nil, err
 		}
 
-		return c.retryNewSession(ctx, topics, handler, retries, true)
+		return c.retryJoinSync(ctx, topics, held, retries, true)
 	}
 
 	var (
@@ -294,7 +372,7 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 	}
 
 	// Join consumer group
-	join, err := c.joinGroupRequest(coordinator, topics)
+	join, err := c.joinGroupRequest(coordinator, topics, held)
 	if consumerGroupJoinTotal != nil {
 		consumerGroupJoinTotal.Inc(1)
 	}
@@ -313,23 +391,29 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 	switch join.Err {
 	case ErrNoError:
 		c.memberID = join.MemberId
+		// clear the session cause only once a join succeeds so the KIP-394
+		// second request repeats the reason
+		c.lastSessionCause = nil
 	case ErrUnknownMemberId, ErrIllegalGeneration:
 		// reset member ID and retry immediately
 		c.memberID = ""
-		return c.newSession(ctx, topics, handler, retries)
-	case ErrNotCoordinatorForConsumer, ErrRebalanceInProgress, ErrOffsetsLoadInProgress:
+		if c.lostHeldAssignment(held, join.Err) {
+			return nil, join.Err
+		}
+		return c.joinSync(ctx, topics, held, retries)
+	case ErrNotCoordinatorForConsumer, ErrConsumerCoordinatorNotAvailable, ErrRebalanceInProgress, ErrOffsetsLoadInProgress:
 		// retry after backoff
 		if retries <= 0 {
 			return nil, join.Err
 		}
-		return c.retryNewSession(ctx, topics, handler, retries, true)
+		return c.retryJoinSync(ctx, topics, held, retries, true)
 	case ErrMemberIdRequired:
 		// from JoinGroupRequest v4 onwards (due to KIP-394) if the client starts
 		// with an empty member id, it needs to get the assigned id from the
 		// response and send another join request with that id to actually join the
 		// group
 		c.memberID = join.MemberId
-		return c.newSession(ctx, topics, handler, retries)
+		return c.joinSync(ctx, topics, held, retries)
 	case ErrFencedInstancedId:
 		if c.groupInstanceId != nil {
 			Logger.Printf("JoinGroup failed: group instance id %s has been fenced\n", *c.groupInstanceId)
@@ -390,13 +474,23 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 	case ErrUnknownMemberId, ErrIllegalGeneration:
 		// reset member ID and retry immediately
 		c.memberID = ""
-		return c.newSession(ctx, topics, handler, retries)
-	case ErrNotCoordinatorForConsumer, ErrRebalanceInProgress, ErrOffsetsLoadInProgress:
+		if c.lostHeldAssignment(held, syncGroupResponse.Err) {
+			return nil, syncGroupResponse.Err
+		}
+		return c.joinSync(ctx, topics, held, retries)
+	case ErrNotCoordinatorForConsumer, ErrConsumerCoordinatorNotAvailable, ErrRebalanceInProgress, ErrOffsetsLoadInProgress:
 		// retry after backoff
 		if retries <= 0 {
 			return nil, syncGroupResponse.Err
 		}
-		return c.retryNewSession(ctx, topics, handler, retries, true)
+		if held != nil {
+			// the member joined this generation still owning held.claims, so
+			// report it on the retry; a Java 3.3 or earlier leader reassigns
+			// the owned partitions of a member reporting an older generation
+			// without waiting for them to be revoked
+			held.generationID = join.GenerationId
+		}
+		return c.retryJoinSync(ctx, topics, held, retries, true)
 	case ErrFencedInstancedId:
 		if c.groupInstanceId != nil {
 			Logger.Printf("JoinGroup failed: group instance id %s has been fenced\n", *c.groupInstanceId)
@@ -424,77 +518,130 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 			c.userData = c.config.Consumer.Group.Member.UserData
 		}
 
+		// Notify a stateful strategy of the assignment it just received, so it
+		// can carry leader-computed state into its next subscription.
+		if onAssign, ok := strategy.(OnAssignmentBalanceStrategy); ok {
+			onAssign.OnAssignment(members, join.GenerationId)
+		}
+
 		for _, partitions := range claims {
 			sort.Sort(int32Slice(partitions))
 		}
 	}
 
-	session, err := newConsumerGroupSession(ctx, c, claims, join.MemberId, join.GenerationId, handler)
+	return &rebalanceResult{
+		memberID:                     join.MemberId,
+		generationID:                 join.GenerationId,
+		claims:                       claims,
+		isLeader:                     join.LeaderId == join.MemberId,
+		allSubscribedTopicPartitions: allSubscribedTopicPartitions,
+		allSubscribedTopics:          allSubscribedTopics,
+	}, nil
+}
+
+func (c *consumerGroup) lostHeldAssignment(held *heldAssignment, err error) bool {
+	if held == nil || len(held.claims) == 0 {
+		return false
+	}
+	Logger.Printf("consumergroup/%s: lost ownership of %v due to %v\n", c.groupID, held.claims, err)
+	return true
+}
+
+func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler ConsumerGroupHandler, retries int) (*consumerGroupSession, error) {
+	res, err := c.joinSync(ctx, topics, nil, retries)
+	if err != nil {
+		return nil, err
+	}
+
+	session, err := newConsumerGroupSession(ctx, c, res.claims, res.memberID, res.generationID, handler)
 	if err != nil {
 		return nil, err
 	}
 
 	// only the leader needs to check whether there are newly-added partitions in order to trigger a rebalance
-	if join.LeaderId == join.MemberId {
-		go c.loopCheckPartitionNumbers(allSubscribedTopicPartitions, allSubscribedTopics, session)
-	}
+	session.watchPartitionNumbers(res)
 
-	return session, err
+	return session, nil
 }
 
-func (c *consumerGroup) joinGroupRequest(coordinator *Broker, topics []string) (*JoinGroupResponse, error) {
-	req := &JoinGroupRequest{
-		GroupId:        c.groupID,
-		MemberId:       c.memberID,
-		SessionTimeout: int32(c.config.Consumer.Group.Session.Timeout / time.Millisecond),
-		ProtocolType:   "consumer",
-	}
-	if c.config.Version.IsAtLeast(V0_10_1_0) {
-		req.Version = 1
+func (c *consumerGroup) joinGroupRequest(coordinator *Broker, topics []string, held *heldAssignment) (*JoinGroupResponse, error) {
+	req := NewJoinGroupRequest(c.config.Version)
+	req.GroupId = c.groupID
+	req.MemberId = c.memberID
+	req.SessionTimeout = int32(c.config.Consumer.Group.Session.Timeout / time.Millisecond)
+	req.ProtocolType = "consumer"
+	if req.Version >= 1 {
 		req.RebalanceTimeout = int32(c.config.Consumer.Group.Rebalance.Timeout / time.Millisecond)
 	}
-	if c.config.Version.IsAtLeast(V0_11_0_0) {
-		req.Version = 2
-	}
-	if c.config.Version.IsAtLeast(V0_11_0_0) {
-		req.Version = 2
-	}
-	if c.config.Version.IsAtLeast(V2_0_0_0) {
-		req.Version = 3
-	}
-	// from JoinGroupRequest v4 onwards (due to KIP-394) the client will actually
-	// send two JoinGroupRequests, once with the empty member id, and then again
-	// with the assigned id from the first response. This is handled via the
-	// ErrMemberIdRequired case.
-	if c.config.Version.IsAtLeast(V2_2_0_0) {
-		req.Version = 4
-	}
-	if c.config.Version.IsAtLeast(V2_3_0_0) {
-		req.Version = 5
+	if req.Version >= 5 {
 		req.GroupInstanceId = c.groupInstanceId
-		if c.config.Version.IsAtLeast(V2_4_0_0) {
-			req.Version = 6
-		}
+	}
+	if req.Version >= 8 && c.lastSessionCause != nil {
+		reason := sessionCauseToReason(c.lastSessionCause)
+		req.Reason = &reason
 	}
 
-	meta := &ConsumerGroupMemberMetadata{
-		Topics:   topics,
-		UserData: c.userData,
+	var owned map[string][]int32
+	generationID := int32(defaultGeneration)
+	if held != nil {
+		owned = held.claims
+		generationID = held.generationID
 	}
-	var strategy BalanceStrategy
-	if strategy = c.config.Consumer.Group.Rebalance.Strategy; strategy != nil {
+
+	for _, strategy := range c.config.groupStrategies() {
+		meta := c.subscriptionMetadata(strategy, topics, owned, generationID)
 		if err := req.AddGroupProtocolMetadata(strategy.Name(), meta); err != nil {
 			return nil, err
-		}
-	} else {
-		for _, strategy = range c.config.Consumer.Group.Rebalance.GroupStrategies {
-			if err := req.AddGroupProtocolMetadata(strategy.Name(), meta); err != nil {
-				return nil, err
-			}
 		}
 	}
 
 	return coordinator.JoinGroup(req)
+}
+
+// subscriptionVersion is based on the broker version rather than the rebalance
+// protocol so owned partitions are available during a rolling upgrade
+func (c *consumerGroup) subscriptionVersion() int16 {
+	switch {
+	case c.config.Version.IsAtLeast(V3_2_0_0):
+		return 2 // KIP-792: GenerationID
+	case c.config.Version.IsAtLeast(V2_4_0_0):
+		return 1 // KIP-429: OwnedPartitions
+	default:
+		return 0
+	}
+}
+
+// subscriptionMetadata builds the ConsumerGroupMemberMetadata for a single
+// strategy in a JoinGroup request. If the strategy implements
+// SubscriptionUserDataBalanceStrategy, its SubscriptionUserData hook is invoked
+// to obtain per-cycle UserData; on error the statically configured
+// Consumer.Group.Member.UserData is used and the error is logged.
+func (c *consumerGroup) subscriptionMetadata(strategy BalanceStrategy, topics []string, owned map[string][]int32, generationID int32) *ConsumerGroupMemberMetadata {
+	meta := &ConsumerGroupMemberMetadata{
+		Version:         c.subscriptionVersion(),
+		Topics:          topics,
+		UserData:        c.userData,
+		OwnedPartitions: ownedPartitions(owned),
+		GenerationID:    generationID,
+	}
+
+	p, ok := strategy.(SubscriptionUserDataBalanceStrategy)
+	if !ok {
+		return meta
+	}
+
+	// Hand the provider a throwaway copy so it cannot mutate the slice
+	// we later attach to the JoinGroup request.
+	userData, err := p.SubscriptionUserData(slices.Clone(topics))
+	if err != nil {
+		Logger.Printf(
+			"consumergroup/%s: falling back to static user data for strategy %q due to %v\n",
+			c.groupID, strategy.Name(), err,
+		)
+		return meta
+	}
+	meta.UserData = userData
+	return meta
 }
 
 // findStrategy returns the BalanceStrategy with the specified protocolName
@@ -521,20 +668,26 @@ func (c *consumerGroup) syncGroupRequest(
 		GenerationId: generationID,
 	}
 
-	// Versions 1 and 2 are the same as version 0.
-	if c.config.Version.IsAtLeast(V0_11_0_0) {
+	if c.config.Version.IsAtLeast(V2_5_0_0) {
+		req.Version = 5
+	} else if c.config.Version.IsAtLeast(V2_4_0_0) {
+		req.Version = 4
+	} else if c.config.Version.IsAtLeast(V2_3_0_0) {
+		req.Version = 3
+	} else if c.config.Version.IsAtLeast(V2_0_0_0) {
+		req.Version = 2
+	} else if c.config.Version.IsAtLeast(V0_11_0_0) {
 		req.Version = 1
 	}
-	if c.config.Version.IsAtLeast(V2_0_0_0) {
-		req.Version = 2
-	}
 	// Starting from version 3, we add a new field called groupInstanceId to indicate member identity across restarts.
-	if c.config.Version.IsAtLeast(V2_3_0_0) {
-		req.Version = 3
+	if req.Version >= 3 {
 		req.GroupInstanceId = c.groupInstanceId
-		if c.config.Version.IsAtLeast(V2_4_0_0) {
-			req.Version = 4
-		}
+	}
+	if req.Version >= 5 {
+		protocolType := "consumer"
+		protocolName := strategy.Name()
+		req.ProtocolType = &protocolType
+		req.ProtocolName = &protocolName
 	}
 
 	for memberID, topics := range plan {
@@ -640,17 +793,24 @@ func (c *consumerGroup) leave() error {
 		GroupId:  c.groupID,
 		MemberId: c.memberID,
 	}
-	if c.config.Version.IsAtLeast(V0_11_0_0) {
+	if c.config.Version.IsAtLeast(V3_2_0_0) {
+		req.Version = 5
+	} else if c.config.Version.IsAtLeast(V2_4_0_0) {
+		req.Version = 4
+	} else if c.config.Version.IsAtLeast(V2_0_0_0) {
+		req.Version = 2
+	} else if c.config.Version.IsAtLeast(V0_11_0_0) {
 		req.Version = 1
 	}
-	if c.config.Version.IsAtLeast(V2_0_0_0) {
-		req.Version = 2
-	}
-	if c.config.Version.IsAtLeast(V2_4_0_0) {
-		req.Version = 4
-		req.Members = append(req.Members, MemberIdentity{
+	if req.Version >= 3 {
+		member := MemberIdentity{
 			MemberId: c.memberID,
-		})
+		}
+		if req.Version >= 5 {
+			reason := "the consumer is being closed"
+			member.Reason = &reason
+		}
+		req.Members = append(req.Members, member)
 	}
 
 	resp, err := coordinator.LeaveGroup(req)
@@ -701,12 +861,11 @@ func (c *consumerGroup) handleError(err error, topic string, partition int32) {
 	}
 }
 
-func (c *consumerGroup) loopCheckPartitionNumbers(allSubscribedTopicPartitions map[string][]int32, topics []string, session *consumerGroupSession) {
+// loopCheckPartitionNumbers triggers a rebalance when a subscribed topic grows
+func (c *consumerGroup) loopCheckPartitionNumbers(ctx context.Context, allSubscribedTopicPartitions map[string][]int32, topics []string, session *consumerGroupSession) {
 	if c.config.Metadata.RefreshFrequency == time.Duration(0) {
 		return
 	}
-
-	defer session.cancel()
 
 	oldTopicToPartitionNum := make(map[string]int, len(allSubscribedTopicPartitions))
 	for topic, partitions := range allSubscribedTopicPartitions {
@@ -717,6 +876,7 @@ func (c *consumerGroup) loopCheckPartitionNumbers(allSubscribedTopicPartitions m
 	defer pause.Stop()
 	for {
 		if newTopicToPartitionNum, err := c.topicToPartitionNumbers(topics); err != nil {
+			session.triggerRebalance(ErrSessionPartitionCountChanged)
 			return
 		} else {
 			for topic, num := range oldTopicToPartitionNum {
@@ -724,17 +884,17 @@ func (c *consumerGroup) loopCheckPartitionNumbers(allSubscribedTopicPartitions m
 					Logger.Printf(
 						"consumergroup/%s loop check partition number goroutine find partitions in topics %s changed from %d to %d\n",
 						c.groupID, topics, num, newTopicToPartitionNum[topic])
-					return // trigger the end of the session on exit
+					session.triggerRebalance(ErrSessionPartitionCountChanged)
+					return
 				}
 			}
 		}
 		select {
 		case <-pause.C:
-		case <-session.ctx.Done():
+		case <-ctx.Done():
 			Logger.Printf(
 				"consumergroup/%s loop check partition number goroutine will exit, topics %s\n",
 				c.groupID, topics)
-			// if session closed by other, should be exited
 			return
 		case <-c.closed:
 			return
@@ -755,430 +915,4 @@ func (c *consumerGroup) topicToPartitionNumbers(topics []string) (map[string]int
 		}
 	}
 	return topicToPartitionNum, nil
-}
-
-// --------------------------------------------------------------------
-
-// ConsumerGroupSession represents a consumer group member session.
-type ConsumerGroupSession interface {
-	// Claims returns information about the claimed partitions by topic.
-	Claims() map[string][]int32
-
-	// MemberID returns the cluster member ID.
-	MemberID() string
-
-	// GenerationID returns the current generation ID.
-	GenerationID() int32
-
-	// MarkOffset marks the provided offset, alongside a metadata string
-	// that represents the state of the partition consumer at that point in time. The
-	// metadata string can be used by another consumer to restore that state, so it
-	// can resume consumption.
-	//
-	// To follow upstream conventions, you are expected to mark the offset of the
-	// next message to read, not the last message read. Thus, when calling `MarkOffset`
-	// you should typically add one to the offset of the last consumed message.
-	//
-	// Note: calling MarkOffset does not necessarily commit the offset to the backend
-	// store immediately for efficiency reasons, and it may never be committed if
-	// your application crashes. This means that you may end up processing the same
-	// message twice, and your processing should ideally be idempotent.
-	MarkOffset(topic string, partition int32, offset int64, metadata string)
-
-	// Commit the offset to the backend
-	//
-	// Note: calling Commit performs a blocking synchronous operation.
-	Commit()
-
-	// ResetOffset resets to the provided offset, alongside a metadata string that
-	// represents the state of the partition consumer at that point in time. Reset
-	// acts as a counterpart to MarkOffset, the difference being that it allows to
-	// reset an offset to an earlier or smaller value, where MarkOffset only
-	// allows incrementing the offset. cf MarkOffset for more details.
-	ResetOffset(topic string, partition int32, offset int64, metadata string)
-
-	// MarkMessage marks a message as consumed.
-	MarkMessage(msg *ConsumerMessage, metadata string)
-
-	// Context returns the session context.
-	Context() context.Context
-}
-
-type consumerGroupSession struct {
-	parent       *consumerGroup
-	memberID     string
-	generationID int32
-	handler      ConsumerGroupHandler
-
-	claims  map[string][]int32
-	offsets *offsetManager
-	ctx     context.Context
-	cancel  func()
-
-	waitGroup       sync.WaitGroup
-	releaseOnce     sync.Once
-	hbDying, hbDead chan none
-}
-
-func newConsumerGroupSession(ctx context.Context, parent *consumerGroup, claims map[string][]int32, memberID string, generationID int32, handler ConsumerGroupHandler) (*consumerGroupSession, error) {
-	// init context
-	ctx, cancel := context.WithCancel(ctx)
-
-	// init offset manager
-	offsets, err := newOffsetManagerFromClient(parent.groupID, memberID, generationID, parent.client, cancel)
-	if err != nil {
-		return nil, err
-	}
-
-	// init session
-	sess := &consumerGroupSession{
-		parent:       parent,
-		memberID:     memberID,
-		generationID: generationID,
-		handler:      handler,
-		offsets:      offsets,
-		claims:       claims,
-		ctx:          ctx,
-		cancel:       cancel,
-		hbDying:      make(chan none),
-		hbDead:       make(chan none),
-	}
-
-	// start heartbeat loop
-	go sess.heartbeatLoop()
-
-	// create a POM for each claim
-	for topic, partitions := range claims {
-		for _, partition := range partitions {
-			pom, err := offsets.ManagePartition(topic, partition)
-			if err != nil {
-				_ = sess.release(false)
-				return nil, err
-			}
-
-			// handle POM errors
-			go func(topic string, partition int32) {
-				for err := range pom.Errors() {
-					sess.parent.handleError(err, topic, partition)
-				}
-			}(topic, partition)
-		}
-	}
-
-	// perform setup
-	if err := handler.Setup(sess); err != nil {
-		_ = sess.release(true)
-		return nil, err
-	}
-
-	// start consuming each topic partition in its own goroutine
-	for topic, partitions := range claims {
-		for _, partition := range partitions {
-			sess.waitGroup.Add(1) // increment wait group before spawning goroutine
-			go func(topic string, partition int32) {
-				defer sess.waitGroup.Done()
-				// cancel the group session as soon as any of the consume calls return
-				defer sess.cancel()
-
-				// if partition not currently readable, wait for it to become readable
-				if sess.parent.client.PartitionNotReadable(topic, partition) {
-					timer := time.NewTimer(5 * time.Second)
-					defer timer.Stop()
-
-					for sess.parent.client.PartitionNotReadable(topic, partition) {
-						select {
-						case <-ctx.Done():
-							return
-						case <-parent.closed:
-							return
-						case <-timer.C:
-							timer.Reset(5 * time.Second)
-						}
-					}
-				}
-
-				// consume a single topic/partition, blocking
-				sess.consume(topic, partition)
-			}(topic, partition)
-		}
-	}
-	return sess, nil
-}
-
-func (s *consumerGroupSession) Claims() map[string][]int32 { return s.claims }
-func (s *consumerGroupSession) MemberID() string           { return s.memberID }
-func (s *consumerGroupSession) GenerationID() int32        { return s.generationID }
-
-func (s *consumerGroupSession) MarkOffset(topic string, partition int32, offset int64, metadata string) {
-	if pom := s.offsets.findPOM(topic, partition); pom != nil {
-		pom.MarkOffset(offset, metadata)
-	}
-}
-
-func (s *consumerGroupSession) Commit() {
-	s.offsets.Commit()
-}
-
-func (s *consumerGroupSession) ResetOffset(topic string, partition int32, offset int64, metadata string) {
-	if pom := s.offsets.findPOM(topic, partition); pom != nil {
-		pom.ResetOffset(offset, metadata)
-	}
-}
-
-func (s *consumerGroupSession) MarkMessage(msg *ConsumerMessage, metadata string) {
-	s.MarkOffset(msg.Topic, msg.Partition, msg.Offset+1, metadata)
-}
-
-func (s *consumerGroupSession) Context() context.Context {
-	return s.ctx
-}
-
-func (s *consumerGroupSession) consume(topic string, partition int32) {
-	// quick exit if rebalance is due
-	select {
-	case <-s.ctx.Done():
-		return
-	case <-s.parent.closed:
-		return
-	default:
-	}
-
-	// get next offset
-	offset := s.parent.config.Consumer.Offsets.Initial
-	if pom := s.offsets.findPOM(topic, partition); pom != nil {
-		offset, _ = pom.NextOffset()
-	}
-
-	// create new claim
-	claim, err := newConsumerGroupClaim(s, topic, partition, offset)
-	if err != nil {
-		s.parent.handleError(err, topic, partition)
-		return
-	}
-
-	// handle errors
-	go func() {
-		for err := range claim.Errors() {
-			s.parent.handleError(err, topic, partition)
-		}
-	}()
-
-	// trigger close when session is done
-	go func() {
-		select {
-		case <-s.ctx.Done():
-		case <-s.parent.closed:
-		}
-		claim.AsyncClose()
-	}()
-
-	// start processing
-	if err := s.handler.ConsumeClaim(s, claim); err != nil {
-		s.parent.handleError(err, topic, partition)
-	}
-
-	// ensure consumer is closed & drained
-	claim.AsyncClose()
-	for _, err := range claim.waitClosed() {
-		s.parent.handleError(err, topic, partition)
-	}
-}
-
-func (s *consumerGroupSession) release(withCleanup bool) (err error) {
-	// signal release, stop heartbeat
-	s.cancel()
-
-	// wait for consumers to exit
-	s.waitGroup.Wait()
-
-	// perform release
-	s.releaseOnce.Do(func() {
-		if withCleanup {
-			if e := s.handler.Cleanup(s); e != nil {
-				s.parent.handleError(e, "", -1)
-				err = e
-			}
-		}
-
-		if e := s.offsets.Close(); e != nil {
-			err = e
-		}
-
-		close(s.hbDying)
-		<-s.hbDead
-	})
-
-	Logger.Printf(
-		"consumergroup/session/%s/%d released\n",
-		s.MemberID(), s.GenerationID())
-
-	return
-}
-
-func (s *consumerGroupSession) heartbeatLoop() {
-	defer close(s.hbDead)
-	defer s.cancel() // trigger the end of the session on exit
-	defer func() {
-		Logger.Printf(
-			"consumergroup/session/%s/%d heartbeat loop stopped\n",
-			s.MemberID(), s.GenerationID())
-	}()
-
-	pause := time.NewTicker(s.parent.config.Consumer.Group.Heartbeat.Interval)
-	defer pause.Stop()
-
-	retryBackoff := time.NewTimer(s.parent.config.Metadata.Retry.Backoff)
-	defer retryBackoff.Stop()
-
-	retries := s.parent.config.Metadata.Retry.Max
-	for {
-		coordinator, err := s.parent.client.Coordinator(s.parent.groupID)
-		if err != nil {
-			if retries <= 0 {
-				s.parent.handleError(err, "", -1)
-				return
-			}
-			retryBackoff.Reset(s.parent.config.Metadata.Retry.Backoff)
-			select {
-			case <-s.hbDying:
-				return
-			case <-retryBackoff.C:
-				retries--
-			}
-			continue
-		}
-
-		resp, err := s.parent.heartbeatRequest(coordinator, s.memberID, s.generationID)
-		if err != nil {
-			_ = coordinator.Close()
-
-			if retries <= 0 {
-				s.parent.handleError(err, "", -1)
-				return
-			}
-
-			retries--
-			continue
-		}
-
-		switch resp.Err {
-		case ErrNoError:
-			retries = s.parent.config.Metadata.Retry.Max
-		case ErrRebalanceInProgress:
-			retries = s.parent.config.Metadata.Retry.Max
-			s.cancel()
-		case ErrUnknownMemberId, ErrIllegalGeneration:
-			return
-		case ErrFencedInstancedId:
-			if s.parent.groupInstanceId != nil {
-				Logger.Printf("JoinGroup failed: group instance id %s has been fenced\n", *s.parent.groupInstanceId)
-			}
-			s.parent.handleError(resp.Err, "", -1)
-			return
-		default:
-			s.parent.handleError(resp.Err, "", -1)
-			return
-		}
-
-		select {
-		case <-pause.C:
-		case <-s.hbDying:
-			return
-		}
-	}
-}
-
-// --------------------------------------------------------------------
-
-// ConsumerGroupHandler instances are used to handle individual topic/partition claims.
-// It also provides hooks for your consumer group session life-cycle and allow you to
-// trigger logic before or after the consume loop(s).
-//
-// PLEASE NOTE that handlers are likely be called from several goroutines concurrently,
-// ensure that all state is safely protected against race conditions.
-type ConsumerGroupHandler interface {
-	// Setup is run at the beginning of a new session, before ConsumeClaim.
-	Setup(ConsumerGroupSession) error
-
-	// Cleanup is run at the end of a session, once all ConsumeClaim goroutines have exited
-	// but before the offsets are committed for the very last time.
-	Cleanup(ConsumerGroupSession) error
-
-	// ConsumeClaim must start a consumer loop of ConsumerGroupClaim's Messages().
-	// Once the Messages() channel is closed, the Handler must finish its processing
-	// loop and exit.
-	ConsumeClaim(ConsumerGroupSession, ConsumerGroupClaim) error
-}
-
-// ConsumerGroupClaim processes Kafka messages from a given topic and partition within a consumer group.
-type ConsumerGroupClaim interface {
-	// Topic returns the consumed topic name.
-	Topic() string
-
-	// Partition returns the consumed partition.
-	Partition() int32
-
-	// InitialOffset returns the initial offset that was used as a starting point for this claim.
-	InitialOffset() int64
-
-	// HighWaterMarkOffset returns the high watermark offset of the partition,
-	// i.e. the offset that will be used for the next message that will be produced.
-	// You can use this to determine how far behind the processing is.
-	HighWaterMarkOffset() int64
-
-	// Messages returns the read channel for the messages that are returned by
-	// the broker. The messages channel will be closed when a new rebalance cycle
-	// is due. You must finish processing and mark offsets within
-	// Config.Consumer.Group.Session.Timeout before the topic/partition is eventually
-	// re-assigned to another group member.
-	Messages() <-chan *ConsumerMessage
-}
-
-type consumerGroupClaim struct {
-	topic     string
-	partition int32
-	offset    int64
-	PartitionConsumer
-}
-
-func newConsumerGroupClaim(sess *consumerGroupSession, topic string, partition int32, offset int64) (*consumerGroupClaim, error) {
-	pcm, err := sess.parent.consumer.ConsumePartition(topic, partition, offset)
-
-	if errors.Is(err, ErrOffsetOutOfRange) && sess.parent.config.Consumer.Group.ResetInvalidOffsets {
-		offset = sess.parent.config.Consumer.Offsets.Initial
-		pcm, err = sess.parent.consumer.ConsumePartition(topic, partition, offset)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	go func() {
-		for err := range pcm.Errors() {
-			sess.parent.handleError(err, topic, partition)
-		}
-	}()
-
-	return &consumerGroupClaim{
-		topic:             topic,
-		partition:         partition,
-		offset:            offset,
-		PartitionConsumer: pcm,
-	}, nil
-}
-
-func (c *consumerGroupClaim) Topic() string        { return c.topic }
-func (c *consumerGroupClaim) Partition() int32     { return c.partition }
-func (c *consumerGroupClaim) InitialOffset() int64 { return c.offset }
-
-// Drains messages and errors, ensures the claim is fully closed.
-func (c *consumerGroupClaim) waitClosed() (errs ConsumerErrors) {
-	go func() {
-		for range c.Messages() {
-		}
-	}()
-
-	for err := range c.Errors() {
-		errs = append(errs, err)
-	}
-	return
 }

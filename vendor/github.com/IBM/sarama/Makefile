@@ -12,7 +12,7 @@ $(GOTESTSUM):
 
 TESTSTAT         := $(GOBIN)/teststat
 # renovate: datasource=github-releases depName=vearutop/teststat
-TESTSTAT_VERSION := v0.1.27
+TESTSTAT_VERSION := v0.1.29
 $(TESTSTAT):
 	GOBIN=$(GOBIN) go install github.com/vearutop/teststat@$(TESTSTAT_VERSION)
 
@@ -33,7 +33,8 @@ fmt:
 	gofmt -s -l -w $(FILES) $(TESTS)
 
 lint:
-	GOFLAGS="-tags=functional" golangci-lint run
+	golangci-lint run
+	golangci-lint run --build-tags functional
 
 test: $(GOTESTSUM) $(TESTSTAT) $(TPARSE)
 	@$(GOTESTSUM) $(if ${CI},--format github-actions,--format testdox) --jsonfile _test/unittests.json --junitfile _test/unittests.xml \

@@ -46,6 +46,10 @@ func (b *OffsetResponseBlock) decode(pd packetDecoder, version int16) (err error
 		}
 	}
 
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -65,6 +69,8 @@ func (b *OffsetResponseBlock) encode(pe packetEncoder, version int16) (err error
 		pe.putInt32(b.LeaderEpoch)
 	}
 
+	pe.putEmptyTaggedFieldArray()
+
 	return nil
 }
 
@@ -79,6 +85,7 @@ func (r *OffsetResponse) setVersion(v int16) {
 }
 
 func (r *OffsetResponse) decode(pd packetDecoder, version int16) (err error) {
+	r.Version = version
 	if version >= 2 {
 		r.ThrottleTimeMs, err = pd.getInt32()
 		if err != nil {
@@ -90,9 +97,12 @@ func (r *OffsetResponse) decode(pd packetDecoder, version int16) (err error) {
 	if err != nil {
 		return err
 	}
+	if numTopics < 0 {
+		return errInvalidArrayLength
+	}
 
 	r.Blocks = make(map[string]map[int32]*OffsetResponseBlock, numTopics)
-	for i := 0; i < numTopics; i++ {
+	for range numTopics {
 		name, err := pd.getString()
 		if err != nil {
 			return err
@@ -102,10 +112,13 @@ func (r *OffsetResponse) decode(pd packetDecoder, version int16) (err error) {
 		if err != nil {
 			return err
 		}
+		if numBlocks < 0 {
+			return errInvalidArrayLength
+		}
 
 		r.Blocks[name] = make(map[int32]*OffsetResponseBlock, numBlocks)
 
-		for j := 0; j < numBlocks; j++ {
+		for range numBlocks {
 			id, err := pd.getInt32()
 			if err != nil {
 				return err
@@ -118,6 +131,14 @@ func (r *OffsetResponse) decode(pd packetDecoder, version int16) (err error) {
 			}
 			r.Blocks[name][id] = block
 		}
+
+		if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+			return err
+		}
+	}
+
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
 	}
 
 	return nil
@@ -171,7 +192,10 @@ func (r *OffsetResponse) encode(pe packetEncoder) (err error) {
 				return err
 			}
 		}
+		pe.putEmptyTaggedFieldArray()
 	}
+
+	pe.putEmptyTaggedFieldArray()
 
 	return nil
 }
@@ -185,15 +209,28 @@ func (r *OffsetResponse) version() int16 {
 }
 
 func (r *OffsetResponse) headerVersion() int16 {
+	if r.Version >= 6 {
+		return 1
+	}
 	return 0
 }
 
 func (r *OffsetResponse) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 5
+	return r.Version >= 0 && r.Version <= 6
+}
+
+func (r *OffsetResponse) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *OffsetResponse) isFlexibleVersion(version int16) bool {
+	return version >= 6
 }
 
 func (r *OffsetResponse) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 6:
+		return V2_8_0_0
 	case 5:
 		return V2_2_0_0
 	case 4:

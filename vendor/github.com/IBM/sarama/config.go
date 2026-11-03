@@ -13,7 +13,10 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-const defaultClientID = "sarama"
+const (
+	defaultClientID                 = "sarama"
+	defaultMetadataRefreshFrequency = 10 * time.Minute
+)
 
 // validClientID specifies the permitted characters for a client.id when
 // connecting to Kafka versions before 1.0.0 (KIP-190)
@@ -180,8 +183,15 @@ type Config struct {
 	// Producer is the namespace for configuration related to producing messages,
 	// used by the Producer.
 	Producer struct {
-		// The maximum permitted size of a message (defaults to 1000000). Should be
-		// set equal to or smaller than the broker's `message.max.bytes`.
+		// The maximum permitted size of a message and the pre-compression size estimate
+		// of a batch for a single topic and partition. Messages larger than this are
+		// rejected with a ConfigurationError and are not sent. When adding a message
+		// would reach the batch limit, the current batch is flushed first.
+		// Kafka applies the broker's `message.max.bytes` or topic's `max.message.bytes`
+		// to the whole record batch after compression, so this value may be higher when
+		// compression is enabled, but a compressed batch that exceeds the Kafka limit
+		// will still be rejected.
+		// This value must remain smaller than sarama.MaxRequestSize.
 		MaxMessageBytes int
 		// The level of acknowledgement reliability needed from the broker (defaults
 		// to WaitForLocal). Equivalent to the `request.required.acks` setting of the
@@ -205,7 +215,8 @@ type Config struct {
 		// setting for the JVM producer.
 		Partitioner PartitionerConstructor
 		// If enabled, the producer will ensure that exactly one copy of each message is
-		// written.
+		// written, and it will enforce stricter ordering by requiring MaxOpenRequests=1
+		// and WaitForAll acks, which can reduce throughput.
 		Idempotent bool
 		// Transaction specify
 		Transaction struct {
@@ -246,22 +257,22 @@ type Config struct {
 		}
 
 		// The following config options control how often messages are batched up and
-		// sent to the broker. By default, messages are sent as fast as possible, and
-		// all messages received while the current batch is in-flight are placed
-		// into the subsequent batch.
+		// sent to the broker. The byte and message thresholds are evaluated per broker,
+		// across all its accumulated topic and partition batches. Producer.MaxMessageBytes
+		// separately limits the batch size for each topic and partition. By default,
+		// messages are sent as fast as possible, and all messages received while the
+		// current batch is in-flight are placed into the subsequent batch.
 		Flush struct {
-			// The best-effort number of bytes needed to trigger a flush. Use the
-			// global sarama.MaxRequestSize to set a hard upper limit.
+			// The best-effort number of bytes needed to trigger a flush.
 			Bytes int
 			// The best-effort number of messages needed to trigger a flush. Use
 			// `MaxMessages` to set a hard upper limit.
 			Messages int
-			// The best-effort frequency of flushes. Equivalent to
-			// `queue.buffering.max.ms` setting of JVM producer.
+			// The best-effort frequency of flushes. A flush may occur sooner if
+			// `Bytes` or `Messages` is reached.
 			Frequency time.Duration
 			// The maximum number of messages the producer will send in a single
-			// broker request. Defaults to 0 for unlimited. Similar to
-			// `queue.buffering.max.messages` in the JVM producer.
+			// broker request. Defaults to 0 for unlimited.
 			MaxMessages int
 		}
 
@@ -381,6 +392,12 @@ type Config struct {
 			// more sophisticated backoff strategies. This takes precedence over
 			// `Backoff` if set.
 			BackoffFunc func(retries int) time.Duration
+			// The maximum number of consecutive failed dispatch attempts before a
+			// partition consumer gives up, sends ErrConsumerRetriesExhausted on
+			// its Errors channel and closes itself. In a consumer group this
+			// ends the session and triggers a fresh rejoin. The counter resets
+			// on the next successful fetch. Defaults to 0 (unlimited).
+			Max int
 		}
 
 		// Fetch is the namespace for controlling how many bytes are retrieved by any
@@ -404,6 +421,14 @@ type Config struct {
 			// (no limit). Similar to the JVM's `fetch.message.max.bytes`. The
 			// global `sarama.MaxResponseSize` still applies.
 			Max int32
+			// MaxBytes is the maximum number of bytes the broker should return for
+			// a fetch request across all partitions. Defaults to 50 MiB, matching
+			// the JVM client's `fetch.max.bytes`. This is the value sent as
+			// FetchRequest.MaxBytes for v3+ (KIP-74); the broker may return up to
+			// one extra RecordBatch beyond it to guarantee progress when a single
+			// record exceeds the limit, so keep this comfortably below the global
+			// `sarama.MaxResponseSize` safety net. Only used for Kafka >= 0.10.1.
+			MaxBytes int32
 		}
 		// The maximum amount of time the broker will wait for Consumer.Fetch.Min
 		// bytes to become available before it returns fewer than that anyways. The
@@ -452,6 +477,11 @@ type Config struct {
 			AutoCommit struct {
 				// Whether or not to auto-commit updated offsets back to the broker.
 				// (default enabled).
+				//
+				// When disabled, marked offsets are only sent by
+				// ConsumerGroupSession.Commit, and any still uncommitted when a
+				// partition is revoked or the session ends are discarded. Call
+				// Commit before ConsumeClaim returns, or in Cleanup, to keep them.
 				Enable bool
 
 				// How frequently to commit updated offsets. Ineffective unless
@@ -511,7 +541,8 @@ type Config struct {
 	// and most 3rdparty ones.
 	ApiVersionsRequest bool
 	// The version of Kafka that Sarama will assume it is running against.
-	// Defaults to the oldest supported stable version. Since Kafka provides
+	// Defaults to 2.8 as Sarama has full protocol coverage for that
+	// version. Since Kafka provides
 	// backwards-compatibility, setting it to a version older than you have
 	// will not break anything, although it may prevent you from using the
 	// latest features. Setting it to a version greater than you are actually
@@ -542,7 +573,7 @@ func NewConfig() *Config {
 
 	c.Metadata.Retry.Max = 3
 	c.Metadata.Retry.Backoff = 250 * time.Millisecond
-	c.Metadata.RefreshFrequency = 10 * time.Minute
+	c.Metadata.RefreshFrequency = defaultMetadataRefreshFrequency
 	c.Metadata.Full = true
 	c.Metadata.AllowAutoTopicCreation = true
 	c.Metadata.SingleFlight = true
@@ -562,6 +593,7 @@ func NewConfig() *Config {
 
 	c.Consumer.Fetch.Min = 1
 	c.Consumer.Fetch.Default = 1024 * 1024
+	c.Consumer.Fetch.MaxBytes = 50 * 1024 * 1024
 	c.Consumer.Retry.Backoff = 2 * time.Second
 	c.Consumer.MaxWaitTime = 500 * time.Millisecond
 	c.Consumer.MaxProcessingTime = 100 * time.Millisecond
@@ -586,6 +618,14 @@ func NewConfig() *Config {
 	c.MetricRegistry = metrics.NewRegistry()
 
 	return c
+}
+
+// groupStrategies gives the deprecated Strategy field precedence when set
+func (c *Config) groupStrategies() []BalanceStrategy {
+	if strategy := c.Consumer.Group.Rebalance.Strategy; strategy != nil {
+		return []BalanceStrategy{strategy}
+	}
+	return c.Consumer.Group.Rebalance.GroupStrategies
 }
 
 // Validate checks a Config instance. It will return a
@@ -716,7 +756,7 @@ func (c *Config) Validate() error {
 				return ConfigurationError("Net.SASL.GSSAPI.Realm must not be empty when GSS-API mechanism is used")
 			}
 		default:
-			msg := fmt.Sprintf("The SASL mechanism configuration is invalid. Possible values are `%s`, `%s`, `%s`, `%s` and `%s`",
+			msg := fmt.Sprintf("The SASL mechanism configuration is invalid. Possible values are %#q, %#q, %#q, %#q and %#q",
 				SASLTypeOAuth, SASLTypePlaintext, SASLTypeSCRAMSHA256, SASLTypeSCRAMSHA512, SASLTypeGSSAPI)
 			return ConfigurationError(msg)
 		}
@@ -807,12 +847,16 @@ func (c *Config) Validate() error {
 		return ConfigurationError("Consumer.Fetch.Default must be > 0")
 	case c.Consumer.Fetch.Max < 0:
 		return ConfigurationError("Consumer.Fetch.Max must be >= 0")
+	case c.Consumer.Fetch.MaxBytes <= 0:
+		return ConfigurationError("Consumer.Fetch.MaxBytes must be > 0")
 	case c.Consumer.MaxWaitTime < 1*time.Millisecond:
 		return ConfigurationError("Consumer.MaxWaitTime must be >= 1ms")
 	case c.Consumer.MaxProcessingTime <= 0:
 		return ConfigurationError("Consumer.MaxProcessingTime must be > 0")
 	case c.Consumer.Retry.Backoff < 0:
 		return ConfigurationError("Consumer.Retry.Backoff must be >= 0")
+	case c.Consumer.Retry.Max < 0:
+		return ConfigurationError("Consumer.Retry.Max must be >= 0")
 	case c.Consumer.Offsets.AutoCommit.Interval <= 0:
 		return ConfigurationError("Consumer.Offsets.AutoCommit.Interval must be > 0")
 	case c.Consumer.Offsets.Initial != OffsetOldest && c.Consumer.Offsets.Initial != OffsetNewest:
@@ -858,6 +902,16 @@ func (c *Config) Validate() error {
 	for _, strategy := range c.Consumer.Group.Rebalance.GroupStrategies {
 		if strategy == nil {
 			return ConfigurationError("elements in Consumer.Group.Rebalance.Strategies must not be empty")
+		}
+	}
+
+	if strategies := c.groupStrategies(); len(strategies) > 0 {
+		protocol, err := selectRebalanceProtocol(strategies)
+		if err != nil {
+			return err
+		}
+		if protocol >= RebalanceProtocolCooperative && !c.Version.IsAtLeast(V2_4_0_0) {
+			return ConfigurationError("cooperative balance strategies require Version >= 2.4")
 		}
 	}
 

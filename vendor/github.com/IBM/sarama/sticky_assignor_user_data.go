@@ -113,6 +113,29 @@ func (m *StickyAssignorUserDataV1) partitions() []topicPartitionAssignment { ret
 func (m *StickyAssignorUserDataV1) hasGeneration() bool                    { return true }
 func (m *StickyAssignorUserDataV1) generation() int                        { return int(m.Generation) }
 
+// cooperativeStickyAssignorUserData matches Java's bare int32 generation data
+type cooperativeStickyAssignorUserData struct {
+	Generation int32
+
+	topicPartitions []topicPartitionAssignment
+}
+
+func (m *cooperativeStickyAssignorUserData) encode(pe packetEncoder) error {
+	pe.putInt32(m.Generation)
+	return nil
+}
+
+func (m *cooperativeStickyAssignorUserData) decode(pd packetDecoder) (err error) {
+	m.Generation, err = pd.getInt32()
+	return err
+}
+
+func (m *cooperativeStickyAssignorUserData) partitions() []topicPartitionAssignment {
+	return m.topicPartitions
+}
+func (m *cooperativeStickyAssignorUserData) hasGeneration() bool { return true }
+func (m *cooperativeStickyAssignorUserData) generation() int     { return int(m.Generation) }
+
 func populateTopicPartitions(topics map[string][]int32) []topicPartitionAssignment {
 	topicPartitions := make([]topicPartitionAssignment, 0)
 	for topic, partitions := range topics {

@@ -1,5 +1,564 @@
 # Changelog
 
+## Version 1.50.2 (2026-06-05)
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat(consumer): add support for SyncGroupRequest/Response v5 (KIP-559) by @dnwe in https://github.com/IBM/sarama/pull/3591
+* feat(txn): add protocol support for TxnOffsetCommit v3 by @dnwe in https://github.com/IBM/sarama/pull/3592
+* feat(txn): support consumer group metadata in TxnOffsetCommit v3 by @dnwe in https://github.com/IBM/sarama/pull/3593
+* feat(admin): add protocol support for DeleteRecords v2 (KIP-482) by @dnwe in https://github.com/IBM/sarama/pull/3594
+* feat(protocol): add support for DescribeConfigs v3 and v4 by @dnwe in https://github.com/IBM/sarama/pull/3596
+* feat(admin): add DescribeConfigs for multiple resources by @dnwe in https://github.com/IBM/sarama/pull/3600
+* feat(consumer): option to cap decompressed batch size by @dnwe in https://github.com/IBM/sarama/pull/3604
+### :bug: Fixes
+* fix(admin): retry ACL and SCRAM ops on stale controller by @dnwe in https://github.com/IBM/sarama/pull/3598
+### :package: Dependency updates
+* fix(deps): update module github.com/pierrec/lz4/v4 to v4.1.27 by @renovate[bot] in https://github.com/IBM/sarama/pull/3597
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.50.1...v1.50.2
+
+## Version 1.50.1 (2026-05-27)
+
+## What's Changed
+### :bug: Fixes
+* fix: correct requiredVersion for V8 JoinGroup and add protocol version placeholders by @dnwe in https://github.com/IBM/sarama/pull/3585
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.50.0...v1.50.1
+
+## Version 1.50.0 (2026-05-27)
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat: add Java-compatible murmur2 partitioner by @dnwe in https://github.com/IBM/sarama/pull/3567
+* feat(protocol): support LeaveGroupRequest/Response v5 (KIP-800) by @dnwe in https://github.com/IBM/sarama/pull/3576
+* feat(protocol): support JoinGroupRequest/Response v8 (KIP-800) by @dnwe in https://github.com/IBM/sarama/pull/3577
+* feat(consumer_group): set cancellation cause on session context by @prakhar7651 in https://github.com/IBM/sarama/pull/3575
+* feat(consumer_group): send KIP-800 reason on JoinGroup and LeaveGroup by @dnwe in https://github.com/IBM/sarama/pull/3584
+* feat: add Kafka 4.3.0 version placeholder by @dnwe in https://github.com/IBM/sarama/pull/3587
+* feat(admin): support OffsetFetchRequest v8 by @dnwe in https://github.com/IBM/sarama/pull/3565
+### :bug: Fixes
+* fix(client): don't log ErrNoTopicsToUpdateMetadata every tick by @dnwe in https://github.com/IBM/sarama/pull/3566
+* fix(broker): snapshot fetch meters before deferred Mark by @dnwe in https://github.com/IBM/sarama/pull/3563
+* fix: prevent len out of range panic on 32bit architectures by @gibmat in https://github.com/IBM/sarama/pull/3579
+* fix(offset): retry fetchInitialOffset on top-level coordinator errors by @dnwe in https://github.com/IBM/sarama/pull/3574
+### :package: Dependency updates
+* chore(deps): update docker/bake-action action to v7.2.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3568
+* fix(deps): update module golang.org/x/sys to v0.45.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3570
+* chore(deps): update golangci/golangci-lint-action action to v9.2.1 by @renovate[bot] in https://github.com/IBM/sarama/pull/3571
+* chore(deps): update module golang.org/x/crypto to v0.52.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3572
+* fix(deps): update module golang.org/x/net to v0.55.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3573
+* chore(deps): update docker/setup-buildx-action action to v4.1.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3578
+### :wrench: Maintenance
+* refactor: replace eapache/queue with generic ring buffer by @dnwe in https://github.com/IBM/sarama/pull/3560
+* test(fvt): use a per-message timeout in follower failover test by @dnwe in https://github.com/IBM/sarama/pull/3562
+
+## New Contributors
+* @gibmat made their first contribution in https://github.com/IBM/sarama/pull/3579
+* @prakhar7651 made their first contribution in https://github.com/IBM/sarama/pull/3575
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.49.0...v1.50.0
+
+## Version 1.49.0 (2026-05-18)
+
+## What's Changed
+### :rotating_light: Breaking Changes
+* fix(consumer): decouple FetchRequest.MaxBytes from MaxResponseSize by @dnwe in https://github.com/IBM/sarama/pull/3538
+### :tada: New Features / Improvements
+* feat(consumer): warn on sustained partition retries by @dnwe in https://github.com/IBM/sarama/pull/3535
+* feat(producer): add Produce v8 request/response support by @dnwe in https://github.com/IBM/sarama/pull/3540
+* feat(consumer): cap partition consumer retries by @dnwe in https://github.com/IBM/sarama/pull/3539
+* feat: support FindCoordinator V3 protocol by @hindessm in https://github.com/IBM/sarama/pull/3544
+* feat: support describe acls v2 by @hindessm in https://github.com/IBM/sarama/pull/3548
+* feat: support create acls v2 by @hindessm in https://github.com/IBM/sarama/pull/3549
+* feat: support delete acls v2 by @hindessm in https://github.com/IBM/sarama/pull/3550
+* feat: support sasl authenticate v2 by @hindessm in https://github.com/IBM/sarama/pull/3551
+* feat: support create partitions v2 by @hindessm in https://github.com/IBM/sarama/pull/3554
+* feat: support join group v7 by @hindessm in https://github.com/IBM/sarama/pull/3555
+### :bug: Fixes
+* fix: flexible decoder out-of-bounds panic by @hindessm in https://github.com/IBM/sarama/pull/3543
+* fix(consumer): size partial-batch retry correctly by @dnwe in https://github.com/IBM/sarama/pull/3541
+* feat(consumer): add OffsetCommit v8 request/response support by @dnwe in https://github.com/IBM/sarama/pull/3545
+* fix: decode nullable ACL describe error messages by @dnwe in https://github.com/IBM/sarama/pull/3552
+* fix(consumer): lease preferred read replicas by @dnwe in https://github.com/IBM/sarama/pull/3553
+* fix(producer): honour Retry.Backoff in idempotent retryBatch by @dnwe in https://github.com/IBM/sarama/pull/3557
+### :wrench: Maintenance
+* chore: better bounds checking by @hindessm in https://github.com/IBM/sarama/pull/3546
+* chore: bump deps in ./examples tree by @dnwe in https://github.com/IBM/sarama/pull/3558
+* docs: add AlterPartitionReassignments example and functional test by @dnwe in https://github.com/IBM/sarama/pull/3556
+
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.48.2...v1.49.0
+
+## Version 1.48.2 (2026-05-13)
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat(admin): add KIP-396 list/alter offsets APIs by @DCjanus in https://github.com/IBM/sarama/pull/3419
+* feat: add SubscriptionUserDataProvider hook for BalanceStrategy by @lizthegrey in https://github.com/IBM/sarama/pull/3506
+* perf(zstd): scale idle zstd encoder cap to GOMAXPROCS by @lizthegrey in https://github.com/IBM/sarama/pull/3507
+### :bug: Fixes
+* fix: retry ListTopics on transient transport errors by @huynhanx03 in https://github.com/IBM/sarama/pull/3497
+* test(fvt): only safeClose if we created by @dnwe in https://github.com/IBM/sarama/pull/3530
+* fix(client): scope metadata refresh errors to requested topics by @dnwe in https://github.com/IBM/sarama/pull/3532
+### :wrench: Maintenance
+* test(fvt): speedup functional test runs by @dnwe in https://github.com/IBM/sarama/pull/3528
+
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.48.1...v1.48.2
+
+## Version 1.48.1 (2026-05-10)
+
+## What's Changed
+### :bug: Fixes
+* perf: cache topic batch-size metric lookup by @huynhanx03 in https://github.com/IBM/sarama/pull/3498
+* fix: stabilise TestFuncTxnProduceAndCommitOffset flakes by @dnwe in https://github.com/IBM/sarama/pull/3517
+* test: relax producer batch metrics assertions by @DCjanus in https://github.com/IBM/sarama/pull/3523
+* fix: prevent race during partition consumer close by @dnwe in https://github.com/IBM/sarama/pull/3524
+* fix: return leaderless errors in metadata refresh by @dnwe in https://github.com/IBM/sarama/pull/3525
+### :package: Dependency updates
+* chore(deps): update dependency golangci/golangci-lint to v2.12.1 by @renovate[bot] in https://github.com/IBM/sarama/pull/3509
+* chore(deps): bump github.com/klauspost/compress from 1.18.5 to 1.18.6 by @dependabot[bot] in https://github.com/IBM/sarama/pull/3508
+* chore(deps): bump golang.org/x/sys from 0.43.0 to 0.44.0 in the golang-x group across 1 directory by @dependabot[bot] in https://github.com/IBM/sarama/pull/3520
+* chore(deps): update module golang.org/x/crypto to v0.51.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3521
+* fix(deps): update module golang.org/x/net to v0.54.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3526
+* chore(deps): update dependency golangci/golangci-lint to v2.12.2 by @renovate[bot] in https://github.com/IBM/sarama/pull/3515
+### :wrench: Maintenance
+* chore: add testifylint and fix lint warnings by @dnwe in https://github.com/IBM/sarama/pull/3522
+
+## New Contributors
+* @huynhanx03 made their first contribution in https://github.com/IBM/sarama/pull/3498
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.48.0...v1.48.1
+
+## Version 1.48.0 (2026-04-24)
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat(producer): partition muting for msg ordering by @dnwe in https://github.com/IBM/sarama/pull/3422
+### :bug: Fixes
+* fix: handle nullable metadata in OffsetFetchResponse by @dnwe in https://github.com/IBM/sarama/pull/3473
+* fix: nil response/done channels after SASLv1 failure by @dnwe in https://github.com/IBM/sarama/pull/3474
+* fix(protocol): handle ElectLeaders V1 non-flexible headers by @DCjanus in https://github.com/IBM/sarama/pull/3478
+* fix: correct a number of goroutine leaks by @dnwe in https://github.com/IBM/sarama/pull/3476
+* fix: resolve deadlock in concurrent offset commits by @dnwe in https://github.com/IBM/sarama/pull/3477
+* fix(consumer): avoid broker race in response feeder by @DCjanus in https://github.com/IBM/sarama/pull/3486
+* fix: stop dispatcher for dying children in brokerConsumer.abort() by @lizthegrey in https://github.com/IBM/sarama/pull/3492
+* fix: close broken tcp connections by @Asphaltt in https://github.com/IBM/sarama/pull/3384
+* fix: add Unwrap() to DescribeConfigError and AlterConfigError by @ShinThirty in https://github.com/IBM/sarama/pull/3487
+### :package: Dependency updates
+* chore(deps): update dependency golangci/golangci-lint to v2.11.1 by @renovate[bot] in https://github.com/IBM/sarama/pull/3462
+* chore(deps): bump github.com/pierrec/lz4/v4 from 4.1.25 to 4.1.26 by @dependabot[bot] in https://github.com/IBM/sarama/pull/3461
+* chore(deps): bump golang.org/x/sync from 0.19.0 to 0.20.0 in the golang-x group across 1 directory by @dependabot[bot] in https://github.com/IBM/sarama/pull/3466
+* chore(deps): update module golang.org/x/crypto to v0.49.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3468
+* chore(deps): update dependency golangci/golangci-lint to v2.11.3 by @renovate[bot] in https://github.com/IBM/sarama/pull/3464
+* fix(deps): update module golang.org/x/net to v0.52.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3472
+* fix(deps): update module github.com/klauspost/compress to v1.18.5 by @renovate[bot] in https://github.com/IBM/sarama/pull/3480
+* chore(deps): update module golang.org/x/crypto to v0.50.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3489
+* fix(deps): update module golang.org/x/net to v0.53.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3493
+* chore(deps): update docker/setup-buildx-action action to v4 by @renovate[bot] in https://github.com/IBM/sarama/pull/3458
+* chore(deps): update docker/bake-action action to v7.1.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3459
+### :wrench: Maintenance
+* chore: add kafka versions 3.9.2 and 4.2.0 by @edoardocomar in https://github.com/IBM/sarama/pull/3471
+### :memo: Documentation
+* Update the Kakfa Protocol Specification Link by @MohishKhadse55 in https://github.com/IBM/sarama/pull/3463
+### :heavy_plus_sign: Other Changes
+* chore(deps): update dependency golangci/golangci-lint to v2.11.4 by @renovate[bot] in https://github.com/IBM/sarama/pull/3482
+* fix: update API version URL as previous link was not working by @MohishKhadse55 in https://github.com/IBM/sarama/pull/3485
+
+## New Contributors
+* @MohishKhadse55 made their first contribution in https://github.com/IBM/sarama/pull/3463
+* @Asphaltt made their first contribution in https://github.com/IBM/sarama/pull/3384
+* @ShinThirty made their first contribution in https://github.com/IBM/sarama/pull/3487
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.47.0...v1.48.0
+
+## Version 1.47.0 (2026-02-27)
+
+## What's Changed
+### :tada: New Features / Improvements
+* perf(admin): modernize DescribeCluster RPC handling by @DCjanus in https://github.com/IBM/sarama/pull/3390
+* test: expand Java interop tests to cover all compression codecs by @dnwe in https://github.com/IBM/sarama/pull/3423
+### :bug: Fixes
+* fix(client): add nilguards to updateBroker by @dnwe in https://github.com/IBM/sarama/pull/3393
+* fix(broker): auto-close broken connections by @DCjanus in https://github.com/IBM/sarama/pull/3412
+* fix: set version from IBM/sarama, not main app by @adamdecaf in https://github.com/IBM/sarama/pull/3415
+### :wrench: Maintenance
+* chore: finish up the move to atomic types by @puellanivis in https://github.com/IBM/sarama/pull/3399
+* chore: tear down zk in functional tests by @edoardocomar in https://github.com/IBM/sarama/pull/3420
+* chore: migrate from eapache/go-xerial-snappy to klauspost/compress/sn… by @edoardocomar in https://github.com/IBM/sarama/pull/3421
+* fix(test): resolve FVT issues in Kafka v2.x interop tests by @edoardocomar in https://github.com/IBM/sarama/pull/3424
+* feat: add kafka 4.1.1 constants and use in FVT by @dnwe in https://github.com/IBM/sarama/pull/3437
+* chore: add Kafka 4.0.1 and replace 4.0.0 in FVT by @edoardocomar in https://github.com/IBM/sarama/pull/3439
+* ci(lint): unblock Go 1.26 lint and handle gosec noise by @DCjanus in https://github.com/IBM/sarama/pull/3454
+### :package: Dependency updates
+* chore(deps): update module golang.org/x/crypto to v0.45.0 [security] → v0.48.0 by @renovate[bot] in #3383, #3425
+* chore(deps): bump golang.org/x/crypto from 0.42.0 to 0.45.0 across /examples (consumergroup, exactly_once, sasl_scram_client, http_server, txn_producer, interceptors) by @dependabot[bot] in #3382, #3381, #3380, #3379, #3378, #3377
+* fix(deps): update module golang.org/x/sync to v0.18.0 by @renovate[bot] in #3385
+* fix(deps): update module golang.org/x/net to v0.49.0 → v0.51.0 by @renovate[bot] and @dependabot[bot] in #3426, #3427, #3453
+* chore(deps): update golangci/golangci-lint-action action to v9 → v9.2.0 by @renovate[bot] in #3370, #3400
+* chore(deps): update dependency golangci/golangci-lint to v2.6.2 → v2.8.0 by @renovate[bot] in #3366, #3401
+* chore(deps): update docker/bake-action action to v6.10.0 by @renovate[bot] in #3392
+* chore(deps): update docker/setup-buildx-action action to v3.12.0 by @renovate[bot] in #3416
+* chore(deps): bump github.com/klauspost/compress from 1.18.1 to 1.18.4 by @dependabot[bot] in #3397, #3430, #3442
+* chore(deps): bump github.com/pierrec/lz4/v4 from 4.1.22 to 4.1.25 by @dependabot[bot] in #3411, #3432
+* chore(deps): bump the golang-x group across 1 directory with 2 updates by @dependabot[bot] in #3405
+* chore(deps): bump github.com/xdg-go/scram from 1.1.2 to 1.2.0 in /examples/sasl_scram_client by @dependabot[bot] in #3394
+* chore(deps): update dependency dominikh/go-tools to v2026 by @renovate[bot] in #3446
+
+## New Contributors
+* @DCjanus made their first contribution in https://github.com/IBM/sarama/pull/3390
+* @edoardocomar made their first contribution in https://github.com/IBM/sarama/pull/3420
+* @adamdecaf made their first contribution in https://github.com/IBM/sarama/pull/3415
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.46.3...v1.47.0
+
+## Version 1.46.3 (2025-10-26)
+
+## What's Changed
+### :bug: Fixes
+* fix: wrap KError into error returned by IncrementalAlterConfig by @prestona in https://github.com/IBM/sarama/pull/3352
+* fix: assign sequence when flushing retry buffers by @dnwe in https://github.com/IBM/sarama/pull/3362
+### :package: Dependency updates
+* chore(deps): update dependency dominikh/go-tools to v2025 by @renovate[bot] in https://github.com/IBM/sarama/pull/3351
+* chore(deps): update dependency vearutop/teststat to v0.1.27 by @renovate[bot] in https://github.com/IBM/sarama/pull/3350
+* fix(deps): update module github.com/klauspost/compress to v1.18.1 by @renovate[bot] in https://github.com/IBM/sarama/pull/3355
+### :wrench: Maintenance
+* chore(ci): extract tool versions and add renovate customManagers by @dnwe in https://github.com/IBM/sarama/pull/3346
+
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.46.2...v1.46.3
+
+## Version 1.46.2 (2025-10-10)
+
+## What's Changed
+
+A big focus on improving our support for newer protocol versions in this release, particularly supporting a wider range of flexible versions
+
+### :tada: New Features / Improvements
+* chore: support V5 ListOffsets by @dnwe in https://github.com/IBM/sarama/pull/3308
+* feat: support DeleteGroups V2 protocol by @hindessm in https://github.com/IBM/sarama/pull/3320
+* feat: support DeleteTopics V4 protocol by @hindessm in https://github.com/IBM/sarama/pull/3321
+* feat: support CreateTopics V5 protocol by @hindessm in https://github.com/IBM/sarama/pull/3322
+* feat: support IncrementalAlterConfigs V1 protocol by @hindessm in https://github.com/IBM/sarama/pull/3319
+* feat: support DescribeGroups V5 protocol by @hindessm in https://github.com/IBM/sarama/pull/3331
+* feat: support SyncGroup V4 protocol by @hindessm in https://github.com/IBM/sarama/pull/3332
+* feat: support LeaveGroup V4 protocol by @hindessm in https://github.com/IBM/sarama/pull/3334
+* feat: support Heartbeat V4 protocol by @hindessm in https://github.com/IBM/sarama/pull/3335
+* feat: support JoinGroup V6 protocol by @hindessm in https://github.com/IBM/sarama/pull/3339
+* feat: support DescribeClientQuotas V1 protocol by @dnwe in https://github.com/IBM/sarama/pull/3342
+### :bug: Fixes
+* fix: update map rather than create a new map by @hindessm in https://github.com/IBM/sarama/pull/3302
+* fix: metadata_response valid version range by @hindessm in https://github.com/IBM/sarama/pull/3304
+* fix: add V4 as valid CreateTopicsResponse by @dnwe in https://github.com/IBM/sarama/pull/3305
+* fix: correct requiredVersion for DescribeLogDirsResponse by @dnwe in https://github.com/IBM/sarama/pull/3306
+* fix: extend TestAllocateBodyProtocolVersions for more testing by @dnwe in https://github.com/IBM/sarama/pull/3307
+* fix: non-flexible ElectLeadersRequest V0/V1 encode/decode by @hindessm in https://github.com/IBM/sarama/pull/3312
+* fix: make alterPartitionReassignmentsBlock consistent by @hindessm in https://github.com/IBM/sarama/pull/3313
+* fix: correct decodeRequest bytesRead return value by @hindessm in https://github.com/IBM/sarama/pull/3314
+* fix: decoder issues by @hindessm in https://github.com/IBM/sarama/pull/3327
+* fix: improve KIP-511 behaviour on older Kafka clusters by @dnwe in https://github.com/IBM/sarama/pull/3328
+* fix: return correct error when encoding by @hindessm in https://github.com/IBM/sarama/pull/3333
+* fix: correct ApiVersionsResponse handling of ErrUnsupportedVersion by @dnwe in https://github.com/IBM/sarama/pull/3337
+### :package: Dependency updates
+* chore(deps): update ossf/scorecard-action action to v2.4.3 by @renovate[bot] in https://github.com/IBM/sarama/pull/3318
+* fix(deps): update module golang.org/x/net to v0.46.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3343
+### :wrench: Maintenance
+* chore: remove redundant insufficient data checks by @hindessm in https://github.com/IBM/sarama/pull/3300
+* refactor: use struct rather than map with one entry by @hindessm in https://github.com/IBM/sarama/pull/3301
+* chore(ci): adopt gotestsum and re-run flakes by @dnwe in https://github.com/IBM/sarama/pull/3311
+* refactor: Flexible encoding/decoding refactoring by @hindessm in https://github.com/IBM/sarama/pull/3317
+* chore(fvt): refactor docker-compose and support KRaft by @dnwe in https://github.com/IBM/sarama/pull/3323
+* fix(fvt): simplify retry using testify's EventuallyWithT by @dnwe in https://github.com/IBM/sarama/pull/3324
+* chore: add 3.9.1 and 4.1.0 version constants and FVT by @dnwe in https://github.com/IBM/sarama/pull/3325
+* refactor: get/put for KError by @hindessm in https://github.com/IBM/sarama/pull/3326
+* refactor: get/put for throttle time ms time.Duration by @hindessm in https://github.com/IBM/sarama/pull/3330
+* chore(fvt): improve testFuncConsumerGroupMember by @dnwe in https://github.com/IBM/sarama/pull/3329
+### :heavy_plus_sign: Other Changes
+* fix(fvt): check err before usage by @dnwe in https://github.com/IBM/sarama/pull/3338
+
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.46.1...v1.46.2
+
+## Version 1.46.1 (2025-09-18)
+
+> [!NOTE]
+> The go.mod directive has been bumped to 1.24.0 as the minimum version of Go required for the module. This was necessary to continue to receive updates from some of the third party dependencies that Sarama makes use of.
+
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat: support more describe log dirs versions (V2-V4) by @hindessm in https://github.com/IBM/sarama/pull/3293
+* feat: support V5 ListConsumerGroups protocol by @hindessm in https://github.com/IBM/sarama/pull/3292
+* feat: add SASLv1 support for Kerberos by @dnwe in https://github.com/IBM/sarama/pull/3279
+### :bug: Fixes
+* fix: add read deadline to tls write by @bvalente in https://github.com/IBM/sarama/pull/3283
+### :package: Dependency updates
+* chore(deps): bump go directive to 1.24.0 and golang.org/x/{crypto,net,sync} by @dependabot[bot] in https://github.com/IBM/sarama/pull/3288
+* chore(deps): bump the golang-x group across 6 directories with 1 update by @dependabot[bot] in https://github.com/IBM/sarama/pull/3291
+* chore(deps): bump github.com/stretchr/testify from 1.11.0 to 1.11.1 by @dependabot[bot] in https://github.com/IBM/sarama/pull/3274
+### :wrench: Maintenance
+* chore: refactor to use modern atomic types by @Sahil-4555 in https://github.com/IBM/sarama/pull/3277
+* chore: pre-commit autoupdate to latest by @dnwe in https://github.com/IBM/sarama/pull/3278
+* chore: apply modernize fixes from gopls by @dnwe in https://github.com/IBM/sarama/pull/3297
+* chore(config): update comments of sarama.Config.Metadata.SingleFlight by @gunli in https://github.com/IBM/sarama/pull/3296
+* chore(client): update comments of client methods by @gunli in https://github.com/IBM/sarama/pull/3295
+
+## New Contributors
+* @Sahil-4555 made their first contribution in https://github.com/IBM/sarama/pull/3277
+* @bvalente made their first contribution in https://github.com/IBM/sarama/pull/3283
+* @gunli made their first contribution in https://github.com/IBM/sarama/pull/3296
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.46.0...v1.46.1
+
+## Version 1.46.0 (2025-08-25)
+
+> [!NOTE]
+> This release contains significant changes. Notably Sarama will now use the ApiVersionRequest response from each broker to aid in selecting the protocol version to use. The existing `Version` field in sarama.Config will continue to provide a "pinning" mechanism, but can safely be set to a maximum or higher value than the remote cluster and sarama will sensibly pick compatible versions. There is also a performance improvement relating to MetadataRequests whereby Sarama will avoid having more than a single request to each broker in-flight at any given time. These new (optimal) behaviour is on by default can be opt-ed out via the `Metadata.SingleFlight` field in Config.
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat(protocol): negotiate API versions by @trapped in https://github.com/IBM/sarama/pull/3209
+* feat: option to group metadata refreshes so only one is in-flight at a time by @cupcicm in https://github.com/IBM/sarama/pull/3225
+* feat: use singleflight metadata by default by @dnwe in https://github.com/IBM/sarama/pull/3231
+* feat(protocol): support CreateTopicRequest V4 by @dnwe in https://github.com/IBM/sarama/pull/3238
+* feat: always send ApiVersionsRequest and fallback to v0 by @dnwe in https://github.com/IBM/sarama/pull/3234
+### :bug: Fixes
+* fix(consumer): stuck on the batch with zero records length by @sterligov in https://github.com/IBM/sarama/pull/3221
+* fix: sync response header version to clamped request header by @trapped in https://github.com/IBM/sarama/pull/3223
+* fix(decoder): handle null arrays correctly by @dnwe in https://github.com/IBM/sarama/pull/3144
+* fix: hardcode lz4 writer blocksize to 64kb by @dnwe in https://github.com/IBM/sarama/pull/3258
+### :package: Dependency updates
+* chore(deps): bump the golang-x group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/IBM/sarama/pull/3185
+* chore(deps): bump the golang-x group across 7 directories with 2 updates by @dependabot[bot] in https://github.com/IBM/sarama/pull/3219
+* fix(deps): update module golang.org/x/net to v0.43.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3244
+* chore(deps): bump the golang-x group across 6 directories with 1 update by @dependabot[bot] in https://github.com/IBM/sarama/pull/3262
+* chore(deps): update github/codeql-action action to v3.29.9 by @renovate[bot] in https://github.com/IBM/sarama/pull/3242
+* fix(deps): update github.com/rcrowley/go-metrics digest to 65e299d by @renovate[bot] in https://github.com/IBM/sarama/pull/3164
+* fix(deps): update module github.com/stretchr/testify to v1.11.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3268
+* chore(deps): update docker/bake-action action to v6.9.0 by @renovate[bot] in https://github.com/IBM/sarama/pull/3264
+### :wrench: Maintenance
+* chore(lint): enable copyloopvar by @alexandear in https://github.com/IBM/sarama/pull/3214
+* chore: fix inconsistent function name in comment by @stellrust in https://github.com/IBM/sarama/pull/3227
+* chore(style): refactor compress.go for readability by @dnwe in https://github.com/IBM/sarama/pull/3260
+* chore: replace unnecessary go-multierror dependency by @bestbug456 in https://github.com/IBM/sarama/pull/3243
+
+## New Contributors
+* @ibm-mend-app[bot] made their first contribution in https://github.com/IBM/sarama/pull/3201
+* @alexandear made their first contribution in https://github.com/IBM/sarama/pull/3214
+* @trapped made their first contribution in https://github.com/IBM/sarama/pull/3209
+* @cupcicm made their first contribution in https://github.com/IBM/sarama/pull/3225
+* @sterligov made their first contribution in https://github.com/IBM/sarama/pull/3221
+* @stellrust made their first contribution in https://github.com/IBM/sarama/pull/3227
+* @bestbug456 made their first contribution in https://github.com/IBM/sarama/pull/3243
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.45.2...v1.46.0
+
+## Version 1.45.2 (2025-05-28)
+
+## What's Changed
+### :bug: Fixes
+* fix(decoder): use configurable limit for max number of records in a record batch by @rmb938 in https://github.com/IBM/sarama/pull/3120
+* fix: ensure mock SyncProducer's SendMessage returns msg.Partition instead of 0 by @magiusdarrigo in https://github.com/IBM/sarama/pull/3122
+* fix: send null instead of empty string when describing default client quotas by @petedannemann in https://github.com/IBM/sarama/pull/3128
+* fix: improve getMetricName performance by @boekkooi-impossiblecloud in https://github.com/IBM/sarama/pull/3156
+### :package: Dependency updates
+* chore(deps): bump github.com/klauspost/compress from 1.17.11 to 1.18.0 by @dependabot in https://github.com/IBM/sarama/pull/3103
+* chore(deps): bump the golang-x group across 6 directories with 1 update by @dependabot in https://github.com/IBM/sarama/pull/3114
+* chore(deps): bump the golang-x group across 7 directories with 2 updates by @dependabot in https://github.com/IBM/sarama/pull/3121
+* chore(deps): bump the go_modules group across 7 directories with 1 update by @dependabot in https://github.com/IBM/sarama/pull/3148
+* chore(deps): bump the go_modules group across 7 directories with 1 update by @dependabot in https://github.com/IBM/sarama/pull/3157
+* chore(deps): bump golang.org/x/sync from 0.12.0 to 0.14.0 in the golang-x group across 1 directory by @dependabot in https://github.com/IBM/sarama/pull/3161
+### :heavy_plus_sign: Other Changes
+* chore: bump minimum Go version to 1.23.0 by @dnwe in https://github.com/IBM/sarama/pull/3113
+* fix(ci): bump golangci-lint to v2 by @dnwe in https://github.com/IBM/sarama/pull/3160
+
+## New Contributors
+* @rmb938 made their first contribution in https://github.com/IBM/sarama/pull/3120
+* @magiusdarrigo made their first contribution in https://github.com/IBM/sarama/pull/3122
+* @petedannemann made their first contribution in https://github.com/IBM/sarama/pull/3128
+* @renovate made their first contribution in https://github.com/IBM/sarama/pull/3155
+* @boekkooi-impossiblecloud made their first contribution in https://github.com/IBM/sarama/pull/3156
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.45.1...v1.45.2
+
+## Version 1.45.1 (2025-03-02)
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat(producer): add MaxBufferBytes to limit retry buffer size by @wanwenli in https://github.com/IBM/sarama/pull/3088
+* feat(producer): add sync pool for channel reuse by @kasimtj in https://github.com/IBM/sarama/pull/3109
+* feat: exponential backoff for clients (KIP-580) by @wanwenli in https://github.com/IBM/sarama/pull/3099
+### :bug: Fixes
+* fix(sasl): add nilguard around token to prevent panic by @hoo47 in https://github.com/IBM/sarama/pull/3076
+* fix(test): consumer group fetch request messages by @stsmurf in https://github.com/IBM/sarama/pull/3081
+* fix: remove redundant nil check by @knbr13 in https://github.com/IBM/sarama/pull/3089
+* fix(consumer): add recovery from no leader partitions by @liutao365 in https://github.com/IBM/sarama/pull/3101
+* produce: set MaxTimestamp by @rockwotj in https://github.com/IBM/sarama/pull/3108
+### :package: Dependency updates
+* chore(deps): bump go.opentelemetry.io/otel from 1.24.0 to 1.29.0 in /examples/interceptors by @dependabot in https://github.com/IBM/sarama/pull/3071
+* chore(deps): bump the otel group across 1 directory with 2 updates by @dependabot in https://github.com/IBM/sarama/pull/3072
+* chore(deps): bump the golang-x group across 1 directory with 2 updates by @dependabot in https://github.com/IBM/sarama/pull/3098
+### :wrench: Maintenance
+* chore(deps): prevent otel upgrades for now by @dnwe in https://github.com/IBM/sarama/pull/3069
+* chore: add version constant for kafka 3.7.2 by @dnwe in https://github.com/IBM/sarama/pull/3073
+* chore(ci): fetch kafka 4.0 via tar.gz rather than git by @dnwe in https://github.com/IBM/sarama/pull/3079
+* fix(ci): tighten up github workflows by @dnwe in https://github.com/IBM/sarama/pull/3080
+* chore(ci): analyse actions in codeql by @dnwe in https://github.com/IBM/sarama/pull/3085
+* chore(ci): bump golangci-lint version to v1.63.4 by @dnwe in https://github.com/IBM/sarama/pull/3090
+* feat(ci): add dedicated staticcheck run by @dnwe in https://github.com/IBM/sarama/pull/3091
+
+## New Contributors
+* @hoo47 made their first contribution in https://github.com/IBM/sarama/pull/3076
+* @stsmurf made their first contribution in https://github.com/IBM/sarama/pull/3081
+* @knbr13 made their first contribution in https://github.com/IBM/sarama/pull/3089
+* @liutao365 made their first contribution in https://github.com/IBM/sarama/pull/3101
+* @rockwotj made their first contribution in https://github.com/IBM/sarama/pull/3108
+* @kasimtj made their first contribution in https://github.com/IBM/sarama/pull/3109
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.45.0...v1.45.1
+
+## Version 1.45.0 (2025-01-07)
+
+> [!NOTE]
+> The go.mod directive has been bumped to 1.21 as the minimum version of Go required for the module. This was necessary to continue to receive updates from some of the third party dependencies that Sarama makes use of for compression.
+
+## What's Changed
+### :bug: Fixes
+* fix(admin): add retries for GroupCoordinator errors by @dnwe in https://github.com/IBM/sarama/pull/3053
+### :package: Dependency updates
+* chore(deps): bump github.com/klauspost/compress from 1.17.9 to 1.17.11 by @dependabot in https://github.com/IBM/sarama/pull/2999
+* chore(deps): bump golang.org/x/net from 0.33.0 to 0.34.0 in the golang-org-x group by @dependabot in https://github.com/IBM/sarama/pull/3054
+### :wrench: Maintenance
+* chore: bump minimum go to 1.21 by @dnwe in https://github.com/IBM/sarama/pull/3048
+* chore(test): tag all unittests as !integration by @dnwe in https://github.com/IBM/sarama/pull/3047
+* chore(test): include kafka 4.0.0 in FV testing by @dnwe in https://github.com/IBM/sarama/pull/3045
+* fix(ci): restore the Kafka 4.0.0 FV by @dnwe in https://github.com/IBM/sarama/pull/3055
+
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.44.0...v1.45.0
+
+## Version 1.44.0 (2024-12-27)
+
+> [!NOTE]
+> The go.mod directive has been bumped to 1.20 as the minimum version of Go required for the module. This was necessary to continue to receive updates from some of the third party dependencies that Sarama makes use of for compression.
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat: update go directive to 1.20 by @mauri870 in https://github.com/IBM/sarama/pull/2933
+* feat(producer): add retry buffer tuning option to prevent OOM by @wanwenli in https://github.com/IBM/sarama/pull/3026
+* feat(admin): implement leader election api by @chengjoey in https://github.com/IBM/sarama/pull/3030
+### :bug: Fixes
+* fix: log SASL connection and handshake errors by @pierDipi in https://github.com/IBM/sarama/pull/2995
+### :package: Dependency updates
+* chore(deps): bump the golang-org-x group across 1 directory with 2 updates by @dependabot in https://github.com/IBM/sarama/pull/3010
+* chore(deps): bump golang.org/x/crypto from 0.28.0 to 0.31.0 in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/3041
+* chore(deps): bump the golang-org-x group across 1 directory with 2 updates by @dependabot in https://github.com/IBM/sarama/pull/3040
+* chore(deps): bump github.com/pierrec/lz4/v4 from 4.1.21 to 4.1.22 by @dependabot in https://github.com/IBM/sarama/pull/3038
+* chore(deps): bump the go_modules group across 2 directories with 1 update by @dependabot in https://github.com/IBM/sarama/pull/3035
+* chore(deps): bump golang.org/x/crypto from 0.22.0 to 0.31.0 in /examples/consumergroup in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/3033
+* chore(deps): bump golang.org/x/crypto from 0.22.0 to 0.31.0 in /examples/txn_producer in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/3034
+* chore(deps): bump golang.org/x/crypto from 0.22.0 to 0.31.0 in /examples/interceptors in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/3032
+* chore(deps): bump golang.org/x/crypto from 0.22.0 to 0.31.0 in /examples/exactly_once in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/3031
+* chore(deps): bump github.com/stretchr/testify from 1.9.0 to 1.10.0 by @dependabot in https://github.com/IBM/sarama/pull/3020
+### :wrench: Maintenance
+* chore: add newer kafka versions and bump Go in CI by @dnwe in https://github.com/IBM/sarama/pull/2969
+* fix(lint): resolve IDENTICAL_BRANCHES issue in broker by @frzifus in https://github.com/IBM/sarama/pull/2992
+* chore: add version consts for 3.8.1+3.9.0 by @dnwe in https://github.com/IBM/sarama/pull/3011
+* fix(client): refactor duplicated replica+partition logic by @Trinoooo in https://github.com/IBM/sarama/pull/2925
+* chore(deps): bump golang.org/x/net to v0.33.0 by @dnwe in https://github.com/IBM/sarama/pull/3044
+
+## New Contributors
+* @mauri870 made their first contribution in https://github.com/IBM/sarama/pull/2933
+* @frzifus made their first contribution in https://github.com/IBM/sarama/pull/2992
+* @pierDipi made their first contribution in https://github.com/IBM/sarama/pull/2995
+* @wanwenli made their first contribution in https://github.com/IBM/sarama/pull/3026
+* @Trinoooo made their first contribution in https://github.com/IBM/sarama/pull/2925
+* @chengjoey made their first contribution in https://github.com/IBM/sarama/pull/3030
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.43.3...v1.44.0
+
+## Version 1.43.3 (2024-08-12)
+
+## What's Changed
+### :bug: Fixes
+* fix: declare assignor variable for examples & clean up log format by @kumakichi in https://github.com/IBM/sarama/pull/2909
+* fix(consumer): maintain ordering of offset commit requests by @prestona in https://github.com/IBM/sarama/pull/2947
+* fix(producer): treat ErrKafkaStorageError as retriable by @richardartoul in https://github.com/IBM/sarama/pull/2939
+### :package: Dependency updates
+* chore(deps): bump the golang-org-x group across 1 directory with 2 updates by @dependabot in https://github.com/IBM/sarama/pull/2956
+* chore(deps): bump github.com/eapache/go-resiliency from 1.6.0 to 1.7.0 by @dependabot in https://github.com/IBM/sarama/pull/2944
+* chore(deps): bump github.com/klauspost/compress from 1.17.8 to 1.17.9 by @dependabot in https://github.com/IBM/sarama/pull/2926
+### :wrench: Maintenance
+* fix(ci): correct docker-compose install by @dnwe in https://github.com/IBM/sarama/pull/2954
+### :memo: Documentation
+* fix(doc): correct JVM's config name corresponding to MaxWaitTime by @abhipranay in https://github.com/IBM/sarama/pull/2893
+
+## New Contributors
+* @abhipranay made their first contribution in https://github.com/IBM/sarama/pull/2893
+* @kumakichi made their first contribution in https://github.com/IBM/sarama/pull/2909
+* @richardartoul made their first contribution in https://github.com/IBM/sarama/pull/2939
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.43.2...v1.43.3
+
+## Version 1.43.2 (2024-04-25)
+
+## What's Changed
+### :bug: Fixes
+* chore(ci): add 32-bit alignment check by @dnwe in https://github.com/IBM/sarama/pull/2874
+### :package: Dependency updates
+* chore(deps): bump golang.org/x/net from 0.21.0 to 0.23.0 by @dependabot in https://github.com/IBM/sarama/pull/2866
+* chore(deps): bump the golang-org-x group with 2 updates by @dependabot in https://github.com/IBM/sarama/pull/2853
+* chore(deps): bump github.com/klauspost/compress from 1.17.7 to 1.17.8 by @dependabot in https://github.com/IBM/sarama/pull/2857
+* chore(deps): bump golang.org/x/net from 0.21.0 to 0.23.0 in /examples/txn_producer in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/2865
+* chore(deps): bump golang.org/x/net from 0.21.0 to 0.23.0 in /examples/consumergroup in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/2867
+* chore(deps): bump golang.org/x/net from 0.21.0 to 0.23.0 in /examples/exactly_once in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/2868
+* chore(deps): bump golang.org/x/net from 0.22.0 to 0.23.0 in /examples/interceptors in the go_modules group by @dependabot in https://github.com/IBM/sarama/pull/2869
+
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.43.1...v1.43.2
+
+## Version 1.43.1 (2024-03-27)
+
+## What's Changed
+### :bug: Fixes
+* fix: message.max.bytes should default to 1048576 not 1 MB by @puellanivis in https://github.com/IBM/sarama/pull/2804
+* fix: add locking around broker throttle timer to prevent race condition by @chengsha in https://github.com/IBM/sarama/pull/2826
+### :package: Dependency updates
+* chore(deps): bump go.opentelemetry.io/otel/sdk from 1.23.1 to 1.24.0 in /examples/interceptors by @dependabot in https://github.com/IBM/sarama/pull/2816
+* chore(deps): bump the golang-org-x group with 1 update by @dependabot in https://github.com/IBM/sarama/pull/2825
+* chore(deps): bump github.com/stretchr/testify from 1.8.4 to 1.9.0 by @dependabot in https://github.com/IBM/sarama/pull/2822
+* chore(deps): bump go.opentelemetry.io/otel/exporters/stdout/stdoutmetric from 1.23.1 to 1.24.0 in /examples/interceptors by @dependabot in https://github.com/IBM/sarama/pull/2815
+
+## New Contributors
+* @chengsha made their first contribution in https://github.com/IBM/sarama/pull/2826
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.43.0...v1.43.1
+
+## Version 1.43.0 (2024-02-22)
+
+> [!NOTE]
+> The go.mod directive has been bumped to 1.19 as the minimum version of Go required for the module. This was necessary to continue to receive updates from some of the third party dependencies that Sarama makes use of for compression.
+
+## What's Changed
+### :tada: New Features / Improvements
+* feat: update go directive to 1.19 by @dnwe in https://github.com/IBM/sarama/pull/2795
+* feat: add BuildSpnFunc to GSSAPIConfig for allow custom spn by @fooofei in https://github.com/IBM/sarama/pull/2807
+### :bug: Fixes
+* Use %v formatting words and remove unnecessary newline by @puellanivis in https://github.com/IBM/sarama/pull/2802
+### :package: Dependency updates
+* chore(deps): bump github.com/klauspost/compress from 1.16.7 to 1.17.6 by @dependabot in https://github.com/IBM/sarama/pull/2784
+* chore(deps): bump github.com/eapache/go-resiliency from 1.5.0 to 1.6.0 by @dependabot in https://github.com/IBM/sarama/pull/2810
+* chore(deps): bump github.com/klauspost/compress from 1.17.6 to 1.17.7 by @dependabot in https://github.com/IBM/sarama/pull/2811
+### :wrench: Maintenance
+* chore(doc): add v1.42.2 to CHANGELOG.md by @dnwe in https://github.com/IBM/sarama/pull/2796
+
+## New Contributors
+* @puellanivis made their first contribution in https://github.com/IBM/sarama/pull/2802
+* @fooofei made their first contribution in https://github.com/IBM/sarama/pull/2807
+
+**Full Changelog**: https://github.com/IBM/sarama/compare/v1.42.2...v1.43.0
+
 ## Version 1.42.2 (2024-02-09)
 
 ## What's Changed

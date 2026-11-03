@@ -60,7 +60,7 @@ func (r *ApiVersionsRequest) headerVersion() int16 {
 }
 
 func (r *ApiVersionsRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 3
+	return r.Version >= 0 && r.Version <= 4
 }
 
 func (r *ApiVersionsRequest) isFlexible() bool {
@@ -73,6 +73,8 @@ func (r *ApiVersionsRequest) isFlexibleVersion(version int16) bool {
 
 func (r *ApiVersionsRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 4:
+		return V3_9_0_0
 	case 3:
 		return V2_4_0_0
 	case 2:

@@ -21,6 +21,9 @@ const (
 	// StickyBalanceStrategyName identifies strategies that use the sticky-partition assignment strategy
 	StickyBalanceStrategyName = "sticky"
 
+	// CooperativeStickyBalanceStrategyName matches Java's cooperative assignor name
+	CooperativeStickyBalanceStrategyName = "cooperative-sticky"
+
 	defaultGeneration = -1
 )
 
@@ -55,6 +58,61 @@ type BalanceStrategy interface {
 	// AssignmentData returns the serialized assignment data for the specified
 	// memberID
 	AssignmentData(memberID string, topics map[string][]int32, generationID int32) ([]byte, error)
+}
+
+// SubscriptionUserDataBalanceStrategy is an optional extension of
+// BalanceStrategy that lets a strategy inject per-cycle metadata into the
+// ConsumerGroupMemberMetadata UserData field on each JoinGroup. When a
+// strategy implements this interface, Sarama invokes SubscriptionUserData
+// immediately before each JoinGroup, passing the member's currently subscribed
+// topics, and uses the returned bytes as the UserData for that strategy's
+// subscription metadata in place of the statically configured
+// Consumer.Group.Member.UserData.
+//
+// On a non-nil error Sarama logs the error and falls back to the statically
+// configured UserData; the JoinGroup is not failed. On a nil error the
+// returned slice is used verbatim, including empty and nil slices.
+//
+// This mirrors Java's ConsumerPartitionAssignor.subscriptionUserData and
+// enables load-aware assignors that report fresh observations (e.g., CPU,
+// lag, latency) to the group leader on every rebalance cycle.
+type SubscriptionUserDataBalanceStrategy interface {
+	BalanceStrategy
+
+	SubscriptionUserData(topics []string) ([]byte, error)
+}
+
+// OnAssignmentBalanceStrategy is an optional extension of BalanceStrategy that
+// is notified of the assignment a member receives from the leader. When a
+// strategy implements this interface, Sarama invokes OnAssignment once per
+// rebalance, immediately after the member's SyncGroup response is processed,
+// passing the member's own assignment and the generation it belongs to.
+//
+// This is the downstream counterpart to SubscriptionUserDataBalanceStrategy:
+// SubscriptionUserData lets a strategy speak into its own subscription
+// (member -> leader), while OnAssignment lets it observe what the leader
+// decided (leader -> member). Together they let a stateful assignor carry
+// information across rebalances — for example, persisting the prior
+// assignment, or echoing leader-computed state (assignment.UserData) back in
+// the member's next SubscriptionUserData so it survives membership changes.
+//
+// OnAssignment is invoked synchronously on the consumer's rebalance path, so
+// it should return promptly (capture what it needs and return; do not perform
+// I/O or block). The synchronous call is deliberate: it guarantees that
+// OnAssignment for generation N completes before the member's
+// SubscriptionUserData for generation N+1, since the SyncGroup of one
+// generation completes before the JoinGroup of the next begins. A strategy
+// that echoes assignment state into its next subscription relies on this
+// ordering, which a background invocation would not provide.
+//
+// This mirrors Java's ConsumerPartitionAssignor.onAssignment(Assignment,
+// ConsumerGroupMetadata): the assignment argument corresponds to Java's
+// Assignment (partitions + userData), and generationID corresponds to the
+// generationId carried by ConsumerGroupMetadata.
+type OnAssignmentBalanceStrategy interface {
+	BalanceStrategy
+
+	OnAssignment(assignment *ConsumerGroupMemberAssignment, generationID int32)
 }
 
 // --------------------------------------------------------------------
@@ -165,6 +223,8 @@ func (s *balanceStrategy) AssignmentData(memberID string, topics map[string][]in
 
 type stickyBalanceStrategy struct {
 	movements partitionMovements
+
+	cooperative bool
 }
 
 // Name implements BalanceStrategy.
@@ -179,7 +239,7 @@ func (s *stickyBalanceStrategy) Plan(members map[string]ConsumerGroupMemberMetad
 	}
 
 	// prepopulate the current assignment state from userdata on the consumer group members
-	currentAssignment, prevAssignment, err := prepopulateCurrentAssignments(members)
+	currentAssignment, prevAssignment, err := prepopulateCurrentAssignments(members, s.cooperative)
 	if err != nil {
 		return nil, err
 	}
@@ -268,6 +328,9 @@ func (s *stickyBalanceStrategy) Plan(members map[string]ConsumerGroupMemberMetad
 				plan.Add(memberID, assignment.Topic, assignment.Partition)
 			}
 		}
+	}
+	if s.cooperative {
+		adjustCooperativeAssignment(plan, members)
 	}
 	return plan, nil
 }
@@ -388,9 +451,15 @@ func (b *roundRobinBalancer) Plan(memberAndMetadata map[string]ConsumerGroupMemb
 	n := len(members)
 	for _, tp := range topicPartitions {
 		m := members[i%n]
-		for !m.hasTopic(tp.topic) {
+		for range n {
+			if m.hasTopic(tp.topic) {
+				break
+			}
 			i++
 			m = members[i%n]
+		}
+		if !m.hasTopic(tp.topic) {
+			continue // no member subscribes to this topic
 		}
 		plan.Add(m.memberID, tp.topic, tp.partition)
 		i++
@@ -810,17 +879,53 @@ func areSubscriptionsIdentical(partition2AllPotentialConsumers map[topicPartitio
 	return true
 }
 
+// memberData reads cooperative ownership from the subscription metadata
+func memberData(meta ConsumerGroupMemberMetadata, cooperative bool) (StickyAssignorUserData, error) {
+	if !cooperative {
+		return deserializeTopicPartitionAssignment(meta.UserData)
+	}
+
+	data := &cooperativeStickyAssignorUserData{
+		Generation:      defaultGeneration,
+		topicPartitions: ownedTopicPartitions(meta.OwnedPartitions),
+	}
+
+	if meta.Version >= 2 {
+		data.Generation = meta.GenerationID
+		return data, nil
+	}
+	if len(meta.UserData) > 0 {
+		encoded := &cooperativeStickyAssignorUserData{}
+		if err := decode(meta.UserData, encoded, nil); err != nil {
+			Logger.Printf("consumer/cooperative-sticky: ignoring undecodable user data: %v\n", err)
+			return data, nil
+		}
+		data.Generation = encoded.Generation
+	}
+	return data, nil
+}
+
+func ownedTopicPartitions(owned []*OwnedPartition) []topicPartitionAssignment {
+	partitions := make([]topicPartitionAssignment, 0, len(owned))
+	for _, op := range owned {
+		for _, partition := range op.Partitions {
+			partitions = append(partitions, topicPartitionAssignment{Topic: op.Topic, Partition: partition})
+		}
+	}
+	return partitions
+}
+
 // We need to process subscriptions' user data with each consumer's reported generation in mind
 // higher generations overwrite lower generations in case of a conflict
 // note that a conflict could exist only if user data is for different generations
-func prepopulateCurrentAssignments(members map[string]ConsumerGroupMemberMetadata) (map[string][]topicPartitionAssignment, map[topicPartitionAssignment]consumerGenerationPair, error) {
+func prepopulateCurrentAssignments(members map[string]ConsumerGroupMemberMetadata, cooperative bool) (map[string][]topicPartitionAssignment, map[topicPartitionAssignment]consumerGenerationPair, error) {
 	currentAssignment := make(map[string][]topicPartitionAssignment)
 	prevAssignment := make(map[topicPartitionAssignment]consumerGenerationPair)
 
 	// for each partition we create a sorted map of its consumers by generation
 	sortedPartitionConsumersByGeneration := make(map[topicPartitionAssignment]map[int]string)
 	for memberID, meta := range members {
-		consumerUserData, err := deserializeTopicPartitionAssignment(meta.UserData)
+		consumerUserData, err := memberData(meta, cooperative)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1077,7 +1182,7 @@ func indexOfSubList(source []string, target []string) int {
 nextCand:
 	for candidate := 0; candidate <= maxCandidate; candidate++ {
 		j := candidate
-		for i := 0; i < targetSize; i++ {
+		for i := range targetSize {
 			if target[i] != source[j] {
 				// Element mismatch, try next cand
 				continue nextCand
@@ -1113,12 +1218,12 @@ func (pq assignmentPriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 }
 
-func (pq *assignmentPriorityQueue) Push(x interface{}) {
+func (pq *assignmentPriorityQueue) Push(x any) {
 	member := x.(*consumerGroupMember)
 	*pq = append(*pq, member)
 }
 
-func (pq *assignmentPriorityQueue) Pop() interface{} {
+func (pq *assignmentPriorityQueue) Pop() any {
 	old := *pq
 	n := len(old)
 	member := old[n-1]

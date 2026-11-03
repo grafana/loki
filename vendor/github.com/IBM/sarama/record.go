@@ -102,9 +102,12 @@ func (r *Record) decode(pd packetDecoder) (err error) {
 	}
 
 	if numHeaders >= 0 {
+		if numHeaders > int64(pd.remaining()) {
+			return ErrInsufficientData
+		}
 		r.Headers = make([]*RecordHeader, numHeaders)
 	}
-	for i := int64(0); i < numHeaders; i++ {
+	for i := range numHeaders {
 		hdr := new(RecordHeader)
 		if err := hdr.decode(pd); err != nil {
 			return err

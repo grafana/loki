@@ -1,10 +1,68 @@
 package sarama
 
 import (
+	"errors"
+	"fmt"
+	"maps"
+	"slices"
 	"sync"
 )
 
 type metadataRefresh func(topics []string) error
+
+type refreshError map[string]error
+
+// addError adds an error for a topic to the set. The wrap preserves
+// the underlying error for errors.Is/As.
+func (e refreshError) addError(topic string, err error) {
+	e[topic] = fmt.Errorf("%s: %w", topic, err)
+}
+
+func (e refreshError) Error() string {
+	err := errors.Join(e.errors()...)
+	if err == nil {
+		return "metadata refresh failed"
+	}
+	return err.Error()
+}
+
+func (e refreshError) Unwrap() []error {
+	return e.errors()
+}
+
+func (e refreshError) forTopics(topics []string) error {
+	if len(topics) == 0 {
+		return errors.Join(e.errors()...)
+	}
+	errs := make([]error, 0, len(topics))
+	for _, topic := range topics {
+		if err, ok := e[topic]; ok {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// errors returns the per-topic errors in deterministic (sorted by topic) order.
+func (e refreshError) errors() []error {
+	topics := slices.Sorted(maps.Keys(e))
+	errs := make([]error, len(topics))
+	for i, topic := range topics {
+		errs[i] = e[topic]
+	}
+	return errs
+}
+
+func errorForTopics(topics []string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var re refreshError
+	if errors.As(err, &re) {
+		return re.forTopics(topics)
+	}
+	return err
+}
 
 // currentRefresh makes sure sarama does not issue metadata requests
 // in parallel. If we need to refresh the metadata for a list of topics,
@@ -178,11 +236,12 @@ func newMetadataRefresh(f func(topics []string) error) *singleFlightMetadataRefr
 // If a refresh was already ongoing for a different list of topics, the function
 // accumulates the list of topics to refresh in the next refresh, and queues that refresh.
 // If no refresh is ongoing, it will start a new refresh, and return its result.
+// Per-topic errors from a shared refresh are filtered to the topics the caller requested.
 func (m *singleFlightMetadataRefresher) Refresh(topics []string) error {
 	for {
 		ch, queued := m.refreshOrQueue(topics)
 		if !queued {
-			return <-ch
+			return errorForTopics(topics, <-ch)
 		}
 		<-ch
 	}

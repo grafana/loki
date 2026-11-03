@@ -49,6 +49,7 @@ func (f *FindCoordinatorResponse) decode(pd packetDecoder, version int16) (err e
 	}
 	f.Coordinator = coordinator
 
+	// Broker decode parses the tagged fields
 	return nil
 }
 
@@ -72,6 +73,8 @@ func (f *FindCoordinatorResponse) encode(pe packetEncoder) error {
 	if err := coordinator.encode(pe, 0); err != nil {
 		return err
 	}
+
+	// Broker encode parses the tagged fields
 	return nil
 }
 
@@ -84,15 +87,28 @@ func (f *FindCoordinatorResponse) version() int16 {
 }
 
 func (r *FindCoordinatorResponse) headerVersion() int16 {
+	if r.Version >= 3 {
+		return 1
+	}
 	return 0
 }
 
 func (f *FindCoordinatorResponse) isValidVersion() bool {
-	return f.Version >= 0 && f.Version <= 2
+	return f.Version >= 0 && f.Version <= 3
+}
+
+func (f *FindCoordinatorResponse) isFlexible() bool {
+	return f.isFlexibleVersion(f.Version)
+}
+
+func (f *FindCoordinatorResponse) isFlexibleVersion(version int16) bool {
+	return version >= 3
 }
 
 func (f *FindCoordinatorResponse) requiredVersion() KafkaVersion {
 	switch f.Version {
+	case 3:
+		return V2_4_0_0
 	case 2:
 		return V2_0_0_0
 	case 1:

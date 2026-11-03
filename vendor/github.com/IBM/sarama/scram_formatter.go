@@ -42,7 +42,7 @@ func (s scramFormatter) hmac(key []byte, extra []byte) ([]byte, error) {
 }
 
 func (s scramFormatter) xor(result []byte, second []byte) {
-	for i := 0; i < len(result); i++ {
+	for i := range result {
 		result[i] = result[i] ^ second[i]
 	}
 }

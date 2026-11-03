@@ -50,6 +50,10 @@ type RecordBatch struct {
 
 	compressedRecords []byte
 	recordsLen        int // uncompressed records size
+	// partialSize is the total on-wire size of this batch (FirstOffset + length
+	// field + body) when PartialTrailingRecord is true and the partial state was
+	// caused by truncated bytes. Zero otherwise.
+	partialSize int32
 }
 
 func (b *RecordBatch) LastOffset() int64 {
@@ -170,6 +174,8 @@ func (b *RecordBatch) decode(pd packetDecoder) (err error) {
 	if err != nil {
 		if errors.Is(err, ErrInsufficientData) {
 			b.PartialTrailingRecord = true
+			// 8 (FirstOffset) + 4 (length field) + batchLen body
+			b.partialSize = batchLen + 12
 			b.Records = nil
 			return nil
 		}

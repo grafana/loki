@@ -119,7 +119,9 @@ func (rd *realDecoder) getArrayLength() (int, error) {
 	// casting to int for ease of interop
 	tmp := int(int32(binary.BigEndian.Uint32(rd.raw[rd.off:])))
 	rd.off += 4
-	if tmp > rd.remaining() {
+	if tmp < -1 {
+		return -1, errInvalidArrayLength
+	} else if tmp > rd.remaining() {
 		rd.off = len(rd.raw)
 		return -1, ErrInsufficientData
 	} else if tmp > int(MaxResponseSize) {
@@ -182,6 +184,10 @@ func (rd *realDecoder) getVarintBytes() ([]byte, error) {
 	if tmp == -1 {
 		return nil, nil
 	}
+	if tmp > int64(rd.remaining()) {
+		rd.off = len(rd.raw)
+		return nil, ErrInsufficientData
+	}
 
 	return rd.getRawBytes(int(tmp))
 }
@@ -227,16 +233,19 @@ func (rd *realDecoder) getNullableString() (*string, error) {
 	return &tmpStr, err
 }
 
-func (rd *realDecoder) getInt32Array() ([]int32, error) {
+func (rd *realDecoder) getNullableInt32Array() ([]int32, error) {
 	n, err := rd.getArrayLength()
 	if err != nil {
 		return nil, err
 	}
-	if n <= 0 {
+	if n < -1 {
+		return nil, errInvalidArrayLength
+	}
+	if n == -1 {
 		return nil, nil
 	}
 
-	if rd.remaining() < 4*n {
+	if rd.remaining()/4 < n {
 		rd.off = len(rd.raw)
 		return nil, ErrInsufficientData
 	}
@@ -249,6 +258,14 @@ func (rd *realDecoder) getInt32Array() ([]int32, error) {
 	return ret, nil
 }
 
+func (rd *realDecoder) getInt32Array() ([]int32, error) {
+	ret, err := rd.getNullableInt32Array()
+	if ret == nil && err == nil {
+		return nil, errInvalidArrayLength
+	}
+	return ret, err
+}
+
 func (rd *realDecoder) getInt64Array() ([]int64, error) {
 	n, err := rd.getArrayLength()
 	if err != nil {
@@ -258,7 +275,7 @@ func (rd *realDecoder) getInt64Array() ([]int64, error) {
 		return nil, nil
 	}
 
-	if rd.remaining() < 8*n {
+	if rd.remaining()/8 < n {
 		rd.off = len(rd.raw)
 		return nil, ErrInsufficientData
 	}
@@ -304,6 +321,16 @@ func (rd *realDecoder) getSubset(length int) (packetDecoder, error) {
 		return nil, err
 	}
 	return &realDecoder{raw: buf}, nil
+}
+
+func (rd *realDecoder) getUuid() (Uuid, error) {
+	var uuid Uuid
+	raw, err := rd.getRawBytes(16)
+	if err != nil {
+		return uuid, err
+	}
+	copy(uuid[:], raw)
+	return uuid, nil
 }
 
 func (rd *realDecoder) getRawBytes(length int) ([]byte, error) {
@@ -382,7 +409,12 @@ func (rd *realFlexibleDecoder) getArrayLength() (int, error) {
 		return 0, nil
 	}
 
-	return int(n) - 1, nil
+	if n-1 > uint64(rd.remaining()) {
+		rd.off = len(rd.raw)
+		return 0, ErrInsufficientData
+	}
+
+	return int(n - 1), nil
 }
 
 func (rd *realFlexibleDecoder) getEmptyTaggedFieldArray() (int, error) {
@@ -393,7 +425,7 @@ func (rd *realFlexibleDecoder) getEmptyTaggedFieldArray() (int, error) {
 
 	// skip over any tagged fields without deserializing them
 	// as we don't currently support doing anything with them
-	for i := uint64(0); i < tagCount; i++ {
+	for range tagCount {
 		// fetch and ignore tag identifier
 		_, err := rd.getUVarint()
 		if err != nil {
@@ -402,6 +434,10 @@ func (rd *realFlexibleDecoder) getEmptyTaggedFieldArray() (int, error) {
 		length, err := rd.getUVarint()
 		if err != nil {
 			return 0, err
+		}
+		if length > uint64(rd.remaining()) {
+			rd.off = len(rd.raw)
+			return 0, ErrInsufficientData
 		}
 		if _, err := rd.getRawBytes(int(length)); err != nil {
 			return 0, err
@@ -423,7 +459,7 @@ func (rd *realFlexibleDecoder) getTaggedFieldArray(decoders taggedFieldDecoders)
 		return err
 	}
 
-	for i := uint64(0); i < tagCount; i++ {
+	for range tagCount {
 		// fetch and ignore tag identifier
 		id, err := rd.getUVarint()
 		if err != nil {
@@ -432,6 +468,10 @@ func (rd *realFlexibleDecoder) getTaggedFieldArray(decoders taggedFieldDecoders)
 		length, err := rd.getUVarint()
 		if err != nil {
 			return err
+		}
+		if length > uint64(rd.remaining()) {
+			rd.off = len(rd.raw)
+			return ErrInsufficientData
 		}
 		bytes, err := rd.getRawBytes(int(length))
 		if err != nil {
@@ -453,8 +493,15 @@ func (rd *realFlexibleDecoder) getBytes() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if n == 0 {
+		return nil, nil
+	}
+	if n > 0 && n-1 > uint64(rd.remaining()) {
+		rd.off = len(rd.raw)
+		return nil, ErrInsufficientData
+	}
 
-	length := int(n - 1)
+	length := int(n) - 1
 	return rd.getRawBytes(length)
 }
 
@@ -463,15 +510,15 @@ func (rd *realFlexibleDecoder) getStringLength() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
-	n := int(length - 1)
-
-	switch {
-	case n < -1:
-		return 0, errInvalidStringLength
-	case n > rd.remaining():
+	if length > 0 && length-1 > uint64(rd.remaining()) {
 		rd.off = len(rd.raw)
 		return 0, ErrInsufficientData
+	}
+
+	n := int(length) - 1
+
+	if n < -1 {
+		return 0, errInvalidStringLength
 	}
 
 	return n, nil
@@ -507,6 +554,14 @@ func (rd *realFlexibleDecoder) getNullableString() (*string, error) {
 }
 
 func (rd *realFlexibleDecoder) getInt32Array() ([]int32, error) {
+	ret, err := rd.getNullableInt32Array()
+	if ret == nil && err == nil {
+		return nil, errInvalidArrayLength
+	}
+	return ret, err
+}
+
+func (rd *realFlexibleDecoder) getNullableInt32Array() ([]int32, error) {
 	n, err := rd.getUVarint()
 	if err != nil {
 		return nil, err
@@ -516,13 +571,52 @@ func (rd *realFlexibleDecoder) getInt32Array() ([]int32, error) {
 		return nil, nil
 	}
 
-	arrayLength := int(n) - 1
+	arrayLength := n - 1
 
-	ret := make([]int32, arrayLength)
+	if uint64(rd.remaining()/4) < arrayLength { //nolint:gosec // G115 - remaining() is non-negative
+		rd.off = len(rd.raw)
+		return nil, ErrInsufficientData
+	}
+
+	ret := make([]int32, int(arrayLength)) //nolint:gosec // G115 - value bounded by remaining() above
 
 	for i := range ret {
 		ret[i] = int32(binary.BigEndian.Uint32(rd.raw[rd.off:]))
 		rd.off += 4
+	}
+	return ret, nil
+}
+
+func (rd *realFlexibleDecoder) getInt64Array() ([]int64, error) {
+	ret, err := rd.getNullableInt64Array()
+	if ret == nil && err == nil {
+		return nil, errInvalidArrayLength
+	}
+	return ret, err
+}
+
+func (rd *realFlexibleDecoder) getNullableInt64Array() ([]int64, error) {
+	n, err := rd.getUVarint()
+	if err != nil {
+		return nil, err
+	}
+
+	if n == 0 {
+		return nil, nil
+	}
+
+	arrayLength := n - 1
+
+	if uint64(rd.remaining()/8) < arrayLength { //nolint:gosec // G115 - remaining() is non-negative
+		rd.off = len(rd.raw)
+		return nil, ErrInsufficientData
+	}
+
+	ret := make([]int64, int(arrayLength)) //nolint:gosec // G115 - value bounded by remaining() above
+
+	for i := range ret {
+		ret[i] = int64(binary.BigEndian.Uint64(rd.raw[rd.off:]))
+		rd.off += 8
 	}
 	return ret, nil
 }

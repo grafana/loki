@@ -32,6 +32,12 @@ func NewCreateTopicsRequest(
 		ValidateOnly: validateOnly,
 	}
 	switch {
+	case version.IsAtLeast(V2_8_0_0):
+		// Version 7 returns the topic ID of the newly created topic in the response
+		r.Version = 7
+	case version.IsAtLeast(V2_7_0_0):
+		// version 6 may return THROTTLING_QUOTA_EXCEEDED
+		r.Version = 6
 	case version.IsAtLeast(V2_4_0_0):
 		// Version 5 is the first flexible version
 		// Version 4 makes partitions/replicationFactor optional even when assignments are not present (KIP-464)
@@ -77,10 +83,13 @@ func (c *CreateTopicsRequest) decode(pd packetDecoder, version int16) (err error
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	c.TopicDetails = make(map[string]*TopicDetail, n)
 
-	for i := 0; i < n; i++ {
+	for range n {
 		topic, err := pd.getString()
 		if err != nil {
 			return err
@@ -133,11 +142,15 @@ func (c *CreateTopicsRequest) isFlexibleVersion(version int16) bool {
 }
 
 func (c *CreateTopicsRequest) isValidVersion() bool {
-	return c.Version >= 0 && c.Version <= 5
+	return c.Version >= 0 && c.Version <= 7
 }
 
 func (c *CreateTopicsRequest) requiredVersion() KafkaVersion {
 	switch c.Version {
+	case 7:
+		return V2_8_0_0
+	case 6:
+		return V2_7_0_0
 	case 5:
 		return V2_4_0_0
 	case 4:
@@ -215,6 +228,9 @@ func (t *TopicDetail) decode(pd packetDecoder, version int16) (err error) {
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	if n > 0 {
 		t.ReplicaAssignment = make(map[int32][]int32, n)
@@ -235,6 +251,9 @@ func (t *TopicDetail) decode(pd packetDecoder, version int16) (err error) {
 	n, err = pd.getArrayLength()
 	if err != nil {
 		return err
+	}
+	if n < 0 {
+		return errInvalidArrayLength
 	}
 
 	if n > 0 {
