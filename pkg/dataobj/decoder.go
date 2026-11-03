@@ -183,10 +183,9 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 //	                         |----------------------|  extended up to maxBytes (non-logs sections only)
 //
 // Every section's metadata sits in one contiguous block, followed by every section's data in a
-// second block. The returned end never reaches the data block, however large maxBytes is. 
-// A logs section's own metadata is never what grows the region,
-// but it can still be included incidentally if it comes before an included non-logs section.
-// Listing every non-logs section type in [WithPrioritySections] prevents this, because then all logs
+// second block. The returned end never reaches the data block, however large maxBytes is. A logs
+// section's own metadata is never what grows the region, but it can still be included incidentally
+// if it comes before an included non-logs section. Listing every non-logs section type in [WithPrioritySections] prevents this, because then all logs
 // metadata follows all non-logs metadata. Objects built without that option can have logs metadata
 // first.
 //
