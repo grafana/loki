@@ -274,13 +274,35 @@ func (b *MapBuilder) init(capacity int)                  { b.listBuilder.init(ca
 func (b *MapBuilder) resize(newBits int, init func(int)) { b.listBuilder.resize(newBits, init) }
 
 func (b *MapBuilder) adjustStructBuilderLen() {
+	keyLen, itemLen := b.keyBuilder.Len(), b.itemBuilder.Len()
+	if keyLen != itemLen {
+		panic(fmt.Errorf("%w: arrow/array: map key and item builders must have equal lengths (keys=%d, items=%d)",
+			arrow.ErrInvalid, keyLen, itemLen))
+	}
+
 	sb := b.listBuilder.ValueBuilder().(*StructBuilder)
-	if sb.Len() < b.keyBuilder.Len() {
-		valids := make([]bool, b.keyBuilder.Len()-sb.Len())
+	if sb.Len() > keyLen {
+		panic(fmt.Errorf("%w: arrow/array: map struct builder length exceeds key and item length (struct=%d, entries=%d)",
+			arrow.ErrInvalid, sb.Len(), keyLen))
+	}
+	if sb.Len() < keyLen {
+		valids := make([]bool, keyLen-sb.Len())
 		for i := range valids {
 			valids[i] = true
 		}
 		sb.AppendValues(valids)
+	}
+}
+
+func (b *MapBuilder) validateOffsets(entryLen int) {
+	offsets := b.listBuilder.offsets.(*Int32Builder)
+	if offsets.Len() != b.Len() && offsets.Len() != b.Len()+1 {
+		panic(fmt.Errorf("%w: arrow/array: map offset count must equal map length or map length plus one (offsets=%d, maps=%d)",
+			arrow.ErrInvalid, offsets.Len(), b.Len()))
+	}
+	if offsets.Len() == b.Len()+1 && int(offsets.Value(b.Len())) != entryLen {
+		panic(fmt.Errorf("%w: arrow/array: map final offset must match key and item length (offset=%d, entries=%d)",
+			arrow.ErrInvalid, offsets.Value(b.Len()), entryLen))
 	}
 }
 
@@ -305,6 +327,7 @@ func (b *MapBuilder) NewMapArray() (a *Map) {
 
 func (b *MapBuilder) newData() (data *Data) {
 	b.adjustStructBuilderLen()
+	b.validateOffsets(b.keyBuilder.Len())
 	values := b.listBuilder.NewListArray()
 	defer values.Release()
 
@@ -342,6 +365,7 @@ func (b *MapBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *MapBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

@@ -23,7 +23,7 @@ GO_SOURCES  := $(shell find . -path ./_lib -prune -o -name '*.go' -not -name '*_
 ALL_SOURCES := $(shell find . -path ./_lib -prune -o -name '*.go' -name '*.s' -not -name '*_test.go')
 SOURCES_NO_VENDOR := $(shell find . -path ./vendor -prune -o -name "*.go" -not -name '*_test.go' -print)
 
-.PHONEY: test bench assembly generate
+.PHONY: test bench assembly generate
 
 assembly:
 	@$(MAKE) -C memory assembly

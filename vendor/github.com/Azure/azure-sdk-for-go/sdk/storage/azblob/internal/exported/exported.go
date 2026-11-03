@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -30,4 +27,13 @@ func FormatHTTPRange(r HTTPRange) *string {
 	}
 	dataRange := fmt.Sprintf("bytes=%v-%s", r.Offset, endOffset)
 	return &dataRange
+}
+
+// GetHTTPRangeOrDefault returns a formatted HTTPRange or the empty string.
+// Use this helper when the range string parameter is required and empty string is allowed.
+func GetHTTPRangeOrDefault(r HTTPRange) string {
+	if specifiedRange := FormatHTTPRange(r); specifiedRange != nil {
+		return *specifiedRange
+	}
+	return ""
 }

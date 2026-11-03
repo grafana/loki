@@ -114,6 +114,9 @@ func (blk fileBlock) NewMessage() (*Message, error) {
 		// messages produced prior to version 0.15.0
 		prefix = 4
 	}
+	if int(blk.meta)-prefix < 4 {
+		return nil, fmt.Errorf("arrow/ipc: invalid file block metadata length %d for prefix length %d", blk.meta, prefix)
+	}
 
 	// drop buf-size already known from blk.Meta
 	meta = memory.SliceBuffer(meta, prefix, int(blk.meta)-prefix)
@@ -843,8 +846,7 @@ func concreteTypeFromFB(typ flatbuf.Type, data flatbuffers.Table, children []arr
 
 		var dt flatbuf.Map
 		dt.Init(data.Bytes, data.Pos)
-		ret := arrow.MapOf(pairType.Field(0).Type, pairType.Field(1).Type)
-		ret.SetItemNullable(pairType.Field(1).Nullable)
+		ret := arrow.MapOfFields(pairType.Field(0), pairType.Field(1))
 		ret.KeysSorted = dt.KeysSorted()
 		return ret, nil
 

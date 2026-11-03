@@ -243,6 +243,9 @@ func (b *multiBufferBuilder) UnsafeAppend(hdr *arrow.ViewHeader, val []byte) {
 	hdr.SetIndexOffset(int32(idx), int32(offset))
 
 	n := copy(buf.Buf()[offset:], val)
+	if n != len(val) {
+		panic("arrow/array: multibufferbuilder could not append full value")
+	}
 	buf.ResizeNoShrink(offset + n)
 }
 

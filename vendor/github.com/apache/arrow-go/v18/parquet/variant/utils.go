@@ -129,7 +129,7 @@ func valueSize(v []byte) int {
 		return int(dataStart + readLEU32(v[idx:idx+offsetSize]))
 	case byte(BasicArray):
 		var szBytes uint8 = 1
-		if ((typeInfo >> 4) & 0x1) != 0 {
+		if ((typeInfo >> 2) & 0x1) != 0 {
 			szBytes = 4
 		}
 

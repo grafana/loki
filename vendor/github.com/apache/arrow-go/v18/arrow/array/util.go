@@ -61,14 +61,40 @@ func WithStartOffset(off int64) FromJSONOption {
 	}
 }
 
-// WithUseNumber enables the 'UseNumber' option on the json decoder, using
-// the json.Number type instead of assuming float64 for numbers. This is critical
-// if you have numbers that are larger than what can fit into the 53 bits of
-// an IEEE float64 mantissa and want to preserve its value.
+// WithUseNumber previously enabled the 'UseNumber' option on the json decoder.
+// As of issue #804, FromJSON, RecordFromJSON, and TableFromJSON unconditionally
+// enable UseNumber so that integer values too large to fit in float64 (i.e.
+// beyond 2^53) are preserved without silent corruption. This option is now a
+// no-op and is retained for backward compatibility.
+//
+// Deprecated: UseNumber is now always enabled; this option has no effect.
 func WithUseNumber() FromJSONOption {
 	return func(c *fromJSONCfg) {
 		c.useNumber = true
 	}
+}
+
+func seekJSONStartOffset(r io.Reader, offset int64) error {
+	if offset < 0 {
+		return fmt.Errorf("seek JSON start offset must be non-negative: %d", offset)
+	}
+	if offset == 0 {
+		return nil
+	}
+
+	seeker, ok := r.(io.ReadSeeker)
+	if !ok {
+		return errors.New("using StartOffset option requires reader to be a ReadSeeker, cannot seek")
+	}
+
+	pos, err := seeker.Seek(offset, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("seek JSON start offset %d: %w", offset, err)
+	}
+	if pos != offset {
+		return fmt.Errorf("seek JSON start offset: got %d, want %d", pos, offset)
+	}
+	return nil
 }
 
 // FromJSON creates an arrow.Array from a corresponding JSON stream and defined data type. If the types in the
@@ -130,28 +156,20 @@ func FromJSON(mem memory.Allocator, dt arrow.DataType, r io.Reader, opts ...From
 		o(&cfg)
 	}
 
-	if cfg.startOffset != 0 {
-		seeker, ok := r.(io.ReadSeeker)
-		if !ok {
-			return nil, 0, errors.New("using StartOffset option requires reader to be a ReadSeeker, cannot seek")
-		}
-
-		seeker.Seek(cfg.startOffset, io.SeekStart)
+	if err = seekJSONStartOffset(r, cfg.startOffset); err != nil {
+		return nil, 0, err
 	}
 
 	bldr := NewBuilder(mem, dt)
 	defer bldr.Release()
 
 	dec := json.NewDecoder(r)
+	dec.UseNumber()
 	defer func() {
 		if errors.Is(err, io.EOF) {
 			err = fmt.Errorf("failed parsing json: %w", io.ErrUnexpectedEOF)
 		}
 	}()
-
-	if cfg.useNumber {
-		dec.UseNumber()
-	}
 
 	if !cfg.multiDocument {
 		t, err := dec.Token()
@@ -219,14 +237,8 @@ func RecordFromJSON(mem memory.Allocator, schema *arrow.Schema, r io.Reader, opt
 		o(&cfg)
 	}
 
-	if cfg.startOffset != 0 {
-		seeker, ok := r.(io.ReadSeeker)
-		if !ok {
-			return nil, 0, errors.New("using StartOffset option requires reader to be a ReadSeeker, cannot seek")
-		}
-		if _, err := seeker.Seek(cfg.startOffset, io.SeekStart); err != nil {
-			return nil, 0, fmt.Errorf("failed to seek to start offset %d: %w", cfg.startOffset, err)
-		}
+	if err := seekJSONStartOffset(r, cfg.startOffset); err != nil {
+		return nil, 0, err
 	}
 
 	if mem == nil {
@@ -237,9 +249,7 @@ func RecordFromJSON(mem memory.Allocator, schema *arrow.Schema, r io.Reader, opt
 	defer bldr.Release()
 
 	dec := json.NewDecoder(r)
-	if cfg.useNumber {
-		dec.UseNumber()
-	}
+	dec.UseNumber()
 
 	if !cfg.multiDocument {
 		t, err := dec.Token()
@@ -251,7 +261,7 @@ func RecordFromJSON(mem memory.Allocator, schema *arrow.Schema, r io.Reader, opt
 		}
 
 		for dec.More() {
-			if err := dec.Decode(bldr); err != nil {
+			if err := bldr.UnmarshalOne(dec); err != nil {
 				return nil, dec.InputOffset(), fmt.Errorf("failed to decode json: %w", err)
 			}
 		}
@@ -265,8 +275,7 @@ func RecordFromJSON(mem memory.Allocator, schema *arrow.Schema, r io.Reader, opt
 	}
 
 	for {
-		err := dec.Decode(bldr)
-		if err != nil {
+		if err := bldr.UnmarshalOne(dec); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
@@ -447,6 +456,8 @@ func getMaxBufferLen(dt arrow.DataType, length int) int {
 		return bufferLen
 	case arrow.OffsetsDataType:
 		return maxOf(dt.OffsetTypeTraits().BytesRequired(length + 1))
+	case arrow.BinaryViewDataType:
+		return maxOf(arrow.ViewHeaderSizeBytes * length)
 	case *arrow.FixedSizeListType:
 		return maxOf(getMaxBufferLen(dt.Elem(), int(dt.Len())*length))
 	case arrow.ExtensionType:
@@ -495,6 +506,8 @@ func (n *nullArrayFactory) create() *Data {
 		defer arr.Release()
 		dictData = arr.Data()
 	case arrow.FixedWidthDataType:
+		bufs = append(bufs, n.buf)
+	case arrow.BinaryViewDataType:
 		bufs = append(bufs, n.buf)
 	case arrow.BinaryDataType:
 		bufs = append(bufs, n.buf, n.buf)

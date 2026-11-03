@@ -21,9 +21,10 @@ package exec
 import (
 	"context"
 	"fmt"
-	"hash/maphash"
 	"slices"
 	"strings"
+
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -381,7 +382,7 @@ func (it *InputType) Equals(other *InputType) bool {
 }
 
 func (it InputType) Hash() uint64 {
-	var h maphash.Hash
+	var h maphash.MapHash
 
 	h.SetSeed(hashSeed)
 	result := HashCombine(h.Sum64(), uint64(it.Kind))
@@ -569,7 +570,7 @@ func (k *KernelSignature) Hash() uint64 {
 		return k.hashCode
 	}
 
-	var h maphash.Hash
+	var h maphash.MapHash
 	h.SetSeed(hashSeed)
 	result := h.Sum64()
 	for _, typ := range k.InputTypes {

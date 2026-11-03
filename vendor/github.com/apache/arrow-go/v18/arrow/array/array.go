@@ -117,7 +117,11 @@ func invalidDataType(data arrow.ArrayData) arrow.Array {
 
 // MakeFromData constructs a strongly-typed array instance from generic Data.
 func MakeFromData(data arrow.ArrayData) arrow.Array {
-	return makeArrayFn[byte(data.DataType().ID()&0x3f)](data)
+	id := data.DataType().ID()
+	if id < 0 || int(id) >= len(makeArrayFn) || makeArrayFn[id] == nil {
+		return invalidDataType(data)
+	}
+	return makeArrayFn[id](data)
 }
 
 // NewSlice constructs a zero-copy slice of the array with the indicated

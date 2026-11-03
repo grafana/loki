@@ -15,5 +15,5 @@
 // limitations under the License.
 
 // Package kernels defines all of the computation kernels for the compute
-// library. This requires >= go1.18 since it utilizes Go generics.
+// library.
 package kernels

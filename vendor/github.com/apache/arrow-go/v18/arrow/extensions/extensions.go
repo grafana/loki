@@ -21,11 +21,12 @@ import (
 )
 
 var canonicalExtensionTypes = []arrow.ExtensionType{
+	&JSONType{},
+	&OpaqueType{},
+	&TimestampWithOffsetType{},
+	&VariantType{},
 	NewBool8Type(),
 	NewUUIDType(),
-	&OpaqueType{},
-	&JSONType{},
-	&VariantType{},
 }
 
 func init() {
