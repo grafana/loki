@@ -742,6 +742,26 @@ func TestExecuteLogCompaction(t *testing.T) {
 		}
 	})
 
+	t.Run("returns an error and swaps nothing without a retry when a task fails after shutdown begins", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		c.logDispatcher.maxRetries = 1
+		ctx, cancel := context.WithCancel(t.Context())
+		var failed atomic.Bool
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			if failed.CompareAndSwap(false, true) {
+				cancel()
+				return nil, errors.New("task failed")
+			}
+			return &v2.ResultArtifact{Path: "indexes/out"}, nil
+		}
+
+		_, err := c.executeLogCompaction(ctx, "acme", plan)
+		require.ErrorContains(t, err, "retries stopped: context canceled")
+		require.NotErrorIs(t, err, context.Canceled)
+		require.LessOrEqual(t, len(runner.snapshot()), len(plan.tasks))
+		require.Empty(t, replacer.snapshot())
+	})
+
 	t.Run("builds new physical plans with new node IDs on every execution", func(t *testing.T) {
 		c, runner, _ := newExecutor(t)
 

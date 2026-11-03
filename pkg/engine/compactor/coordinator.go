@@ -391,14 +391,16 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex.Path)
 	}
 
-	// Detach from cancellation so the dispatched tasks run to the ToC swap.
-	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
-	// worker time, and the next pass repeats them.
-	ctx = context.WithoutCancel(ctx)
+	// Run keeps the tasks running when ctx is cancelled, and uses ctx only to
+	// stop retries.
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.dispatchTasks())
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
+	// Detach from cancellation so the ToC swap publishes the finished tasks.
+	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
+	// worker time, and the next pass repeats them.
+	ctx = context.WithoutCancel(ctx)
 	entries := plan.tocEntries()
 	if err := assignArtifactPaths(entries, artifacts); err != nil {
 		return compactionStats{}, fmt.Errorf("build log ToC entries: %w", err)
@@ -596,14 +598,16 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		}
 	}
 
-	// Detach from cancellation so the dispatched tasks run to the ToC swap.
-	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
-	// worker time, and the next pass repeats them.
-	ctx = context.WithoutCancel(ctx)
+	// Run keeps the tasks running when ctx is cancelled, and uses ctx only to
+	// stop retries.
 	artifacts, err := c.indexDispatcher.Run(ctx, tenant, dispatchTasks)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
+	// Detach from cancellation so the ToC swap publishes the finished tasks.
+	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
+	// worker time, and the next pass repeats them.
+	ctx = context.WithoutCancel(ctx)
 	if err := assignArtifactPaths(newEntries, artifacts); err != nil {
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}

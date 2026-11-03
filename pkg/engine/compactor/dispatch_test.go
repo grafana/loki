@@ -218,18 +218,36 @@ func TestPlanDispatcherRun(t *testing.T) {
 		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeSuccess))
 	})
 
-	t.Run("does not retry a task when the context is cancelled", func(t *testing.T) {
+	t.Run("fails a task without a retry when it fails after the context is cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
 			cancel()
-			return nil, context.Canceled
+			return nil, errors.New("boom")
 		}}
 		d, metrics := newDispatcher(runner.run, 3)
 
 		_, err := d.Run(ctx, "acme", tasks[:1])
-		require.ErrorIs(t, err, context.Canceled)
+		require.EqualError(t, err, "index-merge job: boom (attempts: 1, retries stopped: context canceled)")
+		require.NotErrorIs(t, err, context.Canceled)
 		require.Len(t, runner.snapshot(), 1)
 		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeRetry))
-		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeFailed))
+		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
+	})
+
+	t.Run("runs the tasks to completion when the context is cancelled before they start", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		var runCtxErr atomic.Value
+		d, _ := newDispatcher(func(runCtx context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			if err := runCtx.Err(); err != nil {
+				runCtxErr.Store(err)
+			}
+			return &v2.ResultArtifact{Path: fmt.Sprintf("indexes/out-%d", taskOf(plan))}, nil
+		}, 3)
+
+		artifacts, err := d.Run(ctx, "acme", tasks[:2])
+		require.NoError(t, err)
+		require.Equal(t, []v2.ResultArtifact{{Path: "indexes/out-0"}, {Path: "indexes/out-1"}}, artifacts)
+		require.Nil(t, runCtxErr.Load(), "attempts must not see the cancellation of the caller")
 	})
 }

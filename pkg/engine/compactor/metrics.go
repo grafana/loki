@@ -154,7 +154,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		taskAttemptsTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_task_attempts_total",
-			Help: "Attempts to run a compaction task, by actor and outcome. success = the attempt returned a valid artifact, retry = the attempt failed and the task runs again, failed = the attempt failed and the task has no retries left. Attempts cancelled by shutdown or by a failed sibling task are not counted.",
+			Help: "Attempts to run a compaction task, by actor and outcome. success = the attempt returned a valid artifact, retry = the attempt failed and the task runs again, failed = the attempt failed and the task runs no more, because it has no retries left or the planner is shutting down. Attempts cancelled by a failed sibling task are not counted.",
 		}, []string{labelActor, labelOutcome}),
 		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
