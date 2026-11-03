@@ -123,3 +123,6 @@ limits_config:
   ruler_remote_write_queue_max_backoff: "This setting is removed. Use ruler_remote_write_config instead."
   ruler_remote_write_queue_retry_on_ratelimit: "This setting is removed. Use ruler_remote_write_config instead."
   ruler_remote_write_sigv4_config: "This setting is removed. Use ruler_remote_write_config instead."
+
+dataobj:
+  metastore: "The metastore block is removed. Data object indexes and tables of contents always use the index/v0 prefix. Move existing ones from a custom or empty prefix to index/v0."

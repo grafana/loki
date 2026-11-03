@@ -282,17 +282,15 @@ func IterTableOfContentsPaths(tenant string, start, end time.Time) iter.Seq[stri
 	}
 }
 
-func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics, opts ...ObjectMetastoreOption) *ObjectMetastore {
+// NewObjectMetastore returns a metastore that reads tables of contents and
+// index objects under [IndexStoragePrefix] in b.
+func NewObjectMetastore(b objstore.Bucket, logger log.Logger, metrics *ObjectMetastoreMetrics, opts ...ObjectMetastoreOption) *ObjectMetastore {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
-	if cfg.IndexStoragePrefix != "" {
-		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
-	}
-
 	store := &ObjectMetastore{
-		bucket:      dataobj.NewInstrumentedBucketReader(b),
+		bucket:      dataobj.NewInstrumentedBucketReader(NewIndexBucket(b)),
 		parallelism: 64,
 		logger:      logger,
 		metrics:     metrics,
@@ -804,4 +802,17 @@ func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*Dataobj
 		existing.merge(row)
 	}
 	return nil
+}
+
+// IndexStoragePrefix is the object storage prefix of the index objects and the
+// tables of contents.
+const IndexStoragePrefix = "index/v0"
+
+// NewIndexBucket returns b scoped to [IndexStoragePrefix].
+//
+// Use it to write or read index objects and tables of contents without a
+// metastore. [NewObjectMetastore] adds the prefix itself, so pass it the
+// unwrapped bucket.
+func NewIndexBucket(b objstore.Bucket) objstore.Bucket {
+	return objstore.NewPrefixedBucket(b, IndexStoragePrefix)
 }

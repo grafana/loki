@@ -1091,12 +1091,6 @@ dataobj:
     # CLI flag: -dataobj.uploader.sha-prefix-size
     [sha_prefix_size: <int> | default = 2]
 
-  metastore:
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # for testing only.
-    # CLI flag: -dataobj-metastore.index-storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0"]
-
   # Caches the metadata region of the log objects and index objects the querier
   # reads, or the entire object if it is tiny. The cache is enabled when a
   # backend is configured. Entries are keyed by object path, so the cache cannot

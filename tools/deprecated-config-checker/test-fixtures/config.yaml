@@ -172,3 +172,7 @@ limits_config:
   bloom_prefetch_blocks: true # DEPRECATED
   bloom_max_block_size: 200MB # DEPRECATED
   bloom_max_bloom_size: 128MB # DEPRECATED
+
+dataobj:
+  metastore: # DELETED
+    index_storage_prefix: index/v0

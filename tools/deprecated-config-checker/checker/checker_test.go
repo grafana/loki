@@ -85,6 +85,7 @@ var (
 		"schema_config.configs.[7].object_store",
 		"schema_config.configs.[8].store",
 		"schema_config.configs.[8].object_store",
+		"dataobj.metastore",
 	}
 
 	expectedConfigDeprecates = []string{
