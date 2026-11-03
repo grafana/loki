@@ -1,26 +1,41 @@
-#! /bin/bash
+#!/bin/bash
+#
+# Compares the benchmarks of the current branch against a git revision:
+#
+#	./bench.sh v0.2.3            # all the benchmarks
+#	./bench.sh master 'Match'    # the ones matching a -bench regexp
+#
+# The results are written to *.bench files in the current directory and
+# compared with benchstat (go install golang.org/x/perf/cmd/benchstat@latest).
 
-bench() {
-    filename="/tmp/$1-$2.bench"
-    if test -e "${filename}";
-    then
-        echo "Already exists ${filename}"
-    else
-        backup=`git rev-parse --abbrev-ref HEAD`
-        git checkout $1
-        echo -n "Creating ${filename}... "
-        go test ./... -run=NONE -bench=$2 > "${filename}" -benchmem
-        echo "OK"
-        git checkout ${backup}
-        sleep 5
-    fi
+set -eu
+
+prev=$1
+what=${2:-.}
+curr=$(git rev-parse --abbrev-ref HEAD)
+rnd=$(head -c4 </dev/urandom | xxd -p)
+
+file() {
+	echo "$rnd-$1.bench" | tr "/" "_"
 }
 
+bench() {
+	local rev=$1
+	local out
+	out=$(file "$rev")
+	if [[ -e "$out" ]]; then
+		echo "Already exists $out"
+		return
+	fi
+	git checkout -q "$rev"
+	echo -n "Creating $out... "
+	go test ./... -run=none -benchmem -bench="$what" >"$out"
+	echo "OK"
+	git checkout -q "$curr"
+	sleep 5
+}
 
-to=$1
-current=`git rev-parse --abbrev-ref HEAD`
+bench "$prev"
+bench "$curr"
 
-bench ${to} $2
-bench ${current} $2
-
-benchcmp $3 "/tmp/${to}-$2.bench" "/tmp/${current}-$2.bench"
+benchstat "$(file "$prev")" "$(file "$curr")"
