@@ -881,7 +881,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// the accepted entries would be written again. Reject the whole push instead.
 	if validationErr != nil {
 		if resp, ok := httpgrpc.HTTPResponseFromError(validationErr); ok && resp.Code == http.StatusTooManyRequests {
-			d.m.rejectedPartialWrites.WithLabelValues(tenantID).Inc()
 			return nil, validationErr
 		}
 	}

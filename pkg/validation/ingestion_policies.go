@@ -395,11 +395,6 @@ type PolicyOverridableLimits struct {
 	PerStreamRateLimitBurst *flagext.ByteSize        `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"hidden"`
 	ShardStreams            *PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"hidden"`
 
-	// RejectPartialWrites is deprecated and has no effect: the distributor now always rejects the
-	// whole push when any of its streams is rejected with a 429. It is kept so existing configs
-	// still parse.
-	RejectPartialWrites bool `yaml:"reject_partial_writes" json:"reject_partial_writes" doc:"hidden"`
-
 	// InheritLimits, when true, makes every unset limit field resolve to the tenant-level value
 	// while still reporting overridden=true, so the policy gets the same limits as the tenant but
 	// tracked in its own bucket. Explicitly set fields take precedence. It applies to
