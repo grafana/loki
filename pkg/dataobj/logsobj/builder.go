@@ -221,7 +221,7 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 		scratch:    scratchStore,
 		overrides:  overrides,
 		labelCache: labelCache,
-		builder:    dataobj.NewBuilder(scratchStore),
+		builder:    dataobj.NewBuilder(scratchStore, dataobj.WithPrioritySections(streams.SectionType())),
 		streams:    make(map[string]*streams.Builder),
 		logs:       make(map[string]*logs.Builder),
 		layouts:    make(map[string]streams.Layout),
@@ -506,9 +506,10 @@ func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) 
 // object-wide. Calling FlushAndSort on an empty builder returns
 // [ErrBuilderEmpty].
 //
-// For each tenant, the object holds the streams section first, then the logs
-// sections. Tenants are in natural order. Stream IDs follow stream key order.
-// Logs rows are ordered by stream ID, then by timestamp descending.
+// The object holds the streams section of each tenant first, then the logs
+// sections of each tenant. Both groups are in natural tenant order. Stream
+// IDs follow stream key order. Logs rows are ordered by stream ID, then by
+// timestamp descending.
 //
 // The sort uses the layout that the builder used for each tenant, so it never
 // reads the overrides. Every section already follows that layout, so the sort

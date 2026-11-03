@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -1571,6 +1573,140 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		require.True(t, slices.IsSorted(streamIDs), "rows must follow stream ID order: %v", streamIDs)
 	})
 }
+
+func TestBuilder_SectionOrder(t *testing.T) {
+	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+
+	// fill appends enough records of one stream per tenant to b to fill
+	// several logs sections per tenant.
+	fill := func(t *testing.T, b *Builder, tenants ...string) {
+		t.Helper()
+
+		streamLabels := labels.FromStrings("app", "a", "cluster", "c")
+		for _, tenant := range tenants {
+			for i := range 2000 {
+				line := fmt.Sprintf("line %d %s", i, strings.Repeat("x", 64))
+				require.NoError(t, b.AppendRecord(tenant, streamLabels, logs.Record{Timestamp: now.Add(time.Duration(i) * time.Second), Line: []byte(line)}, now))
+			}
+		}
+	}
+
+	newFilledBuilder := func(t *testing.T, tenants ...string) *Builder {
+		t.Helper()
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
+		fill(t, b, tenants...)
+		return b
+	}
+
+	// sectionTag is the kind and tenant of a section, for comparing orders.
+	type sectionTag struct{ kind, tenant string }
+
+	// requireSectionOrder checks that obj lists the streams sections of the
+	// tenants first, then the logs sections, each group in tenant order.
+	requireSectionOrder := func(t *testing.T, obj *dataobj.Object, tenants ...string) {
+		t.Helper()
+
+		var want []sectionTag
+		for _, tenant := range tenants {
+			want = append(want, sectionTag{"streams", tenant})
+		}
+		for _, tenant := range tenants {
+			count := obj.Sections().Count(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant })
+			require.Greater(t, count, 1, "tenant %s must have several logs sections", tenant)
+			for range count {
+				want = append(want, sectionTag{"logs", tenant})
+			}
+		}
+
+		var got []sectionTag
+		for _, sec := range obj.Sections() {
+			got = append(got, sectionTag{sec.Type.Kind, sec.Tenant})
+		}
+		require.Equal(t, want, got)
+	}
+
+	// requireCachedPrefixEndsAfterStreamsMetadata checks that the metadata
+	// cache stores only the header, the file metadata, and the streams
+	// metadata. This is true only when the streams metadata comes before all
+	// logs metadata.
+	requireCachedPrefixEndsAfterStreamsMetadata := func(t *testing.T, obj *dataobj.Object) {
+		t.Helper()
+
+		rc, err := obj.Reader(t.Context())
+		require.NoError(t, err)
+		raw, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.NoError(t, rc.Close())
+
+		bucket := objstore.NewInMemBucket()
+		require.NoError(t, bucket.Upload(t.Context(), "obj", bytes.NewReader(raw)))
+
+		cache := &recordingMetadataCache{}
+		opened, err := dataobj.FromBucket(t.Context(), bucket, "obj", 0, dataobj.WithMetadataCache(cache))
+		require.NoError(t, err)
+
+		var streamsMetadataSize int64
+		for _, sec := range opened.Sections().Filter(streams.CheckSection) {
+			streamsMetadataSize += sec.Reader.MetadataSize()
+		}
+
+		// The header is the magic and a 32-bit size. The size covers the
+		// version and the file metadata that follow the header.
+		fileMetadataEnd := 8 + int64(binary.LittleEndian.Uint32(raw[4:8]))
+		require.Equal(t, fileMetadataEnd+streamsMetadataSize, int64(len(cache.region)))
+	}
+
+	t.Run("Flush puts the streams section before the logs sections appended earlier", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t, "tenant").Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireSectionOrder(t, obj, "tenant")
+		requireCachedPrefixEndsAfterStreamsMetadata(t, obj)
+	})
+
+	t.Run("FlushAndSort puts the streams sections of all tenants before all logs sections", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t, "tenant-2", "tenant-10").FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireSectionOrder(t, obj, "tenant-2", "tenant-10")
+		requireCachedPrefixEndsAfterStreamsMetadata(t, obj)
+	})
+
+	t.Run("Flush on a reused builder still puts the streams section first", func(t *testing.T) {
+		b := newFilledBuilder(t, "tenant")
+		_, closer, err := b.Flush()
+		require.NoError(t, err)
+		require.NoError(t, closer.Close())
+
+		fill(t, b, "tenant")
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireSectionOrder(t, obj, "tenant")
+		requireCachedPrefixEndsAfterStreamsMetadata(t, obj)
+	})
+}
+
+// recordingMetadataCache stores no entries. It records the last metadata
+// region that it loaded.
+type recordingMetadataCache struct {
+	region []byte
+}
+
+func (c *recordingMetadataCache) GetOrLoadMetadataRegion(ctx context.Context, _ string, load func(context.Context) ([]byte, error)) ([]byte, error) {
+	region, err := load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.region = region
+	return region, nil
+}
+
+func (c *recordingMetadataCache) MaxItemBytes() int64 { return 64 << 20 }
 
 // tenantLayouts maps tenant IDs to their layout. A tenant that is not in the map has the default
 // shard layout and no schema labels.

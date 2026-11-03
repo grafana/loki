@@ -238,7 +238,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki", time.Time{})
+		_, err := lockThenPush(pushCtx, s, e, rec, false, nil, "loki", time.Time{})
 		recordPool.PutRecord(rec)
 		if err != nil {
 			b.Fatal(err)
