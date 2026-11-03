@@ -275,9 +275,9 @@ type EvaluatorFactory interface {
 	EntryEvaluatorFactory
 }
 
-// NodeContext describes where an expression sits relative to the query's output. It is worked
-// out from the parent down while evaluators are built. The zero value is the conservative one:
-// an expression that is neither the root nor known to preserve the output.
+// NodeContext describes characteristics of an expression.
+// `isRoot` describes where an expression sits relative to the query's output. It is worked out from the parent down while evaluators are built.
+// `preserving` describes whether an expression is known to preserve its series output.
 type NodeContext struct {
 	isRoot     bool
 	preserving bool
