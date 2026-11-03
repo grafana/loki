@@ -3162,48 +3162,31 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 	}
 }
 
-func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
+func TestDistributor_PushRejectsWholePushOn429(t *testing.T) {
 	const (
-		backfillLabels = `{app="backfill"}`
+		acceptedLabels = `{app="accepted"}`
 		blockedLabels  = `{app="blocked"}`
 	)
 
 	for _, tc := range []struct {
-		name                string
-		rejectPartialWrites map[string]bool
-		blockStatusCode     int
-		expectedStatusCode  int32
-		expectWrites        bool
-		expectedRejected    map[string]float64
+		name               string
+		blockStatusCode    int
+		expectedStatusCode int32
+		expectWrites       bool
+		expectedRejected   float64
 	}{
 		{
-			name:               "partial write - policy not configured",
+			name:               "429 rejects the whole push",
 			blockStatusCode:    http.StatusTooManyRequests,
 			expectedStatusCode: http.StatusTooManyRequests,
+			expectWrites:       false,
+			expectedRejected:   1,
+		},
+		{
+			name:               "non 429 errors do not reject the whole push",
+			blockStatusCode:    http.StatusBadRequest,
+			expectedStatusCode: http.StatusBadRequest,
 			expectWrites:       true,
-		},
-		{
-			name:                "full reject - accepted stream policy rejects partial writes",
-			rejectPartialWrites: map[string]bool{"backfill": true},
-			blockStatusCode:     http.StatusTooManyRequests,
-			expectedStatusCode:  http.StatusTooManyRequests,
-			expectWrites:        false,
-			expectedRejected:    map[string]float64{"backfill": 1},
-		},
-		{
-			name:                "full reject - rejected stream policy rejects partial writes",
-			rejectPartialWrites: map[string]bool{"blocked": true},
-			blockStatusCode:     http.StatusTooManyRequests,
-			expectedStatusCode:  http.StatusTooManyRequests,
-			expectWrites:        false,
-			expectedRejected:    map[string]float64{"blocked": 1},
-		},
-		{
-			name:                "partial write - non 429 errors do not reject the whole push",
-			rejectPartialWrites: map[string]bool{"backfill": true},
-			blockStatusCode:     http.StatusBadRequest,
-			expectedStatusCode:  http.StatusBadRequest,
-			expectWrites:        true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3211,21 +3194,16 @@ func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
 			flagext.DefaultValues(limits)
 
 			limits.PolicyStreamMapping = validation.PolicyStreamMapping{
-				"backfill": []*validation.PriorityStream{{Selector: backfillLabels, Priority: 1}},
-				"blocked":  []*validation.PriorityStream{{Selector: blockedLabels, Priority: 1}},
+				"blocked": []*validation.PriorityStream{{Selector: blockedLabels, Priority: 1}},
 			}
 			require.NoError(t, limits.PolicyStreamMapping.Validate())
 			limits.BlockIngestionPolicyUntil = map[string]flagext.Time{
 				"blocked": flagext.Time(time.Now().Add(time.Hour)),
 			}
 			limits.BlockIngestionStatusCode = tc.blockStatusCode
-			limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{}
-			for policy, reject := range tc.rejectPartialWrites {
-				limits.PolicyOverrideLimits[policy] = validation.PolicyOverridableLimits{RejectPartialWrites: reject}
-			}
 
 			distributors, ingesters := prepare(t, 1, 3, limits, nil)
-			request := makeWriteRequestWithLabels(1, 100, []string{backfillLabels, blockedLabels}, false, false, false)
+			request := makeWriteRequestWithLabels(1, 100, []string{acceptedLabels, blockedLabels}, false, false, false)
 			_, err := distributors[0].Push(ctx, request)
 			require.Error(t, err)
 
@@ -3245,11 +3223,7 @@ func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
 				require.Zero(t, pushed)
 			}
 
-			rejected := distributors[0].m.rejectedPartialWrites
-			require.Equal(t, len(tc.expectedRejected), testutil.CollectAndCount(rejected))
-			for policy, count := range tc.expectedRejected {
-				require.Equal(t, count, testutil.ToFloat64(rejected.WithLabelValues("test", policy)))
-			}
+			require.Equal(t, tc.expectedRejected, testutil.ToFloat64(distributors[0].m.rejectedPartialWrites.WithLabelValues("test")))
 		})
 	}
 }
@@ -4337,7 +4311,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		expectedDiscardedSamples: 0,
 		expectedDiscardedBytes:   0,
 	}, {
-		name:                "one of two streams exceed max stream limit, request is accepted",
+		name:                "one of two streams exceed max stream limit, whole push is rejected",
 		ingestLimitsEnabled: true,
 		tenant:              "test",
 		streams: logproto.PushRequest{
@@ -4372,12 +4346,12 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		// Note: When some streams are rejected, validationErr is set and returned.
-		// The request will succeed (streams are written) but validationErr is returned.
+		// A 429 is answered only when nothing was written, so clients can retry the whole push
+		// without duplicating the accepted stream.
 		expectedErr:              fmt.Sprintf("rpc error: code = Code(429) desc = %s", fmt.Sprintf(validation.StreamLimitErrorMsg, "{foo=\"bar\"}", "test")),
-		expectedResponse:         success, // Response is returned even when some streams are rejected
-		expectedDiscardedSamples: 1,       // 1 entry from "{foo=\"bar\"}" stream is discarded
-		expectedDiscardedBytes:   3,       // "baz" = 3 bytes
+		expectedResponse:         nil,
+		expectedDiscardedSamples: 1, // 1 entry from "{foo=\"bar\"}" stream is discarded
+		expectedDiscardedBytes:   3, // "baz" = 3 bytes
 	}, {
 		name:                "all streams exceed max stream limit, request is rejected",
 		ingestLimitsEnabled: true,
@@ -4786,7 +4760,7 @@ func TestDistributor_LimitsServiceShardLiveEnforcement(t *testing.T) {
 		return lim
 	}
 
-	t.Run("a rejected stream is dropped and the rest of the push is written", func(t *testing.T) {
+	t.Run("a rejected stream rejects the whole push", func(t *testing.T) {
 		written := labels.FromStrings("job", "written")
 		rejected := labels.FromStrings("job", "rejected")
 		entries := []logproto.Entry{
@@ -4823,20 +4797,13 @@ func TestDistributor_LimitsServiceShardLiveEnforcement(t *testing.T) {
 				{Labels: rejected.String(), Entries: entries},
 			},
 		})
-		// The rejection is reported even though the other stream was written.
 		require.ErrorContains(t, err, "maximum active stream limit exceeded")
 
 		// Only CheckLimitsAndShard is called: it decided both streams.
 		require.Equal(t, uint64(1), mockClient.calls.Load())
 
-		got := ing.Peek()
-		require.NotNil(t, got)
-		shards := make(map[string]int, len(got.Streams))
-		for _, s := range got.Streams {
-			require.Contains(t, s.Labels, `job="written"`)
-			shards[s.Labels] += len(s.Entries)
-		}
-		require.Len(t, shards, 2)
+		// Nothing is written, so the client can retry the 429 without duplicating the other stream.
+		require.Nil(t, ing.Peek())
 	})
 
 	t.Run("streams that live mode does not shard are still checked by ExceedsLimits", func(t *testing.T) {
