@@ -59,18 +59,22 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		needReturningLine bool
 		anyWithout        bool
 
-		// derivesLabels records a stage that is not a filter, in the query or in a delete. Such a
-		// stage may read or change the line and any label. The read must then return the line and
-		// every metadata column.
-		derivesLabels bool
+		// readsArbitraryLabels records a stage that can read labels the plan cannot name. The
+		// stage can be in the query or in a delete. The read must then return every metadata
+		// column.
+		readsArbitraryLabels bool
 
 		// metadataNames are the metadata columns the extractor reads, through a filter or an
 		// unwrap, or emits through a grouping.
 		metadataNames = map[string]struct{}{}
 	)
 
-	addMetadataName := func(name string) {
+	var addMetadataName func(name string)
+	addMetadataName = func(name string) {
 		if name == "" || logqlerr.IsPipelineErrorLabel(name) {
+			return
+		}
+		if _, ok := metadataNames[name]; ok {
 			return
 		}
 		metadataNames[name] = struct{}{}
@@ -83,8 +87,22 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		// suffix. LogQL's own parser hints resolve the ambiguity the same way.
 		//
 		// A name of exactly the suffix trims to nothing, which names no column.
-		if base := strings.TrimSuffix(name, logqllog.DuplicateSuffix); base != name && base != "" {
-			metadataNames[base] = struct{}{}
+		//
+		// A name can carry the suffix twice. A parsed key can clash with a metadata key that a
+		// rename already took. So the base goes through the same steps.
+		base := strings.TrimSuffix(name, logqllog.DuplicateSuffix)
+		if base != name && base != "" {
+			addMetadataName(base)
+
+			// The json parser appends the suffix to the last path segment. It then joins the
+			// segments with underscores and turns each blank into an underscore. An empty last
+			// segment, or one that ends in blanks, leaves extra underscores before the suffix. The
+			// column can also end in an underscore. So also read the base with each trailing
+			// underscore removed, one at a time.
+			for column := base; strings.HasSuffix(column, "_"); {
+				column = strings.TrimSuffix(column, "_")
+				addMetadataName(column)
+			}
 		}
 	}
 	addGrouping := func(grouping *syntax.Grouping) {
@@ -127,23 +145,22 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		return ProjectionPlan{}, err
 	}
 
-	walkStages := func(sel syntax.LogSelectorExpr) {
+	walkStages := func(sel syntax.LogSelectorExpr) error {
 		pipeline, ok := sel.(*syntax.PipelineExpr)
 		if !ok {
-			return
+			return nil
 		}
-		for _, stage := range pipeline.MultiStages {
-			switch typed := stage.(type) {
-			case *syntax.LineFilterExpr:
-				needReturningLine = true
-			case *syntax.LabelFilterExpr:
-				for _, name := range typed.RequiredLabelNames() {
-					addMetadataName(name)
-				}
-			default:
-				derivesLabels = true
-			}
+		stages, err := pipeline.MultiStages.Stages()
+		if err != nil {
+			return err
 		}
+		hints := stages.Hints()
+		needReturningLine = needReturningLine || hints.ReadsLine
+		readsArbitraryLabels = readsArbitraryLabels || hints.ReadsArbitraryLabels
+		for _, name := range stages.RequiredLabelNames() {
+			addMetadataName(name)
+		}
+		return nil
 	}
 
 	// Push down the line filters that are safe to run on the stored line. Also collect the matchers
@@ -188,19 +205,23 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		}
 	}
 
-	walkStages(pipelineSelector)
+	if err := walkStages(pipelineSelector); err != nil {
+		return ProjectionPlan{}, err
+	}
 	for _, del := range deletes {
-		walkStages(del)
+		if err := walkStages(del); err != nil {
+			return ProjectionPlan{}, err
+		}
 	}
 
 	plan := ProjectionPlan{
 		lineFilter:         lineFilter,
-		needReturningLine:  needReturningLine || derivesLabels,
+		needReturningLine:  needReturningLine,
 		unpushedExpr:       unpushed,
 		pushdownCandidates: pushdownCandidates,
 		// The output carries names that cannot be listed ahead of time unless the top-level
 		// aggregation reduces it to a known label set.
-		needAllMetadata: derivesLabels || anyWithout || !reducesOutputLabels(expr),
+		needAllMetadata: readsArbitraryLabels || anyWithout || !reducesOutputLabels(expr),
 	}
 	if !plan.needAllMetadata {
 		// A metadata key named after an error label sets the pipeline error, the same way a

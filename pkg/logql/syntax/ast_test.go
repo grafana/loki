@@ -1691,6 +1691,116 @@ func TestMultiStageExpr_PushableLabelFilters(t *testing.T) {
 
 var result bool
 
+func TestMultiStageExpr_Stages_Hints(t *testing.T) {
+	tests := []struct {
+		name                     string
+		stage                    string
+		wantReadsLine            bool
+		wantReadsArbitraryLabels bool
+	}{
+		{
+			name:          "a line filter reads the line and no arbitrary label",
+			stage:         `|= "boom"`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "an ip line filter reads the line and no arbitrary label",
+			stage:         `|= ip("10.0.0.1")`,
+			wantReadsLine: true,
+		},
+		{
+			name:  "a label filter reads no line and no arbitrary label",
+			stage: `| level="error"`,
+		},
+		{
+			name:          "a logfmt parser reads the line and no arbitrary label",
+			stage:         `| logfmt`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "a json parser reads the line and no arbitrary label",
+			stage:         `| json`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "a regexp parser reads the line and no arbitrary label",
+			stage:         `| regexp "(?P<a>.+)"`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "a pattern parser reads the line and no arbitrary label",
+			stage:         `| pattern "<a> <b>"`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "an unpack parser reads the line and no arbitrary label",
+			stage:         `| unpack`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "a decolorize reads the line and no arbitrary label",
+			stage:         `| decolorize`,
+			wantReadsLine: true,
+		},
+		{
+			name:                     "a logfmt expression parser reads the line and arbitrary labels",
+			stage:                    `| logfmt a="x"`,
+			wantReadsLine:            true,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:                     "a json expression parser reads the line and arbitrary labels",
+			stage:                    `| json a="x"`,
+			wantReadsLine:            true,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:  "a drop reads no line and no arbitrary label",
+			stage: `| drop pod`,
+		},
+		{
+			name:  "a keep reads no line and no arbitrary label",
+			stage: `| keep app`,
+		},
+		{
+			name:                     "a line_format reads arbitrary labels and no line",
+			stage:                    `| line_format "{{.app}}"`,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:                     "a line_format that calls __line__ reads the line and arbitrary labels",
+			stage:                    `| line_format "{{ __line__ }}"`,
+			wantReadsLine:            true,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:                     "a label_format reads arbitrary labels and no line",
+			stage:                    `| label_format pod=app`,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:                     "a label_format that calls __line__ reads the line and arbitrary labels",
+			stage:                    `| label_format pod="{{ __line__ }}"`,
+			wantReadsLine:            true,
+			wantReadsArbitraryLabels: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expr, err := ParseLogSelector(`{app="x"} `+test.stage, true)
+			require.NoError(t, err)
+
+			stages, err := expr.(*PipelineExpr).MultiStages.Stages()
+			require.NoError(t, err)
+
+			hints := stages.Hints()
+			require.Equal(t, test.wantReadsLine, hints.ReadsLine)
+			require.Equal(t, test.wantReadsArbitraryLabels, hints.ReadsArbitraryLabels)
+		})
+	}
+}
+
 func BenchmarkReorderedPipeline(b *testing.B) {
 	logfmtLine := []byte(`level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`)
 
