@@ -1,5 +1,9 @@
 # OpenTelemetry Google Cloud Monitoring Exporter
 
+> [!WARNING]
+> The OpenTelemetry Google Cloud Monitoring exporter for Go is deprecated and will be archived after January 1st, 2027.
+> Please migrate to the standard OpenTelemetry OTLP exporters. For migration instructions, see the [Migration Guide](../../MIGRATION.md).
+
 [![Docs](https://godoc.org/github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric?status.svg)](https://pkg.go.dev/github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric)
 [![Apache License][license-image]][license-url]
 
