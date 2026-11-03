@@ -322,13 +322,22 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Zero(t, store.Chunk.DecompressedLines)
 	})
 
-	t.Run("a further query served by data objects hits the metadata cache because it opens the same object again", func(t *testing.T) {
+	t.Run("a further query served by data objects hits the metadata cache for log objects and index objects because it opens the same objects again", func(t *testing.T) {
 		_, err := runCountQuery()
 		require.NoError(t, err)
 
 		metrics, err := client.New("", "", tQuerier.HTTPURL()).Metrics()
 		require.NoError(t, err)
-		require.Positive(t, getMetricValue(t, "loki_dataobj_metadata_cache_hits_total", metrics))
+
+		families, err := parseMetricFamilies(metrics)
+		require.NoError(t, err)
+		hits := func(kind string) float64 {
+			series := dskit_metrics.FindMetricsInFamilyMatchingLabels(families["loki_dataobj_metadata_cache_hits_total"], "kind", kind)
+			require.Len(t, series, 1, "series of the %s kind", kind)
+			return series[0].GetCounter().GetValue()
+		}
+		require.Positive(t, hits("logs"))
+		require.Positive(t, hits("index"))
 	})
 
 	t.Run("a sum_over_time query served by data objects returns the same sums as the chunk store and reads no chunks", func(t *testing.T) {

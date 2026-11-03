@@ -4,6 +4,8 @@ package signin
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/signin/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
 )
@@ -38,6 +40,17 @@ type RevokeOAuth2TokenWithIAMInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RevokeOAuth2TokenWithIAMInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RevokeOAuth2TokenWithIAMRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RevokeOAuth2TokenWithIAMInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Token != nil {
+		s.WriteString(schemas.RevokeOAuth2TokenWithIAMRequest_token, *v.Token)
+	}
+}
 func (in *RevokeOAuth2TokenWithIAMInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.IsOAuthEndpoint = ptr.Bool(true)
@@ -54,13 +67,26 @@ type RevokeOAuth2TokenWithIAMOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RevokeOAuth2TokenWithIAMOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RevokeOAuth2TokenWithIAMResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RevokeOAuth2TokenWithIAMOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *RevokeOAuth2TokenWithIAMOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.RevokeOAuth2TokenWithIAMResponse, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationRevokeOAuth2TokenWithIAMMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestjson1_serializeOpRevokeOAuth2TokenWithIAM{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RevokeOAuth2TokenWithIAM, schemas.RevokeOAuth2TokenWithIAMRequest, schemas.RevokeOAuth2TokenWithIAMResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestjson1_deserializeOpRevokeOAuth2TokenWithIAM{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RevokeOAuth2TokenWithIAM, schemas.RevokeOAuth2TokenWithIAMRequest, schemas.RevokeOAuth2TokenWithIAMResponse), output: &RevokeOAuth2TokenWithIAMOutput{}}, middleware.After); err != nil {
 		return err
 	}
 

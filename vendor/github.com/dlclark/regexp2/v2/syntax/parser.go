@@ -2248,6 +2248,15 @@ func (p *parser) scanCharEscape(inClass bool) (r rune, err error) {
 
 	ch := p.moveRightGetChar()
 
+	if ch >= '0' && ch <= '9' && p.useOptionE() && p.useOptionU() {
+		// Unicode mode has no legacy octal or decimal identity escapes;
+		// only \0 not followed by a digit remains.
+		if ch == '0' && (p.charsRight() == 0 || p.rightChar(0) < '0' || p.rightChar(0) > '9') {
+			return 0, nil
+		}
+		return 0, p.getErr(ErrUnrecognizedEscape, string(ch))
+	}
+
 	if ch >= '0' && ch <= '7' {
 		p.moveLeft()
 		return p.scanOctal(), nil

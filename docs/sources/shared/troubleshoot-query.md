@@ -916,10 +916,10 @@ limits_config:
   blocked_queries:
     - pattern: ".*"          # Regex pattern to match
       regex: true
-      types:                 # Query types to block
-        - metric
-        - filter
-      hash: 0               # Or block specific query hash
+      types: metric,filter   # Query types to block (comma-separated)
+      hash: 2943214005       # Or block by query hash instead of pattern
+      query_tags:            # Optionally also require X-Query-Tags to match
+        source: grafana
 ```
 
 **Properties:**

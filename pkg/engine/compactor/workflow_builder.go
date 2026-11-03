@@ -72,6 +72,18 @@ func buildIndexFilterPlan(tenant, sourceIndexPath string, objectPaths []string) 
 	return physical.FromGraph(g)
 }
 
+// buildDeletionSweepPlan returns a single-root physical.Plan holding one
+// DeletionSweep node for tenant.
+func buildDeletionSweepPlan(tenant string) *physical.Plan {
+	node := &physical.DeletionSweep{
+		NodeID: ulid.Make(),
+		Tenant: tenant,
+	}
+	var g dag.Graph[physical.Node]
+	g.Add(node)
+	return physical.FromGraph(g)
+}
+
 // runPlan constructs a workflow.Workflow from a single-root plan, runs it,
 // and drains the pipeline. Success requires exactly one artifact followed by
 // successful pipeline completion.
