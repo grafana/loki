@@ -10,6 +10,8 @@ Loki will reject requests if they exceed a usage threshold (rate limit error) or
 
 All occurrences of these errors can be observed using the `loki_discarded_samples_total` and `loki_discarded_bytes_total` metrics. The sections below describe the various possible reasons specified in the `reason` label of these metrics.
 
+A related pair of metrics, `loki_mutated_samples_total` and `loki_mutated_bytes_total`, track samples that Loki changed rather than discarded, for example log lines that were truncated instead of rejected. These samples are still ingested, so they are not counted in `loki_discarded_samples_total` or `loki_discarded_bytes_total`.
+
 It is recommended that Loki operators set up alerts or dashboards with these metrics to detect when rate limits or validation errors occur.
 
 ## Terminology
@@ -22,7 +24,7 @@ It is recommended that Loki operators set up alerts or dashboards with these met
 
 Rate-limits are enforced when Loki cannot handle more requests from a tenant.
 
-Rate-limit errors reject the whole request before Loki stores any of it. The tables below list `Sample discarded: No` for these errors because Loki never accepts the samples in the first place, but the request still increments `loki_discarded_samples_total` and `loki_discarded_bytes_total`. Because these errors are retryable, a client can resend the same data after the rate limit condition clears.
+Rate-limit errors reject data before Loki stores it. The `rate_limited` error rejects the entire request, while `per_stream_rate_limit` and `stream_limit` reject only the affected stream. The tables below list `Sample discarded: No` for these errors because Loki never accepts the samples in the first place, but the request still increments `loki_discarded_samples_total` and `loki_discarded_bytes_total`. Because these errors are retryable, a client can resend the same data after the rate limit condition clears.
 
 ### `rate_limited`
 
@@ -58,7 +60,7 @@ We typically recommend setting `per_stream_rate_limit` no higher than 5MB, and `
 | Property                | Value                   |
 |-------------------------|-------------------------|
 | Enforced by             | `ingester`              |
-| Outcome                 | Request rejected        |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | Yes                     |
 | Sample discarded        | No                      |
 | Configurable per tenant | Yes                     |
@@ -83,7 +85,7 @@ This effect is temporary. It is bounded by the number of ingesters added or rest
 | Property                | Value                   |
 |-------------------------|-------------------------|
 | Enforced by             | `ingester`              |
-| Outcome                 | Request rejected        |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | Yes                     |
 | Sample discarded        | No                      |
 | Configurable per tenant | Yes                     |
@@ -91,7 +93,7 @@ This effect is temporary. It is bounded by the number of ingesters added or rest
 
 ## Validation Errors
 
-Validation errors occur when a request violates a validation rule defined by Loki.
+Validation errors occur when part of a request violates a validation rule defined by Loki. Unlike rate-limit errors, validation errors discard only the invalid entry or stream. Valid entries in the same request are still ingested. However, the HTTP response is still a `400 Bad Request`, so clients that retry the entire request on a 400 may create duplicate ingestion of the entries that were already accepted.
 
 ### `line_too_long`
 
@@ -99,12 +101,16 @@ This error occurs when a log line exceeds the maximum allowable length in bytes.
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file. To increase the maximum line size, adjust `max_line_size`.  We recommend that you do not increase this value above 256kb for performance reasons. Alternatively, Loki can be configured to ingest truncated versions of log lines over the length limit by using the `max_line_size_truncate` option. When truncation is enabled, you can use `max_line_size_truncate_identifier` to append a marker string to each truncated log line, so that truncated lines are easy to identify later.
 
+{{< admonition type="note" >}}
+When `max_line_size_truncate` is disabled (the default), the offending log line is discarded and counted in `loki_discarded_samples_total` with `reason="line_too_long"`. When `max_line_size_truncate` is enabled, the log line is truncated and still ingested, so it is counted in `loki_mutated_samples_total` and `loki_mutated_bytes_total` instead.
+{{< /admonition >}}
+
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Entry discarded, unless `max_line_size_truncate` is enabled, in which case the entry is truncated and ingested |
 | Retryable               | **No**            |
-| Sample discarded        | **Yes**           |
+| Sample discarded        | **Yes**, unless `max_line_size_truncate` is enabled |
 | Configurable per tenant | Yes               |
 | HTTP status code        | `400 Bad Request` |
 
@@ -119,7 +125,7 @@ Loki uses the [same validation rules as Prometheus](https://prometheus.io/docs/c
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | No                |
@@ -132,35 +138,35 @@ This validation error is returned when a stream is submitted without any labels.
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | No                |
 | HTTP status code        | `400 Bad Request` |
 
-### `too_far_behind` and `out_of_order`
+### `too_far_behind`
 
-The `too_far_behind` validation error is returned when lines in question are older than half of `-ingester.max-chunk-age` compared to the newest line in the stream.
+The `too_far_behind` validation error is returned when lines in question are older than half of `max_chunk_age` compared to the newest line in the stream.
 
 {{< admonition type="note" >}}
-`unordered_writes` and its related flag `-ingester.unordered-writes` are deprecated and will be removed in a future major release. Once removed, out-of-order writes will be accepted unconditionally, and this setting will no longer be configurable.
+Loki always accepts out-of-order writes; the per-tenant `unordered_writes` setting and the `-ingester.unordered-writes` flag that used to control this have been removed. `too_far_behind` is the only discard reason for entries that are older than the configured window relative to the stream's newest timestamp.
 {{< /admonition >}}
 
-More details can be found [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#accept-out-of-order-writes) about the Loki ordering constraints.
+For more details, refer to [Accept out-of-order writes](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#accept-out-of-order-writes).
 
-The `unordered_writes` config value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file. `max_chunk_age`, on the other hand, is a global-only configuration and cannot be set per tenant.
+`max_chunk_age` is a global-only configuration in the `ingester` block (CLI flag `-ingester.max-chunk-age`) and cannot be set per tenant.
 
 This problem can be solved by ensuring that log delivery is configured correctly, or by increasing the `max_chunk_age` value.
 
-It is recommended to resist modifying the default value of `max_chunk_age` as this has other implications, and to instead try track down the cause for delayed logged delivery. It should also be noted that this a per-stream error, so by simply splitting streams (adding more labels) this problem can be circumvented, especially if multiple hosts are sending samples for a single stream.
+We recommend keeping the default value of `max_chunk_age` because changing it affects other behaviors. Instead, try to find the cause of delayed log delivery. This is a per-stream error, so splitting streams by adding more labels can work around it, especially if multiple hosts are sending samples for a single stream.
 
 | Property                | Value               |
 |-------------------------|---------------------|
 | Enforced by             | `ingester`          |
-| Outcome                 | Request rejected    |
+| Outcome                 | Entry discarded      |
 | Retryable               | **No**              |
 | Sample discarded        | **Yes**             |
-| Configurable per tenant | Yes, for `unordered_writes`. No, for `max_chunk_age`, which is global only. |
+| Configurable per tenant | No, `max_chunk_age` is global only. |
 | HTTP status code        | `400 Bad Request`   |
 
 ### `greater_than_max_sample_age`
@@ -172,7 +178,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Entry discarded   |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
@@ -187,7 +193,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Entry discarded   |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
@@ -199,10 +205,14 @@ If a sample is submitted with more labels than Loki has been configured to allow
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_names_per_series` value. The stream to which the offending sample (i.e. the one with too many label names) belongs will be returned in the body of the HTTP response.
 
+{{< admonition type="note" >}}
+The automatically added `service_name` label is excluded from this count, so a stream may have one more label than `max_label_names_per_series` if one of its labels is `service_name`.
+{{< /admonition >}}
+
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
@@ -217,7 +227,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
@@ -232,7 +242,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
@@ -247,7 +257,7 @@ The offending stream will be returned in the body of the HTTP response.
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | No                |
@@ -257,10 +267,10 @@ The offending stream will be returned in the body of the HTTP response.
 
 This error occurs when the raw push request exceeds a size limit before Loki can parse individual streams and log lines out of it. Unlike the other validation errors on this page, `request_body_too_large` can be triggered in two different ways:
 
-- The decompressed request body exceeds the `max_recv_msg_size` or `max_decompressed_size` settings in the `distributor` configuration block. These are cluster-wide settings, not `limits_config` values, so they cannot be set per tenant. `max_recv_msg_size` defaults to 100MB, and `max_decompressed_size` defaults to 5000MB (50 times the default `max_recv_msg_size`).
+- The compressed or decompressed request body exceeds the `max_push_size` setting in the [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block. The same value is used as the limit for both the compressed and decompressed size. `max_push_size` defaults to `2GB` and can be set per tenant in the [runtime overrides](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file.
 - A single stream's label string exceeds 16MB. This limit is hardcoded and cannot be changed through any configuration option. It exists because the Prometheus label parser cannot handle labels above this size.
 
-To resolve this error, reduce the size of the push request (for example by sending fewer streams per request, or by reducing the number or size of labels on a stream), or increase `max_recv_msg_size` and `max_decompressed_size` if your cluster has the resources to handle larger requests.
+To resolve this error, reduce the size of the push request (for example by sending fewer streams per request, or by reducing the number or size of labels on a stream), or increase `max_push_size` if your cluster has the resources to handle larger requests.
 
 {{< admonition type="note" >}}
 This reason only appears in the `loki_discarded_bytes_total` metric, not in `loki_discarded_samples_total`. Loki rejects the request before it can parse the body, so it cannot count how many log lines the request contained.
@@ -272,7 +282,7 @@ This reason only appears in the `loki_discarded_bytes_total` metric, not in `lok
 | Outcome                 | Request rejected               |
 | Retryable               | **No**                         |
 | Sample discarded        | **Yes**                        |
-| Configurable per tenant | No                             |
+| Configurable per tenant | Yes, for `max_push_size`. No, for the hardcoded 16MB label-size limit. |
 | HTTP status code        | `413 Request Entity Too Large` |
 
 ### `disallowed_structured_metadata`
@@ -284,7 +294,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Entry discarded   |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
@@ -299,7 +309,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Entry discarded   |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
@@ -314,7 +324,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Entry discarded   |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
@@ -335,7 +345,7 @@ The `block_ingestion_status_code` option controls what HTTP status code Loki ret
 | Property                | Value                  |
 |-------------------------|------------------------|
 | Enforced by             | `distributor`          |
-| Outcome                 | Request rejected, or silently dropped if `block_ingestion_status_code` is `200` |
+| Outcome                 | Stream rejected, or silently dropped if `block_ingestion_status_code` is `200`; other streams in the same request are unaffected |
 | Retryable               | **No**                 |
 | Sample discarded        | **Yes**                |
 | Configurable per tenant | Yes                    |
@@ -354,7 +364,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 | Property                | Value             |
 |-------------------------|-------------------|
 | Enforced by             | `distributor`     |
-| Outcome                 | Request rejected  |
+| Outcome                 | Stream rejected; other streams in the same request are unaffected |
 | Retryable               | **No**            |
 | Sample discarded        | **Yes**           |
 | Configurable per tenant | Yes               |
