@@ -27,6 +27,14 @@ const (
 
 	HTTPHeaderIngestionPolicyKey   = "X-Loki-Ingestion-Policy"
 	lowerIngestionPolicyHeaderName = "x-loki-ingestion-policy"
+
+	// MinLimitsServiceStreamsExpiry is the shortest
+	// limits_service_streams_expiry allowed. Limits service instances can see
+	// a live stream's last push minutes late: the frontend caches accepted
+	// streams, and other zones only see the stream through metadata records
+	// for past rate buckets. A shorter expiry could evict streams that are
+	// still live.
+	MinLimitsServiceStreamsExpiry = 5 * time.Minute
 )
 
 type PriorityStream struct {
@@ -395,6 +403,12 @@ type PolicyOverridableLimits struct {
 	PerStreamRateLimitBurst *flagext.ByteSize        `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"hidden"`
 	ShardStreams            *PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"hidden"`
 
+	// LimitsServiceStreamsExpiry makes the limits service evict the
+	// policy's streams once idle for this long. 0 disables it; otherwise it
+	// must be at least MinLimitsServiceStreamsExpiry. Requires
+	// max_global_streams_per_user or inherit_limits.
+	LimitsServiceStreamsExpiry *model.Duration `yaml:"limits_service_streams_expiry" json:"limits_service_streams_expiry" doc:"hidden"`
+
 	// RejectPartialWrites is for rejecting the whole push with a 429 if
 	// any of its streams is rejected with a 429. It applies to any push
 	// containing at least one stream resolved to the policy. It is not
@@ -409,9 +423,19 @@ type PolicyOverridableLimits struct {
 	InheritLimits bool `yaml:"inherit_limits" json:"inherit_limits" doc:"hidden"`
 }
 
-// Validate checks that the overridden values are non-negative. Returned errors are field-scoped;
-// callers add the policy context.
+// Validate checks that the overridden values are non-negative, and that
+// limits_service_streams_expiry is either 0 or a valid expiry for a policy with its own
+// stream bucket. Returned errors are field-scoped; callers add the policy
+// context.
 func (p PolicyOverridableLimits) Validate() error {
+	if p.LimitsServiceStreamsExpiry != nil && *p.LimitsServiceStreamsExpiry != 0 {
+		if time.Duration(*p.LimitsServiceStreamsExpiry) < MinLimitsServiceStreamsExpiry {
+			return fmt.Errorf("limits_service_streams_expiry must be 0 or >= %s", MinLimitsServiceStreamsExpiry)
+		}
+		if p.MaxGlobalStreamsPerUser == nil && !p.InheritLimits {
+			return errors.New("limits_service_streams_expiry requires max_global_streams_per_user or inherit_limits to be set")
+		}
+	}
 	if (p.IngestionRateMB != nil && *p.IngestionRateMB < 0) || (p.IngestionBurstSizeMB != nil && *p.IngestionBurstSizeMB < 0) {
 		return errors.New("ingestion_rate_mb and ingestion_burst_size_mb must be >= 0")
 	}
@@ -459,6 +483,17 @@ func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) (int, bo
 		return o.MaxLocalStreamsPerUser(userID), true
 	}
 	return 0, false
+}
+
+// PolicyLimitsServiceStreamsExpiry returns how long a stream of the policy may go
+// unseen before the limits service expires it. It reports false when the
+// policy does not set a positive expiry.
+func (o *Overrides) PolicyLimitsServiceStreamsExpiry(userID, policy string) (time.Duration, bool) {
+	pl, ok := o.policyOverride(userID, policy)
+	if !ok || pl.LimitsServiceStreamsExpiry == nil || *pl.LimitsServiceStreamsExpiry <= 0 {
+		return 0, false
+	}
+	return time.Duration(*pl.LimitsServiceStreamsExpiry), true
 }
 
 func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
