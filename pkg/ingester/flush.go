@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -614,9 +613,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		if err := func() error {
 			chunkMtx.Lock()
 			defer chunkMtx.Unlock()
-			// For backfilled chunks, stamp IngestedAt (the time the records were ingested, or the
-			// flush time if there is none) so retention can be measured from ingestion rather than
-			// from the log timestamps. It is part of the encoded chunk, so it goes before encodeChunk.
+			// For backfilled chunks, stamp IngestedAt (the time the records were ingested) so
+			// retention can be measured from ingestion rather than from the log timestamps. It is
+			// part of the encoded chunk, so it goes before encodeChunk.
 			i.maybeSetIngestedAt(&ch, firstTime, c.ingestedAt)
 			return i.encodeChunk(ctx, &ch, c)
 		}(); err != nil {
@@ -648,15 +647,9 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	desc.flushed = time.Now()
 }
 
-// maybeSetIngestedAt stamps the chunk's IngestedAt for chunks belonging to backfilled
-// streams (those carrying the __backfill__ label), so that under TSDB FormatV4 (schema v14)
-// retention can be measured from ingestion rather than from the log timestamps. Chunks of
-// streams without the __backfill__ label keep the zero value. So do chunks whose period does
-// not support FormatV4, which fall back to Through-based retention.
-//
-// recordTime is the highest timestamp of the ingested (e.g. Kafka) records that fed the chunk.
-// It is used as the ingestion time as is if it is valid, see validRecordTimestamp. Otherwise
-// the flush time, rounded up to the next UTC day, is used.
+// maybeSetIngestedAt stamps chunks of backfilled streams (__backfill__="true") with the highest
+// timestamp of the Kafka records that fed them, so retention can count from ingestion. Other
+// chunks, and chunks whose period doesn't store it (schema < v14), keep it zero.
 func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, recordTime time.Time) {
 	if ch.Metric.Get(constants.BackfillLabel) != "true" {
 		return
@@ -675,25 +668,10 @@ func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time, rec
 	}
 
 	// Replicas of a partition consume the same records, so the record timestamp is the same on
-	// all of them and is used as is.
+	// all of them.
 	if validRecordTimestamp(recordTime) {
 		ch.IngestedAt = model.TimeFromUnixNano(recordTime.UnixNano())
-		return
 	}
-
-	// We are not using Kafka records, so fall back to the current time, adjusted to the beginning
-	// of the next UTC day as the index does. Otherwise each zone would stamp its own flush time,
-	// which gives the same chunk different checksums and prevents deduplication.
-	//
-	// Example: two replicas flush the same chunk on 2026-10-23, one at 08:03:55.882 UTC and
-	// the other at 08:03:47.848 UTC. Both are rounded up to 2026-10-24 00:00:00 UTC, so they
-	// stamp the same IngestedAt and the chunk gets the same checksum on both replicas.
-	//
-	// Replicas that flush on different UTC days still stamp different values, so those chunks are
-	// not deduplicated. We accept that: Kafka ingestion normally never gets here (every record has a
-	// timestamp), and for the rest only the chunks whose flushes fall on either side of UTC
-	// midnight are affected, a small fraction.
-	ch.IngestedAt = model.Time(tsdbindex.RoundIngestedAtUpToDay(int64(model.Now()), int64(ch.Through)))
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.

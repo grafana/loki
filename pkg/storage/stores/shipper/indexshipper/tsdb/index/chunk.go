@@ -15,13 +15,10 @@ type ChunkMeta struct {
 
 	MinTime, MaxTime int64
 
-	// IngestedAt is the time the chunk was ingested into storage: the highest timestamp
-	// of the records that fed it when it was ingested from Kafka, otherwise the flush time
-	// (as opposed to the timestamps of its log lines). The flush time is rounded up to the
-	// next UTC day before it is written into the chunk, so replicas stamp the same value and
-	// the chunk gets the same checksum on each of them. It is recorded only
-	// for backfilled chunks — those whose stream carries the __backfill__="true"
-	// label — and is zero for chunks of streams without that label. In TSDB FormatV4 it is
+	// IngestedAt is the time the chunk was ingested (as opposed to the timestamps of its log
+	// lines): the highest timestamp of the Kafka records that fed it. It is recorded only for
+	// backfilled chunks ingested from Kafka — those whose stream carries the
+	// __backfill__="true" label — and is zero otherwise. In TSDB FormatV4 it is
 	// encoded as a day-precision delta against MaxTime, rounded up to the next UTC
 	// day boundary so retention measured from ingestion never expires a chunk early.
 	//
