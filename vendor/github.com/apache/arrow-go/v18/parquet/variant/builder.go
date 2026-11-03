@@ -892,14 +892,13 @@ type variantPrimitiveType interface {
 }
 
 // Encode is a convenience function that produces the encoded bytes for a primitive
-// variant value. At the moment this is just delegating to the [Builder.Append] method,
-// but in the future it will be optimized to avoid the extra overhead and reduce allocations.
+// variant value. It does not construct metadata since primitive values do not use it.
 func Encode[T variantPrimitiveType](v T, opt ...AppendOpt) ([]byte, error) {
-	out, err := Of(v, opt...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode variant value: %w", err)
+	var b Builder
+	if err := b.Append(v, opt...); err != nil {
+		return nil, fmt.Errorf("failed to encode variant value: failed to append value: %w", err)
 	}
-	return out.value, nil
+	return b.BuildWithoutMeta(), nil
 }
 
 func Of[T variantPrimitiveType](v T, opt ...AppendOpt) (Value, error) {

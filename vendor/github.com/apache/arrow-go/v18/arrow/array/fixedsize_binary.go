@@ -44,6 +44,9 @@ func NewFixedSizeBinaryData(data arrow.ArrayData) *FixedSizeBinary {
 
 // Value returns the fixed-size slice at index i. This value should not be mutated.
 func (a *FixedSizeBinary) Value(i int) []byte {
+	if i < 0 || i >= a.Len() {
+		panic("arrow/array: index out of range")
+	}
 	i += a.data.offset
 	var (
 		bw  = int(a.bytewidth)
@@ -91,6 +94,13 @@ func (a *FixedSizeBinary) GetOneForMarshal(i int) interface{} {
 		return nil
 	}
 
+	return a.Value(i)
+}
+
+func (a *FixedSizeBinary) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
 	return a.Value(i)
 }
 

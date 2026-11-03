@@ -24,6 +24,15 @@ import (
 	"github.com/apache/arrow-go/v18/internal/utils"
 )
 
+const (
+	// DefaultMaxCompressedPageSize is the largest compressed page body accepted
+	// by readers created with NewReaderProperties.
+	DefaultMaxCompressedPageSize int64 = 64 * 1024 * 1024
+	// DefaultMaxUncompressedPageSize is the largest uncompressed page body
+	// accepted by readers created with NewReaderProperties.
+	DefaultMaxUncompressedPageSize int64 = 256 * 1024 * 1024
+)
+
 // ReaderProperties are used to define how the file reader will handle buffering and allocating buffers
 type ReaderProperties struct {
 	alloc memory.Allocator
@@ -44,6 +53,28 @@ type ReaderProperties struct {
 	// this to true can optimize memory usage for the reader. Additionally, this can decrease
 	// the amount of data retrieved when only needs to access small portions of the parquet file.
 	BufferedStreamEnabled bool
+	// PageStreamingEnabled, when true, decodes eligible data pages incrementally instead
+	// of decoding the whole uncompressed page at once. A decode aliases the batch's
+	// values directly in a reusable stream buffer (min(1 MiB, page size)) rather than
+	// materializing the page, so the read batch is clipped toward the average value
+	// width to keep one decode's values near the buffer size. Peak memory is then
+	// best-effort roughly that buffer plus the largest single value, the caller's batch
+	// and the level buffers; skewed value sizes may overshoot the target. Eligible pages
+	// are PLAIN-encoded V1/V2 data pages larger than 1 MiB (smaller pages fit in a single
+	// buffer, so streaming only adds overhead), of a streaming-capable, unencrypted codec
+	// (UNCOMPRESSED/GZIP/BROTLI/ZSTD) for a supported physical type; every other page is
+	// read whole as before. Default false (no behavior change to decoded values).
+	//
+	// Note: a streaming page's raw Page.Data() (via GetColumnPageReader) returns just its
+	// level region; the decoded values read through RowGroup.Column()/ReadBatch are the
+	// same as without streaming.
+	PageStreamingEnabled bool
+	// MaxCompressedPageSize limits the compressed body size declared by a page
+	// header. Values less than or equal to zero use DefaultMaxCompressedPageSize.
+	MaxCompressedPageSize int64
+	// MaxUncompressedPageSize limits the uncompressed body size declared by a
+	// page header. Values less than or equal to zero use DefaultMaxUncompressedPageSize.
+	MaxUncompressedPageSize int64
 }
 
 type BufferedReader interface {
@@ -62,11 +93,32 @@ func NewReaderProperties(alloc memory.Allocator) *ReaderProperties {
 	if alloc == nil {
 		alloc = memory.DefaultAllocator
 	}
-	return &ReaderProperties{alloc, DefaultBufSize, nil, false}
+	return &ReaderProperties{
+		alloc:                   alloc,
+		BufferSize:              DefaultBufSize,
+		MaxCompressedPageSize:   DefaultMaxCompressedPageSize,
+		MaxUncompressedPageSize: DefaultMaxUncompressedPageSize,
+	}
 }
 
 // Allocator returns the allocator that the properties were initialized with
 func (r *ReaderProperties) Allocator() memory.Allocator { return r.alloc }
+
+// GetMaxCompressedPageSize returns the configured compressed page limit.
+func (r *ReaderProperties) GetMaxCompressedPageSize() int64 {
+	if r.MaxCompressedPageSize <= 0 {
+		return DefaultMaxCompressedPageSize
+	}
+	return r.MaxCompressedPageSize
+}
+
+// GetMaxUncompressedPageSize returns the configured uncompressed page limit.
+func (r *ReaderProperties) GetMaxUncompressedPageSize() int64 {
+	if r.MaxUncompressedPageSize <= 0 {
+		return DefaultMaxUncompressedPageSize
+	}
+	return r.MaxUncompressedPageSize
+}
 
 // GetStream returns a section of the underlying reader based on whether or not BufferedStream is enabled.
 //
@@ -74,7 +126,7 @@ func (r *ReaderProperties) Allocator() memory.Allocator { return r.alloc }
 // into a buffer in memory and return a bytes.NewReader for that buffer.
 func (r *ReaderProperties) GetStream(source io.ReaderAt, start, nbytes int64) (BufferedReader, error) {
 	if r.BufferedStreamEnabled {
-		return utils.NewBufferedReader(io.NewSectionReader(source, start, nbytes), int(r.BufferSize)), nil
+		return utils.NewBufferedReader(io.NewSectionReader(source, start, nbytes), int(min(r.BufferSize, nbytes))), nil
 	}
 
 	data := make([]byte, nbytes)

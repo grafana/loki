@@ -20,11 +20,20 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/klauspost/compress/gzip"
 )
 
 type gzipCodec struct{}
+
+var gzipWriterPools [gzip.BestCompression - gzip.StatelessCompression + 1]sync.Pool
+
+const (
+	gzipHeaderSize              = 10
+	gzipTrailerSize             = 8
+	gzipStatelessCloseBlockSize = 5
+)
 
 func (gzipCodec) NewReader(r io.Reader) io.ReadCloser {
 	ret, err := gzip.NewReader(r)
@@ -35,25 +44,41 @@ func (gzipCodec) NewReader(r io.Reader) io.ReadCloser {
 }
 
 func (gzipCodec) Decode(dst, src []byte) []byte {
-	rdr, err := gzip.NewReader(bytes.NewReader(src))
+	dst, err := (gzipCodec{}).DecodeWithError(dst, src)
 	if err != nil {
 		panic(err)
 	}
+	return dst
+}
+
+func (gzipCodec) DecodeWithError(dst, src []byte) ([]byte, error) {
+	rdr, err := gzip.NewReader(bytes.NewReader(src))
+	if err != nil {
+		return nil, err
+	}
+	defer rdr.Close()
 
 	if dst != nil {
 		n, err := io.ReadFull(rdr, dst)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
-		return dst[:n]
+		var extra [1]byte
+		if nExtra, err := rdr.Read(extra[:]); nExtra != 0 || err != io.EOF {
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("codec: gzip: decoded data exceeds destination size %d", len(dst))
+		}
+		return dst[:n], nil
 	}
 
 	dst, err = io.ReadAll(rdr)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return dst
+	return dst, nil
 }
 
 func (g gzipCodec) EncodeLevel(dst, src []byte, level int) []byte {
@@ -62,18 +87,48 @@ func (g gzipCodec) EncodeLevel(dst, src []byte, level int) []byte {
 		dst = make([]byte, 0, maxlen)
 	}
 	buf := bytes.NewBuffer(dst[:0])
-	w, err := gzip.NewWriterLevel(buf, level)
+	pool := gzipWriterPool(level)
+	var w *gzip.Writer
+	if pool != nil {
+		if cached := pool.Get(); cached != nil {
+			w = cached.(*gzip.Writer)
+			w.Reset(buf)
+		}
+	}
+	var err error
+	if w == nil {
+		w, err = gzip.NewWriterLevel(buf, level)
+	}
 	if err != nil {
 		panic(err)
 	}
 	_, err = w.Write(src)
 	if err != nil {
+		releaseGzipWriter(pool, w)
 		panic(err)
 	}
 	if err := w.Close(); err != nil {
+		releaseGzipWriter(pool, w)
 		panic(err)
 	}
-	return buf.Bytes()
+	compressed := buf.Bytes()
+	releaseGzipWriter(pool, w)
+	return compressed
+}
+
+func gzipWriterPool(level int) *sync.Pool {
+	if level < gzip.StatelessCompression || level > gzip.BestCompression {
+		return nil
+	}
+	return &gzipWriterPools[level-gzip.StatelessCompression]
+}
+
+func releaseGzipWriter(pool *sync.Pool, w *gzip.Writer) {
+	if pool == nil {
+		return
+	}
+	w.Reset(nil)
+	pool.Put(w)
 }
 
 func (g gzipCodec) Encode(dst, src []byte) []byte {
@@ -81,7 +136,8 @@ func (g gzipCodec) Encode(dst, src []byte) []byte {
 }
 
 func (gzipCodec) CompressBound(len int64) int64 {
-	return len + ((len + 7) >> 3) + ((len + 63) >> 6) + 5
+	return len + ((len + 7) >> 3) + ((len + 63) >> 6) + 5 +
+		gzipHeaderSize + gzipTrailerSize + gzipStatelessCloseBlockSize
 }
 
 func (gzipCodec) NewWriter(w io.Writer) io.WriteCloser {

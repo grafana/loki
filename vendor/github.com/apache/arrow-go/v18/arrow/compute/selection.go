@@ -26,7 +26,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/compute/exec"
 	"github.com/apache/arrow-go/v18/arrow/compute/internal/kernels"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -41,7 +40,12 @@ are handled based on FilterOptions.`,
 	}
 	filterMetaFunc = NewMetaFunction("filter", Binary(), filterDoc,
 		func(ctx context.Context, opts FunctionOptions, args ...Datum) (Datum, error) {
-			if args[1].(ArrayLikeDatum).Type().ID() != arrow.BOOL {
+			filter, ok := args[1].(ArrayLikeDatum)
+			if !ok {
+				return nil, fmt.Errorf("%w: filter should be array-like", arrow.ErrNotImplemented)
+			}
+
+			if filter.Type().ID() != arrow.BOOL {
 				return nil, fmt.Errorf("%w: filter argument must be boolean type",
 					arrow.ErrNotImplemented)
 			}
@@ -110,6 +114,26 @@ given by "indices". Nulls in "indices" emit null in the output`,
 		})
 )
 
+func takeTableColumn(ctx context.Context, opts FunctionOptions, tbl arrow.Table, indices Datum, cols []arrow.Column, i int) error {
+	inCol := tbl.Column(i)
+	result, err := CallFunction(ctx, "take", opts,
+		&ChunkedDatum{Value: inCol.Data()},
+		indices)
+	if err != nil {
+		return err
+	}
+	defer result.Release()
+	out := result.(ArrayLikeDatum)
+	chunks := out.Chunks()
+	if out.Kind() == KindArray {
+		defer chunks[0].Release()
+	}
+	chk := arrow.NewChunked(out.Type(), chunks)
+	defer chk.Release()
+	cols[i] = *arrow.NewColumn(inCol.Field(), chk)
+	return nil
+}
+
 func takeTableImpl(ctx context.Context, opts FunctionOptions, args ...Datum) (Datum, error) {
 	tbl := args[0].(*TableDatum).Value
 	ncols := int(tbl.NumCols())
@@ -120,37 +144,40 @@ func takeTableImpl(ctx context.Context, opts FunctionOptions, args ...Datum) (Da
 		}
 	}()
 
-	eg, cctx := errgroup.WithContext(ctx)
-	eg.SetLimit(GetExecCtx(ctx).NumParallel)
-	for i := 0; i < ncols; i++ {
-		i := i
-		eg.Go(func() error {
-			inCol := tbl.Column(i)
-			result, err := CallFunction(cctx, "take", opts,
-				&ChunkedDatum{Value: inCol.Data()},
-				args[1])
-			if err != nil {
-				return err
+	numParallel := GetExecCtx(ctx).NumParallel
+	if ncols <= 1 || numParallel <= 1 {
+		for i := 0; i < ncols; i++ {
+			if err := takeTableColumn(ctx, opts, tbl, args[1], cols, i); err != nil {
+				return nil, err
 			}
-			defer result.Release()
-			out := result.(ArrayLikeDatum)
-			chunks := out.Chunks()
-			if out.Kind() == KindArray {
-				defer chunks[0].Release()
-			}
-			chk := arrow.NewChunked(out.Type(), chunks)
-			defer chk.Release()
-			cols[i] = *arrow.NewColumn(inCol.Field(), chk)
-			return nil
-		})
-	}
+		}
+	} else {
+		eg, cctx := errgroup.WithContext(ctx)
+		eg.SetLimit(numParallel)
+		for i := 0; i < ncols; i++ {
+			i := i
+			eg.Go(func() error {
+				return takeTableColumn(cctx, opts, tbl, args[1], cols, i)
+			})
+		}
 
-	if err := eg.Wait(); err != nil {
-		return nil, err
+		if err := eg.Wait(); err != nil {
+			return nil, err
+		}
 	}
 
 	final := array.NewTable(tbl.Schema(), cols, -1)
 	return &TableDatum{Value: final}, nil
+}
+
+func takeRecordColumn(ctx context.Context, opts FunctionOptions, rb arrow.RecordBatch, indices Datum, cols []arrow.Array, i int) error {
+	out, err := CallFunction(ctx, "array_take", opts, &ArrayDatum{Value: rb.Column(i).Data()}, indices)
+	if err != nil {
+		return err
+	}
+	defer out.Release()
+	cols[i] = out.(*ArrayDatum).MakeArray()
+	return nil
 }
 
 func takeRecordImpl(ctx context.Context, opts FunctionOptions, args ...Datum) (Datum, error) {
@@ -165,7 +192,7 @@ func takeRecordImpl(ctx context.Context, opts FunctionOptions, args ...Datum) (D
 	}
 
 	rb := args[0].(*RecordDatum).Value
-	ncols := rb.NumCols()
+	ncols := int(rb.NumCols())
 	nrows := args[1].(ArrayLikeDatum).Len()
 	cols := make([]arrow.Array, ncols)
 	defer func() {
@@ -176,27 +203,39 @@ func takeRecordImpl(ctx context.Context, opts FunctionOptions, args ...Datum) (D
 		}
 	}()
 
-	eg, cctx := errgroup.WithContext(ctx)
-	eg.SetLimit(GetExecCtx(ctx).NumParallel)
-	for i := range rb.Columns() {
-		i := i
-		eg.Go(func() error {
-			out, err := CallFunction(cctx, "array_take", opts, &ArrayDatum{Value: rb.Column(i).Data()}, indices)
-			if err != nil {
-				return err
+	numParallel := GetExecCtx(ctx).NumParallel
+	if ncols <= 1 || numParallel <= 1 {
+		for i := 0; i < ncols; i++ {
+			if err := takeRecordColumn(ctx, opts, rb, indices, cols, i); err != nil {
+				return nil, err
 			}
-			defer out.Release()
-			cols[i] = out.(*ArrayDatum).MakeArray()
-			return nil
-		})
-	}
+		}
+	} else {
+		eg, cctx := errgroup.WithContext(ctx)
+		eg.SetLimit(numParallel)
+		for i := 0; i < ncols; i++ {
+			i := i
+			eg.Go(func() error {
+				return takeRecordColumn(cctx, opts, rb, indices, cols, i)
+			})
+		}
 
-	if err := eg.Wait(); err != nil {
-		return nil, err
+		if err := eg.Wait(); err != nil {
+			return nil, err
+		}
 	}
 
 	outRec := array.NewRecordBatch(rb.Schema(), cols, nrows)
 	return &RecordDatum{Value: outRec}, nil
+}
+
+func takeArrayChunk(ctx context.Context, opts FunctionOptions, values Datum, chunk arrow.Array) (arrow.Array, error) {
+	result, err := CallFunction(ctx, "array_take", opts, values, &ArrayDatum{Value: chunk.Data()})
+	if err != nil {
+		return nil, err
+	}
+	defer result.Release()
+	return result.(*ArrayDatum).MakeArray(), nil
 }
 
 func takeArrayImpl(ctx context.Context, opts FunctionOptions, args ...Datum) (Datum, error) {
@@ -214,22 +253,32 @@ func takeArrayImpl(ctx context.Context, opts FunctionOptions, args ...Datum) (Da
 			}
 		}()
 
-		eg, cctx := errgroup.WithContext(ctx)
-		eg.SetLimit(GetExecCtx(ctx).NumParallel)
-		for i := range chunks {
-			i := i
-			eg.Go(func() error {
-				result, err := CallFunction(cctx, "array_take", opts, args[0], &ArrayDatum{Value: chunks[i].Data()})
+		numParallel := GetExecCtx(ctx).NumParallel
+		if len(chunks) <= 1 || numParallel <= 1 {
+			for i, chunk := range chunks {
+				result, err := takeArrayChunk(ctx, opts, args[0], chunk)
 				if err != nil {
-					return err
+					return nil, err
 				}
-				defer result.Release()
-				out[i] = result.(*ArrayDatum).MakeArray()
-				return nil
-			})
-		}
-		if err := eg.Wait(); err != nil {
-			return nil, err
+				out[i] = result
+			}
+		} else {
+			eg, cctx := errgroup.WithContext(ctx)
+			eg.SetLimit(numParallel)
+			for i := range chunks {
+				i := i
+				eg.Go(func() error {
+					result, err := takeArrayChunk(cctx, opts, args[0], chunks[i])
+					if err != nil {
+						return err
+					}
+					out[i] = result
+					return nil
+				})
+			}
+			if err := eg.Wait(); err != nil {
+				return nil, err
+			}
 		}
 		return &ChunkedDatum{
 			Value: arrow.NewChunked(args[0].(*ArrayDatum).Type(), out)}, nil
@@ -375,37 +424,19 @@ func selectMapImpl(fn exec.ArrayKernelExec) exec.ArrayKernelExec {
 		childIndices := out.Children[0].MakeArray()
 		defer childIndices.Release()
 
-		// Maps have a single struct child containing the keys and items
-		// We need to take from both the keys and items arrays
-		takenKeys, err := TakeArrayOpts(ctx.Ctx, values.Keys(), childIndices, kernels.TakeOptions{BoundsCheck: false})
+		// Take the entire struct child as a unit, preserving all field metadata
+		// (including Nullable flags and validity bitmaps).  This matches the C++
+		// reference implementation which calls Take on typed_values.values() whole.
+		structChild := array.MakeFromData(values.Data().(*array.Data).Children()[0])
+		defer structChild.Release()
+
+		takenStruct, err := TakeArrayOpts(ctx.Ctx, structChild, childIndices, kernels.TakeOptions{BoundsCheck: false})
 		if err != nil {
 			return err
 		}
-		defer takenKeys.Release()
+		defer takenStruct.Release()
 
-		takenItems, err := TakeArrayOpts(ctx.Ctx, values.Items(), childIndices, kernels.TakeOptions{BoundsCheck: false})
-		if err != nil {
-			return err
-		}
-		defer takenItems.Release()
-
-		// Build the struct child array with the taken keys and items
-		// Maps have a single struct child with "key" and "value" fields
-		structType := arrow.StructOf(
-			arrow.Field{Name: "key", Type: values.Keys().DataType()},
-			arrow.Field{Name: "value", Type: values.Items().DataType()},
-		)
-
-		// Create struct data with taken keys and items as children
-		structData := array.NewData(
-			structType,
-			int(childIndices.Len()),
-			[]*memory.Buffer{nil},
-			[]arrow.ArrayData{takenKeys.Data(), takenItems.Data()},
-			0, 0)
-		defer structData.Release()
-
-		out.Children[0].TakeOwnership(structData)
+		out.Children[0].TakeOwnership(takenStruct.Data())
 		return nil
 	}
 }
@@ -504,6 +535,40 @@ func structFilter(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResul
 	return nil
 }
 
+// dictionaryFilter is a special case for filtering a dictionary array
+//
+// The shared dictionary is reused as-is and never compacted, so the result may retain values
+// that are no longer referenced by any index.
+func dictionaryFilter(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
+	// convert the filter (boolean array) to indices to take from the dictionary array.
+	indices, err := kernels.GetTakeIndices(exec.GetAllocator(ctx.Ctx),
+		&batch.Values[1].Array, ctx.State.(kernels.FilterState).NullSelection)
+	if err != nil {
+		return err
+	}
+	defer indices.Release()
+
+	filter := NewDatum(indices)
+	defer filter.Release()
+
+	valData := batch.Values[0].Array.MakeData()
+	defer valData.Release()
+
+	vals := NewDatum(valData)
+	defer vals.Release()
+
+	// run 'take' on the dictionary array, which will call dictionaryTake.
+	// we know the bounds are good because the indices were just created by GetTakeIndices
+	result, err := Take(ctx.Ctx, kernels.TakeOptions{BoundsCheck: false}, vals, filter)
+	if err != nil {
+		return err
+	}
+	defer result.Release()
+
+	out.TakeOwnership(result.(*ArrayDatum).Value)
+	return nil
+}
+
 func structTake(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
 	// generate top level validity bitmap
 	if err := kernels.TakeExec(kernels.StructImpl)(ctx, batch, out); err != nil {
@@ -538,6 +603,33 @@ func structTake(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult)
 	return eg.Wait()
 }
 
+// dictionaryTake is a special case for taking from a dictionary array.
+//
+// The shared dictionary is reused as-is and never compacted, so the result may retain values
+// that are no longer referenced by any index.
+func dictionaryTake(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
+	dictArr := batch.Values[0].Array.MakeArray().(*array.Dictionary)
+	defer dictArr.Release()
+
+	selection := batch.Values[1].Array.MakeArray()
+	defer selection.Release()
+
+	// run 'take' on the indices array of the dictionary array.
+	takenIndices, err := TakeArrayOpts(ctx.Ctx, dictArr.Indices(), selection, kernels.TakeOptions{BoundsCheck: ctx.State.(kernels.TakeState).BoundsCheck})
+	if err != nil {
+		return err
+	}
+	defer takenIndices.Release()
+
+	// create a new dictionary array - the indices are the 'taken' indices,
+	// and the dictionary is a pointer to the original dictionary.
+	result := array.NewDictionaryArray(dictArr.DataType(), takenIndices, dictArr.Dictionary())
+	defer result.Release()
+
+	out.TakeOwnership(result.Data())
+	return nil
+}
+
 // RegisterVectorSelection registers functions that select specific
 // values from arrays such as Take and Filter
 func RegisterVectorSelection(reg FunctionRegistry) {
@@ -552,6 +644,7 @@ func RegisterVectorSelection(reg FunctionRegistry) {
 		{In: exec.NewIDInput(arrow.LARGE_LIST), Exec: selectListImpl(kernels.FilterExec(kernels.ListImpl[int64]))},
 		{In: exec.NewIDInput(arrow.FIXED_SIZE_LIST), Exec: selectListImpl(kernels.FilterExec(kernels.FSLImpl))},
 		{In: exec.NewIDInput(arrow.DENSE_UNION), Exec: denseUnionImpl(kernels.FilterExec(kernels.DenseUnionImpl))},
+		{In: exec.NewIDInput(arrow.DICTIONARY), Exec: dictionaryFilter},
 		{In: exec.NewIDInput(arrow.EXTENSION), Exec: extensionFilterImpl},
 		{In: exec.NewIDInput(arrow.STRUCT), Exec: structFilter},
 	}...)
@@ -562,6 +655,7 @@ func RegisterVectorSelection(reg FunctionRegistry) {
 		{In: exec.NewIDInput(arrow.FIXED_SIZE_LIST), Exec: selectListImpl(kernels.TakeExec(kernels.FSLImpl))},
 		{In: exec.NewIDInput(arrow.MAP), Exec: selectMapImpl(kernels.TakeExec(kernels.MapImpl))},
 		{In: exec.NewIDInput(arrow.DENSE_UNION), Exec: denseUnionImpl(kernels.TakeExec(kernels.DenseUnionImpl))},
+		{In: exec.NewIDInput(arrow.DICTIONARY), Exec: dictionaryTake},
 		{In: exec.NewIDInput(arrow.EXTENSION), Exec: extensionTakeImpl},
 		{In: exec.NewIDInput(arrow.STRUCT), Exec: structTake},
 	}...)
@@ -627,6 +721,10 @@ func FilterArray(ctx context.Context, values, filter arrow.Array, options Filter
 	return outDatum.(*ArrayDatum).MakeArray(), nil
 }
 
+func filterRecordBatchColumn(ctx context.Context, col, indices arrow.Array) (arrow.Array, error) {
+	return TakeArrayOpts(ctx, col, indices, kernels.TakeOptions{BoundsCheck: false})
+}
+
 func FilterRecordBatch(ctx context.Context, batch arrow.RecordBatch, filter arrow.Array, opts *FilterOptions) (arrow.RecordBatch, error) {
 	if batch.NumRows() != int64(filter.Len()) {
 		return nil, fmt.Errorf("%w: filter inputs must all be the same length", arrow.ErrInvalid)
@@ -652,22 +750,34 @@ func FilterRecordBatch(ctx context.Context, batch arrow.RecordBatch, filter arro
 			}
 		}
 	}()
-	eg, cctx := errgroup.WithContext(ctx)
-	eg.SetLimit(GetExecCtx(ctx).NumParallel)
-	for i, col := range batch.Columns() {
-		i, col := i, col
-		eg.Go(func() error {
-			out, err := TakeArrayOpts(cctx, col, indicesArr, kernels.TakeOptions{BoundsCheck: false})
+
+	numParallel := GetExecCtx(ctx).NumParallel
+	if batch.NumCols() == 1 || numParallel <= 1 {
+		for i, col := range batch.Columns() {
+			out, err := filterRecordBatchColumn(ctx, col, indicesArr)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			cols[i] = out
-			return nil
-		})
-	}
+		}
+	} else {
+		eg, cctx := errgroup.WithContext(ctx)
+		eg.SetLimit(numParallel)
+		for i, col := range batch.Columns() {
+			i, col := i, col
+			eg.Go(func() error {
+				out, err := filterRecordBatchColumn(cctx, col, indicesArr)
+				if err != nil {
+					return err
+				}
+				cols[i] = out
+				return nil
+			})
+		}
 
-	if err := eg.Wait(); err != nil {
-		return nil, err
+		if err := eg.Wait(); err != nil {
+			return nil, err
+		}
 	}
 
 	return array.NewRecordBatch(batch.Schema(), cols, int64(indicesArr.Len())), nil

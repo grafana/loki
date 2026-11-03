@@ -84,6 +84,10 @@ func (a *Null) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *Null) ValueAsAny(i int) any {
+	return nil
+}
+
 func (a *Null) MarshalJSON() ([]byte, error) {
 	return json.Marshal(make([]interface{}, a.Len()))
 }
@@ -201,6 +205,7 @@ func (b *NullBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *NullBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

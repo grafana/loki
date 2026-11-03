@@ -72,12 +72,15 @@ func CastIntegerToFloating(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.
 
 type decimal[T decimal128.Num | decimal256.Num] interface {
 	Less(T) bool
-	GreaterEqual(T) bool
+	Greater(T) bool
 	LowBits() uint64
 }
 
 func decimalToIntImpl[InT decimal128.Num | decimal256.Num, OutT arrow.IntType | arrow.UintType](allowOverflow bool, min, max InT, v decimal[InT], err *error) OutT {
-	if !allowOverflow && (v.Less(min) || v.GreaterEqual(max)) {
+	// min and max are the inclusive bounds of the output integer type, so a
+	// value equal to max (e.g. math.MaxInt64) is in range. Use a strict
+	// greater-than check rather than >= so the endpoints are not rejected.
+	if !allowOverflow && (v.Less(min) || v.Greater(max)) {
 		debug.Log("integer value out of bounds from decimal")
 		*err = fmt.Errorf("%w: integer value out of bounds", arrow.ErrInvalid)
 		return OutT(0)

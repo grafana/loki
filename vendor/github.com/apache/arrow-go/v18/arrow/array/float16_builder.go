@@ -80,9 +80,15 @@ func (b *Float16Builder) AppendNull() {
 }
 
 func (b *Float16Builder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendNull()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendNulls(n)
 }
 
 func (b *Float16Builder) AppendEmptyValue() {
@@ -91,9 +97,15 @@ func (b *Float16Builder) AppendEmptyValue() {
 }
 
 func (b *Float16Builder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendEmptyValue()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendEmptyValues(b.data.Bytes(), arrow.Float16Traits.BytesRequired(1), n)
 }
 
 func (b *Float16Builder) UnsafeAppendBoolToBitmap(isValid bool) {
@@ -251,6 +263,7 @@ func (b *Float16Builder) Unmarshal(dec *json.Decoder) error {
 // be silently truncated.
 func (b *Float16Builder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
