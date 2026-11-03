@@ -48,6 +48,10 @@ tests:
 
       - series: 'loki_discarded_samples_total{namespace="my-ns", tenant="application", reason="line_too_long"}'
         values: '0x5 0+120x25 3000'
+      - series: 'loki_discarded_samples_total{namespace="my-ns", tenant="infrastructure", reason="rate_limited"}'
+        values: '0+600x40'
+      - series: 'loki_distributor_lines_received_total{namespace="my-ns", tenant="infrastructure"}'
+        values: '0+2000x40'
 
       - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", condition="Ready", status="false"}'
         values: '1+0x25'
@@ -163,6 +167,20 @@ tests:
                 Samples are discarded because of "line_too_long" at a rate of 2 samples per second.
               summary: Loki is discarding samples during ingestion because they fail validation.
               runbook_url: "[[ .RunbookURL]]#Loki-Discarded-Samples-Warning"
+      - eval_time: 35m
+        alertname: LokiDiscardedSamplesRateLimit
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              tenant: infrastructure
+              severity: warning
+              reason: rate_limited
+            exp_annotations:
+              description: |-
+                Loki in namespace my-ns is discarding 30.00% of samples in the "infrastructure" tenant because of "rate_limited".
+                These discards are retryable, but a sustained ratio means ingestion is not keeping up with the tenant limits.
+              summary: Loki is discarding a high proportion of samples because of ingestion limits.
+              runbook_url: "[[ .RunbookURL ]]#Loki-Discarded-Samples-Rate-Limit"
       - eval_time: 16m
         alertname: LokistackComponentsNotReadyWarning
         exp_alerts:
