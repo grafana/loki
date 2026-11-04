@@ -73,7 +73,7 @@ func runScriptOutcomes(t *testing.T, name, script string, stacks []executionStac
 	outcomes := make(map[string][]evalOutcome, len(stacks))
 	runScript(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
 		for _, stack := range stacks {
-			outcome := evalOutcome{eval: evalLabel(cmd), skipped: !stack.isEvalSupported(cmd, exp)}
+			outcome := evalOutcome{eval: cmd.label(), skipped: !stack.isEvalSupported(cmd, exp)}
 			if !outcome.skipped {
 				_, outcome.err = stack.eval(cmd)
 			}
@@ -187,7 +187,7 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, exp expectations) {
 	t.Helper()
 
-	t.Run(evalLabel(cmd), func(t *testing.T) {
+	t.Run(cmd.label(), func(t *testing.T) {
 		for _, stack := range stacks {
 			t.Run(stack.name(), func(t *testing.T) {
 				if !stack.isEvalSupported(cmd, exp) {
@@ -199,20 +199,6 @@ func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, ex
 			})
 		}
 	})
-}
-
-// evalLabel returns the name of the subtest of cmd: its mode and its query.
-func evalLabel(cmd evalCmd) string {
-	switch cmd.mode {
-	case evalInstant:
-		return "instant: " + cmd.query
-	case evalRange:
-		return "range: " + cmd.query
-	case evalSelect:
-		return "select " + strings.ToLower(cmd.direction.String()) + ": " + cmd.query
-	default:
-		panic(fmt.Sprintf("unknown eval mode %v", cmd.mode))
-	}
 }
 
 // effectiveEpsilon returns the floating point comparison tolerance for stackName: the value set
