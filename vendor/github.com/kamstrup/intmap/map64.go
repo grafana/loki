@@ -11,12 +11,20 @@ type IntKey interface {
 	~int | ~uint | ~int64 | ~uint64 | ~int32 | ~uint32 | ~int16 | ~uint16 | ~int8 | ~uint8 | ~uintptr
 }
 
+// pair represents a key-value pair in Map.
+//
+// It is an important detail that V is before K in the memory layout. Despite it feeling more natural to have K first!
+// We must have sizeof(pair[K,struct{}]) == sizeof(K), to minimize memory consumption when using a Set.
+// If V is last, then &p.V can point to invalid memory, which is not permitted. This makes the Go compiler emit
+// some padding for the pair struct in that case.
+// See https://github.com/kamstrup/intmap/pull/6#issuecomment-3581008879
 type pair[K IntKey, V any] struct {
-	K K
 	V V
+	K K
 }
 
-const fillFactor64 = 0.7
+const fillFactorBase64 = 7
+const fillFactor64 = fillFactorBase64 / 10.0
 
 func phiMix64(x int) int {
 	h := int64(x) * int64(0x9E3779B9)
@@ -324,15 +332,15 @@ func (m *Map[K, V]) Len() int {
 }
 
 func (m *Map[K, V]) sizeThreshold() int {
-	return int(math.Floor(float64(len(m.data)) * fillFactor64))
+	return int(uint64(len(m.data)) * fillFactorBase64 / 10)
 }
 
 func (m *Map[K, V]) startIndex(key K) int {
-	return phiMix64(int(key)) & (len(m.data) - 1)
+	return startIndex(int(key), len(m.data))
 }
 
 func (m *Map[K, V]) nextIndex(idx int) int {
-	return (idx + 1) & (len(m.data) - 1)
+	return nextIndex(idx, len(m.data))
 }
 
 func forEach64[K IntKey, V any](pairs []pair[K, V], f func(k K, v V) bool) {
@@ -439,4 +447,12 @@ func arraySize(exp int, fill float64) int {
 		s = 2
 	}
 	return int(s)
+}
+
+func startIndex(key, len int) int {
+	return phiMix64(key) & (len - 1)
+}
+
+func nextIndex(idx, len int) int {
+	return (idx + 1) & (len - 1)
 }
