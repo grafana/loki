@@ -88,9 +88,11 @@ type streamIngester struct {
 	dateCount atomic.Int64
 
 	// Reusable per-stream scratch — reset via [:0] to avoid allocs.
-	scratchNgrams      [][8]byte
-	scratchLabelValues []string
-	scratchHash        []byte
+	scratchNgrams         [][8]byte
+	scratchLabelValues    []string
+	scratchSharedMetadata []logproto.LabelAdapter
+	scratchMetadata       []logproto.LabelAdapter
+	scratchHash           []byte
 
 	// Per-entry date cache to avoid time.Format allocations.
 	cachedYear  int
@@ -283,7 +285,18 @@ func (w *streamIngester) formatDate(t time.Time) string {
 // poison record — in pipeline mode it rides the queue item to the worker.
 // Callers without Kafka context (tests, benches) pass the zero recordRef.
 func (s *indexBuilder) processStream(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
-	if len(stream.Entries) == 0 {
+	// Flat callers may reuse their entry buffer after returning.
+	if s.pipeline != nil {
+		copied := *stream
+		copied.Entries = append([]logproto.Entry(nil), stream.Entries...)
+		stream = &copied
+	}
+	return s.processInternalStream(logproto.FromStream(*stream), parsedLabels, enqueuedAt, ref)
+}
+
+// processInternalStream takes ownership of the decoded stream when extraction is asynchronous.
+func (s *indexBuilder) processInternalStream(stream *logproto.InternalStreamAdapter, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
+	if stream.EntryCount() == 0 {
 		return nil
 	}
 
@@ -294,15 +307,36 @@ func (s *indexBuilder) processStream(stream *logproto.Stream, parsedLabels *labe
 	s.lastAppend = now
 
 	if s.pipeline != nil {
-		return s.pipeline.enqueue(stream, parsedLabels, enqueuedAt, ref)
+		return s.pipeline.enqueueInternal(stream, parsedLabels, enqueuedAt, ref)
 	}
-	return s.ing.ingest(stream, parsedLabels, enqueuedAt, ref)
+	return s.ing.ingestInternal(stream, parsedLabels, enqueuedAt, ref)
 }
 
 // ingest extracts n-grams from a decoded stream and appends them to this
 // ingester's postings buffer as (ngram, epoch-tick) pairs. This is the
 // critical path — see the performance rules in CLAUDE.md.
 func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
+	return w.ingestGroup(stream.Entries, nil, parsedLabels, enqueuedAt, ref)
+}
+
+func (w *streamIngester) ingestInternal(stream *logproto.InternalStreamAdapter, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
+	defer func() {
+		clear(w.scratchSharedMetadata)
+		clear(w.scratchMetadata)
+	}()
+	for _, resource := range stream.ResourceLogs {
+		for _, scope := range resource.ScopeLogs {
+			clear(w.scratchSharedMetadata)
+			w.scratchSharedMetadata = logproto.AppendMetadata(w.scratchSharedMetadata[:0], scope.Attrs, resource.Attrs)
+			if err := w.ingestGroup(scope.Entries, w.scratchSharedMetadata, parsedLabels, enqueuedAt, ref); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (w *streamIngester) ingestGroup(entries []logproto.Entry, shared []logproto.LabelAdapter, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
 	w.scratchLabelValues = w.scratchLabelValues[:0]
 	if parsedLabels != nil {
 		parsedLabels.Range(func(l labels.Label) {
@@ -315,8 +349,8 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 	postings := w.postings
 	ngramLength := w.ngramLength
 	documentShard := w.documentShard(parsedLabels)
-	for i := range stream.Entries {
-		entry := &stream.Entries[i]
+	for i := range entries {
+		entry := &entries[i]
 		entryTime := entry.Timestamp.UTC()
 		date := w.formatDate(entryTime)
 
@@ -343,7 +377,13 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 		}
 		w.observeDate(date, entryTime, enqueuedAt)
 
-		w.scratchNgrams = w.extractFn(ngramLength, entry.Line, entry.StructuredMetadata, w.scratchLabelValues, w.scratchNgrams[:0])
+		metadata := entry.StructuredMetadata
+		if len(shared) > 0 {
+			clear(w.scratchMetadata)
+			w.scratchMetadata = logproto.AppendMetadata(w.scratchMetadata[:0], metadata, shared)
+			metadata = w.scratchMetadata
+		}
+		w.scratchNgrams = w.extractFn(ngramLength, entry.Line, metadata, w.scratchLabelValues, w.scratchNgrams[:0])
 		for _, gram := range w.scratchNgrams {
 			// appendPair and bufferFull inline, so the per-ngram cost stays two
 			// slice appends and a length check.

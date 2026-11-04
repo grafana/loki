@@ -573,3 +573,42 @@ func TestBuilder_Clear_FullReset(t *testing.T) {
 	require.Zero(t, b.ing.postings.sortedHead)
 	require.Empty(t, b.ing.postings.refTicks)
 }
+
+func TestNestedStreamIndexMatchesExpanded(t *testing.T) {
+	for _, version := range []string{"v3", "v4", "v5"} {
+		for _, workers := range []int{1, 2} {
+			t.Run(fmt.Sprintf("%s/workers=%d", version, workers), func(t *testing.T) {
+				at := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+				nested := logproto.InternalStreamAdapter{Labels: `{app="labelvalue"}`, ResourceLogs: []logproto.ResourceLogs{{
+					Attrs: []logproto.LabelAdapter{{Name: "resource", Value: "resource-only-token"}, {Name: "override", Value: "hidden-resource-token"}},
+					ScopeLogs: []logproto.ScopeLogs{
+						{Attrs: []logproto.LabelAdapter{{Name: "override", Value: "scope-token"}}, Entries: []logproto.Entry{
+							{Timestamp: at, Line: "first line"},
+							{Timestamp: at.Add(time.Second), Line: "second line", StructuredMetadata: []logproto.LabelAdapter{{Name: "override", Value: ""}}},
+						}},
+						{Entries: []logproto.Entry{{Timestamp: at.Add(24 * time.Hour), Line: "next day"}}},
+					},
+				}}}
+				build := func(internal bool) map[string]map[string]map[docRange]bool {
+					cfg := roundTripConfig(t, 2, 32)
+					cfg.Index.Version = version
+					cfg.ExtractThreads = workers
+					b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+					require.NoError(t, err)
+					defer b.clear()
+					ls := parseLabelsOrNil(nested.Labels)
+					if internal {
+						require.NoError(t, b.processInternalStream(&nested, ls, at, recordRef{}))
+					} else {
+						flat := nested.FlatView()
+						require.NoError(t, b.processStream(&flat, ls, at, recordRef{}))
+					}
+					files, err := b.prepareIndexes()
+					require.NoError(t, err)
+					return termRangesByFile(t, files)
+				}
+				require.Equal(t, build(false), build(true))
+			})
+		}
+	}
+}

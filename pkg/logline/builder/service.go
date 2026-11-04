@@ -616,7 +616,7 @@ func (s *Service) processRecordBatch(records []rawRecord) error {
 	defer s.builderMtx.Unlock()
 
 	for _, rec := range records {
-		stream, parsedLabels, err := s.decoder.Decode(rec.value)
+		stream, parsedLabels, err := s.decoder.DecodeInternal(rec.value)
 		if err != nil {
 			s.metrics.decodeErrorsTotal.Inc()
 			return fmt.Errorf("failed to decode protobuf stream (partition=%d offset=%d size=%d): %w",
@@ -629,7 +629,7 @@ func (s *Service) processRecordBatch(records []rawRecord) error {
 		// is read only if the out-of-window panic fires, attributing the crash
 		// to this record.
 		ref := recordRef{valid: true, partition: rec.partition, offset: rec.offset, tenantID: rec.tenantID}
-		if err := s.activeBuilder.processStream(&stream, &parsedLabels, rec.timestamp, ref); err != nil {
+		if err := s.activeBuilder.processInternalStream(&stream, &parsedLabels, rec.timestamp, ref); err != nil {
 			return fmt.Errorf("run spill failed (partition=%d offset=%d): %w",
 				rec.partition, rec.offset, err)
 		}

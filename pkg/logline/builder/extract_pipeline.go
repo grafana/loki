@@ -25,12 +25,12 @@ import (
 const extractQueueCapacity = 8192
 
 // extractItem is one decoded stream handed from the poll goroutine to a
-// worker. entries is a private shallow copy (see enqueue); labels are the
+// worker. The stream owns its decoded groups and entries; labels are the
 // decoder's cached parsed labels, safe for concurrent read-only use. ref
 // carries the source Kafka record's identity to the worker so an
 // out-of-window panic in ingest still names the poison record.
 type extractItem struct {
-	entries    []logproto.Entry
+	stream     logproto.InternalStreamAdapter
 	labels     labels.Labels
 	hasLabels  bool
 	enqueuedAt time.Time
@@ -87,12 +87,12 @@ func newExtractPipeline(workers int, newIngester func(runPrefix string) *streamI
 func (p *extractPipeline) run(w *streamIngester) {
 	defer p.wg.Done()
 	for it := range p.workC {
-		stream := logproto.Stream{Entries: it.entries}
+		stream := it.stream
 		var lbls *labels.Labels
 		if it.hasLabels {
 			lbls = &it.labels
 		}
-		if err := w.ingest(&stream, lbls, it.enqueuedAt, it.ref); err != nil {
+		if err := w.ingestInternal(&stream, lbls, it.enqueuedAt, it.ref); err != nil {
 			// Spill failure: latch with this item's Kafka identity (surfaces on a later call) and exit.
 			p.setErr(fmt.Errorf("run spill failed (%s): %w", it.ref, err))
 			return
@@ -124,16 +124,17 @@ func (p *extractPipeline) enqueue(stream *logproto.Stream, parsedLabels *labels.
 		return err
 	}
 
-	// The kafka.Decoder reuses its stream's Entries backing array across
-	// Decode calls, so the slice must be copied before crossing the goroutine
-	// boundary. A SHALLOW copy of the Entry structs suffices: each decode
-	// appends zero-valued Entries and fills them with freshly allocated
-	// strings and metadata slices, so the backing data a previous copy points
-	// at is never rewritten.
-	entries := make([]logproto.Entry, len(stream.Entries))
-	copy(entries, stream.Entries)
+	copied := *stream
+	copied.Entries = append([]logproto.Entry(nil), stream.Entries...)
+	return p.enqueueInternal(logproto.FromStream(copied), parsedLabels, enqueuedAt, ref)
+}
 
-	it := extractItem{entries: entries, enqueuedAt: enqueuedAt, ref: ref}
+// enqueueInternal transfers ownership of the independently decoded groups to a worker.
+func (p *extractPipeline) enqueueInternal(stream *logproto.InternalStreamAdapter, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
+	if err := p.err(); err != nil {
+		return err
+	}
+	it := extractItem{stream: *stream, enqueuedAt: enqueuedAt, ref: ref}
 	if parsedLabels != nil {
 		it.labels = *parsedLabels
 		it.hasLabels = true
