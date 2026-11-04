@@ -12,6 +12,7 @@ import (
 	"math"
 	"math/rand"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -166,48 +167,109 @@ func TestBuilder_Append(t *testing.T) {
 	}
 }
 
-// TestBuilder_AppendRecord ensures that appending to the buffer eventually reports
-// that the buffer is full via the AppendRecord call.
 func TestBuilder_AppendRecord(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
+	t.Run("reports full and sets the tenant on every logs section", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
-	require.NoError(t, err)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
 
-	tenant := "test"
+		tenant := "test"
 
-	lbs, err := syntax.ParseLabels(`{cluster="test",app="foo"}`)
-	require.NoError(t, err)
+		lbs, err := syntax.ParseLabels(`{cluster="test",app="foo"}`)
+		require.NoError(t, err)
 
-	for {
-		require.NoError(t, ctx.Err())
+		for {
+			require.NoError(t, ctx.Err())
 
-		// Append until the builder reports that it is full.
-		if builder.IsFull() {
-			break
+			// Append until the builder reports that it is full.
+			if builder.IsFull() {
+				break
+			}
+
+			require.NoError(t, builder.AppendRecord(tenant, lbs, logs.Record{
+				Timestamp: time.Now().UTC(),
+				Line:      bytes.Repeat([]byte("a"), 1024),
+			}, time.Now()))
 		}
 
-		require.NoError(t, builder.AppendRecord(tenant, lbs, logs.Record{
-			Timestamp: time.Now().UTC(),
-			Line:      bytes.Repeat([]byte("a"), 1024),
-		}, time.Now()))
-	}
+		obj, closer, err := builder.flushWithoutLayout()
+		require.NoError(t, err)
+		defer closer.Close()
 
-	obj, closer, err := builder.flushWithoutLayout()
-	require.NoError(t, err)
-	defer closer.Close()
+		// When a section builder is reset, which happens on flush, the
+		// tenant is reset too. We must check that the tenant is added back
+		// to the section builder otherwise tenant will be absent from successive
+		// sections.
+		secs := obj.Sections()
+		require.Equal(t, 1, secs.Count(streams.CheckSection))
+		require.Greater(t, secs.Count(logs.CheckSection), 1)
+		for _, section := range secs.Filter(logs.CheckSection) {
+			require.Equal(t, tenant, section.Tenant)
+		}
+	})
 
-	// When a section builder is reset, which happens on flush, the
-	// tenant is reset too. We must check that the tenant is added back
-	// to the section builder otherwise tenant will be absent from successive
-	// sections.
-	secs := obj.Sections()
-	require.Equal(t, 1, secs.Count(streams.CheckSection))
-	require.Greater(t, secs.Count(logs.CheckSection), 1)
-	for _, section := range secs.Filter(logs.CheckSection) {
-		require.Equal(t, tenant, section.Tenant)
-	}
+	t.Run("records the rows, size and time range of each stream", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
+
+		base := time.Unix(100, 0).UTC()
+		x := labels.FromStrings("app", "x")
+		y := labels.FromStrings("app", "y")
+		type stats struct {
+			rows     int
+			size     int64
+			min, max time.Time
+		}
+		want := make(map[string]stats)
+		for _, step := range []struct {
+			ls   labels.Labels
+			ts   time.Time
+			line string
+		}{
+			{x, base.Add(2 * time.Second), "x-middle"},
+			{x, base, "x-first"},
+			{y, base.Add(time.Second), "y-only"},
+			{x, base.Add(5 * time.Second), "x-last"},
+		} {
+			rec := logs.Record{Timestamp: step.ts, Line: []byte(step.line)}
+			require.NoError(t, builder.AppendRecord("t1", step.ls, rec, step.ts))
+
+			app := step.ls.Get("app")
+			s := want[app]
+			if s.rows == 0 || step.ts.Before(s.min) {
+				s.min = step.ts
+			}
+			if s.rows == 0 || step.ts.After(s.max) {
+				s.max = step.ts
+			}
+			s.rows++
+			s.size += rec.UncompressedSize()
+			want[app] = s
+		}
+
+		obj, closer, err := builder.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		got := make(map[string]stats)
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			streamSec, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamSec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				got[val.Labels.Get("app")] = stats{
+					rows: val.Rows,
+					size: val.UncompressedSize,
+					min:  val.MinTimestamp.UTC(),
+					max:  val.MaxTimestamp.UTC(),
+				}
+			}
+		}
+		require.Equal(t, want, got)
+	})
 }
 
 // TestBuilder_EarliestRecordTime ensures the builder tracks the earliest
@@ -909,6 +971,32 @@ func testFlushAndSortSchema(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 		require.Equal(t, []string{"alpha-1", "alpha-0", "middle-1", "middle-0", "zoo-1", "zoo-0"}, recordLines(t, obj, "t1"))
+	})
+
+	t.Run("orders streams with the same schema key by stream hash", func(t *testing.T) {
+		b, err := NewBuilder(makeCfg(), nil, NewBuilderMetrics(), log.NewNopLogger(), oneShardOverrides{"t1": {"label:app"}})
+		require.NoError(t, err)
+
+		streamLabels := make([]labels.Labels, 0, 8)
+		for i := range 8 {
+			streamLabels = append(streamLabels, labels.FromStrings("app", "same", "id", strconv.Itoa(i)))
+		}
+		slices.SortFunc(streamLabels, func(a, b labels.Labels) int {
+			return cmp.Compare(labels.StableHash(b), labels.StableHash(a))
+		})
+		for _, ls := range streamLabels {
+			require.NoError(t, b.AppendRecord("t1", ls, logs.Record{Timestamp: now, Line: []byte(ls.Get("id"))}, now))
+		}
+
+		want := make([]string, 0, len(streamLabels))
+		for _, ls := range slices.Backward(streamLabels) {
+			want = append(want, ls.Get("id"))
+		}
+
+		obj, closer, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, want, recordLines(t, obj, "t1"))
 	})
 
 	t.Run("orders streams by every label of a compound schema in order", func(t *testing.T) {
