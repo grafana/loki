@@ -70,3 +70,9 @@ message ScopeLogs {
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Entry"
   ];
 }
+
+// InternalPusher carries nested requests between distributors and ingesters.
+// The public Pusher service continues to accept the flat client protocol.
+service InternalPusher {
+  rpc PushInternal(InternalPushRequest) returns (PushResponse) {}
+}

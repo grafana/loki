@@ -439,3 +439,78 @@ func TestEncodeInternalRecordMetadataComesFromTheArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeInternalOwnershipAndCompatibility(t *testing.T) {
+	decoder, err := NewDecoder()
+	require.NoError(t, err)
+	nested := logproto.InternalStreamAdapter{Labels: `{app="test"}`, Hash: 42, ResourceLogs: []logproto.ResourceLogs{{
+		Attrs: internalAttrs("resource", "kept", "override", "resource"),
+		ScopeLogs: []logproto.ScopeLogs{{Attrs: internalAttrs("override", "scope"), Entries: []push.Entry{
+			internalEntry("one", "override", ""), internalEntry("two"),
+		}}},
+	}}}
+	nestedBytes, err := nested.Marshal()
+	require.NoError(t, err)
+	flat := nested.FlatView()
+	flatBytes, err := flat.Marshal()
+	require.NoError(t, err)
+	var retained []logproto.InternalStreamAdapter
+	for _, data := range [][]byte{nestedBytes, flatBytes, nestedBytes, flatBytes} {
+		decoded, ls, err := decoder.DecodeInternal(data)
+		require.NoError(t, err)
+		require.Equal(t, "test", ls.Get("app"))
+		require.Equal(t, flat, decoded.FlatView())
+		retained = append(retained, decoded)
+	}
+	retained[3].ResourceLogs[0].ScopeLogs[0].Entries[0].Line = "changed"
+	for _, stream := range retained[:3] {
+		require.Equal(t, flat, stream.FlatView())
+	}
+	require.Equal(t, nested, retained[0], "nested attributes must remain shared")
+	for _, data := range [][]byte{nil, {0xff}, {0x12, 0xff}} {
+		_, err := decoder.DecodeInternalWithoutLabels(data)
+		require.Error(t, err)
+	}
+	// Alternating with legacy flat decode must not overwrite a retained nested result.
+	_, _, err = decoder.Decode(flatBytes)
+	require.NoError(t, err)
+	require.Equal(t, nested, retained[0])
+}
+
+func BenchmarkDecodeNestedConsumer(b *testing.B) {
+	for _, shared := range []bool{false, true} {
+		nested := logproto.FromStream(push.Stream{Labels: `{app="test"}`})
+		if shared {
+			nested.ResourceLogs[0].Attrs = internalAttrs("resource", strings.Repeat("r", 128), "service", "checkout")
+		}
+		for range 64 {
+			nested.ResourceLogs[0].ScopeLogs[0].Entries = append(nested.ResourceLogs[0].ScopeLogs[0].Entries, internalEntry(strings.Repeat("x", 1024)))
+		}
+		for _, wire := range []string{"nested", "flat"} {
+			data, err := nested.Marshal()
+			if wire == "flat" {
+				flat := nested.FlatView()
+				data, err = flat.Marshal()
+			}
+			require.NoError(b, err)
+			for _, internal := range []bool{false, true} {
+				b.Run(fmt.Sprintf("wire=%s/shared=%t/internal=%t", wire, shared, internal), func(b *testing.B) {
+					decoder, err := NewDecoder()
+					require.NoError(b, err)
+					b.ReportAllocs()
+					b.SetBytes(64 * 1024)
+					for range b.N {
+						if internal {
+							_, _, err = decoder.DecodeInternal(data)
+						} else {
+							_, _, err = decoder.Decode(data)
+						}
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		}
+	}
+}

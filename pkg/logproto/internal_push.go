@@ -146,3 +146,33 @@ func hasName(attrs []push.LabelAdapter, name string) bool {
 	}
 	return false
 }
+
+// AppendMetadata appends primary attributes followed by fallback attributes whose
+// names are absent from primary. Empty values still override fallback values.
+// dst must not overlap either input slice.
+func AppendMetadata(dst, primary, fallback []LabelAdapter) []LabelAdapter {
+	start := len(dst)
+	dst = append(dst, primary...)
+	for _, attr := range fallback {
+		if !hasName(dst[start:], attr.Name) {
+			dst = append(dst, attr)
+		}
+	}
+	return dst
+}
+
+// CloneGroups detaches group and entry slices so retaining one stream does not
+// retain sibling streams or shards. Strings and attribute slices remain shared
+// and must be treated as immutable by the caller.
+func (s *InternalStreamAdapter) CloneGroups() InternalStreamAdapter {
+	clone := *s
+	clone.ResourceLogs = slices.Clone(s.ResourceLogs)
+	for i := range clone.ResourceLogs {
+		resource := &clone.ResourceLogs[i]
+		resource.ScopeLogs = slices.Clone(resource.ScopeLogs)
+		for j := range resource.ScopeLogs {
+			resource.ScopeLogs[j].Entries = slices.Clone(resource.ScopeLogs[j].Entries)
+		}
+	}
+	return clone
+}

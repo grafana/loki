@@ -188,6 +188,44 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 	return stream, nil
 }
 
+// DecodeInternal decodes either Kafka encoding without expanding shared attributes.
+// The returned stream owns its slices and remains valid across subsequent decodes.
+// Like Decode, this method is not safe for concurrent use because it caches labels.
+func (d *Decoder) DecodeInternal(data []byte) (logproto.InternalStreamAdapter, labels.Labels, error) {
+	stream, err := d.DecodeInternalWithoutLabels(data)
+	if err != nil {
+		return logproto.InternalStreamAdapter{}, labels.EmptyLabels(), err
+	}
+	if ls, ok := d.cache.Get(stream.Labels); ok {
+		return stream, ls, nil
+	}
+	ls, err := syntax.ParseLabels(stream.Labels)
+	if err != nil {
+		return logproto.InternalStreamAdapter{}, labels.EmptyLabels(), fmt.Errorf("failed to parse labels: %w", err)
+	}
+	d.cache.Add(stream.Labels, ls)
+	return stream, ls, nil
+}
+
+// DecodeInternalWithoutLabels decodes either Kafka encoding without expanding
+// attributes or parsing labels. It returns independently owned slices and is safe
+// for concurrent use, including consumers that retain a record while retrying it.
+func (d *Decoder) DecodeInternalWithoutLabels(data []byte) (logproto.InternalStreamAdapter, error) {
+	if len(data) == 0 {
+		return logproto.InternalStreamAdapter{}, errors.New("empty data received")
+	}
+	var nested logproto.InternalStreamAdapter
+	nestedErr := nested.Unmarshal(data)
+	if nestedErr == nil {
+		return nested, nil
+	}
+	var flat logproto.Stream
+	if flatErr := flat.Unmarshal(data); flatErr != nil {
+		return logproto.InternalStreamAdapter{}, fmt.Errorf("failed to unmarshal stream in either encoding: nested: %w; flat: %w", nestedErr, flatErr)
+	}
+	return *logproto.FromStream(flat), nil
+}
+
 // decodeStream unmarshals a record into `into`, in whichever of the two encodings it carries.
 func decodeStream(data []byte, into *logproto.Stream) error {
 	var nested logproto.InternalStreamAdapter

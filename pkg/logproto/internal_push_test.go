@@ -625,3 +625,16 @@ func scope(attrs []push.LabelAdapter, entries ...push.Entry) ScopeLogs {
 		Entries: entries,
 	}
 }
+
+func TestCloneGroupsDetachesSiblingStreams(t *testing.T) {
+	req := FromPushRequest(&PushRequest{Streams: []Stream{
+		{Labels: `{app="one"}`, Entries: []Entry{{Line: "kept"}}},
+		{Labels: `{app="two"}`, Entries: []Entry{{Line: "released"}}},
+	}})
+	clone := req.Streams[0].CloneGroups()
+	require.NotSame(t, &req.Streams[0].ResourceLogs[0], &clone.ResourceLogs[0])
+	require.NotSame(t, &req.Streams[0].ResourceLogs[0].ScopeLogs[0], &clone.ResourceLogs[0].ScopeLogs[0])
+	require.NotSame(t, &req.Streams[0].ResourceLogs[0].ScopeLogs[0].Entries[0], &clone.ResourceLogs[0].ScopeLogs[0].Entries[0])
+	req.Streams[0].ResourceLogs[0].ScopeLogs[0].Entries[0].Line = "changed"
+	require.Equal(t, "kept", clone.ResourceLogs[0].ScopeLogs[0].Entries[0].Line)
+}
