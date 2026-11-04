@@ -33,6 +33,9 @@ func (p *ResettingPool) GetRecord() *Record {
 }
 
 func (p *ResettingPool) PutRecord(r *Record) {
+	// Do not retain request data while the record is idle in the pool.
+	clear(r.Series)
+	clear(r.RefEntries)
 	p.rPool.Put(r)
 }
 

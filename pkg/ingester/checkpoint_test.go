@@ -949,3 +949,88 @@ func TestCheckpointCleanupStaleTmpDirectoriesAtStartup(t *testing.T) {
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 }
+
+func TestIngesterWALSharedMetadata(t *testing.T) {
+	cfg := defaultIngesterTestConfigWithWAL(t, t.TempDir())
+	cfg.WAL.CheckpointDuration = time.Hour
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	ctx := user.InjectOrgID(context.Background(), "nested-wal")
+	start := time.Now().Truncate(time.Second)
+	newIngester := func() *Ingester {
+		i, err := New(cfg, client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, mockReadRingWithOneActiveIngester(), nil)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+		t.Cleanup(func() { require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i)) })
+		return i
+	}
+	req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+		Labels: `{foo="bar"}`, ResourceLogs: []logproto.ResourceLogs{
+			{Attrs: []logproto.LabelAdapter{{Name: "resource", Value: "one"}, {Name: "override", Value: "resource"}}, ScopeLogs: []logproto.ScopeLogs{
+				{Attrs: []logproto.LabelAdapter{{Name: "override", Value: "scope"}}, Entries: []logproto.Entry{
+					{Timestamp: start, Line: "first"},
+					{Timestamp: start.Add(time.Second), Line: "second", StructuredMetadata: []logproto.LabelAdapter{{Name: "override", Value: ""}}},
+				}},
+				{Entries: []logproto.Entry{{Timestamp: start.Add(2 * time.Second), Line: "third"}}},
+			}},
+			{Attrs: []logproto.LabelAdapter{{Name: "resource", Value: "two"}}, ScopeLogs: []logproto.ScopeLogs{
+				{Entries: []logproto.Entry{{Timestamp: start.Add(3 * time.Second), Line: "fourth"}}},
+			}},
+		},
+	}}}
+	want := map[string]map[string]string{
+		"first":  {"resource": "one", "override": "scope"},
+		"second": {"resource": "one", "override": ""},
+		"third":  {"resource": "one", "override": "resource"},
+		"fourth": {"resource": "two"},
+	}
+	checkData := func(i *Ingester) {
+		result := mockQuerierServer{ctx: ctx}
+		require.NoError(t, i.Query(&logproto.QueryRequest{Selector: `{foo="bar"}`, Start: start, End: start.Add(time.Minute), Limit: 100, Plan: testutil.MustPlan(`{foo="bar"}`)}, &result))
+		got := map[string]map[string]string{}
+		count := 0
+		for _, response := range result.resps {
+			for _, stream := range response.Streams {
+				for _, entry := range stream.Entries {
+					attrs := map[string]string{}
+					for _, attr := range entry.StructuredMetadata {
+						attrs[attr.Name] = attr.Value
+					}
+					got[entry.Line] = attrs
+					count++
+				}
+			}
+		}
+		require.Equal(t, len(want), count, "checkpoint and segment overlap must not duplicate entries")
+		require.Equal(t, want, got)
+	}
+
+	i := newIngester()
+	_, err = i.PushInternal(ctx, req)
+	require.NoError(t, err)
+	checkData(i)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+	expectCheckpoint(t, cfg.WAL.Dir, false, time.Second)
+
+	cfg.WAL.CheckpointDuration = time.Second
+	i = newIngester()
+	checkData(i) // segment replay
+	expectCheckpoint(t, cfg.WAL.Dir, true, 5*time.Second)
+	// Append a native entry after the checkpoint to exercise mixed replay and counters.
+	_, err = i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{{Labels: `{foo="bar"}`, Entries: []logproto.Entry{{Timestamp: start.Add(4 * time.Second), Line: "after checkpoint"}}}}})
+	require.NoError(t, err)
+	want["after checkpoint"] = map[string]string{}
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	cfg.WAL.CheckpointDuration = time.Hour
+	i = newIngester()
+	checkData(i) // checkpoint plus newer segment
+	for _, inst := range i.getInstances() {
+		require.NoError(t, inst.forAllStreams(ctx, func(s *stream) error {
+			s.chunkMtx.RLock()
+			defer s.chunkMtx.RUnlock()
+			require.Equal(t, int64(len(want)), s.entryCt)
+			return nil
+		}))
+	}
+}

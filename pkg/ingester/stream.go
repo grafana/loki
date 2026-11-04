@@ -200,11 +200,18 @@ func (s *stream) pushEntries(ctx context.Context, entries []entryWithMetadata, r
 	hasTailers := len(s.tailers) != 0
 	s.tailerMtx.RUnlock()
 	if len(storedEntries) > 0 && (record != nil || hasTailers) {
-		flat := flattenEntries(storedEntries)
+		var flat []logproto.Entry
 		if record != nil {
-			record.AddEntries(uint64(s.fp), s.entryCt, flat...)
+			entries, groups := walEntries(storedEntries)
+			record.AddEntriesWithMetadata(uint64(s.fp), s.entryCt, entries, groups)
+			if len(groups) == 0 {
+				flat = entries
+			}
 		}
 		if hasTailers {
+			if flat == nil {
+				flat = flattenEntries(storedEntries)
+			}
 			s.sendToTailers(flat)
 		}
 	}
@@ -228,6 +235,10 @@ func (s *stream) PushWalReplay(
 	counter int64,
 	usageTracker push.UsageTracker,
 ) (int, error) {
+	return s.pushWALReplay(ctx, flatEntryBatch(entries), counter, usageTracker)
+}
+
+func (s *stream) pushWALReplay(ctx context.Context, entries []entryWithMetadata, counter int64, usageTracker push.UsageTracker) (int, error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
 
@@ -243,7 +254,7 @@ func (s *stream) PushWalReplay(
 	}
 
 	const format = "loki"
-	toStore, invalid := s.validateEntries(ctx, flatEntryBatch(entries), counter > 0, false, usageTracker, format)
+	toStore, invalid := s.validateEntries(ctx, entries, counter > 0, false, usageTracker, format)
 
 	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format)
 	if len(storedEntries) > 0 {

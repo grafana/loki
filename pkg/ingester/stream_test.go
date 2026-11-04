@@ -817,7 +817,16 @@ func TestPushInternalMatchesExpanded(t *testing.T) {
 					require.Equal(t, flatErr, nestedErr)
 					require.Equal(t, flatBytes, nestedBytes)
 					require.Equal(t, flatTracker.discardedBytes, nestedTracker.discardedBytes)
-					require.Equal(t, flatRecord.RefEntries, nestedRecord.RefEntries, "WAL entries must remain expanded")
+					require.Len(t, nestedRecord.RefEntries, len(flatRecord.RefEntries))
+					decoded := &wal.Record{}
+					require.NoError(t, wal.DecodeRecord(nestedRecord.EncodeEntries(wal.CurrentEntriesRec, nil), decoded))
+					decodedFlat := &wal.Record{}
+					require.NoError(t, wal.DecodeRecord(flatRecord.EncodeEntries(wal.WALRecordEntriesV3, nil), decodedFlat))
+					for i, ref := range decoded.RefEntries {
+						require.Equal(t, decodedFlat.RefEntries[i].Ref, ref.Ref)
+						require.Equal(t, decodedFlat.RefEntries[i].Counter, ref.Counter)
+						require.Equal(t, decodedFlat.RefEntries[i].Entries, flattenEntries(walEntryBatch(ref)))
+					}
 					recordPool.PutRecord(flatRecord)
 					recordPool.PutRecord(nestedRecord)
 				}
@@ -867,19 +876,24 @@ func TestPushInternalWALReplayAndTail(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, record.RefEntries, 1)
 	expected := nested.FlatView().Entries
-	require.Equal(t, expected, record.RefEntries[0].Entries)
+	require.Empty(t, record.RefEntries[0].Entries[0].StructuredMetadata)
+	require.Len(t, record.RefEntries[0].MetadataGroups, 1)
+	require.Equal(t, expected, flattenEntries(walEntryBatch(record.RefEntries[0])))
 	select {
 	case queued := <-tail.queue:
 		require.Equal(t, expected, queued.stream.Entries)
 	default:
 		t.Fatal("tail did not receive stored entries")
 	}
-	// Exercise the existing WAL codec and replay, not just the record before encoding.
+	// Replay the encoded record without expanding its shared metadata.
 	decoded := &wal.Record{}
 	encoded := record.EncodeEntries(wal.CurrentEntriesRec, nil)
 	require.NoError(t, wal.DecodeRecord(encoded, decoded))
-	_, err = replay.PushWalReplay(t.Context(), decoded.RefEntries[0].Entries, decoded.RefEntries[0].Counter, nil)
+	_, err = replay.pushWALReplay(t.Context(), walEntryBatch(decoded.RefEntries[0]), decoded.RefEntries[0].Counter, nil)
 	require.NoError(t, err)
+	require.Equal(t, live.entryCt, replay.entryCt)
+	_, err = replay.pushWALReplay(t.Context(), walEntryBatch(decoded.RefEntries[0]), decoded.RefEntries[0].Counter, nil)
+	require.ErrorIs(t, err, ErrEntriesExist)
 	require.NoError(t, live.chunks[0].chunk.Close())
 	require.NoError(t, replay.chunks[0].chunk.Close())
 	want, err := live.chunks[0].chunk.Bytes()
@@ -887,4 +901,19 @@ func TestPushInternalWALReplayAndTail(t *testing.T) {
 	got, err := replay.chunks[0].chunk.Bytes()
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+func TestWALEntriesPreservesGroupGaps(t *testing.T) {
+	shared := &entryMetadata{attrs: []logproto.LabelAdapter{{Name: "shared", Value: "value"}}}
+	entries := []logproto.Entry{{Line: "native before"}, {Line: "shared"}, {Line: "native gap"}, {Line: "shared again"}, {Line: "shared too"}, {Line: "native after"}}
+	batch := flatEntryBatch(entries)
+	for _, i := range []int{1, 3, 4} {
+		batch[i].shared = shared
+	}
+	stored, groups := walEntries(batch)
+	require.Equal(t, entries, stored)
+	require.Equal(t, []wal.MetadataGroup{{Start: 1, End: 2, Attrs: shared.attrs}, {Start: 3, End: 5, Attrs: shared.attrs}}, groups)
+	require.Equal(t, flattenEntries(batch), flattenEntries(walEntryBatch(wal.RefEntries{Entries: stored, MetadataGroups: groups})))
+	entries[0].Line = "changed"
+	require.Equal(t, "native before", stored[0].Line)
 }

@@ -37,6 +37,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Nested downstream POC: ingester WAL format
+
+This prototype writes WAL entry records using V4, which stores shared attributes once per entry group instead of copying them into each entry. It still reads V1–V3 records. Stored chunk, index and checkpoint formats are unchanged.
+
+Older binaries cannot replay V4 WAL records. This applies whenever the WAL is enabled, even if deferred OTLP attribute expansion is disabled. Before rolling back, stop ingestion and use the newer build to flush all outstanding data to durable storage, then retire its WAL and start the older binary with a fresh WAL directory. Do not delete a WAL that still contains unflushed data.
+
 ### Statistics in detected-field query responses
 
 The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON

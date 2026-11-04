@@ -28,12 +28,13 @@ const (
 	WALRecordEntriesV2
 	// WALRecordEntriesV3 is the type for the WAL record for samples with structured metadata.
 	WALRecordEntriesV3
+	// WALRecordEntriesV4 adds shared metadata for contiguous entry ranges.
+	WALRecordEntriesV4
 )
 
 // The current type of Entries that this distribution writes.
 // Loki can read in a backwards compatible manner, but will write the newest variant.
-// TODO: Change to WALRecordEntriesV3?
-const CurrentEntriesRec = WALRecordEntriesV3
+const CurrentEntriesRec = WALRecordEntriesV4
 
 // Record is a struct combining the series and samples record.
 type Record struct {
@@ -53,6 +54,8 @@ func (r *Record) IsEmpty() bool {
 
 func (r *Record) Reset() {
 	r.UserID = ""
+	clear(r.Series)
+	clear(r.RefEntries)
 	if len(r.Series) > 0 {
 		r.Series = r.Series[:0]
 	}
@@ -61,25 +64,52 @@ func (r *Record) Reset() {
 	r.entryIndexMap = make(map[uint64]int)
 }
 
+// AddEntries appends entries without shared metadata.
 func (r *Record) AddEntries(fp uint64, counter int64, entries ...logproto.Entry) {
-	if idx, ok := r.entryIndexMap[fp]; ok {
-		r.RefEntries[idx].Entries = append(r.RefEntries[idx].Entries, entries...)
-		r.RefEntries[idx].Counter = counter
-		return
-	}
-
-	r.entryIndexMap[fp] = len(r.RefEntries)
-	r.RefEntries = append(r.RefEntries, RefEntries{
-		Counter: counter,
-		Ref:     chunks.HeadSeriesRef(fp),
-		Entries: entries,
-	})
+	r.AddEntriesWithMetadata(fp, counter, entries, nil)
 }
 
+// AddEntriesWithMetadata appends accepted entries and their shared metadata.
+// Groups must be ordered, non-overlapping ranges within entries. Entries and
+// attribute slices must remain immutable until the record has been logged.
+func (r *Record) AddEntriesWithMetadata(fp uint64, counter int64, entries []logproto.Entry, groups []MetadataGroup) {
+	if len(entries) == 0 {
+		return
+	}
+	idx, ok := r.entryIndexMap[fp]
+	if !ok {
+		idx = len(r.RefEntries)
+		r.entryIndexMap[fp] = idx
+		r.RefEntries = append(r.RefEntries, RefEntries{Ref: chunks.HeadSeriesRef(fp)})
+	}
+	ref := &r.RefEntries[idx]
+	offset := len(ref.Entries)
+	if offset == 0 {
+		ref.Entries = entries
+	} else {
+		ref.Entries = append(ref.Entries, entries...)
+	}
+	for _, group := range groups {
+		group.Start += offset
+		group.End += offset
+		ref.MetadataGroups = append(ref.MetadataGroups, group)
+	}
+	ref.Counter = counter
+}
+
+// MetadataGroup holds the fallback attributes for Entries[Start:End]. Entry
+// metadata takes precedence, including empty values. Gaps have no shared metadata.
+type MetadataGroup struct {
+	Start, End int
+	Attrs      []logproto.LabelAdapter
+}
+
+// RefEntries contains accepted entries for one stream and its replay counter.
 type RefEntries struct {
-	Counter int64
-	Ref     chunks.HeadSeriesRef
-	Entries []logproto.Entry
+	Counter        int64
+	Ref            chunks.HeadSeriesRef
+	Entries        []logproto.Entry
+	MetadataGroups []MetadataGroup
 }
 
 func (r *Record) EncodeSeries(b []byte) []byte {
@@ -128,20 +158,35 @@ outer:
 
 		buf.PutUvarint(len(ref.Entries)) // write number of entries
 
-		for _, s := range ref.Entries {
-			buf.PutVarint64(s.Timestamp.UnixNano() - first)
-			buf.PutUvarint(len(s.Line))
-			buf.PutString(s.Line)
+		groupIndex := 0
+		for i, entry := range ref.Entries {
+			buf.PutVarint64(entry.Timestamp.UnixNano() - first)
+			buf.PutUvarintStr(entry.Line)
 
 			if version >= WALRecordEntriesV3 {
-				// structured metadata
-				buf.PutUvarint(len(s.StructuredMetadata))
-				for _, l := range s.StructuredMetadata {
-					buf.PutUvarint(len(l.Name))
-					buf.PutString(l.Name)
-					buf.PutUvarint(len(l.Value))
-					buf.PutString(l.Value)
+				attrs := entry.StructuredMetadata
+				// Older formats cannot represent shared attributes.
+				if version < WALRecordEntriesV4 {
+					for groupIndex < len(ref.MetadataGroups) && i >= ref.MetadataGroups[groupIndex].End {
+						groupIndex++
+					}
+					if groupIndex < len(ref.MetadataGroups) && i >= ref.MetadataGroups[groupIndex].Start {
+						attrs = logproto.AppendMetadata(nil, attrs, ref.MetadataGroups[groupIndex].Attrs)
+					}
 				}
+				buf.PutUvarint(len(attrs))
+				for _, attr := range attrs {
+					buf.PutUvarintStr(attr.Name)
+					buf.PutUvarintStr(attr.Value)
+				}
+			}
+		}
+		if version >= WALRecordEntriesV4 {
+			buf.PutUvarint(len(ref.MetadataGroups))
+			for _, group := range ref.MetadataGroups {
+				buf.PutUvarint(group.Start)
+				buf.PutUvarint(group.End)
+				buf.B = appendMetadata(buf.B, group.Attrs)
 			}
 		}
 	}
@@ -165,28 +210,34 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 			refEntries.Counter = dec.Be64int64()
 		}
 
-		nEntries := dec.Uvarint()
+		nEntries := decodeCount(&dec, 2)
 		refEntries.Entries = make([]logproto.Entry, 0, nEntries)
 		rem := nEntries
 		for ; dec.Err() == nil && rem > 0; rem-- {
 			timeOffset := dec.Varint64()
 			lineLength := dec.Uvarint()
+			if lineLength < 0 {
+				return errInvalidSize
+			}
 			line := dec.Bytes(lineLength)
 
 			var structuredMetadata []logproto.LabelAdapter
 			if version >= WALRecordEntriesV3 {
-				nStructuredMetadata := dec.Uvarint()
-				if nStructuredMetadata > 0 {
-					structuredMetadata = make([]logproto.LabelAdapter, 0, nStructuredMetadata)
-					for i := 0; dec.Err() == nil && i < nStructuredMetadata; i++ {
+				nMetadata := decodeCount(&dec, 2)
+				if nMetadata > 0 {
+					structuredMetadata = make([]logproto.LabelAdapter, 0, nMetadata)
+					for i := 0; i < nMetadata && dec.Err() == nil; i++ {
 						nameLength := dec.Uvarint()
+						if nameLength < 0 {
+							return errInvalidSize
+						}
 						name := dec.Bytes(nameLength)
 						valueLength := dec.Uvarint()
+						if valueLength < 0 {
+							return errInvalidSize
+						}
 						value := dec.Bytes(valueLength)
-						structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
-							Name:  string(name),
-							Value: string(value),
-						})
+						structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{Name: string(name), Value: string(value)})
 					}
 				}
 			}
@@ -200,6 +251,26 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 
 		if dec.Err() != nil {
 			return fmt.Errorf("entry decode error after %d RefEntries: %w", nEntries-rem, dec.Err())
+		}
+
+		if version >= WALRecordEntriesV4 {
+			nGroups := decodeCount(&dec, 3)
+			lastEnd := 0
+			for i := 0; i < nGroups && dec.Err() == nil; i++ {
+				group := MetadataGroup{Start: dec.Uvarint(), End: dec.Uvarint()}
+				if dec.Err() != nil {
+					return fmt.Errorf("metadata group decode error: %w", dec.Err())
+				}
+				if group.Start < lastEnd || group.End <= group.Start || group.End > nEntries {
+					return fmt.Errorf("invalid metadata range [%d:%d] after %d for %d entries", group.Start, group.End, lastEnd, nEntries)
+				}
+				group.Attrs = decodeMetadata(&dec)
+				refEntries.MetadataGroups = append(refEntries.MetadataGroups, group)
+				lastEnd = group.End
+			}
+			if dec.Err() != nil {
+				return fmt.Errorf("metadata groups decode error: %w", dec.Err())
+			}
 		}
 
 		rec.RefEntries = append(rec.RefEntries, refEntries)
@@ -227,10 +298,10 @@ func DecodeRecord(b []byte, walRec *Record) (err error) {
 
 	switch t {
 	case WALRecordSeries:
-		userID = decbuf.UvarintStr()
+		userID = decodeString(&decbuf)
 		rSeries, err = dec.Series(decbuf.B, walRec.Series)
-	case WALRecordEntriesV1, WALRecordEntriesV2, WALRecordEntriesV3:
-		userID = decbuf.UvarintStr()
+	case WALRecordEntriesV1, WALRecordEntriesV2, WALRecordEntriesV3, WALRecordEntriesV4:
+		userID = decodeString(&decbuf)
 		err = DecodeEntries(decbuf.B, t, walRec)
 	default:
 		return errors.New("unknown record type")
@@ -248,4 +319,56 @@ func DecodeRecord(b []byte, walRec *Record) (err error) {
 	walRec.UserID = userID
 	walRec.Series = rSeries
 	return nil
+}
+
+// Entry metadata uses the same layout, with its loop inlined on the hot path.
+func appendMetadata(b []byte, attrs []logproto.LabelAdapter) []byte {
+	buf := encoding.EncWith(b)
+	buf.PutUvarint(len(attrs))
+	for _, attr := range attrs {
+		buf.PutUvarintStr(attr.Name)
+		buf.PutUvarintStr(attr.Value)
+	}
+	return buf.Get()
+}
+
+func decodeMetadata(dec *encoding.Decbuf) []logproto.LabelAdapter {
+	n := decodeCount(dec, 2)
+	if n == 0 {
+		return nil
+	}
+	attrs := make([]logproto.LabelAdapter, 0, n)
+	for i := 0; i < n && dec.Err() == nil; i++ {
+		attrs = append(attrs, logproto.LabelAdapter{Name: decodeString(dec), Value: decodeString(dec)})
+	}
+	return attrs
+}
+
+// Bound allocations and lengths by the remaining input, including on corrupt WALs.
+func decodeCount(dec *encoding.Decbuf, minSize int) int {
+	n := dec.Uvarint()
+	if n == 0 {
+		return 0
+	}
+	if n < 0 || n > len(dec.B)/minSize {
+		dec.E = errInvalidSize
+		return 0
+	}
+	return n
+}
+
+var errInvalidSize = errors.New("invalid WAL count or length")
+
+func decodeString(dec *encoding.Decbuf) string {
+	n := dec.Uvarint64()
+	if dec.Err() != nil {
+		return ""
+	}
+	if n > uint64(len(dec.B)) {
+		dec.E = errInvalidSize
+		return ""
+	}
+	s := string(dec.B[:n])
+	dec.B = dec.B[n:]
+	return s
 }

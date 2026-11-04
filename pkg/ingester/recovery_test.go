@@ -166,7 +166,7 @@ func (r *MemRecoverer) Push(userID string, entries wal.RefEntries) error {
 	}
 
 	r.seriesCt += len(entries.Entries)
-	user[entries.Ref] = append(stream, entries.Entries...)
+	user[entries.Ref] = append(stream, flattenEntries(walEntryBatch(entries))...)
 	return nil
 }
 
@@ -344,5 +344,37 @@ func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
 			return nil
 		})
 		require.NoError(t, err)
+	}
+}
+
+func TestRecoverMixedWALVersions(t *testing.T) {
+	reader, records := buildMemoryReader(2, 8, 3, true)
+	reader.xs = nil
+	versions := []wal.RecordType{wal.WALRecordEntriesV1, wal.WALRecordEntriesV2, wal.WALRecordEntriesV3, wal.WALRecordEntriesV4}
+	for _, rec := range records {
+		if len(rec.Series) > 0 {
+			reader.xs = append(reader.xs, rec.EncodeSeries(nil))
+			continue
+		}
+		ref := &rec.RefEntries[0]
+		version := versions[int(ref.Ref)%len(versions)]
+		if version < wal.WALRecordEntriesV3 {
+			for i := range ref.Entries {
+				ref.Entries[i].StructuredMetadata = nil
+			}
+		}
+		if version == wal.WALRecordEntriesV4 {
+			ref.MetadataGroups = []wal.MetadataGroup{{Start: 0, End: 2, Attrs: []logproto.LabelAdapter{{Name: "resource", Value: "shared"}}}}
+		}
+		reader.xs = append(reader.xs, rec.EncodeEntries(version, nil))
+	}
+	recoverer := NewMemRecoverer()
+	defer recoverer.Close()
+	require.NoError(t, RecoverWAL(t.Context(), reader, recoverer))
+	require.Equal(t, 24, recoverer.seriesCt)
+	for _, rec := range records {
+		for _, ref := range rec.RefEntries {
+			require.Equal(t, flattenEntries(walEntryBatch(ref)), recoverer.users[rec.UserID][ref.Ref])
+		}
 	}
 }

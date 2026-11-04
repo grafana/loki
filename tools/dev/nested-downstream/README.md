@@ -5,7 +5,8 @@ Reference reviewed: `origin/defer-otlp-sm-expansion-poc` at `bbbc6aa0d0`.
 
 This POC carries the existing internal nested streams through Kafka consumers and
 internal ingestion RPCs. It does not change Kafka record encoding, stored chunk or
-index formats, WAL encoding, or query responses.
+index formats or query responses. The follow-up WAL commit adds a versioned
+encoding for shared attributes; see the rollback restriction below.
 
 ## Scope
 
@@ -17,12 +18,13 @@ index formats, WAL encoding, or query responses.
 | Pattern ingester | Reads only the effective `detected_level` across entry, scope and resource attributes. Both Kafka and tee RPC paths retain groups. |
 | Pattern tee | Buffers detached group/entry slices and uses the existing pattern `PushInternal` RPC. Buffer bytes count the nested serialized stream size. |
 | Data-object builder | Preserves groups through tenant/window routing, resolving metadata when creating column records. Entries with only shared attributes reuse an immutable label set. |
-| WAL and live tail | Expands accepted entries at these boundaries. WAL replay continues using its existing codec and flat records. |
+| WAL | V4 records keep entry attributes separate from shared attributes. Replay feeds groups directly to chunk append; V1–V3 records remain readable. |
+| Live tail | Expands accepted entries for the existing tail response. |
 
 The prototype deliberately differs from the earlier POC:
 
 - Uses the merged internal nested protocol, rather than adding metadata-set IDs to public entries.
-- Keeps the existing on-disk formats, including the WAL. No storage migration is required.
+- Keeps stored chunk, index and checkpoint formats. WAL entries use the new V4 format.
 - Uses request-scoped symbol caches keyed by the actual symbol table, rather than an unbounded hash-keyed cache on each chunk. A chunk reorder cannot leave cached symbol IDs pointing at the old table.
 - Preserves phase-1 precedence: entry > scope > resource, including empty values.
 - Preserves downstream expanded rate-limit/discard accounting and chunk-cut sizing. `detected_level` remains excluded from accounted bytes but included in chunk sizing. Distributor accounting is unchanged.
@@ -89,9 +91,19 @@ metadata; include entry-level metadata and native traffic in the cell test.
   unchanged from phase 1. If the distributor flag was only recently enabled,
   distinguish legacy flat backlog using rollout timing and consumer lag; retention
   is an upper bound, not the normal transition time.
-- WAL-enabled ingestion still pays expansion for accepted entries. Measure that
-  separately from Kafka cells with the WAL disabled. WAL deduplication/checkpoint
-  semantics are unchanged.
+- WAL V4 stores merged scope/resource attributes once per accepted group, together
+  with its entry range. Entry overrides, including empty values, remain separate.
+  The codec retains timestamp deltas and adds only a zero group-count byte per
+  stream for native input. Group sharing ends at the request boundary; the WAL
+  does not maintain a cross-record dictionary.
+- All new WAL entry records use V4, regardless of the distributor flag. Older
+  binaries cannot replay these records. For a rollback, stop writes and flush all
+  outstanding data to durable storage using this build before retiring its WAL
+  and starting an older binary with a fresh WAL directory. Disabling deferred
+  expansion alone is insufficient. Do not delete an unflushed WAL.
+- WAL replay retains shared attributes through chunk append. Checkpoint, replay
+  counters and expanded downstream accounting are unchanged. Live tails still
+  require expanded entries.
 - The tee cap remains a serialized-byte estimate, not a heap limit. Its numerical
   interpretation changes to nested bytes; native wrappers add a little wire size,
   while shared metadata is counted once. Every queued stream detaches wrappers and
@@ -142,3 +154,32 @@ before each ordinary append; the POC interns the group.
 These shared-only append results show the optimization's best case. Entries
 with their own metadata still need merged symbol slices; the dev comparison
 must include that case and should not use this table as an expected cell-wide gain.
+
+## Shared-attribute WAL follow-up
+
+V4 appends a group count after each stream's entries, followed by each group's
+start index, exclusive end index and attributes. Ranges must be ordered,
+non-overlapping and within the entry array. Only accepted entries are recorded;
+resource/scope attributes are merged once per group, with scope taking precedence.
+Replay preserves entry overrides and interns the shared attributes at chunk append.
+
+Validation includes mixed V1–V4 recovery, partial rejection, repeated fingerprints,
+empty overrides, live tail, actual segment/checkpoint restarts, malformed/truncated
+records, fuzzing, and ingester/WAL race tests. The full package suite passes.
+
+The following codec benchmarks use 1,000 entries with 128-byte lines and 64-byte
+attribute values. V3 is measured from the pre-WAL-change commit with already
+expanded metadata. V4 is the new grouped encoding. These exclude disk I/O,
+request preparation, chunk append and live tail. Medians of five 300 ms runs,
+Go 1.27.3, Apple M4 Pro, `GOMAXPROCS=1`:
+
+| Shared attributes | V3 bytes/record | V4 bytes/record | Byte reduction | V3 encode (µs) | V4 encode (µs) | V3 decode (µs) | V4 decode (µs) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 132,970 | 132,971 | One extra byte | 12.89 | 12.16 | 64.90 | 63.44 |
+| 8 | 748,970 | 133,591 | 82.2% | 74.99 | 12.29 | 402.67 | 64.95 |
+| 32 | 2,618,970 | 135,461 | 94.8% | 269.46 | 12.63 | 1,331.39 | 65.71 |
+
+Native decode allocations remain 1,003 per record, with 16 additional allocated
+bytes for the larger stream record wrapper. Eight shared attributes reduce decode
+allocations from 1,114,168 to 219,128 bytes per record; 32 reduce them from 3,930,169
+to 221,944. The small native timing differences are not evidence of a speedup.

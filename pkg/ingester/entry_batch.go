@@ -1,10 +1,12 @@
 package ingester
 
 import (
+	"slices"
+
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
-	"slices"
 )
 
 // entryWithMetadata references the decoded entry so validation can compact a
@@ -103,4 +105,34 @@ func flattenEntries(entries []entryWithMetadata) []logproto.Entry {
 		}
 	}
 	return flat
+}
+
+// walEntries detaches accepted entries without expanding their shared attributes.
+// Validation may have removed entries or entire groups from the original batch.
+func walEntries(entries []entryWithMetadata) ([]logproto.Entry, []wal.MetadataGroup) {
+	out := make([]logproto.Entry, len(entries))
+	var groups []wal.MetadataGroup
+	var previous *entryMetadata
+	for i, entry := range entries {
+		out[i] = *entry.Entry
+		if entry.shared != nil {
+			if entry.shared != previous {
+				groups = append(groups, wal.MetadataGroup{Start: i, Attrs: entry.shared.attrs})
+			}
+			groups[len(groups)-1].End = i + 1
+		}
+		previous = entry.shared
+	}
+	return out, groups
+}
+
+func walEntryBatch(ref wal.RefEntries) []entryWithMetadata {
+	batch := flatEntryBatch(ref.Entries)
+	for _, group := range ref.MetadataGroups {
+		shared := &entryMetadata{attrs: group.Attrs, symbols: chunkenc.NewSharedMetadata(group.Attrs)}
+		for i := group.Start; i < group.End; i++ {
+			batch[i].shared = shared
+		}
+	}
+	return batch
 }
