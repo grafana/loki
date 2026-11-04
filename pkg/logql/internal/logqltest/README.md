@@ -302,7 +302,7 @@ Each `eval` runs on multiple execution stacks:
 A stack with a stack-wide series limit is built with `stackOptions` (`exec.go`). Add it to
 `stackNames` and `newExecutionStacks`, and every script then checks that it returns the same
 results. A limit that makes some queries fail can't be checked against the eval expectations.
-Compare how each eval ends on two stacks instead, with `runScriptOutcomes`, as
+Compare how each eval ends on two stacks instead, with `runScript`, as
 `TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFrontendStacks` does.
 
 ## Example

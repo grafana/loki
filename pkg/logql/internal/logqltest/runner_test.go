@@ -63,7 +63,7 @@ func TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFr
 			queryFrontend, err := newQueryFrontendTimestampFirstStackWith(t, "query-frontend", false, stackOptions{maxQuerySeries: maxQuerySeries})
 			require.NoError(t, err)
 
-			outcomes := runScriptOutcomes(t, filepath.Base(f), string(b), []executionStack{direct, queryFrontend})
+			outcomes := runScript(t, filepath.Base(f), string(b), []executionStack{direct, queryFrontend})
 			requireSameOutcomes(t, outcomes[direct.name()], outcomes[queryFrontend.name()])
 		})
 	}
@@ -91,7 +91,7 @@ eval instant at 60s sum(count_over_time({app=~"a|b|c"}[1m]))
 		queryFrontend,
 	}
 
-	outcomes := runScriptOutcomes(t, "series limit", script, stacks)
+	outcomes := runScript(t, "series limit", script, stacks)
 	for _, stack := range stacks {
 		got := outcomes[stack.name()]
 		require.Len(t, got, 2, stack.name())

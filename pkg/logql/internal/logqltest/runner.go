@@ -38,7 +38,7 @@ func RunScript(t *testing.T, name, script string) {
 	t.Helper()
 
 	stacks := newExecutionStacks(t, name)
-	runScript(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
+	runScriptWith(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
 		runEval(t, name, stacks, cmd, exp)
 	})
 }
@@ -60,18 +60,18 @@ func (o evalOutcome) isSeriesLimitFailure() bool {
 	return o.err != nil && strings.Contains(o.err.Error(), "maximum number of series")
 }
 
-// runScriptOutcomes runs every eval of script on each of stacks and returns how each one ended,
+// runScript runs every eval of script on each of stacks and returns how each one ended,
 // by stack name, in script order. Every stack has an outcome for every eval, so the outcomes of two
 // stacks line up.
 //
 // It does not check the results against the eval expectations. A test compares the outcomes of
 // two stacks instead, so the stacks can run with options, such as a low series limit, that the
 // expectations don't account for.
-func runScriptOutcomes(t *testing.T, name, script string, stacks []executionStack) map[string][]evalOutcome {
+func runScript(t *testing.T, name, script string, stacks []executionStack) map[string][]evalOutcome {
 	t.Helper()
 
 	outcomes := make(map[string][]evalOutcome, len(stacks))
-	runScript(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
+	runScriptWith(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
 		for _, stack := range stacks {
 			outcome := evalOutcome{eval: cmd.label(), skipped: !stack.isEvalSupported(cmd, exp)}
 			if !outcome.skipped {
@@ -83,9 +83,10 @@ func runScriptOutcomes(t *testing.T, name, script string, stacks []executionStac
 	return outcomes
 }
 
-// runScript parses script, loads its streams into every stack, and calls runEval for each of its
-// evals.
-func runScript(t *testing.T, name, script string, stacks []executionStack, runEval func(cmd evalCmd, exp expectations)) {
+// runScriptWith parses script, loads its streams into every stack, and calls runEval for each of
+// its evals. Use runScript to compare how the evals end on the stacks; RunScript uses it to check
+// them against their expectations.
+func runScriptWith(t *testing.T, name, script string, stacks []executionStack, runEval func(cmd evalCmd, exp expectations)) {
 	t.Helper()
 
 	streams := newStreamsParser()
