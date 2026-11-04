@@ -93,3 +93,22 @@ func TestConfig_LogMaxRunsPerTaskValidation(t *testing.T) {
 		require.NoError(t, cfg.Validate())
 	})
 }
+
+func TestConfig_LogMaxKeySize(t *testing.T) {
+	parse := func(t *testing.T, args ...string) Config {
+		t.Helper()
+		var cfg Config
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		cfg.RegisterFlagsWithPrefix("dataobj.compaction.", fs)
+		require.NoError(t, fs.Parse(args))
+		return cfg
+	}
+
+	t.Run("defaults to 100GiB", func(t *testing.T) {
+		require.Equal(t, flagext.Bytes(100<<30), parse(t).LogMaxKeySize)
+	})
+
+	t.Run("parses zero to disable the check", func(t *testing.T) {
+		require.Zero(t, parse(t, "--dataobj.compaction.logs.max-key-size=0").LogMaxKeySize)
+	})
+}

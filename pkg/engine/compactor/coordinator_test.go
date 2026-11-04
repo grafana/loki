@@ -507,36 +507,90 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Zero(t, testutil.ToFloat64(c.metrics.logMergeSkippedMergesTotal.WithLabelValues("acme")))
 	})
 
-	t.Run("keeps the runs of a skipped merge in the IndexFilter and plans the other merges", func(t *testing.T) {
-		zeta := map[string]string{"service_name": "zeta"}
-		large := func(object string, labels map[string]string) stats.Stat {
+	// largeObject returns the stats of a level 1 object with 10 GiB of auth
+	// and 10 GiB of zeta. Every object starts at auth, so each object is its
+	// own run.
+	zeta := map[string]string{"service_name": "zeta"}
+	largeObject := func(object string) []stats.Stat {
+		rows := make([]stats.Stat, 0, 2)
+		for _, labels := range []map[string]string{auth, zeta} {
 			s := stat(object, "label:service_name", labels, 10, 40)
 			s.UncompressedSize = 10 << 30
-			return s
+			rows = append(rows, s)
 		}
-		// Every object starts at auth, so each object is its own run. The
-		// large objects make two level 1 runs, and their merge holds 20 GiB
-		// of auth.
-		c, _, _ := newPlanner(t, []stats.Stat{
-			stat("logs/small-0", "label:service_name", auth, 10, 20),
-			stat("logs/small-1", "label:service_name", auth, 15, 30),
-			large("logs/large-0", auth), large("logs/large-0", zeta),
-			large("logs/large-1", auth), large("logs/large-1", zeta),
-		}, "acme")
-		c.cfg.LogMaxKeySize = 1 << 30
-
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
-		require.NoError(t, err)
-
+		return rows
+	}
+	smallObjects := []stats.Stat{
+		stat("logs/small-0", "label:service_name", auth, 10, 20),
+		stat("logs/small-1", "label:service_name", auth, 15, 30),
+	}
+	withLargeObjects := func(n int) []stats.Stat {
+		rows := slices.Clone(smallObjects)
+		for i := range n {
+			rows = append(rows, largeObject(fmt.Sprintf("logs/large-%d", i))...)
+		}
+		return rows
+	}
+	requireFilterKeepsLargeObjects := func(t *testing.T, c *coordinator, plan logCompactionPlan, n int, skippedMerges float64) {
+		t.Helper()
 		require.Len(t, plan.tasks, 2)
 		merge, ok := plan.tasks[0].(logMergeTask)
 		require.True(t, ok)
 		require.Equal(t, []string{"logs/small-0", "logs/small-1"}, planObjectPaths(t, merge.physicalPlan("acme", window)))
 		filter, ok := plan.tasks[1].(indexFilterTask)
 		require.True(t, ok)
-		require.Equal(t, []string{"logs/large-0", "logs/large-1"}, filter.objectPaths)
+		var want []string
+		for i := range n {
+			want = append(want, fmt.Sprintf("logs/large-%d", i))
+		}
+		require.Equal(t, want, filter.objectPaths)
 		require.Equal(t, uint64(200), totalLogInputBytes(plan))
-		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeSkippedMergesTotal.WithLabelValues("acme")))
+		require.Equal(t, skippedMerges, testutil.ToFloat64(c.metrics.logMergeSkippedMergesTotal.WithLabelValues("acme")))
+	}
+
+	t.Run("keeps the runs of a skipped merge in the IndexFilter and plans the other merges", func(t *testing.T) {
+		c, _, _ := newPlanner(t, withLargeObjects(2), "acme")
+		c.cfg.LogMaxKeySize = 1 << 30
+
+		plan, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
+		require.NoError(t, err)
+		requireFilterKeepsLargeObjects(t, c, plan, 2, 1)
+	})
+
+	t.Run("keeps the runs of every skipped merge in the IndexFilter when it skips two merges", func(t *testing.T) {
+		c, _, _ := newPlanner(t, withLargeObjects(4), "acme")
+		c.cfg.LogMaxKeySize = 1 << 30
+
+		plan, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
+		require.NoError(t, err)
+		requireFilterKeepsLargeObjects(t, c, plan, 4, 2)
+	})
+
+	t.Run("keeps both the skipped runs and the leftover runs of a level in the IndexFilter", func(t *testing.T) {
+		c, _, _ := newPlanner(t, withLargeObjects(3), "acme")
+		c.cfg.LogMaxKeySize = 1 << 30
+
+		plan, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
+		require.NoError(t, err)
+		requireFilterKeepsLargeObjects(t, c, plan, 3, 1)
+	})
+
+	t.Run("plans a merge whose sort prefixes are each below the maximum key size but sum above it", func(t *testing.T) {
+		billing := map[string]string{"service_name": "billing"}
+		c, _, _ := newPlanner(t, []stats.Stat{
+			stat("logs/log-0", "label:service_name", auth, 10, 20),
+			stat("logs/log-0", "label:service_name", billing, 10, 20),
+			stat("logs/log-1", "label:service_name", auth, 15, 30),
+			stat("logs/log-1", "label:service_name", billing, 15, 30),
+		}, "acme")
+		c.cfg.LogMaxKeySize = 250
+
+		plan, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
+		require.NoError(t, err)
+		require.Len(t, plan.tasks, 1)
+		require.IsType(t, logMergeTask{}, plan.tasks[0])
+		require.Equal(t, uint64(400), totalLogInputBytes(plan))
+		require.Zero(t, testutil.ToFloat64(c.metrics.logMergeSkippedMergesTotal.WithLabelValues("acme")))
 	})
 
 	t.Run("returns no work when the index has no sections for the tenant", func(t *testing.T) {
