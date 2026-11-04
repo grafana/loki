@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -103,10 +102,15 @@ func newInstance(
 // Push pushes the log entries in the given PushRequest to the appropriate streams.
 // It returns an error if any error occurs during the push operation.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	return i.PushInternal(ctx, logproto.FromPushRequest(req))
+}
+
+// PushInternal observes and trains on a nested stream without expanding metadata.
+func (i *instance) PushInternal(ctx context.Context, req *logproto.InternalPushRequest) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
-		skip, err := i.skipStream(reqStream)
+		skip, err := i.skipStream(logproto.Stream{Labels: reqStream.Labels})
 		if err != nil {
 			appendErr.Add(err)
 			continue
@@ -117,7 +121,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		// All streams are observed for metrics
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
-		i.Observe(ctx, reqStream.Labels, reqStream.Entries)
+		i.observeInternal(ctx, &reqStream)
 
 		// But only owned streamed are processed for patterns
 		ownedStream, err := i.owner.Owns(i.instanceID, reqStream.Labels)
@@ -126,7 +130,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 
 		if ownedStream {
-			if len(reqStream.Entries) == 0 {
+			if reqStream.EntryCount() == 0 {
 				level.Warn(i.logger).Log(
 					"msg", "skipping empty stream for aggregations",
 					"stream", reqStream.Labels,
@@ -136,16 +140,20 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 				func() (*stream, error) {
 					// add stream
-					return i.createStream(ctx, reqStream)
+					var first *logproto.Entry
+					reqStream.EachGroup(func(_, _ []logproto.LabelAdapter, entries []logproto.Entry) {
+						if first == nil && len(entries) > 0 {
+							first = &entries[0]
+						}
+					})
+					return i.createStream(ctx, logproto.Stream{Labels: reqStream.Labels, Entries: []logproto.Entry{*first}})
 				}, nil)
 			if err != nil {
 				appendErr.Add(err)
 				continue
 			}
-			err = s.Push(ctx, reqStream.Entries)
-			if err != nil {
+			if err := s.PushInternal(ctx, &reqStream); err != nil {
 				appendErr.Add(err)
-				continue
 			}
 		}
 	}
@@ -327,6 +335,10 @@ func (i *instance) flushPatterns() {
 }
 
 func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {
+	i.observeInternal(ctx, logproto.FromStream(logproto.Stream{Labels: stream, Entries: entries}))
+}
+
+func (i *instance) observeInternal(ctx context.Context, stream *logproto.InternalStreamAdapter) {
 	i.aggMetricsLock.Lock()
 	defer i.aggMetricsLock.Unlock()
 
@@ -334,16 +346,19 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 	defer sp.End()
 
 	sp.AddEvent("observe stream for metrics", trace.WithAttributes(
-		attribute.String("stream", stream),
-		attribute.Int("entries", len(entries)),
+		attribute.String("stream", stream.Labels),
+		attribute.Int("entries", stream.EntryCount()),
 	))
 
+	stream.EachGroup(func(resource, scope []logproto.LabelAdapter, entries []logproto.Entry) {
+		i.observeGroup(stream.Labels, entries, resource, scope)
+	})
+}
+
+// observeGroup requires aggMetricsLock to be held by the caller.
+func (i *instance) observeGroup(stream string, entries []logproto.Entry, resource, scope []logproto.LabelAdapter) {
 	for _, entry := range entries {
-		lvl := constants.LogLevelUnknown
-		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-		if structuredMetadata.Has(constants.LevelLabel) {
-			lvl = strings.ToLower(structuredMetadata.Get(constants.LevelLabel))
-		}
+		lvl := entryLevel(entry.StructuredMetadata, scope, resource)
 
 		streamMetrics, ok := i.aggMetricsByStreamAndLevel[stream]
 

@@ -297,6 +297,10 @@ func (m *mockPoolClient) PushInternal(
 	_ ...grpc.CallOption,
 ) (*push.PushResponse, error) {
 	m.ctx = ctx
+	m.req = &push.PushRequest{Format: in.Format}
+	for i := range in.Streams {
+		m.req.Streams = append(m.req.Streams, in.Streams[i].FlatView())
+	}
 	args := m.Called(ctx, in)
 	return args.Get(0).(*push.PushResponse), args.Error(1)
 }

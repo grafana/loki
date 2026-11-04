@@ -486,18 +486,17 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, instance.Push(ctx, req)
 }
 
-// PushInternal accepts streams in the internal data model, with resource and
-// scope attributes shared by their entries. It expands them on arrival and
-// handles them like Push.
+// PushInternal processes nested streams without expanding resource/scope attributes.
 func (i *Ingester) PushInternal(ctx context.Context, req *logproto.InternalPushRequest) (*logproto.PushResponse, error) {
-	flat := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, len(req.Streams)),
-		Format:  req.Format,
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
 	}
-	for idx := range req.Streams {
-		flat.Streams[idx] = req.Streams[idx].FlatView()
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return &logproto.PushResponse{}, err
 	}
-	return i.Push(ctx, flat)
+	return &logproto.PushResponse{}, instance.PushInternal(ctx, req)
 }
 
 func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pattern_QueryServer) error {

@@ -63,7 +63,7 @@ func (i *Ingester) consumeRecords(ctx context.Context, records <-chan *kgo.Recor
 	for rec := range records {
 		i.metrics.kafkaRecordsTotal.Inc()
 		i.metrics.kafkaConsumerLagHighWatermark.Observe(time.Since(rec.Timestamp).Seconds())
-		stream, err := i.kafkaDecoder.DecodeWithoutLabels(rec.Value)
+		stream, err := i.kafkaDecoder.DecodeInternalWithoutLabels(rec.Value)
 		if err != nil {
 			level.Error(i.logger).Log("msg", "failed to decode record", "offset", rec.Offset, "err", err)
 			i.metrics.kafkaRecordsFailed.Inc()
@@ -76,8 +76,8 @@ func (i *Ingester) consumeRecords(ctx context.Context, records <-chan *kgo.Recor
 			i.metrics.kafkaRecordsFailed.Inc()
 			continue
 		}
-		req := &logproto.PushRequest{Streams: []logproto.Stream{stream}}
-		if err := instance.Push(ctx, req); err != nil {
+		req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{stream}}
+		if err := instance.PushInternal(ctx, req); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to push record", "tenant", instanceID, "offset", rec.Offset, "err", err)
 			i.metrics.kafkaRecordsFailed.Inc()
 			continue

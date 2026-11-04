@@ -128,29 +128,33 @@ func isKnownLogLevel(lvl string) bool {
 	return false
 }
 
-func (s *stream) Push(
-	_ context.Context,
-	entries []logproto.Entry,
-) error {
+func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
+	return s.PushInternal(ctx, logproto.FromStream(logproto.Stream{Entries: entries}))
+}
+
+// PushInternal holds the stream lock across all groups to preserve timestamp ordering.
+func (s *stream) PushInternal(_ context.Context, stream *logproto.InternalStreamAdapter) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+	stream.EachGroup(func(resource, scope []logproto.LabelAdapter, entries []logproto.Entry) {
+		s.pushGroup(entries, resource, scope)
+	})
+	return nil
+}
 
+// pushGroup requires s.mtx to be held by the caller.
+func (s *stream) pushGroup(entries []logproto.Entry, resource, scope []logproto.LabelAdapter) {
 	for _, entry := range entries {
 		if entry.Timestamp.UnixNano() < s.lastTS {
 			continue
 		}
 
-		metadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-		lvl := constants.LogLevelUnknown
-		if metadata.Has(constants.LevelLabel) {
-			lvl = strings.ToLower(metadata.Get(constants.LevelLabel))
-		}
+		lvl := entryLevel(entry.StructuredMetadata, scope, resource)
 		s.lastTS = entry.Timestamp.UnixNano()
 
 		//TODO(twhitney): Can we reduce lock contention by locking by level rather than for the entire stream?
 		s.getOrCreateDrain(lvl).Train(entry.Line, entry.Timestamp.UnixNano())
 	}
-	return nil
 }
 
 // TODO(twhitney): Allow a level to be specified for the iterator. Requires a change to the query API.
@@ -429,4 +433,16 @@ func filterClustersByVolume(clusters []clusterWithMeta, threshold float64) []clu
 	}
 
 	return clusters[0:i]
+}
+
+// Only the effective level is needed for pattern extraction and aggregation.
+func entryLevel(groups ...[]logproto.LabelAdapter) string {
+	for _, attrs := range groups {
+		for _, attr := range attrs {
+			if attr.Name == constants.LevelLabel {
+				return strings.ToLower(attr.Value)
+			}
+		}
+	}
+	return constants.LogLevelUnknown
 }

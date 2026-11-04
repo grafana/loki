@@ -172,8 +172,7 @@ func TestIngesterPushInternal(t *testing.T) {
 		return push.Entry{Timestamp: time.Unix(sec, 0), Line: "ts=1 msg=hello"}
 	}
 
-	// The levels are only on shared attributes, so they reach the pattern
-	// ingester only if PushInternal expands them onto the entries.
+	// Levels on resource and scope attributes must reach the aggregation.
 	ctx := user.InjectOrgID(context.Background(), "foo")
 	_, err = ing.PushInternal(ctx, &logproto.InternalPushRequest{
 		Streams: []logproto.InternalStreamAdapter{{
@@ -1092,5 +1091,19 @@ func TestInstancePushOwnership(t *testing.T) {
 			}
 			require.Equal(t, tc.expectedStreams, inst.streams.Len())
 		})
+	}
+}
+
+func TestNestedEntryLevelPrecedence(t *testing.T) {
+	resource := []logproto.LabelAdapter{{Name: constants.LevelLabel, Value: "ERROR"}}
+	scope := []logproto.LabelAdapter{{Name: constants.LevelLabel, Value: "WARN"}}
+	own := []logproto.LabelAdapter{{Name: constants.LevelLabel, Value: ""}}
+	for _, tc := range []struct {
+		own, scope, resource []logproto.LabelAdapter
+		want                 string
+	}{
+		{own, scope, resource, ""}, {nil, scope, resource, "warn"}, {nil, nil, resource, "error"}, {nil, nil, nil, constants.LogLevelUnknown},
+	} {
+		require.Equal(t, tc.want, entryLevel(tc.own, tc.scope, tc.resource))
 	}
 }
