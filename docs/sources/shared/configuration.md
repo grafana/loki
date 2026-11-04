@@ -1199,6 +1199,14 @@ dataobj:
     # CLI flag: -dataobj.compaction.logs.max-task-size
     [logs_max_task_size: <int> | default = 0B]
 
+    # Experimental: Maximum uncompressed input of one stream sort prefix in a
+    # planned log merge. A merge writes all records of one sort prefix into one
+    # object, so this limits the size of the objects and the memory of a task.
+    # The planner skips a merge with a larger sort prefix and keeps its runs
+    # unmerged. 0 disables the check.
+    # CLI flag: -dataobj.compaction.logs.max-key-size
+    [logs_max_key_size: <int> | default = 100GiB]
+
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout
