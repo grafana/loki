@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   snyk-scan-ci:
-    uses: 'grafana/security-github-actions/.github/workflows/snyk_monitor.yml@main'
+    uses: 'grafana/security-github-actions/.github/workflows/snyk_monitor.yml@7398d7d15e6357bdcdab41d9a3e52b6bf314d0e5' # main
     permissions:
       contents: "read"
       id-token: "write"
