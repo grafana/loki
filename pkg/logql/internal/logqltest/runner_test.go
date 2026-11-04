@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +68,87 @@ func TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFr
 			requireSameOutcomes(t, outcomes[direct.name()], outcomes[queryFrontend.name()])
 		})
 	}
+}
+
+// TestLogQLScripts_ShouldFailWithTheMaxQuerySeriesCutoffOnlyWhereTheyFailWithoutIt runs every script
+// under a low series limit on each stack, with max query series cutoff off and on, and checks
+// that the cut-off changes no eval's outcome. The one allowed difference is a tie: the cut-off can
+// fail on the series limit in the step where the query without it fails on a pipeline error.
+func TestLogQLScripts_ShouldFailWithTheMaxQuerySeriesCutoffOnlyWhereTheyFailWithoutIt(t *testing.T) {
+	const maxQuerySeries = 2
+
+	files, err := filepath.Glob("testdata/*.logqltest")
+	require.NoError(t, err)
+	require.NotEmpty(t, files, "no .logqltest scripts found under testdata/")
+
+	for name, newStack := range map[string]func(t *testing.T, opts ...stackOption) executionStack{
+		"direct": func(t *testing.T, opts ...stackOption) executionStack {
+			return newDirectTimestampFirstStack(t, "direct", opts...)
+		},
+		"query-frontend without sharding": func(t *testing.T, opts ...stackOption) executionStack {
+			stack, err := newQueryFrontendTimestampFirstStack(t, "query-frontend", opts...)
+			require.NoError(t, err)
+			return stack
+		},
+		"query-frontend with sharding": func(t *testing.T, opts ...stackOption) executionStack {
+			stack, err := newQueryFrontendTimestampFirstStack(t, "query-frontend", append([]stackOption{withQuerySharding()}, opts...)...)
+			require.NoError(t, err)
+			return stack
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, f := range files {
+				t.Run(filepath.Base(f), func(t *testing.T) {
+					t.Parallel()
+
+					b, err := os.ReadFile(f)
+					require.NoError(t, err)
+
+					off := newStack(t, withMaxQuerySeries(maxQuerySeries))
+					on := renamedStack{executionStack: newStack(t, withMaxQuerySeries(maxQuerySeries), withMaxQuerySeriesCutoff()), stackName: "max query series cutoff"}
+
+					outcomes := runScript(t, filepath.Base(f), string(b), []executionStack{off, on})
+					requireSameOutcomesWithMaxQuerySeriesCutoff(t, outcomes[off.name()], outcomes[on.name()])
+				})
+			}
+		})
+	}
+}
+
+// renamedStack is an executionStack under another name, so two stacks of the same kind can run
+// side by side.
+type renamedStack struct {
+	executionStack
+	stackName string
+}
+
+func (s renamedStack) name() string { return s.stackName }
+
+// requireSameOutcomesWithMaxQuerySeriesCutoff checks that every eval that neither skipped ends the
+// same way without max query series cutoff (off) and with it (on), as requireSameOutcomes does,
+// except that on may fail on the series limit where off fails on a pipeline error.
+func requireSameOutcomesWithMaxQuerySeriesCutoff(t *testing.T, off, on []evalOutcome) {
+	t.Helper()
+
+	require.Len(t, on, len(off))
+	for i := range off {
+		require.Equal(t, off[i].eval, on[i].eval)
+		if off[i].skipped || on[i].skipped {
+			continue
+		}
+		require.Equalf(t, off[i].err == nil, on[i].err == nil, "%s: without the cut-off error %v, with it %v", off[i].eval, off[i].err, on[i].err)
+		if on[i].isSeriesLimitFailure() && isPipelineFailure(off[i]) {
+			t.Logf("%s: tie, the cut-off fails on the series limit where the query without it fails on %v", off[i].eval, off[i].err)
+			continue
+		}
+		require.Equalf(t, off[i].isSeriesLimitFailure(), on[i].isSeriesLimitFailure(), "%s: without the cut-off error %v, with it %v", off[i].eval, off[i].err, on[i].err)
+	}
+}
+
+// isPipelineFailure reports whether the query failed on a pipeline error. It reads the error
+// message for the same reason as evalOutcome.isSeriesLimitFailure.
+func isPipelineFailure(o evalOutcome) bool {
+	return o.err != nil && strings.Contains(o.err.Error(), "pipeline error:")
 }
 
 func TestRunScriptOutcomes_ShouldReportTheSeriesLimitFailures(t *testing.T) {
