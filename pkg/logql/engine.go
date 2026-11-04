@@ -422,9 +422,9 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		}
 	}
 
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
+	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr))
 	if err != nil {
 		return nil, err
 	}
