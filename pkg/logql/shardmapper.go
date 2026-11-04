@@ -103,6 +103,9 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 		return m.mapVectorAggregationExpr(e, r, topLevel)
 	case *syntax.LabelReplaceExpr:
 		return m.mapLabelReplaceExpr(e, r, topLevel)
+	case *syntax.HistogramFuncExpr:
+		// Not shardable yet, the query runs unsharded.
+		return noOp(e, m.shards.Resolver())
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r, topLevel)
 	case *syntax.LabelAggregationExpr:

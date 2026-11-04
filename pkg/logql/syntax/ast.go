@@ -1511,6 +1511,7 @@ const (
 	OpRangeTypeFirst       = "first_over_time"
 	OpRangeTypeLast        = "last_over_time"
 	OpRangeTypeAbsent      = "absent_over_time"
+	OpRangeTypeHistogram   = "histogram_over_time"
 
 	// vector
 	OpTypeVector = "vector"
@@ -1617,9 +1618,27 @@ type RangeAggregationExpr struct {
 	Left      *LogRangeExpr
 	Operation string
 
-	Params   *float64
+	Params *float64
+	// Buckets selects custom buckets for histogram_over_time. It is nil for every
+	// other operation, and for the default exponential buckets.
+	Buckets  *BucketSpec
 	Grouping *Grouping
 	err      error
+}
+
+// newBucketedRangeAggregationExpr builds a range aggregation that takes a
+// bucket spec as its first argument, which only histogram_over_time does.
+func newBucketedRangeAggregationExpr(left *LogRangeExpr, operation string, gr *Grouping, buckets *BucketSpec) SampleExpr {
+	e := &RangeAggregationExpr{
+		Left:      left,
+		Operation: operation,
+		Grouping:  gr,
+		Buckets:   buckets,
+	}
+	if err := e.Validate(); err != nil {
+		return &RangeAggregationExpr{err: logqlerr.NewParseError(err.Error(), 0, 0)}
+	}
+	return e
 }
 
 func newRangeAggregationExpr(left *LogRangeExpr, operation string, gr *Grouping, stringParams *string) SampleExpr {
@@ -1681,9 +1700,21 @@ func (e RangeAggregationExpr) Validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
 			OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst,
-			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
+			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp,
+			OpRangeTypeHistogram:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
+		}
+	}
+	if e.Operation == OpRangeTypeHistogram && e.Params != nil {
+		return fmt.Errorf("parameter not allowed for %s aggregation", e.Operation)
+	}
+	if e.Buckets != nil {
+		if e.Operation != OpRangeTypeHistogram {
+			return fmt.Errorf("buckets not allowed for %s aggregation", e.Operation)
+		}
+		if err := e.Buckets.Validate(); err != nil {
+			return err
 		}
 	}
 	if e.Left.Unwrap != nil {
@@ -1691,7 +1722,7 @@ func (e RangeAggregationExpr) Validate() error {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
 			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch,
-			OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
+			OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp, OpRangeTypeHistogram:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -1712,6 +1743,10 @@ func (e *RangeAggregationExpr) String() string {
 	sb.WriteString("(")
 	if e.Params != nil {
 		sb.WriteString(strconv.FormatFloat(*e.Params, 'f', -1, 64))
+		sb.WriteString(",")
+	}
+	if e.Buckets != nil {
+		sb.WriteString(e.Buckets.String())
 		sb.WriteString(",")
 	}
 	sb.WriteString(e.Left.String())
