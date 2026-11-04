@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"iter"
 	"maps"
 	"slices"
 	"strings"
@@ -169,10 +168,12 @@ type Builder struct {
 	// clears it, so a limits change applies from the next object.
 	layouts map[string]streams.Layout
 
-	// lastStream holds the keys of the last appended stream. Callers append
-	// many records of one stream in a row, so it skips most key computations.
-	// Reset clears it, because the layouts it depends on change.
-	lastStream streamKeyMemo
+	// lastTarget is the target of the last appended stream, or nil. Callers
+	// append many records of one stream in a row, so the builder resolves a
+	// target once per run of a stream, not once per record.
+	//
+	// Reset sets it to nil, because it points into layouts, streams and logs.
+	lastTarget *streamTarget
 
 	// sortLogsMetrics and sortStreamsMetrics are never registered. They absorb
 	// the section metrics of the sort in FlushAndSort, which would otherwise
@@ -306,130 +307,118 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		return err
 	}
 
-	recordIter := func(yield func(logs.Record, int64) bool) {
-		for _, entry := range stream.Entries {
-			rec := logs.Record{
-				Timestamp: entry.Timestamp,
-				Metadata:  convertMetadata(entry.StructuredMetadata),
-				Line:      []byte(entry.Line),
-			}
-			if !yield(rec, rec.UncompressedSize()) {
-				return
-			}
+	t, err := b.targetFor(tenant, ls)
+	if err != nil {
+		return err
+	}
+	for _, entry := range stream.Entries {
+		rec := logs.Record{
+			Timestamp: entry.Timestamp,
+			Metadata:  convertMetadata(entry.StructuredMetadata),
+			Line:      []byte(entry.Line),
+		}
+		if err := b.appendTo(t, rec); err != nil {
+			return err
 		}
 	}
-
-	return b.appendAll(tenant, ls, recTime, recordIter)
+	b.markAppended(recTime)
+	return nil
 }
 
 // AppendRecord buffers a pre-existing log record to be written to a data object.
 // Callers are expected to poll [Builder.IsFull] before appending and
 // to flush the builder once it reports full. Appending entries to a full
 // builder is permitted.
-// The SortKey, ShardBucket, StreamHash, and StreamID fields of the given
+// The SchemaKey, ShardBucket, StreamHash, and StreamID fields of the given
 // record are ignored and re-calculated.
 func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Record, ingestionTime time.Time) error {
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	// AppendRecord skips appendAll, because an iterator over one record moves
-	// the record to the heap on every call.
-	layout := b.layoutFor(tenant)
-	keys, err := b.lastStream.keysFor(tenant, ls, layout)
+	t, err := b.targetFor(tenant, ls)
 	if err != nil {
 		return err
 	}
-	sb, lb := b.buildersFor(tenant, layout)
-	if err := b.appendEntry(tenant, ls, keys, sb, lb, record, record.UncompressedSize()); err != nil {
+	if err := b.appendTo(t, record); err != nil {
 		return err
 	}
 	b.markAppended(ingestionTime)
 	return nil
 }
 
-func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Time, entriesIter iter.Seq2[logs.Record, int64]) error {
-	layout := b.layoutFor(tenant)
-	keys, err := b.lastStream.keysFor(tenant, ls, layout)
-	if err != nil {
-		return err
-	}
+// streamTarget is where the records of one stream go in the current object.
+type streamTarget struct {
+	tenant string
+	labels labels.Labels
 
-	sb, lb := b.buildersFor(tenant, layout)
+	// schemaKey, hash and shard are the same for every record of the stream.
+	schemaKey string
+	hash      uint64
+	shard     uint32
 
-	for entry, size := range entriesIter {
-		if err := b.appendEntry(tenant, ls, keys, sb, lb, entry, size); err != nil {
-			return err
-		}
-	}
-	b.markAppended(recordTime)
-	return nil
+	streams *streams.Builder
+	logs    *logs.Builder
 }
 
-// appendEntry appends one record of the stream with labels ls to sb and lb.
-func (b *Builder) appendEntry(tenant string, ls labels.Labels, keys streamKeys, sb *streams.Builder, lb *logs.Builder, entry logs.Record, size int64) error {
-	entry.SchemaKey = keys.schemaKey
-	entry.ShardBucket = keys.shard
-	entry.StreamHash = keys.hash
-	entry.StreamID = sb.Record(ls, entry.Timestamp, size)
+// targetFor returns the target of the stream with labels ls of tenant. It
+// returns the last target again when tenant and ls match it.
+func (b *Builder) targetFor(tenant string, ls labels.Labels) (*streamTarget, error) {
+	if t := b.lastTarget; t != nil && t.tenant == tenant && labels.Equal(t.labels, ls) {
+		return t, nil
+	}
 
-	lb.Append(entry)
+	layout := b.layoutFor(tenant)
+	schemaKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
+	if err != nil {
+		return nil, fmt.Errorf("compute schema key for tenant %s: %w", tenant, err)
+	}
+	hash := labels.StableHash(ls)
+	sb, lb := b.buildersFor(tenant, layout)
 
-	// If our logs section has gotten big enough, we want to flush it to the
-	// encoder and start a new section.
-	if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(lb); err != nil {
+	b.lastTarget = &streamTarget{
+		tenant:    tenant,
+		labels:    ls,
+		schemaKey: schemaKey,
+		hash:      hash,
+		shard:     layout.ShardLayout().BucketFromHash(hash),
+		streams:   sb,
+		logs:      lb,
+	}
+	return b.lastTarget, nil
+}
+
+// appendTo appends rec to the logs builder of t and records its stream. It
+// replaces the stream fields of rec with the values of t.
+//
+// appendTo flushes the logs builder of t as a section when it exceeds
+// TargetSectionSize.
+func (b *Builder) appendTo(t *streamTarget, rec logs.Record) error {
+	rec.SchemaKey = t.schemaKey
+	rec.ShardBucket = t.shard
+	rec.StreamHash = t.hash
+	rec.StreamID = t.streams.Record(t.labels, rec.Timestamp, rec.UncompressedSize())
+
+	t.logs.Append(rec)
+
+	if t.logs.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(t.logs); err != nil {
 			return err
 		}
 		// We need to set the tenant again after flushing because the builder is reset.
-		lb.SetTenant(tenant)
+		t.logs.SetTenant(t.tenant)
 	}
 	return nil
 }
 
-// markAppended records an append of records received at recordTime.
+// markAppended updates the earliest record time, the size estimate and the
+// state after an append of records received at recordTime.
 func (b *Builder) markAppended(recordTime time.Time) {
 	if b.earliestRecordTime.IsZero() || recordTime.Before(b.earliestRecordTime) {
 		b.earliestRecordTime = recordTime
 	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
-}
-
-// streamKeys are the per-stream values that every record of the stream carries.
-type streamKeys struct {
-	schemaKey string
-	hash      uint64
-	shard     uint32
-}
-
-// streamKeyMemo caches the [streamKeys] of one stream of one tenant.
-type streamKeyMemo struct {
-	valid  bool
-	tenant string
-	labels labels.Labels
-	keys   streamKeys
-}
-
-// keysFor returns the keys of the stream with labels ls in layout. layout
-// must be the layout of tenant in the current object.
-func (m *streamKeyMemo) keysFor(tenant string, ls labels.Labels, layout streams.Layout) (streamKeys, error) {
-	if m.valid && m.tenant == tenant && labels.Equal(m.labels, ls) {
-		return m.keys, nil
-	}
-	schemaKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
-	if err != nil {
-		*m = streamKeyMemo{}
-		return streamKeys{}, fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
-	}
-	hash := labels.StableHash(ls)
-	*m = streamKeyMemo{
-		valid:  true,
-		tenant: tenant,
-		labels: ls,
-		keys:   streamKeys{schemaKey: schemaKey, hash: hash, shard: layout.ShardLayout().BucketFromHash(hash)},
-	}
-	return m.keys, nil
 }
 
 func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
@@ -736,7 +725,7 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 	clear(b.layouts)
-	b.lastStream = streamKeyMemo{}
+	b.lastTarget = nil
 
 	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0

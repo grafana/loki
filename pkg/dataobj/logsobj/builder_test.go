@@ -588,6 +588,33 @@ func (m tenantOverrides) DataObjShardLayout(string) streams.ShardLayout {
 	return streams.DefaultShardLayout()
 }
 
+// oneShardOverrides maps tenant IDs to their schema labels. Every tenant has
+// one shard bucket, so logs sections order records by schema key only.
+type oneShardOverrides map[string][]string
+
+func (m oneShardOverrides) SortSchemaLabels(tenant string) []string { return m[tenant] }
+
+func (m oneShardOverrides) DataObjShardLayout(string) streams.ShardLayout {
+	return streams.MustShardLayoutFromBuckets(1)
+}
+
+// recordLines returns the lines of the records of tenant in obj, in the order
+// of the logs sections.
+func recordLines(t *testing.T, obj *dataobj.Object, tenant string) []string {
+	t.Helper()
+	var lines []string
+	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+		return logs.CheckSection(s) && s.Tenant == tenant
+	}) {
+		for res := range iterLogsSection(t, sec) {
+			val, err := res.Value()
+			require.NoError(t, err)
+			lines = append(lines, string(val.Line))
+		}
+	}
+	return lines
+}
+
 // limitsByTenant implements validation.TenantLimits for builder tests that
 // need the real Overrides defaulting path.
 type limitsByTenant map[string]*validation.Limits
@@ -834,6 +861,53 @@ func testFlushAndSortSchema(t *testing.T) {
 				firstRecord = false
 			}
 		}
+	})
+
+	t.Run("sorts each tenant by its own schema when two tenants append the same stream in turn", func(t *testing.T) {
+		b, err := NewBuilder(makeCfg(), nil, NewBuilderMetrics(), log.NewNopLogger(), oneShardOverrides{
+			"a": {"label:app"},
+			"b": {"label:cluster"},
+		})
+		require.NoError(t, err)
+
+		x := labels.FromStrings("app", "a", "cluster", "z")
+		y := labels.FromStrings("app", "z", "cluster", "a")
+		for _, step := range []struct {
+			tenant string
+			ls     labels.Labels
+			line   string
+		}{
+			{"a", x, "a-x"},
+			{"b", x, "b-x"},
+			{"a", y, "a-y"},
+			{"b", y, "b-y"},
+		} {
+			require.NoError(t, b.AppendRecord(step.tenant, step.ls, logs.Record{Timestamp: now, Line: []byte(step.line)}, now))
+		}
+
+		obj, closer, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, []string{"a-x", "a-y"}, recordLines(t, obj, "a"))
+		require.Equal(t, []string{"b-y", "b-x"}, recordLines(t, obj, "b"))
+	})
+
+	t.Run("AppendRecord writes logs sections in schema order", func(t *testing.T) {
+		b, err := NewBuilder(makeCfg(), nil, NewBuilderMetrics(), log.NewNopLogger(), oneShardOverrides{"t1": {"label:app"}})
+		require.NoError(t, err)
+
+		for _, app := range []string{"zoo", "alpha", "middle"} {
+			ls := labels.FromStrings("app", app)
+			for i := range 2 {
+				ts := now.Add(time.Duration(i) * time.Second)
+				require.NoError(t, b.AppendRecord("t1", ls, logs.Record{Timestamp: ts, Line: fmt.Appendf(nil, "%s-%d", app, i)}, ts))
+			}
+		}
+
+		obj, closer, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, []string{"alpha-1", "alpha-0", "middle-1", "middle-0", "zoo-1", "zoo-0"}, recordLines(t, obj, "t1"))
 	})
 
 	t.Run("orders streams by every label of a compound schema in order", func(t *testing.T) {
@@ -1373,6 +1447,33 @@ func testFlushAndSortLayoutPerObject(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, secondCloser.Close()) })
 		requireStreamsLayout(t, secondObj, "t1", streams.NewLayout(second, []string{"label:app"}))
+	})
+
+	t.Run("applies a schema change to a stream that continues across the flush", func(t *testing.T) {
+		oneShard := streams.MustShardLayoutFromBuckets(1)
+		overrides := &mutableOverrides{schema: []string{"label:app"}, shardLayout: &oneShard}
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+		require.NoError(t, err)
+
+		x := labels.FromStrings("app", "a", "cluster", "z")
+		y := labels.FromStrings("app", "m", "cluster", "m")
+		appendLine := func(ls labels.Labels, ts time.Time, line string) {
+			require.NoError(t, b.AppendRecord("t1", ls, logs.Record{Timestamp: ts, Line: []byte(line)}, ts))
+		}
+
+		appendLine(x, now, "first-object")
+		_, firstCloser, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, firstCloser.Close()) })
+
+		overrides.schema = []string{"label:cluster"}
+		appendLine(x, now, "x-0")
+		appendLine(y, now, "y")
+		appendLine(x, now.Add(time.Second), "x-1")
+		obj, closer, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, []string{"y", "x-1", "x-0"}, recordLines(t, obj, "t1"))
 	})
 }
 
