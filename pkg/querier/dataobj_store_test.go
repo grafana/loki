@@ -6,6 +6,7 @@ import (
 	stditer "iter"
 	"maps"
 	"math"
+	"math/rand/v2"
 	"slices"
 	"sort"
 	"sync"
@@ -212,20 +213,31 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 	})
 
 	t.Run("it counts the object-store requests and bytes of the query for the metastore and the streams reader, and no failed request, and reports its objects and downloaded bytes in the query stats", func(t *testing.T) {
+		randomStream := logproto.Stream{Labels: `{app="a", env="prod"}`, Entries: randomLineEntries(t, 4000, 300)}
+
 		for _, layout := range []struct {
-			name                           string
-			opts                           []testStoreOption
-			wantCompacted, wantUncompacted int64
+			name                                                                             string
+			opts                                                                             []testStoreOption
+			wantLogsCompacted, wantLogsUncompacted, wantIndexCompacted, wantIndexUncompacted int64
 		}{
-			{name: "when the builder wrote the objects", wantUncompacted: 1},
-			{name: "when the compactor wrote the objects", opts: []testStoreOption{withCompactedLayout()}, wantCompacted: 1},
+			{
+				name:                 "counts two uncompacted logs objects and one uncompacted index object when the builder wrote them",
+				wantLogsUncompacted:  2,
+				wantIndexUncompacted: 1,
+			},
+			{
+				name:               "counts two compacted logs objects and one compacted index object when the compactor wrote them",
+				opts:               []testStoreOption{withCompactedLayout()},
+				wantLogsCompacted:  2,
+				wantIndexCompacted: 1,
+			},
 		} {
 			t.Run(layout.name, func(t *testing.T) {
 				reg := prometheus.NewRegistry()
-				store := newTestDataObjStore(t, []logproto.Stream{appStream}, append(layout.opts, withRegisterer(reg))...)
+				store := newTestDataObjStore(t, []logproto.Stream{randomStream, otherStream}, append(layout.opts, withObjectPerStream(), withRegisterer(reg))...)
 				statsCtx, ctx := stats.NewContext(testCtx(t))
 
-				store.selectSamples(ctx, `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+				store.selectSamples(ctx, `sum by (app) (count_over_time({env="prod"} |= "zz" [1m]))`, at(0), at(10))
 
 				families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
 				require.NoError(t, err)
@@ -240,13 +252,14 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 				require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "streams-reader", "operation", "get_range"))
 				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "metastore"))
 				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "logs-reader"))
 				require.Zero(t, families.SumCounters("loki_querier_dataobj_object_store_requests_failed_total"))
 
 				got := statsCtx.Result(0, 0, 0).Querier.Store.Dataobj
-				require.Equal(t, layout.wantCompacted, got.LogsCompactedObjectsCount)
-				require.Equal(t, layout.wantUncompacted, got.LogsUncompactedObjectsCount)
-				require.Equal(t, layout.wantCompacted, got.IndexCompactedObjectsCount)
-				require.Equal(t, layout.wantUncompacted, got.IndexUncompactedObjectsCount)
+				require.Equal(t, layout.wantLogsCompacted, got.LogsCompactedObjectsCount)
+				require.Equal(t, layout.wantLogsUncompacted, got.LogsUncompactedObjectsCount)
+				require.Equal(t, layout.wantIndexCompacted, got.IndexCompactedObjectsCount)
+				require.Equal(t, layout.wantIndexUncompacted, got.IndexUncompactedObjectsCount)
 				require.Positive(t, got.LogsDownloadedBytes)
 				require.Positive(t, got.IndexDownloadedBytes)
 				require.Equal(t,
@@ -1141,6 +1154,25 @@ func entry(t *testing.T, second int, line string, metadata ...string) push.Entry
 		e.StructuredMetadata = append(e.StructuredMetadata, push.LabelAdapter{Name: metadata[i], Value: metadata[i+1]})
 	}
 	return e
+}
+
+// randomLineEntries returns count lines of width random letters, all at [at](1).
+//
+// Random letters compress poorly. The lines make the logs section large enough that a scan
+// downloads its pages, instead of finding them in the prefetched head of the object.
+func randomLineEntries(t *testing.T, count, width int) []push.Entry {
+	t.Helper()
+
+	rng := rand.New(rand.NewPCG(1, 2))
+	line := make([]byte, width)
+	entries := make([]push.Entry, count)
+	for i := range entries {
+		for j := range line {
+			line[j] = byte('a' + rng.IntN(26))
+		}
+		entries[i] = entry(t, 1, string(line))
+	}
+	return entries
 }
 
 // streamHashOf returns the stream hash of a LogQL label set, which is what an emitted sample
