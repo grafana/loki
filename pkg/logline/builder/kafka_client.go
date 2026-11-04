@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+        "github.com/twmb/franz-go/pkg/kversion"
 )
 
 // createKafkaClient builds the consumer-group Kafka client.
@@ -51,6 +52,7 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 
 	opts := []kgo.Opt{
 		kgo.WithLogger(newKgoLogger(log.With(s.logger, "component", "kgo"))),
+                kgo.MaxVersions(kversion.V4_3_0()),
 		kgo.SeedBrokers(seedBrokers...),
 		kgo.ClientID(s.cfg.Kafka.ClientID),
 		kgo.DialTimeout(s.cfg.Kafka.DialTimeout),
