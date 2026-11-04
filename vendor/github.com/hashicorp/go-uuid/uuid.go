@@ -1,3 +1,6 @@
+// Copyright IBM Corp. 2015, 2025
+// SPDX-License-Identifier: MPL-2.0
+
 package uuid
 
 import (
@@ -19,11 +22,10 @@ func GenerateRandomBytesWithReader(size int, reader io.Reader) ([]byte, error) {
 	}
 	buf := make([]byte, size)
 	if _, err := io.ReadFull(reader, buf); err != nil {
-		return nil, fmt.Errorf("failed to read random bytes: %v", err)
+		return nil, fmt.Errorf("failed to read random bytes: %w", err)
 	}
 	return buf, nil
 }
-
 
 const uuidLen = 16
 
@@ -58,7 +60,7 @@ func FormatUUID(buf []byte) (string, error) {
 }
 
 func ParseUUID(uuid string) ([]byte, error) {
-	if len(uuid) != 2 * uuidLen + 4 {
+	if len(uuid) != 2*uuidLen+4 {
 		return nil, fmt.Errorf("uuid string is wrong length")
 	}
 
