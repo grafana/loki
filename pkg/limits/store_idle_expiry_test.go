@@ -164,8 +164,8 @@ func TestService_EvictIdleStreams(t *testing.T) {
 	go s.evictOldStreamsPeriodic(ctx)
 
 	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(s.metrics.streamShardEvictionsTotal.WithLabelValues("test", evictionReasonPerPolicyOld)) == 1 &&
-			testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonPerPolicyOld)) == 1
+		return testutil.ToFloat64(s.metrics.streamShardEvictionsTotal.WithLabelValues("test", evictionReasonPerPolicyExpired)) == 1 &&
+			testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonPerPolicyExpired)) == 1
 	}, time.Second, 10*time.Millisecond)
-	require.Zero(t, testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonOld)))
+	require.Zero(t, testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonExpired)))
 }

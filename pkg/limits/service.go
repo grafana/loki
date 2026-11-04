@@ -38,11 +38,11 @@ const (
 
 // Reasons for the stream eviction metrics.
 const (
-	// evictionReasonOld is for streams not seen within the active window.
-	evictionReasonOld = "old"
-	// evictionReasonPerPolicyOld is for streams evicted by a policy override
-	// for a shorter eviction.
-	evictionReasonPerPolicyOld = "per-policy-old"
+	// evictionReasonExpired is for streams not seen within the active window.
+	evictionReasonExpired = "expired"
+	// evictionReasonPerPolicyExpired is for streams evicted by a policy
+	// override for a shorter expiry.
+	evictionReasonPerPolicyExpired = "per-policy-expired"
 )
 
 type metrics struct {
@@ -414,9 +414,9 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.recordEvictions(evictionReasonOld, s.usage.Evict(), s.streamShards.Evict())
+			s.recordEvictions(evictionReasonExpired, s.usage.Evict(), s.streamShards.Evict())
 		case <-idleTicker.C:
-			s.recordEvictions(evictionReasonPerPolicyOld, s.usage.EvictIdle(), s.streamShards.EvictIdle())
+			s.recordEvictions(evictionReasonPerPolicyExpired, s.usage.EvictIdle(), s.streamShards.EvictIdle())
 		}
 	}
 }
