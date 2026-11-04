@@ -83,6 +83,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // An Object is a representation of a data object.
@@ -181,6 +182,13 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, 
 	if err := obj.init(ctx); err != nil {
 		return nil, err
 	}
+
+	opened := StatObjectsOpenedUncompacted
+	if IsCompactedObjectPath(path) {
+		opened = StatObjectsOpenedCompacted
+	}
+	xcap.RegionFromContext(ctx).Record(opened.Observe(1))
+
 	return obj, nil
 }
 

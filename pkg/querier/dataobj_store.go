@@ -189,10 +189,10 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 		filterer = s.filterer.ForRequest(ctx)
 	}
 
-	// One capture spans the query. When the reader closes, it reads the query stats from the
-	// logs.RegionRead and metastore.Sections regions. It also folds every region into the
-	// per-component object-store metrics. The planner's object opens and streams reads record
-	// into a region of their own, so only the metrics see them.
+	// One capture spans the query. When the reader closes, it adds the capture's figures to the query
+	// stats and to the per-component object-store metrics. The planner's object opens and streams
+	// reads record into a region of their own. The object counts and downloaded bytes in the query
+	// stats include that region, and so do the metrics.
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 

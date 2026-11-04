@@ -211,26 +211,51 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		}, got)
 	})
 
-	t.Run("it counts the object-store requests and bytes of the query for the metastore and the streams reader, and no failed request", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withRegisterer(reg))
+	t.Run("it counts the object-store requests and bytes of the query for the metastore and the streams reader, and no failed request, and reports its objects and downloaded bytes in the query stats", func(t *testing.T) {
+		for _, layout := range []struct {
+			name                           string
+			opts                           []testStoreOption
+			wantCompacted, wantUncompacted int64
+		}{
+			{name: "when the builder wrote the objects", wantUncompacted: 1},
+			{name: "when the compactor wrote the objects", opts: []testStoreOption{withCompactedLayout()}, wantCompacted: 1},
+		} {
+			t.Run(layout.name, func(t *testing.T) {
+				reg := prometheus.NewRegistry()
+				store := newTestDataObjStore(t, []logproto.Stream{appStream}, append(layout.opts, withRegisterer(reg))...)
+				statsCtx, ctx := stats.NewContext(testCtx(t))
 
-		store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+				store.selectSamples(ctx, `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
 
-		families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
-		require.NoError(t, err)
-		seriesValue := func(name string, labelNamesAndValues ...string) float64 {
-			series := metrics.FindMetricsInFamilyMatchingLabels(families[name], labelNamesAndValues...)
-			require.Len(t, series, 1, "series of %s with labels %v", name, labelNamesAndValues)
-			return series[0].GetCounter().GetValue()
+				families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+				require.NoError(t, err)
+				seriesValue := func(name string, labelNamesAndValues ...string) float64 {
+					series := metrics.FindMetricsInFamilyMatchingLabels(families[name], labelNamesAndValues...)
+					require.Len(t, series, 1, "series of %s with labels %v", name, labelNamesAndValues)
+					return series[0].GetCounter().GetValue()
+				}
+
+				require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "metastore", "operation", "get"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "metastore", "operation", "get_range"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "streams-reader", "operation", "get_range"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "metastore"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader"))
+				require.Zero(t, families.SumCounters("loki_querier_dataobj_object_store_requests_failed_total"))
+
+				got := statsCtx.Result(0, 0, 0).Querier.Store.Dataobj
+				require.Equal(t, layout.wantCompacted, got.LogsCompactedObjectsCount)
+				require.Equal(t, layout.wantUncompacted, got.LogsUncompactedObjectsCount)
+				require.Equal(t, layout.wantCompacted, got.IndexCompactedObjectsCount)
+				require.Equal(t, layout.wantUncompacted, got.IndexUncompactedObjectsCount)
+				require.Positive(t, got.LogsDownloadedBytes)
+				require.Positive(t, got.IndexDownloadedBytes)
+				require.Equal(t,
+					seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader")+seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "logs-reader"),
+					float64(got.LogsDownloadedBytes))
+				require.Less(t, float64(got.IndexDownloadedBytes), seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "metastore"),
+					"the metastore counter also holds the table of contents, which the query stats leave out")
+			})
 		}
-
-		require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "metastore", "operation", "get"))
-		require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "metastore", "operation", "get_range"))
-		require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "streams-reader", "operation", "get_range"))
-		require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "metastore"))
-		require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader"))
-		require.Zero(t, families.SumCounters("loki_querier_dataobj_object_store_requests_failed_total"))
 	})
 
 	t.Run("the window includes a line at the start bound and excludes one at the end bound", func(t *testing.T) {
@@ -948,9 +973,15 @@ type testStoreOptions struct {
 	maxConcurrency   int
 	metadataCache    dataobj.MetadataCache
 	registerer       prometheus.Registerer
+	compactedLayout  bool
 }
 
 type testStoreOption func(*testStoreOptions)
+
+// withCompactedLayout stores the objects under the keys the compactor uses.
+func withCompactedLayout() testStoreOption {
+	return func(o *testStoreOptions) { o.compactedLayout = true }
+}
 
 // withSectionSize caps a logs section so the streams span several sections of one object.
 func withSectionSize(size flagext.Bytes) testStoreOption {
@@ -990,6 +1021,9 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 	var builderOpts []objtest.Option
 	if options.sectionSize > 0 {
 		builderOpts = append(builderOpts, objtest.WithTargetSectionSize(options.sectionSize))
+	}
+	if options.compactedLayout {
+		builderOpts = append(builderOpts, objtest.WithCompactedLayout())
 	}
 
 	builder := objtest.NewBuilder(t, builderOpts...)
