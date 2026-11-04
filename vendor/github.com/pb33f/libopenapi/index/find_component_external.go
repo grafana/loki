@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 func (index *SpecIndex) lookupRolodex(ctx context.Context, uri []string) *Reference {
@@ -52,12 +52,10 @@ func (index *SpecIndex) lookupRolodex(ctx context.Context, uri []string) *Refere
 				"file", absoluteFileLocation)
 			return nil
 		}
-		if rFile.GetIndex() == nil && !IsFileBeingIndexed(ctx, absoluteFileLocation) {
-			rFile.WaitForIndexing()
-		}
-		if rFile.GetIndex() != nil {
-			idx = rFile.GetIndex()
-		}
+		// Looking up a component needs the parsed YAML, not the completed index.
+		// Waiting here can deadlock concurrently indexed documents that reference
+		// each other, even when the referenced schema graph itself is finite.
+		idx = rFile.GetIndex()
 		parsedDocument, _ = rFile.GetContentAsYAMLNode()
 	} else {
 		parsedDocument = index.root
@@ -91,10 +89,13 @@ func (index *SpecIndex) lookupRolodex(ctx context.Context, uri []string) *Refere
 		}
 	}
 
-	foundRef := FindComponent(ctx, parsedDocument, query, absoluteFileLocation, index)
+	foundRef := FindComponent(ctx, parsedDocument, query, absoluteFileLocation, idx)
 	if foundRef != nil {
 		foundRef.IsRemote = true
 		foundRef.RemoteLocation = absoluteFileLocation
+		if source := index.allRefs[absoluteFileLocation+query]; source != nil {
+			foundRef.SourcePath = append([]string(nil), source.SourcePath...)
+		}
 		return foundRef
 	}
 	index.logger.Debug("[lookupRolodex] FindComponent returned nil",

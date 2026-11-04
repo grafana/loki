@@ -2,13 +2,12 @@ package base
 
 import (
 	"context"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // SchemaDynamicValue is used to hold multiple possible types for a schema property. There are two values, a left
@@ -88,7 +87,9 @@ type Schema struct {
 	DependentSchemas  low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*SchemaProxy]]]
 	DependentRequired low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[[]string]]]
 
-	PatternProperties     low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*SchemaProxy]]]
+	PatternProperties low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*SchemaProxy]]]
+	// Defs holds reusable JSON Schema definitions declared under the $defs keyword.
+	Defs                  low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*SchemaProxy]]]
 	PropertyNames         low.NodeReference[*SchemaProxy]
 	UnevaluatedItems      low.NodeReference[*SchemaProxy]
 	UnevaluatedProperties low.NodeReference[*SchemaDynamicValue[*SchemaProxy, bool]]
@@ -136,12 +137,30 @@ type Schema struct {
 	// Parent Proxy refers back to the low level SchemaProxy that is proxying this schema.
 	ParentProxy *SchemaProxy
 
-	// Index is a reference to the SpecIndex that was used to build this schema.
-	Index     *index.SpecIndex
-	RootNode  *yaml.Node
-	index     *index.SpecIndex
+	// Index is a reference to the SpecIndex that owns the resolved content of this schema. When the
+	// schema was reached through a reference, this is the file the reference points at, so the index
+	// agrees with the line and column of the schema's own keyword fields.
+	//
+	// Two things do not follow it, both only for a component level schema built straight from a $ref
+	// node, where the reference resolves during Build rather than before it. RootNode stays the
+	// authored $ref node in the referring file. Nodes holds the referring file's node for the $ref
+	// itself alongside the resolved file's nodes for everything under it, so it spans both.
+	//
+	// A child schema (a property, an allOf member, and so on) has its reference resolved before the
+	// schema is built, so none of that applies and everything names one file.
+	Index    *index.SpecIndex
+	RootNode *yaml.Node
+	index    *index.SpecIndex
+
+	// refIndex is the index of the file RootNode actually lives in. It equals Index except
+	// for a component level schema built from a $ref node, where Index is re-attributed to
+	// the resolved file while RootNode stays behind in the referring one. Anything keyed on
+	// RootNode's position must pair it with this index, not Index, or the pair names two
+	// different files and stops identifying the node uniquely.
+	refIndex *index.SpecIndex
+
 	context   context.Context
-	nodeStore sync.Map
+	nodeStore low.NodeLines
 	reference low.Reference
 	*low.Reference
 	low.NodeMap

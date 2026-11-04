@@ -4,8 +4,8 @@
 package index
 
 import (
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 func (resolver *Resolver) extractPolymorphicRelatives(
@@ -13,6 +13,7 @@ func (resolver *Resolver) extractPolymorphicRelatives(
 	node, keywordNode *yaml.Node,
 	state relativeWalkState,
 	index int,
+	walkPath []string,
 ) []*Reference {
 	var found []*Reference
 
@@ -40,7 +41,7 @@ func (resolver *Resolver) extractPolymorphicRelatives(
 				if d, _, l := utils.IsNodeRefValue(v); d {
 					resolver.visitPolymorphicReference(ref, keywordNode.Value, node.Content[index], l, state, index)
 				} else {
-					found = append(found, resolver.extractRelativesWithState(ref, v, keywordNode, state.descend())...)
+					found = append(found, resolver.extractRelativesWithState(ref, v, keywordNode, state.descend(), walkPath)...)
 				}
 			}
 		}
@@ -73,7 +74,7 @@ func (resolver *Resolver) visitPolymorphicReference(
 		return
 	}
 
-	loop := append(state.journey, mappedRefs)
+	loop := append(state.journey[:len(state.journey):len(state.journey)], mappedRefs)
 	circRef := &CircularReferenceResult{
 		ParentNode:          parentNode,
 		Journey:             loop,

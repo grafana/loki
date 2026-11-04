@@ -30,7 +30,8 @@ func (resolver *Resolver) buildCircularReferenceResult(
 	journey []*Reference,
 	loopIndex int,
 ) *CircularReferenceResult {
-	loop := append(journey, foundDup)
+	// Keep the recorded journey independent of later sibling traversal.
+	loop := append(journey[:len(journey):len(journey)], foundDup)
 	visitedDefinitions := make(map[string]bool)
 	isInfiniteLoop, _ := resolver.isInfiniteCircularDependency(foundDup, visitedDefinitions, nil)
 
@@ -99,6 +100,9 @@ func (resolver *Resolver) isInfiniteCircularDependency(
 	}
 	for refDefinition := range ref.RequiredRefProperties {
 		r, _ := resolver.specIndex.SearchIndexForReference(refDefinition)
+		if r == nil {
+			continue // Unresolved targets are reported by reference resolution.
+		}
 
 		// Direct loop back to the original starting reference — infinite cycle.
 		if initialRef != nil && initialRef.FullDefinition == r.FullDefinition {

@@ -3,7 +3,7 @@ package index
 import (
 	"strings"
 
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 // CircularReferenceResult contains a circular reference found when traversing the graph.

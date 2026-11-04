@@ -6,6 +6,7 @@ package v3
 import (
 	"context"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/high"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	lowmodel "github.com/pb33f/libopenapi/datamodel/low"
@@ -13,7 +14,6 @@ import (
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // buildLowLink builds a low-level Link from a resolved YAML node.

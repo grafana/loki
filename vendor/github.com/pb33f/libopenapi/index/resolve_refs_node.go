@@ -3,7 +3,7 @@ package index
 import (
 	"strings"
 
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 // ResolveRefsInNode resolves local $ref values in a YAML node using the provided

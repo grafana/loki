@@ -5,15 +5,13 @@ package v3
 
 import (
 	"context"
-	"fmt"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // OAuthFlows represents a low-level OpenAPI 3+ OAuthFlows object.
@@ -29,7 +27,7 @@ type OAuthFlows struct {
 	RootNode          *yaml.Node
 	index             *index.SpecIndex
 	context           context.Context
-	nodeStore         sync.Map
+	nodeStore         low.NodeLines
 	reference         low.Reference
 	*low.Reference
 	low.NodeMap
@@ -68,12 +66,11 @@ func (o *OAuthFlows) GetKeyNode() *yaml.Node {
 // Build will extract extensions and all OAuthFlow types from the supplied node.
 func (o *OAuthFlows) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	o.KeyNode = keyNode
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	o.RootNode = root
-	utils.CheckForMergeNodes(root)
 	o.reference = low.Reference{}
 	o.Reference = &o.reference
-	o.nodeStore = sync.Map{}
+	o.nodeStore = low.NodeLines{}
 	o.Nodes = &o.nodeStore
 	if len(root.Content) > 0 {
 		o.NodeMap.ExtractNodes(root, false)
@@ -121,24 +118,19 @@ func (o *OAuthFlows) Build(ctx context.Context, keyNode, root *yaml.Node, idx *i
 func (o *OAuthFlows) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if !o.Implicit.IsEmpty() {
-			h.WriteString(low.GenerateHashString(o.Implicit.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, ImplicitLabel, low.GenerateHashString(o.Implicit.Value))
 		}
 		if !o.Password.IsEmpty() {
-			h.WriteString(low.GenerateHashString(o.Password.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, PasswordLabel, low.GenerateHashString(o.Password.Value))
 		}
 		if !o.ClientCredentials.IsEmpty() {
-			h.WriteString(low.GenerateHashString(o.ClientCredentials.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, ClientCredentialsLabel, low.GenerateHashString(o.ClientCredentials.Value))
 		}
 		if !o.AuthorizationCode.IsEmpty() {
-			h.WriteString(low.GenerateHashString(o.AuthorizationCode.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, AuthorizationCodeLabel, low.GenerateHashString(o.AuthorizationCode.Value))
 		}
 		if !o.Device.IsEmpty() {
-			h.WriteString(low.GenerateHashString(o.Device.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, DeviceLabel, low.GenerateHashString(o.Device.Value))
 		}
 		for _, ext := range low.HashExtensions(o.Extensions) {
 			h.WriteString(ext)
@@ -159,7 +151,7 @@ type OAuthFlow struct {
 	RootNode         *yaml.Node
 	index            *index.SpecIndex
 	context          context.Context
-	nodeStore        sync.Map
+	nodeStore        low.NodeLines
 	reference        low.Reference
 	*low.Reference
 	low.NodeMap
@@ -197,9 +189,10 @@ func (o *OAuthFlow) GetRootNode() *yaml.Node {
 
 // Build will extract extensions from the node.
 func (o *OAuthFlow) Build(ctx context.Context, _, root *yaml.Node, idx *index.SpecIndex) error {
+	root = utils.ResolveMergeNodes(root)
 	o.reference = low.Reference{}
 	o.Reference = &o.reference
-	o.nodeStore = sync.Map{}
+	o.nodeStore = low.NodeLines{}
 	o.Nodes = &o.nodeStore
 	if len(root.Content) > 0 {
 		o.NodeMap.ExtractNodes(root, false)
@@ -225,21 +218,15 @@ func (o *OAuthFlow) Build(ctx context.Context, _, root *yaml.Node, idx *index.Sp
 func (o *OAuthFlow) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if !o.AuthorizationUrl.IsEmpty() {
-			h.WriteString(o.AuthorizationUrl.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "authorizationUrl", o.AuthorizationUrl.Value)
 		}
 		if !o.TokenUrl.IsEmpty() {
-			h.WriteString(o.TokenUrl.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "tokenUrl", o.TokenUrl.Value)
 		}
 		if !o.RefreshUrl.IsEmpty() {
-			h.WriteString(o.RefreshUrl.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "refreshUrl", o.RefreshUrl.Value)
 		}
-		for k, v := range orderedmap.SortAlpha(o.Scopes.Value).FromOldest() {
-			h.WriteString(fmt.Sprintf("%s-%s", k.Value, v.Value))
-			h.WriteByte(low.HASH_PIPE)
-		}
+		low.HashMap(h, "scopes", o.Scopes.Value)
 		for _, ext := range low.HashExtensions(o.Extensions) {
 			h.WriteString(ext)
 			h.WriteByte(low.HASH_PIPE)

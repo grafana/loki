@@ -8,14 +8,13 @@ import (
 	"fmt"
 	"hash/maphash"
 	"slices"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Parameter represents a high-level OpenAPI 3+ Parameter object, that is backed by a low-level one.
@@ -41,7 +40,7 @@ type Parameter struct {
 	Extensions      *orderedmap.Map[low.KeyReference[string], low.ValueReference[*yaml.Node]]
 	index           *index.SpecIndex
 	context         context.Context
-	nodeStore       sync.Map
+	nodeStore       low.NodeLines
 	reference       low.Reference
 	*low.Reference
 	low.NodeMap
@@ -96,9 +95,9 @@ func (p *Parameter) Build(ctx context.Context, keyNode, root *yaml.Node, idx *in
 	}
 	root = utils.NodeAlias(root)
 	p.KeyNode = keyNode
+	root = utils.ResolveMergeNodes(root)
 	p.RootNode = root
-	utils.CheckForMergeNodes(root)
-	p.nodeStore = sync.Map{}
+	p.nodeStore = low.NodeLines{}
 	p.Nodes = &p.nodeStore
 	if len(root.Content) > 0 {
 		p.NodeMap.ExtractNodes(root, false)
@@ -168,16 +167,13 @@ func (p *Parameter) Build(ctx context.Context, keyNode, root *yaml.Node, idx *in
 func (p *Parameter) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if p.Name.Value != "" {
-			h.WriteString(p.Name.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "name", p.Name.Value)
 		}
 		if p.In.Value != "" {
-			h.WriteString(p.In.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "in", p.In.Value)
 		}
 		if p.Description.Value != "" {
-			h.WriteString(p.Description.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "description", p.Description.Value)
 		}
 		low.HashBool(h, p.Required.Value)
 		h.WriteByte(low.HASH_PIPE)
@@ -186,29 +182,20 @@ func (p *Parameter) Hash() uint64 {
 		low.HashBool(h, p.AllowEmptyValue.Value)
 		h.WriteByte(low.HASH_PIPE)
 		if p.Style.Value != "" {
-			h.WriteString(p.Style.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "style", p.Style.Value)
 		}
 		low.HashBool(h, p.Explode.Value)
 		h.WriteByte(low.HASH_PIPE)
 		low.HashBool(h, p.AllowReserved.Value)
 		h.WriteByte(low.HASH_PIPE)
 		if p.Schema.Value != nil && p.Schema.Value.Schema() != nil {
-			h.WriteString(fmt.Sprintf("%x", p.Schema.Value.Schema().Hash()))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "schema", fmt.Sprintf("%x", p.Schema.Value.Schema().Hash()))
 		}
 		if p.Example.Value != nil && !p.Example.Value.IsZero() {
-			h.WriteString(low.GenerateHashString(p.Example.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "example", low.GenerateHashString(p.Example.Value))
 		}
-		for v := range orderedmap.SortAlpha(p.Examples.Value).ValuesFromOldest() {
-			h.WriteString(low.GenerateHashString(v.Value))
-			h.WriteByte(low.HASH_PIPE)
-		}
-		for v := range orderedmap.SortAlpha(p.Content.Value).ValuesFromOldest() {
-			h.WriteString(low.GenerateHashString(v.Value))
-			h.WriteByte(low.HASH_PIPE)
-		}
+		low.HashMap(h, "examples", p.Examples.Value)
+		low.HashMap(h, "content", p.Content.Value)
 		for _, ext := range low.HashExtensions(p.Extensions) {
 			h.WriteString(ext)
 			h.WriteByte(low.HASH_PIPE)

@@ -18,9 +18,10 @@ import (
 
 	"context"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
+	"github.com/pb33f/libopenapi/internal/jsonnode"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 type Rolodexable interface {
@@ -152,15 +153,15 @@ func (l *LocalFS) OpenWithContext(ctx context.Context, name string) (fs.File, er
 			copiedCfg.SpecAbsolutePath = name
 			copiedCfg.AvoidBuildIndex = true
 			copiedCfg.SpecInfo = nil
+			if l.rolodex != nil {
+				copiedCfg.Rolodex = l.rolodex
+			}
 
 			// Add this file to the context's indexing set to prevent deadlocks
 			// when circular references cause the same file to be looked up recursively.
 			indexingCtx := AddIndexingFile(ctx, name)
 
 			idx, _ := extractedFile.IndexWithContext(indexingCtx, &copiedCfg)
-			if idx != nil && l.rolodex != nil {
-				idx.rolodex = l.rolodex
-			}
 
 			if idx != nil {
 				NewResolver(idx)
@@ -293,7 +294,7 @@ func (l *LocalFile) GetContentAsYAMLNode() (*yaml.Node, error) {
 		return nil, fmt.Errorf("no data to parse for file: %s", l.fullPath)
 	}
 	var root yaml.Node
-	err := yaml.Unmarshal(l.data, &root)
+	err := jsonnode.Unmarshal(l.data, &root)
 	if err != nil {
 		// we can't parse it, so create a fake document node with a single string content
 		root = yaml.Node{

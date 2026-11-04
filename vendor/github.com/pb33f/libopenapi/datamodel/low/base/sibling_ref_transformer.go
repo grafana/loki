@@ -6,9 +6,9 @@ package base
 import (
 	"sort"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // SiblingRefTransformer handles transformation of schemas with sibling properties alongside $ref
@@ -74,7 +74,7 @@ func (srt *SiblingRefTransformer) CreateAllOfStructure(refValue string, siblings
 		for _, key := range keys {
 			valueNode := siblings[key]
 			keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
-			copiedValueNode := srt.copyNode(valueNode)
+			copiedValueNode := utils.CloneYAMLNode(valueNode)
 			siblingSchemaNode.Content = append(siblingSchemaNode.Content, keyNode, copiedValueNode)
 		}
 	}
@@ -121,7 +121,7 @@ func (srt *SiblingRefTransformer) createSiblingSchemaNode(node *yaml.Node) *yaml
 		if keyNode == nil || keyNode.Value == "$ref" {
 			continue
 		}
-		siblingNode.Content = append(siblingNode.Content, srt.copyNode(keyNode), srt.copyNode(valueNode))
+		siblingNode.Content = append(siblingNode.Content, utils.CloneYAMLNode(keyNode), utils.CloneYAMLNode(valueNode))
 	}
 	return siblingNode
 }
@@ -170,34 +170,4 @@ func (srt *SiblingRefTransformer) ShouldTransform(node *yaml.Node) bool {
 
 	siblings, refValue := srt.ExtractSiblingProperties(node)
 	return len(siblings) > 0 && refValue != ""
-}
-
-// copyNode creates a deep copy of a yaml node to avoid modifying the original
-func (srt *SiblingRefTransformer) copyNode(node *yaml.Node) *yaml.Node {
-	if node == nil {
-		return nil
-	}
-
-	copied := &yaml.Node{
-		Kind:        node.Kind,
-		Style:       node.Style,
-		Tag:         node.Tag,
-		Value:       node.Value,
-		Anchor:      node.Anchor,
-		Alias:       node.Alias,
-		Line:        node.Line,
-		Column:      node.Column,
-		HeadComment: node.HeadComment,
-		LineComment: node.LineComment,
-		FootComment: node.FootComment,
-	}
-
-	if node.Content != nil {
-		copied.Content = make([]*yaml.Node, len(node.Content))
-		for i, child := range node.Content {
-			copied.Content[i] = srt.copyNode(child)
-		}
-	}
-
-	return copied
 }

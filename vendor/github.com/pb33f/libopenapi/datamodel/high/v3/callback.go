@@ -5,8 +5,10 @@ package v3
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/high"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	lowmodel "github.com/pb33f/libopenapi/datamodel/low"
@@ -14,7 +16,6 @@ import (
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // buildLowCallback builds a low-level Callback from a resolved YAML node.
@@ -241,10 +242,14 @@ func (c *Callback) marshalYAMLInlineInternal(ctx any) (interface{}, error) {
 	for _, mp := range mapped {
 		if mp.pi != nil {
 			var rendered interface{}
+			var err error
 			if ctx != nil {
-				rendered, _ = mp.pi.MarshalYAMLInlineWithContext(ctx)
+				rendered, err = mp.pi.MarshalYAMLInlineWithContext(ctx)
 			} else {
-				rendered, _ = mp.pi.MarshalYAMLInline()
+				rendered, err = mp.pi.MarshalYAMLInline()
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to render callback path %q inline: %w", mp.path, err)
 			}
 
 			kn := utils.CreateStringNode(mp.path)

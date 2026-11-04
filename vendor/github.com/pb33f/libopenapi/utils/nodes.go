@@ -4,7 +4,7 @@
 package utils
 
 import (
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 func CreateRefNode(ref string) *yaml.Node {

@@ -4,13 +4,15 @@
 package v3
 
 import (
+	"errors"
+
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/high"
 	"github.com/pb33f/libopenapi/datamodel/high/base"
 	lowmodel "github.com/pb33f/libopenapi/datamodel/low"
 	low "github.com/pb33f/libopenapi/datamodel/low/v3"
 	"github.com/pb33f/libopenapi/orderedmap"
-	"go.yaml.in/yaml/v4"
 )
 
 // MediaType represents a high-level OpenAPI MediaType object that is backed by a low-level one.
@@ -88,7 +90,7 @@ func (m *MediaType) MarshalYAMLInlineWithContext(ctx any) (interface{}, error) {
 	nb := high.NewNodeBuilder(m, m.low)
 	nb.Resolve = true
 	nb.RenderContext = ctx
-	return nb.Render(), nil
+	return nb.Render(), errors.Join(nb.Errors...)
 }
 
 // ExtractContent takes in a complex and hard to navigate low-level content map, and converts it in to a much simpler

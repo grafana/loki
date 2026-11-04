@@ -6,13 +6,12 @@ package base
 import (
 	"context"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // ExternalDoc represents a low-level External Documentation object as defined by OpenAPI 2 and 3
@@ -29,7 +28,7 @@ type ExternalDoc struct {
 	RootNode    *yaml.Node
 	index       *index.SpecIndex
 	context     context.Context
-	nodeStore   sync.Map
+	nodeStore   low.NodeLines
 	reference   low.Reference
 	*low.Reference
 	low.NodeMap
@@ -55,7 +54,7 @@ func (ex *ExternalDoc) Build(ctx context.Context, keyNode, root *yaml.Node, idx 
 	ex.KeyNode = keyNode
 	ex.reference = low.Reference{}
 	ex.Reference = &ex.reference
-	ex.nodeStore = sync.Map{}
+	ex.nodeStore = low.NodeLines{}
 	ex.Nodes = &ex.nodeStore
 	ex.context = ctx
 	ex.index = idx
@@ -64,9 +63,8 @@ func (ex *ExternalDoc) Build(ctx context.Context, keyNode, root *yaml.Node, idx 
 		ex.Extensions = nil
 		return nil
 	}
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	ex.RootNode = root
-	utils.CheckForMergeNodes(root)
 	if len(root.Content) > 0 {
 		ex.NodeMap.ExtractNodes(root, false)
 	} else {
@@ -84,12 +82,10 @@ func (ex *ExternalDoc) GetExtensions() *orderedmap.Map[low.KeyReference[string],
 func (ex *ExternalDoc) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if ex.Description.Value != "" {
-			h.WriteString(ex.Description.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "description", ex.Description.Value)
 		}
 		if ex.URL.Value != "" {
-			h.WriteString(ex.URL.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "url", ex.URL.Value)
 		}
 		for _, ext := range low.HashExtensions(ex.Extensions) {
 			h.WriteString(ext)

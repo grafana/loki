@@ -24,7 +24,7 @@ import (
 
 	"context"
 
-	"go.yaml.in/yaml/v4"
+	"github.com/pb33f/go-yaml"
 )
 
 // CanBeIndexed is an interface that allows a file to be indexed.
@@ -75,6 +75,7 @@ type Rolodex struct {
 	indexingDuration           time.Duration
 	indexes                    []*SpecIndex
 	indexMap                   map[string]*SpecIndex
+	ownedFiles                 map[string]*ownedRolodexFile // private copies of files indexed by another rolodex
 	indexLock                  sync.Mutex
 	rootIndex                  *SpecIndex
 	rootNode                   *yaml.Node
@@ -103,6 +104,7 @@ func (r *Rolodex) Release() {
 	r.remoteFS = nil
 	r.indexes = nil
 	r.indexMap = nil
+	r.ownedFiles = nil
 	r.rootIndex = nil
 	r.indexLock.Unlock()
 
@@ -247,6 +249,11 @@ func (r *Rolodex) GetIndexingDuration() time.Duration {
 	return r.indexingDuration
 }
 
+// HasCheckedForCircularReferences returns true once the rolodex has been checked for circular references.
+func (r *Rolodex) HasCheckedForCircularReferences() bool {
+	return r.circChecked
+}
+
 // GetRootIndex returns the root index of the rolodex (the entry point, the main document)
 func (r *Rolodex) GetRootIndex() *SpecIndex {
 	return r.rootIndex
@@ -354,21 +361,41 @@ func (r *Rolodex) IndexTheRolodex(ctx context.Context) error {
 			copiedConfig.Rolodex = r
 			copiedConfig.SpecAbsolutePath = fullPath
 			copiedConfig.AvoidBuildIndex = true // we will build out everything in two steps.
-			idx, err := idxFile.Index(&copiedConfig)
-
-			if err == nil { // Index() does not throw an error anymore.
-				// for each index, we need a resolver
-				resolver := NewResolver(idx)
-
-				// check if the config has been set to ignore circular references in arrays and polymorphic schemas
-				if copiedConfig.IgnoreArrayCircularReferences {
-					resolver.IgnoreArrayCircularReferences()
-				}
-				if copiedConfig.IgnorePolymorphicCircularReferences {
-					resolver.IgnorePolymorphicCircularReferences()
-				}
-				indexChan <- idx
+			file := idxFile.(RolodexFile)
+			idx := file.GetIndex()
+			var err error
+			if idx == nil || idx.rolodex == r {
+				idx, err = idxFile.Index(&copiedConfig)
 			}
+			if err != nil || idx == nil {
+				if err == nil {
+					err = fmt.Errorf("indexing '%s' returned no index", fullPath)
+				}
+				errChan <- err
+				return
+			}
+			if idx.rolodex != r {
+				owned, ownErr := r.ownIndexedFile(file)
+				if ownErr != nil {
+					errChan <- ownErr
+					return
+				}
+				// Only the batch worker waits. Recursive opens must remain non-blocking.
+				owned.WaitForIndexing()
+				idx = owned.GetIndex()
+			}
+
+			resolver := idx.GetResolver()
+			if resolver == nil {
+				resolver = NewResolver(idx)
+			}
+			if copiedConfig.IgnoreArrayCircularReferences {
+				resolver.IgnoreArrayCircularReferences()
+			}
+			if copiedConfig.IgnorePolymorphicCircularReferences {
+				resolver.IgnorePolymorphicCircularReferences()
+			}
+			indexChan <- idx
 		}
 
 		if lfs, ok := fs.(RolodexFS); ok {
@@ -412,7 +439,6 @@ func (r *Rolodex) IndexTheRolodex(ctx context.Context) error {
 		case <-doneChan:
 			indexingCompleted++
 		case err := <-errChan:
-			indexingCompleted++
 			caughtErrors = append(caughtErrors, err)
 		case idx := <-indexChan:
 			indexBuildQueue = append(indexBuildQueue, idx)
@@ -426,7 +452,14 @@ func (r *Rolodex) IndexTheRolodex(ctx context.Context) error {
 		},
 	)
 
-	r.indexes = indexBuildQueue
+	r.indexLock.Lock()
+	for _, idx := range indexBuildQueue {
+		if r.indexMap[idx.specAbsolutePath] == nil {
+			r.indexes = append(r.indexes, idx)
+			r.indexMap[idx.specAbsolutePath] = idx
+		}
+	}
+	r.indexLock.Unlock()
 
 	for _, idx := range indexBuildQueue {
 		idx.BuildIndex()
@@ -545,6 +578,16 @@ func (r *Rolodex) IndexTheRolodex(ctx context.Context) error {
 
 		if len(index.refErrors) > 0 {
 			caughtErrors = append(caughtErrors, index.refErrors...)
+		}
+	}
+	// Root reference lookup can load additional files after the initial build queue.
+	// Include fatal extraction errors from those indexes before returning a model.
+	for _, idx := range r.GetIndexes() {
+		for _, err := range idx.refErrors {
+			var resolvingErr *ResolvingError
+			if errors.As(err, &resolvingErr) {
+				caughtErrors = append(caughtErrors, err)
+			}
 		}
 	}
 	r.indexingDuration = time.Since(started)
@@ -763,6 +806,18 @@ func (r *Rolodex) localPathForOpen(baseDir, fileLookup string, fileSystem fs.FS)
 
 func (r *Rolodex) asLocalFile(file fs.File, fileLookup string) (*LocalFile, []error) {
 	var errorStack []error
+	if localFile, ok := file.(*LocalFile); ok && localFile == nil {
+		return nil, nil
+	}
+	if indexed, ok := file.(RolodexFile); ok {
+		if idx := indexed.GetIndex(); idx != nil && idx.rolodex != r {
+			owned, err := r.ownIndexedFile(indexed)
+			if err != nil {
+				return nil, []error{err}
+			}
+			return owned, nil
+		}
+	}
 	if localFile, ok := file.(*LocalFile); ok {
 		return localFile, nil
 	}
@@ -890,6 +945,9 @@ func (r *Rolodex) wrapLocalRolodexFile(localFile *LocalFile) (RolodexFile, error
 }
 
 func (r *Rolodex) wrapRemoteRolodexFile(remoteFile *RemoteFile) (RolodexFile, error) {
+	if idx := remoteFile.GetIndex(); idx != nil && idx.rolodex != r {
+		return r.ownIndexedFile(remoteFile)
+	}
 	return &rolodexFile{
 		rolodex:    r,
 		location:   remoteFile.fullPath,
@@ -904,6 +962,11 @@ func openFile(ctx context.Context, location string, v fs.FS) (fs.File, error) {
 		f, err = fscw.OpenWithContext(ctx, location)
 	} else {
 		f, err = v.Open(location)
+	}
+	// a file system returning neither a file nor an error breaks the fs.FS contract,
+	// reading from the nil file would panic, so treat it as a failed open.
+	if f == nil && err == nil {
+		return nil, fmt.Errorf("file system returned no file and no error when opening '%s'", location)
 	}
 	return f, err
 }

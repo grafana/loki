@@ -4,8 +4,8 @@
 package index
 
 import (
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // FindNodeOriginWithValue searches all indexes for the origin of a node with a specific value. If the node is found, a NodeOrigin
@@ -21,6 +21,13 @@ func (r *Rolodex) FindNodeOriginWithValue(key, value, refNode *yaml.Node, refVal
 	if value != nil {
 		if keyOrigin != nil && keyOrigin.AbsoluteLocation == r.GetRootIndex().specAbsolutePath {
 			valueOrigin = r.GetRootIndex().FindNodeOrigin(value)
+			if valueOrigin != nil && valueOrigin.Node == value {
+				// only cache-eligible nodes benefit from warming an identity match.
+				if len(value.Content) >= hashCacheThreshold {
+					HashNode(value)
+				}
+				return keyOrigin
+			}
 			valueHash = HashNode(value)
 			if refNode != nil && refValue != "" {
 				return keyOrigin
@@ -52,10 +59,10 @@ func (r *Rolodex) FindNodeOriginWithValue(key, value, refNode *yaml.Node, refVal
 						return keyOrigin
 					}
 
-					valueHash = HashNode(value)
-					nHash := HashNode(n.Node)
-
-					if valueHash == nHash {
+					if n.Node != value || len(value.Content) >= hashCacheThreshold {
+						valueHash = HashNode(value)
+					}
+					if n.Node == value || valueHash == HashNode(n.Node) {
 						if keyOrigin.AbsoluteLocation != n.AbsoluteLocation {
 							if refNode == nil && refValue == "" {
 								keyOrigin.AbsoluteLocationValue = n.AbsoluteLocation
@@ -97,51 +104,49 @@ func (r *Rolodex) FindNodeOrigin(node *yaml.Node) *NodeOrigin {
 // is returned, otherwise nil is returned.
 func (index *SpecIndex) FindNodeOrigin(node *yaml.Node) *NodeOrigin {
 	if node != nil {
+		index.awaitNodeMap()
 		index.nodeMapLock.RLock()
-		if index.nodeMap[node.Line] != nil {
-			if index.nodeMap[node.Line][node.Column] != nil {
-				foundNode := index.nodeMap[node.Line][node.Column]
-				match := false
+		if foundNode := lookupNodeLines(index.nodeLines, node.Line, node.Column); foundNode != nil {
+			match := false
 
-				if foundNode == node {
-					match = true
+			if foundNode == node {
+				match = true
+			}
+
+			// if the found node is a map. iterate through the content until we locate the node at that position
+			if !match && (utils.IsNodeMap(foundNode) ||
+				utils.IsNodeArray(foundNode)) && (utils.IsNodeMap(node) || utils.IsNodeArray(node)) {
+				if len(node.Content) == len(foundNode.Content) {
+					// hash node and found node
+					match = checkHash(node, foundNode)
 				}
+			} else {
+				if !match {
+					// hash node and found node
+					match = checkHash(node, foundNode)
 
-				// if the found node is a map. iterate through the content until we locate the node at that position
-				if !match && (utils.IsNodeMap(foundNode) ||
-					utils.IsNodeArray(foundNode)) && (utils.IsNodeMap(node) || utils.IsNodeArray(node)) {
-					if len(node.Content) == len(foundNode.Content) {
-						// hash node and found node
-						match = checkHash(node, foundNode)
-					}
-				} else {
 					if !match {
-						// hash node and found node
-						match = checkHash(node, foundNode)
-
-						if !match {
-							// check if the found node is a map and if the first item in the map
-							// has the same line and column, as well as the same value
-							if utils.IsNodeMap(foundNode) && len(foundNode.Content) > 0 {
-								if foundNode.Content[0].Line == node.Line &&
-									foundNode.Content[0].Column == node.Column &&
-									foundNode.Content[0].Value == node.Value {
-									match = true
-								}
+						// check if the found node is a map and if the first item in the map
+						// has the same line and column, as well as the same value
+						if utils.IsNodeMap(foundNode) && len(foundNode.Content) > 0 {
+							if foundNode.Content[0].Line == node.Line &&
+								foundNode.Content[0].Column == node.Column &&
+								foundNode.Content[0].Value == node.Value {
+								match = true
 							}
 						}
 					}
 				}
+			}
 
-				if match {
-					index.nodeMapLock.RUnlock()
-					return &NodeOrigin{
-						Node:             foundNode,
-						Line:             node.Line,
-						Column:           node.Column,
-						AbsoluteLocation: index.specAbsolutePath,
-						Index:            index,
-					}
+			if match {
+				index.nodeMapLock.RUnlock()
+				return &NodeOrigin{
+					Node:             foundNode,
+					Line:             node.Line,
+					Column:           node.Column,
+					AbsoluteLocation: index.specAbsolutePath,
+					Index:            index,
 				}
 			}
 		}

@@ -3,7 +3,7 @@
 
 package index
 
-import "go.yaml.in/yaml/v4"
+import "github.com/pb33f/go-yaml"
 
 type relativeWalkState struct {
 	foundRelatives map[string]bool

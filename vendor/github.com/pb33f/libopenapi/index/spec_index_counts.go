@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // GetPathCount returns the number of paths defined in the specification. Returns -1 if root is nil.
@@ -337,14 +337,15 @@ func (index *SpecIndex) GetComponentSchemaCount() int {
 		return index.schemaCount
 	}
 
-	for i, n := range index.root.Content[0].Content {
+	root := utils.ResolveMergeNodes(index.root.Content[0])
+	for i, n := range root.Content {
 		if i%2 != 0 {
 			continue
 		}
 		if n.Value == "servers" {
-			index.rootServersNode = index.root.Content[0].Content[i+1]
-			if i+1 < len(index.root.Content[0].Content) {
-				serverDefinitions := index.root.Content[0].Content[i+1]
+			index.rootServersNode = root.Content[i+1]
+			if i+1 < len(root.Content) {
+				serverDefinitions := root.Content[i+1]
 				for x, def := range serverDefinitions.Content {
 					index.serversRefs = append(index.serversRefs, &Reference{
 						Definition: "servers",
@@ -357,9 +358,9 @@ func (index *SpecIndex) GetComponentSchemaCount() int {
 			}
 		}
 		if n.Value == "security" {
-			index.rootSecurityNode = index.root.Content[0].Content[i+1]
-			if i+1 < len(index.root.Content[0].Content) {
-				securityDefinitions := index.root.Content[0].Content[i+1]
+			index.rootSecurityNode = root.Content[i+1]
+			if i+1 < len(root.Content) {
+				securityDefinitions := root.Content[i+1]
 				for x, def := range securityDefinitions.Content {
 					if len(def.Content) > 0 {
 						name := def.Content[0]
@@ -374,16 +375,16 @@ func (index *SpecIndex) GetComponentSchemaCount() int {
 			}
 		}
 		if n.Value == "components" {
-			_, schemasNode := utils.FindKeyNode("schemas", index.root.Content[0].Content[i+1].Content)
-			_, parametersNode := utils.FindKeyNode("parameters", index.root.Content[0].Content[i+1].Content)
-			_, requestBodiesNode := utils.FindKeyNode("requestBodies", index.root.Content[0].Content[i+1].Content)
-			_, responsesNode := utils.FindKeyNode("responses", index.root.Content[0].Content[i+1].Content)
-			_, securitySchemesNode := utils.FindKeyNode("securitySchemes", index.root.Content[0].Content[i+1].Content)
-			_, headersNode := utils.FindKeyNode("headers", index.root.Content[0].Content[i+1].Content)
-			_, examplesNode := utils.FindKeyNode("examples", index.root.Content[0].Content[i+1].Content)
-			_, linksNode := utils.FindKeyNode("links", index.root.Content[0].Content[i+1].Content)
-			_, callbacksNode := utils.FindKeyNode("callbacks", index.root.Content[0].Content[i+1].Content)
-			_, pathItemsNode := utils.FindKeyNode("pathItems", index.root.Content[0].Content[i+1].Content)
+			schemasNode := effectiveMappingValue(root.Content[i+1], "schemas")
+			parametersNode := effectiveMappingValue(root.Content[i+1], "parameters")
+			requestBodiesNode := effectiveMappingValue(root.Content[i+1], "requestBodies")
+			responsesNode := effectiveMappingValue(root.Content[i+1], "responses")
+			securitySchemesNode := effectiveMappingValue(root.Content[i+1], "securitySchemes")
+			headersNode := effectiveMappingValue(root.Content[i+1], "headers")
+			examplesNode := effectiveMappingValue(root.Content[i+1], "examples")
+			linksNode := effectiveMappingValue(root.Content[i+1], "links")
+			callbacksNode := effectiveMappingValue(root.Content[i+1], "callbacks")
+			pathItemsNode := effectiveMappingValue(root.Content[i+1], "pathItems")
 
 			if schemasNode != nil {
 				index.extractDefinitionsAndSchemas(schemasNode, "#/components/schemas/")
@@ -430,7 +431,7 @@ func (index *SpecIndex) GetComponentSchemaCount() int {
 			}
 		}
 		if n.Value == "definitions" {
-			schemasNode := index.root.Content[0].Content[i+1]
+			schemasNode := utils.ResolveMergeNodes(root.Content[i+1])
 			if schemasNode != nil {
 				index.extractDefinitionsAndSchemas(schemasNode, "#/definitions/")
 				index.schemasNode = schemasNode
@@ -438,7 +439,7 @@ func (index *SpecIndex) GetComponentSchemaCount() int {
 			}
 		}
 		if n.Value == "parameters" {
-			parametersNode := index.root.Content[0].Content[i+1]
+			parametersNode := utils.ResolveMergeNodes(root.Content[i+1])
 			if parametersNode != nil {
 				index.extractComponentParameters(parametersNode, "#/parameters/")
 				index.componentLock.Lock()
@@ -447,14 +448,14 @@ func (index *SpecIndex) GetComponentSchemaCount() int {
 			}
 		}
 		if n.Value == "responses" {
-			responsesNode := index.root.Content[0].Content[i+1]
+			responsesNode := utils.ResolveMergeNodes(root.Content[i+1])
 			if responsesNode != nil {
 				index.extractComponentResponses(responsesNode, "#/responses/")
 				index.responsesNode = responsesNode
 			}
 		}
 		if n.Value == "securityDefinitions" {
-			securityDefinitionsNode := index.root.Content[0].Content[i+1]
+			securityDefinitionsNode := utils.ResolveMergeNodes(root.Content[i+1])
 			if securityDefinitionsNode != nil {
 				index.extractComponentSecuritySchemes(securityDefinitionsNode, "#/securityDefinitions/")
 				index.securitySchemesNode = securityDefinitionsNode
@@ -472,10 +473,11 @@ func (index *SpecIndex) GetComponentParameterCount() int {
 	if index.componentParamCount > 0 {
 		return index.componentParamCount
 	}
-	for i, n := range index.root.Content[0].Content {
+	root := utils.ResolveMergeNodes(index.root.Content[0])
+	for i, n := range root.Content {
 		if i%2 == 0 {
 			if n.Value == "components" {
-				_, parametersNode := utils.FindKeyNode("parameters", index.root.Content[0].Content[i+1].Content)
+				parametersNode := effectiveMappingValue(root.Content[i+1], "parameters")
 				if parametersNode != nil {
 					index.componentLock.Lock()
 					index.parametersNode = parametersNode
@@ -484,7 +486,7 @@ func (index *SpecIndex) GetComponentParameterCount() int {
 				}
 			}
 			if n.Value == "parameters" {
-				parametersNode := index.root.Content[0].Content[i+1]
+				parametersNode := utils.ResolveMergeNodes(root.Content[i+1])
 				if parametersNode != nil {
 					index.componentLock.Lock()
 					index.parametersNode = parametersNode
@@ -720,3 +722,15 @@ func (index *SpecIndex) GetAllDescriptionsCount() int { return len(index.allDesc
 
 // GetAllSummariesCount returns the total number of summary nodes found during indexing.
 func (index *SpecIndex) GetAllSummariesCount() int { return len(index.allSummaries) }
+
+// effectiveMappingValue reads a named field and resolves its collection view.
+// Both the containing mapping and the field may independently use YAML merges
+// or aliases; callers enumerate the same effective entries as model builders.
+func effectiveMappingValue(node *yaml.Node, key string) *yaml.Node {
+	node = utils.ResolveMergeNodes(node)
+	if node == nil {
+		return nil
+	}
+	_, value := utils.FindKeyNodeTop(key, node.Content)
+	return utils.ResolveMergeNodes(value)
+}

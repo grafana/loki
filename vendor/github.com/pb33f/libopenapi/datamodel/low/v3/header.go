@@ -7,14 +7,13 @@ import (
 	"context"
 	"fmt"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Header represents a low-level OpenAPI 3+ Header object.
@@ -36,7 +35,7 @@ type Header struct {
 	RootNode        *yaml.Node
 	index           *index.SpecIndex
 	context         context.Context
-	nodeStore       sync.Map
+	nodeStore       low.NodeLines
 	reference       low.Reference
 	*low.Reference
 	low.NodeMap
@@ -135,10 +134,9 @@ func (h *Header) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		h.SetReference(ref, root)
 	}
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	h.RootNode = root
-	utils.CheckForMergeNodes(root)
-	h.nodeStore = sync.Map{}
+	h.nodeStore = low.NodeLines{}
 	h.Nodes = &h.nodeStore
 	if len(root.Content) > 0 {
 		h.NodeMap.ExtractNodes(root, false)

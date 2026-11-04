@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/jsonpath/pkg/jsonpath"
 	jsonpathconfig "github.com/pb33f/jsonpath/pkg/jsonpath/config"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // FindComponent locates a component in the index by reference.
@@ -30,13 +30,7 @@ func (index *SpecIndex) FindComponent(ctx context.Context, componentId string) *
 	}
 
 	if strings.HasPrefix(componentId, "/") {
-		baseURI, fragment := SplitRefFragment(componentId)
-		if resolved := index.resolveRefViaSchemaIdPath(baseURI); resolved != nil {
-			if fragment != "" && resolved.Node != nil {
-				if fragmentNode := navigateToFragment(resolved.Node, fragment); fragmentNode != nil {
-					resolved.Node = fragmentNode
-				}
-			}
+		if resolved := index.resolveRefViaSchemaIdPath(componentId); resolved != nil {
 			return resolved
 		}
 	}
@@ -66,7 +60,15 @@ func (index *SpecIndex) FindComponent(ctx context.Context, componentId string) *
 // JSONPath traversal for legacy or non-direct component identifiers.
 func FindComponent(_ context.Context, root *yaml.Node, componentID, absoluteFilePath string, index *SpecIndex) *Reference {
 	if strings.Contains(componentID, "%") {
-		componentID, _ = url.QueryUnescape(componentID)
+		decoded, err := url.PathUnescape(componentID)
+		if err != nil {
+			return nil
+		}
+		componentID = decoded
+	}
+
+	if componentID == "#" {
+		componentID = ""
 	}
 
 	if fastRef := findDirectComponent(index, componentID, absoluteFilePath); fastRef != nil {
@@ -81,6 +83,9 @@ func FindComponent(_ context.Context, root *yaml.Node, componentID, absoluteFile
 			}
 			return buildResolvedComponentReference(index, nil, componentID, absoluteFilePath, name, friendlySearch, node)
 		}
+		// A JSON Pointer that does not resolve must not be reinterpreted as
+		// JSONPath, whose empty segments and array-index syntax differ.
+		return nil
 	}
 
 	name, friendlySearch := utils.ConvertComponentIdIntoFriendlyPathSearch(componentID)

@@ -6,13 +6,12 @@ package v3
 import (
 	"context"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Link represents a low-level OpenAPI 3+ Link object.
@@ -39,7 +38,7 @@ type Link struct {
 	RootNode     *yaml.Node
 	index        *index.SpecIndex
 	context      context.Context
-	nodeStore    sync.Map
+	nodeStore    low.NodeLines
 	reference    low.Reference
 	*low.Reference
 	low.NodeMap
@@ -88,10 +87,9 @@ func (l *Link) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.S
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		l.SetReference(ref, root)
 	}
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	l.RootNode = root
-	utils.CheckForMergeNodes(root)
-	l.nodeStore = sync.Map{}
+	l.nodeStore = low.NodeLines{}
 	l.Nodes = &l.nodeStore
 	if len(root.Content) > 0 {
 		l.NodeMap.ExtractNodes(root, false)
@@ -123,29 +121,21 @@ func (l *Link) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.S
 func (l *Link) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if l.Description.Value != "" {
-			h.WriteString(l.Description.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "description", l.Description.Value)
 		}
 		if l.OperationRef.Value != "" {
-			h.WriteString(l.OperationRef.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "operationRef", l.OperationRef.Value)
 		}
 		if l.OperationId.Value != "" {
-			h.WriteString(l.OperationId.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "operationId", l.OperationId.Value)
 		}
 		if l.RequestBody.Value != "" {
-			h.WriteString(l.RequestBody.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "requestBody", l.RequestBody.Value)
 		}
 		if l.Server.Value != nil {
-			h.WriteString(low.GenerateHashString(l.Server.Value))
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "server", low.GenerateHashString(l.Server.Value))
 		}
-		for v := range orderedmap.SortAlpha(l.Parameters.Value).ValuesFromOldest() {
-			h.WriteString(v.Value)
-			h.WriteByte(low.HASH_PIPE)
-		}
+		low.HashMap(h, "parameters", l.Parameters.Value)
 		for _, ext := range low.HashExtensions(l.Extensions) {
 			h.WriteString(ext)
 			h.WriteByte(low.HASH_PIPE)

@@ -6,13 +6,12 @@ package v3
 import (
 	"context"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // RequestBody represents a low-level OpenAPI 3+ RequestBody object.
@@ -26,7 +25,7 @@ type RequestBody struct {
 	RootNode    *yaml.Node
 	index       *index.SpecIndex
 	context     context.Context
-	nodeStore   sync.Map
+	nodeStore   low.NodeLines
 	reference   low.Reference
 	*low.Reference
 	low.NodeMap
@@ -75,10 +74,9 @@ func (rb *RequestBody) Build(ctx context.Context, keyNode, root *yaml.Node, idx 
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		rb.SetReference(ref, root)
 	}
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	rb.RootNode = root
-	utils.CheckForMergeNodes(root)
-	rb.nodeStore = sync.Map{}
+	rb.nodeStore = low.NodeLines{}
 	rb.Nodes = &rb.nodeStore
 	if len(root.Content) > 0 {
 		rb.NodeMap.ExtractNodes(root, false)
@@ -114,17 +112,14 @@ func (rb *RequestBody) Build(ctx context.Context, keyNode, root *yaml.Node, idx 
 func (rb *RequestBody) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if rb.Description.Value != "" {
-			h.WriteString(rb.Description.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "description", rb.Description.Value)
 		}
 		if !rb.Required.IsEmpty() {
+			low.HashLabel(h, "required")
 			low.HashBool(h, rb.Required.Value)
 			h.WriteByte(low.HASH_PIPE)
 		}
-		for v := range orderedmap.SortAlpha(rb.Content.Value).ValuesFromOldest() {
-			h.WriteString(low.GenerateHashString(v.Value))
-			h.WriteByte(low.HASH_PIPE)
-		}
+		low.HashMap(h, "content", rb.Content.Value)
 		for _, ext := range low.HashExtensions(rb.Extensions) {
 			h.WriteString(ext)
 			h.WriteByte(low.HASH_PIPE)

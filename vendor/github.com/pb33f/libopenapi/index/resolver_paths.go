@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 func (resolver *Resolver) buildDefPath(ref *Reference, l string) string {
@@ -49,12 +49,9 @@ func (resolver *Resolver) buildDefPath(ref *Reference, l string) string {
 						}
 					}
 				}
-			} else if len(exp[1]) > 0 {
-				// Absolute HTTP URL with a fragment — use as-is.
-				def = l
 			} else {
-				// HTTP URL with no fragment content — use just the URL part.
-				def = exp[0]
+				// Preserve the complete pointer: a trailing slash selects an empty-name member.
+				def = l
 			}
 		} else if strings.HasPrefix(ref.FullDefinition, "http") {
 			// Fragment-only ref (e.g. "#/components/schemas/Foo") with a remote parent.

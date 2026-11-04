@@ -6,6 +6,7 @@ package v3
 import (
 	"context"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/high"
 	"github.com/pb33f/libopenapi/datamodel/high/base"
 	lowmodel "github.com/pb33f/libopenapi/datamodel/low"
@@ -13,7 +14,6 @@ import (
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // buildLowParameter builds a low-level Parameter from a resolved YAML node.
@@ -176,6 +176,27 @@ func (p *Parameter) IsExploded() bool {
 		return false
 	}
 	return *p.Explode
+}
+
+// EffectiveStyle returns the parameter serialization style after applying the
+// OpenAPI location-specific default.
+func (p *Parameter) EffectiveStyle() string {
+	if p.Style != "" {
+		return p.Style
+	}
+	if p.In == "query" || p.In == "cookie" {
+		return "form"
+	}
+	return "simple"
+}
+
+// EffectiveExplode returns the explode value after applying the OpenAPI
+// default. Form parameters explode by default; all other styles do not.
+func (p *Parameter) EffectiveExplode() bool {
+	if p.Explode != nil {
+		return *p.Explode
+	}
+	return p.EffectiveStyle() == "form"
 }
 
 // IsDefaultFormEncoding will return true if the parameter has no exploded value, or has exploded set to true, and no style

@@ -4,19 +4,21 @@
 package high
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/high/nodes"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // NodeBuilder is a structure used by libopenapi high-level objects, to render themselves back to YAML.
@@ -66,6 +68,103 @@ func originalFloatLexeme(value float64, lowValue any) (string, bool) {
 	return valueNode.Value, true
 }
 
+// nodeBuilderField holds the reflection metadata NewNodeBuilder needs for one field of a high-level struct.
+// It depends only on the high and low struct types, so it is derived once per type pair and cached rather
+// than re-derived (field lookups by name, yaml tag parsing) for every object rendered.
+type nodeBuilderField struct {
+	index      int    // index of the field in the high-level struct
+	name       string // field name, used as the NodeEntry key
+	extensions bool   // the Extensions field, which renders its map entries rather than itself
+	tagName    string // yaml tag name
+	renderZero bool
+	omitEmpty  bool
+
+	// lowIndex is the index path of the same-named field in the low-level struct, nil when it has none.
+	lowIndex []int
+
+	// lowEmptier and lowValueNoder report whether the low field's value type (the element type for a
+	// pointer field) implements IsEmpty and GetValueNode. When it does, those methods are called through
+	// a pointer to the field instead of copying the field into an interface: the pointer's method set
+	// carries the value-receiver methods, so the result is identical. lowDynamic marks a value type that
+	// is itself an interface or pointer, whose methods depend on the value held at runtime.
+	lowEmptier    bool
+	lowValueNoder bool
+	lowDynamic    bool
+}
+
+type nodeBuilderTypes struct {
+	high reflect.Type
+	low  reflect.Type
+}
+
+type lowEmptier interface{ IsEmpty() bool }
+
+type lowValueNoder interface{ GetValueNode() *yaml.Node }
+
+var (
+	nodeBuilderFieldCache sync.Map // nodeBuilderTypes -> []nodeBuilderField
+
+	lowEmptierType    = reflect.TypeFor[lowEmptier]()
+	lowValueNoderType = reflect.TypeFor[lowValueNoder]()
+	hasKeyNodeType    = reflect.TypeFor[low.HasKeyNode]()
+	stringType        = reflect.TypeFor[string]()
+)
+
+// nodeBuilderFields returns the cached field metadata for a high-level struct type, paired with the
+// low-level struct type (nil when there is no low-level model).
+func nodeBuilderFields(highType, lowType reflect.Type) []nodeBuilderField {
+	key := nodeBuilderTypes{high: highType, low: lowType}
+	if cached, ok := nodeBuilderFieldCache.Load(key); ok {
+		return cached.([]nodeBuilderField)
+	}
+	fields := make([]nodeBuilderField, 0, highType.NumField())
+	for i := 0; i < highType.NumField(); i++ {
+		sf := highType.Field(i)
+		// only operate on exported fields.
+		if unicode.IsLower(rune(sf.Name[0])) {
+			continue
+		}
+		field := nodeBuilderField{index: i, name: sf.Name}
+		if lowType != nil {
+			if lsf, ok := lowType.FieldByName(sf.Name); ok {
+				field.lowIndex = lsf.Index
+				valueType := lsf.Type
+				if valueType.Kind() == reflect.Ptr {
+					valueType = valueType.Elem()
+				}
+				if valueType.Kind() == reflect.Interface || valueType.Kind() == reflect.Ptr {
+					field.lowDynamic = true
+				} else {
+					field.lowEmptier = valueType.Implements(lowEmptierType)
+					field.lowValueNoder = valueType.Implements(lowValueNoderType)
+				}
+			}
+		}
+		if sf.Name == "Extensions" {
+			field.extensions = true
+			fields = append(fields, field)
+			continue
+		}
+		tag := sf.Tag.Get("yaml")
+		if tag == "-" {
+			continue
+		}
+		tagParts := strings.Split(tag, ",")
+		field.tagName = tagParts[0]
+		for _, part := range tagParts {
+			if part == renderZero {
+				field.renderZero = true
+			}
+			if part == "omitempty" {
+				field.omitEmpty = true
+			}
+		}
+		fields = append(fields, field)
+	}
+	actual, _ := nodeBuilderFieldCache.LoadOrStore(key, fields)
+	return actual.([]nodeBuilderField)
+}
+
 // NewNodeBuilder will create a new NodeBuilder instance, this is the only way to create a NodeBuilder.
 // The function accepts a high level object and a low level object (need to be siblings/same type).
 //
@@ -78,58 +177,122 @@ func NewNodeBuilder(high any, low any) *NodeBuilder {
 		nb.Low = low
 	}
 
+	// resolve the low-level struct once; its fields supply line numbers and original styles.
+	var lowStruct reflect.Value
+	var lowType reflect.Type
+	if low != nil {
+		if lv := reflect.ValueOf(low); !lv.IsZero() {
+			if lv.Kind() == reflect.Ptr {
+				lowStruct = lv.Elem()
+			} else {
+				lowStruct = lv
+			}
+			lowType = lowStruct.Type()
+		}
+	}
+
 	// extract fields from the high level object and add them into our node builder.
 	// this will allow us to extract the line numbers from the low level object as well.
-	v := reflect.ValueOf(high).Elem()
-	num := v.NumField()
-	for i := 0; i < num; i++ {
-		nb.add(v.Type().Field(i).Name, i)
+	highStruct := reflect.ValueOf(high).Elem()
+	fields := nodeBuilderFields(highStruct.Type(), lowType)
+	for i := range fields {
+		nb.add(&fields[i], highStruct, lowStruct)
 	}
 	return nb
 }
 
-func (n *NodeBuilder) add(key string, i int) {
-	// only operate on exported fields.
-	if unicode.IsLower(rune(key[0])) {
-		return
+// lowFieldHasContent reports whether a low-level field holds content, which keeps a zero high-level value
+// in the rendered output.
+func lowFieldHasContent(field *nodeBuilderField, lowFieldValue reflect.Value) bool {
+	if field.lowDynamic {
+		return dynamicLowFieldHasContent(lowFieldValue)
 	}
+	if !field.lowEmptier && !field.lowValueNoder {
+		return false
+	}
+	holder := lowFieldValue
+	if holder.Kind() == reflect.Ptr {
+		if holder.IsNil() {
+			return false
+		}
+	} else if holder.CanAddr() {
+		holder = holder.Addr()
+	}
+	h := holder.Interface()
+	if field.lowEmptier && !h.(lowEmptier).IsEmpty() {
+		return true
+	}
+	return field.lowValueNoder && h.(lowValueNoder).GetValueNode() != nil
+}
 
+// dynamicLowFieldHasContent is lowFieldHasContent for a field whose methods depend on the value it holds.
+func dynamicLowFieldHasContent(lowFieldValue reflect.Value) bool {
+	var lowInterface any
+	if lowFieldValue.Kind() == reflect.Ptr {
+		if lowFieldValue.IsNil() {
+			return false
+		}
+		lowInterface = lowFieldValue.Elem().Interface()
+	} else {
+		lowInterface = lowFieldValue.Interface()
+	}
+	if emptier, ok := lowInterface.(lowEmptier); ok && !emptier.IsEmpty() {
+		return true
+	}
+	if nodeGetter, ok := lowInterface.(lowValueNoder); ok {
+		return nodeGetter.GetValueNode() != nil
+	}
+	return false
+}
+
+// lowestKeyLine returns the lowest key line of the items in a low-level slice, where items without a key
+// node count as line zero.
+func lowestKeyLine(value reflect.Value) int {
+	elemType := value.Type().Elem()
+	dynamic := elemType.Kind() == reflect.Interface
+	if !dynamic && !elemType.Implements(hasKeyNodeType) {
+		// no item can have a key node, so every item counts as line zero.
+		return 0
+	}
+	lowest := 0
+	for g := 0; g < value.Len(); g++ {
+		item := value.Index(g)
+		if !dynamic && item.Kind() != reflect.Ptr {
+			item = item.Addr() // call through a pointer rather than copying the item
+		}
+		line := 0
+		if we, ok := item.Interface().(low.HasKeyNode); ok {
+			line = we.GetKeyNode().Line
+		}
+		if g == 0 || line < lowest {
+			lowest = line
+		}
+	}
+	return lowest
+}
+
+func (n *NodeBuilder) add(field *nodeBuilderField, highStruct, lowStruct reflect.Value) {
 	var (
 		lowFieldValue reflect.Value
 		lowFieldValid bool
 	)
 
-	if n.Low != nil && !reflect.ValueOf(n.Low).IsZero() {
-		low := reflect.ValueOf(n.Low)
-		if low.Kind() == reflect.Ptr && !low.IsNil() {
-			elem := low.Elem()
-			if elem.IsValid() {
-				field := elem.FieldByName(key)
-				if field.IsValid() {
-					lowFieldValue = field
-					lowFieldValid = true
-				}
-			}
-		} else if low.IsValid() {
-			field := low.FieldByName(key)
-			if field.IsValid() {
-				lowFieldValue = field
-				lowFieldValid = true
-			}
-		}
+	if lowStruct.IsValid() && field.lowIndex != nil {
+		lowFieldValue = lowStruct.FieldByIndex(field.lowIndex)
+		lowFieldValid = true
 	}
 
 	// if the key is 'Extensions' then we need to extract the keys from the map
 	// and add them to the node builder.
-	if key == "Extensions" {
-		ev := reflect.ValueOf(n.High).Elem().FieldByName(key).Interface()
+	if field.extensions {
+		ev := highStruct.Field(field.index).Interface()
 		var extensions *orderedmap.Map[string, *yaml.Node]
 		if ev != nil {
 			extensions = ev.(*orderedmap.Map[string, *yaml.Node])
 		}
 
 		var lowExtensions *orderedmap.Map[low.KeyReference[string], low.ValueReference[*yaml.Node]]
-		if n.Low != nil && !reflect.ValueOf(n.Low).IsZero() {
+		if lowStruct.IsValid() {
 			if j, ok := n.Low.(low.HasExtensionsUntyped); ok {
 				lowExtensions = j.GetExtensions()
 			}
@@ -159,28 +322,11 @@ func (n *NodeBuilder) add(key string, i int) {
 		return
 	}
 
-	// find the field with the tag supplied.
-	field, _ := reflect.TypeOf(n.High).Elem().FieldByName(key)
-	tag := string(field.Tag.Get("yaml"))
-	tagName := strings.Split(tag, ",")[0]
-
-	if tag == "-" {
-		return
-	}
-
-	var renderZeroFlag, omitEmptyFlag bool
-	tagParts := strings.Split(tag, ",")
-	for _, part := range tagParts {
-		if part == renderZero {
-			renderZeroFlag = true
-		}
-		if part == "omitempty" {
-			omitEmptyFlag = true
-		}
-	}
+	tagName := field.tagName
+	renderZeroFlag, omitEmptyFlag := field.renderZero, field.omitEmpty
 
 	// extract the value of the field
-	fieldValue := reflect.ValueOf(n.High).Elem().FieldByName(key)
+	fieldValue := highStruct.Field(field.index)
 	f := fieldValue.Interface()
 	value := reflect.ValueOf(f)
 	var isZero bool
@@ -198,24 +344,8 @@ func (n *NodeBuilder) add(key string, i int) {
 		}
 	}
 
-	if isZero && lowFieldValid {
-		var lowInterface any
-		if lowFieldValue.Kind() == reflect.Ptr {
-			if !lowFieldValue.IsNil() {
-				lowInterface = lowFieldValue.Elem().Interface()
-			}
-		} else {
-			lowInterface = lowFieldValue.Interface()
-		}
-		if lowInterface != nil {
-			if emptier, ok := lowInterface.(interface{ IsEmpty() bool }); ok && !emptier.IsEmpty() {
-				isZero = false
-			} else if nodeGetter, ok := lowInterface.(interface{ GetValueNode() *yaml.Node }); ok {
-				if node := nodeGetter.GetValueNode(); node != nil {
-					isZero = false
-				}
-			}
-		}
+	if isZero && lowFieldValid && lowFieldHasContent(field, lowFieldValue) {
+		isZero = false
 	}
 
 	if !renderZeroFlag && isZero || omitEmptyFlag && isZero {
@@ -223,7 +353,7 @@ func (n *NodeBuilder) add(key string, i int) {
 	}
 
 	// create a new node entry
-	nodeEntry := &nodes.NodeEntry{Tag: tagName, Key: key}
+	nodeEntry := &nodes.NodeEntry{Tag: tagName, Key: field.name}
 	nodeEntry.RenderZero = renderZeroFlag
 	switch value.Kind() {
 	case reflect.Float64, reflect.Float32:
@@ -234,7 +364,11 @@ func (n *NodeBuilder) add(key string, i int) {
 		nodeEntry.Value = value.Int()
 		nodeEntry.StringValue = value.String()
 	case reflect.String:
-		nodeEntry.Value = value.String()
+		if value.Type() == stringType {
+			nodeEntry.Value = f // already boxed as a plain string
+		} else {
+			nodeEntry.Value = value.String()
+		}
 	case reflect.Bool:
 		nodeEntry.Value = value.Bool()
 	case reflect.Slice:
@@ -260,48 +394,32 @@ func (n *NodeBuilder) add(key string, i int) {
 	// if there is no low-level object, then we cannot extract line numbers,
 	// so skip and default to 0, which means a new entry to the spec.
 	// this will place new content and the top of the rendered object.
-	if n.Low != nil && !reflect.ValueOf(n.Low).IsZero() {
-		if lowFieldValid {
-			fLow := lowFieldValue.Interface()
-			value = reflect.ValueOf(fLow)
+	if lowFieldValid {
+		fLow := lowFieldValue.Interface()
+		value = reflect.ValueOf(fLow)
 
-			nodeEntry.LowValue = fLow
-			switch value.Kind() {
+		nodeEntry.LowValue = fLow
+		switch value.Kind() {
 
-			case reflect.Slice:
-				l := value.Len()
-				lines := make([]int, l)
-				for g := 0; g < l; g++ {
-					qw := value.Index(g).Interface()
-					if we, wok := qw.(low.HasKeyNode); wok {
-						lines[g] = we.GetKeyNode().Line
+		case reflect.Slice:
+			nodeEntry.Line = lowestKeyLine(value)
+		case reflect.Struct:
+			nodeEntry.Line = 9999 + field.index
+			if nb, ok := fLow.(low.HasValueNodeUntyped); ok {
+				if nb.IsReference() {
+					if jk, kj := fLow.(low.HasKeyNode); kj {
+						nodeEntry.Line = jk.GetKeyNode().Line
+						break
 					}
 				}
-				sort.Slice(lines, func(i, j int) bool {
-					return lines[i] < lines[j]
-				})
-				if len(lines) > 0 {
-					nodeEntry.Line = lines[0]
+				if nb.GetValueNode() != nil {
+					nodeEntry.Line = nb.GetValueNode().Line
 				}
-			case reflect.Struct:
-				y := value.Interface()
-				nodeEntry.Line = 9999 + i
-				if nb, ok := y.(low.HasValueNodeUntyped); ok {
-					if nb.IsReference() {
-						if jk, kj := y.(low.HasKeyNode); kj {
-							nodeEntry.Line = jk.GetKeyNode().Line
-							break
-						}
-					}
-					if nb.GetValueNode() != nil {
-						nodeEntry.Line = nb.GetValueNode().Line
-					}
-				}
-			default:
-				// everything else, weight it to the bottom of the rendered object.
-				// this is things that we have no way of knowing where they should be placed.
-				nodeEntry.Line = 9999 + i
 			}
+		default:
+			// everything else, weight it to the bottom of the rendered object.
+			// this is things that we have no way of knowing where they should be placed.
+			nodeEntry.Line = 9999 + field.index
 		}
 	}
 	if nodeEntry.Value != nil {
@@ -346,6 +464,26 @@ func (n *NodeBuilder) Render() *yaml.Node {
 		n.AddYAMLNode(m, node)
 	}
 	return m
+}
+
+// encodeSafeValue returns a value safe to pass to (*yaml.Node).Encode. When the
+// value is a *yaml.Node, or a slice of them, it returns a deep copy: Encode desolves
+// the represented graph in place (Desolve rewrites Tag/Style), and the representer
+// aliases input nodes, so encoding a model-owned node would mutate it. With concurrent
+// renders (e.g. linters running rules in parallel) that mutation races with readers of
+// the same node. Encoding a copy keeps shared nodes immutable.
+func encodeSafeValue(value any) any {
+	switch v := value.(type) {
+	case *yaml.Node:
+		return utils.CloneYAMLNode(v)
+	case []*yaml.Node:
+		cloned := make([]*yaml.Node, len(v))
+		for i, n := range v {
+			cloned[i] = utils.CloneYAMLNode(n)
+		}
+		return cloned
+	}
+	return value
 }
 
 // AddYAMLNode will add a new *yaml.Node to the parent node, using the tag, key and value provided.
@@ -484,33 +622,33 @@ func (n *NodeBuilder) AddYAMLNode(parent *yaml.Node, entry *nodes.NodeEntry) *ya
 			}
 		}
 
+		// a skipped item always leaves its reference in sl, so reaching the encoder means nothing was skipped.
 		if len(sl.Content) > 0 {
 			valueNode = sl
 			break
 		}
-		if skip {
+
+		if err := encodeValue(&rawNode, value); err != nil {
+			// an item that failed to render has already reported why, and the encoder only echoes it.
+			if errors.Join(nodeErrors...) == nil {
+				nodeErrors = append(nodeErrors, err)
+			}
 			break
 		}
-
-		err := rawNode.Encode(value)
-		if err != nil {
-			return parent
-		} else {
-			if entry.LowValue != nil {
-				if vnut, ok := entry.LowValue.(low.HasValueNodeUntyped); ok {
-					vn := vnut.GetValueNode()
-					if vn != nil && vn.Kind == yaml.SequenceNode {
-						for i := range vn.Content {
-							if len(rawNode.Content) > i {
-								rawNode.Content[i].Style = vn.Content[i].Style
-							}
+		if entry.LowValue != nil {
+			if vnut, ok := entry.LowValue.(low.HasValueNodeUntyped); ok {
+				vn := vnut.GetValueNode()
+				if vn != nil && vn.Kind == yaml.SequenceNode {
+					for i := range vn.Content {
+						if len(rawNode.Content) > i {
+							rawNode.Content[i].Style = vn.Content[i].Style
 						}
 					}
 				}
 			}
-
-			valueNode = &rawNode
 		}
+
+		valueNode = &rawNode
 
 	case reflect.Struct:
 		if r, ok := value.(low.ValueReference[any]); ok {
@@ -529,15 +667,7 @@ func (n *NodeBuilder) AddYAMLNode(parent *yaml.Node, entry *nodes.NodeEntry) *ya
 
 	case reflect.Ptr:
 		if m, ok := value.(orderedmap.MapToYamlNoder); ok {
-			l := entry.LowValue
-
-			if l == nil {
-				if gl, ok := value.(GoesLowUntyped); ok && gl.GoLowUntyped() != nil {
-					l = gl.GoLowUntyped()
-				}
-			}
-
-			p := m.ToYamlNode(n, l)
+			p := m.ToYamlNode(n, entry.LowValue)
 			if p.Content != nil {
 				valueNode = p
 			}
@@ -645,9 +775,8 @@ func (n *NodeBuilder) AddYAMLNode(parent *yaml.Node, entry *nodes.NodeEntry) *ya
 						}
 					}
 
-					err := rawNode.Encode(value)
-					if err != nil {
-						return parent
+					if err := encodeValue(&rawNode, value); err != nil {
+						nodeErrors = append(nodeErrors, err)
 					} else {
 						valueNode = &rawNode
 						valueNode.Line = line

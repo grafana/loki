@@ -6,13 +6,12 @@ package base
 import (
 	"context"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Example represents a low-level Example object as defined by OpenAPI 3+
@@ -30,7 +29,7 @@ type Example struct {
 	RootNode        *yaml.Node
 	index           *index.SpecIndex
 	context         context.Context
-	nodeStore       sync.Map
+	nodeStore       low.NodeLines
 	reference       low.Reference
 	*low.Reference
 	low.NodeMap
@@ -94,10 +93,9 @@ func (ex *Example) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		ex.SetReference(ref, root)
 	}
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	ex.RootNode = root
-	utils.CheckForMergeNodes(root)
-	ex.nodeStore = sync.Map{}
+	ex.nodeStore = low.NodeLines{}
 	ex.Nodes = &ex.nodeStore
 	if len(root.Content) > 0 {
 		ex.NodeMap.ExtractNodes(root, false)

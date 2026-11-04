@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
+
+// ErrReferenceChainCycle indicates a reference-only chain with no terminal value.
+var ErrReferenceChainCycle = errors.New("circular reference chain detected")
 
 // ResolvingError represents an issue the resolver had trying to stitch the tree together.
 type ResolvingError struct {

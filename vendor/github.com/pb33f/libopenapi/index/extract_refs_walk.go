@@ -7,11 +7,12 @@ import (
 	"context"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 type extractRefsState struct {
+	mergeStart    int
 	ctx           context.Context
 	scope         *SchemaIdScope
 	parentBaseURI string
@@ -25,7 +26,7 @@ type extractRefsState struct {
 
 func (index *SpecIndex) initializeExtractRefsState(
 	ctx context.Context,
-	node *yaml.Node,
+	nodeID string,
 	seenPath []string,
 	level int,
 	poly bool,
@@ -38,16 +39,14 @@ func (index *SpecIndex) initializeExtractRefsState(
 	}
 
 	parentBaseURI := scope.BaseUri
-	if node != nil && node.Kind == yaml.MappingNode && !underOpenAPIExamplePath(seenPath) {
-		if nodeID := FindSchemaIdInNode(node); nodeID != "" {
-			resolvedNodeID, _ := ResolveSchemaId(nodeID, parentBaseURI)
-			if resolvedNodeID == "" {
-				resolvedNodeID = nodeID
-			}
-			scope = scope.Copy()
-			scope.PushId(resolvedNodeID)
-			ctx = WithSchemaIdScope(ctx, scope)
+	if nodeID != "" && !underOpenAPIExamplePath(seenPath) {
+		resolvedNodeID, _ := ResolveSchemaId(nodeID, parentBaseURI)
+		if resolvedNodeID == "" {
+			resolvedNodeID = nodeID
 		}
+		scope = scope.Copy()
+		scope.PushId(resolvedNodeID)
+		ctx = WithSchemaIdScope(ctx, scope)
 	}
 
 	return extractRefsState{
@@ -61,7 +60,7 @@ func (index *SpecIndex) initializeExtractRefsState(
 	}
 }
 
-func (index *SpecIndex) walkExtractRefs(node, parent *yaml.Node, state *extractRefsState) []*Reference {
+func (index *SpecIndex) walkExtractRefs(node, parent *yaml.Node, state *extractRefsState, walk *extractRefsTraversal) []*Reference {
 	if node == nil || len(node.Content) == 0 {
 		return nil
 	}
@@ -77,7 +76,17 @@ func (index *SpecIndex) walkExtractRefs(node, parent *yaml.Node, state *extractR
 		}
 
 		if utils.IsNodeMap(n) || utils.IsNodeArray(n) {
-			found = append(found, index.walkChildExtractRefs(n, node, state)...)
+			inherited := i >= state.mergeStart
+			if inherited {
+				walk.aliasDepth++
+			}
+			found = append(found, index.walkChildExtractRefs(n, node, state, walk)...)
+			if inherited {
+				walk.aliasDepth--
+			}
+			if walk.stopped {
+				break
+			}
 		}
 
 		index.unwindExtractRefsPath(node, state, i)
@@ -86,7 +95,7 @@ func (index *SpecIndex) walkExtractRefs(node, parent *yaml.Node, state *extractR
 	return found
 }
 
-func (index *SpecIndex) walkChildExtractRefs(node, parent *yaml.Node, state *extractRefsState) []*Reference {
+func (index *SpecIndex) walkChildExtractRefs(node, parent *yaml.Node, state *extractRefsState, walk *extractRefsTraversal) []*Reference {
 	if underOpenAPIExamplePayloadPath(state.seenPath) {
 		return nil
 	}
@@ -100,10 +109,11 @@ func (index *SpecIndex) walkChildExtractRefs(node, parent *yaml.Node, state *ext
 			state.polyName = state.prev
 		}
 	}
-	return index.ExtractRefs(state.ctx, node, parent, state.seenPath, state.level, state.poly, state.polyName)
+	return index.extractRefs(state.ctx, node, parent, state.seenPath, state.level, state.poly, state.polyName, walk)
 }
 
 func isDirectOpenAPIExampleRefNode(node *yaml.Node) bool {
+	node = utils.ResolveMergeNodes(node)
 	return utils.IsNodeMap(node) && utils.GetRefValueNode(node) != nil && len(node.Content) == 2
 }
 

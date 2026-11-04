@@ -6,14 +6,13 @@ package v3
 import (
 	"context"
 	"hash/maphash"
-	"sync"
 
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
-	"go.yaml.in/yaml/v4"
 )
 
 // Callback represents a low-level Callback object for OpenAPI 3+.
@@ -30,7 +29,7 @@ type Callback struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
-	nodeStore  sync.Map
+	nodeStore  low.NodeLines
 	reference  low.Reference
 	*low.Reference
 	low.NodeMap
@@ -74,10 +73,9 @@ func (cb *Callback) Build(ctx context.Context, keyNode, root *yaml.Node, idx *in
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		cb.SetReference(ref, root)
 	}
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	cb.RootNode = root
-	utils.CheckForMergeNodes(root)
-	cb.nodeStore = sync.Map{}
+	cb.nodeStore = low.NodeLines{}
 	cb.Nodes = &cb.nodeStore
 	if len(root.Content) > 0 {
 		cb.NodeMap.ExtractNodes(root, false)
@@ -104,10 +102,7 @@ func (cb *Callback) Build(ctx context.Context, keyNode, root *yaml.Node, idx *in
 // Hash will return a consistent Hash of the Callback object
 func (cb *Callback) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
-		for v := range orderedmap.SortAlpha(cb.Expression).ValuesFromOldest() {
-			h.WriteString(low.GenerateHashString(v.Value))
-			h.WriteByte(low.HASH_PIPE)
-		}
+		low.HashMap(h, "expressions", cb.Expression)
 
 		for _, ext := range low.HashExtensions(cb.Extensions) {
 			h.WriteString(ext)

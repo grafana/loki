@@ -1,5 +1,8 @@
 package config
 
+import "errors"
+
+// Option configures JSONPath compilation and evaluation.
 type Option func(*config)
 
 // WithPropertyNameExtension enables the use of the "~" character to access a property key.
@@ -28,6 +31,20 @@ func WithStrictRFC9535() Option {
 	}
 }
 
+// WithSpectralCompatibility enables the safe Spectral expression dialect.
+//
+// Spectral compatibility includes JSONPath Plus context variables, parent
+// selection and the property-name extension. It cannot be combined with
+// WithStrictRFC9535; callers should validate Config before use. NewPath does
+// this automatically.
+func WithSpectralCompatibility() Option {
+	return func(cfg *config) {
+		cfg.spectralCompatibility = true
+		cfg.propertyNameExtension = true
+	}
+}
+
+// Config exposes the resolved JSONPath dialect and context-tracking settings.
 type Config interface {
 	PropertyNameEnabled() bool
 	JSONPathPlusEnabled() bool
@@ -38,6 +55,7 @@ type config struct {
 	propertyNameExtension bool
 	strictRFC9535         bool
 	lazyContextTracking   bool
+	spectralCompatibility bool
 }
 
 func (c *config) PropertyNameEnabled() bool {
@@ -57,6 +75,24 @@ func (c *config) LazyContextTrackingEnabled() bool {
 	return c.lazyContextTracking
 }
 
+// SpectralCompatibilityEnabled reports whether cfg enables the safe Spectral dialect.
+// It is a function rather than a Config method so adding the dialect does not
+// break external implementations of the existing Config interface.
+func SpectralCompatibilityEnabled(cfg Config) bool {
+	resolved, ok := cfg.(*config)
+	return ok && resolved.spectralCompatibility
+}
+
+// Validate rejects incompatible dialect options without making option order significant.
+func Validate(cfg Config) error {
+	resolved, ok := cfg.(*config)
+	if ok && resolved.strictRFC9535 && resolved.spectralCompatibility {
+		return errors.New("config.WithStrictRFC9535 and config.WithSpectralCompatibility cannot be combined")
+	}
+	return nil
+}
+
+// New resolves options into an immutable-by-interface configuration view.
 func New(opts ...Option) Config {
 	cfg := &config{}
 	for _, opt := range opts {

@@ -7,11 +7,11 @@ import (
 	"context"
 	"hash/maphash"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // Server represents a low-level OpenAPI 3+ Server object.
@@ -58,9 +58,8 @@ func (s *Server) FindVariable(serverVar string) *low.ValueReference[*ServerVaria
 // Build will extract server variables from the supplied node.
 func (s *Server) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	s.KeyNode = keyNode
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	s.RootNode = root
-	utils.CheckForMergeNodes(root)
 	s.Reference = new(low.Reference)
 	s.Nodes = low.ExtractNodes(ctx, root)
 	s.Extensions = low.ExtractExtensions(root)
@@ -83,15 +82,16 @@ func (s *Server) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index
 				localKeyNode = varNode
 				continue
 			}
+			effective := utils.ResolveMergeNodes(varNode)
 			variable := ServerVariable{}
 			variable.Reference = new(low.Reference)
-			_ = low.BuildModel(varNode, &variable)
-			variable.Nodes = low.ExtractNodesRecursive(ctx, varNode)
-			variable.Extensions = low.ExtractExtensions(varNode)
+			_ = low.BuildModel(effective, &variable)
+			variable.Nodes = low.ExtractNodesRecursive(ctx, effective)
+			variable.Extensions = low.ExtractExtensions(effective)
 			if localKeyNode != nil {
 				variable.Nodes.Store(localKeyNode.Line, localKeyNode)
 			}
-			variable.RootNode = varNode
+			variable.RootNode = effective
 			variable.KeyNode = localKeyNode
 			variablesMap.Set(
 				low.KeyReference[string]{
@@ -117,22 +117,14 @@ func (s *Server) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index
 func (s *Server) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if !s.Name.IsEmpty() {
-			h.WriteString(s.Name.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "name", s.Name.Value)
 		}
-		if s.Variables.Value != nil {
-			for v := range orderedmap.SortAlpha(s.Variables.Value).ValuesFromOldest() {
-				h.WriteString(low.GenerateHashString(v.Value))
-				h.WriteByte(low.HASH_PIPE)
-			}
-		}
+		low.HashMap(h, "variables", s.Variables.Value)
 		if !s.URL.IsEmpty() {
-			h.WriteString(s.URL.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "url", s.URL.Value)
 		}
 		if !s.Description.IsEmpty() {
-			h.WriteString(s.Description.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "description", s.Description.Value)
 		}
 		for _, ext := range low.HashExtensions(s.Extensions) {
 			h.WriteString(ext)

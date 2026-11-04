@@ -38,6 +38,11 @@ type pipelineResult[OUT any] struct {
 	err    error
 }
 
+// parallelTranslateThreshold is the collection size below which TranslateSliceParallel
+// and TranslateMapParallel run sequentially: worker pool setup (goroutines, channels,
+// pending map) costs more than translating a handful of items inline.
+const parallelTranslateThreshold = 16
+
 // TranslateSliceParallel iterates a slice in parallel and calls translate()
 // asynchronously.
 // translate() may return `datamodel.Continue` to continue iteration.
@@ -45,6 +50,33 @@ type pipelineResult[OUT any] struct {
 // Results are provided sequentially to result() in stable order from slice.
 func TranslateSliceParallel[IN any, OUT any](in []IN, translate TranslateSliceFunc[IN, OUT], result ActionFunc[OUT]) error {
 	if in == nil {
+		return nil
+	}
+
+	// small collections run inline: same observable semantics, none of the
+	// worker pool overhead.
+	if len(in) <= parallelTranslateThreshold {
+		for i := range in {
+			out, err := translate(i, in[i])
+			if err == Continue {
+				continue
+			}
+			if err != nil {
+				if err == io.EOF {
+					return nil
+				}
+				return err
+			}
+			if result == nil {
+				continue
+			}
+			if err = result(out); err != nil {
+				if err == io.EOF {
+					return nil
+				}
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -149,13 +181,32 @@ func TranslateMapParallel[K comparable, V any, RV any](m *orderedmap.Map[K, V], 
 		return nil
 	}
 
-	// Snapshot pairs for indexed access.
+	// small maps run inline: same observable semantics, none of the worker
+	// pool or pair snapshot overhead.
+	if m.Len() <= parallelTranslateThreshold {
+		for pair := orderedmap.First(m); pair != nil; pair = pair.Next() {
+			rv, err := translate(pair)
+			if err != nil {
+				if err == io.EOF {
+					return nil
+				}
+				return err
+			}
+			if err = result(rv); err != nil {
+				if err == io.EOF {
+					return nil
+				}
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Snapshot pairs for indexed access. The map is larger than the sequential
+	// threshold, so pairs is never empty here.
 	pairs := make([]orderedmap.Pair[K, V], 0, m.Len())
 	for pair := orderedmap.First(m); pair != nil; pair = pair.Next() {
 		pairs = append(pairs, pair)
-	}
-	if len(pairs) == 0 {
-		return nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

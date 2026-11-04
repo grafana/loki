@@ -6,13 +6,12 @@ package base
 import (
 	"context"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // License is a low-level representation of a License object as defined by OpenAPI 2 and OpenAPI 3
@@ -28,7 +27,7 @@ type License struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
-	nodeStore  sync.Map
+	nodeStore  low.NodeLines
 	reference  low.Reference
 	*low.Reference
 	low.NodeMap
@@ -39,7 +38,7 @@ func (l *License) Build(ctx context.Context, keyNode, root *yaml.Node, idx *inde
 	l.KeyNode = keyNode
 	l.reference = low.Reference{}
 	l.Reference = &l.reference
-	l.nodeStore = sync.Map{}
+	l.nodeStore = low.NodeLines{}
 	l.Nodes = &l.nodeStore
 	l.context = ctx
 	l.index = idx
@@ -48,9 +47,8 @@ func (l *License) Build(ctx context.Context, keyNode, root *yaml.Node, idx *inde
 		l.Extensions = nil
 		return nil
 	}
-	root = utils.NodeAlias(root)
+	root = utils.ResolveMergeNodes(root)
 	l.RootNode = root
-	utils.CheckForMergeNodes(root)
 	if len(root.Content) > 0 {
 		l.NodeMap.ExtractNodes(root, false)
 	} else {

@@ -6,10 +6,11 @@ package index
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // FindSchemaIdInNode looks for a $id key in a mapping node and returns its value.
@@ -149,8 +150,13 @@ func buildSchemaIdResolvedReference(index *SpecIndex, entry *SchemaIdEntry, orig
 
 	node := entry.SchemaNode
 	if fragment != "" && entry.SchemaNode != nil {
-		if fragmentNode := navigateToFragment(entry.SchemaNode, fragment); fragmentNode != nil {
-			node = fragmentNode
+		decodedFragment, err := url.PathUnescape(fragment)
+		if err != nil {
+			return nil
+		}
+		node = navigateToFragment(entry.SchemaNode, decodedFragment)
+		if node == nil {
+			return nil
 		}
 	}
 
@@ -220,6 +226,8 @@ func (index *SpecIndex) resolveRefViaSchemaIdPath(path string) *Reference {
 		return nil
 	}
 
+	originalRef := path
+	path, fragment := SplitRefFragment(path)
 	entries := index.GetAllSchemaIds()
 	if index.rolodex != nil {
 		global := index.rolodex.GetAllGlobalSchemaIds()
@@ -249,7 +257,7 @@ func (index *SpecIndex) resolveRefViaSchemaIdPath(path string) *Reference {
 	}
 
 	baseUri := match.GetKey()
-	return buildSchemaIdResolvedReference(index, match, path, baseUri, "")
+	return buildSchemaIdResolvedReference(index, match, originalRef, baseUri, fragment)
 }
 
 // navigateToFragment navigates to a JSON pointer fragment within a YAML node.
@@ -260,7 +268,7 @@ func navigateToFragment(root *yaml.Node, fragment string) *yaml.Node {
 	}
 
 	path := strings.TrimPrefix(fragment, "#")
-	if path == "" || path == "/" {
+	if path == "" {
 		return root
 	}
 
@@ -272,14 +280,14 @@ func navigateToFragment(root *yaml.Node, fragment string) *yaml.Node {
 	}
 
 	for _, segment := range segments {
-		if segment == "" {
-			continue
-		}
-
 		// Decode JSON pointer escapes (~1 = /, ~0 = ~)
 		segment = strings.ReplaceAll(segment, "~1", "/")
 		segment = strings.ReplaceAll(segment, "~0", "~")
 
+		current = utils.ResolveMergeNodes(current)
+		if current == nil {
+			return nil
+		}
 		found := false
 		if current.Kind == yaml.MappingNode {
 			for i := 0; i < len(current.Content)-1; i += 2 {
@@ -290,17 +298,15 @@ func navigateToFragment(root *yaml.Node, fragment string) *yaml.Node {
 				}
 			}
 		} else if current.Kind == yaml.SequenceNode {
-			idx := 0
-			for _, c := range segment {
-				if c < '0' || c > '9' {
-					return nil
-				}
-				idx = idx*10 + int(c-'0')
+			if len(segment) > 1 && segment[0] == '0' {
+				return nil
 			}
-			if idx < len(current.Content) {
-				current = current.Content[idx]
-				found = true
+			idx, err := strconv.ParseUint(segment, 10, 64)
+			if err != nil || idx >= uint64(len(current.Content)) {
+				return nil
 			}
+			current = current.Content[idx]
+			found = true
 		}
 
 		if !found {
@@ -308,5 +314,5 @@ func navigateToFragment(root *yaml.Node, fragment string) *yaml.Node {
 		}
 	}
 
-	return current
+	return utils.ResolveMergeNodes(current)
 }

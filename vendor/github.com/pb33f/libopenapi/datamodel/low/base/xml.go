@@ -6,13 +6,12 @@ package base
 import (
 	"context"
 	"hash/maphash"
-	"sync"
 
+	"github.com/pb33f/go-yaml"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // XML represents a low-level representation of an XML object defined by all versions of OpenAPI.
@@ -35,7 +34,7 @@ type XML struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
-	nodeStore  sync.Map
+	nodeStore  low.NodeLines
 	reference  low.Reference
 	*low.Reference
 	low.NodeMap
@@ -45,7 +44,7 @@ type XML struct {
 func (x *XML) Build(root *yaml.Node, idx *index.SpecIndex) error {
 	x.reference = low.Reference{}
 	x.Reference = &x.reference
-	x.nodeStore = sync.Map{}
+	x.nodeStore = low.NodeLines{}
 	x.Nodes = &x.nodeStore
 	x.index = idx
 	if root == nil {
@@ -53,8 +52,7 @@ func (x *XML) Build(root *yaml.Node, idx *index.SpecIndex) error {
 		x.Extensions = nil
 		return nil
 	}
-	root = utils.NodeAlias(root)
-	utils.CheckForMergeNodes(root)
+	root = utils.ResolveMergeNodes(root)
 	x.RootNode = root
 	if len(root.Content) > 0 {
 		x.NodeMap.ExtractNodes(root, false)
@@ -84,26 +82,24 @@ func (x *XML) GetIndex() *index.SpecIndex {
 func (x *XML) Hash() uint64 {
 	return low.WithHasher(func(h *maphash.Hash) uint64 {
 		if !x.Name.IsEmpty() {
-			h.WriteString(x.Name.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "name", x.Name.Value)
 		}
 		if !x.Namespace.IsEmpty() {
-			h.WriteString(x.Namespace.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "namespace", x.Namespace.Value)
 		}
 		if !x.Prefix.IsEmpty() {
-			h.WriteString(x.Prefix.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "prefix", x.Prefix.Value)
 		}
 		if !x.Attribute.IsEmpty() {
+			low.HashLabel(h, "attribute")
 			low.HashBool(h, x.Attribute.Value)
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !x.NodeType.IsEmpty() {
-			h.WriteString(x.NodeType.Value)
-			h.WriteByte(low.HASH_PIPE)
+			low.HashString(h, "nodeType", x.NodeType.Value)
 		}
 		if !x.Wrapped.IsEmpty() {
+			low.HashLabel(h, "wrapped")
 			low.HashBool(h, x.Wrapped.Value)
 			h.WriteByte(low.HASH_PIPE)
 		}

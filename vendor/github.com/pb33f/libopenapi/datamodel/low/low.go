@@ -13,7 +13,7 @@
 // Convenience methods for lookup up properties in a low-level model have therefore been provided.
 package low
 
-import "go.yaml.in/yaml/v4"
+import "github.com/pb33f/go-yaml"
 
 // HasRootNode is an interface that is used to extract the root yaml.Node from a low-level model. The root node is
 // the top-level node that represents the entire object as represented in the original source file.
