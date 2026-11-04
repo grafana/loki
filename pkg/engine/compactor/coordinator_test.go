@@ -1812,6 +1812,8 @@ func TestRunLogMergePhase(t *testing.T) {
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(now), newFakeLimits("acme"))
 
 		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, 1, testutil.CollectAndCount(c.metrics.singleObjectLogRuns))
+		require.Zero(t, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
 	})
 
 	t.Run("swaps every index in every window and reaches zero pending bytes", func(t *testing.T) {
@@ -2029,6 +2031,94 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Empty(t, replacer.snapshot())
 		require.Zero(t, testutil.CollectAndCount(c.metrics.logMergeFailedIndexesTotal))
 		require.Zero(t, testutil.CollectAndCount(c.metrics.tenantLogCyclesTotal))
+	})
+
+	t.Run("counts the single-object log runs of every index in every window", func(t *testing.T) {
+		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
+
+		require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, 4.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
+	})
+
+	t.Run("counts the single-object log runs of indexes that need no compaction", func(t *testing.T) {
+		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
+		c.cfg.LogMinCompactionSize = 1 << 30
+
+		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, 4.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
+	})
+
+	t.Run("keeps the previous single-object log runs when an index fails to load", func(t *testing.T) {
+		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: false})
+		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, 4.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
+
+		require.NoError(t, c.bucket.Delete(t.Context(), "indexes/previous/a"))
+		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, 4.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
+	})
+
+	t.Run("does not set the single-object log runs when the first phase fails to load an index", func(t *testing.T) {
+		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
+		require.NoError(t, c.bucket.Delete(t.Context(), "indexes/previous/a"))
+
+		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
+		require.Zero(t, testutil.CollectAndCount(c.metrics.singleObjectLogRuns))
+	})
+
+	t.Run("lowers the single-object log runs on the next phase when an index leaves the ToC", func(t *testing.T) {
+		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: false})
+		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, 4.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
+
+		previous := imWindow().Add(-metastore.MetastoreWindowSize)
+		require.NoError(t, c.bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", previous)))
+		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, 2.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
+	})
+}
+
+func TestCountSingleObjectRuns(t *testing.T) {
+	section := func(path string, index int64, minKey, maxKey string) v2.Section[string] {
+		return v2.Section[string]{
+			Ref: &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: index},
+			Min: minKey,
+			Max: maxKey,
+		}
+	}
+
+	t.Run("returns zero when there are no runs", func(t *testing.T) {
+		require.Zero(t, countSingleObjectRuns(nil))
+	})
+
+	t.Run("counts a run of one object with many sections as one", func(t *testing.T) {
+		runs := v2.CalculateRuns([]v2.Section[string]{
+			section("a", 0, "a", "b"),
+			section("a", 1, "c", "d"),
+		}, strings.Compare)
+
+		require.Equal(t, 1, countSingleObjectRuns(runs))
+	})
+
+	t.Run("does not count a run of many disjoint objects", func(t *testing.T) {
+		runs := v2.CalculateRuns([]v2.Section[string]{
+			section("a", 0, "a", "b"),
+			section("b", 0, "c", "d"),
+		}, strings.Compare)
+
+		require.Len(t, runs, 1)
+		require.Zero(t, countSingleObjectRuns(runs))
+	})
+
+	t.Run("counts only the run with one object when overlapping objects split into two runs", func(t *testing.T) {
+		runs := v2.CalculateRuns([]v2.Section[string]{
+			section("a", 0, "a", "c"),
+			section("b", 0, "b", "d"),
+			section("c", 0, "e", "f"),
+		}, strings.Compare)
+
+		require.Len(t, runs, 2)
+		require.Equal(t, 1, countSingleObjectRuns(runs))
 	})
 }
 
@@ -2338,6 +2428,7 @@ func TestRunTenant(t *testing.T) {
 		require.Equal(t, 400.0, pendingBeforeStop, "the failed LogMerge phase leaves its bytes pending")
 		require.Zero(t, testutil.CollectAndCount(c.metrics.pendingLogBytes))
 		require.Zero(t, testutil.CollectAndCount(c.metrics.lastPlanTimestampSeconds))
+		require.Zero(t, testutil.CollectAndCount(c.metrics.singleObjectLogRuns))
 	})
 }
 
@@ -3012,9 +3103,10 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 		writeToCReferencing(ctx, t, bucket, "acme", window, "indexes/corrupt")
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		plans, anyError := c.planLogCompactions(ctx, "acme")
+		plans, singleObjectRuns, anyError := c.planLogCompactions(ctx, "acme")
 		require.False(t, anyError)
 		require.Empty(t, plans)
+		require.Zero(t, singleObjectRuns)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
 	})
 }
