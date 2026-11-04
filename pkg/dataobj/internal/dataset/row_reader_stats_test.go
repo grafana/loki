@@ -62,7 +62,7 @@ func TestBuildColumnPredicateRanges_ReportsPageStats(t *testing.T) {
 			r := NewRowReader(RowReaderOptions{
 				Dataset:          ds,
 				ProjectedColumns: cols,
-				Predicates:       []Predicate{tc.predicate},
+				PredicateStages:  [][]Predicate{{tc.predicate}},
 				StatsTracker:     tracker,
 			})
 			defer r.Close()
@@ -87,7 +87,7 @@ func TestBuildColumnPredicateRanges_NilStatsTracker(t *testing.T) {
 	r := NewRowReader(RowReaderOptions{
 		Dataset:          ds,
 		ProjectedColumns: cols,
-		Predicates:       []Predicate{EqualPredicate{Column: cols[0], Value: Int64Value(50)}},
+		PredicateStages:  [][]Predicate{{EqualPredicate{Column: cols[0], Value: Int64Value(50)}}},
 		// StatsTracker intentionally left nil.
 	})
 	defer r.Close()

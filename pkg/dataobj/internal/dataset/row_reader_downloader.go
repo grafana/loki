@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -43,8 +44,8 @@ import (
 //
 //   - P3: All pages that include rows after the end of the read range.
 //
-//     This excludes any page that is outside of the dataset ranges passed to
-//     [newReaderDownloader] and [rowReaderDownloader.Reset].
+//     This excludes any page that is outside of the dataset ranges set with
+//     [rowReaderDownloader.SetDatasetRanges].
 //
 // The rowReaderDownloader targets [defaultTargetDownloadedBytes] bytes of cached
 // pages when [RowReaderOptions.PrefetchAllOnOpen] is false. A target of 0 is unlimited.
@@ -102,6 +103,8 @@ type rowReaderDownloader struct {
 	// It can be used to efficiently read pages from object storage in batches
 	// without downloading an entire section at once.
 	targetCompressedBytes int
+
+	pagesLoaded bool // Whether initColumnPages listed the pages of every column.
 }
 
 // defaultTargetDownloadedBytes is the target size in bytes of compressed pages to hold in-memory when
@@ -152,6 +155,48 @@ func (dl *rowReaderDownloader) Prefetch(ctx context.Context) error {
 	return dl.downloadBatch(ctx, nil)
 }
 
+// PrefetchColumns downloads each uncached page of columns that overlaps the dataset ranges, in
+// one batch. It ignores the target size. The columns must be wrapped columns of the downloader.
+func (dl *rowReaderDownloader) PrefetchColumns(ctx context.Context, columns []Column) error {
+	if err := dl.initColumnPages(ctx); err != nil {
+		return err
+	}
+
+	var batch []*readerPage
+	for _, col := range columns {
+		for _, page := range col.(*readerColumn).pages {
+			if page.data == nil && dl.dsetRanges.Overlaps(page.rows) {
+				batch = append(batch, page)
+			}
+		}
+	}
+	if len(batch) == 0 {
+		return nil
+	}
+	return dl.readBatch(ctx, batch)
+}
+
+// PageBytes returns the compressed size of the pages that overlap the dataset ranges. It leaves
+// out the columns in skip. The keys of skip must be wrapped columns of the downloader.
+func (dl *rowReaderDownloader) PageBytes(ctx context.Context, skip map[Column]struct{}) (int, error) {
+	if err := dl.initColumnPages(ctx); err != nil {
+		return 0, err
+	}
+
+	var total int
+	for _, col := range dl.allColumns {
+		if _, ok := skip[col]; ok {
+			continue
+		}
+		for _, page := range col.(*readerColumn).pages {
+			if dl.dsetRanges.Overlaps(page.rows) {
+				total += page.PageDesc().CompressedSize
+			}
+		}
+	}
+	return total, nil
+}
+
 // AddColumn adds a column to the rowReaderDownloader. This should be called
 // before the downloader is used.
 //
@@ -170,8 +215,9 @@ func (dl *rowReaderDownloader) AddColumn(col Column, primary bool) {
 	}
 }
 
-// SetDatasetRanges sets the valid ranges of rows that will be read. Pages
-// which do not overlap with these ranges will never be downloaded.
+// SetDatasetRanges sets the ranges of rows whose pages the downloader fetches in bulk. A page that
+// overlaps none of them is downloaded only when a read asks for it. A later call replaces the
+// ranges.
 func (dl *rowReaderDownloader) SetDatasetRanges(r rangeset.Set) {
 	dl.dsetRanges = r
 }
@@ -205,8 +251,17 @@ func (dl *rowReaderDownloader) PrimaryColumns() []Column { return dl.primary }
 // rowReaderDownloader in the order they were added.
 func (dl *rowReaderDownloader) SecondaryColumns() []Column { return dl.secondary }
 
-// initColumnPages populates the pages of all columns in the downloader.
+// initColumnPages populates the pages of all columns in the downloader. It does nothing after the
+// first successful call, because a second call would add every page again.
 func (dl *rowReaderDownloader) initColumnPages(ctx context.Context) error {
+	if dl.pagesLoaded {
+		return nil
+	}
+
+	// A failed call can leave pages in the first columns. Start again, so no page appears twice.
+	for _, col := range dl.allColumns {
+		col.(*readerColumn).pages = nil
+	}
 	columns := dl.allColumns
 
 	var idx int
@@ -220,7 +275,11 @@ func (dl *rowReaderDownloader) initColumnPages(ctx context.Context) error {
 		columns[idx].(*readerColumn).processPages(pages)
 		idx++
 	}
+	if idx != len(columns) {
+		return fmt.Errorf("listing pages: got the pages of %d columns, want %d", idx, len(columns))
+	}
 
+	dl.pagesLoaded = true
 	return nil
 }
 
@@ -237,7 +296,11 @@ func (dl *rowReaderDownloader) downloadBatch(ctx context.Context, requestor *rea
 	if err != nil {
 		return err
 	}
+	return dl.readBatch(ctx, batch)
+}
 
+// readBatch downloads the pages of batch from the inner dataset and stores their data.
+func (dl *rowReaderDownloader) readBatch(ctx context.Context, batch []*readerPage) error {
 	if region := xcap.RegionFromContext(ctx); region != nil {
 		for _, page := range batch {
 			if page.column.primary {
@@ -497,6 +560,7 @@ func (dl *rowReaderDownloader) Reset(dset Dataset) {
 	dl.inner = dset
 
 	dl.readRange = rangeset.Range{}
+	dl.pagesLoaded = false
 
 	dl.origColumns = sliceclear.Clear(dl.origColumns)
 

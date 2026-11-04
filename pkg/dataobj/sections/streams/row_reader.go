@@ -137,7 +137,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	columns := dset.Columns()
 
 	// The matched stream IDs are not part of r.predicate, so build them as a separate
-	// predicate; RowReaderOptions.Predicates are ANDed together.
+	// predicate; RowReaderOptions.PredicateStages are ANDed together.
 	var predicates []dataset.Predicate
 	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, r.sec.Columns()); p != nil {
 		predicates = append(predicates, p)
@@ -149,7 +149,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	readerOpts := dataset.RowReaderOptions{
 		Dataset:           dset,
 		ProjectedColumns:  columns,
-		Predicates:        predicates,
+		PredicateStages:   [][]dataset.Predicate{predicates},
 		PrefetchAllOnOpen: true,
 	}
 

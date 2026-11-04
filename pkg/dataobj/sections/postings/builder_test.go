@@ -540,9 +540,9 @@ func readWithKindPredicate(t *testing.T, sec *Section, wantKind int64) (rows int
 	reader := dataset.NewRowReader(dataset.RowReaderOptions{
 		Dataset:          dset,
 		ProjectedColumns: cols,
-		Predicates: []dataset.Predicate{
+		PredicateStages: [][]dataset.Predicate{{
 			dataset.EqualPredicate{Column: kindCol, Value: dataset.Int64Value(wantKind)},
-		},
+		}},
 	})
 
 	ctx, _ := xcap.NewCapture(context.Background(), nil)

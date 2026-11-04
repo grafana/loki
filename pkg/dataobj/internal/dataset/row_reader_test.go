@@ -13,10 +13,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -117,7 +119,7 @@ func Test_RowReader_ReadWithNegatedConstantPredicate(t *testing.T) {
 			r := NewRowReader(RowReaderOptions{
 				Dataset:          dset,
 				ProjectedColumns: columns,
-				Predicates:       []Predicate{NotPredicate{Inner: tc.inner}},
+				PredicateStages:  [][]Predicate{{NotPredicate{Inner: tc.inner}}},
 			})
 			defer r.Close()
 
@@ -142,12 +144,12 @@ func TestRowReader_ReadWithPageFiltering(t *testing.T) {
 		//
 		// TODO(rfratto): make it easier to prove that a predicate includes a value
 		// which is out of range of at least one page.
-		Predicates: []Predicate{
+		PredicateStages: [][]Predicate{{
 			EqualPredicate{
 				Column: columns[0], // first_name column
 				Value:  BinaryValue([]byte("Henry")),
 			},
-		},
+		}},
 	})
 	defer r.Close()
 
@@ -192,13 +194,13 @@ func TestRowReader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 		Dataset:          dset,
 		ProjectedColumns: cols,
 
-		Predicates: []Predicate{
+		PredicateStages: [][]Predicate{{
 			// Imitate predicate from logql: {last_name=""}
 			EqualPredicate{
 				Column: cols[1], // last_name column
 				Value:  BinaryValue([]byte("")),
 			},
-		},
+		}},
 	})
 	defer r.Close()
 
@@ -233,12 +235,12 @@ func Test_RowReader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	r := NewRowReader(RowReaderOptions{
 		Dataset:          dset,
 		ProjectedColumns: []Column{columns[3]},
-		Predicates: []Predicate{
+		PredicateStages: [][]Predicate{{
 			GreaterThanPredicate{
 				Column: columns[3], // birth_year column
 				Value:  Int64Value(1985),
 			},
-		},
+		}},
 	})
 	defer r.Close()
 
@@ -273,9 +275,9 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				GreaterThanPredicate{Column: columns[3], Value: Int64Value(1985)},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -298,12 +300,12 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				OrPredicate{
 					Left:  LessThanPredicate{Column: columns[3], Value: Int64Value(1980)},
 					Right: GreaterThanPredicate{Column: columns[3], Value: Int64Value(1988)},
 				},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -328,9 +330,9 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				InPredicate{Column: columns[3], Values: NewInt64ValueSetOf(wanted...)},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -353,9 +355,9 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				LessThanPredicate{Column: columns[3], Value: Int64Value(1980)},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -378,14 +380,14 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				FuncPredicate{
 					Column: columns[0], // first_name column
 					Keep: func(_ Column, value Value) bool {
 						return len(value.Binary()) > 4
 					},
 				},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -404,7 +406,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 
 	t.Run("keeps a row that satisfies two sequential predicates on different columns", func(t *testing.T) {
 		// Each predicate targets a different column, so a bug that swaps r.compiledPredicates'
-		// entries (instead of leaving them aligned with r.opts.Predicates by index) would evaluate
+		// entries (instead of leaving them aligned with r.predicates by index) would evaluate
 		// a column against the wrong predicate and change the result, unlike two predicates on the
 		// same column, which would still agree after a swap.
 		dset, columns := buildTestDataset(t)
@@ -412,7 +414,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				GreaterThanPredicate{Column: columns[3], Value: Int64Value(1979)}, // birth_year
 				FuncPredicate{
 					Column: columns[0], // first_name
@@ -420,7 +422,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 						return len(value.Binary()) > 4
 					},
 				},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -443,12 +445,12 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				AndPredicate{
 					Left:  GreaterThanPredicate{Column: columns[3], Value: Int64Value(1979)},
 					Right: LessThanPredicate{Column: columns[3], Value: Int64Value(1988)},
 				},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -471,9 +473,9 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				NotPredicate{Inner: GreaterThanPredicate{Column: columns[3], Value: Int64Value(1985)}},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -496,10 +498,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				yearAfter(columns[3], 1985),
 				nameLongerThan(columns[0], 4),
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -524,11 +526,11 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				r := NewRowReader(RowReaderOptions{
 					Dataset:          dset,
 					ProjectedColumns: columns,
-					Predicates: []Predicate{
+					PredicateStages: [][]Predicate{{
 						counting(0, columns[0], func(v Value) bool { return len(v.Binary()) > 4 }),
 						counting(1, columns[3], func(v Value) bool { return v.Int64() > 1982 }),
 						counting(2, columns[3], func(v Value) bool { return v.Int64() < 1990 }),
-					},
+					}},
 				})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -546,7 +548,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates:       []Predicate{nameLongerThan(columns[0], 4), yearAfter(columns[3], 1982)},
+			PredicateStages:  [][]Predicate{{nameLongerThan(columns[0], 4), yearAfter(columns[3], 1982)}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 		require.NoError(t, r.Open(t.Context()))
@@ -571,10 +573,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				nameLongerThan(columns[0], 4),
 				yearAfter(columns[3], 1982),
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 		require.NoError(t, r.Open(t.Context()))
@@ -601,10 +603,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				r := NewRowReader(RowReaderOptions{
 					Dataset:          dset,
 					ProjectedColumns: columns,
-					Predicates: []Predicate{
+					PredicateStages: [][]Predicate{{
 						// A null passes, so a row past the end of the column would appear in the result.
 						FuncPredicate{Column: columns[1], Keep: func(_ Column, v Value) bool { return v.IsNil() || v.Int64()%2 == 0 }},
-					},
+					}},
 				})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -641,7 +643,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 					page.Data = PageData("not a page")
 				}
 
-				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: tc.predicates(columns)})
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{tc.predicates(columns)}})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 				require.NoError(t, r.Open(t.Context()))
 
@@ -660,10 +662,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				FuncPredicate{Column: columns[0], Keep: func(Column, Value) bool { return true }},
 				FuncPredicate{Column: columns[1], Keep: func(Column, Value) bool { return true }},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 		require.NoError(t, r.Open(t.Context()))
@@ -771,7 +773,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 						r := NewRowReader(RowReaderOptions{
 							Dataset:          dset,
 							ProjectedColumns: tc.projected,
-							Predicates:       tc.predicates,
+							PredicateStages:  [][]Predicate{tc.predicates},
 						})
 						t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -807,9 +809,9 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: []Column{columns[0]},
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				FuncPredicate{Column: columns[3], Keep: func(_ Column, v Value) bool { return v.Int64() == 1980 || v.Int64() == 1981 }},
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 		require.NoError(t, r.Open(t.Context()))
@@ -845,7 +847,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: []Column{columns[0]},
-			Predicates:       []Predicate{GreaterThanPredicate{Column: columns[1], Value: Int64Value(0)}},
+			PredicateStages:  [][]Predicate{{GreaterThanPredicate{Column: columns[1], Value: Int64Value(0)}}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 		require.NoError(t, r.Open(t.Context()))
@@ -931,7 +933,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				for _, i := range tc.projected {
 					projected = append(projected, columns[i])
 				}
-				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: projected, Predicates: tc.predicates(columns)})
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: projected, PredicateStages: [][]Predicate{tc.predicates(columns)}})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
 				stats := runAndCollectStats(t, func(ctx context.Context) {
@@ -950,7 +952,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: []Column{columns[0]},
-			Predicates:       []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
+			PredicateStages:  [][]Predicate{{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -976,7 +978,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: []Column{columns[2]},
-			Predicates:       []Predicate{EqualPredicate{Column: columns[0], Value: BinaryValue([]byte("Henry"))}},
+			PredicateStages:  [][]Predicate{{EqualPredicate{Column: columns[0], Value: BinaryValue([]byte("Henry"))}}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -1006,10 +1008,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 					rowOpts := RowReaderOptions{
 						Dataset:          dset,
 						ProjectedColumns: columns,
-						Predicates:       []Predicate{first(columns[0]), testFuncPredicate(columns[1], keep, false)},
+						PredicateStages:  [][]Predicate{{first(columns[0]), testFuncPredicate(columns[1], keep, false)}},
 					}
 					batchOpts := rowOpts
-					batchOpts.Predicates = []Predicate{first(columns[0]), testFuncPredicate(columns[1], keep, true)}
+					batchOpts.PredicateStages = [][]Predicate{{first(columns[0]), testFuncPredicate(columns[1], keep, true)}}
 
 					for _, size := range []int{1, 2, 3, 7, 100} {
 						expected := readBatchTestRows(t, rowOpts, size)
@@ -1037,10 +1039,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				opts := RowReaderOptions{
 					Dataset:          dset,
 					ProjectedColumns: columns,
-					Predicates: []Predicate{
+					PredicateStages: [][]Predicate{{
 						GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
 						testFuncPredicate(columns[1], keepSome, withKeepBatch),
-					},
+					}},
 				}
 				expected := withoutMessage(readBatchTestRows(t, opts, 3))
 				require.NotEmpty(t, expected)
@@ -1057,7 +1059,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 			opts := RowReaderOptions{
 				Dataset:          dset,
 				ProjectedColumns: columns,
-				Predicates:       []Predicate{testFuncPredicate(columns[1], keepSome, true)},
+				PredicateStages:  [][]Predicate{{testFuncPredicate(columns[1], keepSome, true)}},
 			}
 			expected := withoutMessage(readBatchTestRows(t, opts, 3))
 			require.NotEmpty(t, expected)
@@ -1071,7 +1073,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 			opts := RowReaderOptions{
 				Dataset:          dset,
 				ProjectedColumns: columns,
-				Predicates:       []Predicate{EqualPredicate{Column: columns[1], Value: BinaryValue([]byte("line 1 x"))}},
+				PredicateStages:  [][]Predicate{{EqualPredicate{Column: columns[1], Value: BinaryValue([]byte("line 1 x"))}}},
 			}
 			expected := withoutMessage(readBatchTestRows(t, opts, 3))
 			require.Len(t, expected, 1)
@@ -1087,10 +1089,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				r := NewRowReader(RowReaderOptions{
 					Dataset:          dset,
 					ProjectedColumns: []Column{columns[0], columns[2]},
-					Predicates: []Predicate{
+					PredicateStages: [][]Predicate{{
 						GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
 						testFuncPredicate(columns[1], keepSome, withKeepBatch),
-					},
+					}},
 				})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 				require.NoError(t, r.Open(t.Context()))
@@ -1124,7 +1126,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 			return nil
 		}
 
-		opts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{predicate}}
+		opts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{{predicate}}}
 		require.NotEmpty(t, readBatchTestRows(t, opts, 3))
 	})
 
@@ -1139,11 +1141,11 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		opts := RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
 				withKeepBatch,
 				testFuncPredicate(columns[1], keepAll, false),
-			},
+			}},
 		}
 		require.NotEmpty(t, readBatchTestRows(t, opts, 3))
 	})
@@ -1161,9 +1163,9 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		}
 		first := testFuncPredicate(columns[1], keepAll, false)
 
-		rowOpts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{first, keepEvenIDs}}
+		rowOpts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{{first, keepEvenIDs}}}
 		batchOpts := rowOpts
-		batchOpts.Predicates = []Predicate{first, withKeepBatch}
+		batchOpts.PredicateStages = [][]Predicate{{first, withKeepBatch}}
 
 		want := readBatchTestRows(t, rowOpts, 3)
 		require.NotEmpty(t, want)
@@ -1197,10 +1199,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				r := NewRowReader(RowReaderOptions{
 					Dataset:          dset,
 					ProjectedColumns: columns,
-					Predicates: []Predicate{
+					PredicateStages: [][]Predicate{{
 						GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
 						predicate,
-					},
+					}},
 				})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -1219,8 +1221,8 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 			}
 		}
 
-		rowStats := readBatchTestStats(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates(false)})
-		batchStats := readBatchTestStats(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates(true)})
+		rowStats := readBatchTestStats(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{predicates(false)}})
+		batchStats := readBatchTestStats(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{predicates(true)}})
 
 		require.NotZero(t, rowStats[dataobj.StatDatasetPrimaryRowBytes.Name()])
 		require.Equal(t, rowStats, batchStats)
@@ -1252,9 +1254,9 @@ func Test_RowReader_Reset(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				GreaterThanPredicate{Column: columns[3], Value: Int64Value(1985)}, // birth_year
-			},
+			}},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
@@ -1273,14 +1275,14 @@ func Test_RowReader_Reset(t *testing.T) {
 		r.Reset(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				FuncPredicate{
 					Column: columns[0], // first_name
 					Keep: func(_ Column, value Value) bool {
 						return len(value.Binary()) > 4
 					},
 				},
-			},
+			}},
 		})
 
 		secondRows, err := readDataset(t.Context(), r, 3)
@@ -1301,7 +1303,7 @@ func Test_RowReader_Reset(t *testing.T) {
 		dset, columns := buildTestDataset(t)
 		predicates := []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}}
 
-		r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{columns[0]}, Predicates: predicates})
+		r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{columns[0]}, PredicateStages: [][]Predicate{predicates}})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
 		rows, err := readDataset(t.Context(), r, 3)
@@ -1311,7 +1313,7 @@ func Test_RowReader_Reset(t *testing.T) {
 			require.Len(t, row.Values, 1)
 		}
 
-		r.Reset(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates})
+		r.Reset(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{predicates}})
 
 		rows, err = readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
@@ -1320,7 +1322,7 @@ func Test_RowReader_Reset(t *testing.T) {
 			require.Len(t, row.Values, len(columns))
 		}
 
-		r.Reset(RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{columns[2], columns[0]}, Predicates: predicates})
+		r.Reset(RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{columns[2], columns[0]}, PredicateStages: [][]Predicate{predicates}})
 
 		rows, err = readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
@@ -1336,7 +1338,7 @@ func Test_RowReader_Reset(t *testing.T) {
 			GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
 			testFuncPredicate(columns[1], func(line []byte) bool { return len(line) < 12 }, true),
 		}
-		allOpts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates}
+		allOpts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{predicates}}
 		expectedAll := readBatchTestRows(t, allOpts, 3)
 		require.NotEmpty(t, expectedAll)
 
@@ -1363,18 +1365,18 @@ func Test_RowReader_Reset(t *testing.T) {
 		batchOpts := RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
 				testFuncPredicate(columns[1], func(line []byte) bool { return len(line) < 12 }, true),
-			},
+			}},
 		}
 		plainOpts := RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: columns,
-			Predicates: []Predicate{
+			PredicateStages: [][]Predicate{{
 				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
 				GreaterThanPredicate{Column: columns[0], Value: Int64Value(10)},
-			},
+			}},
 		}
 		expectedPlain := readBatchTestRows(t, plainOpts, 3)
 		require.NotEmpty(t, expectedPlain)
@@ -1590,7 +1592,7 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			r := NewRowReader(RowReaderOptions{
 				Dataset:          ds,
 				ProjectedColumns: cols,
-				Predicates:       []Predicate{tc.predicate},
+				PredicateStages:  [][]Predicate{{tc.predicate}},
 			})
 			defer r.Close()
 
@@ -1953,14 +1955,343 @@ func BenchmarkRowReader(b *testing.B) {
 					}
 
 					filterOpts := opts
-					filterOpts.Predicates = []Predicate{
+					filterOpts.PredicateStages = [][]Predicate{{
 						LessThanPredicate{Column: cols[1], Value: Int64Value(math.MaxInt64)},
 						message,
-					}
+					}}
 					if form.notProjected {
 						filterOpts.ProjectedColumns = cols[:2]
 					}
 					readAll(b, filterOpts, rp.batchSize)
+				})
+			}
+		}
+	}
+}
+
+func Test_RowReader_PredicateStages(t *testing.T) {
+	ds, cols := buildStreamMajorDataset(t, 30, 1000, 1<<10)
+	stream, timestamp, line := cols[0], cols[1], cols[2]
+
+	streamIn := func(ids ...int64) Predicate {
+		return InPredicate{Column: stream, Values: NewMemoizedInt64ValueSetOf(ids...)}
+	}
+	inWindow := AndPredicate{
+		Left:  GreaterThanPredicate{Column: timestamp, Value: Int64Value(699_999)},
+		Right: LessThanPredicate{Column: timestamp, Value: Int64Value(900_001)},
+	}
+	laterThan := GreaterThanPredicate{Column: timestamp, Value: Int64Value(799_999)}
+	keep := func(l []byte) bool { return len(l) > 0 && l[0] < 128 }
+	rowLine, batchLine := testFuncPredicate(line, keep, false), testFuncPredicate(line, keep, true)
+
+	options := func(stages [][]Predicate) RowReaderOptions {
+		return RowReaderOptions{Dataset: ds, ProjectedColumns: cols, PredicateStages: stages, PrefetchAllOnOpen: true}
+	}
+	withoutTimestamp := []Column{stream, line}
+
+	limits := []struct {
+		name  string
+		bytes int
+	}{
+		{"the early values kept", maxRetainedBytes},
+		{"the early values read again", 1},
+	}
+
+	type layout struct {
+		name      string
+		stages    [][]Predicate
+		projected []Column // Nil projects every column.
+	}
+	layouts := []layout{
+		{
+			name:   "returns the rows and counters of a flat read and downloads less when stage 2 is empty",
+			stages: [][]Predicate{{streamIn(3, 4), inWindow}, nil},
+		},
+		{
+			name:   "returns the rows and counters of a flat read and downloads less when stage 2 holds a row predicate on the line",
+			stages: [][]Predicate{{streamIn(3, 4), inWindow}, {rowLine}},
+		},
+		{
+			name:   "returns the rows and counters of a flat read and downloads less when stage 2 holds a batch predicate on the line",
+			stages: [][]Predicate{{streamIn(3, 4), inWindow}, {batchLine}},
+		},
+		{
+			name:   "returns the rows and counters of a flat read and downloads less when stage 2 leaves a projected column to fill",
+			stages: [][]Predicate{{streamIn(3, 4)}, {inWindow}},
+		},
+		{
+			name:   "returns the rows and counters of a flat read and downloads less when stage 2 reads a column of stage 1",
+			stages: [][]Predicate{{streamIn(3, 4, 9), inWindow}, {laterThan}},
+		},
+		{
+			name:      "returns the rows and counters of a flat read and downloads less when stage 1 reads a column that is not projected",
+			stages:    [][]Predicate{{streamIn(3, 4), inWindow}, nil},
+			projected: withoutTimestamp,
+		},
+		{
+			name:      "returns the rows and counters of a flat read and downloads less when stage 2 reads a column of stage 1 that is not projected",
+			stages:    [][]Predicate{{streamIn(3, 4, 9), inWindow}, {laterThan}},
+			projected: withoutTimestamp,
+		},
+		{
+			name:   "returns the rows and counters of a flat read and downloads less when two stages precede the last",
+			stages: [][]Predicate{{streamIn(0, 1, 2, 3, 4, 5, 6, 7)}, {inWindow}, {batchLine}},
+		},
+		{
+			name:   "returns the rows and counters of a flat read and downloads less when the last stage reads a column of two early stages",
+			stages: [][]Predicate{{streamIn(0, 1, 2, 3, 4, 5, 6, 7)}, {inWindow}, {laterThan}},
+		},
+	}
+	flatten := func(l layout) [][]Predicate {
+		var flat []Predicate
+		for _, stage := range l.stages {
+			flat = append(flat, stage...)
+		}
+		return [][]Predicate{flat}
+	}
+	optionsFor := func(l layout, stages [][]Predicate) RowReaderOptions {
+		opts := options(stages)
+		if l.projected != nil {
+			opts.ProjectedColumns = l.projected
+		}
+		return opts
+	}
+
+	for _, tc := range layouts {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, batchSize := range []int{1, 7, 1024} {
+				for _, limit := range limits {
+					t.Run(fmt.Sprintf("with a batch size of %d and %s", batchSize, limit.name), func(t *testing.T) {
+						setMaxRetainedBytes(t, limit.bytes)
+
+						wantRows, wantStats := readStageRows(t, newStageReader(t, optionsFor(tc, flatten(tc))), batchSize)
+						gotRows, gotStats := readStageRows(t, newStageReader(t, optionsFor(tc, tc.stages)), batchSize)
+
+						require.NotEmpty(t, wantRows)
+						require.Equal(t, wantRows, gotRows)
+						require.Less(t, gotStats.downloaded, wantStats.downloaded)
+						require.Equal(t, wantStats.counters, gotStats.counters)
+					})
+				}
+			}
+		})
+	}
+
+	t.Run("never decodes a page of the early columns after the first Read when the early values are kept", func(t *testing.T) {
+		for _, tc := range layouts {
+			t.Run(tc.name, func(t *testing.T) {
+				for _, batchSize := range []int{7, 1024} {
+					want, _ := readStageRows(t, newStageReader(t, optionsFor(tc, flatten(tc))), batchSize)
+
+					poisoned := &poisonDataset{Dataset: ds, record: true}
+					opts := optionsFor(tc, tc.stages)
+					opts.Dataset = poisoned
+					r := newStageReader(t, opts)
+					require.NoError(t, r.Open(t.Context()))
+					poisoned.record = false
+
+					var got []string
+					batch := make([]Row, batchSize)
+					for first := true; ; first = false {
+						n, err := r.Read(t.Context(), batch)
+						for _, row := range batch[:n] {
+							got = append(got, formatStageRow(row))
+						}
+						if first {
+							poisoned.destroyRecorded()
+						}
+						if errors.Is(err, io.EOF) {
+							break
+						}
+						require.NoError(t, err)
+					}
+
+					require.NotEmpty(t, poisoned.pages)
+					require.Equal(t, want, got)
+				}
+			})
+		}
+	})
+
+	t.Run("downloads at Open only the pages of the early columns that page pruning keeps", func(t *testing.T) {
+		stages := [][]Predicate{{streamIn(3, 4), inWindow}, nil}
+
+		_, flat := readStageRows(t, newStageReader(t, options([][]Predicate{{streamIn(3, 4), inWindow}})), 1024)
+		_, staged := readStageRows(t, newStageReader(t, options(stages)), 1024)
+
+		require.NotZero(t, flat.primaryDownloaded)
+		require.Equal(t, flat.primaryDownloaded, staged.primaryDownloaded)
+	})
+
+	t.Run("keeps the early values of the survivors unless they exceed the limit", func(t *testing.T) {
+		for _, tc := range []struct {
+			name         string
+			limit        int
+			wantRetained bool
+		}{
+			{"keeps them within the limit", maxRetainedBytes, true},
+			{"drops them above the limit", 1, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				setMaxRetainedBytes(t, tc.limit)
+
+				r := newStageReader(t, options([][]Predicate{{streamIn(3, 4), inWindow}, nil}))
+				require.NoError(t, r.Open(t.Context()))
+				n, err := r.Read(t.Context(), make([]Row, 16))
+				require.NoError(t, err)
+
+				require.NotZero(t, n)
+				require.True(t, r.staged.active)
+				require.Equal(t, tc.wantRetained, r.staged.retained != nil)
+				require.Len(t, r.staged.kept, 2)
+			})
+		}
+	})
+
+	t.Run("keeps only the early columns that Read returns or a later predicate reads", func(t *testing.T) {
+		opts := optionsFor(layout{projected: withoutTimestamp}, [][]Predicate{{streamIn(3, 4), inWindow}, nil})
+
+		r := newStageReader(t, opts)
+		require.NoError(t, r.Open(t.Context()))
+		_, err := r.Read(t.Context(), make([]Row, 16))
+		require.NoError(t, err)
+
+		require.True(t, r.staged.active)
+		require.Len(t, r.staged.kept, 1)
+	})
+
+	t.Run("does not stage a read that does not prefetch on Open", func(t *testing.T) {
+		opts := options([][]Predicate{{streamIn(3, 4), inWindow}, nil})
+		opts.PrefetchAllOnOpen = false
+
+		r := newStageReader(t, opts)
+		require.NoError(t, r.Open(t.Context()))
+
+		require.False(t, r.staged.active)
+	})
+
+	t.Run("releases the retained values and the scratch rows when the survivors run out", func(t *testing.T) {
+		r := newStageReader(t, options([][]Predicate{{streamIn(3, 4), inWindow}, nil}))
+		require.NoError(t, r.Open(t.Context()))
+
+		batch := make([]Row, 16)
+		for {
+			_, err := r.Read(t.Context(), batch)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			require.NoError(t, err)
+		}
+
+		require.Nil(t, r.staged.retained)
+		require.Nil(t, r.staged.scratch)
+	})
+
+	t.Run("returns the rows and counters of a new reader after Reset", func(t *testing.T) {
+		first := [][]Predicate{{streamIn(3, 4), inWindow}, nil}
+		second := [][]Predicate{{streamIn(5, 6), inWindow}, {batchLine}}
+
+		wantRows, wantStats := readStageRows(t, newStageReader(t, options(second)), 1024)
+
+		reused := newStageReader(t, options(first))
+		readStageRows(t, reused, 1024)
+		reused.Reset(options(second))
+		gotRows, gotStats := readStageRows(t, reused, 1024)
+
+		require.NotEmpty(t, wantRows)
+		require.Equal(t, wantRows, gotRows)
+		require.Equal(t, wantStats.counters, gotStats.counters)
+	})
+}
+
+// BenchmarkRowReaderStages compares a read with one stage and a read with two stages, for queries
+// that keep different shares of the rows. The pages live in memory. The local runs show the cost
+// of the extra work. The other runs charge a round trip and a transfer time for every download
+// batch, to show what the saving is worth. The round trip and the two transfer speeds are
+// assumptions.
+func BenchmarkRowReaderStages(b *testing.B) {
+	const (
+		streams       = 60
+		rowsPerStream = 1000
+		lineSize      = 1 << 10
+	)
+	ds, cols := buildStreamMajorDataset(b, streams, rowsPerStream, lineSize)
+	stream, timestamp, line := cols[0], cols[1], cols[2]
+
+	streamIn := func(from, to int64) Predicate {
+		ids := make([]int64, 0, to-from)
+		for id := from; id < to; id++ {
+			ids = append(ids, id)
+		}
+		return InPredicate{Column: stream, Values: NewMemoizedInt64ValueSetOf(ids...)}
+	}
+	window := AndPredicate{
+		Left:  GreaterThanPredicate{Column: timestamp, Value: Int64Value(699_999)},
+		Right: LessThanPredicate{Column: timestamp, Value: Int64Value(900_001)},
+	}
+	everyHundredth := FuncPredicate{Column: timestamp, Keep: func(_ Column, v Value) bool { return v.Int64()%100_000 == 0 }}
+	halfOfLines := testFuncPredicate(line, func(l []byte) bool { return len(l) > 0 && l[0] < 128 }, true)
+
+	cases := []struct {
+		name  string
+		early []Predicate
+		late  []Predicate
+	}{
+		{"one-stream-200-rows", []Predicate{streamIn(42, 43), window}, nil},
+		{"one-stream-200-rows-line-filter", []Predicate{streamIn(42, 43), window}, []Predicate{halfOfLines}},
+		{"one-stream", []Predicate{streamIn(42, 43)}, nil},
+		{"ten-streams", []Predicate{streamIn(40, 50)}, nil},
+		{"half-of-streams", []Predicate{streamIn(0, 30)}, nil},
+		{"all-streams", []Predicate{streamIn(0, streams)}, nil},
+		{"scattered-1-percent", []Predicate{everyHundredth}, nil},
+	}
+	networks := []struct {
+		name        string
+		roundTrip   time.Duration
+		bytesPerSec float64
+	}{
+		{"local", 0, 0},
+		{"rtt45ms-100MBps", 45 * time.Millisecond, 100e6},
+		{"rtt45ms-1GBps", 45 * time.Millisecond, 1e9},
+	}
+
+	for _, tc := range cases {
+		for _, network := range networks {
+			for _, staged := range []bool{false, true} {
+				stages := [][]Predicate{append(append([]Predicate(nil), tc.early...), tc.late...)}
+				name := "one-stage"
+				if staged {
+					stages, name = [][]Predicate{tc.early, tc.late}, "two-stages"
+				}
+
+				b.Run(tc.name+"/"+network.name+"/"+name, func(b *testing.B) {
+					b.ReportAllocs()
+
+					slow := &slowDataset{Dataset: ds, roundTrip: network.roundTrip, bytesPerSec: network.bytesPerSec}
+					var pageBytes, rows int64
+					batch := make([]Row, 1024)
+					for b.Loop() {
+						ctx, _ := xcap.NewCapture(b.Context(), nil)
+						ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+
+						reader := NewRowReader(RowReaderOptions{Dataset: slow, ProjectedColumns: cols, PredicateStages: stages, PrefetchAllOnOpen: true})
+						require.NoError(b, reader.Open(ctx))
+						for {
+							n, err := reader.Read(ctx, batch)
+							rows += int64(n)
+							if errors.Is(err, io.EOF) {
+								break
+							}
+							require.NoError(b, err)
+						}
+						require.NoError(b, reader.Close())
+
+						pageBytes += downloadedPageBytes(region)
+						region.End()
+					}
+					b.ReportMetric(float64(pageBytes)/float64(b.N), "page-B/op")
+					b.ReportMetric(float64(slow.batches.Load())/float64(b.N), "batches/op")
+					b.ReportMetric(float64(rows)/float64(b.N), "rows/op")
 				})
 			}
 		}
@@ -2131,7 +2462,7 @@ func BenchmarkPredicateExecution(b *testing.B) {
 				reader := NewRowReader(RowReaderOptions{
 					Dataset:          ds,
 					ProjectedColumns: pp.projectedColumns,
-					Predicates:       pp.predicates,
+					PredicateStages:  [][]Predicate{pp.predicates},
 				})
 				require.NoError(b, reader.Open(context.Background()))
 
@@ -2345,7 +2676,7 @@ func Test_RowReader_Stats(t *testing.T) {
 	r := NewRowReader(RowReaderOptions{
 		Dataset:          dset,
 		ProjectedColumns: columns,
-		Predicates: []Predicate{
+		PredicateStages: [][]Predicate{{
 			GreaterThanPredicate{
 				Column: columns[3], // birth_year
 				Value:  Int64Value(1985),
@@ -2354,7 +2685,7 @@ func Test_RowReader_Stats(t *testing.T) {
 				Column: columns[0], // first_name
 				Value:  BinaryValue([]byte("Alice")),
 			},
-		},
+		}},
 	})
 	defer r.Close()
 
@@ -2459,7 +2790,7 @@ func Test_RowReader_PrimaryStats(t *testing.T) {
 			for _, batchSize := range []int{10, 3} {
 				t.Run(fmt.Sprintf("with a batch size of %d", batchSize), func(t *testing.T) {
 					dset, columns := buildTestDataset(t)
-					r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: tc.predicates(columns)})
+					r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{tc.predicates(columns)}})
 					t.Cleanup(func() { require.NoError(t, r.Close()) })
 
 					var rows []Row
@@ -2506,7 +2837,7 @@ func Test_RowReader_PrimaryStats(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				dset, columns := buildShortColumnDataset(t)
-				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: tc.predicates(columns)})
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{tc.predicates(columns)}})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
 				var indexes []int
@@ -2578,7 +2909,7 @@ func Test_RowReader_StatStreamRelevantRows(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dset, columns := buildStreamDataset(t)
-			r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: tc.predicates(columns)})
+			r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{tc.predicates(columns)}})
 			t.Cleanup(func() { require.NoError(t, r.Close()) })
 
 			stats := runAndCollectStats(t, func(ctx context.Context) {
@@ -2600,7 +2931,7 @@ func Test_RowReader_Open(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{
 			Dataset:           &failingOnceDataset{Dataset: dset},
 			ProjectedColumns:  []Column{columns[0]},
-			Predicates:        []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
+			PredicateStages:   [][]Predicate{{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}}},
 			PrefetchAllOnOpen: true,
 		})
 		t.Cleanup(func() { _ = r.Close() })
@@ -2629,7 +2960,7 @@ func Test_RowReader_Open(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				dset, columns := buildTestDataset(t)
 
-				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{tc.predicate}})
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PredicateStages: [][]Predicate{{tc.predicate}}})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
 				require.ErrorContains(t, r.Open(t.Context()), "nil column")
@@ -2803,6 +3134,211 @@ func (d *failingOnceDataset) ReadPages(ctx context.Context, pages []Page) result
 	if !d.failed {
 		d.failed = true
 		return result.Iter(func(func(PageData) bool) error { return errors.New("failed to read pages") })
+	}
+	return d.Dataset.ReadPages(ctx, pages)
+}
+
+// buildStreamMajorDataset returns a dataset of a stream ID column, a timestamp column and a line
+// column. The rows are sorted by stream ID, then by timestamp descending, as in a logs section.
+// Stream IDs run from 0 to streams-1. Row k of a stream has the timestamp
+// (rowsPerStream-k)*1000. The lines hold random bytes.
+func buildStreamMajorDataset(tb testing.TB, streams, rowsPerStream, lineSize int) (Dataset, []Column) {
+	tb.Helper()
+
+	newBuilder := func(typ ColumnType, encoding datasetmd.EncodingType) *ColumnBuilder {
+		builder, err := NewColumnBuilder("", BuilderOptions{
+			PageSizeHint:    1 << 20,
+			PageMaxRowCount: 10_000,
+			Type:            typ,
+			Encoding:        encoding,
+			Compression:     datasetmd.COMPRESSION_TYPE_NONE,
+			Statistics:      StatisticsOptions{StoreRangeStats: typ.Physical == datasetmd.PHYSICAL_TYPE_INT64},
+		})
+		require.NoError(tb, err)
+		return builder
+	}
+	builders := []*ColumnBuilder{
+		newBuilder(ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "stream_id"}, datasetmd.ENCODING_TYPE_DELTA),
+		newBuilder(ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "timestamp"}, datasetmd.ENCODING_TYPE_DELTA),
+		newBuilder(ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "message"}, datasetmd.ENCODING_TYPE_PLAIN),
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	var row int
+	for stream := range streams {
+		for k := range rowsPerStream {
+			line := make([]byte, lineSize)
+			_, _ = rng.Read(line)
+
+			require.NoError(tb, builders[0].Append(row, Int64Value(int64(stream))))
+			require.NoError(tb, builders[1].Append(row, Int64Value(int64((rowsPerStream-k)*1000))))
+			require.NoError(tb, builders[2].Append(row, BinaryValue(line)))
+			row++
+		}
+	}
+
+	memColumns := make([]*MemColumn, 0, len(builders))
+	for _, builder := range builders {
+		col, err := builder.Flush()
+		require.NoError(tb, err)
+		memColumns = append(memColumns, col)
+	}
+	ds := FromMemory(memColumns)
+	cols, err := result.Collect(ds.ListColumns(tb.Context()))
+	require.NoError(tb, err)
+	return ds, cols
+}
+
+// setMaxRetainedBytes sets the limit on the early values that a staged read keeps, until the test
+// ends.
+func setMaxRetainedBytes(t *testing.T, n int) {
+	t.Helper()
+
+	old := maxRetainedBytes
+	maxRetainedBytes = n
+	t.Cleanup(func() { maxRetainedBytes = old })
+}
+
+// downloadedPageBytes returns the compressed size of the pages that the reader downloaded into region.
+func downloadedPageBytes(region *xcap.Region) int64 {
+	var total int64
+	for _, obs := range region.Observations() {
+		name := obs.Statistic.Name()
+		if name == dataobj.StatDatasetPrimaryColumnBytes.Name() || name == dataobj.StatDatasetSecondaryColumnBytes.Name() {
+			total += obs.Value.(int64)
+		}
+	}
+	return total
+}
+
+// stageStats holds the compressed bytes that a read downloaded, which a staged read lowers, and the
+// statistics that it must keep. It leaves out the page counts, the uncompressed bytes and the
+// Read call count.
+type stageStats struct {
+	downloaded        int64 // Compressed bytes of all pages.
+	primaryDownloaded int64 // Compressed bytes of the pages of the predicate columns.
+	counters          map[string]int64
+}
+
+// newStageReader returns a reader that the test closes when it ends.
+func newStageReader(t *testing.T, opts RowReaderOptions) *RowReader {
+	t.Helper()
+
+	r := NewRowReader(opts)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+	return r
+}
+
+// readStageRows reads every row of r and returns the rows as strings with the statistics of the
+// read. It reuses one buffer without clearing it, so a reader must not trust stale values in it.
+func readStageRows(t *testing.T, r *RowReader, batchSize int) ([]string, stageStats) {
+	t.Helper()
+
+	var got []string
+	stats := runAndCollectStats(t, func(ctx context.Context) {
+		require.NoError(t, r.Open(ctx))
+
+		batch := make([]Row, batchSize)
+		for {
+			n, err := r.Read(ctx, batch)
+			for _, row := range batch[:n] {
+				got = append(got, formatStageRow(row))
+			}
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			require.NoError(t, err)
+		}
+	})
+
+	out := stageStats{counters: stats, primaryDownloaded: stats[dataobj.StatDatasetPrimaryColumnBytes.Name()]}
+	for _, stat := range []interface{ Name() string }{
+		dataobj.StatDatasetPrimaryColumnBytes,
+		dataobj.StatDatasetSecondaryColumnBytes,
+	} {
+		out.downloaded += stats[stat.Name()]
+	}
+	for _, stat := range []interface{ Name() string }{
+		dataobj.StatDatasetPrimaryPagesDownloaded,
+		dataobj.StatDatasetSecondaryPagesDownloaded,
+		dataobj.StatDatasetPrimaryColumnBytes,
+		dataobj.StatDatasetSecondaryColumnBytes,
+		dataobj.StatDatasetPrimaryColumnUncompressedBytes,
+		dataobj.StatDatasetSecondaryColumnUncompressedBytes,
+		dataobj.StatDatasetReadCalls,
+	} {
+		delete(out.counters, stat.Name())
+	}
+	return got, out
+}
+
+func formatStageRow(row Row) string {
+	parts := make([]string, len(row.Values))
+	for i := range row.Values {
+		switch {
+		case row.Values[i].IsNil():
+			parts[i] = "nil"
+		case row.Values[i].Type() == datasetmd.PHYSICAL_TYPE_BINARY:
+			parts[i] = fmt.Sprintf("%x", row.Values[i].Binary())
+		default:
+			parts[i] = fmt.Sprint(row.Values[i].Int64())
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+// poisonDataset hands out copies of the pages that it reads. It records the copies while record
+// is true. destroyRecorded then overwrites them, so a read that decodes one of those pages again
+// fails its checksum.
+type poisonDataset struct {
+	Dataset
+
+	record bool
+	pages  [][]byte
+}
+
+func (d *poisonDataset) ReadPages(ctx context.Context, pages []Page) result.Seq[PageData] {
+	datas, err := result.Collect(d.Dataset.ReadPages(ctx, pages))
+	return result.Iter(func(yield func(PageData) bool) error {
+		if err != nil {
+			return err
+		}
+		for _, data := range datas {
+			cp := slices.Clone(data)
+			if d.record {
+				d.pages = append(d.pages, cp)
+			}
+			if !yield(cp) {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+func (d *poisonDataset) destroyRecorded() {
+	for _, page := range d.pages {
+		clear(page)
+	}
+}
+
+// slowDataset charges a round trip and a transfer time for every batch of pages that it reads.
+type slowDataset struct {
+	Dataset
+
+	roundTrip   time.Duration
+	bytesPerSec float64
+	batches     atomic.Int64
+}
+
+func (d *slowDataset) ReadPages(ctx context.Context, pages []Page) result.Seq[PageData] {
+	d.batches.Add(1)
+	if d.roundTrip > 0 {
+		var size int
+		for _, page := range pages {
+			size += page.PageDesc().CompressedSize
+		}
+		time.Sleep(d.roundTrip + time.Duration(float64(size)/d.bytesPerSec*float64(time.Second)))
 	}
 	return d.Dataset.ReadPages(ctx, pages)
 }

@@ -100,7 +100,7 @@ func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int,
 		if err != nil {
 			return nil, err
 		}
-		opts.Predicates = []dataset.Predicate{predicate}
+		opts.PredicateStages = [][]dataset.Predicate{{predicate}}
 	}
 	r := dataset.NewRowReader(opts)
 	if err := r.Open(ctx); err != nil {

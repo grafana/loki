@@ -115,7 +115,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	readerOpts := dataset.RowReaderOptions{
 		Dataset:           dset,
 		ProjectedColumns:  columns,
-		Predicates:        predicates,
+		PredicateStages:   [][]dataset.Predicate{predicates},
 		PrefetchAllOnOpen: true,
 	}
 

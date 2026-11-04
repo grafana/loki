@@ -210,7 +210,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	}
 
 	// The matched stream IDs are not part of r.predicates, so build them as a separate
-	// predicate; RowReaderOptions.Predicates are ANDed together.
+	// predicate; RowReaderOptions.PredicateStages are ANDed together.
 	var predicates []dataset.Predicate
 	if p := streamIDPredicate(maps.Keys(r.matchIDs), datasetColumns, sectionColumns); p != nil {
 		predicates = append(predicates, p)
@@ -229,10 +229,13 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		predicates = append(predicates, p)
 	}
 
+	messageColumn := findDatasetColumn(datasetColumns, sectionColumns, func(col *Column) bool {
+		return col.Type == ColumnTypeMessage
+	})
 	readerOpts := dataset.RowReaderOptions{
 		Dataset:           dset,
 		ProjectedColumns:  projectedDatasetColumns,
-		Predicates:        predicates,
+		PredicateStages:   predicateStages(predicates, messageColumn),
 		PrefetchAllOnOpen: true,
 	}
 
@@ -330,6 +333,28 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		Column: streamIDColumn,
 		Values: dataset.NewMemoizedInt64ValueSetOf(members...),
 	}
+}
+
+// predicateStages splits predicates into the stages of the dataset reader.
+//
+// When no predicate reads the log line, stage 1 holds every predicate and stage 2 is empty. The
+// reader can then download the pages of the other columns, the log line included, only for the
+// rows that pass stage 1. It skips this when those pages are small.
+//
+// Otherwise the reader gets one stage, and Open downloads every page. A line filter in stage 1
+// would make stage 1 download and decode the log line of every row that page pruning leaves.
+func predicateStages(predicates []dataset.Predicate, message dataset.Column) [][]dataset.Predicate {
+	if len(predicates) == 0 {
+		return nil
+	}
+	for _, p := range predicates {
+		var readsMessage bool
+		dataset.WalkPredicateColumn(p, func(c dataset.Column) { readsMessage = readsMessage || c == message })
+		if readsMessage {
+			return [][]dataset.Predicate{predicates}
+		}
+	}
+	return [][]dataset.Predicate{predicates, nil}
 }
 
 // translateLogsPredicate converts p into the equivalent dataset predicate.

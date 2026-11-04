@@ -1,10 +1,12 @@
 package logs
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"slices"
 	"sync"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func TestRowReader_NoPredicates(t *testing.T) {
@@ -744,6 +747,94 @@ func TestRowReader_Reset(t *testing.T) {
 	})
 }
 
+func TestRowReader_StagedDownloads(t *testing.T) {
+	matched := []int64{1, 5, 15, 22, 25, 35}
+
+	large := stagedTestRecords(40, 300, 1<<10)
+	largeSection := buildSectionWithOptions(t, BuilderOptions{StripeMergeLimit: 2, SortOrder: SortStreamASC, AppendStrategy: AppendOrdered, PageSizeHint: 256 << 10, PageMaxRowCount: 2000}, large)
+	largeMessageBytes := messageColumnBytes(t, largeSection)
+
+	bigRecords := bigMetadataRecords(4200, 1<<10, 100)
+	bigSection := buildSectionWithOptions(t, BuilderOptions{StripeMergeLimit: 2, SortOrder: SortStreamASC, AppendStrategy: AppendOrdered, PageSizeHint: 64 << 10}, bigRecords)
+
+	t.Run("downloads on the first read only the pages of the rows that pass the stream and metadata predicates", func(t *testing.T) {
+		got := readStaged(t, largeSection, func(r *RowReader) {
+			require.NoError(t, r.MatchStreams(slices.Values(matched)))
+			require.NoError(t, r.SetPredicates([]RowPredicate{MetadataMatcherRowPredicate{Key: "kind", Value: "a"}}))
+		})
+
+		want := linesWhere(large, func(r Record) bool {
+			return slices.Contains(matched, r.StreamID) && r.Metadata.Get("kind") == "a"
+		})
+		require.Equal(t, want, sortedLines(got.records))
+		require.Zero(t, got.openedBytes)
+		require.Less(t, got.readBytes*2, largeMessageBytes)
+		require.Equal(t, got.firstReadBytes, got.readBytes)
+	})
+
+	t.Run("downloads no page of the other columns when no row passes the metadata predicate", func(t *testing.T) {
+		got := readStaged(t, largeSection, func(r *RowReader) {
+			require.NoError(t, r.MatchStreams(slices.Values(matched)))
+			require.NoError(t, r.SetPredicates([]RowPredicate{MetadataMatcherRowPredicate{Key: "kind", Value: "b"}}))
+		})
+
+		require.Empty(t, got.records)
+		require.Zero(t, got.openedBytes)
+		require.Zero(t, got.readBytes)
+	})
+
+	t.Run("downloads every page of the other columns, and counts each row once, when every row passes", func(t *testing.T) {
+		streams := make([]int64, 0, 40)
+		for id := int64(1); id <= 40; id++ {
+			streams = append(streams, id)
+		}
+
+		got := readStaged(t, largeSection, func(r *RowReader) {
+			require.NoError(t, r.MatchStreams(slices.Values(streams)))
+		})
+
+		require.Len(t, got.records, len(large))
+		require.Zero(t, got.openedBytes)
+		require.GreaterOrEqual(t, got.readBytes, largeMessageBytes)
+		require.Equal(t, got.firstReadBytes, got.readBytes)
+		require.Equal(t, int64(len(large)), got.primaryRows)
+	})
+
+	t.Run("downloads every page at open when a predicate reads the log line", func(t *testing.T) {
+		wantLine := bigRecords[3000].Line
+		lineFilter := LogMessageFilterRowPredicate{Keep: func(line []byte) bool { return bytes.Equal(line, wantLine) }}
+
+		staged := readStaged(t, bigSection, func(r *RowReader) {
+			require.NoError(t, r.MatchStreams(slices.Values([]int64{1})))
+		})
+		require.Zero(t, staged.openedBytes, "the section must stay above the staging threshold, so grow its records if the threshold grew")
+
+		got := readStaged(t, bigSection, func(r *RowReader) {
+			require.NoError(t, r.MatchStreams(slices.Values([]int64{1})))
+			require.NoError(t, r.SetPredicates([]RowPredicate{
+				OrRowPredicate{Left: lineFilter, Right: lineFilter},
+				TimeRangeRowPredicate{StartTime: time.Unix(0, 0), EndTime: time.Unix(4_000_000_000, 0), IncludeStart: true, IncludeEnd: true},
+			}))
+		})
+
+		require.Len(t, got.records, 1)
+		require.NotZero(t, got.openedBytes)
+		require.Equal(t, got.openedBytes, got.readBytes)
+	})
+
+	t.Run("downloads every page at open when the predicate column holds most of the bytes", func(t *testing.T) {
+		trace := bigRecords[3000].Metadata.Get("trace")
+
+		got := readStaged(t, bigSection, func(r *RowReader) {
+			require.NoError(t, r.SetPredicates([]RowPredicate{MetadataMatcherRowPredicate{Key: "trace", Value: trace}}))
+		})
+
+		require.Len(t, got.records, 1)
+		require.GreaterOrEqual(t, got.openedBytes, messageColumnBytes(t, bigSection))
+		require.Equal(t, got.openedBytes, got.readBytes)
+	})
+}
+
 // keepBatchOf returns a KeepBatch function that applies keep to each line.
 func keepBatchOf(keep func(line []byte) bool) func(data []byte, offsets []int32, dstIndexes []int32) []int32 {
 	return func(data []byte, offsets []int32, dstIndexes []int32) []int32 {
@@ -835,10 +926,11 @@ func buildTestSection(t *testing.T) *Section {
 }
 
 func buildSectionFromRecords(t *testing.T, sortOrder SortOrder, records []Record) *Section {
-	logsBuilder := NewBuilder(nil, BuilderOptions{
-		StripeMergeLimit: 2,
-		SortOrder:        sortOrder,
-	})
+	return buildSectionWithOptions(t, BuilderOptions{StripeMergeLimit: 2, SortOrder: sortOrder}, records)
+}
+
+func buildSectionWithOptions(t *testing.T, opts BuilderOptions, records []Record) *Section {
+	logsBuilder := NewBuilder(nil, opts)
 	for _, record := range records {
 		logsBuilder.Append(record)
 	}
@@ -856,4 +948,148 @@ func buildSectionFromRecords(t *testing.T, sortOrder SortOrder, records []Record
 		require.NoError(t, err)
 	}
 	return logsSection
+}
+
+// stagedTestRecords returns rowsPerStream records for each stream from 1 to streams. The lines hold
+// random bytes, so compression keeps their size. The metadata key "kind" alternates between "a" and
+// "c".
+func stagedTestRecords(streams, rowsPerStream, lineSize int) []Record {
+	rng := rand.New(rand.NewSource(1))
+	start := time.Unix(1_700_000_000, 0)
+
+	records := make([]Record, 0, streams*rowsPerStream)
+	for stream := 1; stream <= streams; stream++ {
+		for row := range rowsPerStream {
+			line := make([]byte, lineSize)
+			_, _ = rng.Read(line)
+
+			kind := "a"
+			if row%2 == 1 {
+				kind = "c"
+			}
+			records = append(records, Record{
+				StreamID:  int64(stream),
+				Timestamp: start.Add(-time.Duration(row) * time.Second),
+				Metadata:  labels.FromStrings("kind", kind),
+				Line:      line,
+			})
+		}
+	}
+	return records
+}
+
+// stagedRead is what readStaged measures.
+type stagedRead struct {
+	records        []Record
+	openedBytes    int64 // Compressed bytes of secondary pages downloaded when Open returned.
+	firstReadBytes int64 // Compressed bytes of secondary pages downloaded when the first Read returned.
+	readBytes      int64 // Compressed bytes of secondary pages downloaded when the read ended.
+	primaryRows    int64 // Value of the primary.rows.read statistic.
+}
+
+// bigMetadataRecords returns one stream of rows records. Each record has a random "trace" metadata
+// value of traceSize bytes and a random line of lineSize bytes, so the metadata column holds most
+// of the bytes of the section. The timestamps descend.
+func bigMetadataRecords(rows, traceSize, lineSize int) []Record {
+	rng := rand.New(rand.NewSource(2))
+	start := time.Unix(1_700_000_000, 0)
+
+	records := make([]Record, 0, rows)
+	for row := range rows {
+		trace := make([]byte, traceSize)
+		_, _ = rng.Read(trace)
+		line := make([]byte, lineSize)
+		_, _ = rng.Read(line)
+
+		records = append(records, Record{
+			StreamID:  1,
+			Timestamp: start.Add(-time.Duration(row) * time.Second),
+			Metadata:  labels.FromStrings("trace", string(trace)),
+			Line:      line,
+		})
+	}
+	return records
+}
+
+// readStaged reads every row of a reader that configure sets up.
+func readStaged(t *testing.T, section *Section, configure func(*RowReader)) stagedRead {
+	t.Helper()
+
+	ctx, _ := xcap.NewCapture(t.Context(), nil)
+	ctx, region := xcap.StartRegion(ctx, RegionRead)
+	defer region.End()
+
+	reader := NewRowReader(section)
+	t.Cleanup(func() { require.NoError(t, reader.Close()) })
+	configure(reader)
+	require.NoError(t, reader.Open(ctx))
+
+	got := stagedRead{openedBytes: observedInt64(region, dataobj.StatDatasetSecondaryColumnBytes.Name())}
+	buf := make([]Record, 64)
+	first := true
+	for {
+		n, err := reader.Read(ctx, buf)
+		for i := range buf[:n] {
+			got.records = append(got.records, buf[i].Copy())
+		}
+		if first {
+			got.firstReadBytes = observedInt64(region, dataobj.StatDatasetSecondaryColumnBytes.Name())
+			first = false
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+	}
+
+	got.readBytes = observedInt64(region, dataobj.StatDatasetSecondaryColumnBytes.Name())
+	got.primaryRows = observedInt64(region, dataobj.StatDatasetPrimaryRowsRead.Name())
+	return got
+}
+
+// observedInt64 returns the value that region holds for the statistic called name, or zero.
+func observedInt64(region *xcap.Region, name string) int64 {
+	for _, obs := range region.Observations() {
+		if obs.Statistic.Name() == name {
+			return obs.Value.(int64)
+		}
+	}
+	return 0
+}
+
+// messageColumnBytes returns the compressed size of the message column of section.
+func messageColumnBytes(t *testing.T, section *Section) int64 {
+	t.Helper()
+
+	dset, err := section.makeDataset()
+	require.NoError(t, err)
+	for i, col := range section.Columns() {
+		if col.Type == ColumnTypeMessage {
+			return int64(dset.Columns()[i].ColumnDesc().CompressedSize)
+		}
+	}
+	t.Fatal("section has no message column")
+	return 0
+}
+
+// linesWhere returns the sorted lines of the records that keep accepts.
+func linesWhere(records []Record, keep func(Record) bool) []string {
+	var lines []string
+	for _, record := range records {
+		if keep(record) {
+			lines = append(lines, string(record.Line))
+		}
+	}
+	slices.Sort(lines)
+	return lines
+}
+
+// sortedLines returns the sorted lines of records.
+func sortedLines(records []Record) []string {
+	lines := make([]string, 0, len(records))
+	for _, record := range records {
+		lines = append(lines, string(record.Line))
+	}
+	slices.Sort(lines)
+	return lines
 }
