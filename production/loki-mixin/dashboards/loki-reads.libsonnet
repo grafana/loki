@@ -135,7 +135,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         },
       },
 
-      $.newQueryPanel('Retries', 'reqps') +
+      $.newQueryPanel('Object storage retries', 'reqps') +
       $.queryPanel(
         [
           'sum(rate(loki_store_congestion_control_retries_total{%s}[$__rate_interval]))' % querierSel,
@@ -148,7 +148,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       withTooltipSortDesc +
       withDescription('Retries done by congestion control. These cover chunk GETs only. "GETs failed after retries" counts GETs that still failed after the last allowed retry; the error is returned to the query. Without congestion control the object storage client retries internally, and those retries are not counted by any metric.'),
 
-      $.newQueryPanel('Rate-limit wait per attempt', 's') +
+      $.newQueryPanel('Object storage wait due to congestion control', 's') +
       $.queryPanel(
         |||
           sum(rate(loki_store_congestion_control_backoff_seconds_total{%s}[$__rate_interval]))

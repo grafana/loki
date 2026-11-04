@@ -1035,7 +1035,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Retries",
+                  "title": "Object storage retries",
                   "type": "timeseries"
                },
                {
@@ -1084,7 +1084,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Rate-limit wait per attempt",
+                  "title": "Object storage wait due to congestion control",
                   "type": "timeseries"
                }
             ],
