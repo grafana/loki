@@ -292,6 +292,12 @@ func (b *Builder) IsFull() bool {
 // to flush the builder once it reports full. Appending entries to a full
 // builder is permitted.
 func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+	return b.AppendInternal(tenant, *logproto.FromStream(stream), recTime)
+}
+
+// AppendInternal retains shared attributes until converting entries to immutable
+// column records. Entries with only shared metadata reuse one label set per group.
+func (b *Builder) AppendInternal(tenant string, stream logproto.InternalStreamAdapter, recTime time.Time) error {
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
@@ -302,14 +308,22 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 	}
 
 	recordIter := func(yield func(logs.Record, int64) bool) {
-		for _, entry := range stream.Entries {
-			rec := logs.Record{
-				Timestamp: entry.Timestamp,
-				Metadata:  convertMetadata(entry.StructuredMetadata),
-				Line:      []byte(entry.Line),
-			}
-			if !yield(rec, rec.UncompressedSize()) {
-				return
+		var shared, scratch []logproto.LabelAdapter
+		for _, resource := range stream.ResourceLogs {
+			for _, scope := range resource.ScopeLogs {
+				shared = logproto.AppendMetadata(shared[:0], scope.Attrs, resource.Attrs)
+				sharedLabels := convertMetadata(shared)
+				for _, entry := range scope.Entries {
+					metadata := sharedLabels
+					if len(entry.StructuredMetadata) > 0 {
+						scratch = logproto.AppendMetadata(scratch[:0], entry.StructuredMetadata, shared)
+						metadata = convertMetadata(scratch)
+					}
+					rec := logs.Record{Timestamp: entry.Timestamp, Metadata: metadata, Line: []byte(entry.Line)}
+					if !yield(rec, rec.UncompressedSize()) {
+						return
+					}
+				}
 			}
 		}
 	}

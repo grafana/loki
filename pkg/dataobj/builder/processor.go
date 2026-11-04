@@ -19,7 +19,7 @@ import (
 )
 
 type multiBuilder interface {
-	Append(tenant string, stream logproto.Stream, recTime time.Time) error
+	AppendInternal(tenant string, stream logproto.InternalStreamAdapter, recTime time.Time) error
 	GetEstimatedSize() int
 	IsFull() bool
 	// Reset drops the builders. It must not change them, because a flush can
@@ -30,7 +30,7 @@ type multiBuilder interface {
 
 // A builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
-	Append(tenant string, stream logproto.Stream, recTime time.Time) error
+	AppendInternal(tenant string, stream logproto.InternalStreamAdapter, recTime time.Time) error
 	GetEstimatedSize() int
 	IsFull() bool
 	FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error)
@@ -225,7 +225,7 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 
 	// Try to decode the stream in the record.
 	tenant := string(rec.Key)
-	stream, err := p.decoder.DecodeWithoutLabels(rec.Value)
+	stream, err := p.decoder.DecodeInternalWithoutLabels(rec.Value)
 	if err != nil {
 		// This is an unrecoverable error and no amount of retries will fix it.
 		return fmt.Errorf("failed to decode stream: %w", err)
@@ -243,7 +243,7 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		}
 	}
 
-	if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
+	if err := p.builder.AppendInternal(tenant, stream, rec.Timestamp); err != nil {
 		return fmt.Errorf("failed to append stream: %w", err)
 	}
 	p.metrics.sizeEstimate.Set(float64(p.builder.GetEstimatedSize()))

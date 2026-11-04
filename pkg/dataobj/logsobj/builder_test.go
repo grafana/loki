@@ -1585,3 +1585,47 @@ func (m tenantLayouts) DataObjShardLayout(tenant string) streams.ShardLayout {
 	}
 	return layout.ShardLayout()
 }
+
+func TestAppendInternalMetadataRoundTrip(t *testing.T) {
+	at := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	nested := logproto.InternalStreamAdapter{Labels: `{app="test"}`, ResourceLogs: []logproto.ResourceLogs{{
+		Attrs: []logproto.LabelAdapter{{Name: "resource", Value: "kept"}, {Name: "override", Value: "resource"}},
+		ScopeLogs: []logproto.ScopeLogs{
+			{Attrs: []logproto.LabelAdapter{{Name: "override", Value: "scope"}}, Entries: []logproto.Entry{
+				{Timestamp: at, Line: "shared"},
+				{Timestamp: at.Add(time.Second), Line: "empty override", StructuredMetadata: []logproto.LabelAdapter{{Name: "override", Value: ""}}},
+			}},
+			{Entries: []logproto.Entry{{Timestamp: at.Add(2 * time.Second), Line: "resource only"}}},
+		},
+	}, {ScopeLogs: []logproto.ScopeLogs{{Entries: []logproto.Entry{{Timestamp: at.Add(3 * time.Second), Line: "native"}}}}}}}
+	flat := nested.FlatView()
+	want := map[string]string{}
+	for _, entry := range flat.Entries {
+		want[entry.Line] = convertMetadata(entry.StructuredMetadata).String()
+	}
+	for _, sorted := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sorted=%t", sorted), func(t *testing.T) {
+			b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+			require.NoError(t, err)
+			require.NoError(t, b.AppendInternal("tenant", nested, at))
+			var obj *dataobj.Object
+			var closer io.Closer
+			if sorted {
+				obj, closer, err = b.FlushAndSort(t.Context())
+			} else {
+				obj, closer, err = b.flushWithoutLayout()
+			}
+			require.NoError(t, err)
+			defer closer.Close()
+			got := map[string]string{}
+			for _, sec := range obj.Sections().Filter(logs.CheckSection) {
+				for res := range iterLogsSection(t, sec) {
+					record, err := res.Value()
+					require.NoError(t, err)
+					got[string(record.Line)] = record.Metadata.String()
+				}
+			}
+			require.Equal(t, want, got)
+		})
+	}
+}

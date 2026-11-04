@@ -52,20 +52,29 @@ func NewMultiObjectBuilder(builderFactory builderFactory, maxBufferedBytes int) 
 var _ multiBuilder = (*MultiObjectBuilder)(nil)
 
 func (m *MultiObjectBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
-	// [stream] might contain entries for multiple time windows => we need to split them to multiple streams, where
-	// each one only contains the entries for a single time window
-	streamsByTimeWindows := make(map[time.Time]logproto.Stream, 1)
-	for _, e := range stream.Entries {
-		w := e.Timestamp.UTC().Truncate(metastore.MetastoreWindowSize)
-		if _, ok := streamsByTimeWindows[w]; !ok {
-			streamsByTimeWindows[w] = logproto.Stream{
-				Labels: stream.Labels,
-			}
+	return m.AppendInternal(tenant, *logproto.FromStream(stream), recTime)
+}
+
+// AppendInternal splits entries by ToC window while retaining their shared attributes.
+func (m *MultiObjectBuilder) AppendInternal(tenant string, stream logproto.InternalStreamAdapter, recTime time.Time) error {
+	streamsByTimeWindows := make(map[time.Time]logproto.InternalStreamAdapter, 1)
+	stream.EachGroup(func(resource, scope []logproto.LabelAdapter, entries []logproto.Entry) {
+		groups := make(map[time.Time][]logproto.Entry, 1)
+		for _, entry := range entries {
+			window := entry.Timestamp.UTC().Truncate(metastore.MetastoreWindowSize)
+			groups[window] = append(groups[window], entry)
 		}
-		windowedStream := streamsByTimeWindows[w]
-		windowedStream.Entries = append(windowedStream.Entries, e)
-		streamsByTimeWindows[w] = windowedStream
-	}
+		for window, entries := range groups {
+			windowed := streamsByTimeWindows[window]
+			windowed.Labels = stream.Labels
+			windowed.Hash = stream.Hash
+			windowed.ResourceLogs = append(windowed.ResourceLogs, logproto.ResourceLogs{
+				Attrs:     resource,
+				ScopeLogs: []logproto.ScopeLogs{{Attrs: scope, Entries: entries}},
+			})
+			streamsByTimeWindows[window] = windowed
+		}
+	})
 
 	for w, stream := range streamsByTimeWindows {
 		scope := builderScope{tenant: tenant, window: w}
@@ -77,7 +86,7 @@ func (m *MultiObjectBuilder) Append(tenant string, stream logproto.Stream, recTi
 				return fmt.Errorf("error creating logsobj builder for scope %s: %w", scope, err)
 			}
 		}
-		if err := b.Append(tenant, stream, recTime); err != nil {
+		if err := b.AppendInternal(tenant, stream, recTime); err != nil {
 			return fmt.Errorf("append for scope %s: %w", scope, err)
 		}
 

@@ -224,3 +224,26 @@ func truncatedWindow(t *testing.T, b builder) time.Time {
 	require.Len(t, ranges, 1)
 	return ranges[0].MinTime.UTC().Truncate(metastore.MetastoreWindowSize)
 }
+
+func TestMultiObjectBuilder_NestedWindowsMatchExpanded(t *testing.T) {
+	at := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	nested := logproto.InternalStreamAdapter{Labels: `{app="test"}`, ResourceLogs: []logproto.ResourceLogs{{
+		Attrs: []logproto.LabelAdapter{{Name: "resource", Value: "one"}},
+		ScopeLogs: []logproto.ScopeLogs{
+			{Attrs: []logproto.LabelAdapter{{Name: "scope", Value: "two"}}, Entries: []logproto.Entry{
+				windowEntry(at, time.Second, "first"), windowEntry(at.Add(metastore.MetastoreWindowSize), time.Second, "second"),
+			}},
+			{Entries: []logproto.Entry{windowEntry(at, 2*time.Second, "third")}},
+		},
+	}}}
+	flat := NewMultiObjectBuilder(newTestBuilderFactory(), math.MaxInt)
+	internal := NewMultiObjectBuilder(newTestBuilderFactory(), math.MaxInt)
+	require.NoError(t, flat.Append("tenant", nested.FlatView(), at))
+	require.NoError(t, internal.AppendInternal("tenant", nested, at))
+	want, got := flat.getBuilders(), internal.getBuilders()
+	require.Len(t, got, 2)
+	for i := range want {
+		require.Equal(t, want[i].TimeRanges(), got[i].TimeRanges())
+		require.Equal(t, want[i].GetEstimatedSize(), got[i].GetEstimatedSize())
+	}
+}

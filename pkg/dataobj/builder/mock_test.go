@@ -53,11 +53,14 @@ type mockBuilder struct {
 }
 
 func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+	return m.AppendInternal(tenant, *logproto.FromStream(stream), recTime)
+}
+func (m *mockBuilder) AppendInternal(tenant string, stream logproto.InternalStreamAdapter, recTime time.Time) error {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return err
 	}
-	return m.builder.Append(tenant, stream, recTime)
+	return m.builder.AppendInternal(tenant, stream, recTime)
 }
 
 func (m *mockBuilder) GetEarliestRecordTime() time.Time {
@@ -353,8 +356,11 @@ type fixedCountMultiBuilder struct {
 var _ multiBuilder = (*fixedCountMultiBuilder)(nil)
 
 func (m *fixedCountMultiBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+	return m.AppendInternal(tenant, *logproto.FromStream(stream), recTime)
+}
+func (m *fixedCountMultiBuilder) AppendInternal(tenant string, stream logproto.InternalStreamAdapter, recTime time.Time) error {
 	m.appends++
-	return m.MultiObjectBuilder.Append(tenant, stream, recTime)
+	return m.MultiObjectBuilder.AppendInternal(tenant, stream, recTime)
 }
 
 func (m *fixedCountMultiBuilder) IsFull() bool {
