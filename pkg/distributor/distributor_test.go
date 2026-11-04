@@ -96,7 +96,7 @@ func TestDistributor(t *testing.T) {
 		{
 			lines:          100,
 			streams:        1,
-			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", ingestionRateLimit, 100, 100*lineSize)},
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg)},
 		},
 		{
 			lines:            100,
@@ -2458,9 +2458,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  datasize.ByteSize(100).MBytes(),
 			pushes: []testPush{
 				{bytes: 50, expectedError: nil},
-				{bytes: 60, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 60)},
+				{bytes: 60, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg)},
 				{bytes: 50, expectedError: nil},
-				{bytes: 40, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 40)},
+				{bytes: 40, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg)},
 			},
 		},
 		"global strategy: limit should be evenly shared across distributors": {
@@ -2470,9 +2470,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  datasize.ByteSize(100).MBytes(),
 			pushes: []testPush{
 				{bytes: 60, expectedError: nil},
-				{bytes: 50, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 50)},
+				{bytes: 50, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg)},
 				{bytes: 40, expectedError: nil},
-				{bytes: 30, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 30)},
+				{bytes: 30, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg)},
 			},
 		},
 		"global strategy: burst should set to each distributor": {
@@ -2482,9 +2482,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  datasize.ByteSize(200).MBytes(),
 			pushes: []testPush{
 				{bytes: 150, expectedError: nil},
-				{bytes: 60, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 50, 1, 60)},
+				{bytes: 60, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg)},
 				{bytes: 50, expectedError: nil},
-				{bytes: 30, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 50, 1, 30)},
+				{bytes: 30, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg)},
 			},
 		},
 	}
@@ -2542,7 +2542,7 @@ func TestDistributor_PushIngestionRateLimitedByPolicy(t *testing.T) {
 	// per-policy limit (50), not the generous tenant limit.
 	resp, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 60, []string{`{foo="bar"}`}, false, false, false))
 	assert.Nil(t, resp)
-	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "test", "finance", 50, 1, 60), err)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "finance"), err)
 
 	// A push with labels not matched to any policy uses the tenant-wide bucket and is allowed.
 	resp, err = distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 60, []string{`{other="x"}`}, false, false, false))
@@ -2581,7 +2581,7 @@ func TestDistributor_PushIngestionRateLimitPolicyAllOrNothing(t *testing.T) {
 
 	resp, err := distributors[0].Push(ctx, req)
 	assert.Nil(t, resp)
-	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "test", "finance", 50, 1, 60), err)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "finance"), err)
 
 	// The ops bucket must NOT have been drained by the rejected request: a fresh ops push that
 	// fills its entire 50-byte budget still succeeds. (Without reservation cancellation, the
@@ -2618,11 +2618,8 @@ func TestDistributor_PushIngestionRateLimitMultiplePolicies(t *testing.T) {
 	opsStreams := makeWriteRequestWithLabels(1, 70, []string{`{app="ops"}`}, false, false, false)
 	req.Streams = append(req.Streams, opsStreams.Streams...)
 
-	// The error must enumerate both policies in sorted order (finance before ops), with each
-	// bucket's own limit/lines/bytes.
-	expectedDetail := `policy "finance" (limit: 50 bytes/sec) ingesting 1 lines totaling 60 bytes; ` +
-		`policy "ops" (limit: 50 bytes/sec) ingesting 1 lines totaling 70 bytes`
-	expectedErr := httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedMultiErrorMsg, "test", expectedDetail)
+	// The error must enumerate both policies in sorted order (finance before ops).
+	expectedErr := httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedMultiErrorMsg, "finance, ops")
 
 	// Push twice to demonstrate the message is deterministic (independent of map iteration order).
 	for i := 0; i < 2; i++ {
@@ -5105,3 +5102,68 @@ func sumCounterVec(t *testing.T, c prometheus.Collector) float64 {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestDistributor_rateLimitError(t *testing.T) {
+	tests := []struct {
+		name     string
+		buckets  []*rateLimitBucket
+		expected string
+	}{
+		{
+			name:     "single bucket, tenant default",
+			buckets:  []*rateLimitBucket{{}},
+			expected: validation.RateLimitedErrorMsg,
+		},
+		{
+			// The tenant-wide bucket records the policy of the first stream it sees, even
+			// when that policy has no rate override.
+			name:     "single bucket, tenant default with policy name but no override",
+			buckets:  []*rateLimitBucket{{policy: "finance"}},
+			expected: validation.RateLimitedErrorMsg,
+		},
+		{
+			name:     "single bucket, policy",
+			buckets:  []*rateLimitBucket{{policy: "finance", hasOverride: true}},
+			expected: fmt.Sprintf(validation.RateLimitedPolicyErrorMsg, "finance"),
+		},
+		{
+			name: "multiple buckets, tenant default and policy",
+			buckets: []*rateLimitBucket{
+				{},
+				{policy: "finance", hasOverride: true},
+			},
+			expected: fmt.Sprintf(validation.RateLimitedMultiErrorMsg, "tenant default, finance"),
+		},
+		{
+			name: "multiple buckets, tenant default with policy name but no override",
+			buckets: []*rateLimitBucket{
+				{policy: "finance"},
+				{policy: "marketing", hasOverride: true},
+			},
+			expected: fmt.Sprintf(validation.RateLimitedMultiErrorMsg, "tenant default, marketing"),
+		},
+		{
+			name: "multiple buckets, policies only",
+			buckets: []*rateLimitBucket{
+				{policy: "finance", hasOverride: true},
+				{policy: "marketing", hasOverride: true},
+			},
+			expected: fmt.Sprintf(validation.RateLimitedMultiErrorMsg, "finance, marketing"),
+		},
+		{
+			name: "multiple buckets, tenant default and several policies",
+			buckets: []*rateLimitBucket{
+				{},
+				{policy: "finance", hasOverride: true},
+				{policy: "marketing", hasOverride: true},
+			},
+			expected: fmt.Sprintf(validation.RateLimitedMultiErrorMsg, "tenant default, finance, marketing"),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Distributor{}
+			require.EqualError(t, d.rateLimitError(tc.buckets), tc.expected)
+		})
+	}
+}
