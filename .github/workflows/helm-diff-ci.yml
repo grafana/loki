@@ -2,6 +2,8 @@
 name: Helm Loki Diff CI
 on:
   pull_request:
+    branches-ignore:
+      - "release-*"
     paths:
       - "production/helm/loki/**"
 
