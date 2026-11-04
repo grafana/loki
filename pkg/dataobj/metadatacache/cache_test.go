@@ -25,14 +25,14 @@ import (
 var _ dataobj.MetadataCache = (*Cache)(nil)
 
 func TestCache_MaxItemBytes(t *testing.T) {
-	require.Equal(t, int64(DefaultMaxItemBytes), New(cache.NewMockCache(), 0, nil, nil).MaxItemBytes(), "a non-positive value falls back to the default")
-	require.Equal(t, int64(1024), New(cache.NewMockCache(), 1024, nil, nil).MaxItemBytes())
+	require.Equal(t, int64(DefaultMaxItemBytes), newTestCache(cache.NewMockCache(), 0, nil).MaxItemBytes(), "a non-positive value falls back to the default")
+	require.Equal(t, int64(1024), newTestCache(cache.NewMockCache(), 1024, nil).MaxItemBytes())
 }
 
 func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	t.Run("a miss loads and stores, a later call is served as a hit", func(t *testing.T) {
 		mc := cache.NewMockCache()
-		c := New(mc, 0, nil, nil)
+		c := newTestCache(mc, 0, nil)
 
 		var loads int
 		load := func(context.Context) ([]byte, error) {
@@ -62,7 +62,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			const n = 8
 
-			c := New(cache.NewMockCache(), 0, nil, nil)
+			c := newTestCache(cache.NewMockCache(), 0, nil)
 
 			var loads atomic.Int64
 			release := make(chan struct{})
@@ -97,7 +97,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	t.Run("a fetch error falls back to a load instead of failing the call", func(t *testing.T) {
 		mc := cache.NewMockCache()
 		mc.SetErr(nil, errors.New("fetch boom"))
-		c := New(mc, 0, nil, nil)
+		c := newTestCache(mc, 0, nil)
 
 		var loads int
 		got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
@@ -114,7 +114,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	t.Run("a caller's own canceled context takes precedence over an unrelated fetch error", func(t *testing.T) {
 		mc := cache.NewMockCache()
 		mc.SetErr(nil, errors.New("fetch boom"))
-		c := New(mc, 0, nil, nil)
+		c := newTestCache(mc, 0, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -131,7 +131,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	t.Run("a caller's own canceled context takes precedence over a cache hit", func(t *testing.T) {
 		mc := cache.NewMockCache()
 		require.NoError(t, mc.Store(context.Background(), []string{keyPrefix + "obj"}, [][]byte{[]byte("blob")}))
-		c := New(mc, 0, nil, nil)
+		c := newTestCache(mc, 0, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -145,7 +145,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	})
 
 	t.Run("a caller's own canceled context takes precedence over a clean miss, and never triggers a load", func(t *testing.T) {
-		c := New(cache.NewMockCache(), 0, nil, nil)
+		c := newTestCache(cache.NewMockCache(), 0, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -162,7 +162,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		mc := cache.NewMockCache()
 		mc.SetErr(errors.New("store boom"), nil)
 		logger := &test.CapturingLogger{}
-		c := New(mc, 0, nil, logger)
+		c := newTestCache(mc, 0, logger)
 
 		got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
 			return []byte("blob"), nil
@@ -177,7 +177,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	t.Run("a region larger than MaxItemBytes is never stored, even though the backend would accept it", func(t *testing.T) {
 		mc := cache.NewMockCache()
 		logger := &test.CapturingLogger{}
-		c := New(mc, 3, nil, logger)
+		c := newTestCache(mc, 3, logger)
 
 		got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
 			return []byte("blob"), nil // 4 bytes, over the 3-byte limit
@@ -191,7 +191,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	})
 
 	t.Run("the shared load's context preserves the triggering caller's request-scoped values", func(t *testing.T) {
-		c := New(cache.NewMockCache(), 0, nil, nil)
+		c := newTestCache(cache.NewMockCache(), 0, nil)
 
 		type ctxKey struct{}
 		ctx := context.WithValue(context.Background(), ctxKey{}, "trace-id-123")
@@ -208,7 +208,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	t.Run("a caller's own cancellation does not abort the shared load for other callers", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			mc := cache.NewMockCache()
-			c := New(mc, 0, nil, nil)
+			c := newTestCache(mc, 0, nil)
 
 			inLoad := make(chan struct{})
 			release := make(chan struct{})
@@ -249,7 +249,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	})
 
 	t.Run("a load error surfaces to the caller", func(t *testing.T) {
-		c := New(cache.NewMockCache(), 0, nil, nil)
+		c := newTestCache(cache.NewMockCache(), 0, nil)
 
 		_, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
 			return nil, errors.New("load boom")
@@ -263,7 +263,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	// backend error: this is a load failure, which happens after Fetch has already missed.
 	t.Run("a sentinel error wrapped by load survives the singleflight round trip", func(t *testing.T) {
 		mc := cache.NewMockCache()
-		c := New(mc, 0, nil, nil)
+		c := newTestCache(mc, 0, nil)
 		sentinel := errors.New("cannot cache this region")
 
 		_, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
@@ -275,7 +275,41 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	})
 }
 
-func TestNewFromConfig(t *testing.T) {
+func TestNewCache(t *testing.T) {
+	t.Run("caches of different kinds that share a backend and metrics count under their own kind", func(t *testing.T) {
+		reg := prometheus.NewPedanticRegistry()
+		metrics := NewMetrics(reg)
+		backend := cache.NewMockCache()
+		logs := NewCache(backend, 0, KindLogs, metrics, nil)
+		index := NewCache(backend, 0, KindIndex, metrics, nil)
+		load := func(context.Context) ([]byte, error) { return []byte("metadata-blob"), nil }
+
+		_, err := index.GetOrLoadMetadataRegion(t.Context(), "obj", load)
+		require.NoError(t, err)
+		_, err = logs.GetOrLoadMetadataRegion(t.Context(), "obj", load)
+		require.NoError(t, err)
+
+		require.Equal(t, float64(1), testutil.ToFloat64(index.misses))
+		require.Zero(t, testutil.ToFloat64(index.hits))
+		require.Equal(t, float64(1), testutil.ToFloat64(logs.hits), "the logs cache reads what the index cache stored")
+		require.Zero(t, testutil.ToFloat64(logs.misses))
+
+		series, err := testutil.GatherAndCount(reg, "loki_dataobj_metadata_cache_hits_total")
+		require.NoError(t, err)
+		require.Equal(t, 2, series, "one series for each kind")
+	})
+
+	t.Run("stopping a cache stops its backend", func(t *testing.T) {
+		backend := &stopCountingCache{Cache: cache.NewMockCache()}
+		c := newTestCache(backend, 0, nil)
+
+		c.Stop()
+
+		require.Equal(t, int32(1), backend.stops.Load())
+	})
+}
+
+func TestNewBackend(t *testing.T) {
 	embeddedConfig := func(prefix string) cache.Config {
 		return cache.Config{
 			Prefix:        prefix,
@@ -289,58 +323,60 @@ func TestNewFromConfig(t *testing.T) {
 		}
 	}
 
-	t.Run("returns a working cache for an embedded backend", func(t *testing.T) {
-		c, err := NewFromConfig(embeddedConfig("test.metadata-cache."), prometheus.NewRegistry(), log.NewNopLogger())
+	t.Run("returns a working backend for an embedded config", func(t *testing.T) {
+		backend, _, err := NewBackend(embeddedConfig("test.metadata-cache."), prometheus.NewRegistry(), log.NewNopLogger())
 		require.NoError(t, err)
-		t.Cleanup(c.Stop)
+		t.Cleanup(backend.Stop)
 
-		var loads int
-		load := func(context.Context) ([]byte, error) {
-			loads++
-			return []byte("metadata-blob"), nil
-		}
+		require.NoError(t, backend.Store(t.Context(), []string{"key"}, [][]byte{[]byte("value")}))
+		found, bufs, _, err := backend.Fetch(t.Context(), []string{"key"})
+		require.NoError(t, err)
+		require.Equal(t, []string{"key"}, found)
+		require.Equal(t, [][]byte{[]byte("value")}, bufs)
+	})
 
-		for range 2 {
-			got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", load)
-			require.NoError(t, err)
-			require.Equal(t, []byte("metadata-blob"), got)
-		}
-		require.Equal(t, 1, loads, "the second call is served from the cache")
-		require.Equal(t, float64(1), testutil.ToFloat64(c.hits))
+	t.Run("returns a backend that does not panic when stopped twice", func(t *testing.T) {
+		backend, _, err := NewBackend(embeddedConfig("test.metadata-cache."), prometheus.NewRegistry(), log.NewNopLogger())
+		require.NoError(t, err)
+
+		require.NotPanics(t, func() {
+			backend.Stop()
+			backend.Stop()
+		})
 	})
 
 	t.Run("uses the memcached max item size as the region limit", func(t *testing.T) {
-		c, err := NewFromConfig(memcachedConfig("test.metadata-cache.", 1024), prometheus.NewRegistry(), log.NewNopLogger())
+		backend, maxItemBytes, err := NewBackend(memcachedConfig("test.metadata-cache.", 1024), prometheus.NewRegistry(), log.NewNopLogger())
 		require.NoError(t, err)
-		t.Cleanup(c.Stop)
+		t.Cleanup(backend.Stop)
 
-		require.Equal(t, int64(1024), c.MaxItemBytes())
+		require.Equal(t, int64(1024), maxItemBytes)
 	})
 
 	t.Run("falls back to the default limit when the memcached max item size is zero", func(t *testing.T) {
-		c, err := NewFromConfig(memcachedConfig("test.metadata-cache.", 0), prometheus.NewRegistry(), log.NewNopLogger())
+		backend, maxItemBytes, err := NewBackend(memcachedConfig("test.metadata-cache.", 0), prometheus.NewRegistry(), log.NewNopLogger())
 		require.NoError(t, err)
-		t.Cleanup(c.Stop)
+		t.Cleanup(backend.Stop)
 
-		require.Equal(t, int64(DefaultMaxItemBytes), c.MaxItemBytes())
+		require.Equal(t, int64(DefaultMaxItemBytes), maxItemBytes)
 	})
 
 	t.Run("ignores the memcached max item size when the backend is not memcached", func(t *testing.T) {
 		cfg := embeddedConfig("test.metadata-cache.")
 		cfg.MemcacheClient.MaxItemSize = 1024
 
-		c, err := NewFromConfig(cfg, prometheus.NewRegistry(), log.NewNopLogger())
+		backend, maxItemBytes, err := NewBackend(cfg, prometheus.NewRegistry(), log.NewNopLogger())
 		require.NoError(t, err)
-		t.Cleanup(c.Stop)
+		t.Cleanup(backend.Stop)
 
-		require.Equal(t, int64(DefaultMaxItemBytes), c.MaxItemBytes())
+		require.Equal(t, int64(DefaultMaxItemBytes), maxItemBytes)
 	})
 
 	t.Run("returns an error when memcached and redis are both set", func(t *testing.T) {
 		cfg := memcachedConfig("test.metadata-cache.", 0)
 		cfg.Redis.Endpoint = "localhost:6379"
 
-		_, err := NewFromConfig(cfg, prometheus.NewRegistry(), log.NewNopLogger())
+		_, _, err := NewBackend(cfg, prometheus.NewRegistry(), log.NewNopLogger())
 		require.Error(t, err)
 	})
 
@@ -352,9 +388,20 @@ func TestNewFromConfig(t *testing.T) {
 		t.Cleanup(sibling.Stop)
 
 		require.NotPanics(t, func() {
-			c, err := NewFromConfig(memcachedConfig("dataobj.metadata-cache.", 0), reg, log.NewNopLogger())
+			backend, _, err := NewBackend(memcachedConfig("dataobj.metadata-cache.", 0), reg, log.NewNopLogger())
 			require.NoError(t, err)
-			t.Cleanup(c.Stop)
+			t.Cleanup(backend.Stop)
 		})
 	})
+}
+
+type stopCountingCache struct {
+	cache.Cache
+	stops atomic.Int32
+}
+
+func (c *stopCountingCache) Stop() { c.stops.Inc() }
+
+func newTestCache(backend cache.Cache, maxItemBytes int64, logger log.Logger) *Cache {
+	return NewCache(backend, maxItemBytes, KindLogs, NewMetrics(nil), logger)
 }

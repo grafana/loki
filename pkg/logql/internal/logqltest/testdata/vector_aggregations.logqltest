@@ -39,6 +39,16 @@ eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) withou
 eval instant at 90s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace, app)
   {app="foo", namespace="a"} 18
   {app="bar", namespace="b"} 6
+# sum() of rate()
+eval instant at 60s sum(rate({app=~"foo|bar"} |~".+bar" [1m])) by (app)
+  {app="foo"} 0.3
+  {app="bar"} 0.1
+eval instant at 60s sum(rate({app=~"foo|bar"} |~".+bar" [1m])) without (cluster)
+  {app="foo", namespace="a"} 0.3
+  {app="bar", namespace="b"} 0.1
+eval instant at 90s sum(rate({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace, app)
+  {app="foo", namespace="a"} 0.3
+  {app="bar", namespace="b"} 0.1
 
 # sum() grouping on structured metadata.
 clear
@@ -152,6 +162,24 @@ eval range from 20s to 60s step 20s sum by (zone) (sum_over_time({app="foo"} | l
 eval instant at 60s sum without (extra) (sum_over_time({app="foo"} | logfmt | unwrap v [1m]))
   {app="foo", zone="eu"} 13
   {app="foo", zone="us"} 235
+# sum() of rate()
+eval instant at 60s sum by (zone) (rate({app="foo"}[1m]))
+  {zone="eu"} 0.13333333333333333   # 8 / 60
+  {zone="us"} 0.5                   # 30 / 60
+eval range from 20s to 60s step 20s sum by (zone) (rate({app="foo"}[1m]))                                 # overlapping
+  {zone="eu"} 0.05 0.1 0.13333333333333333        # 3 / 60, 6 / 60, 8 / 60
+  {zone="us"} 0.15 0.31666666666666665 0.5        # 9 / 60, 19 / 60, 30 / 60
+eval instant at 60s sum without (extra) (rate({app="foo"}[1m]))
+  {app="foo", zone="eu"} 0.13333333333333333
+  {app="foo", zone="us"} 0.5
+eval instant at 60s sum(rate({app="foo"} | logfmt | unwrap v [1m]))
+  {} 4.133333333333333   # 248 / 60
+eval instant at 60s sum by (zone) (rate({app="foo"} | logfmt | unwrap v [1m]))
+  {zone="eu"} 0.21666666666666667   # 13 / 60
+  {zone="us"} 3.9166666666666665    # 235 / 60
+eval range from 20s to 60s step 20s sum by (zone) (rate({app="foo"} | logfmt | unwrap v [1m]))            # overlapping
+  {zone="eu"} 0.016666666666666666 0.11666666666666667 0.21666666666666667   # 1 / 60, 7 / 60, 13 / 60
+  {zone="us"} 0.3 1.55 3.9166666666666665                                    # 18 / 60, 93 / 60, 235 / 60
 
 # A __error__ set directly as structured metadata is an extraction error too, and a __error__
 # filter decides what to do with it exactly like a parser-raised error.
@@ -179,6 +207,13 @@ eval instant at 60s sum(sum_over_time({app="x"} | logfmt | unwrap v [1m]))
   expect fail msg: SampleExtractionErr
 eval instant at 60s sum(sum_over_time({app="x"} | logfmt | unwrap v | __error__="" [1m]))
   {} 5
+# rate() fails on the same errors. An __error__ filter keeps or drops errored lines as it does for count_over_time().
+eval instant at 60s sum(rate({app="a"}[1m]))
+  expect fail msg: malformed
+eval instant at 60s sum(rate({app="a"} | __error__="" [1m]))
+  {} 0.1   # 6 / 60
+eval instant at 60s sum(rate({app="a"} | __error__!="" [1m]))
+  {} 0.08333333333333333   # 5 / 60
 
 # sum() with an error that a parser raises.
 clear

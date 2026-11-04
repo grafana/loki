@@ -553,14 +553,16 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
 	// data-object store.
 	var (
-		dataObjStore         querier.Store
-		dataObjMetadataCache *metadatacache.Cache
+		dataObjStore          querier.Store
+		dataObjMetadataCaches []*metadatacache.Cache
 	)
 
-	// A failed init returns no service, so nothing else stops the cache.
+	// A failed init returns no service, so nothing else stops the caches.
 	defer func() {
-		if returnErr != nil && dataObjMetadataCache != nil {
-			dataObjMetadataCache.Stop()
+		if returnErr != nil {
+			for _, c := range dataObjMetadataCaches {
+				c.Stop()
+			}
 		}
 	}()
 
@@ -569,21 +571,32 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 		if err != nil {
 			return nil, err
 		}
-		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-
-		var storeOpts []querier.DataObjStoreOption
+		var (
+			storeOpts     []querier.DataObjStoreOption
+			metastoreOpts []metastore.ObjectMetastoreOption
+		)
 
 		if t.lbacChunkFilterer != nil {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
 		}
 
 		if cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
-			dataObjMetadataCache, err = metadatacache.NewFromConfig(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+			backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
 			if err != nil {
 				return nil, fmt.Errorf("creating data object metadata cache: %w", err)
 			}
-			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(dataObjMetadataCache))
+
+			// The two caches share one backend. It ignores a repeated Stop, so each cache can stop it.
+			cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
+			logsCache := metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
+			indexCache := metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
+			dataObjMetadataCaches = []*metadatacache.Cache{logsCache, indexCache}
+
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(logsCache))
+			metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(indexCache))
 		}
+
+		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, logger, t.metastoreMetrics, metastoreOpts...)
 
 		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
@@ -781,8 +794,8 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 
 	if svc != nil {
 		svc.AddListener(newStopListener(deleteStore.Stop))
-		if dataObjMetadataCache != nil {
-			svc.AddListener(newStopListener(dataObjMetadataCache.Stop))
+		for _, c := range dataObjMetadataCaches {
+			svc.AddListener(newStopListener(c.Stop))
 		}
 	}
 	return withLoglineStorePolling(loglineStore, svc)
@@ -2065,7 +2078,6 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Builder,
 		t.Cfg.DataObj.Uploader,
-		t.Cfg.DataObj.Metastore,
 		store,
 		t.scratchStore,
 		prometheus.DefaultRegisterer,
@@ -2096,13 +2108,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wrap with the same IndexStoragePrefix the dataobj-builder uses so
-	// compactor outputs and ToC reads land alongside the existing multi-tenant
-	// indexes namespace.
-	indexBucket := store
-	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
-		indexBucket = objstore.NewPrefixedBucket(store, prefix)
-	}
+	// The compactor outputs and the ToC reads use the same index prefix as the
+	// dataobj-builder.
+	indexBucket := metastore.NewIndexBucket(store)
 
 	reg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": componentName},
@@ -2168,14 +2176,10 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		return nil, err
 	}
 
-	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
-	// IndexMerge executor writes merged-index objects to the same namespace
-	// the ToC pointers (written by the planner via its prefixed indexBucket)
-	// resolve to.
-	indexBucket := store
-	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
-		indexBucket = objstore.NewPrefixedBucket(store, prefix)
-	}
+	// The IndexMerge executor writes merged-index objects under the index
+	// prefix. The ToC pointers that the planner writes resolve under the same
+	// prefix.
+	indexBucket := metastore.NewIndexBucket(store)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
 		Config: t.Cfg.DataObj.Compaction.Worker,
@@ -2446,6 +2450,7 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 	// One n-gram length for the whole index, owned by logline.index. The index
 	// does not record it, so a reader must use the value the builder did.
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+	cfg.AlignQueriesWithStep = t.Cfg.QueryRange.AlignQueriesWithStep
 
 	wrapped, storeService, cleanup, err := loglinequeryfrontend.WrapMiddleware(
 		cfg,

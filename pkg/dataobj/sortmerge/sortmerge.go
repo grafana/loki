@@ -72,7 +72,7 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 				}
 
 				var record logs.Record
-				if err := logs.DecodeRow(seq.section.Columns(), row, &record, nil); err != nil {
+				if err := logs.DecodeRow(seq.section.Columns(), row, &record); err != nil {
 					return err
 				}
 				if !yield(record) {

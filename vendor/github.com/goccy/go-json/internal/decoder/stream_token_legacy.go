@@ -151,6 +151,10 @@ func (s *Stream) Token() (any, error) {
 		}
 		var v any
 		if err := s.Decode(dec, anyPtrType, unsafe.Pointer(&v)); err != nil {
+			if e, ok := err.(*errors.UnmarshalTypeError); ok {
+				// the type error of a token reports the offset after the token in the whole input, as Go 1.27 does
+				e.Offset = s.TotalOffset()
+			}
 			return nil, err
 		}
 		return v, nil

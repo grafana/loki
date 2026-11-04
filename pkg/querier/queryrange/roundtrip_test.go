@@ -1075,7 +1075,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 	})
 
 	t.Run("does not mark the whole query as eligible when it holds no stream-first part and sharding is off", func(t *testing.T) {
-		const query = `max by (node) (sum by (node, pod) (rate({app="a"}[1m])))`
+		const query = `max by (node) (sum by (node, pod) (avg_over_time({app="a"} | logfmt | unwrap n [1m])))`
 		handler, requests, _ := newHandlerWithSharding(t, shardingOff, dataObjOn)
 
 		_, err := handler.Do(ctx, insideRange(query))

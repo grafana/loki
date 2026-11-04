@@ -28,6 +28,7 @@ To create a major release workflow, follow the steps below.
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
+      goVersion=goVersion,
       // Instead of hard-coding the release version, push an empty to the target branch `release-X.0.0`
       // git commit --allow-empty -m "chore: Release X.0.0-rcY" -m "Release-As: X.0.0-rcY"
       // https://github.com/googleapis/release-please#how-do-i-change-the-version-number

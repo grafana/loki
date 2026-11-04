@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
@@ -18,10 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 )
-
-// metastoreIndexStoragePrefix is where the index objects objtest's Builder.Close writes live
-// under the data-object bucket.
-const metastoreIndexStoragePrefix = "index/v0"
 
 // newDataObjBucket opens the bucket an objtest.Builder wrote at dir, decorated if decorator is
 // set.
@@ -37,10 +32,7 @@ func newDataObjBucket(dir string, decorator func(objstore.Bucket) objstore.Bucke
 }
 
 func newDataObjMetastore(bucket objstore.Bucket, logger log.Logger, metrics *metastore.ObjectMetastoreMetrics) *metastore.ObjectMetastore {
-	var cfg metastore.Config
-	flagext.DefaultValues(&cfg)
-	cfg.IndexStoragePrefix = metastoreIndexStoragePrefix
-	return metastore.NewObjectMetastore(bucket, cfg, logger, metrics)
+	return metastore.NewObjectMetastore(bucket, logger, metrics)
 }
 
 // unreachableStore implements querier.Store by panicking on every method. DataObjStore embeds a

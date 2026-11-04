@@ -1091,16 +1091,11 @@ dataobj:
     # CLI flag: -dataobj.uploader.sha-prefix-size
     [sha_prefix_size: <int> | default = 2]
 
-  metastore:
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # for testing only.
-    # CLI flag: -dataobj-metastore.index-storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0"]
-
-  # Caches the metadata of the data objects the querier reads. The cache is
-  # enabled when a backend is configured. Entries are keyed by object path, so
-  # the cache cannot differentiate entries between different buckets and
-  # clusters. Multiple installations must not share the same cache backend.
+  # Caches the metadata region of the log objects and index objects the querier
+  # reads, or the entire object if it is tiny. The cache is enabled when a
+  # backend is configured. Entries are keyed by object path, so the cache cannot
+  # differentiate entries between different buckets and clusters. Multiple
+  # installations must not share the same cache backend.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
@@ -1148,10 +1143,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
-    # Experimental: Maximum runs per LogMerge task (K for log compaction). Log
-    # compaction starts only when a size level holds K runs, so a larger K
-    # leaves more overlapping runs per window. Separate from max-runs-per-task
-    # to scale independently. Must be at least 2.
+    # Experimental: Runs per planned log merge (K for log compaction), before
+    # logs.max-task-size splits it into tasks. Log compaction merges only groups
+    # of K runs from one size level, so a larger K leaves more overlapping runs
+    # per window. Separate from max-runs-per-task to scale independently. Must
+    # be at least 2.
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
     [logs_max_runs_per_task: <int> | default = 8]
 

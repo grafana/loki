@@ -51,6 +51,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 		mixed := []*physical.Plan{
 			buildLogMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
 			buildIndexFilterPlan("acme", "indexes/source", []string{"logs/a"}),
+			buildDeletionSweepPlan("acme"),
 		}
 
 		_, err := d.Run(context.Background(), "acme", mixed)
@@ -63,6 +64,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 		require.Equal(t, map[*physical.Plan][]string{
 			mixed[0]: {"compaction", "log-merge"},
 			mixed[1]: {"compaction", "index-filter"},
+			mixed[2]: {"compaction", "deletion-sweep"},
 		}, actors)
 	})
 

@@ -20,6 +20,7 @@ import (
 // bugs without requiring the test author to enumerate every field.
 func TestRoundTripNodes_Reflection(t *testing.T) {
 	cases := []physical.Node{
+		new(physical.DeletionSweep),
 		new(physical.IndexFilter),
 		new(physical.IndexMerge),
 		new(physical.LogMerge),
@@ -34,9 +35,14 @@ func TestRoundTripNodes_Reflection(t *testing.T) {
 			graph.Add(n)
 			expected := physical.FromGraph(graph)
 
-			var protoPlan physicalpb.Plan
-			require.NoError(t, protoPlan.UnmarshalPhysical(expected))
-			actual, err := protoPlan.MarshalPhysical()
+			var sent physicalpb.Plan
+			require.NoError(t, sent.UnmarshalPhysical(expected))
+			wire, err := sent.Marshal()
+			require.NoError(t, err)
+
+			var received physicalpb.Plan
+			require.NoError(t, received.Unmarshal(wire))
+			actual, err := received.MarshalPhysical()
 			require.NoError(t, err)
 
 			actualRoot, err := actual.Root()
