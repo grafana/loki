@@ -7,7 +7,7 @@ env:
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PLUGIN_IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "1c8a4e33b968af202d91753cd0df9bf217961b4f"
+  RELEASE_LIB_REF: "84115a2e9d807167f054d106c81f5e9f3230387e"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
