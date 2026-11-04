@@ -800,13 +800,21 @@ func (c *MemChunk) BlockCount() int {
 
 // SpaceFor implements Chunk.
 func (c *MemChunk) SpaceFor(e *logproto.Entry) bool {
+	metadataSize := 0
+	if c.targetSize > 0 && c.format >= ChunkFormatV4 {
+		metadataSize = metaLabelsLen(logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
+	}
+	return c.spaceFor(e, metadataSize)
+}
+
+func (c *MemChunk) spaceFor(e *logproto.Entry, metadataSize int) bool {
 	if c.targetSize > 0 {
 		// This is looking to see if the uncompressed lines will fit which is not
 		// a great check, but it will guarantee we are always under the target size
 		newHBSize := c.head.UncompressedSize() + len(e.Line)
 		structuredMetadataSize := 0
 		if c.format >= ChunkFormatV4 {
-			newHBSize += metaLabelsLen(logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
+			newHBSize += metadataSize
 			// structured metadata is compressed while serializing the chunk so we don't know what their size would be after compression.
 			// As adoption increases, their overall size can be non-trivial so we can't ignore them while calculating chunk size.
 			// ToDo(Sandeep): See if we can just use some average compression ratio for each compression format we support and use it here
