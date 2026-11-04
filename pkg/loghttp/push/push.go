@@ -24,6 +24,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/push"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -289,6 +291,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	if tenantConfigs != nil {
 		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
 	}
+	logPushRequestStreams := false
+	if tenantConfigs != nil {
+		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
+	}
 
 	// If this is a backfill push (X-Loki-Backfill-Shard header), every stream gets the internal
 	// backfill labels added below.
@@ -362,76 +368,68 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
 		}
 
-		req.Streams[i] = s
-	}
+		err = CalculateStreamStats(r.Context(), userID, s, streamResolver, tenantConfigs, logPushRequestStreams, pushStats)
+		if err != nil {
+			return nil, nil, err
+		}
 
-	err = CalculateStreamsStats(r.Context(), userID, req, streamResolver, tenantConfigs, pushStats)
-	if err != nil {
-		return nil, nil, err
+		req.Streams[i] = s
 	}
 
 	return logproto.FromPushRequest(req), pushStats, nil
 }
 
-// CalculateStreamsStats modifies pushStats with statistics about all the streams from req.
-func CalculateStreamsStats(ctx context.Context, userID string, req *logproto.PushRequest, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, pushStats *Stats) error {
-	logPushRequestStreams := false
-	if tenantConfigs != nil {
-		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
+// CalculateStreamStats modifies pushStats with statistics about one stream s.
+func CalculateStreamStats(ctx context.Context, userID string, s push.Stream, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, logPushRequestStreams bool, pushStats *Stats) error {
+	// Record the new size of labels
+	pushStats.StreamLabelsSize += int64(len(s.Labels))
+
+	lbs, err := syntax.ParseLabels(s.Labels)
+	if err != nil {
+		return fmt.Errorf("couldn't parse labels: %w", err)
 	}
 
-	for _, s := range req.Streams {
-		// Record the new size of labels
-		pushStats.StreamLabelsSize += int64(len(s.Labels))
+	var retentionPeriod time.Duration
+	var policy string
+	if streamResolver != nil {
+		retentionPeriod = streamResolver.RetentionPeriodFor(lbs)
+		policy = streamResolver.PolicyFor(ctx, lbs)
+	}
 
-		lbs, err := syntax.ParseLabels(s.Labels)
-		if err != nil {
-			return fmt.Errorf("couldn't parse labels: %w", err)
+	if _, ok := pushStats.LogLinesBytes[policy]; !ok {
+		pushStats.LogLinesBytes[policy] = make(map[time.Duration]int64)
+	}
+	if _, ok := pushStats.StructuredMetadataBytes[policy]; !ok {
+		pushStats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
+	}
+
+	// These two variables are used to track the most recent entry timestamp and the size of the stream.
+	// They are only used when logPushRequestStreams is true.
+	mostRecentEntryTimestamp := time.Time{}
+	streamSizeBytes := int64(0)
+	for _, e := range s.Entries {
+		pushStats.PolicyNumLines[policy]++
+		entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
+		pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
+		entryTotal := int64(util.EntryTotalSize(&e))
+		streamSizeBytes += entryTotal
+		pushStats.TotalExpandedEntriesSize += entryTotal
+		pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
+
+		if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
+			pushStats.MostRecentEntryTimestamp = e.Timestamp
 		}
 
-		var retentionPeriod time.Duration
-		var policy string
-		if streamResolver != nil {
-			retentionPeriod = streamResolver.RetentionPeriodFor(lbs)
-			policy = streamResolver.PolicyFor(ctx, lbs)
-		}
-
-		if _, ok := pushStats.LogLinesBytes[policy]; !ok {
-			pushStats.LogLinesBytes[policy] = make(map[time.Duration]int64)
-		}
-		if _, ok := pushStats.StructuredMetadataBytes[policy]; !ok {
-			pushStats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
-		}
-
-		// These two variables are used to track the most recent entry timestamp and the size of the stream.
-		// They are only used when logPushRequestStreams is true.
-		mostRecentEntryTimestamp := time.Time{}
-		streamSizeBytes := int64(0)
-		for _, e := range s.Entries {
-			pushStats.PolicyNumLines[policy]++
-			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
-			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
-			entryTotal := int64(util.EntryTotalSize(&e))
-			streamSizeBytes += entryTotal
-			pushStats.TotalExpandedEntriesSize += entryTotal
-			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
-
-			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
-				pushStats.MostRecentEntryTimestamp = e.Timestamp
-			}
-
-			if e.Timestamp.After(mostRecentEntryTimestamp) {
-				mostRecentEntryTimestamp = e.Timestamp
-			}
-		}
-
-		// Only populate this map if we are going to log it.
-		if logPushRequestStreams {
-			pushStats.MostRecentEntryTimestampPerStream[s.Labels] = mostRecentEntryTimestamp
-			pushStats.StreamSizeBytes[s.Labels] = streamSizeBytes
+		if e.Timestamp.After(mostRecentEntryTimestamp) {
+			mostRecentEntryTimestamp = e.Timestamp
 		}
 	}
 
+	// Only populate this map if we are going to log it.
+	if logPushRequestStreams {
+		pushStats.MostRecentEntryTimestampPerStream[s.Labels] = mostRecentEntryTimestamp
+		pushStats.StreamSizeBytes[s.Labels] = streamSizeBytes
+	}
 	return nil
 }
 
