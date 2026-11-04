@@ -2,8 +2,6 @@ module github.com/grafana/loki/v3
 
 go 1.26.10
 
-godebug multipathtcp=0
-
 ignore ./tools/dev
 
 require (
