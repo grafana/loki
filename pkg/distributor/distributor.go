@@ -1213,7 +1213,7 @@ type rateLimitBucket struct {
 
 // rateLimitError builds the client-facing 429 error when at least one rate limit bucket
 // is exceeded.
-func (d *Distributor) rateLimitError(exceededBuckets []*rateLimitBucket) error {
+func rateLimitError(exceededBuckets []*rateLimitBucket) error {
 	if len(exceededBuckets) == 1 {
 		b := exceededBuckets[0]
 		if b.hasOverride {
@@ -1303,7 +1303,7 @@ func (d *Distributor) enforceIngestionRateLimits(
 		return strings.Compare(a.policy, b.policy)
 	})
 
-	err := d.rateLimitError(exceeded)
+	err := rateLimitError(exceeded)
 	d.writeFailuresManager.Log(tenantID, err)
 	// Return a 429 to indicate to the client they are being rate limited
 	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
