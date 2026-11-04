@@ -300,6 +300,8 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	// backfill labels added below.
 	backfillShard := ExtractBackfillShardContext(r.Context())
 
+	lb := labels.NewBuilder(labels.EmptyLabels())
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 
@@ -337,12 +339,13 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 				}
 			}
 
-			lb := labels.NewBuilder(lbs)
+			lb.Reset(lbs)
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
 		}
 
 		if backfillShard != "" {
-			lbs = labels.NewBuilder(lbs).
+			lb.Reset(lbs)
+			lbs = lb.
 				Set(constants.BackfillLabel, "true").
 				Set(constants.BackfillShardLabel, backfillShard).
 				Labels()
