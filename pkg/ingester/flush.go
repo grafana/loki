@@ -646,7 +646,8 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 }
 
 // maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
-// ones are ignored since UnixNano overflows after it and will fail to encode.
+// ones are ignored: retention measures time since IngestedAt with model.Time.Sub, which overflows
+// time.Duration for timestamps that far ahead and could expire the chunk right away.
 var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
 
 // validRecordTimestamp reports whether ts can be used as the timestamp of an ingested Kafka record.
@@ -678,7 +679,7 @@ func (i *Ingester) chunkIngestedAt(metric labels.Labels, from model.Time, record
 
 	// Replicas of a partition consume the same records in the same order, so the record timestamp is the same on
 	// all of them and chunks will be able to deduplicate.
-	return model.TimeFromUnixNano(recordTime.UnixNano())
+	return model.Time(recordTime.UnixMilli())
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
