@@ -377,8 +377,10 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
 	}
-	if err := c.DataObj.Metastore.Validate(c.DataObj.StorageLag); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj metastore config"))
+	if c.DataObj.Enabled {
+		if err := c.DataObj.Metastore.Validate(c.DataObj.StorageLag); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj metastore config"))
+		}
 	}
 	// Only validated for the selected target. The builder's config has required
 	// fields with no sensible defaults, so validating it unconditionally would
