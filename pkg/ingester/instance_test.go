@@ -2101,19 +2101,17 @@ func (w *recordingWAL) Log(rec *wal.Record) error {
 }
 
 // The timestamp of the record a push comes from is stamped on the chunk and logged to the WAL, so
-// it is restored on replay. A push without one (zero or negative) stamps nothing. The Kafka
-// consumer validates the timestamp before setting it, see TestConsumerPassesRecordTimestamp.
+// it is restored on replay. A push without one stamps nothing. The Kafka consumer validates the
+// timestamp before passing it, see TestConsumerPassesRecordTimestamp.
 func TestPushRecordTimestamp(t *testing.T) {
 	recordTime := time.UnixMilli(1_700_000_000_000)
 
 	for _, tc := range []struct {
-		name         string
-		ingestedAtMs int64
-		want         time.Time
+		name       string
+		recordTime time.Time
 	}{
-		{"record timestamp", recordTime.UnixMilli(), recordTime},
-		{"no record timestamp", 0, time.Time{}},
-		{"Kafka NoTimestamp", -1, time.Time{}},
+		{"record timestamp", recordTime},
+		{"no record timestamp", time.Time{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
@@ -2126,15 +2124,14 @@ func TestPushRecordTimestamp(t *testing.T) {
 			require.NoError(t, err)
 
 			req := &logproto.PushRequest{
-				Streams:      []logproto.Stream{{Labels: `{app="a"}`, Entries: entries(1, time.Now().Add(-5*time.Minute))}},
-				IngestedAtMs: tc.ingestedAtMs,
+				Streams: []logproto.Stream{{Labels: `{app="a"}`, Entries: entries(1, time.Now().Add(-5*time.Minute))}},
 			}
-			require.NoError(t, i.Push(context.Background(), req))
+			require.NoError(t, i.PushWithTimestamp(context.Background(), TimestampedPush{PushRequest: req, IngestedAt: tc.recordTime}))
 
 			require.Len(t, w.ingestedAt, 1)
-			require.True(t, tc.want.Equal(w.ingestedAt[0]), "WAL: got %s, want %s", w.ingestedAt[0], tc.want)
+			require.True(t, tc.recordTime.Equal(w.ingestedAt[0]), "WAL: got %s, want %s", w.ingestedAt[0], tc.recordTime)
 			require.NoError(t, i.forAllStreams(context.Background(), func(s *stream) error {
-				require.True(t, tc.want.Equal(s.chunks[0].ingestedAt), "chunk: got %s, want %s", s.chunks[0].ingestedAt, tc.want)
+				require.True(t, tc.recordTime.Equal(s.chunks[0].ingestedAt), "chunk: got %s, want %s", s.chunks[0].ingestedAt, tc.recordTime)
 				return nil
 			}))
 		})

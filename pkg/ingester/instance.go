@@ -223,17 +223,20 @@ func newInstance(
 	return i, err
 }
 
-// Push will iterate over the given streams present in the PushRequest and attempt to store them.
+// Push pushes a request without a record timestamp, see PushWithTimestamp.
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	return i.PushWithTimestamp(ctx, TimestampedPush{PushRequest: req})
+}
+
+// PushWithTimestamp will iterate over the given streams present in the PushRequest and attempt to store them.
 //
 // Although multiple streams are part of the PushRequest, the returned error only reflects what
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
-	if req.IngestedAtMs > 0 {
-		record.IngestedAt = time.UnixMilli(req.IngestedAtMs)
-	}
+	record.IngestedAt = req.IngestedAt
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
@@ -260,7 +263,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, req.Format, record.IngestedAt)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, req.Format, req.IngestedAt)
 		s.chunkMtx.Unlock()
 	}
 

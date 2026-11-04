@@ -63,12 +63,11 @@ var (
 )
 
 type fakePusher struct {
-	pushes       []*logproto.PushRequest
-	ingestedAtMs []int64
-	t            *testing.T
+	pushes []TimestampedPush
+	t      *testing.T
 }
 
-func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (f *fakePusher) PushWithTimestamp(ctx context.Context, in TimestampedPush) (*logproto.PushResponse, error) {
 	tenant, err := tenant.TenantID(ctx)
 	require.NoError(f.t, err)
 	require.Equal(f.t, tenant, tenant)
@@ -82,8 +81,7 @@ func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logpr
 		copy(newStream.Entries, s.Entries)
 		req.Streams = append(req.Streams, newStream)
 	}
-	f.pushes = append(f.pushes, req)
-	f.ingestedAtMs = append(f.ingestedAtMs, in.IngestedAtMs)
+	f.pushes = append(f.pushes, TimestampedPush{PushRequest: req, IngestedAt: in.IngestedAt})
 	return nil, nil
 }
 
@@ -94,13 +92,9 @@ func (nc *noopCommitter) EnqueueOffset(_ int64) {}
 func (noopCommitter) Commit(_ context.Context, _ int64) error { return nil }
 
 func TestConsumer(t *testing.T) {
-	want := []*logproto.PushRequest{
-		{
-			Streams: []logproto.Stream{streamBar},
-		},
-		{
-			Streams: []logproto.Stream{streamFoo},
-		},
+	want := []TimestampedPush{
+		{PushRequest: &logproto.PushRequest{Streams: []logproto.Stream{streamBar}}},
+		{PushRequest: &logproto.PushRequest{Streams: []logproto.Stream{streamFoo}}},
 	}
 
 	encoders := map[string]func(*testing.T, logproto.Stream) []*kgo.Record{
@@ -146,12 +140,16 @@ func TestConsumerPassesRecordTimestamp(t *testing.T) {
 	wait()
 
 	// Only the usable timestamp is passed on.
-	require.Equal(t, []int64{recordTime.UnixMilli(), 0, 0, 0}, pusher.ingestedAtMs)
+	var got []time.Time
+	for _, push := range pusher.pushes {
+		got = append(got, push.IngestedAt)
+	}
+	require.Equal(t, []time.Time{recordTime, {}, {}, {}}, got)
 }
 
 // consume runs the records of each stream through a consumer and returns what reached the
 // pusher. encode chooses the encoding the records are written in.
-func consume(t *testing.T, encode func(*testing.T, logproto.Stream) []*kgo.Record, streams ...logproto.Stream) []*logproto.PushRequest {
+func consume(t *testing.T, encode func(*testing.T, logproto.Stream) []*kgo.Record, streams ...logproto.Stream) []TimestampedPush {
 	t.Helper()
 
 	var (
@@ -203,8 +201,8 @@ type failingPusher struct {
 	fail map[string]bool
 }
 
-func (p *failingPusher) Push(_ context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	if p.fail[req.Streams[0].Entries[0].Line] {
+func (p *failingPusher) PushWithTimestamp(_ context.Context, in TimestampedPush) (*logproto.PushResponse, error) {
+	if p.fail[in.Streams[0].Entries[0].Line] {
 		return nil, errors.New("push failed")
 	}
 	return &logproto.PushResponse{}, nil
@@ -265,13 +263,13 @@ func TestConsumer_CommitsHighestOffsetBeforeGap(t *testing.T) {
 // therefore applies them in reverse offset order. A consumer that applies them on one worker in
 // offset order makes every wait time out instead.
 type reorderingPusher struct {
-	next    logproto.PusherServer
+	next    timestampedPusher
 	labels  string
 	timeout time.Duration
 	pushed  []chan struct{} // pushed[i] is closed once record i of the stream has been pushed.
 }
 
-func newReorderingPusher(next logproto.PusherServer, labels string, records int, timeout time.Duration) *reorderingPusher {
+func newReorderingPusher(next timestampedPusher, labels string, records int, timeout time.Duration) *reorderingPusher {
 	pushed := make([]chan struct{}, records)
 	for i := range pushed {
 		pushed[i] = make(chan struct{})
@@ -279,9 +277,10 @@ func newReorderingPusher(next logproto.PusherServer, labels string, records int,
 	return &reorderingPusher{next: next, labels: labels, timeout: timeout, pushed: pushed}
 }
 
-func (p *reorderingPusher) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (p *reorderingPusher) PushWithTimestamp(ctx context.Context, in TimestampedPush) (*logproto.PushResponse, error) {
+	req := in.PushRequest
 	if req.Streams[0].Labels != p.labels {
-		return p.next.Push(ctx, req)
+		return p.next.PushWithTimestamp(ctx, in)
 	}
 	var i int
 	if _, err := fmt.Sscanf(req.Streams[0].Entries[0].Line, "r%d-", &i); err != nil {
@@ -293,7 +292,7 @@ func (p *reorderingPusher) Push(ctx context.Context, req *logproto.PushRequest) 
 		case <-time.After(p.timeout):
 		}
 	}
-	resp, err := p.next.Push(ctx, req)
+	resp, err := p.next.PushWithTimestamp(ctx, in)
 	close(p.pushed[i])
 	return resp, err
 }
@@ -348,7 +347,7 @@ func TestConsumer_ReplicasBuildIdenticalChunks(t *testing.T) {
 
 	// replica consumes the records into a fresh ingester and returns the checksums of each
 	// stream's flushed chunks in time order.
-	replica := func(wrap func(logproto.PusherServer) logproto.PusherServer) map[string][]uint32 {
+	replica := func(wrap func(timestampedPusher) timestampedPusher) map[string][]uint32 {
 		cfg := defaultIngesterTestConfig(t)
 		cfg.ChunkEncoding = compression.None.String()
 		cfg.BlockSize = 256
@@ -373,8 +372,8 @@ func TestConsumer_ReplicasBuildIdenticalChunks(t *testing.T) {
 		return checksums
 	}
 
-	inOrder := replica(func(p logproto.PusherServer) logproto.PusherServer { return p })
-	reordered := replica(func(p logproto.PusherServer) logproto.PusherServer {
+	inOrder := replica(func(p timestampedPusher) timestampedPusher { return p })
+	reordered := replica(func(p timestampedPusher) timestampedPusher {
 		return newReorderingPusher(p, streamA, recordsPerStream, 100*time.Millisecond)
 	})
 
@@ -510,7 +509,8 @@ type orderPusher struct {
 	offsets map[string][]int64 // by tenant and stream labels.
 }
 
-func (p *orderPusher) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (p *orderPusher) PushWithTimestamp(ctx context.Context, in TimestampedPush) (*logproto.PushResponse, error) {
+	req := in.PushRequest
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
