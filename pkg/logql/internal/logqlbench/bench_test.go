@@ -19,7 +19,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -255,7 +254,7 @@ func BenchmarkLogQLMetricQueries(b *testing.B) {
 		b.Cleanup(func() { _ = bucket.Close() })
 
 		reg := prometheus.NewRegistry()
-		dataObjMetastore := newDataObjMetastore(bucket, log.NewNopLogger(), metastore.NewObjectMetastoreMetrics(reg))
+		dataObjMetastore := newDataObjMetastore(bucket, log.NewNopLogger(), reg)
 		return querier.NewDataObjStore(unreachableStore{}, bucket, dataObjMetastore, reg, querier.WithDataObjRangeConfig(dataObjRangeConfig), querier.WithDataObjMaxConcurrency(dataObjMaxConcurrency))
 	})
 

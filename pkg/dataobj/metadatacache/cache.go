@@ -27,11 +27,12 @@ const loadTimeout = 30 * time.Second
 // backend's real one.
 const DefaultMaxItemBytes = 8 << 20 // 8 MiB
 
-// KindLogs and KindIndex label the counters of a Cache by the kind of object it serves. One backend
-// can serve several Caches, and each Cache reports its own hits, misses and errors.
+// KindLogs, KindIndex and KindTOC label the counters of a Cache by the kind of object it serves. One
+// backend can serve several Caches, and each Cache reports its own hits, misses and errors.
 const (
 	KindLogs  = "logs"
 	KindIndex = "index"
+	KindTOC   = "toc"
 )
 
 // NewBackend builds the cache backend that cfg describes. It also returns the largest region that the
@@ -99,17 +100,30 @@ func NewCache(c cache.Cache, maxItemBytes int64, kind string, m *Metrics, logger
 	}
 }
 
-// GetOrLoadMetadataRegion returns the metadata region for key, loading and caching it via load on a miss.
-// Concurrent misses for the same key share a single load. A cache fetch or store error is counted (and
-// logged, rate limited) but never fails the call: it degrades to a load from object storage.
-//
-// A loaded region larger than MaxItemBytes is never stored, even if the backend would accept it; load's
-// result is still returned to the caller.
-//
-// Each caller returns on its own context cancellation. The shared load itself runs on a context
-// detached from any single caller: it keeps request-scoped values, drops cancellation, and is bounded
-// by loadTimeout. One caller giving up neither aborts the load nor fails the others waiting on it.
+// GetOrLoadMetadataRegion returns the metadata region for key, loading and caching it via load on a miss. It is GetOrLoad
+// with a nil accept function.
 func (c *Cache) GetOrLoadMetadataRegion(ctx context.Context, key string, load func(context.Context) ([]byte, error)) ([]byte, error) {
+	return c.GetOrLoad(ctx, key, nil, load)
+}
+
+// GetOrLoad returns the value for key, loading and caching it via load on a miss.
+//
+// A value that accept rejects counts as a miss: the call loads a new value and stores it over the old one. A nil accept
+// accepts every value. accept runs on every cached value, so it must be cheap and must not keep or modify its argument.
+//
+// Concurrent misses for the same key share a single load. A cache fetch or store error is counted (and logged, rate
+// limited) but never fails the call. A fetch error degrades to a load. A store error returns the loaded value without
+// caching it.
+//
+// A loaded value larger than MaxItemBytes is never stored, even if the backend would accept it; load's result is still
+// returned to the caller.
+//
+// The returned slice is read-only and shared between callers.
+//
+// Each caller returns on its own context cancellation. The shared load itself runs on a context detached from any
+// single caller: it keeps request-scoped values, drops cancellation, and is bounded by loadTimeout. One caller giving
+// up neither aborts the load nor fails the others waiting on it.
+func (c *Cache) GetOrLoad(ctx context.Context, key string, accept func([]byte) bool, load func(context.Context) ([]byte, error)) ([]byte, error) {
 	k := keyPrefix + key
 
 	_, bufs, _, err := c.cache.Fetch(ctx, []string{k})
@@ -124,7 +138,7 @@ func (c *Cache) GetOrLoadMetadataRegion(ctx context.Context, key string, load fu
 		c.fetchErrLog.Do(func() {
 			level.Warn(c.logger).Log("msg", "data object metadata cache fetch failed", "key", key, "err", err)
 		})
-	case len(bufs) == 1:
+	case len(bufs) == 1 && (accept == nil || accept(bufs[0])):
 		c.hits.Inc()
 		return bufs[0], nil
 	default:
@@ -143,6 +157,8 @@ func (c *Cache) GetOrLoadMetadataRegion(ctx context.Context, key string, load fu
 			return nil, err
 		}
 
+		// The cache does not store a value above the item limit. A cached value that accept rejected stays in the cache,
+		// so the next call loads again.
 		if int64(len(md)) > c.maxItemBytes {
 			c.errors.WithLabelValues(operationStore).Inc()
 			c.storeErrLog.Do(func() {
@@ -152,6 +168,7 @@ func (c *Cache) GetOrLoadMetadataRegion(ctx context.Context, key string, load fu
 			return md, nil
 		}
 
+		// A write-back backend stores the value later. Until then a call can find the old value, reject it and load again.
 		if err := c.cache.Store(loadCtx, []string{k}, [][]byte{md}); err != nil {
 			c.errors.WithLabelValues(operationStore).Inc()
 			c.storeErrLog.Do(func() {

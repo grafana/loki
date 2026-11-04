@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-kit/log"
 	dskitmetrics "github.com/grafana/dskit/metrics"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -32,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -501,7 +503,7 @@ func TestObjectMetastore_Sections_ShardBucketRange(t *testing.T) {
 
 	t.Run("a range that resolves no section leaves the resolved-sections ratio sum finite", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		recording := NewObjectMetastore(bucketClient, log.NewNopLogger(), NewObjectMetastoreMetrics(reg))
+		recording := NewObjectMetastore(bucketClient, Config{}, log.NewNopLogger(), reg)
 
 		resp, err := recording.Sections(ctx, requestWithBucketRange(&postings.ShardBucketRange{From: 4, To: 19}))
 		require.NoError(t, err)
@@ -1042,7 +1044,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 			return nil
 		})
 		reg := prometheus.NewRegistry()
-		m := NewObjectMetastore(inMem, logger, NewObjectMetastoreMetrics(reg))
+		m := NewObjectMetastore(inMem, Config{}, logger, reg)
 		boundedCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
@@ -1610,7 +1612,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 }
 
 func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
-	return NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry())
 }
 
 // uploadIndexObject uploads obj to a fresh in-memory bucket and returns a
@@ -1885,18 +1887,35 @@ func TestNewIndexBucket(t *testing.T) {
 }
 
 func TestNewObjectMetastore(t *testing.T) {
-	request := GetIndexesRequest{Start: now.Add(-time.Hour), End: now.Add(time.Hour)}
-	observations := []postings.LabelObservation{{
-		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
-		StreamID: 1, Timestamp: now,
-	}}
+	var (
+		request      = GetIndexesRequest{Start: now.Add(-time.Hour), End: now.Add(time.Hour)}
+		observations = []postings.LabelObservation{{
+			ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
+			StreamID: 1, Timestamp: now,
+		}}
+		tocPath = TableOfContentsPath(tenantID, tocTestWindow)
+		data    = newTOCBytes(t, tenantID, indexpointers.IndexPointer{Path: "index/a", StartTs: tocTestWindow, EndTs: tocTestWindow.Add(time.Hour)})
+	)
+
+	newTOCBucket := func(t *testing.T) *tocTestBucket {
+		t.Helper()
+		bucket := newTOCTestBucket()
+		bucket.upload(t, IndexStoragePrefix+"/"+tocPath, data)
+		return bucket
+	}
+
+	newResolverConfig := func() Config {
+		cfg := Config{TOCResolver: testResolverConfig()}
+		cfg.TOCResolver.RefreshInterval = 50 * time.Millisecond
+		return cfg
+	}
 
 	t.Run("resolves index objects stored under the index/v0 prefix of the bucket", func(t *testing.T) {
 		ctx := user.InjectOrgID(t.Context(), tenantID)
 		bucket := objstore.NewInMemBucket()
 		path := createIndexObject(ctx, t, bucket, observations)
 
-		resp, err := NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry())).GetIndexes(ctx, request)
+		resp, err := NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry()).GetIndexes(ctx, request)
 		require.NoError(t, err)
 		require.Len(t, resp.Indexes, 1)
 		require.Equal(t, path, resp.Indexes[0].Path)
@@ -1909,9 +1928,46 @@ func TestNewObjectMetastore(t *testing.T) {
 		t.Cleanup(closer)
 		uploadAndRegisterIndexObject(ctx, t, bucket, obj)
 
-		resp, err := NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry())).GetIndexes(ctx, request)
+		resp, err := NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry()).GetIndexes(ctx, request)
 		require.NoError(t, err)
 		require.Empty(t, resp.Indexes)
+	})
+
+	t.Run("reads the ToCs under the index storage prefix and scopes the keys of the shared cache to it", func(t *testing.T) {
+		ctx := user.InjectOrgID(t.Context(), tenantID)
+		mock := cache.NewMockCache()
+		clock := newTestClock()
+		bucket := newTOCBucket(t)
+		m := NewObjectMetastore(bucket, newResolverConfig(), nil, prometheus.NewPedanticRegistry(),
+			WithTOCResolverCache(newTestMetadataCache(mock, 0)))
+		m.tocResolver.now = clock.Now
+
+		entries, err := m.listObjects(ctx, tocPath, timestampScalar(tocTestWindow), timestampScalar(tocTestWindow.Add(time.Hour)))
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		require.Equal(t, 1, bucket.reads(IndexStoragePrefix+"/"+tocPath))
+		clock.Advance(time.Minute)
+		m.tocResolver.refreshTOCs(t.Context())
+
+		require.Len(t, mock.GetInternal(), 1)
+		for key := range mock.GetInternal() {
+			require.True(t, strings.HasSuffix(key, ":"+IndexStoragePrefix+"/"+tocPath), key)
+		}
+	})
+
+	t.Run("refreshes the ToCs of its resolver while it runs and stops refreshing when it stops", func(t *testing.T) {
+		bucket := newTOCBucket(t)
+		m := NewObjectMetastore(bucket, newResolverConfig(), nil, prometheus.NewPedanticRegistry())
+		_, err := m.tocResolver.ReadTOC(t.Context(), tocPath)
+		require.NoError(t, err)
+
+		require.NoError(t, services.StartAndAwaitRunning(t.Context(), m))
+		require.Eventually(t, func() bool { return bucket.reads(IndexStoragePrefix+"/"+tocPath) >= 3 }, 10*time.Second, 10*time.Millisecond)
+
+		require.NoError(t, services.StopAndAwaitTerminated(t.Context(), m))
+		reads := bucket.reads(IndexStoragePrefix + "/" + tocPath)
+		time.Sleep(200 * time.Millisecond)
+		require.Equal(t, reads, bucket.reads(IndexStoragePrefix+"/"+tocPath), "a stopped metastore does not refresh")
 	})
 }
 
@@ -1922,7 +1978,7 @@ func newTestMetastore(bucket objstore.Bucket) (*ObjectMetastore, *prometheus.Reg
 	reg := prometheus.NewRegistry()
 	logs := bytes.NewBuffer(nil)
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(logs))
-	return NewObjectMetastore(bucket, logger, NewObjectMetastoreMetrics(reg)), reg, logs
+	return NewObjectMetastore(bucket, Config{}, logger, reg), reg, logs
 }
 
 // createIndexObject uploads an index object under the index prefix of bucket. The object has one
@@ -2176,7 +2232,7 @@ func (g *readGate) open() {
 func newTestMetastoreWithCache(bucket objstore.Bucket) (*ObjectMetastore, cache.MockCache) {
 	memoryCache := cache.NewMockCache()
 	metadataCache := metadatacache.NewCache(memoryCache, 0, metadatacache.KindIndex, metadatacache.NewMetrics(nil), nil)
-	return NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()), WithIndexMetadataCache(metadataCache)), memoryCache
+	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry(), WithIndexMetadataCache(metadataCache)), memoryCache
 }
 
 func readObject(t *testing.T, bucket objstore.BucketReader, name string) string {

@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	kinds      = []string{KindLogs, KindIndex}
+	kinds      = []string{KindLogs, KindIndex, KindTOC}
 	operations = []string{operationFetch, operationStore}
 )
 
@@ -34,7 +34,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, []string{"kind"}),
 		misses: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_cache_misses_total",
-			Help: "Data-object metadata cache entries not found in the cache and loaded from object storage.",
+			Help: "Data-object metadata cache lookups that found no entry, or an entry that the caller rejected, and then loaded one from object storage. A cache fetch error counts in the errors metric, not here.",
 		}, []string{"kind"}),
 		errors: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_cache_errors_total",
