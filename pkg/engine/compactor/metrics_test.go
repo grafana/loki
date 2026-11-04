@@ -27,6 +27,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	m.pendingLogBytes.WithLabelValues("acme", "1h").Set(100)
 	m.pendingLogBytes.WithLabelValues("acme", "+Inf").Set(50)
 	m.lastPlanTimestampSeconds.WithLabelValues("acme").Set(10)
+	m.singleObjectLogRuns.WithLabelValues("acme").Set(3)
 	m.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonPlan).Inc()
 	m.logMergeSkippedMergesTotal.WithLabelValues("acme").Inc()
 
@@ -51,6 +52,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	require.Equal(t, 1, testutil.CollectAndCount(m.cyclesTotal))
 	require.Equal(t, 2, testutil.CollectAndCount(m.pendingLogBytes))
 	require.Equal(t, 1, testutil.CollectAndCount(m.lastPlanTimestampSeconds))
+	require.Equal(t, 1, testutil.CollectAndCount(m.singleObjectLogRuns))
 
 	m.deleteTenant("acme")
 
@@ -63,6 +65,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	require.Equal(t, 0, testutil.CollectAndCount(m.tenantLogCyclesTotal))
 	require.Equal(t, 0, testutil.CollectAndCount(m.pendingLogBytes))
 	require.Equal(t, 0, testutil.CollectAndCount(m.lastPlanTimestampSeconds))
+	require.Equal(t, 0, testutil.CollectAndCount(m.singleObjectLogRuns))
 	require.Equal(t, 0, testutil.CollectAndCount(m.logMergeFailedIndexesTotal))
 	require.Equal(t, 0, testutil.CollectAndCount(m.logMergeSkippedMergesTotal))
 

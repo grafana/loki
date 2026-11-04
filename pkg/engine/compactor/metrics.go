@@ -96,6 +96,11 @@ type coordinatorMetrics struct {
 	// lastPlanTimestampSeconds is when a LogMerge phase of a tenant last
 	// planned every index in every window without an error.
 	lastPlanTimestampSeconds *prometheus.GaugeVec // tenant
+
+	// singleObjectLogRuns is the number of log runs of a tenant that hold
+	// exactly one object. It is summed over every index in every window, as of
+	// the last LogMerge phase that planned without an error.
+	singleObjectLogRuns *prometheus.GaugeVec // tenant
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -178,6 +183,10 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		lastPlanTimestampSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_last_plan_timestamp_seconds",
 			Help: "Unix time when a LogMerge phase of the tenant last planned every index in every compacted window without an error. When it is old, loki_dataobj_compaction_pending_log_bytes is stale or incomplete.",
+		}, []string{labelTenant}),
+		singleObjectLogRuns: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_single_object_log_runs",
+			Help: "Log runs of the tenant that hold exactly one object, summed over every index in every compacted window. Includes indexes that need no compaction. Excludes corrupt indexes, which loki_dataobj_compaction_corrupt_indexes_total reports. Set only when a LogMerge phase plans every index without an error, at the same time as loki_dataobj_compaction_last_plan_timestamp_seconds.",
 		}, []string{labelTenant}),
 	}
 }
@@ -276,6 +285,7 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
 	m.pendingLogBytes.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
+	m.singleObjectLogRuns.DeleteLabelValues(tenant)
 	m.logMergeFailedIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.corruptIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.logMergeSkippedMergesTotal.DeleteLabelValues(tenant)

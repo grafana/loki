@@ -18,6 +18,11 @@ type logCompactionPlan struct {
 	window      time.Time
 	sourceIndex indexEntry
 	tasks       []logCompactionTask
+
+	// singleObjectRuns is the number of log runs in the source index that
+	// hold exactly one object. Plans with no work also set it, so the gauge
+	// counts indexes that need no compaction.
+	singleObjectRuns int
 }
 
 // hasWork reports whether p dispatches any task.
