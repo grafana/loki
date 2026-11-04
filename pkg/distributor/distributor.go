@@ -1648,15 +1648,24 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 		return err
 	}
 
-	req := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, len(streams)),
+	internal, supportsInternal := c.(logproto.InternalPusherClient)
+	useInternal := d.cfg.OTLPConfig.DeferAttributeExpansion && supportsInternal
+	if useInternal {
+		req := &logproto.InternalPushRequest{Streams: make([]logproto.InternalStreamAdapter, len(streams))}
+		for i, stream := range streams {
+			req.Streams[i] = stream.Stream
+		}
+		_, err = internal.PushInternal(ctx, req)
 	}
-	for i, s := range streams {
-		// Ingester RPCs serialize the flat view without any modifications.
-		req.Streams[i] = s.Stream.FlatView()
+	// Unimplemented is safe to retry on the legacy RPC during a rolling upgrade.
+	if !useInternal || status.Code(err) == codes.Unimplemented {
+		req := &logproto.PushRequest{Streams: make([]logproto.Stream, len(streams))}
+		for i, stream := range streams {
+			req.Streams[i] = stream.Stream.FlatView()
+		}
+		_, err = c.(logproto.PusherClient).Push(ctx, req)
 	}
 
-	_, err = c.(logproto.PusherClient).Push(ctx, req)
 	d.m.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
 		if e, ok := status.FromError(err); ok {

@@ -868,6 +868,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	}
 
 	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
+	logproto.RegisterInternalPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 

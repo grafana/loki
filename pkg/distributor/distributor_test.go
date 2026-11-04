@@ -3516,6 +3516,8 @@ type mockIngester struct {
 	succeedAfter time.Duration
 	mu           sync.Mutex
 	pushed       []*logproto.PushRequest
+	nested       []*logproto.InternalPushRequest
+	internalErr  error
 }
 
 func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...grpc.CallOption) (*logproto.PushResponse, error) {
@@ -3550,6 +3552,20 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 
 	i.pushed = append(i.pushed, in)
 	return nil, nil
+}
+
+func (i *mockIngester) PushInternal(ctx context.Context, in *logproto.InternalPushRequest, opts ...grpc.CallOption) (*logproto.PushResponse, error) {
+	if i.internalErr != nil {
+		return nil, i.internalErr
+	}
+	i.mu.Lock()
+	i.nested = append(i.nested, in)
+	i.mu.Unlock()
+	flat := &logproto.PushRequest{Format: in.Format}
+	for j := range in.Streams {
+		flat.Streams = append(flat.Streams, in.Streams[j].FlatView())
+	}
+	return i.Push(ctx, flat, opts...)
 }
 
 func (i *mockIngester) Peek() *logproto.PushRequest {
@@ -5105,3 +5121,39 @@ func sumCounterVec(t *testing.T, c prometheus.Collector) float64 {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestSendNestedStreamsToIngester(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		enabled              bool
+		rpcErr               error
+		wantErr              bool
+		wantFlat, wantNested int
+	}{
+		{name: "legacy when disabled", wantFlat: 1},
+		{name: "nested when enabled", enabled: true, wantFlat: 1, wantNested: 1},
+		{name: "old ingester fallback", enabled: true, rpcErr: status.Error(codes.Unimplemented, "old ingester"), wantFlat: 1},
+		{name: "no retry after uncertain result", enabled: true, rpcErr: status.Error(codes.DeadlineExceeded, "timeout"), wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := validation.Limits{}
+			flagext.DefaultValues(&limits)
+			distributors, ingesters := prepare(t, 1, 1, &limits, nil)
+			d := distributors[0]
+			d.cfg.OTLPConfig.DeferAttributeExpansion = tc.enabled
+			ingesters[0].internalErr = tc.rpcErr
+			nested := logproto.InternalStreamAdapter{Labels: `{app="test"}`, ResourceLogs: []logproto.ResourceLogs{{
+				Attrs:     []logproto.LabelAdapter{{Name: "resource", Value: "shared"}},
+				ScopeLogs: []logproto.ScopeLogs{{Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}}}},
+			}}}
+			// Use the address registered by prepare.
+			err := d.sendStreamsErr(t.Context(), ring.InstanceDesc{Addr: "ingester-0"}, []*streamTracker{{Stream: nested}})
+			require.Equal(t, tc.wantErr, err != nil)
+			require.Len(t, ingesters[0].pushed, tc.wantFlat)
+			require.Len(t, ingesters[0].nested, tc.wantNested)
+			if tc.wantNested > 0 {
+				require.Equal(t, nested, ingesters[0].nested[0].Streams[0])
+			}
+		})
+	}
+}
