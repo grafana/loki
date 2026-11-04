@@ -392,14 +392,13 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex.Path)
 	}
 
-	// Pass ctx so shutdown stops retries.
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.dispatchTasks())
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
-	// Detach from cancellation so the ToC swap publishes the finished tasks.
-	// Shutdown and a tenant stop both cancel ctx. An unpublished result
-	// wastes the worker time, and the next pass runs the tasks again.
+	// Detach only after Run. Run needs ctx to stop retries at shutdown, but
+	// the ToC swap must still publish the finished tasks. Without the swap,
+	// the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
 	entries := plan.tocEntries()
 	if err := assignArtifactPaths(entries, artifacts); err != nil {
@@ -496,6 +495,9 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 // the tenant.
 //
 // The stats count every group that succeeded, even when the error is non-nil.
+//
+// When ctx is done, no new group starts. The error is the shutdown error only
+// if no group failed, so a shutdown does not hide a real failure.
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	groups := make(map[layoutKey][]indexEntry)
 	for _, entry := range entries {
@@ -518,12 +520,6 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 
 	// A failed group does not stop the other groups, because groups never
 	// merge with each other.
-	//
-	// Shutdown starts no new group. A group error that wraps context.Canceled
-	// during shutdown is an interruption, not a group failure. A task whose
-	// retries stopped at shutdown is a group failure. If a group failed, the
-	// error joins only the group errors, so the caller treats the phase as
-	// failed, not as interrupted.
 	var total compactionStats
 	var errs []error
 	stop := func(shutdownErr error) (compactionStats, error) {
@@ -603,14 +599,13 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		}
 	}
 
-	// Pass ctx so shutdown stops retries.
 	artifacts, err := c.indexDispatcher.Run(ctx, tenant, dispatchTasks)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
-	// Detach from cancellation so the ToC swap publishes the finished tasks.
-	// Shutdown and a tenant stop both cancel ctx. An unpublished result
-	// wastes the worker time, and the next pass runs the tasks again.
+	// Detach only after Run. Run needs ctx to stop retries at shutdown, but
+	// the ToC swap must still publish the finished tasks. Without the swap,
+	// the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
 	if err := assignArtifactPaths(newEntries, artifacts); err != nil {
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)

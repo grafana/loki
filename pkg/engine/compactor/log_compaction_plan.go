@@ -56,9 +56,9 @@ type logTaskStats struct {
 	oldestTimestamp time.Time
 }
 
-// dispatchTasks returns the tasks of p in task order. Go cannot convert a
-// []logCompactionTask to a []dispatchTask directly.
+// dispatchTasks returns the tasks of p in task order.
 func (p logCompactionPlan) dispatchTasks() []dispatchTask {
+	// Go cannot convert a []logCompactionTask to a []dispatchTask directly.
 	tasks := make([]dispatchTask, len(p.tasks))
 	for i, task := range p.tasks {
 		tasks[i] = task

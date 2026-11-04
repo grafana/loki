@@ -22,9 +22,7 @@ type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Pla
 // physical plan.
 type dispatchTask interface {
 	// physicalPlan returns a new single-root physical plan for the task. Each
-	// call must return new node IDs, so each attempt has its own plan and the
-	// logs tell attempts apart by node ID. Run calls physicalPlan once per
-	// attempt.
+	// call must return new node IDs, so that logs tell attempts apart.
 	physicalPlan(tenant string) *physical.Plan
 }
 
@@ -110,15 +108,16 @@ func (d *planDispatcher) Run(ctx context.Context, tenant string, tasks []dispatc
 	return artifacts, nil
 }
 
-// runTask runs task until an attempt succeeds, the retries run out, or ctx is
-// done. Run cancels ctx only when a sibling task fails. runTask does not retry
-// when retriesStopped returns an error. Retries do not classify errors,
-// because worker errors reach the coordinator as plain strings. A plan without
-// a valid root node fails at once, because a retry builds the same plan.
+// runTask runs task and retries it when it fails. ctx is done only when a
+// sibling task failed. retriesStopped returns an error once shutdown begins.
+//
+// Retries do not classify errors, because worker errors reach the coordinator
+// as plain strings. A plan without a valid root node fails at once, because a
+// retry builds the same plan.
 func (d *planDispatcher) runTask(ctx context.Context, retriesStopped func() error, logger log.Logger, tenant string, task dispatchTask) (*v2.ResultArtifact, error) {
 	for attempt := 1; ; attempt++ {
-		// A done ctx means a sibling task failed, so Run discards any result.
-		// Stop before the attempt registers a workflow.
+		// After a sibling fails, Run discards every result, so skip the
+		// attempt.
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -138,8 +137,8 @@ func (d *planDispatcher) runTask(ctx context.Context, retriesStopped func() erro
 		}
 		if ctx.Err() != nil {
 			d.attempts.WithLabelValues(actor, attemptOutcomeCancelled).Inc()
-			// A real error here is not the first error of the Run, so Run
-			// drops it. Log it so that the failure stays visible.
+			// Run keeps only its first error and drops this one, so log a real
+			// error here.
 			lvl := level.Warn
 			if errors.Is(err, context.Canceled) {
 				lvl = level.Debug
