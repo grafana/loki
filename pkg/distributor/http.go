@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -128,6 +129,26 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	presumedAgentIP := extractPresumedAgentIP(r)
 	maxPushSize := d.validator.MaxPushSize(tenantID)
 
+	semaCtx, cancel := context.WithTimeout(r.Context(), time.Second)
+	defer cancel()
+
+	if err := d.parseSema.Acquire(semaCtx, 1); err != nil {
+		circuitBreakerErr = errServiceUnavailableMaxLoad
+		errorWriter(w, circuitBreakerErr.Error(), http.StatusServiceUnavailable, logger)
+		return
+	}
+	releaseOnce := sync.OnceFunc(func() {
+		d.parseSema.Release(1)
+	})
+	defer releaseOnce()
+
+	// Check again now we have the sema...
+	if maxInflightBytes > 0 && d.inflightBytes.Load() >= maxInflightBytes {
+		circuitBreakerErr = errServiceUnavailableMaxLoad
+		errorWriter(w, circuitBreakerErr.Error(), http.StatusServiceUnavailable, logger)
+		return
+	}
+
 	req, pushStats, err := pushRequestParser(tenantID, r, d.validator.Limits, d.tenantConfigs, maxPushSize, int64(maxPushSize), d.usageTracker, streamResolver, logger)
 	if err != nil {
 		switch {
@@ -162,6 +183,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	newInflightBytes := d.inflightBytes.Add(requestSize)
 	d.m.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
+	releaseOnce()
 
 	_, err = d.pushWithResolver(r.Context(), req, streamResolver, format)
 	if err != nil {
