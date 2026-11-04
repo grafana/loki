@@ -251,6 +251,97 @@ func TestLabelAggregationExpr_String(t *testing.T) {
 	}
 }
 
+// An empty grouping is not the same as no grouping on a range aggregation: by () reduces the
+// result to one series, and without () keeps every label. Prettify must keep both, or the query
+// changes meaning, or no longer parses, when it is split over several lines.
+func TestFormat_EmptyGrouping(t *testing.T) {
+	old := MaxCharsPerLine
+	MaxCharsPerLine = 20
+	defer func() { MaxCharsPerLine = old }()
+
+	cases := []struct {
+		name string
+		in   string
+		exp  string
+	}{
+		{
+			name: "range aggregation without grouping",
+			in:   `avg_over_time({foo="bar"} | unwrap baz [5m])`,
+			exp: `avg_over_time(
+  {foo="bar"}
+    | unwrap baz [5m]
+)`,
+		},
+		{
+			name: "range aggregation by ()",
+			in:   `avg_over_time({foo="bar"} | unwrap baz [5m]) by ()`,
+			exp: `avg_over_time(
+  {foo="bar"}
+    | unwrap baz [5m]
+) by ()`,
+		},
+		{
+			name: "range aggregation without ()",
+			in:   `quantile_over_time(0.9, {foo="bar"} | unwrap baz [5m]) without ()`,
+			exp: `quantile_over_time(
+  0.9,
+  {foo="bar"}
+    | unwrap baz [5m]
+) without ()`,
+		},
+		{
+			name: "range aggregation by labels",
+			in:   `avg_over_time({foo="bar"} | unwrap baz [5m]) by (a, b)`,
+			exp: `avg_over_time(
+  {foo="bar"}
+    | unwrap baz [5m]
+) by (a, b)`,
+		},
+		{
+			// by () and no grouping are the same for a vector aggregation, so neither is printed.
+			name: "vector aggregation by ()",
+			in:   `sum by () (rate({foo="bar"}[5m]))`,
+			exp: `sum(
+  rate(
+    {foo="bar"} [5m]
+  )
+)`,
+		},
+		{
+			name: "vector aggregation without ()",
+			in:   `sum without () (rate({foo="bar"}[5m]))`,
+			exp: `sum without ()(
+  rate(
+    {foo="bar"} [5m]
+  )
+)`,
+		},
+		{
+			name: "label aggregation by ()",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			exp: `approx_count_distinct(
+  mac,
+  {foo="bar"} [1d]
+) by ()`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+
+			pretty := Prettify(expr)
+			require.Equal(t, c.exp, pretty)
+
+			// What matters is that the formatted query is the same query.
+			reparsed, err := ParseExpr(pretty)
+			require.NoError(t, err)
+			require.Equal(t, expr.String(), reparsed.String())
+		})
+	}
+}
+
 func TestFormat_CountDistinctSketch(t *testing.T) {
 	orig := MaxCharsPerLine
 	t.Cleanup(func() { MaxCharsPerLine = orig })
