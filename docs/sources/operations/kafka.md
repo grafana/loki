@@ -22,7 +22,7 @@ By default, the [distributor](https://grafana.com/docs/loki/<LOKI_VERSION>/get-s
 
 Kafka sits between the distributor and the ingester as a durable, replicated buffer. This decouples the two components so that a slow or restarting ingester doesn't block or fail writes.
 
-Loki uses the [franz-go](https://github.com/twmb/franz-go) Kafka client library. If you need to debug Kafka client behavior in your logs, look for the component name `kafka_client`. Most Kafka client metrics use the `loki_kafka_client_` prefix.
+Loki uses the [franz-go](https://github.com/twmb/franz-go) Kafka client library. If you need to debug Kafka client behavior in your logs, look for the component name `kafka_client`. Kafka client metrics for the partition reader use the `loki_kafka_client_` prefix. Producer-side metrics use the `kafka_client_` prefix (without the `loki_` part).
 
 ## When and why to use it
 
@@ -136,6 +136,9 @@ This section lists the most important Kafka-related metrics, organized by compon
 - `loki_kafka_client_partition_reader_offset_commit_requests_total` and `loki_kafka_client_partition_reader_offset_commit_failures_total`: health of offset commits to Kafka.
 - `loki_kafka_client_partition_reader_last_committed_offset` (label: `partition`): the last offset successfully committed. Compare against `loki_ingester_partition_current_offset` for lag alerting.
 - `loki_kafka_client_produce_write_wait_seconds`, `loki_kafka_client_produce_write_time_seconds`, `loki_kafka_client_produce_read_wait_seconds` and `loki_kafka_client_produce_read_time_seconds` (labels: `node_id`, `host`): native histograms of how long each stage of a Produce request to each broker takes: waiting to be written, writing, waiting for the response, and reading the response.
+- `kafka_client_produce_requests_total`: total number of produce requests issued to Kafka.
+- `kafka_client_produce_failures_total` (label: `reason`): total number of failed produce requests. Alert on this to detect backpressure or broker-side issues.
+- `kafka_client_buffered_produce_bytes_limit`: the configured maximum bytes of buffered, unacknowledged produce records (`kafka_config.producer_max_buffered_bytes`). Useful as a reference when investigating backpressure.
 
 ## Configuration examples
 
