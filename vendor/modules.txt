@@ -1122,8 +1122,8 @@ github.com/mattn/go-isatty
 # github.com/mdlayher/socket v0.8.0
 ## explicit; go 1.26.0
 github.com/mdlayher/socket
-# github.com/mdlayher/vsock v1.3.0
-## explicit; go 1.25.0
+# github.com/mdlayher/vsock v1.4.0
+## explicit; go 1.26.0
 github.com/mdlayher/vsock
 # github.com/miekg/dns v1.1.73
 ## explicit; go 1.25.0

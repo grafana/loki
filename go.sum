@@ -574,8 +574,8 @@ github.com/mattn/go-runewidth v0.0.31 h1:1oCV4ReTlosDBc6rYRw5cL8S/4y8iv5oRl4SJ5I
 github.com/mattn/go-runewidth v0.0.31/go.mod h1:3qAiGCV4Koz/yuveO58qUefmUTRm8r0IGEXZ9jeHp/8=
 github.com/mdlayher/socket v0.8.0 h1:1lIVvHAs3sT623kPkPDa+I0nLVusskwnpWzp6ZUcNyc=
 github.com/mdlayher/socket v0.8.0/go.mod h1:EhNb63aXqexVoTJDblxvDOSuIGIJinC4H5ZktnaJ6Rk=
-github.com/mdlayher/vsock v1.3.0 h1:bqQfZ1OznI03y6YiXp2sze05RVdzLn/zsfjnjd4+ivI=
-github.com/mdlayher/vsock v1.3.0/go.mod h1:WsuksavOvwCnV5UqGHUkvAvCy+Dqy81y4goKQTzxxNY=
+github.com/mdlayher/vsock v1.4.0 h1:5hqdkMCC/S1ToCjSKYEHjGcLpZFmdGmwQtLl3EzQm2s=
+github.com/mdlayher/vsock v1.4.0/go.mod h1:JY/u2wqf2Lo/YlBuj3vipl1uMJSvAXjbHgtmLDkmvtg=
 github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
 github.com/miekg/dns v1.1.73/go.mod h1:RW2Obtfd5NZHvOFe3zYG0W8koWOQtAzyHaLo8vASBuQ=
 github.com/minio/crc64nvme v1.1.1 h1:8dwx/Pz49suywbO+auHCBpCtlW1OfpcLN7wYgVR6wAI=
