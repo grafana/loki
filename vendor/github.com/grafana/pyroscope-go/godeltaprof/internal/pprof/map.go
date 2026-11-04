@@ -29,10 +29,10 @@ func (m *profMap[PREV, ACC]) Lookup(stk []uintptr, tag uintptr) *profMapEntry[PR
 	h := uintptr(0)
 	for _, x := range stk {
 		h = h<<8 | (h >> (8 * (unsafe.Sizeof(h) - 1)))
-		h += uintptr(x) * 41
+		h += x * 41
 	}
 	h = h<<8 | (h >> (8 * (unsafe.Sizeof(h) - 1)))
-	h += uintptr(tag) * 41
+	h += tag * 41
 
 	// Find entry if present.
 	var last *profMapEntry[PREV, ACC]
@@ -42,20 +42,21 @@ Search:
 			continue
 		}
 		for j := range stk {
-			if e.stk[j] != uintptr(stk[j]) {
+			if e.stk[j] != stk[j] {
 				continue Search
 			}
 		}
-		// Move to front.
+		// Move to the front.
 		if last != nil {
 			last.nextHash = e.nextHash
 			e.nextHash = m.hash[h]
 			m.hash[h] = e
 		}
+
 		return e
 	}
 
-	// Add new entry.
+	// Add a new entry.
 	if len(m.free) < 1 {
 		m.free = make([]profMapEntry[PREV, ACC], 128)
 	}
@@ -71,12 +72,11 @@ Search:
 	e.stk = m.freeStk[:len(stk):len(stk)]
 	m.freeStk = m.freeStk[len(stk):]
 
-	for j := range stk {
-		e.stk[j] = uintptr(stk[j])
-	}
+	copy(e.stk, stk)
 	if m.hash == nil {
 		m.hash = make(map[uintptr]*profMapEntry[PREV, ACC])
 	}
 	m.hash[h] = e
+
 	return e
 }
