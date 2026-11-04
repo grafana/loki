@@ -10,7 +10,7 @@ weight: 200
 The primary method for collecting and monitoring a Loki cluster is to use the [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/) chart. This chart provides a comprehensive monitoring solution for Kubernetes clusters and includes direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo, and Mimir) stack. This procedure will walk you through deploying version 3.8.x of the Kubernetes Monitoring Helm chart to monitor your Loki cluster.
 
 {{< admonition type="note" >}}
-This page covers chart version 3.8.x, which is a maintained stable release line. If you do not already have a reason to stay on chart 3.8.x, use [Deploy Loki meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy/) instead, which covers the current chart 4.x line. For help moving from chart 3.x to 4.x, refer to the [Kubernetes Monitoring Helm chart migration guide](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/helm-chart-config/helm-chart/migrate-helm-chart/).
+This page covers chart version 3.8.x, which is a maintained stable release line. If you do not already have a reason to stay on chart 3.8.x, use [Deploy Loki meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy/) instead, which covers the current chart 4.x line. For help moving from chart 3.x to 4.x, refer to the [Kubernetes Monitoring Helm chart migration guide](https://grafana.com/docs/grafana-cloud/observe-and-act/monitor-infrastructure/kubernetes-monitoring/configuration/helm-chart-config/helm-chart/migrate-helm-chart/).
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
