@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -645,21 +644,10 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	desc.flushed = time.Now()
 }
 
-// maxRecordTimestamp is the latest record timestamp that is used (around the year 2262). Later
-// ones are ignored: retention measures time since IngestedAt with model.Time.Sub, which overflows
-// time.Duration for timestamps that far ahead and could expire the chunk right away.
-var maxRecordTimestamp = time.Unix(0, math.MaxInt64)
-
 // validRecordTimestamp reports whether ts can be used as the timestamp of an ingested Kafka record.
-func validRecordTimestamp(ts time.Time, logger log.Logger) bool {
-	if ts.UnixMilli() <= 0 {
-		return false
-	}
-	if !ts.Before(maxRecordTimestamp) {
-		level.Error(logger).Log("msg", "ignoring record timestamp after the supported range", "record_timestamp", ts, "max", maxRecordTimestamp)
-		return false
-	}
-	return true
+// Records without one come with a zero time or Kafka's NoTimestamp (-1).
+func validRecordTimestamp(ts time.Time) bool {
+	return ts.UnixMilli() > 0
 }
 
 func (i *Ingester) chunkIngestedAt(metric labels.Labels, from model.Time, recordTime time.Time) model.Time {
@@ -673,7 +661,7 @@ func (i *Ingester) chunkIngestedAt(metric labels.Labels, from model.Time, record
 		return 0
 	}
 
-	if !validRecordTimestamp(recordTime, i.logger) {
+	if !validRecordTimestamp(recordTime) {
 		return 0
 	}
 

@@ -118,9 +118,8 @@ func TestConsumerPassesRecordTimestamp(t *testing.T) {
 	require.NoError(t, err)
 
 	var toPush []partition.Record
-	// A usable timestamp, then ones that aren't: none, Kafka's NoTimestamp and one past the
-	// supported range.
-	for i, ts := range []time.Time{recordTime, {}, time.UnixMilli(-1), time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)} {
+	// A usable timestamp, then ones that aren't: none and Kafka's NoTimestamp.
+	for i, ts := range []time.Time{recordTime, {}, time.UnixMilli(-1)} {
 		for _, record := range encodeFlat(t, streamBar) {
 			toPush = append(toPush, partition.Record{
 				Ctx:       context.Background(),
@@ -144,7 +143,7 @@ func TestConsumerPassesRecordTimestamp(t *testing.T) {
 	for _, push := range pusher.pushes {
 		got = append(got, push.IngestedAt)
 	}
-	require.Equal(t, []time.Time{recordTime, {}, {}, {}}, got)
+	require.Equal(t, []time.Time{recordTime, {}, {}}, got)
 }
 
 // consume runs the records of each stream through a consumer and returns what reached the

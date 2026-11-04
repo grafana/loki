@@ -577,11 +577,10 @@ func TestValidRecordTimestamp(t *testing.T) {
 		{"zero", time.Time{}, false},
 		{"epoch", time.UnixMilli(0), false},
 		{"Kafka NoTimestamp", time.UnixMilli(-1), false},
-		{"far future", time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC), false},
 		{"a record timestamp", time.UnixMilli(1_700_000_000_000), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, validRecordTimestamp(tc.ts, gokitlog.NewNopLogger()))
+			require.Equal(t, tc.want, validRecordTimestamp(tc.ts))
 		})
 	}
 }

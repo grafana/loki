@@ -158,7 +158,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 			push := TimestampedPush{
 				PushRequest: &logproto.PushRequest{Streams: []logproto.Stream{stream}},
 			}
-			if validRecordTimestamp(record.Timestamp, kc.logger) {
+			if validRecordTimestamp(record.Timestamp) {
 				push.IngestedAt = record.Timestamp
 			}
 
