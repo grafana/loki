@@ -826,7 +826,7 @@ Requests are timing out due to slow response times or network issues.
 **Default configuration:**
 
 - Alloy default timeout: 10 seconds
-- Loki server timeout: `-server.http-server-write-timeout` (default: 30s)
+- Loki server timeout: `-server.http-write-timeout` (default: 30s)
 
 **Resolution:**
 
@@ -864,7 +864,7 @@ Common triggers include:
 **Default configuration:**
 
 - Per-tenant query timeout: `query_timeout` in `limits_config` / `-querier.query-timeout` (default: 1m)
-- Loki server HTTP write timeout: `-server.http-server-write-timeout` (default: 30s)
+- Loki server HTTP write timeout: `-server.http-write-timeout` (default: 30s)
 - Load balancer / reverse proxy timeout: depends on your infrastructure
 
 **Resolution:**
