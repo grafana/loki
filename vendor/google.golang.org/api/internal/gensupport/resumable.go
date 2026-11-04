@@ -193,6 +193,8 @@ func (rx *ResumableUpload) transferChunk(ctx context.Context, chunk io.Reader, o
 		return nil, context.DeadlineExceeded
 	case result := <-resultCh:
 		// Handle the result from the upload.
+		// Cancel our completed context.
+		cancel()
 		if result.err != nil {
 			return result.res, result.err
 		}

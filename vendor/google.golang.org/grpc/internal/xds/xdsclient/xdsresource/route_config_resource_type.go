@@ -35,10 +35,15 @@ const (
 // interface for route configuration resources.
 type routeConfigResourceDecoder struct {
 	bootstrapConfig *bootstrap.Config
+	serverConfigs   map[xdsclient.ServerConfig]*bootstrap.ServerConfig
 }
 
 func (d *routeConfigResourceDecoder) Decode(resource *xdsclient.AnyProto, opts xdsclient.DecodeOptions) (*xdsclient.DecodeResult, error) {
-	name, rc, err := unmarshalRouteConfigResource(resource.ToAny(), &opts)
+	var serverCfg *bootstrap.ServerConfig
+	if opts.ServerConfig != nil {
+		serverCfg = d.serverConfigs[*opts.ServerConfig]
+	}
+	name, rc, err := unmarshalRouteConfigResource(resource.ToAny(), d.bootstrapConfig, serverCfg)
 	if name == "" {
 		// Name is unset only when protobuf deserialization fails.
 		return nil, err
@@ -122,6 +127,6 @@ func WatchRouteConfig(p Producer, name string, w RouteConfigWatcher) (cancel fun
 
 // NewRouteConfigResourceTypeDecoder returns a xdsclient.Decoder that wraps
 // the xdsresource.routeConfigType.
-func NewRouteConfigResourceTypeDecoder(bc *bootstrap.Config) xdsclient.Decoder {
-	return &routeConfigResourceDecoder{bootstrapConfig: bc}
+func NewRouteConfigResourceTypeDecoder(bc *bootstrap.Config, gServerCfgMap map[xdsclient.ServerConfig]*bootstrap.ServerConfig) xdsclient.Decoder {
+	return &routeConfigResourceDecoder{bootstrapConfig: bc, serverConfigs: gServerCfgMap}
 }

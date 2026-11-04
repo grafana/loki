@@ -23,6 +23,7 @@ import (
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/auth/credentials/impersonate"
+	intexternalaccount "cloud.google.com/go/auth/credentials/internal/externalaccount"
 	intimpersonate "cloud.google.com/go/auth/credentials/internal/impersonate"
 	"cloud.google.com/go/auth/internal"
 	"cloud.google.com/go/auth/internal/credsfile"
@@ -34,6 +35,13 @@ const (
 	iamCredAud  = "https://iamcredentials.googleapis.com/"
 )
 
+// credsFromDefault takes the credentials detected from the environment or JSON
+// and constructs appropriate ID token credentials.
+//
+// Note: For ExternalAccount and ImpersonatedServiceAccount types, this function
+// will create a new, non-impersonated base credential to avoid double
+// impersonation when generating the ID token. It does not use the provided
+// 'creds' as-is for these types.
 func credsFromDefault(creds *auth.Credentials, opts *Options) (*auth.Credentials, error) {
 	b := creds.JSON()
 	t, err := credsfile.ParseFileType(b)
@@ -82,12 +90,18 @@ func credsFromDefault(creds *auth.Credentials, opts *Options) (*auth.Credentials
 		}
 		account := filepath.Base(accountURL.ServiceAccountImpersonationURL)
 		account = strings.Split(account, ":")[0]
+
+		baseCreds, err := baseCredsForImpersonation(t, b, opts, creds)
+		if err != nil {
+			return nil, err
+		}
+
 		config := impersonate.IDTokenOptions{
 			Audience:        opts.Audience,
 			TargetPrincipal: account,
 			IncludeEmail:    true,
 			Client:          opts.client(),
-			Credentials:     creds,
+			Credentials:     baseCreds, // Use the non-impersonated base credentials!
 			Logger:          internallog.New(opts.Logger),
 		}
 		idTokenCreds, err := impersonate.NewIDTokenCredentials(&config)
@@ -140,4 +154,72 @@ func resolveUniverseDomain(f *credsfile.ServiceAccountFile) string {
 		return f.UniverseDomain
 	}
 	return internal.DefaultUniverseDomain
+}
+
+// baseCredsForImpersonation constructs a non-impersonated base credential
+// provider to avoid double impersonation. The 'creds' object returned by
+// DetectDefault is already impersonated because it faithfully fulfills the
+// instructions in the configuration file. However, for the specific context of
+// generating an ID token, we must bypass that first layer of impersonation and
+// use the source principal directly to call the generateIdToken API. This
+// maintains separation of concerns by letting DetectDefault act as a general
+// loader while handling the specific needs of idtoken generation here, avoiding
+// a leaky abstraction in core packages.
+func baseCredsForImpersonation(t string, b []byte, opts *Options, creds *auth.Credentials) (*auth.Credentials, error) {
+	var baseCreds *auth.Credentials
+	if credentials.CredType(t) == credentials.ExternalAccount {
+		f, err := credsfile.ParseExternalAccount(b)
+		if err != nil {
+			return nil, err
+		}
+		externalOpts := &intexternalaccount.Options{
+			Audience:                 f.Audience,
+			SubjectTokenType:         f.SubjectTokenType,
+			TokenURL:                 f.TokenURL,
+			TokenInfoURL:             f.TokenInfoURL,
+			ClientSecret:             f.ClientSecret,
+			ClientID:                 f.ClientID,
+			CredentialSource:         f.CredentialSource,
+			QuotaProjectID:           f.QuotaProjectID,
+			Scopes:                   []string{"https://www.googleapis.com/auth/cloud-platform"},
+			WorkforcePoolUserProject: f.WorkforcePoolUserProject,
+			Client:                   opts.client(),
+			Logger:                   opts.Logger,
+			IsDefaultClient:          opts.Client == nil,
+		}
+		// Do NOT set ServiceAccountImpersonationURL here to avoid the first layer of impersonation!
+		baseTP, err := intexternalaccount.NewTokenProvider(externalOpts)
+		if err != nil {
+			return nil, err
+		}
+		baseCreds = auth.NewCredentials(&auth.CredentialsOptions{
+			TokenProvider:          baseTP,
+			JSON:                   b,
+			UniverseDomainProvider: auth.CredentialsPropertyFunc(creds.UniverseDomain),
+		})
+	} else {
+		// For ImpersonatedServiceAccount
+		f, err := credsfile.ParseImpersonatedServiceAccount(b)
+		if err != nil {
+			return nil, err
+		}
+		// Extract source credentials
+		sourceOpts := &credentials.DetectOptions{
+			Scopes:           []string{"https://www.googleapis.com/auth/cloud-platform"},
+			CredentialsJSON:  f.CredSource,
+			Client:           opts.client(),
+			UseSelfSignedJWT: true,
+		}
+		// Detect credentials for the source
+		sourceCreds, err := credentials.DetectDefault(sourceOpts)
+		if err != nil {
+			return nil, err
+		}
+		baseCreds = auth.NewCredentials(&auth.CredentialsOptions{
+			TokenProvider:          sourceCreds,
+			JSON:                   b,
+			UniverseDomainProvider: auth.CredentialsPropertyFunc(creds.UniverseDomain),
+		})
+	}
+	return baseCreds, nil
 }
