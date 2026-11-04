@@ -1205,13 +1205,15 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 // rateLimitBucket accumulates the bytes and line count of the streams metered against a
 // single ingestion rate-limit bucket (either the tenant-wide bucket or a per-policy bucket).
 type rateLimitBucket struct {
-	policy      string
-	hasOverride bool
-	bytes       int
-	lines       int
+	policy       string
+	retryAfter   time.Duration
+	bytes        int
+	lines        int
+	hasOverride  bool
+	exceedsBurst bool
 }
 
-// rateLimitError builds the client-facing 429 error when at least one rate limit bucket
+// rateLimitError builds the client-facing error when at least one rate limit bucket
 // is exceeded.
 func (d *Distributor) rateLimitError(exceededBuckets []*rateLimitBucket) error {
 	if len(exceededBuckets) == 1 {
@@ -1233,6 +1235,16 @@ func (d *Distributor) rateLimitError(exceededBuckets []*rateLimitBucket) error {
 	}
 
 	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, strings.Join(policies, ", "))
+}
+
+// rateLimitStatusCode returns the HTTP status code for the exceeded buckets.
+func (d *Distributor) rateLimitStatusCode(exceededBuckets []*rateLimitBucket) int {
+	for _, b := range exceededBuckets {
+		if b.exceedsBurst {
+			return http.StatusRequestEntityTooLarge
+		}
+	}
+	return http.StatusTooManyRequests
 }
 
 // enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
@@ -1272,7 +1284,9 @@ func (d *Distributor) enforceIngestionRateLimits(
 		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
 		// bucket (rather than stopping at the first failure) so the rejection error can
 		// deterministically report all exceeded buckets.
-		if !r.OK() || r.DelayFrom(now) > 0 {
+		b.exceedsBurst = !r.OK()
+		b.retryAfter = r.DelayFrom(now)
+		if b.exceedsBurst || b.retryAfter > 0 {
 			exceeded = append(exceeded, b)
 		}
 	}
@@ -1306,7 +1320,7 @@ func (d *Distributor) enforceIngestionRateLimits(
 	err := d.rateLimitError(exceeded)
 	d.writeFailuresManager.Log(tenantID, err)
 	// Return a 429 to indicate to the client they are being rate limited
-	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	return httpgrpc.Errorf(d.rateLimitStatusCode(exceeded), "%s", err.Error())
 }
 
 // trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only

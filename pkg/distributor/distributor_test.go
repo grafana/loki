@@ -96,7 +96,7 @@ func TestDistributor(t *testing.T) {
 		{
 			lines:          100,
 			streams:        1,
-			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg)},
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusRequestEntityTooLarge, validation.RateLimitedErrorMsg)},
 		},
 		{
 			lines:            100,
@@ -1073,7 +1073,9 @@ func TestDistributor_PushRateLimitsOnlyValidatedStreams(t *testing.T) {
 					wantStatus := http.StatusBadRequest
 					var rateLimitedBytes, rateLimitedSamples float64
 					if rateLimited {
-						wantStatus = http.StatusTooManyRequests
+						// The burst is one byte smaller than the valid line, so the request
+						// exceeds the burst and can never be admitted.
+						wantStatus = http.StatusRequestEntityTooLarge
 						rateLimitedBytes, rateLimitedSamples = float64(len(validLine)), 1
 					}
 					require.Equal(t, int32(wantStatus), response.Code)
@@ -2514,6 +2516,56 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushIngestionRateLimitStatusCode(t *testing.T) {
+	type testPush struct {
+		bytes        int
+		expectedCode int // 0 means the push should succeed
+	}
+
+	tests := map[string]struct {
+		pushes []testPush
+	}{
+		"request larger than burst returns 413": {
+			pushes: []testPush{{bytes: 150, expectedCode: http.StatusRequestEntityTooLarge}},
+		},
+		"request within burst but bucket exhausted returns 429": {
+			pushes: []testPush{
+				{bytes: 60},
+				{bytes: 60, expectedCode: http.StatusTooManyRequests},
+			},
+		},
+		"rejected oversized request does not consume tokens": {
+			pushes: []testPush{
+				{bytes: 150, expectedCode: http.StatusRequestEntityTooLarge},
+				{bytes: 100},
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+			limits.IngestionRateMB = datasize.ByteSize(100).MBytes()
+			limits.IngestionBurstSizeMB = datasize.ByteSize(100).MBytes()
+
+			distributors, _ := prepare(t, 1, 5, limits, nil)
+			for _, p := range tc.pushes {
+				_, err := distributors[0].Push(ctx, makeWriteRequest(1, p.bytes))
+				if p.expectedCode == 0 {
+					require.NoError(t, err)
+					continue
+				}
+				resp, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok)
+				require.Equal(t, int32(p.expectedCode), resp.Code)
+				require.Equal(t, validation.RateLimitedErrorMsg, string(resp.Body))
+			}
+		})
+	}
+}
+
 func TestDistributor_PushIngestionRateLimitedByPolicy(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
@@ -2538,11 +2590,12 @@ func TestDistributor_PushIngestionRateLimitedByPolicy(t *testing.T) {
 
 	distributors, _ := prepare(t, 1, 5, limits, nil)
 
-	// A push under the "finance" policy exceeding its 50-byte budget is rejected against the
-	// per-policy limit (50), not the generous tenant limit.
+	// A push under the "finance" policy exceeding its 50-byte burst is rejected against the
+	// per-policy limit (50), not the generous tenant limit. It is larger than the burst, so it
+	// can never succeed and gets a 413 rather than a retryable 429.
 	resp, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 60, []string{`{foo="bar"}`}, false, false, false))
 	assert.Nil(t, resp)
-	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "finance"), err)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusRequestEntityTooLarge, validation.RateLimitedPolicyErrorMsg, "finance"), err)
 
 	// A push with labels not matched to any policy uses the tenant-wide bucket and is allowed.
 	resp, err = distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 60, []string{`{other="x"}`}, false, false, false))
@@ -2581,7 +2634,7 @@ func TestDistributor_PushIngestionRateLimitPolicyAllOrNothing(t *testing.T) {
 
 	resp, err := distributors[0].Push(ctx, req)
 	assert.Nil(t, resp)
-	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "finance"), err)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusRequestEntityTooLarge, validation.RateLimitedPolicyErrorMsg, "finance"), err)
 
 	// The ops bucket must NOT have been drained by the rejected request: a fresh ops push that
 	// fills its entire 50-byte budget still succeeds. (Without reservation cancellation, the
@@ -2619,7 +2672,8 @@ func TestDistributor_PushIngestionRateLimitMultiplePolicies(t *testing.T) {
 	req.Streams = append(req.Streams, opsStreams.Streams...)
 
 	// The error must enumerate both policies in sorted order (finance before ops).
-	expectedErr := httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedMultiErrorMsg, "finance, ops")
+	// Both exceed their burst, so the status is 413.
+	expectedErr := httpgrpc.Errorf(http.StatusRequestEntityTooLarge, validation.RateLimitedMultiErrorMsg, "finance, ops")
 
 	// Push twice to demonstrate the message is deterministic (independent of map iteration order).
 	for i := 0; i < 2; i++ {
