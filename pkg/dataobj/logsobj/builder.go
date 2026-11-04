@@ -172,7 +172,8 @@ type Builder struct {
 	// append many records of one stream in a row, so the builder resolves a
 	// target once per run of a stream, not once per record.
 	//
-	// Reset sets it to nil, because it points into layouts, streams and logs.
+	// Reset sets it to nil, because it holds values from the layout of the
+	// current object and pointers to its streams and logs builders.
 	lastTarget *streamTarget
 
 	// sortLogsMetrics and sortStreamsMetrics are never registered. They absorb

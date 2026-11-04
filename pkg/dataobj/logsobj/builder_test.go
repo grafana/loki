@@ -589,7 +589,8 @@ func (m tenantOverrides) DataObjShardLayout(string) streams.ShardLayout {
 }
 
 // oneShardOverrides maps tenant IDs to their schema labels. Every tenant has
-// one shard bucket, so logs sections order records by schema key only.
+// one shard bucket, so logs sections order records by schema key, then by
+// stream hash and stream ID, then by timestamp descending.
 type oneShardOverrides map[string][]string
 
 func (m oneShardOverrides) SortSchemaLabels(tenant string) []string { return m[tenant] }
