@@ -198,8 +198,8 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		cfg:             cfg,
 		logger:          logger,
 		bucket:          bucket,
-		indexDispatcher: newPlanDispatcher(logger, runner.run, 4, cfg.TaskMaxRetries, metrics),
-		logDispatcher:   newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, metrics),
+		indexDispatcher: newPlanDispatcher(logger, runner.run, 4, cfg.TaskMaxRetries, metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, metrics.taskAttemptsTotal),
 		publisher:       &tocPublisher{writer: replacer, timeout: 30 * time.Second},
 		clock:           clock,
 		sleep:           sleepUntil,
@@ -838,42 +838,6 @@ func requireEntriesMatchCalls(t *testing.T, calls []runCall, entries []metastore
 	require.ElementsMatch(t, callPaths, entryPaths)
 }
 
-func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	result, err := c.compactTenantIndexes(ctx, "acme", window, entries)
-	require.NoError(t, err)
-	require.Equal(t, compactionStats{removed: 4, added: 2, dispatched: 2}, result)
-
-	calls := runner.snapshot()
-	require.Len(t, calls, 2)
-	for _, call := range calls {
-		root, err := call.plan.Root()
-		require.NoError(t, err)
-		node, ok := root.(*physical.IndexMerge)
-		require.True(t, ok)
-		var schemas = make(map[string]bool)
-		for _, run := range node.Runs {
-			for _, section := range run.Sections {
-				if strings.Contains(section.ObjectPath, "label:service_name") {
-					schemas["label:service_name"] = true
-				}
-				if strings.Contains(section.ObjectPath, "label:cluster") {
-					schemas["label:cluster"] = true
-				}
-			}
-		}
-		require.Len(t, schemas, 1, "one IndexMerge task must contain only one sort schema")
-	}
-	require.Len(t, replacer.snapshot(), 2, "each schema group is swapped independently")
-}
-
 // seedTwoSchemaIndexes writes two overlapping indexes for each of the sort
 // schemas label:service_name and label:cluster. Each index path contains its
 // schema. The indexes form two layout groups that plan one IndexMerge task
@@ -1062,10 +1026,41 @@ func TestCompactTenantIndexes(t *testing.T) {
 		require.Len(t, swaps, 1)
 		require.Equal(t, "indexes/tenants/test/aa/artifact-02", swaps[0].newEntries[0].Path)
 	})
-}
 
-func TestCompactTenant_DoesNotMergeIndexesAcrossShardLayouts(t *testing.T) {
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	t.Run("does not merge indexes across sort schemas", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		entries := seedTwoSchemaIndexes(ctx, t, bucket, window)
+
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		result, err := c.compactTenantIndexes(ctx, "acme", window, entries)
+		require.NoError(t, err)
+		require.Equal(t, compactionStats{removed: 4, added: 2, dispatched: 2}, result)
+
+		calls := runner.snapshot()
+		require.Len(t, calls, 2)
+		for _, call := range calls {
+			root, err := call.plan.Root()
+			require.NoError(t, err)
+			node, ok := root.(*physical.IndexMerge)
+			require.True(t, ok)
+			var schemas = make(map[string]bool)
+			for _, run := range node.Runs {
+				for _, section := range run.Sections {
+					if strings.Contains(section.ObjectPath, "label:service_name") {
+						schemas["label:service_name"] = true
+					}
+					if strings.Contains(section.ObjectPath, "label:cluster") {
+						schemas["label:cluster"] = true
+					}
+				}
+			}
+			require.Len(t, schemas, 1, "one IndexMerge task must contain only one sort schema")
+		}
+		require.Len(t, replacer.snapshot(), 2, "each schema group is swapped independently")
+	})
+
 	type layoutGroup struct {
 		name         string
 		shardBuckets uint32
@@ -1656,6 +1651,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			}
 			// A task can skip its attempt when a sibling task already failed,
 			// so the calls are a subset of the planned tasks.
+			require.NotEmpty(t, actors)
 			require.Subset(t, test.plannedActors, actors)
 			require.LessOrEqual(t, len(actors), len(test.plannedActors))
 			require.ErrorIs(t, err, taskErr)

@@ -74,8 +74,8 @@ func newCoordinator(
 		cfg:             cfg,
 		logger:          logger,
 		bucket:          bucket,
-		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, metrics),
-		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, metrics),
+		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,
@@ -396,8 +396,8 @@ func (c *coordinator) executeLogCompaction(
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
-	// Detach only after Run. Run needs ctx to stop retries at shutdown, but
-	// the ToC swap must still publish the finished tasks. Without the swap,
+	// Detach only after Run. Run needs ctx to stop retries at shutdown or a
+	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
 	// the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
 	entries := plan.tocEntries()
@@ -556,6 +556,17 @@ func (c *coordinator) skipCorruptIndex(tenant string, window time.Time, path, ph
 	c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phase).Inc()
 }
 
+// indexMergeTask merges the index runs of spec into one new index for the ToC
+// window that starts at window.
+type indexMergeTask struct {
+	window time.Time
+	spec   *compactionv2pb.TaskSpec
+}
+
+func (t indexMergeTask) physicalPlan(tenant string) *physical.Plan {
+	return buildIndexMergePlan(tenant, t.window, t.spec)
+}
+
 func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
 	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
@@ -603,8 +614,8 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
-	// Detach only after Run. Run needs ctx to stop retries at shutdown, but
-	// the ToC swap must still publish the finished tasks. Without the swap,
+	// Detach only after Run. Run needs ctx to stop retries at shutdown or a
+	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
 	// the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
 	if err := assignArtifactPaths(newEntries, artifacts); err != nil {
@@ -981,7 +992,8 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 
 // runTenantLoop alternates IndexMerge and LogMerge for tenant until ctx is
 // cancelled or both phases are disabled. After ctx is cancelled, a dispatch
-// in progress runs to its ToC swap before the loop returns.
+// in progress runs its tasks to completion, then swaps the ToC if every task
+// succeeded, before the loop returns.
 //
 // Each phase runs against every window in c.windows(). An IndexMerge phase
 // with an error runs again. A LogMerge phase always flips to IndexMerge.

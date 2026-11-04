@@ -36,17 +36,6 @@ func buildIndexMergePlan(
 	return physical.FromGraph(g)
 }
 
-// indexMergeTask merges the index runs of spec into one new index for the ToC
-// window that starts at window.
-type indexMergeTask struct {
-	window time.Time
-	spec   *compactionv2pb.TaskSpec
-}
-
-func (t indexMergeTask) physicalPlan(tenant string) *physical.Plan {
-	return buildIndexMergePlan(tenant, t.window, t.spec)
-}
-
 func buildLogMergePlan(
 	tenant string,
 	window time.Time,

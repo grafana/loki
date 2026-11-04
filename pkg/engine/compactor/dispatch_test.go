@@ -43,12 +43,12 @@ func TestPlanDispatcherRun(t *testing.T) {
 		}
 		return root.(*physical.IndexMerge).ToCWindowStart
 	}
-	newDispatcher := func(run runFunc, maxRetries int) (*planDispatcher, *coordinatorMetrics) {
-		metrics := newCoordinatorMetrics(prometheus.NewRegistry())
-		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, metrics), metrics
+	newDispatcher := func(run runFunc, maxRetries int) (*planDispatcher, *prometheus.CounterVec) {
+		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
+		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, counter), counter
 	}
-	attempts := func(m *coordinatorMetrics, outcome string) float64 {
-		return testutil.ToFloat64(m.taskAttemptsTotal.WithLabelValues("index-merge", outcome))
+	attempts := func(counter *prometheus.CounterVec, outcome string) float64 {
+		return testutil.ToFloat64(counter.WithLabelValues("index-merge", outcome))
 	}
 
 	t.Run("returns artifacts in task order", func(t *testing.T) {
@@ -128,30 +128,30 @@ func TestPlanDispatcherRun(t *testing.T) {
 
 	t.Run("returns the artifact of a retry after a failed attempt", func(t *testing.T) {
 		runner := &fakeRunner{failOnCall: 1}
-		d, metrics := newDispatcher(runner.run, 1)
+		d, counter := newDispatcher(runner.run, 1)
 
 		artifacts, err := d.Run(t.Context(), "acme", tasks[:1])
 		require.NoError(t, err)
 		require.Equal(t, []v2.ResultArtifact{{Path: "indexes/tenants/test/aa/artifact-02"}}, artifacts)
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeSuccess))
-		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeFailed))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeSuccess))
+		require.Equal(t, 0.0, attempts(counter, attemptOutcomeFailed))
 	})
 
 	t.Run("runs a failing task once and reports one attempt when retries are disabled", func(t *testing.T) {
 		runner := &fakeRunner{err: errors.New("boom")}
-		d, metrics := newDispatcher(runner.run, 0)
+		d, counter := newDispatcher(runner.run, 0)
 
 		_, err := d.Run(t.Context(), "acme", tasks[:1])
 		require.EqualError(t, err, "index-merge job: boom (attempts: 1)")
 		require.Len(t, runner.snapshot(), 1)
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
-		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeFailed))
+		require.Equal(t, 0.0, attempts(counter, attemptOutcomeRetry))
 	})
 
 	t.Run("retries a task whose attempt returned no artifact", func(t *testing.T) {
 		var calls atomic.Int32
-		d, metrics := newDispatcher(func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+		d, counter := newDispatcher(func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
 			if calls.Inc() == 1 {
 				return nil, nil
 			}
@@ -161,8 +161,8 @@ func TestPlanDispatcherRun(t *testing.T) {
 		artifacts, err := d.Run(t.Context(), "acme", tasks[:1])
 		require.NoError(t, err)
 		require.Equal(t, []v2.ResultArtifact{{Path: "indexes/out"}}, artifacts)
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeSuccess))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeSuccess))
 	})
 
 	t.Run("builds a new plan for each attempt", func(t *testing.T) {
@@ -184,21 +184,21 @@ func TestPlanDispatcherRun(t *testing.T) {
 
 	t.Run("fails the run when a task fails on every attempt", func(t *testing.T) {
 		runner := &fakeRunner{err: errors.New("boom")}
-		d, metrics := newDispatcher(runner.run, 2)
+		d, counter := newDispatcher(runner.run, 2)
 
 		artifacts, err := d.Run(t.Context(), "acme", tasks[:1])
 		require.EqualError(t, err, "index-merge job: boom (attempts: 3)")
 		require.Nil(t, artifacts)
 		require.Len(t, runner.snapshot(), 3)
-		require.Equal(t, 2.0, attempts(metrics, attemptOutcomeRetry))
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
-		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeSuccess))
+		require.Equal(t, 2.0, attempts(counter, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeFailed))
+		require.Equal(t, 0.0, attempts(counter, attemptOutcomeSuccess))
 	})
 
 	t.Run("does not retry a task that a failed sibling task cancelled", func(t *testing.T) {
 		started := make(chan struct{})
 		var siblingCalls atomic.Int32
-		d, metrics := newDispatcher(func(ctx context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+		d, counter := newDispatcher(func(ctx context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 			if taskOf(plan) == 0 {
 				<-started
 				return nil, errors.New("boom")
@@ -213,10 +213,10 @@ func TestPlanDispatcherRun(t *testing.T) {
 		_, err := d.Run(t.Context(), "acme", tasks[:2])
 		require.EqualError(t, err, "index-merge job: boom (attempts: 2)")
 		require.Equal(t, int32(1), siblingCalls.Load())
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
-		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeSuccess))
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeCancelled))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeFailed))
+		require.Equal(t, 0.0, attempts(counter, attemptOutcomeSuccess))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeCancelled))
 	})
 
 	t.Run("fails a task without a retry when it fails after the context is cancelled", func(t *testing.T) {
@@ -225,14 +225,14 @@ func TestPlanDispatcherRun(t *testing.T) {
 			cancel()
 			return nil, errors.New("boom")
 		}}
-		d, metrics := newDispatcher(runner.run, 3)
+		d, counter := newDispatcher(runner.run, 3)
 
 		_, err := d.Run(ctx, "acme", tasks[:1])
 		require.EqualError(t, err, "index-merge job: boom (attempts: 1, retries stopped: context canceled)")
 		require.NotErrorIs(t, err, context.Canceled)
 		require.Len(t, runner.snapshot(), 1)
-		require.Equal(t, 0.0, attempts(metrics, attemptOutcomeRetry))
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeFailed))
+		require.Equal(t, 0.0, attempts(counter, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeFailed))
 	})
 
 	t.Run("runs the tasks to completion when the context is cancelled before they start", func(t *testing.T) {
@@ -256,7 +256,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		var calls atomic.Int32
 		var runCtxErr atomic.Error
-		d, metrics := newDispatcher(func(runCtx context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+		d, counter := newDispatcher(func(runCtx context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 			if calls.Inc() == 1 {
 				return nil, errors.New("boom")
 			}
@@ -269,7 +269,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []v2.ResultArtifact{{Path: "indexes/out"}}, artifacts)
 		require.NoError(t, runCtxErr.Load(), "the retry must not see the cancellation of the caller")
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeRetry))
-		require.Equal(t, 1.0, attempts(metrics, attemptOutcomeSuccess))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeSuccess))
 	})
 }

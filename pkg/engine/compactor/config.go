@@ -37,8 +37,8 @@ type Config struct {
 
 	// TaskMaxRetries is how many times the coordinator runs a failed
 	// compaction task again. A retry starts immediately, with no backoff. The
-	// coordinator does not retry after shutdown begins. Zero disables retries.
-	// Validate rejects negative values.
+	// coordinator does not retry after shutdown begins or the tenant stops.
+	// Zero disables retries. Validate rejects negative values.
 	TaskMaxRetries int `yaml:"task_max_retries"`
 
 	// PollingInterval is the cadence of the coordinator's main loop. Each

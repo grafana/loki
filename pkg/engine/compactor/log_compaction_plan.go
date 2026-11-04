@@ -84,7 +84,7 @@ type logCompactionTask interface {
 	// path.
 	tocEntry() metastore.TableOfContentsEntry
 
-	// logTaskStats returns the log data that the task reads. Its bytes are zero
+	// logStats returns the log data that the task reads. Its bytes are zero
 	// if the task reads no log data.
 	logStats() logTaskStats
 }
@@ -139,6 +139,6 @@ func (t indexFilterTask) physicalPlan(tenant string) *physical.Plan {
 
 func (t indexFilterTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
-// logTaskStats returns zero bytes, because the filter reads only the source
+// logStats returns zero bytes, because the filter reads only the source
 // index.
 func (t indexFilterTask) logStats() logTaskStats { return logTaskStats{} }

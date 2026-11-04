@@ -130,7 +130,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		// Operational counters / histograms.
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_cycles_total",
-			Help: "Total worker-loop phase iterations by outcome (compacted = ToC swap applied, converged = no work, failed = phase error).",
+			Help: "Total worker-loop phase iterations by outcome. compacted = ToC swap applied and no error. converged = no work. failed = phase error, also when another swap applied. Phases that shutdown or a tenant stop interrupted are not counted.",
 		}, []string{labelOutcome}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_cycles_total",
@@ -154,7 +154,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		taskAttemptsTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_task_attempts_total",
-			Help: "Attempts to run a compaction task, by actor and outcome. success = the attempt returned a valid artifact, retry = the attempt failed and the task runs again, failed = the attempt failed and the task runs no more, because it has no retries left or the coordinator is shutting down, cancelled = the attempt ended after a failed sibling task cancelled the dispatch.",
+			Help: "Attempts to run a compaction task, by actor and outcome. success = the attempt returned a valid artifact, retry = the attempt failed and the task runs again, failed = the attempt failed and the task runs no more, because it has no retries left or the tenant worker stopped at shutdown or when the tenant stopped, cancelled = the attempt ended after a failed sibling task cancelled the dispatch.",
 		}, []string{labelActor, labelOutcome}),
 		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",

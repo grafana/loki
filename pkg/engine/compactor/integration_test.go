@@ -669,8 +669,8 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		cfg:             compactionCfg,
 		logger:          log.NewNopLogger(),
 		bucket:          bucket,
-		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, metrics),
-		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, metrics),
+		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			timeout: compactionCfg.ToCConsolidateTimeout,

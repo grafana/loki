@@ -32,7 +32,8 @@ const (
 	attemptOutcomeRetry   = "retry"
 	attemptOutcomeFailed  = "failed"
 	// attemptOutcomeCancelled counts an attempt that ended after a failed
-	// sibling task cancelled the Run. The task ends with no other outcome.
+	// sibling task cancelled the Run. The attempt records no retry or failed
+	// outcome. A task that skips its attempt records no outcome.
 	attemptOutcomeCancelled = "cancelled"
 )
 
@@ -50,14 +51,29 @@ type planDispatcher struct {
 	attempts   *prometheus.CounterVec
 }
 
-func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int, metrics *coordinatorMetrics) *planDispatcher {
+// newPlanDispatcher returns a planDispatcher that counts task attempts in
+// attempts, by actor and outcome.
+func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int, attempts *prometheus.CounterVec) *planDispatcher {
 	return &planDispatcher{
 		logger:     logger,
 		runPlan:    runPlan,
 		limit:      limit,
 		maxRetries: maxRetries,
-		attempts:   metrics.taskAttemptsTotal,
+		attempts:   attempts,
 	}
+}
+
+// taskRun holds what the tasks of one Run share.
+type taskRun struct {
+	tenant string
+
+	// siblingFailed is done when a task of the Run failed. Run then discards
+	// every result.
+	siblingFailed context.Context
+
+	// stopRetries returns an error after the caller cancelled the Run, at
+	// shutdown or when the tenant stops.
+	stopRetries func() error
 }
 
 // Run executes every task and returns their artifacts in task order. Each
@@ -68,12 +84,13 @@ func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int
 // does not spread load. The tenant loop backs off after a failed phase.
 //
 // Run returns an error if any task fails with no retry left, and then returns
-// no artifacts. The first such failure cancels the tasks that are still
-// running.
+// no artifacts. The first such failure cancels the running tasks, and the
+// tasks that did not start yet do not run.
 //
-// Cancelling ctx does not stop the tasks. Tasks that did not start yet still
-// start, so Run returns only after every task finishes. Cancelling ctx stops
-// only the retries: a task that fails after ctx is done fails the Run at once.
+// Cancelling ctx, at shutdown or when the tenant stops, does not stop the
+// tasks. Tasks that did not start yet still start, so Run returns only after
+// every task finishes. Cancelling ctx stops only the retries: a task that
+// fails after ctx is done fails the Run at once.
 //
 // Each attempt must return a valid artifact or an error:
 //
@@ -87,14 +104,15 @@ func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int
 // No-work decisions belong to planning, before dispatch.
 func (d *planDispatcher) Run(ctx context.Context, tenant string, tasks []dispatchTask) ([]v2.ResultArtifact, error) {
 	artifacts := make([]v2.ResultArtifact, len(tasks))
-	g, gctx := errgroup.WithContext(context.WithoutCancel(ctx))
+	g, siblingFailed := errgroup.WithContext(context.WithoutCancel(ctx))
 	if d.limit > 0 {
 		g.SetLimit(d.limit)
 	}
+	run := taskRun{tenant: tenant, siblingFailed: siblingFailed, stopRetries: ctx.Err}
 	for i, task := range tasks {
 		g.Go(func() error {
 			logger := log.With(d.logger, "tenant", tenant, "task", i, "tasks", len(tasks))
-			artifact, err := d.runTask(gctx, ctx.Err, logger, tenant, task)
+			artifact, err := d.runTask(run, logger, task)
 			if err != nil {
 				return err
 			}
@@ -108,37 +126,41 @@ func (d *planDispatcher) Run(ctx context.Context, tenant string, tasks []dispatc
 	return artifacts, nil
 }
 
-// runTask runs task and retries it when it fails. ctx is done only when a
-// sibling task failed. retriesStopped returns an error once shutdown begins.
+// runTask runs task and retries it when it fails.
 //
 // Retries do not classify errors, because worker errors reach the coordinator
 // as plain strings. A plan without a valid root node fails at once, because a
 // retry builds the same plan.
-func (d *planDispatcher) runTask(ctx context.Context, retriesStopped func() error, logger log.Logger, tenant string, task dispatchTask) (*v2.ResultArtifact, error) {
+func (d *planDispatcher) runTask(run taskRun, logger log.Logger, task dispatchTask) (*v2.ResultArtifact, error) {
+	plan, root, err := taskPlan(run.tenant, task)
+	if err != nil {
+		return nil, err
+	}
+	// Every plan of a task has the same kind of root node, so the actor of
+	// the first plan holds for every attempt.
+	actor, err := rootActor(root)
+	if err != nil {
+		return nil, err
+	}
 	for attempt := 1; ; attempt++ {
 		// After a sibling fails, Run discards every result, so skip the
 		// attempt.
-		if err := ctx.Err(); err != nil {
+		if err := run.siblingFailed.Err(); err != nil {
 			return nil, err
 		}
-		plan := task.physicalPlan(tenant)
-		root, err := plan.Root()
-		if err != nil {
-			return nil, fmt.Errorf("compaction plan root: %w", err)
+		if attempt > 1 {
+			if plan, root, err = taskPlan(run.tenant, task); err != nil {
+				return nil, err
+			}
 		}
-		actor, err := rootActor(root)
-		if err != nil {
-			return nil, err
-		}
-		artifact, err := d.runOne(ctx, tenant, actor, plan)
+		artifact, err := d.runOne(run.siblingFailed, run.tenant, actor, plan)
 		if err == nil {
 			d.attempts.WithLabelValues(actor, attemptOutcomeSuccess).Inc()
 			return artifact, nil
 		}
-		if ctx.Err() != nil {
+		if run.siblingFailed.Err() != nil {
 			d.attempts.WithLabelValues(actor, attemptOutcomeCancelled).Inc()
-			// Run keeps only its first error and drops this one, so log a real
-			// error here.
+			// Run returns only its first error, so log this one here.
 			lvl := level.Warn
 			if errors.Is(err, context.Canceled) {
 				lvl = level.Debug
@@ -154,8 +176,8 @@ func (d *planDispatcher) runTask(ctx context.Context, retriesStopped func() erro
 			return nil, fmt.Errorf("%w (attempts: %d)", err, attempt)
 		}
 		// Format stopErr with %v, not %w. The task failed, so the caller
-		// must not mistake the error for a shutdown interruption.
-		if stopErr := retriesStopped(); stopErr != nil {
+		// must not mistake the error for an interruption.
+		if stopErr := run.stopRetries(); stopErr != nil {
 			d.attempts.WithLabelValues(actor, attemptOutcomeFailed).Inc()
 			level.Warn(attemptLogger).Log("msg", "compaction task failed, retries stopped", "reason", stopErr)
 			return nil, fmt.Errorf("%w (attempts: %d, retries stopped: %v)", err, attempt, stopErr)
@@ -163,6 +185,16 @@ func (d *planDispatcher) runTask(ctx context.Context, retriesStopped func() erro
 		d.attempts.WithLabelValues(actor, attemptOutcomeRetry).Inc()
 		level.Warn(attemptLogger).Log("msg", "compaction task failed, retrying")
 	}
+}
+
+// taskPlan returns a new plan of task and the root node of the plan.
+func taskPlan(tenant string, task dispatchTask) (*physical.Plan, physical.Node, error) {
+	plan := task.physicalPlan(tenant)
+	root, err := plan.Root()
+	if err != nil {
+		return nil, nil, fmt.Errorf("compaction plan root: %w", err)
+	}
+	return plan, root, nil
 }
 
 func (d *planDispatcher) runOne(ctx context.Context, tenant, actor string, plan *physical.Plan) (*v2.ResultArtifact, error) {

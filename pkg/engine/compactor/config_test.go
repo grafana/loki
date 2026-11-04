@@ -124,7 +124,7 @@ func TestConfig_TaskMaxRetriesValidation(t *testing.T) {
 		return cfg
 	}
 
-	t.Run("accepts zero, which disables retries", func(t *testing.T) {
+	t.Run("accepts zero", func(t *testing.T) {
 		cfg := base(t, "--dataobj.compaction.task-max-retries=0")
 		require.Equal(t, 0, cfg.TaskMaxRetries)
 		require.NoError(t, cfg.Validate())
