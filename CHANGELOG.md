@@ -1,7 +1,13 @@
 # Changelog
 
-## [4.0.0-rc.1](https://github.com/grafana/loki/compare/v3.7.9...v4.0.0-rc.1) (2026-11-03)
+## [4.0.0-rc.2](https://github.com/grafana/loki/compare/v4.0.0-rc.1...v4.0.0-rc.2) (2026-11-04)
 
+### Reverts
+
+* Disable Multipath TCP on listeners by default ([#26237](https://github.com/grafana/loki/issues/26237)) ([7637697](https://github.com/grafana/loki/commit/763769726bd5e0ba6046dc6a4ba9af5509febbb2))
+
+
+## [4.0.0-rc.1](https://github.com/grafana/loki/compare/v3.7.9...v4.0.0-rc.1) (2026-11-03)
 
 ### ⚠ BREAKING CHANGES
 
