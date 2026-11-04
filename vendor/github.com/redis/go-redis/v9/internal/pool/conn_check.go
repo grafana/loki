@@ -19,10 +19,19 @@ func connCheck(conn net.Conn) error {
 	// Reset previous timeout.
 	_ = conn.SetDeadline(time.Time{})
 
+	// Health checks deliberately inspect only the outer connection. Unwrapping a
+	// buffered transport such as crypto/tls.Conn can reveal an encrypted
+	// post-handshake record and make isHealthyConn call PeekReplyType on the TLS
+	// stream. With the deadline cleared above, TLS may consume that control record
+	// and then wait forever for application data.
 	sysConn, ok := conn.(syscall.Conn)
 	if !ok {
 		return nil
 	}
+	return checkSyscallConn(sysConn)
+}
+
+func checkSyscallConn(sysConn syscall.Conn) error {
 	rawConn, err := sysConn.SyscallConn()
 	if err != nil {
 		return err
@@ -53,7 +62,73 @@ func connCheck(conn net.Conn) error {
 	return sysErr
 }
 
+// underlyingSyscallConn unwraps connections that expose their transport through
+// NetConn (notably crypto/tls.Conn). Limit the walk so a broken wrapper cannot
+// loop forever.
+func underlyingSyscallConn(conn net.Conn) (syscall.Conn, bool) {
+	for range 8 {
+		if sysConn, ok := conn.(syscall.Conn); ok {
+			return sysConn, true
+		}
+		unwrapper, ok := conn.(interface{ NetConn() net.Conn })
+		if !ok {
+			return nil, false
+		}
+		conn = unwrapper.NetConn()
+		if conn == nil {
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
 // maybeHasData checks if there is data in the socket without consuming it
 func maybeHasData(conn net.Conn) bool {
-	return connCheck(conn) == errUnexpectedRead
+	hasData, _ := checkForData(conn)
+	return hasData
+}
+
+func checkForData(conn net.Conn) (bool, error) {
+	// Clear any residual READ deadline first: a prior command read (WithReader)
+	// leaves its deadline armed, and once it expires rawConn.Read fails fast
+	// with "raw-read ... i/o timeout" BEFORE the non-blocking peek runs — the
+	// caller would misread an idle-but-healthy conn as dead (the CSC drainer
+	// then removes it and evicts its cache coverage; with the full-duplex
+	// coalescer concentrating a cache's coverage on one held conn, that one
+	// spurious removal wipes the whole cache). Read-only on purpose, unlike the
+	// SetDeadline reset this replaced: checkForData runs CONCURRENTLY with
+	// command WRITES on a held full-duplex connection, and a full SetDeadline
+	// would strip an armed write deadline mid-write. No concurrent READ can
+	// race this: every caller either owns the conn's read side (FD session
+	// reader between reads) or holds the conn exclusively (drainer borrow,
+	// pool health check).
+	_ = conn.SetReadDeadline(time.Time{})
+	sysConn, ok := underlyingSyscallConn(conn)
+	if !ok {
+		return false, nil
+	}
+	switch err := checkSyscallConn(sysConn); err {
+	case nil:
+		return false, nil
+	case errUnexpectedRead:
+		return true, nil
+	default:
+		return false, err
+	}
+}
+
+// needsCscReadProbe reports whether a command read may leave data hidden from
+// maybeHasData. On Unix a direct syscall.Conn has no intermediate buffering;
+// TLS and opaque wrappers need one bounded post-command probe.
+func needsCscReadProbe(conn net.Conn) bool {
+	_, direct := conn.(syscall.Conn)
+	return !direct
+}
+
+// needsCscPeriodicProbe reports whether the platform can inspect the transport
+// at all. Opaque wrappers get a throttled bounded fallback so invalidations that
+// arrive after the post-command probe are still eventually consumed.
+func needsCscPeriodicProbe(conn net.Conn) bool {
+	_, ok := underlyingSyscallConn(conn)
+	return !ok
 }

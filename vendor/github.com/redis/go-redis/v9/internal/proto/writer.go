@@ -34,6 +34,16 @@ func NewWriter(wr writer) *Writer {
 	}
 }
 
+// Reset points an existing Writer at a new destination, keeping lenBuf and
+// numBuf. It exists so callers on a hot path can pool Writers instead of
+// allocating one (plus its two 64-byte scratch buffers) per use.
+//
+// Pass nil when returning a Writer to a pool so it does not retain the old
+// destination.
+func (w *Writer) Reset(wr writer) {
+	w.writer = wr
+}
+
 func (w *Writer) WriteArgs(args []interface{}) error {
 	if err := w.WriteByte(RespArray); err != nil {
 		return err
@@ -118,7 +128,7 @@ func (w *Writer) WriteArg(v interface{}) error {
 		return w.uint(uint64(v))
 	case *uint8:
 		if v == nil {
-			return w.string("")
+			return w.uint(0)
 		}
 		return w.uint(uint64(*v))
 	case uint16:
@@ -142,6 +152,13 @@ func (w *Writer) WriteArg(v interface{}) error {
 			return w.uint(0)
 		}
 		return w.uint(*v)
+	case uintptr:
+		return w.uint(uint64(v))
+	case *uintptr:
+		if v == nil {
+			return w.uint(0)
+		}
+		return w.uint(uint64(*v))
 	case float32:
 		return w.float(float64(v))
 	case *float32:

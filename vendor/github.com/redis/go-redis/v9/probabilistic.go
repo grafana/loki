@@ -233,6 +233,7 @@ func newScanDumpCmd(ctx context.Context, args ...interface{}) *ScanDumpCmd {
 }
 
 func (cmd *ScanDumpCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
@@ -241,10 +242,12 @@ func (cmd *ScanDumpCmd) SetVal(val ScanDump) {
 }
 
 func (cmd *ScanDumpCmd) Result() (ScanDump, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
 func (cmd *ScanDumpCmd) Val() ScanDump {
+	cmd.await()
 	return cmd.val
 }
 
@@ -316,14 +319,17 @@ func (cmd *BFInfoCmd) SetVal(val BFInfo) {
 }
 
 func (cmd *BFInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *BFInfoCmd) Val() BFInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *BFInfoCmd) Result() (BFInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -344,10 +350,15 @@ func (cmd *BFInfoCmd) readReply(rd *proto.Reader) (err error) {
 		"EXPANSION":                &result.ExpansionRate,
 	}
 
-	// Helper function to read and assign a value based on the key
-	readAndAssignValue := func(key string) error {
+	// Helper function to read and assign a value based on the key.
+	// Unknown keys are drained and skipped when skipUnknown is set so that
+	// fields added by newer servers don't break the parser.
+	readAndAssignValue := func(key string, skipUnknown bool) error {
 		fieldPtr, exists := respMapping[key]
 		if !exists {
+			if skipUnknown {
+				return rd.DiscardNext()
+			}
 			return fmt.Errorf("redis: BLOOM.INFO unexpected key %s", key)
 		}
 
@@ -371,7 +382,7 @@ func (cmd *BFInfoCmd) readReply(rd *proto.Reader) (err error) {
 			return err
 		}
 		if key, ok := cmd.args[2].(string); ok && n == 1 {
-			if err := readAndAssignValue(key); err != nil {
+			if err := readAndAssignValue(key, false); err != nil {
 				return err
 			}
 		} else {
@@ -387,7 +398,7 @@ func (cmd *BFInfoCmd) readReply(rd *proto.Reader) (err error) {
 			if err != nil {
 				return err
 			}
-			if err := readAndAssignValue(key); err != nil {
+			if err := readAndAssignValue(key, true); err != nil {
 				return err
 			}
 		}
@@ -653,14 +664,17 @@ func (cmd *CFInfoCmd) SetVal(val CFInfo) {
 }
 
 func (cmd *CFInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *CFInfoCmd) Val() CFInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *CFInfoCmd) Result() (CFInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -697,7 +711,8 @@ func (cmd *CFInfoCmd) readReply(rd *proto.Reader) (err error) {
 			result.MaxIteration, err = rd.ReadInt()
 
 		default:
-			return fmt.Errorf("redis: CF.INFO unexpected key %s", key)
+			// skip unknown fields so newer servers don't break the parser
+			err = rd.DiscardNext()
 		}
 
 		if err != nil {
@@ -800,6 +815,10 @@ type CMSInfo struct {
 	Width int64
 	Depth int64
 	Count int64
+	// CellSize is the size in bytes of each counter (1, 2, 4 or 8).
+	// Reported since Redis 8.12, alongside the CELL_SIZE option of
+	// CMS.INITBYDIM / CMS.INITBYPROB; zero on older servers.
+	CellSize int64
 }
 
 type CMSInfoCmd struct {
@@ -823,14 +842,17 @@ func (cmd *CMSInfoCmd) SetVal(val CMSInfo) {
 }
 
 func (cmd *CMSInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *CMSInfoCmd) Val() CMSInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *CMSInfoCmd) Result() (CMSInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -855,8 +877,11 @@ func (cmd *CMSInfoCmd) readReply(rd *proto.Reader) (err error) {
 			result.Depth, err = rd.ReadInt()
 		case "count":
 			result.Count, err = rd.ReadInt()
+		case "cell_size":
+			result.CellSize, err = rd.ReadInt()
 		default:
-			return fmt.Errorf("redis: CMS.INFO unexpected key %s", key)
+			// skip unknown fields so newer servers don't break the parser
+			err = rd.DiscardNext()
 		}
 
 		if err != nil {
@@ -1024,14 +1049,17 @@ func (cmd *TopKInfoCmd) SetVal(val TopKInfo) {
 }
 
 func (cmd *TopKInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *TopKInfoCmd) Val() TopKInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *TopKInfoCmd) Result() (TopKInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -1059,7 +1087,8 @@ func (cmd *TopKInfoCmd) readReply(rd *proto.Reader) (err error) {
 		case "decay":
 			result.Decay, err = rd.ReadFloat()
 		default:
-			return fmt.Errorf("redis: topk.info unexpected key %s", key)
+			// skip unknown fields so newer servers don't break the parser
+			err = rd.DiscardNext()
 		}
 
 		if err != nil {
@@ -1279,14 +1308,17 @@ func (cmd *TDigestInfoCmd) SetVal(val TDigestInfo) {
 }
 
 func (cmd *TDigestInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *TDigestInfoCmd) Val() TDigestInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *TDigestInfoCmd) Result() (TDigestInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -1324,7 +1356,8 @@ func (cmd *TDigestInfoCmd) readReply(rd *proto.Reader) (err error) {
 		case "Memory usage":
 			result.MemoryUsage, err = rd.ReadInt()
 		default:
-			return fmt.Errorf("redis: tdigest.info unexpected key %s", key)
+			// skip unknown fields so newer servers don't break the parser
+			err = rd.DiscardNext()
 		}
 
 		if err != nil {

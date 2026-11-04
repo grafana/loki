@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strings"
 	"time"
-
-	"github.com/redis/go-redis/v9/internal/hashtag"
 )
 
 type SortedSetCmdable interface {
@@ -108,6 +106,10 @@ func (c cmdable) BZMPop(ctx context.Context, timeout time.Duration, order string
 	}
 	args = append(args, strings.ToLower(order), "count", count)
 	cmd := NewZSliceWithKeyCmd(ctx, args...)
+	// The key follows numkeys, not args[1]: route by it.
+	if len(keys) > 0 {
+		cmd.SetFirstKeyPos(3)
+	}
 	cmd.setReadTimeout(timeout)
 	_ = c(ctx, cmd)
 	return cmd
@@ -270,6 +272,10 @@ func (c cmdable) ZInterCard(ctx context.Context, limit int64, keys ...string) *I
 	args[2+numKeys] = "limit"
 	args[3+numKeys] = limit
 	cmd := NewIntCmd(ctx, args...)
+	// The key follows numkeys, not args[1]: route by it.
+	if len(keys) > 0 {
+		cmd.SetFirstKeyPos(2)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -286,6 +292,10 @@ func (c cmdable) ZMPop(ctx context.Context, order string, count int64, keys ...s
 	}
 	args = append(args, strings.ToLower(order), "count", count)
 	cmd := NewZSliceWithKeyCmd(ctx, args...)
+	// The key follows numkeys, not args[1]: route by it.
+	if len(keys) > 0 {
+		cmd.SetFirstKeyPos(2)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -373,6 +383,17 @@ type ZRangeArgs struct {
 	//	 	}
 	// 	 	cmd: "ZRange example-key (3 8 ByScore"  (3 < score <= 8).
 	//
+	// When the Rev option is also provided, <Start> should be the higher score value and
+	// <Stop> should be the lower score value (i.e. reversed order):
+	//		ZRangeArgs{
+	//			Key: 				"example-key",
+	//	 		Start: 				8,
+	//	 		Stop: 				"(3",
+	//			ByScore:			true,
+	//			Rev:				true,
+	//	 	}
+	// 	 	cmd: "ZRange example-key 8 (3 ByScore Rev"  (8 >= score > 3, in reverse order).
+	//
 	// For the ByLex option, it is similar to the deprecated(6.2.0+) ZRangeByLex command.
 	// You can set the <Start> and <Stop> options as follows:
 	//		ZRangeArgs{
@@ -382,6 +403,17 @@ type ZRangeArgs struct {
 	//			ByLex:				true,
 	//	 	}
 	//		cmd: "ZRange example-key [abc (def ByLex"
+	//
+	// When the Rev option is also provided, <Start> should be the lexicographically higher
+	// value and <Stop> should be the lower value:
+	//		ZRangeArgs{
+	//			Key: 				"example-key",
+	//	 		Start: 				"(def",
+	//	 		Stop: 				"[abc",
+	//			ByLex:				true,
+	//			Rev:				true,
+	//	 	}
+	//		cmd: "ZRange example-key (def [abc ByLex Rev"
 	//
 	// For normal cases (ByScore==false && ByLex==false), <Start> and <Stop> should be set to the index range (int).
 	// You can read the documentation for more information: https://redis.io/commands/zrange
@@ -400,12 +432,7 @@ type ZRangeArgs struct {
 }
 
 func (z ZRangeArgs) appendArgs(args []interface{}) []interface{} {
-	// For Rev+ByScore/ByLex, we need to adjust the position of <Start> and <Stop>.
-	if z.Rev && (z.ByScore || z.ByLex) {
-		args = append(args, z.Key, z.Stop, z.Start)
-	} else {
-		args = append(args, z.Key, z.Start, z.Stop)
-	}
+	args = append(args, z.Key, z.Start, z.Stop)
 
 	if z.ByScore {
 		args = append(args, "byscore")
@@ -741,9 +768,6 @@ func (c cmdable) ZScan(ctx context.Context, key string, cursor uint64, match str
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
-	if hashtag.Present(match) {
-		cmd.SetFirstKeyPos(4)
-	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -764,7 +788,7 @@ type ZWithKey struct {
 type ZStore struct {
 	Keys    []string
 	Weights []float64
-	// Can be SUM, MIN or MAX.
+	// Can be SUM, MIN, MAX or COUNT.
 	Aggregate string
 }
 

@@ -46,6 +46,14 @@ func (it *ScanIterator) Next(ctx context.Context) bool {
 		if err != nil {
 			return false
 		}
+		// Await the fetch before reading page/cursor: on the deferred
+		// autopipeline face process() only enqueues, and reading the raw
+		// fields of a not-yet-executed command would spin re-issuing SCANs
+		// with a stale cursor forever. Err() blocks until executed there and
+		// is a no-op read everywhere else.
+		if err := it.cmd.Err(); err != nil {
+			return false
+		}
 
 		it.pos = 1
 

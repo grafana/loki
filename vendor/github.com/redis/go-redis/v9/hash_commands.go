@@ -3,8 +3,6 @@ package redis
 import (
 	"context"
 	"time"
-
-	"github.com/redis/go-redis/v9/internal/hashtag"
 )
 
 type HashCmdable interface {
@@ -44,6 +42,11 @@ type HashCmdable interface {
 	HPExpireTime(ctx context.Context, key string, fields ...string) *IntSliceCmd
 	HTTL(ctx context.Context, key string, fields ...string) *IntSliceCmd
 	HPTTL(ctx context.Context, key string, fields ...string) *IntSliceCmd
+	// note: the HIMPORT API is experimental and may be subject to change.
+	HImportPrepare(ctx context.Context, fieldsetName string, fields ...string) *StatusCmd
+	HImportSet(ctx context.Context, key, fieldsetName string, values ...interface{}) *StatusCmd
+	HImportDiscard(ctx context.Context, fieldsetName string) *IntCmd
+	HImportDiscardAll(ctx context.Context) *IntCmd
 }
 
 func (c cmdable) HDel(ctx context.Context, key string, fields ...string) *IntCmd {
@@ -70,6 +73,13 @@ func (c cmdable) HGet(ctx context.Context, key, field string) *StringCmd {
 	return cmd
 }
 
+// HGetAll returns a map of all fields and values stored at key.
+//
+// Returns an empty map when key does not exist.
+//
+// Time complexity: O(N) where N is the size of the hash.
+//
+// See https://redis.io/commands/hgetall/
 func (c cmdable) HGetAll(ctx context.Context, key string) *MapStringStringCmd {
 	cmd := NewMapStringStringCmd(ctx, "hgetall", key)
 	_ = c(ctx, cmd)
@@ -194,9 +204,6 @@ func (c cmdable) HScan(ctx context.Context, key string, cursor uint64, match str
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
-	if hashtag.Present(match) {
-		cmd.SetFirstKeyPos(4)
-	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -216,9 +223,6 @@ func (c cmdable) HScanNoValues(ctx context.Context, key string, cursor uint64, m
 	}
 	args = append(args, "novalues")
 	cmd := NewScanCmd(ctx, c, args...)
-	if hashtag.Present(match) {
-		cmd.SetFirstKeyPos(4)
-	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -380,7 +384,7 @@ func (c cmdable) HExpireAtWithArgs(ctx context.Context, key string, tm time.Time
 //
 // [HExpireAt Documentation]: https://redis.io/commands/hexpireat/
 func (c cmdable) HPExpireAt(ctx context.Context, key string, tm time.Time, fields ...string) *IntSliceCmd {
-	args := []interface{}{"HPEXPIREAT", key, tm.UnixNano() / int64(time.Millisecond), "FIELDS", len(fields)}
+	args := []interface{}{"HPEXPIREAT", key, tm.UnixMilli(), "FIELDS", len(fields)}
 
 	for _, field := range fields {
 		args = append(args, field)
@@ -391,7 +395,7 @@ func (c cmdable) HPExpireAt(ctx context.Context, key string, tm time.Time, field
 }
 
 func (c cmdable) HPExpireAtWithArgs(ctx context.Context, key string, tm time.Time, expirationArgs HExpireArgs, fields ...string) *IntSliceCmd {
-	args := []interface{}{"HPEXPIREAT", key, tm.UnixNano() / int64(time.Millisecond)}
+	args := []interface{}{"HPEXPIREAT", key, tm.UnixMilli()}
 
 	// only if one argument is true, we can add it to the args
 	// if more than one argument is true, it will cause an error
