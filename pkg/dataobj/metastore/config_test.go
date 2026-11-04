@@ -20,16 +20,18 @@ func TestConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("returns the error of the ToC resolver config", func(t *testing.T) {
+		const shortStorageLag = 10 * time.Minute
 		cfg := Config{TOCResolver: testResolverConfig()}
-		cfg.TOCResolver.RefreshInterval = 15 * time.Minute
-		cfg.TOCResolver.ActiveWindow = 15 * time.Minute
 
-		require.EqualError(t, cfg.Validate(storageLag), "twice the refresh interval of the ToC resolver (30m0s) must not exceed a tenth of the storage lag (3h0m0s)")
+		require.EqualError(t, cfg.Validate(shortStorageLag), "twice the refresh interval of the ToC resolver (2m0s) must not exceed a tenth of the storage lag (10m0s)")
 	})
 }
 
 func TestTOCResolverConfig_Validate(t *testing.T) {
-	const storageLag = 3 * time.Hour
+	const (
+		storageLag    = 3 * time.Hour
+		minStorageLag = 20 * time.Minute
+	)
 
 	enabled := func(mutate func(*TOCResolverConfig)) TOCResolverConfig {
 		cfg := testResolverConfig()
@@ -49,20 +51,14 @@ func TestTOCResolverConfig_Validate(t *testing.T) {
 		require.NoError(t, TOCResolverConfig{}.Validate(storageLag))
 	})
 
-	t.Run("accepts twice the refresh interval at a tenth of the storage lag", func(t *testing.T) {
-		cfg := enabled(func(c *TOCResolverConfig) {
-			c.RefreshInterval = 9 * time.Minute
-			c.ActiveWindow = 9 * time.Minute
-		})
-		require.NoError(t, cfg.Validate(storageLag))
+	t.Run("accepts a storage lag of 20 minutes when the refresh interval is one minute", func(t *testing.T) {
+		cfg := testResolverConfig()
+		require.NoError(t, cfg.Validate(minStorageLag))
 	})
 
-	t.Run("rejects twice the refresh interval above a tenth of the storage lag", func(t *testing.T) {
-		cfg := enabled(func(c *TOCResolverConfig) {
-			c.RefreshInterval = 9*time.Minute + time.Second
-			c.ActiveWindow = 10 * time.Minute
-		})
-		require.EqualError(t, cfg.Validate(storageLag), "twice the refresh interval of the ToC resolver (18m2s) must not exceed a tenth of the storage lag (3h0m0s)")
+	t.Run("rejects a storage lag below 20 minutes when the refresh interval is one minute", func(t *testing.T) {
+		cfg := testResolverConfig()
+		require.EqualError(t, cfg.Validate(minStorageLag-time.Second), "twice the refresh interval of the ToC resolver (2m0s) must not exceed a tenth of the storage lag (19m59s)")
 	})
 
 	t.Run("rejects a refresh interval that is not positive", func(t *testing.T) {
@@ -71,10 +67,7 @@ func TestTOCResolverConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("rejects a refresh interval below one second", func(t *testing.T) {
-		cfg := enabled(func(c *TOCResolverConfig) {
-			c.RefreshInterval = 999 * time.Millisecond
-			c.ActiveWindow = time.Minute
-		})
+		cfg := enabled(func(c *TOCResolverConfig) { c.RefreshInterval = 999 * time.Millisecond })
 		require.EqualError(t, cfg.Validate(storageLag), "the refresh interval of the ToC resolver (999ms) must be at least 1s")
 	})
 

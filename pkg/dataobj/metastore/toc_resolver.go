@@ -216,8 +216,8 @@ type TOCResolver struct {
 	failureLogger log.Logger
 
 	// tocsMx guards tocs, tocsBytes and the value of every entry, so they always agree. A lookup takes the read lock.
-	// Code that adds, replaces or removes a ToC takes the write lock. The methods with the suffix Locked need the write
-	// lock.
+	// Code that adds, replaces or removes a ToC takes the write lock. The caller of a method with the suffix Locked must
+	// hold the write lock.
 	tocsMx sync.RWMutex
 
 	// tocs maps the path of a ToC to its entry.
@@ -358,9 +358,6 @@ func (r *TOCResolver) readFromBucket(ctx context.Context, path string) (*tocValu
 
 	data, err := io.ReadAll(rc)
 	if err != nil {
-		if r.bucket.IsObjNotFoundErr(err) {
-			return &tocValue{readAt: readAt}, nil
-		}
 		return nil, fmt.Errorf("reading metastore object: %w", err)
 	}
 
