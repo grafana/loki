@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"iter"
 	"maps"
 	"slices"
 	"strings"
@@ -169,6 +168,14 @@ type Builder struct {
 	// clears it, so a limits change applies from the next object.
 	layouts map[string]streams.Layout
 
+	// lastTarget is the target of the last appended stream, or nil. Callers
+	// append many records of one stream in a row, so the builder resolves a
+	// target once per run of a stream, not once per record.
+	//
+	// Reset sets it to nil, because it holds values from the layout of the
+	// current object and pointers to its streams and logs builders.
+	lastTarget *streamTarget
+
 	// sortLogsMetrics and sortStreamsMetrics are never registered. They absorb
 	// the section metrics of the sort in FlushAndSort, which would otherwise
 	// count data that metrics already observed during the build.
@@ -301,78 +308,118 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		return err
 	}
 
-	recordIter := func(yield func(logs.Record, int64) bool) {
-		for _, entry := range stream.Entries {
-			rec := logs.Record{
-				Timestamp: entry.Timestamp,
-				Metadata:  convertMetadata(entry.StructuredMetadata),
-				Line:      []byte(entry.Line),
-			}
-			if !yield(rec, rec.UncompressedSize()) {
-				return
-			}
+	t, err := b.targetFor(tenant, ls)
+	if err != nil {
+		return err
+	}
+	for _, entry := range stream.Entries {
+		rec := logs.Record{
+			Timestamp: entry.Timestamp,
+			Metadata:  convertMetadata(entry.StructuredMetadata),
+			Line:      []byte(entry.Line),
+		}
+		if err := b.appendTo(t, rec); err != nil {
+			return err
 		}
 	}
-
-	return b.appendAll(tenant, ls, recTime, recordIter)
+	b.markAppended(recTime)
+	return nil
 }
 
 // AppendRecord buffers a pre-existing log record to be written to a data object.
 // Callers are expected to poll [Builder.IsFull] before appending and
 // to flush the builder once it reports full. Appending entries to a full
 // builder is permitted.
-// The SortKey, ShardBucket, StreamHash, and StreamID fields of the given
+// The SchemaKey, ShardBucket, StreamHash, and StreamID fields of the given
 // record are ignored and re-calculated.
 func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Record, ingestionTime time.Time) error {
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	sz := record.UncompressedSize()
-
-	singleRecordIter := func(yield func(entry logs.Record, size int64) bool) {
-		_ = yield(record, sz)
+	t, err := b.targetFor(tenant, ls)
+	if err != nil {
+		return err
 	}
-
-	return b.appendAll(tenant, ls, ingestionTime, singleRecordIter)
+	if err := b.appendTo(t, record); err != nil {
+		return err
+	}
+	b.markAppended(ingestionTime)
+	return nil
 }
 
-func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Time, entriesIter iter.Seq2[logs.Record, int64]) error {
-	layout := b.layoutFor(tenant)
-	streamSortKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
-	if err != nil {
-		return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
-	}
-	streamHash := labels.StableHash(ls)
-	streamShard := layout.ShardLayout().BucketFromHash(streamHash)
+// streamTarget is where the records of one stream go in the current object.
+type streamTarget struct {
+	tenant string
+	labels labels.Labels
 
+	// schemaKey, hash and shard are the same for every record of the stream.
+	schemaKey string
+	hash      uint64
+	shard     uint32
+
+	streams *streams.Builder
+	logs    *logs.Builder
+}
+
+// targetFor returns the target of the stream with labels ls of tenant. It
+// returns the last target again when tenant and ls match it.
+func (b *Builder) targetFor(tenant string, ls labels.Labels) (*streamTarget, error) {
+	if t := b.lastTarget; t != nil && t.tenant == tenant && labels.Equal(t.labels, ls) {
+		return t, nil
+	}
+
+	layout := b.layoutFor(tenant)
+	schemaKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
+	if err != nil {
+		return nil, fmt.Errorf("compute schema key for tenant %s: %w", tenant, err)
+	}
+	hash := labels.StableHash(ls)
 	sb, lb := b.buildersFor(tenant, layout)
 
-	for entry, size := range entriesIter {
-		entry.SchemaKey = streamSortKey
-		entry.ShardBucket = streamShard
-		entry.StreamHash = streamHash
-		entry.StreamID = sb.Record(ls, entry.Timestamp, size)
-
-		lb.Append(entry)
-
-		// If our logs section has gotten big enough, we want to flush it to the
-		// encoder and start a new section.
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := b.builder.Append(lb); err != nil {
-				return err
-			}
-			// We need to set the tenant again after flushing because the builder is reset.
-			lb.SetTenant(tenant)
-		}
+	b.lastTarget = &streamTarget{
+		tenant:    tenant,
+		labels:    ls,
+		schemaKey: schemaKey,
+		hash:      hash,
+		shard:     layout.ShardLayout().BucketFromHash(hash),
+		streams:   sb,
+		logs:      lb,
 	}
+	return b.lastTarget, nil
+}
 
+// appendTo appends rec to the logs builder of t and records its stream. It
+// replaces the stream fields of rec with the values of t.
+//
+// appendTo flushes the logs builder of t as a section when it exceeds
+// TargetSectionSize.
+func (b *Builder) appendTo(t *streamTarget, rec logs.Record) error {
+	rec.SchemaKey = t.schemaKey
+	rec.ShardBucket = t.shard
+	rec.StreamHash = t.hash
+	rec.StreamID = t.streams.Record(t.labels, rec.Timestamp, rec.UncompressedSize())
+
+	t.logs.Append(rec)
+
+	if t.logs.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(t.logs); err != nil {
+			return err
+		}
+		// We need to set the tenant again after flushing because the builder is reset.
+		t.logs.SetTenant(t.tenant)
+	}
+	return nil
+}
+
+// markAppended updates the earliest record time, the size estimate and the
+// state after an append of records received at recordTime.
+func (b *Builder) markAppended(recordTime time.Time) {
 	if b.earliestRecordTime.IsZero() || recordTime.Before(b.earliestRecordTime) {
 		b.earliestRecordTime = recordTime
 	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
-	return nil
 }
 
 func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
@@ -679,6 +726,7 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 	clear(b.layouts)
+	b.lastTarget = nil
 
 	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0
