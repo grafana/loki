@@ -157,3 +157,14 @@ func encodeNested(t *testing.T, stream logproto.Stream) []*kgo.Record {
 	require.NoError(t, err)
 	return []*kgo.Record{{Key: []byte(tenantID), Value: data}}
 }
+
+func flattenTestRequest(req *logproto.InternalPushRequest) *logproto.PushRequest {
+	flat := &logproto.PushRequest{Format: req.Format}
+	for i := range req.Streams {
+		flat.Streams = append(flat.Streams, req.Streams[i].FlatView())
+	}
+	return flat
+}
+func (f *fakePusher) PushInternal(ctx context.Context, req *logproto.InternalPushRequest) (*logproto.PushResponse, error) {
+	return f.Push(ctx, flattenTestRequest(req))
+}

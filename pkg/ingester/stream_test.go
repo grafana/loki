@@ -355,7 +355,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	tracker := &mockUsageTracker{}
 
-	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker, "loki")
+	_, failed := s.validateEntries(context.Background(), flatEntryBatch(entries), false, true, tracker, "loki")
 	require.NotEmpty(t, failed)
 	require.False(t, hasRateLimitErr(failed))
 	require.Equal(t, 13.0, tracker.discardedBytes)
@@ -768,4 +768,123 @@ func lockThenPush(ctx context.Context, s *stream, entries []logproto.Entry, reco
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
 	return s.Push(ctx, entries, record, rateLimitWholeStream, usageTracker, format)
+}
+
+func TestPushInternalMatchesExpanded(t *testing.T) {
+	for _, whole := range []bool{false, true} {
+		for _, limited := range []bool{false, true} {
+			t.Run(fmt.Sprintf("whole=%t/limited=%t", whole, limited), func(t *testing.T) {
+				l := defaultLimitsTestConfig()
+				if limited {
+					l.PerStreamRateLimit = 1
+					l.PerStreamRateLimitBurst = 70
+				}
+				limits, err := validation.NewOverrides(l, nil)
+				require.NoError(t, err)
+				strategy := &TenantBasedStrategy{limits: limits}
+				makeStream := func() *stream {
+					cfg := defaultConfig()
+					cfg.MaxChunkAge = 2 * time.Hour
+					cfg.TargetChunkSize = 160
+					cfg.BlockSize = 60
+					return newStream(chunkenc.ChunkFormatV4, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, cfg, strategy, "nested-test", 1, labels.FromStrings("app", "test"), NewStreamRateCalculator(), NilMetrics, nil, nil, "0", noPolicy)
+				}
+				flatStream, nestedStream := makeStream(), makeStream()
+				at := time.Unix(100000, 0).UTC()
+				nested := logproto.InternalStreamAdapter{Labels: `{app="test"}`, ResourceLogs: []logproto.ResourceLogs{{
+					Attrs: []logproto.LabelAdapter{{Name: "r", Value: "resource"}, {Name: "override", Value: "resource"}, {Name: "detected_level", Value: "info"}},
+					ScopeLogs: []logproto.ScopeLogs{
+						{Attrs: []logproto.LabelAdapter{{Name: "override", Value: "scope"}}, Entries: []logproto.Entry{
+							{Timestamp: at, Line: "first"},
+							{Timestamp: at, Line: "first"},
+							{Timestamp: at.Add(time.Second), Line: "second", StructuredMetadata: []logproto.LabelAdapter{{Name: "override", Value: ""}}},
+						}},
+						{Entries: []logproto.Entry{
+							{Timestamp: at.Add(-2 * time.Hour), Line: "too old"},
+							{Timestamp: at.Add(2 * time.Second), Line: "third"},
+						}},
+					},
+				}}}
+				original, err := nested.Marshal()
+				require.NoError(t, err)
+				flat := nested.FlatView()
+				// Repeated pushes also exercise last-line deduplication across requests.
+				for range 2 {
+					flatRecord, nestedRecord := recordPool.GetRecord(), recordPool.GetRecord()
+					flatTracker, nestedTracker := &mockUsageTracker{}, &mockUsageTracker{}
+					flatBytes, flatErr := flatStream.Push(t.Context(), flat.Entries, flatRecord, whole, flatTracker, "otlp")
+					nestedBytes, nestedErr := nestedStream.PushInternal(t.Context(), &nested, nestedRecord, whole, nestedTracker, "otlp")
+					require.Equal(t, flatErr, nestedErr)
+					require.Equal(t, flatBytes, nestedBytes)
+					require.Equal(t, flatTracker.discardedBytes, nestedTracker.discardedBytes)
+					require.Equal(t, flatRecord.RefEntries, nestedRecord.RefEntries, "WAL entries must remain expanded")
+					recordPool.PutRecord(flatRecord)
+					recordPool.PutRecord(nestedRecord)
+				}
+				after, err := nested.Marshal()
+				require.NoError(t, err)
+				require.Equal(t, original, after)
+				require.Equal(t, flatStream.entryCt, nestedStream.entryCt)
+				require.Equal(t, flatStream.highestTs, nestedStream.highestTs)
+				require.Len(t, nestedStream.chunks, len(flatStream.chunks))
+				for i := range flatStream.chunks {
+					require.NoError(t, flatStream.chunks[i].chunk.Close())
+					require.NoError(t, nestedStream.chunks[i].chunk.Close())
+					want, err := flatStream.chunks[i].chunk.Bytes()
+					require.NoError(t, err)
+					got, err := nestedStream.chunks[i].chunk.Bytes()
+					require.NoError(t, err)
+					require.Equal(t, want, got, "chunk %d", i)
+				}
+			})
+		}
+	}
+}
+
+func TestPushInternalWALReplayAndTail(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	makeStream := func() *stream {
+		cfg := defaultConfig()
+		cfg.MaxChunkAge = 2 * time.Hour
+		return newStream(chunkenc.ChunkFormatV4, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, cfg, &TenantBasedStrategy{limits: limits}, "nested-test", 1, labels.FromStrings("app", "test"), NewStreamRateCalculator(), NilMetrics, nil, nil, "0", noPolicy)
+	}
+	live, replay := makeStream(), makeStream()
+	nested := logproto.InternalStreamAdapter{Labels: `{app="test"}`, ResourceLogs: []logproto.ResourceLogs{{
+		Attrs: []logproto.LabelAdapter{{Name: "resource", Value: "kept"}}, ScopeLogs: []logproto.ScopeLogs{{
+			Attrs: []logproto.LabelAdapter{{Name: "scope", Value: "kept"}}, Entries: []logproto.Entry{{Timestamp: time.Unix(100000, 0).UTC(), Line: "test"}},
+		}},
+	}}}
+	expr, err := syntax.ParseLogSelector(nested.Labels, true)
+	require.NoError(t, err)
+	tail, err := newTailer("nested-test", expr, &fakeTailServer{}, 10)
+	require.NoError(t, err)
+	defer tail.close()
+	live.addTailer(tail)
+	record := recordPool.GetRecord()
+	defer recordPool.PutRecord(record)
+	_, err = live.PushInternal(t.Context(), &nested, record, false, nil, "otlp")
+	require.NoError(t, err)
+	require.Len(t, record.RefEntries, 1)
+	expected := nested.FlatView().Entries
+	require.Equal(t, expected, record.RefEntries[0].Entries)
+	select {
+	case queued := <-tail.queue:
+		require.Equal(t, expected, queued.stream.Entries)
+	default:
+		t.Fatal("tail did not receive stored entries")
+	}
+	// Exercise the existing WAL codec and replay, not just the record before encoding.
+	decoded := &wal.Record{}
+	encoded := record.EncodeEntries(wal.CurrentEntriesRec, nil)
+	require.NoError(t, wal.DecodeRecord(encoded, decoded))
+	_, err = replay.PushWalReplay(t.Context(), decoded.RefEntries[0].Entries, decoded.RefEntries[0].Counter, nil)
+	require.NoError(t, err)
+	require.NoError(t, live.chunks[0].chunk.Close())
+	require.NoError(t, replay.chunks[0].chunk.Close())
+	want, err := live.chunks[0].chunk.Bytes()
+	require.NoError(t, err)
+	got, err := replay.chunks[0].chunk.Bytes()
+	require.NoError(t, err)
+	require.Equal(t, want, got)
 }

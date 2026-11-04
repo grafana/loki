@@ -50,7 +50,11 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 	}
 }
 
-func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
+type internalPusher interface {
+	PushInternal(context.Context, *logproto.InternalPushRequest) (*logproto.PushResponse, error)
+}
+
+func NewKafkaConsumerFactory(pusher internalPusher, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
 	metrics.consumeWorkersCount.Set(float64(maxConsumerWorkers))
 
@@ -71,7 +75,7 @@ func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Regist
 }
 
 type kafkaConsumer struct {
-	pusher             logproto.PusherServer
+	pusher             internalPusher
 	logger             log.Logger
 	decoder            *kafka.Decoder
 	committer          partition.Committer
@@ -141,22 +145,22 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		go func() {
 			defer wg.Done()
 			for recordWithIndex := range workChan {
-				stream, err := kc.decoder.DecodeWithoutLabels(recordWithIndex.record.Content)
+				stream, err := kc.decoder.DecodeInternalWithoutLabels(recordWithIndex.record.Content)
 				if err != nil {
 					level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
 					continue
 				}
 
 				recordCtx := user.InjectOrgID(recordWithIndex.record.Ctx, recordWithIndex.record.TenantID)
-				req := &logproto.PushRequest{
-					Streams: []logproto.Stream{stream},
+				req := &logproto.InternalPushRequest{
+					Streams: []logproto.InternalStreamAdapter{stream},
 				}
 
 				level.Debug(kc.logger).Log("msg", "pushing record", "offset", recordWithIndex.record.Offset, "length", len(recordWithIndex.record.Content))
 
 				if err := retryWithBackoff(ctx, func(attempts int) error {
 					pushTime := time.Now()
-					_, err := kc.pusher.Push(recordCtx, req)
+					_, err := kc.pusher.PushInternal(recordCtx, req)
 
 					kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
 

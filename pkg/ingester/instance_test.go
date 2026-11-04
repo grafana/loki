@@ -347,7 +347,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(context.Background(), testStream, recordPool.GetRecord(), "loki")
 		require.NoError(t, err)
-		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
+		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(logproto.FromStream(testStream)))
 		require.NoError(t, err)
 		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, stream.policy).NewChunk()
 		for _, entry := range testStream.Entries {

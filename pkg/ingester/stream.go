@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -40,6 +39,7 @@ type line struct {
 	ts                 time.Time
 	content            string
 	structuredMetadata pushtypes.LabelsAdapter
+	sharedMetadata     pushtypes.LabelsAdapter
 }
 
 type stream struct {
@@ -180,18 +180,35 @@ func (s *stream) Push(
 	format string,
 
 ) (int, error) {
+	return s.pushEntries(ctx, flatEntryBatch(entries), record, rateLimitWholeStream, usageTracker, format)
+}
+
+// PushInternal keeps shared attributes separate through validation and chunk append.
+// chunkMtx must be held by the caller.
+func (s *stream) PushInternal(ctx context.Context, stream *logproto.InternalStreamAdapter, record *wal.Record, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) (int, error) {
+	return s.pushEntries(ctx, nestedEntryBatch(stream), record, rateLimitWholeStream, usageTracker, format)
+}
+
+func (s *stream) pushEntries(ctx context.Context, entries []entryWithMetadata, record *wal.Record, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) (int, error) {
+	count := len(entries)
 	toStore, invalid := s.validateEntries(ctx, entries, false, rateLimitWholeStream, usageTracker, format)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
-		return 0, errorForFailedEntries(s, invalid, len(entries))
+		return 0, errorForFailedEntries(s, invalid, count)
 	}
-
 	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format)
-	if len(storedEntries) > 0 && record != nil {
-		record.AddEntries(uint64(s.fp), s.entryCt, storedEntries...)
+	s.tailerMtx.RLock()
+	hasTailers := len(s.tailers) != 0
+	s.tailerMtx.RUnlock()
+	if len(storedEntries) > 0 && (record != nil || hasTailers) {
+		flat := flattenEntries(storedEntries)
+		if record != nil {
+			record.AddEntries(uint64(s.fp), s.entryCt, flat...)
+		}
+		if hasTailers {
+			s.sendToTailers(flat)
+		}
 	}
-	s.sendToTailers(storedEntries)
-
-	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), len(entries))
+	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), count)
 }
 
 // PushWalReplay ingests entries read back from WAL segments during recovery.
@@ -226,7 +243,7 @@ func (s *stream) PushWalReplay(
 	}
 
 	const format = "loki"
-	toStore, invalid := s.validateEntries(ctx, entries, counter > 0, false, usageTracker, format)
+	toStore, invalid := s.validateEntries(ctx, flatEntryBatch(entries), counter > 0, false, usageTracker, format)
 
 	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format)
 	if len(storedEntries) > 0 {
@@ -238,7 +255,7 @@ func (s *stream) PushWalReplay(
 
 // appendEntries makes sure the stream has a chunk, stores the validated entries
 // and keeps the memory chunk metric up to date. chunkMtx must be held.
-func (s *stream) appendEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) appendEntries(ctx context.Context, entries []entryWithMetadata, usageTracker push.UsageTracker, format string) (int, []entryWithMetadata, []entryWithError) {
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
@@ -338,7 +355,7 @@ func (s *stream) sendToTailers(entries []logproto.Entry) {
 	}
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) storeEntries(ctx context.Context, entries []entryWithMetadata, usageTracker push.UsageTracker, format string) (int, []entryWithMetadata, []entryWithError) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to store entries", trace.WithAttributes(
 		attribute.String("labels", s.labelsString)),
@@ -348,32 +365,44 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
 
 	var invalid []entryWithError
-	storedEntries := make([]logproto.Entry, 0, len(entries))
+	storedEntries := entries[:0]
 	for i := 0; i < len(entries); i++ {
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
+		if chunk.closed || !chunk.chunk.SpaceForWithMetadataSize(entries[i].Entry, entries[i].metadataSize(false)) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			chunk = s.cutChunk(ctx)
 		}
 
+		// Old chunk formats strip metadata; keep the decoded request intact for retries.
+		if s.chunkFormat < chunkenc.ChunkFormatV4 {
+			entry := *entries[i].Entry
+			entry.StructuredMetadata = nil
+			entries[i].Entry = &entry
+			entries[i].shared = nil
+		}
 		chunk.lastUpdated = time.Now()
-		dup, err := chunk.chunk.Append(&entries[i])
+		var shared *chunkenc.SharedMetadata
+		if entries[i].shared != nil {
+			shared = entries[i].shared.symbols
+		}
+		dup, err := chunk.chunk.AppendWithShared(entries[i].Entry, shared)
 		if err != nil {
-			invalid = append(invalid, entryWithError{&entries[i], err})
+			invalid = append(invalid, entryWithError{entries[i].Entry, err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)
 				outOfOrderSamples++
-				outOfOrderBytes += util.EntryTotalSize(&entries[i])
+				outOfOrderBytes += entries[i].totalSize()
 			}
 			continue
 		}
 		if dup {
-			s.handleLoggingOfDuplicateEntry(entries[i])
+			s.handleLoggingOfDuplicateEntry(*entries[i].Entry)
 		}
 
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
 		s.lastLine.content = entries[i].Line
 		s.lastLine.structuredMetadata = entries[i].StructuredMetadata
+		s.lastLine.sharedMetadata = entries[i].sharedAttrs()
 		if s.highestTs.Before(entries[i].Timestamp) {
 			s.highestTs = entries[i].Timestamp
 		}
@@ -400,7 +429,7 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 
 }
 
-func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
+func (s *stream) validateEntries(ctx context.Context, entries []entryWithMetadata, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]entryWithMetadata, []entryWithError) {
 
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
@@ -410,7 +439,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		limit                                = s.limiter.lim.Limit()
 		lastLine                             = s.lastLine
 		highestTs                            = s.highestTs
-		toStore                              = make([]logproto.Entry, 0, len(entries))
+		toStore                              = entries[:0]
 	)
 
 	for i := range entries {
@@ -422,18 +451,16 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		//
 		// NOTE: it's still possible for duplicates to be appended if a stream is
 		// deleted from inactivity.
-		if entries[i].Timestamp.Equal(lastLine.ts) &&
-			entries[i].Line == lastLine.content &&
-			labelsEqual(entries[i].StructuredMetadata, lastLine.structuredMetadata) {
+		if entries[i].matches(lastLine) {
 			continue
 		}
 
-		entryBytes := util.EntryTotalSize(&entries[i])
+		entryBytes := entries[i].totalSize()
 		totalBytes += entryBytes
 
 		now := time.Now()
 		if !rateLimitWholeStream && !s.limiter.AllowN(now, entryBytes) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(entryBytes)}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{entries[i].Entry, &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(entryBytes)}})
 			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 			rateLimitedSamples++
 			rateLimitedBytes += entryBytes
@@ -443,7 +470,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
 		if !isReplay && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{entries[i].Entry, chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
 			outOfOrderBytes += entryBytes
@@ -455,6 +482,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
 		lastLine.structuredMetadata = entries[i].StructuredMetadata
+		lastLine.sharedMetadata = entries[i].sharedAttrs()
 		if highestTs.Before(entries[i].Timestamp) {
 			highestTs = entries[i].Timestamp
 		}
@@ -472,14 +500,14 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{
-				&toStore[i],
+				toStore[i].Entry,
 				&validation.ErrStreamRateLimit{
 					RateLimit: flagext.ByteSize(limit),
 					Labels:    s.labelsString,
-					Bytes:     flagext.ByteSize(util.EntryTotalSize(&toStore[i])),
+					Bytes:     flagext.ByteSize(toStore[i].totalSize()),
 				},
 			})
-			rateLimitedBytes += util.EntryTotalSize(&toStore[i])
+			rateLimitedBytes += toStore[i].totalSize()
 		}
 
 		// Log the only last error to the write failures manager.

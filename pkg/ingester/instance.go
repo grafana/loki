@@ -229,6 +229,11 @@ func newInstance(
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	return i.PushInternal(ctx, logproto.FromPushRequest(req))
+}
+
+// PushInternal ingests nested streams, retaining expanded entries only for an enabled WAL.
+func (i *instance) PushInternal(ctx context.Context, req *logproto.InternalPushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
@@ -240,7 +245,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				// need format in push request.
-				s, err := i.createStream(ctx, reqStream, record, req.Format)
+				s, err := i.createInternalStream(ctx, &reqStream, record, req.Format)
 				// Lock before adding to maps
 				if err == nil {
 					s.chunkMtx.Lock()
@@ -257,7 +262,11 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, req.Format)
+		writeRecord := record
+		if _, disabled := i.wal.(noopWAL); disabled {
+			writeRecord = nil
+		}
+		_, appendErr = s.PushInternal(ctx, &reqStream, writeRecord, rateLimitWholeStream, i.customStreamsTracker, req.Format)
 		s.chunkMtx.Unlock()
 	}
 
@@ -281,6 +290,10 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record, format string) (*stream, error) {
+	return i.createInternalStream(ctx, logproto.FromStream(pushReqStream), record, format)
+}
+
+func (i *instance) createInternalStream(ctx context.Context, pushReqStream *logproto.InternalStreamAdapter, record *wal.Record, format string) (*stream, error) {
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
@@ -313,7 +326,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 
-	chunkfmt, headfmt, err := i.chunkFormatAt(minTs(&pushReqStream))
+	chunkfmt, headfmt, err := i.chunkFormatAt(minTs(pushReqStream))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -357,7 +370,7 @@ func (i *instance) resolvePolicyForStream(ctx context.Context, labels labels.Lab
 	return policy
 }
 
-func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours, policy, format string) (*stream, error) {
+func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream *logproto.InternalStreamAdapter, err error, labels labels.Labels, retentionHours, policy, format string) (*stream, error) {
 	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
 		l := level.Debug(util_log.Logger)
 
@@ -374,8 +387,14 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 		)
 	}
 
-	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(len(pushReqStream.Entries)))
-	bytes := util.EntriesTotalSize(pushReqStream.Entries)
+	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(pushReqStream.EntryCount()))
+	bytes := 0
+	pushReqStream.EachGroup(func(resource, scope []logproto.LabelAdapter, entries []logproto.Entry) {
+		shared := entryMetadata{attrs: logproto.AppendMetadata(nil, scope, resource)}
+		for j := range entries {
+			bytes += (entryWithMetadata{Entry: &entries[j], shared: &shared}).totalSize()
+		}
+	})
 	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes), format)
@@ -1316,21 +1335,15 @@ func (o *OnceSwitch) TriggerAnd(fn func()) {
 	}
 }
 
-// minTs is a helper to return minimum Unix timestamp (as `model.Time`)
-// across all the entries in a given `stream`.
-func minTs(stream *logproto.Stream) model.Time {
-	// NOTE: We choose `min` timestamp because, the chunk is written once then
-	// added to the index buckets for may be different days. It would better rather to have
-	// some latest(say v13) indices reference older (say v12) compatible chunks than vice versa.
-
-	streamMinTs := int64(math.MaxInt64)
-	for _, entry := range stream.Entries {
-		ts := entry.Timestamp.UnixNano()
-		if streamMinTs > ts {
-			streamMinTs = ts
+// minTs selects the oldest schema needed by any entry in the stream.
+func minTs(stream *logproto.InternalStreamAdapter) model.Time {
+	minimum := int64(math.MaxInt64)
+	stream.EachEntryWithShared(func(entry *logproto.Entry, _, _ []logproto.LabelAdapter) {
+		if ts := entry.Timestamp.UnixNano(); ts < minimum {
+			minimum = ts
 		}
-	}
-	return model.TimeFromUnixNano(streamMinTs)
+	})
+	return model.TimeFromUnixNano(minimum)
 }
 
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.

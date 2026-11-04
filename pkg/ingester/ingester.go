@@ -226,6 +226,7 @@ type Interface interface {
 	services.Service
 
 	logproto.PusherServer
+	logproto.InternalPusherServer
 	logproto.QuerierServer
 	logproto.StreamDataServer
 
@@ -1016,6 +1017,11 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	return i.PushInternal(ctx, logproto.FromPushRequest(req))
+}
+
+// PushInternal accepts decoded Kafka streams without expanding shared attributes.
+func (i *Ingester) PushInternal(ctx context.Context, req *logproto.InternalPushRequest) (*logproto.PushResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1037,7 +1043,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	return &logproto.PushResponse{}, instance.Push(ctx, req)
+	return &logproto.PushResponse{}, instance.PushInternal(ctx, req)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
