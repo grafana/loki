@@ -691,6 +691,401 @@
                   ],
                   "title": "Per Pod Latency (p99)",
                   "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "description": "Object storage operations issued by queriers, by operation. Operations with no requests in the selected time range are hidden. Only available with the Thanos object storage client (use_thanos_objstore: true).",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byValue",
+                              "options": {
+                                 "op": "lte",
+                                 "reducer": "max",
+                                 "value": 0
+                              }
+                           },
+                           "properties": [
+                              {
+                                 "id": "custom.hideFrom",
+                                 "value": {
+                                    "legend": true,
+                                    "tooltip": true,
+                                    "viz": true
+                                 }
+                              }
+                           ]
+                        }
+                     ]
+                  },
+                  "id": 7,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "multi",
+                        "sort": "desc"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "sum by (operation) (rate(loki_objstore_bucket_operations_total{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))",
+                        "format": "time_series",
+                        "legendFormat": "{{operation}}",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Object storage operations",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "description": "p99 latency of a single object storage operation as seen by the client, by operation, including any retries the client does internally.",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "s"
+                     },
+                     "overrides": [ ]
+                  },
+                  "id": 8,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "multi",
+                        "sort": "desc"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "histogram_quantile(0.99, sum by (le, operation) (rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))) > 0",
+                        "format": "time_series",
+                        "legendFormat": "{{operation}}",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Object storage latency (p99)",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "description": "Total time a (sub)query spent downloading chunks, across all of its chunk fetches. This is not the latency of a single GET: see \"Object storage latency (p99)\" for that.",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "s"
+                     },
+                     "overrides": [ ]
+                  },
+                  "id": 9,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "multi",
+                        "sort": "desc"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "histogram_quantile(0.99, sum by (le) (rate(loki_logql_querystats_chunk_download_latency_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))) > 0",
+                        "format": "time_series",
+                        "legendFormat": "p99",
+                        "legendLink": null
+                     },
+                     {
+                        "expr": "histogram_quantile(0.50, sum by (le) (rate(loki_logql_querystats_chunk_download_latency_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))) > 0",
+                        "format": "time_series",
+                        "legendFormat": "p50",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Chunk download latency (per query)",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "description": "HTTP requests to object storage that got a non-2xx response, by status code. Status codes with no requests in the selected time range are hidden. Every HTTP attempt is counted, including retries done inside the client. 429 and 503 (orange) are throttling, for example S3 SlowDown; other 5xx (red) are server errors; 404 (grey) is object not found. Requests that failed without an HTTP response are not counted here.",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byValue",
+                              "options": {
+                                 "op": "lte",
+                                 "reducer": "max",
+                                 "value": 0
+                              }
+                           },
+                           "properties": [
+                              {
+                                 "id": "custom.hideFrom",
+                                 "value": {
+                                    "legend": true,
+                                    "tooltip": true,
+                                    "viz": true
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byRegexp",
+                              "options": "^5\\d\\d$"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E24D42",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byRegexp",
+                              "options": "^(429|503)$"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#EF843C",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byRegexp",
+                              "options": "^404$"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#A9A9A9",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        }
+                     ]
+                  },
+                  "id": 10,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "multi",
+                        "sort": "desc"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "sum by (status_code) (rate(loki_objstore_bucket_transport_requests_total{cluster=~\"$cluster\",job=~\"($namespace)/querier\", status_code!~\"2..\"}[$__rate_interval]))",
+                        "format": "time_series",
+                        "legendFormat": "{{status_code}}",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Object storage HTTP errors",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "description": "Retries done by congestion control. These cover chunk GETs only. \"GETs failed after retries\" counts GETs that still failed after the last allowed retry; the error is returned to the query. Without congestion control the object storage client retries internally, and those retries are not counted by any metric.",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "noValue": "Congestion control disabled",
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [ ]
+                  },
+                  "id": 11,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "multi",
+                        "sort": "desc"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "sum(rate(loki_store_congestion_control_retries_total{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))",
+                        "format": "time_series",
+                        "legendFormat": "retries",
+                        "legendLink": null
+                     },
+                     {
+                        "expr": "sum(rate(loki_store_congestion_control_retries_exceeded_total{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))",
+                        "format": "time_series",
+                        "legendFormat": "GETs failed after retries",
+                        "legendLink": null
+                     },
+                     {
+                        "expr": "sum(rate(loki_store_congestion_control_non_retryable_errors_total{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))",
+                        "format": "time_series",
+                        "legendFormat": "non-retryable errors",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Retries",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "description": "Average time a chunk GET attempt waited for the AIMD rate limiter before it was sent, across all queriers. This is not a delay between retries: retries are sent as soon as the rate limiter allows.",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "noValue": "Congestion control disabled",
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "s"
+                     },
+                     "overrides": [ ]
+                  },
+                  "id": 12,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "multi",
+                        "sort": "desc"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "sum(rate(loki_store_congestion_control_backoff_seconds_total{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))\n/\nsum(rate(loki_store_congestion_control_requests_total{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))\n",
+                        "format": "time_series",
+                        "legendFormat": "average",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Rate-limit wait per attempt",
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -877,7 +1272,7 @@
                      ]
                   },
                   "fill": 10,
-                  "id": 7,
+                  "id": 13,
                   "linewidth": 0,
                   "links": [ ],
                   "options": {
@@ -926,7 +1321,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 8,
+                  "id": 14,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -1004,7 +1399,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 9,
+                  "id": 15,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -1216,7 +1611,7 @@
                      ]
                   },
                   "fill": 10,
-                  "id": 10,
+                  "id": 16,
                   "linewidth": 0,
                   "links": [ ],
                   "options": {
@@ -1265,7 +1660,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 11,
+                  "id": 17,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -1343,7 +1738,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 12,
+                  "id": 18,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -1555,7 +1950,7 @@
                      ]
                   },
                   "fill": 10,
-                  "id": 13,
+                  "id": 19,
                   "linewidth": 0,
                   "links": [ ],
                   "options": {
@@ -1604,7 +1999,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 14,
+                  "id": 20,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -1682,7 +2077,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 15,
+                  "id": 21,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -1894,7 +2289,7 @@
                      ]
                   },
                   "fill": 10,
-                  "id": 16,
+                  "id": 22,
                   "linewidth": 0,
                   "links": [ ],
                   "options": {
@@ -1943,7 +2338,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 17,
+                  "id": 23,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -2021,7 +2416,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 18,
+                  "id": 24,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -2233,7 +2628,7 @@
                      ]
                   },
                   "fill": 10,
-                  "id": 19,
+                  "id": 25,
                   "linewidth": 0,
                   "links": [ ],
                   "options": {
@@ -2282,7 +2677,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 20,
+                  "id": 26,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {
@@ -2360,7 +2755,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 21,
+                  "id": 27,
                   "links": [ ],
                   "nullPointMode": "null as zero",
                   "options": {

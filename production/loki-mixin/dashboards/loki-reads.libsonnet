@@ -54,6 +54,114 @@ local utils = import 'mixin-utils/utils.libsonnet';
       ]
     ),
 
+    local querierSel = dashboards['loki-reads.json'].querierSelector,
+
+    local regexColorOverride(regex, color) = $.colorOverride(regex, color) + {
+      matcher: { id: 'byRegexp', options: regex },
+    },
+
+    local withDescription(text) = { description: text },
+
+    local withTooltipSortDesc = {
+      options+: {
+        tooltip+: { mode: 'multi', sort: 'desc' },
+      },
+    },
+
+    // Hides series whose values are never above zero in the selected time range.
+    local withZeroSeriesHidden = {
+      fieldConfig+: {
+        overrides+: [
+          {
+            matcher: { id: 'byValue', options: { reducer: 'max', op: 'lte', value: 0 } },
+            properties: [
+              { id: 'custom.hideFrom', value: { legend: true, tooltip: true, viz: true } },
+            ],
+          },
+        ],
+      },
+    },
+
+    // p99 of a histogram. "> 0" drops the NaN points of series that had no
+    // observations, so idle series don't show up at all.
+    local p99Query(metric, by) =
+      'histogram_quantile(0.99, sum by (%s) (rate(%s_bucket{%s}[$__rate_interval]))) > 0' % [std.join(', ', ['le'] + by), metric, querierSel],
+
+    local congestionControlNoValue = 'Congestion control disabled',
+
+    // Extra panels for the Querier row, three per line: object storage
+    // traffic, then HTTP errors and congestion control.
+    local querierObjectStoragePanels = [
+      $.newQueryPanel('Object storage operations', 'reqps') +
+      $.queryPanel(
+        'sum by (operation) (rate(loki_objstore_bucket_operations_total{%s}[$__rate_interval]))' % querierSel,
+        '{{operation}}'
+      ) +
+      withZeroSeriesHidden +
+      withTooltipSortDesc +
+      withDescription('Object storage operations issued by queriers, by operation. Operations with no requests in the selected time range are hidden. Only available with the Thanos object storage client (use_thanos_objstore: true).'),
+
+      $.newQueryPanel('Object storage latency (p99)', 's') +
+      $.queryPanel(p99Query('loki_objstore_bucket_operation_duration_seconds', ['operation']), '{{operation}}') +
+      withTooltipSortDesc +
+      withDescription('p99 latency of a single object storage operation as seen by the client, by operation, including any retries the client does internally.'),
+
+      $.newQueryPanel('Chunk download latency (per query)', 's') +
+      $.queryPanel(
+        [
+          p99Query('loki_logql_querystats_chunk_download_latency_seconds', []),
+          'histogram_quantile(0.50, sum by (le) (rate(loki_logql_querystats_chunk_download_latency_seconds_bucket{%s}[$__rate_interval]))) > 0' % querierSel,
+        ],
+        ['p99', 'p50']
+      ) +
+      withTooltipSortDesc +
+      withDescription('Total time a (sub)query spent downloading chunks, across all of its chunk fetches. This is not the latency of a single GET: see "Object storage latency (p99)" for that.'),
+
+      $.newQueryPanel('Object storage HTTP errors', 'reqps') +
+      $.queryPanel(
+        'sum by (status_code) (rate(loki_objstore_bucket_transport_requests_total{%s status_code!~"2.."}[$__rate_interval]))' % querierSel,
+        '{{status_code}}'
+      ) +
+      withZeroSeriesHidden +
+      withTooltipSortDesc +
+      withDescription('HTTP requests to object storage that got a non-2xx response, by status code. Status codes with no requests in the selected time range are hidden. Every HTTP attempt is counted, including retries done inside the client. 429 and 503 (orange) are throttling, for example S3 SlowDown; other 5xx (red) are server errors; 404 (grey) is object not found. Requests that failed without an HTTP response are not counted here.') +
+      {
+        fieldConfig+: {
+          overrides+: [
+            regexColorOverride('^5\\d\\d$', '#E24D42'),
+            regexColorOverride('^(429|503)$', '#EF843C'),
+            regexColorOverride('^404$', '#A9A9A9'),
+          ],
+        },
+      },
+
+      $.newQueryPanel('Retries', 'reqps') +
+      $.queryPanel(
+        [
+          'sum(rate(loki_store_congestion_control_retries_total{%s}[$__rate_interval]))' % querierSel,
+          'sum(rate(loki_store_congestion_control_retries_exceeded_total{%s}[$__rate_interval]))' % querierSel,
+          'sum(rate(loki_store_congestion_control_non_retryable_errors_total{%s}[$__rate_interval]))' % querierSel,
+        ],
+        ['retries', 'GETs failed after retries', 'non-retryable errors']
+      ) +
+      $.withNoValue(congestionControlNoValue) +
+      withTooltipSortDesc +
+      withDescription('Retries done by congestion control. These cover chunk GETs only. "GETs failed after retries" counts GETs that still failed after the last allowed retry; the error is returned to the query. Without congestion control the object storage client retries internally, and those retries are not counted by any metric.'),
+
+      $.newQueryPanel('Rate-limit wait per attempt', 's') +
+      $.queryPanel(
+        |||
+          sum(rate(loki_store_congestion_control_backoff_seconds_total{%s}[$__rate_interval]))
+          /
+          sum(rate(loki_store_congestion_control_requests_total{%s}[$__rate_interval]))
+        ||| % [querierSel, querierSel],
+        'average'
+      ) +
+      $.withNoValue(congestionControlNoValue) +
+      withTooltipSortDesc +
+      withDescription('Average time a chunk GET attempt waited for the AIMD rate limiter before it was sent, across all queriers. This is not a delay between retries: retries are sent as soon as the rate limiter allows.'),
+    ],
+
     'loki-reads.json': {
                          local cfg = self,
 
@@ -180,7 +288,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                [utils.selector.re('route', http_routes)]
                              ),
                            )
-                         )
+                         ) + {
+                           // row() spreads its panels across one line; these wrap onto further lines.
+                           panels+: [p { span: 4 } for p in querierObjectStoragePanels],
+                         }
                        )
                        .addRow(
                          $.row('Ingester')
