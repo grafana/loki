@@ -44,7 +44,13 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (kl *KeepLabels) Hints() StageHints {
-	return StageHints{CanModifyLabels: true, CanModifyLine: false}
+	return StageHints{
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+		ReadsLine:       false,
+		// It only deletes labels. Whether it deletes a label never depends on another label.
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (kl *KeepLabels) RequiredLabelNames() []string {

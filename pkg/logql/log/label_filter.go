@@ -139,7 +139,12 @@ func (NoopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, 
 // Hints implements Stage.
 func (NoopLabelFilter) Hints() StageHints {
 	// It does nothing, so it changes no labels and no line.
-	return StageHints{CanModifyLabels: false, CanModifyLine: false}
+	return StageHints{
+		CanModifyLabels:      false,
+		CanModifyLine:        false,
+		ReadsLine:            false,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (NoopLabelFilter) isLabelFilterer() {}
@@ -223,8 +228,10 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 func (d *BytesLabelFilter) Hints() StageHints {
 	return StageHints{
 		// It sets __error__ when the label value does not parse as bytes, which changes the output labels.
-		CanModifyLabels: true,
-		CanModifyLine:   false,
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            false,
+		ReadsArbitraryLabels: false,
 	}
 }
 
@@ -299,8 +306,10 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 func (d *DurationLabelFilter) Hints() StageHints {
 	return StageHints{
 		// It sets __error__ when the label value does not parse as a duration, which changes the output labels.
-		CanModifyLabels: true,
-		CanModifyLine:   false,
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            false,
+		ReadsArbitraryLabels: false,
 	}
 }
 
@@ -370,8 +379,10 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 func (n *NumericLabelFilter) Hints() StageHints {
 	return StageHints{
 		// It sets __error__ when the label value does not parse as a number, which changes the output labels.
-		CanModifyLabels: true,
-		CanModifyLine:   false,
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            false,
+		ReadsArbitraryLabels: false,
 	}
 }
 
@@ -420,10 +431,12 @@ func (s *StringLabelFilter) Hints() StageHints {
 	readsError, keepsError := errorLabelHints(s.Matcher, s.Matches)
 	return StageHints{
 		// It only reads a label value to decide the match, never writing a label.
-		CanModifyLabels:   false,
-		ReadsErrorLabel:   readsError,
-		KeepsErroredLines: keepsError,
-		CanModifyLine:     false,
+		CanModifyLabels:      false,
+		ReadsErrorLabel:      readsError,
+		KeepsErroredLines:    keepsError,
+		CanModifyLine:        false,
+		ReadsLine:            false,
+		ReadsArbitraryLabels: false,
 	}
 }
 
@@ -470,6 +483,9 @@ func (s *LineFilterLabelFilter) Hints() StageHints {
 		ReadsErrorLabel:   readsError,
 		KeepsErroredLines: keepsError,
 		CanModifyLine:     false,
+		// It applies a line filter to the value of a label, not to the line.
+		ReadsLine:            false,
+		ReadsArbitraryLabels: false,
 	}
 }
 

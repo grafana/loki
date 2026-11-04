@@ -213,15 +213,16 @@ func IsMatchEqualFilterer(filterer log.LabelFilterer) bool {
 type MultiStageExpr []StageExpr
 
 func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
-	stages, err := m.stages()
+	stages, err := m.Stages()
 	if err != nil {
 		return nil, err
 	}
 	return log.NewPipeline(stages), nil
 }
 
-func (m MultiStageExpr) stages() ([]log.Stage, error) {
-	c := make([]log.Stage, 0, len(m))
+// Stages returns the stages of the pipeline. It leaves out the stages that keep every line.
+func (m MultiStageExpr) Stages() (log.Stages, error) {
+	c := make(log.Stages, 0, len(m))
 	for _, e := range m.reorderStages() {
 		p, err := e.Stage()
 		if err != nil {
