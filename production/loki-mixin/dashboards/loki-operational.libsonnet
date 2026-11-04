@@ -126,6 +126,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    std.rstripChars(matcherStr('querier'), ',')
                                  ),
 
+                               // The distributor's =~ selector is replaced once, without the trailing comma, and before its
+                               // = selectors, because a replaced selector such as scrape_job=~"($namespace)/distributor" contains it.
                                local replaceMatchers(expr) =
                                  std.strReplace(
                                    std.strReplace(
@@ -138,33 +140,29 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                                  std.strReplace(
                                                    std.strReplace(
                                                      std.strReplace(
-                                                       std.strReplace(
-                                                         expr,
-                                                         $._config.per_instance_label + '=~"ingester.*"',
-                                                         matcherStr('ingester', matcher='pod', sep='')
-                                                       ),
-                                                       $._config.per_instance_label + '=~"distributor.*"',
-                                                       matcherStr('distributor', matcher='pod', sep='')
+                                                       expr,
+                                                       $._config.per_instance_label + '=~"ingester.*"',
+                                                       matcherStr('ingester', matcher='pod', sep='')
                                                      ),
-                                                     'job="$namespace/cortex-gw",',
-                                                     matcherStr('cortexgateway')
+                                                     $._config.per_instance_label + '=~"distributor.*"',
+                                                     matcherStr('distributor', matcher='pod', sep='')
                                                    ),
-                                                   'job="$namespace/cortex-gw"',
-                                                   std.rstripChars(matcherStr('cortexgateway'), ',')
+                                                   'job="$namespace/cortex-gw",',
+                                                   matcherStr('cortexgateway')
                                                  ),
-                                                 'job=~"($namespace)/cortex-gw",',
-                                                 matcherStr('cortexgateway')
+                                                 'job="$namespace/cortex-gw"',
+                                                 std.rstripChars(matcherStr('cortexgateway'), ',')
                                                ),
-                                               'job="$namespace/distributor",',
-                                               matcherStr('distributor')
+                                               'job=~"($namespace)/cortex-gw",',
+                                               matcherStr('cortexgateway')
                                              ),
-                                             'job="$namespace/distributor"',
+                                             'job=~"($namespace)/distributor"',
                                              std.rstripChars(matcherStr('distributor'), ',')
                                            ),
-                                           'job=~"($namespace)/distributor",',
+                                           'job="$namespace/distributor",',
                                            matcherStr('distributor')
                                          ),
-                                         'job=~"($namespace)/distributor"',
+                                         'job="$namespace/distributor"',
                                          std.rstripChars(matcherStr('distributor'), ',')
                                        ),
                                        'job="$namespace/ingester",',
