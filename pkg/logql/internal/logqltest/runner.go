@@ -177,9 +177,6 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 		must(newQueryFrontendStreamFirstStack(t, queryFrontendShardStreamFirstStackName)),
 		must(newQueryFrontendDataObjStack(t, queryFrontendShardDataObjStackName)),
 		must(newQueryFrontendDataObjAndChunkStack(t, queryFrontendShardDataObjAndChunkStackName)),
-
-		// The querier runs with the default series limit, which no script reaches.
-		newDirectTimestampFirstStack(t, directDefaultSeriesLimitStackName, withMaxQuerySeries(defaultMaxQuerySeries())),
 	}
 }
 

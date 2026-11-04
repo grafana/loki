@@ -3,7 +3,6 @@ package logqltest
 import (
 	"context"
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -24,11 +23,10 @@ const (
 	directDataObjStackName                      = "direct (dataobj)"
 	queryFrontendShardDataObjStackName          = "query-frontend + query-scheduler (sharding, dataobj)"
 	queryFrontendShardDataObjAndChunkStackName  = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
-	directDefaultSeriesLimitStackName           = "direct (timestamp-first, default series limit)"
 )
 
 var (
-	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName, directDataObjStackName, queryFrontendShardDataObjStackName, queryFrontendShardDataObjAndChunkStackName, directDefaultSeriesLimitStackName}
+	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName, directDataObjStackName, queryFrontendShardDataObjStackName, queryFrontendShardDataObjAndChunkStackName}
 )
 
 // splitDataObjStart is the data-object start time of the stack that reads both data objects and
@@ -138,8 +136,8 @@ func newDataObjQuerierFunc(dataObjQueryStart time.Time) newScriptQuerierFunc {
 }
 
 // execLimits are the limits an execution stack runs queries with. They apply to every tenant. The
-// query timeout, and the series limit unless maxQuerySeries sets one, are high enough that no
-// script reaches them.
+// query timeout is high enough that no script reaches it. The series limit is the default limit of
+// a tenant, unless maxQuerySeries sets another.
 type execLimits struct {
 	streamFirstExecutionEnabled bool
 	maxQuerySeries              int
@@ -149,7 +147,7 @@ func (l execLimits) MaxQuerySeries(string) int {
 	if l.maxQuerySeries > 0 {
 		return l.maxQuerySeries
 	}
-	return math.MaxInt32
+	return defaultMaxQuerySeries()
 }
 
 func (execLimits) MaxQueryRange(context.Context, string) time.Duration { return 0 }
