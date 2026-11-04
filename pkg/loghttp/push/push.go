@@ -368,7 +368,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
 		}
 
-		err = CalculateStreamStats(r.Context(), userID, s, streamResolver, tenantConfigs, logPushRequestStreams, pushStats)
+		err = CalculateStreamStats(r.Context(), userID, s, lbs, streamResolver, tenantConfigs, logPushRequestStreams, pushStats)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -380,14 +380,9 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 }
 
 // CalculateStreamStats modifies pushStats with statistics about one stream s.
-func CalculateStreamStats(ctx context.Context, userID string, s push.Stream, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, logPushRequestStreams bool, pushStats *Stats) error {
+func CalculateStreamStats(ctx context.Context, userID string, s push.Stream, lbs labels.Labels, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, logPushRequestStreams bool, pushStats *Stats) error {
 	// Record the new size of labels
 	pushStats.StreamLabelsSize += int64(len(s.Labels))
-
-	lbs, err := syntax.ParseLabels(s.Labels)
-	if err != nil {
-		return fmt.Errorf("couldn't parse labels: %w", err)
-	}
 
 	var retentionPeriod time.Duration
 	var policy string
