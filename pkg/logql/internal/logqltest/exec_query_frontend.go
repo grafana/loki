@@ -57,46 +57,39 @@ type queryFrontendExecutionStack struct {
 }
 
 // newQueryFrontendTimestampFirstStack returns the query-frontend stack in timestamp-first order,
-// with query sharding on or off.
-func newQueryFrontendTimestampFirstStack(t *testing.T, queryShardingEnabled bool) (*queryFrontendExecutionStack, error) {
-	stackName := queryFrontendNoShardTimestampFirstStackName
-	if queryShardingEnabled {
-		stackName = queryFrontendShardTimestampFirstStackName
-	}
-	return newQueryFrontendTimestampFirstStackWith(t, stackName, queryShardingEnabled, stackOptions{})
-}
-
-// newQueryFrontendTimestampFirstStackWith returns the query-frontend stack in timestamp-first
-// order, with query sharding on or off, changed by opts.
-func newQueryFrontendTimestampFirstStackWith(t *testing.T, stackName string, queryShardingEnabled bool, opts stackOptions) (*queryFrontendExecutionStack, error) {
-	return newQueryFrontendStack(t, stackName, queryShardingEnabled, execLimits{maxQuerySeries: opts.maxQuerySeries}, newChunkQuerier, time.Time{})
+// changed by opts.
+func newQueryFrontendTimestampFirstStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	o := newStackOptions(opts...)
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{maxQuerySeries: o.maxQuerySeries}, newChunkQuerier, time.Time{})
 }
 
 // newQueryFrontendStreamFirstStack returns the query-frontend stack with query sharding and
-// stream-first execution on.
-func newQueryFrontendStreamFirstStack(t *testing.T) (*queryFrontendExecutionStack, error) {
-	return newQueryFrontendStack(t, queryFrontendShardStreamFirstStackName, true, execLimits{streamFirstExecutionEnabled: true}, newChunkQuerier, time.Time{})
+// stream-first execution on, changed by opts.
+func newQueryFrontendStreamFirstStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	o := newStackOptions(append([]stackOption{withQuerySharding()}, opts...)...)
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newChunkQuerier, time.Time{})
 }
 
 // newQueryFrontendDataObjStack returns the query-frontend stack with query sharding and
-// stream-first execution on. The stack reads all the data of stream-first queries from data
-// objects.
-func newQueryFrontendDataObjStack(t *testing.T) (*queryFrontendExecutionStack, error) {
-	return newQueryFrontendDataObjStackFrom(t, queryFrontendShardDataObjStackName, epoch)
+// stream-first execution on, changed by opts. The stack reads all the data of stream-first queries
+// from data objects.
+func newQueryFrontendDataObjStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendDataObjStackFrom(t, stackName, epoch, opts...)
 }
 
 // newQueryFrontendDataObjAndChunkStack returns the query-frontend stack with query sharding and
-// stream-first execution on. The stack reads the data of stream-first queries from chunks before
-// splitDataObjStart and from data objects after.
-func newQueryFrontendDataObjAndChunkStack(t *testing.T) (*queryFrontendExecutionStack, error) {
-	return newQueryFrontendDataObjStackFrom(t, queryFrontendShardDataObjAndChunkStackName, epoch.Add(splitDataObjStart))
+// stream-first execution on, changed by opts. The stack reads the data of stream-first queries
+// from chunks before splitDataObjStart and from data objects after.
+func newQueryFrontendDataObjAndChunkStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendDataObjStackFrom(t, stackName, epoch.Add(splitDataObjStart), opts...)
 }
 
 // newQueryFrontendDataObjStackFrom returns the query-frontend stack with query sharding and
-// stream-first execution on. The stack reads the data of stream-first queries from data objects
-// from dataObjQueryStart on.
-func newQueryFrontendDataObjStackFrom(t *testing.T, stackName string, dataObjQueryStart time.Time) (*queryFrontendExecutionStack, error) {
-	return newQueryFrontendStack(t, stackName, true, execLimits{streamFirstExecutionEnabled: true}, newDataObjQuerierFunc(dataObjQueryStart), dataObjQueryStart)
+// stream-first execution on, changed by opts. The stack reads the data of stream-first queries
+// from data objects from dataObjQueryStart on.
+func newQueryFrontendDataObjStackFrom(t *testing.T, stackName string, dataObjQueryStart time.Time, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	o := newStackOptions(append([]stackOption{withQuerySharding()}, opts...)...)
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newDataObjQuerierFunc(dataObjQueryStart), dataObjQueryStart)
 }
 
 // newQueryFrontendStack builds a self-contained query-frontend + query-scheduler +

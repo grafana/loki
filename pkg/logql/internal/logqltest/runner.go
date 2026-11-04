@@ -167,19 +167,19 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 
 	return []executionStack{
 		// The engine runs straight over the querier.
-		newDirectTimestampFirstStack(t),
-		newDirectStreamFirstStack(t),
-		newDirectDataObjStack(t),
+		newDirectTimestampFirstStack(t, directTimestampFirstStackName),
+		newDirectStreamFirstStack(t, directStreamFirstStackName),
+		newDirectDataObjStack(t, directDataObjStackName),
 
 		// The engine runs behind a query-frontend and a query-scheduler.
-		must(newQueryFrontendTimestampFirstStack(t, false)),
-		must(newQueryFrontendTimestampFirstStack(t, true)),
-		must(newQueryFrontendStreamFirstStack(t)),
-		must(newQueryFrontendDataObjStack(t)),
-		must(newQueryFrontendDataObjAndChunkStack(t)),
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardTimestampFirstStackName)),
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendShardTimestampFirstStackName, withQuerySharding())),
+		must(newQueryFrontendStreamFirstStack(t, queryFrontendShardStreamFirstStackName)),
+		must(newQueryFrontendDataObjStack(t, queryFrontendShardDataObjStackName)),
+		must(newQueryFrontendDataObjAndChunkStack(t, queryFrontendShardDataObjAndChunkStackName)),
 
 		// The querier runs with the default series limit, which no script reaches.
-		newDirectTimestampFirstStackWith(t, directDefaultSeriesLimitStackName, stackOptions{maxQuerySeries: defaultMaxQuerySeries()}),
+		newDirectTimestampFirstStack(t, directDefaultSeriesLimitStackName, withMaxQuerySeries(defaultMaxQuerySeries())),
 	}
 }
 

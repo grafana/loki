@@ -93,6 +93,31 @@ type stackOptions struct {
 	// maxQuerySeries, when positive, is the series limit of every query the stack runs, in the
 	// querier and in the query-frontend.
 	maxQuerySeries int
+
+	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
+	queryShardingEnabled bool
+}
+
+// stackOption changes one aspect of an execution stack from its default.
+type stackOption func(*stackOptions)
+
+// withMaxQuerySeries returns the stackOption that sets the series limit of the stack.
+func withMaxQuerySeries(maxQuerySeries int) stackOption {
+	return func(o *stackOptions) { o.maxQuerySeries = maxQuerySeries }
+}
+
+// withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
+func withQuerySharding() stackOption {
+	return func(o *stackOptions) { o.queryShardingEnabled = true }
+}
+
+// newStackOptions returns the stackOptions that opts build on top of the defaults.
+func newStackOptions(opts ...stackOption) stackOptions {
+	var o stackOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
 }
 
 // newScriptQuerierFunc builds the querier of an execution stack over stores.

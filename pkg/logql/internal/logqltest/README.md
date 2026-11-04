@@ -299,7 +299,7 @@ Each `eval` runs on multiple execution stacks:
 - `direct (timestamp-first, default series limit)` — the `direct (timestamp-first)` stack with the
   default series limit of a tenant, which no script reaches. The other stacks have no series limit.
 
-A stack with a stack-wide series limit is built with `stackOptions` (`exec.go`). Add it to
+A stack with a stack-wide series limit is built with a `stackOption` such as `withMaxQuerySeries` (`exec.go`). Add it to
 `stackNames` and `newExecutionStacks`, and every script then checks that it returns the same
 results. A limit that makes some queries fail can't be checked against the eval expectations.
 Compare how each eval ends on two stacks instead, with `runScript`, as

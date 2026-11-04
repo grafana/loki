@@ -59,8 +59,8 @@ func TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFr
 			b, err := os.ReadFile(f)
 			require.NoError(t, err)
 
-			direct := newDirectTimestampFirstStackWith(t, "direct", stackOptions{maxQuerySeries: maxQuerySeries})
-			queryFrontend, err := newQueryFrontendTimestampFirstStackWith(t, "query-frontend", false, stackOptions{maxQuerySeries: maxQuerySeries})
+			direct := newDirectTimestampFirstStack(t, "direct", withMaxQuerySeries(maxQuerySeries))
+			queryFrontend, err := newQueryFrontendTimestampFirstStack(t, "query-frontend", withMaxQuerySeries(maxQuerySeries))
 			require.NoError(t, err)
 
 			outcomes := runScript(t, filepath.Base(f), string(b), []executionStack{direct, queryFrontend})
@@ -84,10 +84,10 @@ eval instant at 60s count_over_time({app=~"a|b|c"}[1m])
 eval instant at 60s sum(count_over_time({app=~"a|b|c"}[1m]))
   {} 3
 `
-	queryFrontend, err := newQueryFrontendTimestampFirstStackWith(t, "query-frontend", true, stackOptions{maxQuerySeries: 2})
+	queryFrontend, err := newQueryFrontendTimestampFirstStack(t, "query-frontend", withQuerySharding(), withMaxQuerySeries(2))
 	require.NoError(t, err)
 	stacks := []executionStack{
-		newDirectTimestampFirstStackWith(t, "direct", stackOptions{maxQuerySeries: 2}),
+		newDirectTimestampFirstStack(t, "direct", withMaxQuerySeries(2)),
 		queryFrontend,
 	}
 
