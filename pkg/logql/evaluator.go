@@ -275,7 +275,8 @@ type EvaluatorFactory interface {
 	EntryEvaluatorFactory
 }
 
-// NodeContext describes where an expression sits relative to the query's output. It is worked
+// NodeContext describes characteristics of an expression.
+// `preserving` describes whether an expression is known to preserve its series output. It is worked
 // out from the parent down while evaluators are built. The zero value is the conservative one:
 // an expression that is not known to preserve the output.
 type NodeContext struct {
