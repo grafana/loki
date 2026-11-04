@@ -19,7 +19,6 @@
 package xds
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -73,11 +72,16 @@ type GRPCServer struct {
 // The underlying gRPC server has no service registered and has not started to
 // accept requests yet.
 func NewGRPCServer(opts ...grpc.ServerOption) (*GRPCServer, error) {
-	newOpts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(xdsUnaryInterceptor),
-		grpc.ChainStreamInterceptor(xdsStreamInterceptor),
+	// xdsFilterWrapper is a callback passed to the underlying gRPC server.
+	// It adapts the generic stream parameter and delegates to RouteAndProcess
+	// to execute xDS HTTP filter interceptors for each incoming RPC.
+	xDSFilterWrapper := func(ss grpc.ServerStream) (grpc.ServerStream, error) {
+		return server.RouteAndProcess(ss)
 	}
-	newOpts = append(newOpts, opts...)
+	// Construct a grpc.ServerOption that registers xDSFilterWrapper on
+	// the server.
+	xDSFilterWrapperOption := internal.XDSFilterWrapperOption.(func(func(grpc.ServerStream) (grpc.ServerStream, error)) grpc.ServerOption)
+	newOpts := append([]grpc.ServerOption{xDSFilterWrapperOption(xDSFilterWrapper)}, opts...)
 	s := &GRPCServer{
 		gs:   newGRPCServer(newOpts...),
 		quit: grpcsync.NewEvent(),
@@ -228,22 +232,4 @@ func (s *GRPCServer) GracefulStop() {
 	if s.xdsC != nil {
 		s.xdsClientClose()
 	}
-}
-
-// xdsUnaryInterceptor is the unary interceptor added to the gRPC server to
-// perform any xDS specific functionality on unary RPCs.
-func xdsUnaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-	if err := server.RouteAndProcess(ctx); err != nil {
-		return nil, err
-	}
-	return handler(ctx, req)
-}
-
-// xdsStreamInterceptor is the stream interceptor added to the gRPC server to
-// perform any xDS specific functionality on streaming RPCs.
-func xdsStreamInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	if err := server.RouteAndProcess(ss.Context()); err != nil {
-		return err
-	}
-	return handler(srv, ss)
 }

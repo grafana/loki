@@ -31,14 +31,14 @@ import (
 	v3httppb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	v3tlspb "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"google.golang.org/grpc/internal/envconfig"
-	"google.golang.org/grpc/internal/xds/clients/xdsclient"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/internal/xds/httpfilter"
 	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-func unmarshalListenerResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (string, ListenerUpdate, error) {
+func unmarshalListenerResource(r *anypb.Any, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (string, ListenerUpdate, error) {
 	r, err := UnwrapResource(r)
 	if err != nil {
 		return "", ListenerUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
@@ -56,7 +56,7 @@ func unmarshalListenerResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (str
 		return "", ListenerUpdate{}, fmt.Errorf("empty resource name in listener resource")
 	}
 
-	lu, err := processListener(lis, opts)
+	lu, err := processListener(lis, bc, sc)
 	if err != nil {
 		return lis.GetName(), ListenerUpdate{}, err
 	}
@@ -65,16 +65,16 @@ func unmarshalListenerResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (str
 	return lis.GetName(), *lu, nil
 }
 
-func processListener(lis *v3listenerpb.Listener, opts *xdsclient.DecodeOptions) (*ListenerUpdate, error) {
+func processListener(lis *v3listenerpb.Listener, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (*ListenerUpdate, error) {
 	if lis.GetApiListener() != nil {
-		return processClientSideListener(lis, opts)
+		return processClientSideListener(lis, bc, sc)
 	}
-	return processServerSideListener(lis)
+	return processServerSideListener(lis, bc, sc)
 }
 
 // processClientSideListener checks if the provided Listener proto meets
 // the expected criteria. If so, it returns a non-empty routeConfigName.
-func processClientSideListener(lis *v3listenerpb.Listener, opts *xdsclient.DecodeOptions) (*ListenerUpdate, error) {
+func processClientSideListener(lis *v3listenerpb.Listener, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (*ListenerUpdate, error) {
 	apiLisAny := lis.GetApiListener().GetApiListener()
 	if !IsHTTPConnManagerResource(apiLisAny.GetTypeUrl()) {
 		return nil, fmt.Errorf("unexpected http connection manager resource type: %q", apiLisAny.GetTypeUrl())
@@ -105,7 +105,7 @@ func processClientSideListener(lis *v3listenerpb.Listener, opts *xdsclient.Decod
 		}
 		hcm.RouteConfigName = name
 	case *v3httppb.HttpConnectionManager_RouteConfig:
-		routeU, err := generateRDSUpdateFromRouteConfiguration(apiLis.GetRouteConfig(), opts)
+		routeU, err := generateRDSUpdateFromRouteConfiguration(apiLis.GetRouteConfig(), bc, sc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse inline RDS resp: %v", err)
 		}
@@ -121,7 +121,7 @@ func processClientSideListener(lis *v3listenerpb.Listener, opts *xdsclient.Decod
 	hcm.MaxStreamDuration = apiLis.GetCommonHttpProtocolOptions().GetMaxStreamDuration().AsDuration()
 
 	var err error
-	if hcm.HTTPFilters, err = processHTTPFilters(apiLis.GetHttpFilters(), false); err != nil {
+	if hcm.HTTPFilters, err = processHTTPFilters(apiLis.GetHttpFilters(), false, bc, sc); err != nil {
 		return nil, err
 	}
 
@@ -149,7 +149,7 @@ func unwrapHTTPFilterConfig(config *anypb.Any) (proto.Message, string, error) {
 	}
 }
 
-func validateHTTPFilterConfig(cfg *anypb.Any, lds, optional bool) (httpfilter.Builder, httpfilter.FilterConfig, error) {
+func validateHTTPFilterConfig(cfg *anypb.Any, lds, optional bool, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (httpfilter.Builder, httpfilter.FilterConfig, error) {
 	config, typeURL, err := unwrapHTTPFilterConfig(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -165,14 +165,14 @@ func validateHTTPFilterConfig(cfg *anypb.Any, lds, optional bool) (httpfilter.Bu
 	if !lds {
 		parseFunc = filterBuilder.ParseFilterConfigOverride
 	}
-	filterConfig, err := parseFunc(config)
+	filterConfig, err := parseFunc(config, httpfilter.ParseOptions{BootstrapConfig: bc, ServerConfig: sc})
 	if err != nil {
 		return nil, nil, fmt.Errorf("error parsing config for filter %q: %v", typeURL, err)
 	}
 	return filterBuilder, filterConfig, nil
 }
 
-func processHTTPFilterOverrides(cfgs map[string]*anypb.Any) (map[string]httpfilter.FilterConfig, error) {
+func processHTTPFilterOverrides(cfgs map[string]*anypb.Any, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (map[string]httpfilter.FilterConfig, error) {
 	if len(cfgs) == 0 {
 		return nil, nil
 	}
@@ -187,7 +187,7 @@ func processHTTPFilterOverrides(cfgs map[string]*anypb.Any) (map[string]httpfilt
 			}
 			cfg = s.GetConfig()
 			optional = s.GetIsOptional()
-			if envconfig.XDSClientExtProcEnabled {
+			if envconfig.XDSClientExtProcEnabled || envconfig.XDSClientExtAuthzEnabled {
 				disabled = s.GetDisabled()
 			}
 		}
@@ -197,7 +197,7 @@ func processHTTPFilterOverrides(cfgs map[string]*anypb.Any) (map[string]httpfilt
 			continue
 		}
 
-		httpFilter, config, err := validateHTTPFilterConfig(cfg, false, optional)
+		httpFilter, config, err := validateHTTPFilterConfig(cfg, false, optional, bc, sc)
 		if err != nil {
 			return nil, fmt.Errorf("filter override %q: %v", name, err)
 		}
@@ -210,7 +210,7 @@ func processHTTPFilterOverrides(cfgs map[string]*anypb.Any) (map[string]httpfilt
 	return m, nil
 }
 
-func processHTTPFilters(filters []*v3httppb.HttpFilter, server bool) ([]HTTPFilter, error) {
+func processHTTPFilters(filters []*v3httppb.HttpFilter, server bool, bc *bootstrap.Config, sc *bootstrap.ServerConfig) ([]HTTPFilter, error) {
 	ret := make([]HTTPFilter, 0, len(filters))
 	seenNames := make(map[string]bool, len(filters))
 	for _, filter := range filters {
@@ -223,7 +223,7 @@ func processHTTPFilters(filters []*v3httppb.HttpFilter, server bool) ([]HTTPFilt
 		}
 		seenNames[name] = true
 
-		httpFilter, config, err := validateHTTPFilterConfig(filter.GetTypedConfig(), true, filter.GetIsOptional())
+		httpFilter, config, err := validateHTTPFilterConfig(filter.GetTypedConfig(), true, filter.GetIsOptional(), bc, sc)
 		if err != nil {
 			return nil, err
 		}
@@ -246,7 +246,7 @@ func processHTTPFilters(filters []*v3httppb.HttpFilter, server bool) ([]HTTPFilt
 		}
 
 		disabled := false
-		if envconfig.XDSClientExtProcEnabled {
+		if envconfig.XDSClientExtProcEnabled || envconfig.XDSClientExtAuthzEnabled {
 			disabled = filter.GetDisabled()
 		}
 		// Save name/config
@@ -269,7 +269,7 @@ func processHTTPFilters(filters []*v3httppb.HttpFilter, server bool) ([]HTTPFilt
 	return ret, nil
 }
 
-func processServerSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, error) {
+func processServerSideListener(lis *v3listenerpb.Listener, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (*ListenerUpdate, error) {
 	if n := len(lis.ListenerFilters); n != 0 {
 		return nil, fmt.Errorf("unsupported field 'listener_filters' contains %d entries", n)
 	}
@@ -293,7 +293,7 @@ func processServerSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, err
 
 	// Populate the default filter chain.
 	if dfc := lis.GetDefaultFilterChain(); dfc != nil {
-		fc, err := filterChainFromProto(dfc)
+		fc, err := filterChainFromProto(dfc, bc, sc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal default filter chain: %v", err)
 		}
@@ -301,7 +301,7 @@ func processServerSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, err
 	}
 
 	// Populated the filter chain map.
-	fcm, err := buildFilterChainMap(lis.GetFilterChains())
+	fcm, err := buildFilterChainMap(lis.GetFilterChains(), bc, sc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal filter chains: %v", err)
 	}
@@ -316,10 +316,10 @@ func processServerSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, err
 	return lu, nil
 }
 
-func filterChainFromProto(fc *v3listenerpb.FilterChain) (NetworkFilterChainConfig, error) {
+func filterChainFromProto(fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (NetworkFilterChainConfig, error) {
 	var emptyFilterChain NetworkFilterChainConfig
 
-	hcmConfig, err := processNetworkFilters(fc.GetFilters())
+	hcmConfig, err := processNetworkFilters(fc.GetFilters(), bc, sc)
 	if err != nil {
 		return emptyFilterChain, err
 	}
@@ -353,16 +353,16 @@ func filterChainFromProto(fc *v3listenerpb.FilterChain) (NetworkFilterChainConfi
 	if downstreamCtx.GetCommonTlsContext() == nil {
 		return emptyFilterChain, errors.New("DownstreamTlsContext in LDS response does not contain a CommonTlsContext")
 	}
-	sc, err := securityConfigFromCommonTLSContext(downstreamCtx.GetCommonTlsContext(), true)
+	secCfg, err := securityConfigFromCommonTLSContext(downstreamCtx.GetCommonTlsContext(), true)
 	if err != nil {
 		return emptyFilterChain, err
 	}
-	if sc != nil {
-		sc.RequireClientCert = downstreamCtx.GetRequireClientCertificate().GetValue()
-		if sc.RequireClientCert && sc.RootInstanceName == "" {
+	if secCfg != nil {
+		secCfg.RequireClientCert = downstreamCtx.GetRequireClientCertificate().GetValue()
+		if secCfg.RequireClientCert && secCfg.RootInstanceName == "" {
 			return emptyFilterChain, errors.New("security configuration on the server-side does not contain root certificate provider instance name, but require_client_cert field is set")
 		}
-		fcc.SecurityCfg = sc
+		fcc.SecurityCfg = secCfg
 	}
 	return fcc, nil
 }
@@ -373,7 +373,7 @@ type dstPrefixEntry struct {
 	rawBufferSeen bool
 }
 
-func buildFilterChainMap(fcs []*v3listenerpb.FilterChain) (NetworkFilterChainMap, error) {
+func buildFilterChainMap(fcs []*v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (NetworkFilterChainMap, error) {
 	dstPrefixEntries := []*dstPrefixEntry{}
 	for _, fc := range fcs {
 		fcMatch := fc.GetFilterChainMatch()
@@ -385,7 +385,7 @@ func buildFilterChainMap(fcs []*v3listenerpb.FilterChain) (NetworkFilterChainMap
 		}
 
 		var err error
-		dstPrefixEntries, err = addFilterChainsForDestPrefixes(dstPrefixEntries, fc)
+		dstPrefixEntries, err = addFilterChainsForDestPrefixes(dstPrefixEntries, fc, bc, sc)
 		if err != nil {
 			return NetworkFilterChainMap{}, err
 		}
@@ -413,7 +413,7 @@ func buildFilterChainMap(fcs []*v3listenerpb.FilterChain) (NetworkFilterChainMap
 	return NetworkFilterChainMap{DstPrefixes: entries}, nil
 }
 
-func addFilterChainsForDestPrefixes(dstPrefixEntries []*dstPrefixEntry, fc *v3listenerpb.FilterChain) ([]*dstPrefixEntry, error) {
+func addFilterChainsForDestPrefixes(dstPrefixEntries []*dstPrefixEntry, fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) ([]*dstPrefixEntry, error) {
 	ranges := fc.GetFilterChainMatch().GetPrefixRanges()
 	dstPrefixes, err := parsePrefixRanges(ranges)
 	if err != nil {
@@ -425,14 +425,14 @@ func addFilterChainsForDestPrefixes(dstPrefixEntries []*dstPrefixEntry, fc *v3li
 		// Use the unspecified entry when destination prefix is unspecified, and
 		// set the `prefix` field to nil.
 		dstPrefixEntries, entry = getOrCreateDestPrefixEntry(dstPrefixEntries, netip.Prefix{})
-		if err := addFilterChainsForServerNames(entry, fc); err != nil {
+		if err := addFilterChainsForServerNames(entry, fc, bc, sc); err != nil {
 			return nil, err
 		}
 		return dstPrefixEntries, nil
 	}
 	for _, prefix := range dstPrefixes {
 		dstPrefixEntries, entry = getOrCreateDestPrefixEntry(dstPrefixEntries, prefix)
-		if err := addFilterChainsForServerNames(entry, fc); err != nil {
+		if err := addFilterChainsForServerNames(entry, fc, bc, sc); err != nil {
 			return nil, err
 		}
 	}
@@ -454,7 +454,7 @@ func getOrCreateDestPrefixEntry(dstPrefixEntries []*dstPrefixEntry, prefix netip
 	return dstPrefixEntries, entry
 }
 
-func addFilterChainsForServerNames(dstEntry *dstPrefixEntry, fc *v3listenerpb.FilterChain) error {
+func addFilterChainsForServerNames(dstEntry *dstPrefixEntry, fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) error {
 	// Filter chains specifying server names in their match criteria always fail
 	// a match at connection time. So, these filter chains can be dropped now.
 	if len(fc.GetFilterChainMatch().GetServerNames()) != 0 {
@@ -462,10 +462,10 @@ func addFilterChainsForServerNames(dstEntry *dstPrefixEntry, fc *v3listenerpb.Fi
 		return nil
 	}
 
-	return addFilterChainsForTransportProtocols(dstEntry, fc)
+	return addFilterChainsForTransportProtocols(dstEntry, fc, bc, sc)
 }
 
-func addFilterChainsForTransportProtocols(dstEntry *dstPrefixEntry, fc *v3listenerpb.FilterChain) error {
+func addFilterChainsForTransportProtocols(dstEntry *dstPrefixEntry, fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) error {
 	tp := fc.GetFilterChainMatch().GetTransportProtocol()
 	switch {
 	case tp != "" && tp != "raw_buffer":
@@ -486,15 +486,15 @@ func addFilterChainsForTransportProtocols(dstEntry *dstPrefixEntry, fc *v3listen
 		dstEntry.rawBufferSeen = true
 		dstEntry.entry.SourceTypeArr = [3]SourcePrefixes{}
 	}
-	return addFilterChainsForApplicationProtocols(dstEntry, fc)
+	return addFilterChainsForApplicationProtocols(dstEntry, fc, bc, sc)
 }
 
-func addFilterChainsForApplicationProtocols(dstEntry *dstPrefixEntry, fc *v3listenerpb.FilterChain) error {
+func addFilterChainsForApplicationProtocols(dstEntry *dstPrefixEntry, fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) error {
 	if len(fc.GetFilterChainMatch().GetApplicationProtocols()) != 0 {
 		logger.Warningf("Dropping filter chain %q since it contains unsupported application_protocols match field", fc.GetName())
 		return nil
 	}
-	return addFilterChainsForSourceType(&dstEntry.entry, fc)
+	return addFilterChainsForSourceType(&dstEntry.entry, fc, bc, sc)
 }
 
 // sourceType specifies the connection source IP match type.
@@ -509,7 +509,7 @@ const (
 	sourceTypeExternal
 )
 
-func addFilterChainsForSourceType(entry *DestinationPrefixEntry, fc *v3listenerpb.FilterChain) error {
+func addFilterChainsForSourceType(entry *DestinationPrefixEntry, fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) error {
 	var srcType sourceType
 	switch st := fc.GetFilterChainMatch().GetSourceType(); st {
 	case v3listenerpb.FilterChainMatch_ANY:
@@ -522,10 +522,10 @@ func addFilterChainsForSourceType(entry *DestinationPrefixEntry, fc *v3listenerp
 		return fmt.Errorf("unsupported source type: %v", st)
 	}
 
-	return addFilterChainsForSourcePrefixes(&entry.SourceTypeArr[srcType], fc)
+	return addFilterChainsForSourcePrefixes(&entry.SourceTypeArr[srcType], fc, bc, sc)
 }
 
-func addFilterChainsForSourcePrefixes(srcPrefixes *SourcePrefixes, fc *v3listenerpb.FilterChain) error {
+func addFilterChainsForSourcePrefixes(srcPrefixes *SourcePrefixes, fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) error {
 	ranges := fc.GetFilterChainMatch().GetSourcePrefixRanges()
 	prefixes, err := parsePrefixRanges(ranges)
 	if err != nil {
@@ -533,10 +533,10 @@ func addFilterChainsForSourcePrefixes(srcPrefixes *SourcePrefixes, fc *v3listene
 	}
 
 	if len(prefixes) == 0 {
-		return getOrCreateSourcePrefixEntry(srcPrefixes, netip.Prefix{}, fc)
+		return getOrCreateSourcePrefixEntry(srcPrefixes, netip.Prefix{}, fc, bc, sc)
 	}
 	for _, prefix := range prefixes {
-		if err := getOrCreateSourcePrefixEntry(srcPrefixes, prefix, fc); err != nil {
+		if err := getOrCreateSourcePrefixEntry(srcPrefixes, prefix, fc, bc, sc); err != nil {
 			return err
 		}
 	}
@@ -571,10 +571,10 @@ func parsePrefixRanges(ranges []*v3corepb.CidrRange) ([]netip.Prefix, error) {
 // SourcePrefixes, the provided filter chain is added to the new entry, and nil
 // is returned. If there are multiple filter chains with overlapping matching
 // rules, an error is returned.
-func getOrCreateSourcePrefixEntry(srcPrefixes *SourcePrefixes, prefix netip.Prefix, fc *v3listenerpb.FilterChain) error {
+func getOrCreateSourcePrefixEntry(srcPrefixes *SourcePrefixes, prefix netip.Prefix, fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) error {
 	for i := range srcPrefixes.Entries {
 		if srcPrefixes.Entries[i].Prefix == prefix {
-			return addFilterChainsForSourcePorts(&srcPrefixes.Entries[i], fc)
+			return addFilterChainsForSourcePorts(&srcPrefixes.Entries[i], fc, bc, sc)
 		}
 	}
 
@@ -583,10 +583,10 @@ func getOrCreateSourcePrefixEntry(srcPrefixes *SourcePrefixes, prefix netip.Pref
 		Prefix:  prefix,
 		PortMap: make(map[int]NetworkFilterChainConfig),
 	})
-	return addFilterChainsForSourcePorts(&srcPrefixes.Entries[len(srcPrefixes.Entries)-1], fc)
+	return addFilterChainsForSourcePorts(&srcPrefixes.Entries[len(srcPrefixes.Entries)-1], fc, bc, sc)
 }
 
-func addFilterChainsForSourcePorts(entry *SourcePrefixEntry, fc *v3listenerpb.FilterChain) error {
+func addFilterChainsForSourcePorts(entry *SourcePrefixEntry, fc *v3listenerpb.FilterChain, bc *bootstrap.Config, sc *bootstrap.ServerConfig) error {
 	ports := fc.GetFilterChainMatch().GetSourcePorts()
 	srcPorts := make([]int, 0, len(ports))
 	for _, port := range ports {
@@ -597,7 +597,7 @@ func addFilterChainsForSourcePorts(entry *SourcePrefixEntry, fc *v3listenerpb.Fi
 		if !entry.PortMap[0].IsEmpty() {
 			return errors.New("multiple filter chains with overlapping matching rules are defined")
 		}
-		fcc, err := filterChainFromProto(fc)
+		fcc, err := filterChainFromProto(fc, bc, sc)
 		if err != nil {
 			return err
 		}
@@ -608,7 +608,7 @@ func addFilterChainsForSourcePorts(entry *SourcePrefixEntry, fc *v3listenerpb.Fi
 		if !entry.PortMap[port].IsEmpty() {
 			return errors.New("multiple filter chains with overlapping matching rules are defined")
 		}
-		fcc, err := filterChainFromProto(fc)
+		fcc, err := filterChainFromProto(fc, bc, sc)
 		if err != nil {
 			return err
 		}

@@ -83,8 +83,8 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		closed:          grpcsync.NewEvent(),
 		done:            grpcsync.NewEvent(),
 		addrs:           make(map[string]*endpointInfo),
-		scUpdateCh:      buffer.NewUnbounded(),
-		pickerUpdateCh:  buffer.NewUnbounded(),
+		scUpdateCh:      buffer.NewUnbounded[any](),
+		pickerUpdateCh:  buffer.NewUnbounded[any](),
 		channelzParent:  bOpts.ChannelzParent,
 		endpoints:       resolver.NewEndpointMap[*endpointInfo](),
 		metricsRecorder: cc.MetricsRecorder(), // we use an explicit field instead of using cc.MetricsRecorder() so we can override the metric recorder in tests.
@@ -229,8 +229,8 @@ type outlierDetectionBalancer struct {
 	updateUnconditionally bool
 	numEndpointsEjected   int // For fast calculations of percentage of endpoints ejected
 
-	scUpdateCh     *buffer.Unbounded
-	pickerUpdateCh *buffer.Unbounded
+	scUpdateCh     *buffer.Unbounded[any]
+	pickerUpdateCh *buffer.Unbounded[any]
 }
 
 // noopConfig returns whether this balancer is configured with a logical no-op
