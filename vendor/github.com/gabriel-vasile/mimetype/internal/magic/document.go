@@ -1,28 +1,50 @@
 package magic
 
-import "bytes"
+import (
+	"bytes"
+	"encoding/binary"
 
-var (
-	// Pdf matches a Portable Document Format file.
-	// https://github.com/file/file/blob/11010cc805546a3e35597e67e1129a481aed40e8/magic/Magdir/pdf
-	Pdf = prefix(
-		// usual pdf signature
-		[]byte("%PDF-"),
-		// new-line prefixed signature
-		[]byte("\012%PDF-"),
-		// UTF-8 BOM prefixed signature
-		[]byte("\xef\xbb\xbf%PDF-"),
-	)
-	// Fdf matches a Forms Data Format file.
-	Fdf = prefix([]byte("%FDF"))
-	// Mobi matches a Mobi file.
-	Mobi = offset([]byte("BOOKMOBI"), 60)
-	// Lit matches a Microsoft Lit file.
-	Lit = prefix([]byte("ITOLITLS"))
+	"github.com/gabriel-vasile/mimetype/internal/scan"
 )
 
+// Pdf matches a Portable Document Format file.
+// https://github.com/file/file/blob/11010cc805546a3e35597e67e1129a481aed40e8/magic/Magdir/pdf
+func Pdf(raw []byte, _ uint32) bool {
+	// usual pdf signature
+	return bytes.HasPrefix(raw, []byte("%PDF-")) ||
+		// new-line prefixed signature
+		bytes.HasPrefix(raw, []byte("\012%PDF-")) ||
+		// UTF-8 BOM prefixed signature
+		bytes.HasPrefix(raw, []byte("\xef\xbb\xbf%PDF-"))
+}
+
+// Fdf matches a Forms Data Format file.
+func Fdf(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("%FDF"))
+}
+
+// Mobi matches a Mobi file.
+func Mobi(raw []byte, _ uint32) bool {
+	return offset(raw, []byte("BOOKMOBI"), 60)
+}
+
+// Lit matches a Microsoft Lit file.
+func Lit(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("ITOLITLS"))
+}
+
+// PDF matches a Portable Document Format file.
+// The %PDF- header should be the first thing inside the file but many
+// implementations don't follow the rule. The PDF spec at Appendix H says the
+// signature can be prepended by anything.
+// https://bugs.astron.com/view.php?id=446
+func PDF(raw []byte, _ uint32) bool {
+	raw = raw[:min(len(raw), 1024)]
+	return bytes.Contains(raw, []byte("%PDF-"))
+}
+
 // DjVu matches a DjVu file.
-func DjVu(raw []byte, limit uint32) bool {
+func DjVu(raw []byte, _ uint32) bool {
 	if len(raw) < 12 {
 		return false
 	}
@@ -36,7 +58,7 @@ func DjVu(raw []byte, limit uint32) bool {
 }
 
 // P7s matches an .p7s signature File (PEM, Base64).
-func P7s(raw []byte, limit uint32) bool {
+func P7s(raw []byte, _ uint32) bool {
 	// Check for PEM Encoding.
 	if bytes.HasPrefix(raw, []byte("-----BEGIN PKCS7")) {
 		return true
@@ -59,4 +81,45 @@ func P7s(raw []byte, limit uint32) bool {
 	}
 
 	return false
+}
+
+// Lotus123 matches a Lotus 1-2-3 spreadsheet document.
+func Lotus123(raw []byte, _ uint32) bool {
+	if len(raw) <= 20 {
+		return false
+	}
+	version := binary.BigEndian.Uint32(raw)
+	if version == 0x00000200 {
+		return raw[6] != 0 && raw[7] == 0
+	}
+
+	return version == 0x00001a00 && raw[20] > 0 && raw[20] < 32
+}
+
+// CHM matches a Microsoft Compiled HTML Help file.
+func CHM(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("ITSF\003\000\000\000\x60\000\000\000"))
+}
+
+// Inf matches an OS/2 .inf file.
+func Inf(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("HSP\x01\x9b\x00"))
+}
+
+// Hlp matches an OS/2 .hlp file.
+func Hlp(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("HSP\x10\x9b\x00"))
+}
+
+// FrameMaker matches an Adobe FrameMaker file.
+func FrameMaker(raw []byte, _ uint32) bool {
+	b := scan.Bytes(raw)
+	if !bytes.HasPrefix(b, []byte("<MakerFile")) &&
+		!bytes.HasPrefix(b, []byte("<MakerDictionary")) &&
+		b.Match([]byte("<BOOKFILE"), scan.IgnoreCase) == -1 {
+		return false
+	}
+
+	// To avoid plain text false positives.
+	return bytes.IndexByte(b[:min(len(b), 512)], 0x00) != -1
 }
