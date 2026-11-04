@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/logql"
 	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
@@ -198,7 +199,9 @@ func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res 
 	// An eligible query must report stream-first. The opposite (zero) does not always hold when
 	// the stack shards: the shard mapper can still promote part of an ineligible query into its own
 	// stream-first sub-query (see shardmapper.go). Skip the check in that case.
-	_, streamFirstEligible := logql.StreamFirstRangeAggregation(cmd.query)
+	expr, parseErr := syntax.ParseExpr(cmd.query)
+	require.NoErrorf(t, parseErr, "%s: query %q", name, cmd.query)
+	streamFirstEligible := len(logql.StreamFirstRangeAggregations(expr)) > 0
 	switch {
 	case streamFirstEnabled && streamFirstEligible:
 		require.Positivef(t, res.Statistics.Summary.StreamFirstQueries,

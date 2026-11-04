@@ -6,9 +6,12 @@ import (
 	"math/rand/v2"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestCountAccumulator(t *testing.T) {
@@ -423,7 +426,7 @@ func TestSumAccumulator(t *testing.T) {
 	})
 }
 
-func TestStreamFirstRangeAggregation(t *testing.T) {
+func TestStreamFirstRangeAggregationExpr(t *testing.T) {
 	supported := []string{
 		`sum(count_over_time({app="foo"}[5m]))`,
 		`sum by (app) (count_over_time({app="foo"}[5m]))`,
@@ -441,15 +444,13 @@ func TestStreamFirstRangeAggregation(t *testing.T) {
 		`sum(max_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
 		`max(count_over_time({app="foo"}[5m]))`,
 		`max(sum_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
-		`sum(sum_over_time({app="foo"}[5m]))`,
 		`{app="foo"}`,
-		`sum(`,
 	}
 
 	t.Run("accepts every supported query", func(t *testing.T) {
 		for _, query := range supported {
 			t.Run(query, func(t *testing.T) {
-				rng, ok := StreamFirstRangeAggregation(query)
+				rng, ok := StreamFirstRangeAggregationExpr(syntax.MustParseExpr(query))
 				require.True(t, ok)
 				require.NotNil(t, rng)
 			})
@@ -459,8 +460,78 @@ func TestStreamFirstRangeAggregation(t *testing.T) {
 	t.Run("rejects every unsupported query", func(t *testing.T) {
 		for _, query := range unsupported {
 			t.Run(query, func(t *testing.T) {
-				_, ok := StreamFirstRangeAggregation(query)
+				_, ok := StreamFirstRangeAggregationExpr(syntax.MustParseExpr(query))
 				require.False(t, ok)
+			})
+		}
+	})
+
+	t.Run("rejects an expression that only holds a supported query", func(t *testing.T) {
+		for _, query := range []string{
+			`topk(1, sum by (app) (count_over_time({app="foo"}[5m])))`,
+			`label_replace(sum(count_over_time({app="foo"}[5m])), "a", "b", "c", "d")`,
+			`sum(count_over_time({app="foo"}[5m])) > 1`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, ok := StreamFirstRangeAggregationExpr(syntax.MustParseExpr(query))
+				require.False(t, ok)
+			})
+		}
+	})
+}
+
+func TestStreamFirstRangeAggregations(t *testing.T) {
+	intervals := func(query string) []time.Duration {
+		var out []time.Duration
+		for _, rng := range StreamFirstRangeAggregations(syntax.MustParseExpr(query)) {
+			out = append(out, rng.Left.Interval)
+		}
+		return out
+	}
+
+	t.Run("returns the range aggregation of a supported query", func(t *testing.T) {
+		require.Equal(t, []time.Duration{5 * time.Minute}, intervals(`sum by (app) (count_over_time({app="foo"}[5m]))`))
+	})
+
+	t.Run("returns a supported query nested in another expression", func(t *testing.T) {
+		for _, query := range []string{
+			`label_replace(sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [5m])), "a", "b", "app", ".+")`,
+			`max by (node) (sum by (node, pod) (count_over_time({app="foo"}[5m])))`,
+			`topk(1, sum by (app) (count_over_time({app="foo"}[5m])))`,
+			`(sum(count_over_time({app="foo"}[5m])) or vector(0)) > bool 0`,
+			`sum(sum by (app) (count_over_time({app="foo"}[5m])))`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				require.Equal(t, []time.Duration{5 * time.Minute}, intervals(query))
+			})
+		}
+	})
+
+	t.Run("returns every supported query of a binary operator in walk order", func(t *testing.T) {
+		require.Equal(t,
+			[]time.Duration{time.Minute, 5 * time.Minute},
+			intervals(`sum(count_over_time({app="foo"}[1m])) / sum(sum_over_time({app="bar"} | logfmt | unwrap n [5m]))`),
+		)
+	})
+
+	t.Run("returns only the supported query of a binary operator with an unsupported one", func(t *testing.T) {
+		require.Equal(t,
+			[]time.Duration{time.Minute},
+			intervals(`sum(count_over_time({app="foo"}[1m])) + sum(rate({app="bar"}[5m]))`),
+		)
+	})
+
+	t.Run("returns nothing when no part of the query is supported", func(t *testing.T) {
+		for _, query := range []string{
+			`sum(rate({app="foo"}[5m]))`,
+			`count_over_time({app="foo"}[5m])`,
+			`max(count_over_time({app="foo"}[5m]))`,
+			`label_replace(count_over_time({app="foo"}[5m]), "a", "b", "c", "d")`,
+			`{app="foo"}`,
+			`vector(1)`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				require.Empty(t, StreamFirstRangeAggregations(syntax.MustParseExpr(query)))
 			})
 		}
 	})

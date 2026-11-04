@@ -273,7 +273,7 @@ github.com/aliyun/credentials-go/credentials/utils
 ## explicit; go 1.22
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
-# github.com/apache/arrow-go/v18 v18.7.0
+# github.com/apache/arrow-go/v18 v18.8.0
 ## explicit; go 1.25.0
 github.com/apache/arrow-go/v18/arrow
 github.com/apache/arrow-go/v18/arrow/array
@@ -1662,7 +1662,7 @@ go.etcd.io/etcd/client/v3/internal/resolver
 ## explicit; go 1.24.0
 go.opentelemetry.io/auto/sdk
 go.opentelemetry.io/auto/sdk/internal/telemetry
-# go.opentelemetry.io/collector/component v1.69.0
+# go.opentelemetry.io/collector/component v1.70.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/component
 # go.opentelemetry.io/collector/confmap v1.69.0
@@ -1672,7 +1672,7 @@ go.opentelemetry.io/collector/confmap/internal
 go.opentelemetry.io/collector/confmap/internal/mapstructure
 go.opentelemetry.io/collector/confmap/internal/metadata
 go.opentelemetry.io/collector/confmap/internal/third_party/composehook
-# go.opentelemetry.io/collector/consumer v1.69.0
+# go.opentelemetry.io/collector/consumer v1.70.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
@@ -1682,7 +1682,7 @@ go.opentelemetry.io/collector/consumer/xconsumer
 # go.opentelemetry.io/collector/featuregate v1.70.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/featuregate
-# go.opentelemetry.io/collector/internal/componentalias v0.163.0
+# go.opentelemetry.io/collector/internal/componentalias v0.164.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/internal/componentalias
 # go.opentelemetry.io/collector/pdata v1.70.0
@@ -1705,7 +1705,7 @@ go.opentelemetry.io/collector/pdata/pprofile
 # go.opentelemetry.io/collector/pdata/xpdata v0.164.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/xpdata/xhash
-# go.opentelemetry.io/collector/pipeline v1.69.0
+# go.opentelemetry.io/collector/pipeline v1.70.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pipeline
 go.opentelemetry.io/collector/pipeline/internal/globalsignal

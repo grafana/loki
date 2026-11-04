@@ -275,43 +275,36 @@ type EvaluatorFactory interface {
 	EntryEvaluatorFactory
 }
 
-// NodeContext describes characteristics of an expression.
-// `isRoot` describes where an expression sits relative to the query's output. It is worked out from the parent down while evaluators are built.
-// `preserving` describes whether an expression is known to preserve its series output.
+// NodeContext describes where an expression sits relative to the query's output. It is worked
+// out from the parent down while evaluators are built. The zero value is the conservative one:
+// an expression that is not known to preserve the output.
 type NodeContext struct {
-	isRoot     bool
 	preserving bool
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
-// preserves the output unless expr produces a sketch, which is not counted as series.
+// preserves the output unless expr itself is a sketch, which is not counted as series. A sketch
+// deeper in the tree only affects the path that leads to it, because every operator derives the
+// context of its operands with child.
 func RootContext(expr syntax.SampleExpr) NodeContext {
-	return NodeContext{isRoot: true, preserving: !producesSketch(expr)}
+	return NodeContext{preserving: !isSketch(expr)}
 }
 
-// producesSketch reports whether expr contains an operator that returns a sketch.
-func producesSketch(expr syntax.SampleExpr) bool {
-	found := false
-	expr.Walk(func(e syntax.Expr) bool {
-		switch e := e.(type) {
-		case *syntax.CountDistinctSketchExpr,
-			*CountDistinctSketchEvalExpr, *CountDistinctSketchMergeExpr,
-			*CountMinSketchEvalExpr,
-			*QuantileSketchEvalExpr, *QuantileSketchMergeExpr:
-			found = true
-		case *syntax.RangeAggregationExpr:
-			found = found || e.Operation == syntax.OpRangeTypeQuantileSketch
-		case *syntax.VectorAggregationExpr:
-			found = found || e.Operation == syntax.OpTypeCountMinSketch
-		}
-		return !found
-	})
-	return found
-}
-
-// IsRoot is true only for the root expression of the query, whose output is the query result.
-func (c NodeContext) IsRoot() bool {
-	return c.isRoot
+// isSketch reports whether expr itself is an operator that returns a sketch. It does not look at
+// the operands of expr.
+func isSketch(expr syntax.SampleExpr) bool {
+	switch e := expr.(type) {
+	case *syntax.CountDistinctSketchExpr,
+		*CountDistinctSketchEvalExpr, *CountDistinctSketchMergeExpr,
+		*CountMinSketchEvalExpr,
+		*QuantileSketchEvalExpr, *QuantileSketchMergeExpr:
+		return true
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeQuantileSketch
+	case *syntax.VectorAggregationExpr:
+		return e.Operation == syntax.OpTypeCountMinSketch
+	}
+	return false
 }
 
 // OutputPreserving is true when every operator between the expression and the root keeps every
@@ -403,7 +396,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
-			sampleOrder := sampleOrderFor(ctx, e, ev.limits, nc.IsRoot())
+			sampleOrder := sampleOrderForExpr(ctx, e, ev.limits)
 
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
@@ -419,7 +412,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				}
 				switch sampleOrder {
 				case logproto.SAMPLE_ORDER_BY_STREAM:
-					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.maxQuerySeries(ctx), keepsErroredLines)
+					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.seriesCutoff(ctx, nc), keepsErroredLines)
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
 					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines)
 				default:
@@ -486,40 +479,66 @@ func selectSampleParamsFor(q Params, expr syntax.SampleExpr, left *syntax.LogRan
 	}
 }
 
-// sampleOrderFor returns the sample order to use for expr.
-func sampleOrderFor(ctx context.Context, expr syntax.SampleExpr, limits Limits, isRootExpr bool) logproto.SampleOrder {
-	const timestampFirst = logproto.SAMPLE_ORDER_BY_TIMESTAMP
-
-	// The stream-first iterator enforces the series limit on its output series. Only at the root
-	// are those the series the query returns.
-	if !isRootExpr {
-		return timestampFirst
-	}
-
-	if _, ok := StreamFirstRangeAggregation(expr.String()); !ok {
-		return timestampFirst
-	}
-
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil || len(tenantIDs) == 0 {
-		return timestampFirst
-	}
-	for _, id := range tenantIDs {
-		if !limits.StreamFirstExecutionEnabled(id) {
-			return timestampFirst
-		}
+// sampleOrderForExpr returns stream-first order when expr itself can run in it and every tenant
+// enables stream-first execution. Otherwise it returns timestamp-first order.
+func sampleOrderForExpr(ctx context.Context, expr syntax.SampleExpr, limits Limits) logproto.SampleOrder {
+	if _, ok := StreamFirstRangeAggregationExpr(expr); !ok || !streamFirstEnabledFor(ctx, limits) {
+		return logproto.SAMPLE_ORDER_BY_TIMESTAMP
 	}
 	return logproto.SAMPLE_ORDER_BY_STREAM
 }
 
-// maxQuerySeries returns the series limit of the query, the smallest one among its tenants. It
-// returns 0, no limit, when the context has no tenant.
+// sampleOrderForQuery returns stream-first order when any part of expr can run in it and every
+// tenant enables stream-first execution. Otherwise it returns timestamp-first order.
+func sampleOrderForQuery(ctx context.Context, expr syntax.SampleExpr, limits Limits) logproto.SampleOrder {
+	if len(StreamFirstRangeAggregations(expr)) == 0 || !streamFirstEnabledFor(ctx, limits) {
+		return logproto.SAMPLE_ORDER_BY_TIMESTAMP
+	}
+	return logproto.SAMPLE_ORDER_BY_STREAM
+}
+
+// streamFirstEnabledFor reports whether every tenant of the query enables stream-first execution.
+// It returns false when the context has no tenant or an invalid one.
+func streamFirstEnabledFor(ctx context.Context, limits Limits) bool {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil || len(tenantIDs) == 0 {
+		return false
+	}
+	for _, id := range tenantIDs {
+		if !limits.StreamFirstExecutionEnabled(id) {
+			return false
+		}
+	}
+	return true
+}
+
+// seriesLimitFor returns the series limit of a query, the smallest one among tenantIDs. It returns
+// 0, which the evaluators read as no limit, only when there is no tenant. The engine and the
+// evaluator share it, so every evaluation order applies the same limit.
+func seriesLimitFor(tenantIDs []string, limits Limits) int {
+	return validation.SmallestPositiveIntPerTenant(tenantIDs, limits.MaxQuerySeries)
+}
+
+// maxQuerySeries returns the series limit of the query. It returns 0, no limit, when the context
+// has no tenant.
 func (ev *DefaultEvaluator) maxQuerySeries(ctx context.Context) int {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return 0
 	}
-	return validation.SmallestPositiveIntPerTenant(tenantIDs, ev.limits.MaxQuerySeries)
+	return seriesLimitFor(tenantIDs, ev.limits)
+}
+
+// seriesCutoff returns the series limit to enforce on the output of an expression at nc, or 0 for
+// no limit. An expression may cut off early only when every operator above it keeps every series
+// it receives: the query then returns at least as many series as the expression holds, so an
+// expression over the limit means a query over the limit. Otherwise only the check on the query
+// result applies.
+func (ev *DefaultEvaluator) seriesCutoff(ctx context.Context, nc NodeContext) int {
+	if !nc.OutputPreserving() {
+		return 0
+	}
+	return ev.maxQuerySeries(ctx)
 }
 
 func (ev *DefaultEvaluator) newCountDistinctEvaluator(

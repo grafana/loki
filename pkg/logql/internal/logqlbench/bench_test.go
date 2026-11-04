@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/storage"
 	objectclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -181,7 +182,7 @@ func TestQueriesStreamFirstSupport(t *testing.T) {
 			name = query.name() + " supports stream-first execution"
 		}
 		t.Run(name, func(t *testing.T) {
-			_, got := logql.StreamFirstRangeAggregation(query.expr)
+			got := len(logql.StreamFirstRangeAggregations(syntax.MustParseExpr(query.expr))) > 0
 			require.Equal(t, query.streamFirstSupported, got, "query %q", query.expr)
 		})
 	}

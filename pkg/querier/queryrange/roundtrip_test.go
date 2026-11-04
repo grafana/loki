@@ -936,7 +936,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 }
 
 func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
-	const storageLag = 3 * time.Hour
+	const (
+		storageLag  = 3 * time.Hour
+		shardingOn  = true
+		shardingOff = false
+		dataObjOn   = true
+	)
 
 	ctx := user.InjectOrgID(t.Context(), "1")
 	// The clock stands at 12:00 UTC, so that no range below crosses a UTC midnight. A stats request
@@ -963,10 +968,11 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		limits.tsdbShardingStrategy = func(context.Context, string) string { return logql.BoundedVersion.String() }
 	}
 
-	// newHandler builds the real middleware chain over a terminal handler that answers the index
-	// with 64 GiB, so the chunk logic shards a split into 128 shards and the data-object logic into
-	// 16 shards. The terminal handler answers a shards request with 1000 bounded shards.
-	newHandler := func(t *testing.T, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
+	// newHandlerWithSharding builds the real middleware chain over a terminal handler that answers the
+	// index with 64 GiB. With sharding on, the chunk logic shards a split into 128 shards and the
+	// data-object logic into 16 shards. With sharding off, the chain does not shard. The terminal
+	// handler answers a shards request with 1000 bounded shards.
+	newHandlerWithSharding := func(t *testing.T, shardedQueries, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
 		t.Helper()
 
 		cfg := testConfig
@@ -974,7 +980,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		cfg.CacheIndexStatsResults = false
 		cfg.CacheInstantMetricResults = false
 		cfg.MaxRetries = 0
-		cfg.ShardedQueries = true
+		cfg.ShardedQueries = shardedQueries
 		cfg.DataObjEnabled = dataObjEnabled
 		cfg.DataObjStorageLag = storageLag
 		cfg.now = func() time.Time { return now }
@@ -1005,6 +1011,10 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 			}
 		})
 		return tripperware.Wrap(terminal), requests, reg
+	}
+	newHandler := func(t *testing.T, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
+		t.Helper()
+		return newHandlerWithSharding(t, shardingOn, dataObjEnabled, opts...)
 	}
 
 	rangeRequest := func(query string, start, end time.Time) *LokiRequest {
@@ -1047,6 +1057,33 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		require.NotEmpty(t, requests.rangeRequests())
 		for _, req := range requests.rangeRequests() {
 			require.True(t, req.DataObjOptions.GetEligible())
+		}
+	})
+
+	t.Run("marks the whole query as eligible when it holds a stream-first supported part and sharding is off", func(t *testing.T) {
+		const query = `max by (node) (sum by (node, pod) (count_over_time({app="a"}[1m])))`
+		handler, requests, _ := newHandlerWithSharding(t, shardingOff, dataObjOn)
+
+		_, err := handler.Do(ctx, insideRange(query))
+
+		require.NoError(t, err)
+		require.NotEmpty(t, requests.rangeRequests())
+		for _, req := range requests.rangeRequests() {
+			require.Equal(t, testutil.MustPlan(query).AST.String(), req.Plan.AST.String())
+			require.True(t, req.DataObjOptions.GetEligible())
+		}
+	})
+
+	t.Run("does not mark the whole query as eligible when it holds no stream-first part and sharding is off", func(t *testing.T) {
+		const query = `max by (node) (sum by (node, pod) (rate({app="a"}[1m])))`
+		handler, requests, _ := newHandlerWithSharding(t, shardingOff, dataObjOn)
+
+		_, err := handler.Do(ctx, insideRange(query))
+
+		require.NoError(t, err)
+		require.NotEmpty(t, requests.rangeRequests())
+		for _, req := range requests.rangeRequests() {
+			require.False(t, req.DataObjOptions.GetEligible())
 		}
 	})
 

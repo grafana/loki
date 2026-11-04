@@ -507,6 +507,11 @@ eval instant at 60s max by (app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m
 eval range from 20s to 60s step 20s max by (app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo"} 4 8 12
   {app="bar"} 10 20 30
+# max() over a sum() by() that adds the two pods of an app.
+eval instant at 60s max(sum by (app, zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
+  {} 42   # max(6+12, 12+30)
+eval range from 20s to 60s step 20s max(sum by (app, zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))  # overlapping
+  {} 14 28 42   # bar wins each step: 4+10, 8+20, 12+30
 # max() without() with a single grouping label
 eval instant at 60s max without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 12
@@ -608,6 +613,13 @@ eval instant at 60s count by (app) (count_over_time({app=~"foo|bar"} |~".+bar" [
   {app="foo"} 2
   {app="bar"} 1
 eval range from 20s to 60s step 20s count by (app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo"} 1 2 2
+  {app="bar"} _ _ 1
+# count() by() over a sum() by() that keeps one series per pod.
+eval instant at 60s count by (app) (sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
+  {app="foo"} 2
+  {app="bar"} 1
+eval range from 20s to 60s step 20s count by (app) (sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))  # overlapping
   {app="foo"} 1 2 2
   {app="bar"} _ _ 1
 # count() without() with a single grouping label
