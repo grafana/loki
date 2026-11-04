@@ -1,6 +1,6 @@
 services:
   grafana:
-    image: grafana/grafana-enterprise:latest
+    image: grafana/grafana-enterprise:latest@sha256:23e1937c869e8ddf38bcad54bcfa5a11b60b84ec6e27e11215d93952cf95339e
     environment:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -15,7 +15,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:latest@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
     ports:
       - 9090:9090/tcp
     volumes:
@@ -24,7 +24,7 @@ services:
       # Loki runs on the host, so Prometheus reaches its /metrics via host.docker.internal.
       - "host.docker.internal:host-gateway"
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:latest@sha256:8f2ff02d64b0a7a2b71b6b3b3148b85f66d00ec20ad40c30bdcd415d46d31818
     ports:
       - 8080:8080
     environment:
@@ -36,7 +36,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
   broker:
-    image: apache/kafka:latest
+    image: apache/kafka:latest@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
     hostname: broker
     container_name: broker
     ports:
@@ -58,5 +58,5 @@ services:
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
   generator:
-    image: theperiklis/log-generator:latest
+    image: theperiklis/log-generator:latest@sha256:7a61d2836bb9bc9ebc3bf7b707f06182033c7727d4febbcb9cd6f7af50533ecc
     command: -url http://host.docker.internal:3100/loki/api/v1/push

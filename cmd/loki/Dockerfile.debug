@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c
 ARG BUILD_IMAGE=golang:${GO_VERSION}
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
@@ -16,7 +16,7 @@ WORKDIR /src/loki
 RUN make clean && \
     GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki-debug
 
-FROM       gcr.io/distroless/base-nossl:debug
+FROM       gcr.io/distroless/base-nossl:debug@sha256:4a1b47e4dc79d5331f6b9265f8933a96351fb6341441902acf8dc8a9a6d25630
 COPY       --from=build /src/loki/cmd/loki/loki-debug /usr/bin/loki-debug
 COPY       --from=goenv /go/bin/dlv /usr/bin/dlv
 COPY       cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml

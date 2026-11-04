@@ -4,7 +4,7 @@ networks:
 
 services:
   read:
-    image: grafana/loki:latest
+    image: grafana/loki:latest@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
     command: "-config.file=/etc/loki/config.yaml -target=read -query-scheduler.use-scheduler-ring=false"
     ports:
       - 3101:3100
@@ -26,7 +26,7 @@ services:
           - loki
 
   write:
-    image: grafana/loki:latest
+    image: grafana/loki:latest@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
     command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
@@ -46,7 +46,7 @@ services:
       <<: *loki-dns
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:latest@sha256:8ab871206bd2d8f89277f53abffee5f452a293980788d52f85fa183a87a505a4
     volumes:
       - ./alloy-local-config.yaml:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock
@@ -86,7 +86,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:latest@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
     environment:
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -122,7 +122,7 @@ services:
       - loki
 
   backend:
-    image: grafana/loki:latest
+    image: grafana/loki:latest@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
     ports:
@@ -142,7 +142,7 @@ services:
     
 
   gateway:
-    image: nginx:latest
+    image: nginx:latest@sha256:5ab5b0b01097420873a3f3330f44248e34a3c2a3e8d5ee30658aeae8cb7435da
     depends_on:
       - read
       - write
@@ -212,7 +212,7 @@ services:
   
 
   flog:
-    image: mingrammer/flog
+    image: mingrammer/flog@sha256:44180f8610fab7d4c29ff233a79e19cf28bd425c1737aa59c72c1f66613fdf41
     command: -f json -d 200ms -l
     networks:
       - loki
