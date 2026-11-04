@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
@@ -29,8 +30,8 @@ const streamLabelsDecodeBatchSize = 1024
 // OpenObjects holds one opened copy of each data object and its opened sections.
 //
 // The same object is read first for its stream labels and then for its log rows, so keeping it
-// open avoids re-reading the object header and section metadata. Two callers can open a new
-// object at the same time. The registry keeps the first copy. Lifetime is one query.
+// open avoids re-reading the object header and section metadata. Callers that ask for the same
+// new object at the same time share one open. Lifetime is one query.
 type OpenObjects struct {
 	bucket        objstore.BucketReader
 	tenant        string
@@ -42,6 +43,9 @@ type OpenObjects struct {
 
 	mu     sync.Mutex
 	byPath map[string]*openObject
+
+	// opening shares one open between the callers that ask for the same new path.
+	opening singleflight.Group
 }
 
 func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes int64, metadataCache dataobj.MetadataCache) *OpenObjects {
@@ -54,10 +58,36 @@ func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes i
 	}
 }
 
-// get returns the opened object at path, opening it when no caller has yet.
+// get returns the opened object at path, opening it when no caller has yet. Callers that ask for the
+// same new path at the same time share one open.
+//
+// The open runs with the context of the first caller. When that context ends, the open fails for
+// every caller that waits on it.
 //
 // Safe for concurrent use.
 func (o *OpenObjects) get(ctx context.Context, path string) (*openObject, error) {
+	o.mu.Lock()
+	obj, ok := o.byPath[path]
+	o.mu.Unlock()
+	if ok {
+		return obj, nil
+	}
+
+	// A caller that shares an open here is a planner goroutine, and all of them share one context. So
+	// they lose the open together, and no waiting caller needs its own retry. A scan only asks for an
+	// object that the planner already opened.
+	opened, err, _ := o.opening.Do(path, func() (any, error) {
+		return o.open(ctx, path)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return opened.(*openObject), nil
+}
+
+// open opens the object at path and stores it. It starts by looking the object up again, because
+// another shared open can have stored it after the caller looked.
+func (o *OpenObjects) open(ctx context.Context, path string) (*openObject, error) {
 	o.mu.Lock()
 	obj, ok := o.byPath[path]
 	o.mu.Unlock()
@@ -76,15 +106,10 @@ func (o *OpenObjects) get(ctx context.Context, path string) (*openObject, error)
 		return nil, fmt.Errorf("resolving sections of data object %q: %w", path, err)
 	}
 
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if existing, ok := o.byPath[path]; ok {
-		// Another goroutine opened the same object while this one did. Keep the first, so every
-		// caller shares one set of opened sections.
-		return existing, nil
-	}
 	obj = &openObject{path: path, tenant: tenantSections, logsSections: map[int]*logs.Section{}}
+	o.mu.Lock()
 	o.byPath[path] = obj
+	o.mu.Unlock()
 	return obj, nil
 }
 

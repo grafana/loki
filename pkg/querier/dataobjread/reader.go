@@ -347,9 +347,17 @@ func (r *LogReader) Close() error {
 	return r.Err()
 }
 
-// recordStats folds the data-object byte and row counts and the section resolution time into the
-// query stats. It also folds the object-store requests and bytes into the metrics. It does nothing
+// recordStats adds the figures of the capture to the query stats and to the metrics. It does nothing
 // when no capture was installed.
+//
+// The query stats get:
+//   - the decompressed row and byte counts
+//   - the section resolution time
+//   - the counts of logs objects and of index objects opened
+//   - the downloaded bytes of logs objects and of index objects
+//
+// The metrics get the object-store requests and the downloaded bytes. Only the metrics count the
+// table-of-contents read.
 func (r *LogReader) recordStats() {
 	if r.capture == nil {
 		return
@@ -361,12 +369,40 @@ func (r *LogReader) recordStats() {
 	r.statsCtx.AddPostFilterRows(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowsRead))
 	r.statsCtx.RecordDataobjSectionsResolutionTime(time.Duration(xcap.ValueFromRegion[int64](r.capture, metastore.RegionSections, metastore.StatMetastoreSectionsDuration)))
 
-	// End first: it freezes the set of regions the metrics fold reads. Every goroutine that recorded
+	// End first: it freezes the set of regions the code below reads. Every goroutine that recorded
 	// into them has stopped, so the counts are final.
 	r.capture.End()
+
 	r.metrics.Record(r.capture)
 
-	// Clear the capture so a repeated Close does not count the same bytes twice.
+	// statsFrom sums the downloaded bytes and the opened objects of the regions whose root region
+	// belongs to one of the wanted components.
+	statsFrom := func(wanted ...string) (downloadedBytes, compactedObjects, uncompactedObjects int64) {
+		for root, tree := range r.capture.RootRegions() {
+			if !slices.Contains(wanted, componentForRootRegion(root.Name())) {
+				continue
+			}
+			for _, region := range tree {
+				if region.Name() != metastore.RegionGetIndexes {
+					downloadedBytes += regionInt64(region, dataobj.StatObjectBytesDownloaded)
+				}
+				compactedObjects += regionInt64(region, dataobj.StatObjectsOpenedCompacted)
+				uncompactedObjects += regionInt64(region, dataobj.StatObjectsOpenedUncompacted)
+			}
+		}
+		return downloadedBytes, compactedObjects, uncompactedObjects
+	}
+
+	logsBytes, logsCompacted, logsUncompacted := statsFrom(componentStreamsReader, componentLogsReader)
+	indexBytes, indexCompacted, indexUncompacted := statsFrom(componentMetastore)
+	r.statsCtx.AddDataobjLogsCompactedObjectsCount(logsCompacted)
+	r.statsCtx.AddDataobjLogsUncompactedObjectsCount(logsUncompacted)
+	r.statsCtx.AddDataobjIndexCompactedObjectsCount(indexCompacted)
+	r.statsCtx.AddDataobjIndexUncompactedObjectsCount(indexUncompacted)
+	r.statsCtx.AddDataobjLogsDownloadedBytes(logsBytes)
+	r.statsCtx.AddDataobjIndexDownloadedBytes(indexBytes)
+
+	// Clear the capture so a repeated Close does not count the same figures twice.
 	r.capture = nil
 }
 

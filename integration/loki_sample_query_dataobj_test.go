@@ -308,7 +308,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		return reflect.DeepEqual(counts, expectedCounts)
 	}, 60*time.Second, 500*time.Millisecond, "the data-object store should eventually serve the complete expected result")
 
-	t.Run("a query served by data objects returns the complete expected result, reports the rows, bytes and section resolution time, and reads no chunks and no second-stage rows", func(t *testing.T) {
+	t.Run("a query served by data objects returns the complete expected result, reports dataobj stats, and reads no chunks and no second-stage rows", func(t *testing.T) {
 		resp, err := runCountQuery()
 		require.NoError(t, err)
 
@@ -320,6 +320,10 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedBytes)
 		require.Positive(t, store.Dataobj.SectionsResolutionMaxTime)
+		require.Positive(t, store.Dataobj.LogsUncompactedObjectsCount)
+		require.Zero(t, store.Dataobj.LogsCompactedObjectsCount, "only the builder writes objects in this cluster")
+		require.Positive(t, store.Dataobj.IndexUncompactedObjectsCount)
+		require.Zero(t, store.Dataobj.IndexCompactedObjectsCount, "only the builder writes objects in this cluster")
 		require.Zero(t, store.Dataobj.PostFilterRows)
 		require.Zero(t, store.Chunk.DecompressedLines)
 	})

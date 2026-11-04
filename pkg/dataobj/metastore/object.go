@@ -721,7 +721,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {
-	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionGetIndexes)
 	defer span.End()
 	start := time.Now()
 	defer func() {

@@ -11,6 +11,10 @@ import (
 // the time the caller spends on each batch.
 const RegionSections = "metastore.Sections"
 
+// RegionGetIndexes names the xcap region of [ObjectMetastore.GetIndexes]. It holds the reads of the
+// TOC objects and no read of an index object.
+const RegionGetIndexes = "metastore.GetIndexes"
+
 // Metastore statistics.
 var (
 	// StatMetastoreSectionsDuration is the longest time one sections resolution took, in nanoseconds. It
