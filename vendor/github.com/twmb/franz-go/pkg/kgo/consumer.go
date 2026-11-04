@@ -1058,7 +1058,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 	// The internal code can avoid giving an assign reason in cases where
 	// the caller logs itself immediately before assigning. We only log if
 	// there is a reason.
-	if len(why) > 0 {
+	if len(why) > 0 && c.cl.cfg.logger.Level() >= LogLevelInfo {
 		c.cl.cfg.logger.Log(LogLevelInfo, "assigning partitions",
 			"why", why,
 			"how", how,
@@ -2053,9 +2053,18 @@ func (s *consumerSession) handleListOrEpochResults(loaded loadedOffsets) (reload
 				tusing[load.partition] = EpochOffset{load.leaderEpoch, load.offset}
 			}
 
+			// Preserve lastConsumedTime (for AfterMilli fallback on
+			// subsequent OffsetOutOfRange) and hwm (for lag metrics)
+			// across validation loads. The cursor is currently
+			// unusable (we're about to allowUsable it), so reading
+			// the prior cursorOffset here is safe: no concurrent
+			// fetch observes useState=true yet.
+			prior := load.cursor.cursorOffset
 			load.cursor.setOffset(cursorOffset{
 				offset:            load.offset,
 				lastConsumedEpoch: load.leaderEpoch,
+				lastConsumedTime:  prior.lastConsumedTime,
+				hwm:               prior.hwm,
 			})
 			load.cursor.allowUsable()
 			s.c.usingCursors.use(load.cursor)

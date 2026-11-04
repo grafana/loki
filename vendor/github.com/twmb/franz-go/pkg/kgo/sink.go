@@ -76,15 +76,24 @@ func (cl *Client) newSink(nodeID int32) *sink {
 // createReq returns a produceRequest from currently buffered records
 // and whether there are more records to create more requests immediately.
 func (s *sink) createReq(id int64, epoch int16) (*produceRequest, *kmsg.AddPartitionsToTxnRequest, bool) {
-	s.cl.producer.txnMu.Lock()
-	tx890p2 := s.cl.producer.tx890p2
-	s.cl.producer.txnMu.Unlock()
+	tx890p2 := s.cl.producer.tx890p2.Load()
+
+	// produceMax is the highest Produce version we will let the broker dispatch
+	// negotiate for this request. Cap at 11 unless we can use v12+ (KIP-890
+	// part 2: no AddPartitionsToTxn round-trip), and additionally cap at 12 if
+	// any recBuf in this request lacks a TopicID, because Produce v13 puts the
+	// TopicID on the wire (see #1312 - quirky brokers can advertise Produce v13
+	// while capping Metadata below v10, leaving us without TopicIDs).
+	produceMax := int16(11)
+	if s.cl.cfg.txnID == nil || tx890p2 {
+		produceMax = 13
+	}
 
 	req := &produceRequest{
-		can12:   s.cl.cfg.txnID == nil || tx890p2,
-		txnID:   s.cl.cfg.txnID,
-		acks:    s.cl.cfg.acks.val,
-		timeout: int32(s.cl.cfg.produceTimeout.Milliseconds()),
+		produceMax: produceMax,
+		txnID:      s.cl.cfg.txnID,
+		acks:       s.cl.cfg.acks.val,
+		timeout:    int32(s.cl.cfg.produceTimeout.Milliseconds()),
 
 		producerID:    id,
 		producerEpoch: epoch,
@@ -98,7 +107,7 @@ func (s *sink) createReq(id int64, epoch int16) (*produceRequest, *kmsg.AddParti
 		txnID: req.txnID,
 		id:    id,
 		epoch: epoch,
-		pv12:  req.can12, // produce request v12 && transaction.version >= 2 means we no longer send AddPartitionsToTxn
+		pv12:  produceMax >= 12, // v12 means no AddPartitionsToTxn round-trip
 	}
 
 	var moreToDrain bool
@@ -122,6 +131,9 @@ func (s *sink) createReq(id int64, epoch int16) (*produceRequest, *kmsg.AddParti
 			recBuf.mu.Unlock()
 			moreToDrain = true
 			continue
+		}
+		if req.produceMax > 12 && recBuf.topicID == ([16]byte{}) {
+			req.produceMax = 12
 		}
 
 		if s.cl.cfg.disableIdempotency || s.cl.cfg.allowIdempotentProduceCancellation {
@@ -461,7 +473,24 @@ func (s *sink) produce(sem <-chan struct{}) bool {
 	// to interpret the stored value beyond id/epoch comparison. The
 	// next produce() call handles errors through producerID()'s
 	// normal error paths.
-	if cur := s.cl.producer.id.Load().(*producerID); cur.id != id || cur.epoch != epoch {
+	//
+	// We also bail on cur.err != nil. A parallel sink handling an
+	// OOOSN response can call failProducerID, which sets err on the
+	// stored producerID *without* changing id/epoch. The next
+	// producerID() call on that sink then reloads, and its
+	// resetAllProducerSequences pass walks every recBuf flipping
+	// needSeqReset=true BEFORE storing the new (id, epoch). There is
+	// a narrow window where a concurrent createReq on THIS sink has
+	// already picked up (id, epoch) from a pre-fail producerID() and
+	// now observes needSeqReset=true on some recBuf while the stored
+	// id/epoch still match. Without the err check, that createReq
+	// would send a request stamped with the old (id, epoch) but a
+	// freshly-reset seq=0; the broker would reject with OOOSN and we
+	// would retry. Checking err catches the window: after
+	// failProducerID, cur.err is non-nil even though id/epoch are
+	// unchanged, so we bail and the next drain pulls the reloaded
+	// (id, epoch) with seq=0 consistently.
+	if cur := s.cl.producer.id.Load().(*producerID); cur.id != id || cur.epoch != epoch || cur.err != nil {
 		req.batches.sliced().eachOwnerLocked(func(b *recBatch) {
 			b.owner.resetBatchDrainIdx()
 			b.decInflight()
@@ -756,9 +785,7 @@ func (s *sink) handleReqResp(br *broker, req *produceRequest, resp kmsg.Response
 	// zero-bytes-written retry at broker.go does not double-count.
 	for _, partitions := range req.batches.bs {
 		for _, batch := range partitions {
-			batch.mu.Lock()
-			batch.tries++
-			batch.mu.Unlock()
+			batch.tries.Add(1)
 		}
 	}
 
@@ -956,7 +983,7 @@ func (s *sink) handleReqRespBatch(
 	case kerr.IsRetriable(err) &&
 		!failUnknown &&
 		err != kerr.CorruptMessage &&
-		(batch.tries <= s.cl.cfg.recordRetries || batch.unsureIfProduced): // we need to bypass the retry limit if we are not sure of the state
+		(batch.tries.Load() <= s.cl.cfg.recordRetries || batch.unsureIfProduced): // we need to bypass the retry limit if we are not sure of the state
 		if debug {
 			fmt.Fprintf(b, "retrying@%d,%d(%s)}, ", rp.BaseOffset, nrec, err)
 		}
@@ -1107,7 +1134,7 @@ func (s *sink) handleReqRespBatch(
 				"partition", rp.Partition,
 				"err", err,
 				"err_is_retryable", kerr.IsRetriable(err),
-				"max_retries_reached", !failUnknown && batch.tries > s.cl.cfg.recordRetries,
+				"max_retries_reached", !failUnknown && batch.tries.Load() > s.cl.cfg.recordRetries,
 			)
 		} else {
 			batch.owner.okOnSink = true
@@ -1582,8 +1609,8 @@ func (recBuf *recBuf) bumpRepeatedLoadErr(err error) {
 	// We need to lock the batch as well because there could be a buffered
 	// request about to be written. Writing requests only grabs the batch
 	// mu, not the recBuf mu.
+	batch0.tries.Add(1)
 	batch0.mu.Lock()
-	batch0.tries++
 	var (
 		canFail        = !recBuf.cl.idempotent() || recBuf.cl.cfg.allowIdempotentProduceCancellation || (batch0.canFailFromLoadErrs && !batch0.unsureIfProduced) // we can only fail if we are not idempotent, cancellation is allowed, or if we have no outstanding requests
 		batch0Fail     = batch0.maybeFailErr(&recBuf.cl.cfg) != nil                                                                                              // timeout, retries, or aborting
@@ -1705,7 +1732,7 @@ func (pr promisedRec) cancelingCtx() context.Context {
 type recBatch struct {
 	owner *recBuf // who owns us
 
-	tries int64 // how many times this batch has been sent, or should have been sent but requests leading up to it failed (metadata, add partitions to txn, etc)
+	tries atomic.Int64 // how many times this batch has been sent, or should have been sent but requests leading up to it failed (metadata, add partitions to txn, etc)
 
 	// Once this batch is actually selected to be sent in a produce request,
 	// we freeze it. No more records can be added.
@@ -1756,7 +1783,7 @@ func (b *recBatch) maybeFailErr(cfg *cfg) error {
 	switch {
 	case b.isTimedOut(cfg.recordTimeout):
 		return ErrRecordTimeout
-	case b.tries > cfg.recordRetries:
+	case b.tries.Load() > cfg.recordRetries:
 		return ErrRecordRetries
 	case b.owner.cl.producer.isAborting():
 		return ErrAborting
@@ -1872,8 +1899,8 @@ func (b *recBatch) decInflight() {
 //
 // It is the same as kmsg.ProduceRequest, but with a custom AppendTo.
 type produceRequest struct {
-	version int16
-	can12   bool // we can send v12+ if we aren't using txns OR the broker has feature transaction.version >= 2
+	version    int16
+	produceMax int16 // negotiation cap: 11 if !(non-txn || tx890p2), else 13, lowered to 12 if any added recBuf lacks a TopicID
 
 	backoffSeq uint32
 
@@ -2268,12 +2295,7 @@ func (b *recBatch) tryBuffer(pr promisedRec, produceVersion, maxBatchBytes int32
 
 func (*produceRequest) Key() int16 { return 0 }
 
-func (p *produceRequest) MaxVersion() int16 {
-	if !p.can12 {
-		return 11
-	}
-	return 13
-}
+func (p *produceRequest) MaxVersion() int16  { return p.produceMax }
 func (p *produceRequest) SetVersion(v int16) { p.version = v }
 func (p *produceRequest) GetVersion() int16  { return p.version }
 func (p *produceRequest) IsFlexible() bool   { return p.version >= 9 }

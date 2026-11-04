@@ -65,11 +65,13 @@ type (
 		// have completed.
 		callbackRing ring[shareCallbackEntry]
 
-		// Records returned by the last poll. On the next poll, any
-		// record still pending (not acked) or renewed is auto-accepted.
-		// Access serialized via sc.c.mu (same lock the classic consumer
-		// uses for its poll path; also held by purgeTopics and metadata).
-		lastPolled []*Record
+		// Per-record ack state for every record returned by the
+		// last poll. On the next poll, any state still pending
+		// (or AckRenew) is auto-accepted. Holds state pointers,
+		// not *Record, so the auto-accept pass is safe against
+		// Record.Recycle + pool reuse aliasing the *Record memory.
+		// Access serialized via sc.c.mu.
+		lastPolled []*shareAckState
 
 		//////////////
 		// mu block //
@@ -109,9 +111,9 @@ type (
 		assigned atomic.Bool
 
 		ackMu       xsync.Mutex
-		pendingAcks []shareAckEntry // user acks (r.Ack, finalizePreviousPoll, batchAckRecords)
-		pendingGaps []shareAckRange // internal acks (gap acks, release-undeliverable)
-		closed      bool            // set to reject user-side acks arriving after shutdown
+		pendingAcks []*shareAckState // user acks (r.Ack, finalizePreviousPoll, batchAckRecords)
+		pendingGaps []shareAckRange  // internal acks (gap acks, release-undeliverable)
+		closed      bool             // set to reject user-side acks arriving after shutdown
 	}
 
 	// AckStatus defines how the broker should handle an acquired share group
@@ -145,25 +147,6 @@ type (
 		leaderID  int32
 	}
 
-	// shareAckEntry is a per-record user ack.
-	//
-	// Every successful r.Ack CAS appends one entry and increments
-	// sc.pendingAcks. Multiple entries for the same offset can occur
-	// (e.g. AckRenew then a terminal CAS-overrides; both calls
-	// append). buildAckRanges' dedupe loop collapses these into a
-	// single wire range so the broker doesn't see duplicate
-	// AcknowledgementBatches at the same offset (which would be
-	// rejected with INVALID_RECORD_STATE). The pendingAcks counter
-	// still tracks one increment per appended entry; subtraction at
-	// callback time uses the entry count (post-stale-filter), not
-	// the wire-range count, so the math stays correct.
-	shareAckEntry struct {
-		offset       int64
-		source       *source
-		status       *atomic.Int32 // live ack status; read at request-build time
-		sessionEpoch int32
-	}
-
 	// shareAckRange is a contiguous offset range with a fixed ack
 	// type. Used for:
 	//   - wire format: merged ranges sent in ShareFetch/ShareAcknowledge
@@ -182,24 +165,42 @@ type (
 		ackType      int8 // uniform type for the entire range
 	}
 
-	// shareAckState is per-record ack state (8 bytes).
+	// shareAckState is per-record ack state (24 bytes), used as
+	// the ack handle directly: pendingAcks, lastPolled, and the
+	// cursorsAcks accumulator all hold *shareAckState. offset and
+	// slab are populated only for ACQUIRED records (set at slab
+	// construction); non-acquired records leave them zero and must
+	// never reach the ack path.
+	//
+	// A single record can appear multiple times in pendingAcks
+	// (e.g., Ack(AckRenew) then Ack(AckAccept) both append the
+	// same pointer; the terminal CAS overwrites status, but the
+	// original entry remains). buildAckRanges reads status.Load()
+	// and dedupes by offset so the broker sees one wire range per
+	// offset; duplicates would be rejected with INVALID_RECORD_STATE.
+	// The sc.pendingAcks counter still increments once per appended
+	// entry; subtraction at callback time uses the entry count.
 	shareAckState struct {
-		status        atomic.Int32
-		deliveryCount int32 // broker's delivery count for this record (>= 1)
+		status        atomic.Int32  // CAS target for ack transitions
+		deliveryCount int32         // broker's delivery count for this record (>= 1)
+		offset        int64         // record's Kafka offset
+		slab          *shareAckSlab // back-ref: gives ackSource, sessionEpoch, cursor
 	}
 
-	// shareAckSlab holds slab-allocated shareAckState objects for all
-	// records from one batch within a ShareFetch partition decode. One
-	// slab per batch is stored in the records' context via
-	// batchContext. Records within a batch are contiguous in memory
-	// (from a single []Record allocation), so pointer arithmetic from
-	// records0 gives the correct slab index.
+	// shareAckSlab holds the per-record shareAckState array for one
+	// ShareFetch batch. One slab per batch is attached to every
+	// record's Context under shareAckKey. Records within a batch
+	// are contiguous in memory (one []Record allocation), so
+	// pointer arithmetic from records0 gives the slab index for
+	// any *Record in the batch (see shareAckFromCtx).
 	//
-	// Per-slab fields (uniform across all records in the batch):
-	//   ackSource    - source that decoded the records (filters acks on source migration)
-	//   cursor       - shareCursor for this partition (routes to the correct source)
-	//   sessionEpoch - ackSource's session epoch at decode (filters acks on session reset)
-	//   acqLockDeadlineNanos - broker's acquisition lock deadline (wall clock)
+	// ackSource, sessionEpoch are the source identity and session
+	// epoch at decode time; the staleness filter compares these
+	// against the source actually sending the ack, dropping acks
+	// the broker would reject on cursor migration or session reset.
+	// cursor routes acks to the right partition. acqLockDeadlineNanos
+	// is the broker's acquisition-lock deadline, exposed via
+	// Record.AcquisitionDeadline.
 	shareAckSlab struct {
 		states               []shareAckState
 		records0             *Record // first record in the batch's backing array
@@ -233,17 +234,13 @@ type (
 	// cursorAckDrain is a cursor + the entries/gaps drained from it.
 	cursorAckDrain struct {
 		cursor  *shareCursor
-		entries []shareAckEntry // user acks
-		gaps    []shareAckRange // internal acks (gap/release)
+		entries []*shareAckState // user acks
+		gaps    []shareAckRange  // internal acks (gap/release)
 	}
 
-	// cursorAcks accumulates per-record user ack entries for a cursor.
-	cursorAcks struct {
-		entries []shareAckEntry
-		n       int64
-	}
-
-	cursorsAcks map[*shareCursor]*cursorAcks // groups cursorAcks by many cursors.
+	// cursorsAcks groups user ack entries by cursor so a flush can
+	// take each cursor's mutex once.
+	cursorsAcks map[*shareCursor][]*shareAckState
 )
 
 // isShareAckRetryable returns true only for errors where retrying the ack
@@ -267,21 +264,13 @@ func isShareAckRetryable(err error) bool {
 	return true
 }
 
-func (m *cursorsAcks) add(cursor *shareCursor, entry shareAckEntry, lastCursor *shareCursor, lastCa *cursorAcks) (*shareCursor, *cursorAcks) {
-	ca := lastCa
-	if cursor != lastCursor || ca == nil {
-		if *m == nil {
-			*m = make(cursorsAcks)
-		}
-		ca = (*m)[cursor]
-		if ca == nil {
-			ca = &cursorAcks{}
-			(*m)[cursor] = ca
-		}
+// add accumulates state under its cursor (state.slab.cursor).
+func (m *cursorsAcks) add(state *shareAckState) {
+	cursor := state.slab.cursor
+	if *m == nil {
+		*m = make(cursorsAcks)
 	}
-	ca.entries = append(ca.entries, entry)
-	ca.n++
-	return cursor, ca
+	(*m)[cursor] = append((*m)[cursor], state)
 }
 
 const (
@@ -452,69 +441,28 @@ func (sc *shareConsumer) poll(ctx context.Context, maxPollRecords int) Fetches {
 	return fetches
 }
 
-// finalizePreviousPoll routes any outstanding ack state from records returned
-// by the previous poll. Acks are collected per-cursor and merged into
-// each cursor's pendingAcks, handling leader migration transparently.
-//
-// After this runs, every record from the previous poll is terminal and
-// lastPolled is cleared. Note: Record.Ack(AckRenew) only extends the lock,
-// renews do not persist across polls.
+// finalizePreviousPoll auto-accepts every record from the previous
+// poll whose status is still pending (or AckRenew -- renews do not
+// persist across polls).
 func (sc *shareConsumer) finalizePreviousPoll() {
 	if len(sc.lastPolled) == 0 {
 		return
 	}
-
-	var (
-		byCursor   cursorsAcks
-		lastCursor *shareCursor
-		lastCa     *cursorAcks
-	)
-
-	for _, r := range sc.lastPolled {
-		slab, st := shareAckFromCtx(r)
-		if st == nil {
-			continue
-		}
-		ok := false
-		for { // unacked or renew get auto accepted
-			cur := st.status.Load()
-			if cur != 0 && cur != int32(AckRenew) {
-				break
-			}
-			if st.status.CompareAndSwap(cur, int32(AckAccept)) {
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			continue
-		}
-		lastCursor, lastCa = byCursor.add(slab.cursor, shareAckEntry{
-			offset:       r.Offset,
-			source:       slab.ackSource,
-			status:       &st.status,
-			sessionEpoch: slab.sessionEpoch,
-		}, lastCursor, lastCa)
-	}
+	batchAckStates(sc, sc.lastPolled, AckAccept, false)
 	clear(sc.lastPolled)
 	sc.lastPolled = sc.lastPolled[:0]
-
-	sc.enqueueAllAcks(byCursor)
 }
 
+// trackLastPolled snapshots state pointers (not *Record) so the
+// next-poll auto-accept is safe against Record.Recycle + pool reuse
+// aliasing the *Record memory to a later batch.
 func (sc *shareConsumer) trackLastPolled(fetches Fetches) {
-	total := fetches.NumRecords()
-	sc.lastPolled = slices.Grow(sc.lastPolled[:0], total)[:0]
-	for i := range fetches {
-		f := &fetches[i]
-		for j := range f.Topics {
-			t := &f.Topics[j]
-			for k := range t.Partitions {
-				p := &t.Partitions[k]
-				sc.lastPolled = append(sc.lastPolled, p.Records...)
-			}
+	sc.lastPolled = slices.Grow(sc.lastPolled[:0], fetches.NumRecords())[:0]
+	fetches.EachRecord(func(r *Record) {
+		if st := shareAckFromCtx(r); st != nil {
+			sc.lastPolled = append(sc.lastPolled, st)
 		}
-	}
+	})
 }
 
 // MarkAcks sets the acknowledgement status for share group records.
@@ -534,7 +482,7 @@ func (cl *Client) MarkAcks(status AckStatus, rs ...*Record) {
 		return
 	}
 	if len(rs) > 0 {
-		batchAckRecords(sc, rs, status, nil)
+		batchAckRecords(sc, rs, status, false)
 		return
 	}
 	// Fill in the gaps: only touch records that are still PENDING.
@@ -546,9 +494,7 @@ func (cl *Client) MarkAcks(status AckStatus, rs ...*Record) {
 	// would flag a data race on the slice header.
 	sc.c.mu.Lock()
 	defer sc.c.mu.Unlock()
-	batchAckRecords(sc, sc.lastPolled, status, func(st *shareAckState) bool {
-		return st.status.Load() == 0
-	})
+	batchAckStates(sc, sc.lastPolled, status, true)
 }
 
 // FlushAcks synchronously flushes all pending share group acks. It
@@ -638,9 +584,7 @@ func (sc *shareConsumer) leave(ctx context.Context) {
 	sc.c.sourcesReadyForDraining = nil
 	sc.c.sourcesReadyMu.Unlock()
 	if len(sc.lastPolled) > 0 {
-		batchAckRecords(sc, sc.lastPolled, AckRelease, func(st *shareAckState) bool {
-			return st.status.Load() == 0
-		})
+		batchAckStates(sc, sc.lastPolled, AckRelease, true)
 		sc.lastPolled = nil
 	}
 	sc.c.mu.Unlock()
@@ -695,14 +639,12 @@ func (s *source) closeShareSession(ctx context.Context) {
 		for ti := range b.fetch.Topics {
 			t := &b.fetch.Topics[ti]
 			for pi := range t.Partitions {
-				batchAckRecords(sc, t.Partitions[pi].Records, AckRelease, func(st *shareAckState) bool {
-					return st.status.Load() == 0
-				})
+				batchAckRecords(sc, t.Partitions[pi].Records, AckRelease, true)
 			}
 		}
 	}
 
-	// Drain all cursor acks. drainAndClose sets the closed flag
+	// Drain all cursor acks. drainAcks(true) sets the closed flag
 	// atomically with the drain so post-leave Record.Ack gets a
 	// callback instead of being silently lost.
 	//
@@ -712,19 +654,15 @@ func (s *source) closeShareSession(ctx context.Context) {
 	// waiting for the acquisition lock to expire.
 	s.share.mu.Lock()
 	epoch := s.share.sessionEpoch
-	var drains []cursorAckDrain
-	var nAcks int64
-	for _, c := range s.share.cursors {
-		entries, gaps := c.drainAndClose()
-		if len(entries) > 0 || len(gaps) > 0 {
-			for i := range entries {
-				entries[i].status.CompareAndSwap(int32(AckRenew), int32(AckRelease))
-			}
-			nAcks += int64(len(entries))
-			drains = append(drains, cursorAckDrain{cursor: c, entries: entries, gaps: gaps})
-		}
-	}
+	drains := s.drainAllShareAcks(true)
 	s.share.mu.Unlock()
+	var nAcks int64
+	for _, d := range drains {
+		for _, st := range d.entries {
+			st.status.CompareAndSwap(int32(AckRenew), int32(AckRelease))
+		}
+		nAcks += int64(len(d.entries))
+	}
 
 	// Filter stale-epoch batches for consistency with shareAck.
 	// The broker would reject them per-partition
@@ -943,7 +881,7 @@ func (sc *shareConsumer) purgeTopics(topics []string) {
 			cursor := td.partitions[i].shareCursor
 			cursor.assigned.Store(false)
 			cursor.source.Load().removeShareCursor(cursor)
-			entries, _ := cursor.drainAndClose()
+			entries, _ := cursor.drainAcks(true)
 			if n := int64(len(entries)); n > 0 {
 				sc.enqueueCallback(ShareAckResults{{cursor.topic, cursor.partition, errShareConsumerLeft}}, n)
 			}
@@ -1547,7 +1485,7 @@ func (s *sourceShare) takeBuffered(paused pausedTopics) Fetch {
 		pps, topicPaused := paused.t(t.Topic)
 		if topicPaused && pps.all {
 			for i := range t.Partitions {
-				batchAckRecords(sc, t.Partitions[i].Records, AckRelease, nil)
+				batchAckRecords(sc, t.Partitions[i].Records, AckRelease, false)
 			}
 			continue
 		}
@@ -1555,7 +1493,7 @@ func (s *sourceShare) takeBuffered(paused pausedTopics) Fetch {
 			keepp := t.Partitions[:0]
 			for _, p := range t.Partitions {
 				if _, ok := pps.m[p.Partition]; ok {
-					batchAckRecords(sc, p.Records, AckRelease, nil)
+					batchAckRecords(sc, p.Records, AckRelease, false)
 					continue
 				}
 				keepp = append(keepp, p)
@@ -1588,7 +1526,7 @@ func (s *sourceShare) takeNBuffered(paused pausedTopics, n int) (Fetch, int, boo
 			rstrip.Topics = append(rstrip.Topics, *t)
 			bf.Topics = bf.Topics[1:]
 			for i := range t.Partitions {
-				batchAckRecords(sc, t.Partitions[i].Records, AckRelease, nil)
+				batchAckRecords(sc, t.Partitions[i].Records, AckRelease, false)
 			}
 			continue
 		}
@@ -1618,7 +1556,7 @@ func (s *sourceShare) takeNBuffered(paused pausedTopics, n int) (Fetch, int, boo
 			if paused.has(t.Topic, p.Partition) {
 				ensureTopicStripped()
 				rtstrip.Partitions = append(rtstrip.Partitions, *p)
-				batchAckRecords(sc, p.Records, AckRelease, nil)
+				batchAckRecords(sc, p.Records, AckRelease, false)
 				t.Partitions = t.Partitions[1:]
 				continue
 			}
@@ -1673,12 +1611,7 @@ func (s *source) shareAck(predrained []cursorAckDrain) {
 	if predrained != nil {
 		drains = predrained
 	} else {
-		for _, c := range s.share.cursors {
-			entries, gaps := c.drainAcks()
-			if len(entries) > 0 || len(gaps) > 0 {
-				drains = append(drains, cursorAckDrain{cursor: c, entries: entries, gaps: gaps})
-			}
-		}
+		drains = s.drainAllShareAcks(false)
 	}
 	s.share.mu.Unlock()
 
@@ -1807,9 +1740,8 @@ func (s *source) shareAck(predrained []cursorAckDrain) {
 					})
 				}
 				if isShareAckRetryable(partErr) {
-					drained.cursor.requeueEntries(sc, drained.entries)
+					drained.requeue(sc)
 					requeued += int64(len(drained.entries))
-					drained.cursor.requeueGaps(drained.gaps)
 					continue
 				}
 			}
@@ -1892,24 +1824,24 @@ func (sc *shareConsumer) enqueueAllAcks(byCursor cursorsAcks) {
 	if len(byCursor) == 0 {
 		return
 	}
-	sourcesToWake := make(map[*source]struct{})
-	defer func() {
-		for src := range sourcesToWake {
-			src.signalShareAcks()
-		}
-	}()
-	var closedRes ShareAckResults
-	for cursor, ca := range byCursor {
+	var (
+		sourcesToWake = make(map[*source]struct{})
+		closedRes     ShareAckResults
+	)
+	for cursor, entries := range byCursor {
 		cursor.ackMu.Lock()
 		if cursor.closed {
 			cursor.ackMu.Unlock()
 			closedRes = append(closedRes, ShareAckResult{cursor.topic, cursor.partition, errShareConsumerLeft})
 			continue
 		}
-		cursor.pendingAcks = append(cursor.pendingAcks, ca.entries...)
-		sc.pendingAcks.Add(ca.n)
+		cursor.pendingAcks = append(cursor.pendingAcks, entries...)
+		sc.pendingAcks.Add(int64(len(entries)))
 		cursor.ackMu.Unlock()
 		sourcesToWake[cursor.source.Load()] = struct{}{}
+	}
+	for src := range sourcesToWake {
+		src.signalShareAcks()
 	}
 	if len(closedRes) > 0 {
 		sc.enqueueCallback(closedRes, 0)
@@ -1967,29 +1899,22 @@ func (sc *shareConsumer) drainCallbacks(entry shareCallbackEntry) {
 	}
 }
 
-// requeueEntries puts user ack entries back onto the cursor without
-// touching sc.pendingAcks. Used for retryable requeues.
-// PurgeTopics forces us to do the share callback here.
-func (c *shareCursor) requeueEntries(sc *shareConsumer, entries []shareAckEntry) {
+// requeue puts a drain's entries and gaps back onto its cursor in
+// one mutex acquisition. If the cursor is closed (e.g. after
+// PurgeTopics), entries fire the left-group callback; gaps are
+// silently dropped.
+func (d *cursorAckDrain) requeue(sc *shareConsumer) {
+	c := d.cursor
 	c.ackMu.Lock()
 	if c.closed {
 		c.ackMu.Unlock()
-		sc.enqueueCallback(ShareAckResults{{c.topic, c.partition, errShareConsumerLeft}}, int64(len(entries)))
+		if len(d.entries) > 0 {
+			sc.enqueueCallback(ShareAckResults{{c.topic, c.partition, errShareConsumerLeft}}, int64(len(d.entries)))
+		}
 		return
 	}
-	c.pendingAcks = append(c.pendingAcks, entries...)
-	c.ackMu.Unlock()
-}
-
-// requeueGaps puts gap/release ranges back onto the cursor without
-// touching sc.pendingAcks. Used for retryable requeues.
-func (c *shareCursor) requeueGaps(gaps []shareAckRange) {
-	c.ackMu.Lock()
-	if c.closed { // this has the same PurgeTopics race, but gaps have no callback
-		c.ackMu.Unlock()
-		return
-	}
-	c.pendingGaps = append(c.pendingGaps, gaps...)
+	c.pendingAcks = append(c.pendingAcks, d.entries...)
+	c.pendingGaps = append(c.pendingGaps, d.gaps...)
 	c.ackMu.Unlock()
 }
 
@@ -2007,54 +1932,63 @@ func (c *shareCursor) enqueueGaps(gaps []shareAckRange) bool {
 	return true
 }
 
-// drainAndClose drains all pending user acks and gaps AND sets
-// c.closed=true under a single c.ackMu acquisition. After this
-// call, any user-side appendAck/enqueueGaps on the cursor is rejected.
-func (c *shareCursor) drainAndClose() ([]shareAckEntry, []shareAckRange) {
+// drainAcks removes and returns all pending user acks and gaps
+// under c.ackMu. If close is true, marks the cursor closed so
+// later appendAck / enqueueGaps return a left-group error.
+func (c *shareCursor) drainAcks(close bool) ([]*shareAckState, []shareAckRange) {
 	c.ackMu.Lock()
 	entries := c.pendingAcks
 	gaps := c.pendingGaps
 	c.pendingAcks = nil
 	c.pendingGaps = nil
-	c.closed = true
+	if close {
+		c.closed = true
+	}
 	c.ackMu.Unlock()
 	return entries, gaps
 }
 
-// drainAcks atomically removes and returns all pending user acks
-// and gaps from the cursor.
-func (c *shareCursor) drainAcks() ([]shareAckEntry, []shareAckRange) {
-	c.ackMu.Lock()
-	entries := c.pendingAcks
-	gaps := c.pendingGaps
-	c.pendingAcks = nil
-	c.pendingGaps = nil
-	c.ackMu.Unlock()
-	return entries, gaps
+// drainAllShareAcks drains every cursor under s.share, returning
+// only non-empty drains. Caller must hold s.share.mu. close is
+// forwarded to drainAcks.
+func (s *source) drainAllShareAcks(close bool) []cursorAckDrain {
+	var drains []cursorAckDrain
+	for _, c := range s.share.cursors {
+		entries, gaps := c.drainAcks(close)
+		if len(entries) > 0 || len(gaps) > 0 {
+			drains = append(drains, cursorAckDrain{cursor: c, entries: entries, gaps: gaps})
+		}
+	}
+	return drains
 }
 
 var shareAckKey = strp("share-ack")
 
-func shareAckFromCtx(r *Record) (*shareAckSlab, *shareAckState) {
+// shareAckFromCtx resolves the per-record ack state from the share-fetch
+// slab attached to r.Context. Returns nil for records that did not come
+// from a share fetch, or whose pointer is out of the slab's range.
+// state.slab gives the enclosing slab when callers need it.
+func shareAckFromCtx(r *Record) *shareAckState {
 	if r.Context == nil {
-		return nil, nil
+		return nil
 	}
 	v := r.Context.Value(shareAckKey)
 	if v == nil {
-		return nil, nil
+		return nil
 	}
 	slab := v.(*shareAckSlab)
 	idx := int((uintptr(unsafe.Pointer(r)) - uintptr(unsafe.Pointer(slab.records0))) / recSize) //nolint:gosec // pointer arithmetic to index the slab; idx is bounds-checked below
 	if idx < 0 || idx >= len(slab.states) {
-		return nil, nil
+		return nil
 	}
-	return slab, &slab.states[idx]
+	return &slab.states[idx]
 }
 
-// appendAck appends a per-record user ack entry and increments
-// sc.pendingAcks. The status pointer is read at request-build time
-// to get the current ack type.
-func (c *shareCursor) appendAck(sc *shareConsumer, ackSource *source, sessionEpoch int32, offset int64, status *atomic.Int32) {
+// appendAck appends this state to its cursor's pendingAcks and
+// increments sc.pendingAcks.
+func (st *shareAckState) appendAck() {
+	c := st.slab.cursor
+	sc := st.slab.ackSource.share.sc
 	c.ackMu.Lock()
 	if c.closed {
 		c.ackMu.Unlock()
@@ -2062,13 +1996,8 @@ func (c *shareCursor) appendAck(sc *shareConsumer, ackSource *source, sessionEpo
 		return
 	}
 	wake := len(c.pendingAcks) == 0 // only empty->non-empty needs a wake signal
-	c.pendingAcks = append(c.pendingAcks, shareAckEntry{
-		offset:       offset,
-		source:       ackSource,
-		status:       status,
-		sessionEpoch: sessionEpoch,
-	})
-	sc.pendingAcks.Add(1) // must happen inside mu, otherwise drainAndClose could race before we inc and FlushAcks could end early
+	c.pendingAcks = append(c.pendingAcks, st)
+	sc.pendingAcks.Add(1) // must happen inside mu, otherwise drainAcks(true) could race before we inc and FlushAcks could end early
 	c.ackMu.Unlock()
 
 	if wake {
@@ -2076,72 +2005,74 @@ func (c *shareCursor) appendAck(sc *shareConsumer, ackSource *source, sessionEpo
 	}
 }
 
-// batchAckRecords accumulates acks for the given records per-cursor and
-// flushes them in one pass per cursor (one lock acquisition, one signal
-// per source).
+// batchAckRecords applies status to acks resolvable from the given
+// records. Callers must only pass records whose backing memory is
+// still valid; for the lastPolled / pendingAcks paths, use
+// batchAckStates which operates on pre-resolved state pointers.
 //
-// keep is called under st.mu and decides whether each record should be
-// included in the batch. Passing nil acks every record unconditionally.
-func batchAckRecords(sc *shareConsumer, rs []*Record, status AckStatus, keep func(st *shareAckState) bool) {
-	var (
-		byCursor   cursorsAcks
-		lastCursor *shareCursor
-		lastCa     *cursorAcks
-	)
-
-	renew := status == AckRenew
+// strictZero=true narrows the CAS to "status was 0", used by
+// closeShareSession / leave / MarkAcks(no-args) so a bulk action
+// does not override an explicit user ack.
+func batchAckRecords(sc *shareConsumer, rs []*Record, status AckStatus, strictZero bool) {
+	var byCursor cursorsAcks
 	for _, r := range rs {
-		slab, st := shareAckFromCtx(r)
+		st := shareAckFromCtx(r)
 		if st == nil {
 			continue
 		}
-		if keep != nil && !keep(st) {
+		if !st.tryAck(status, strictZero) {
 			continue
 		}
-		if renew {
-			if !st.status.CompareAndSwap(0, int32(AckRenew)) {
-				continue
-			}
-		} else {
-			// Terminal: override 0 or AckRenew. Skip if already terminal.
-			ok := false
-			for {
-				cur := st.status.Load()
-				if cur != 0 && cur != int32(AckRenew) {
-					break
-				}
-				if st.status.CompareAndSwap(cur, int32(status)) {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				continue
-			}
-		}
-
-		lastCursor, lastCa = byCursor.add(slab.cursor, shareAckEntry{
-			offset:       r.Offset,
-			source:       slab.ackSource,
-			status:       &st.status,
-			sessionEpoch: slab.sessionEpoch,
-		}, lastCursor, lastCa)
+		byCursor.add(st)
 	}
-
 	sc.enqueueAllAcks(byCursor)
 }
 
-// filterStaleEntries mutates drains in-place to drop ack
-// batches that the broker cannot possibly honor, reporting them via
-// the user callback as pre-filtered drops. Two categories:
+// batchAckStates is batchAckRecords for pre-resolved state pointers.
+// Safe under Record.Recycle + pool-reuse aliasing: never reads any
+// *Record.
+func batchAckStates(sc *shareConsumer, sts []*shareAckState, status AckStatus, strictZero bool) {
+	var byCursor cursorsAcks
+	for _, st := range sts {
+		if !st.tryAck(status, strictZero) {
+			continue
+		}
+		byCursor.add(st)
+	}
+	sc.enqueueAllAcks(byCursor)
+}
+
+// tryAck CASes this state's status to the given AckStatus.
+//   - strictZero or AckRenew: succeeds only on status==0.
+//   - terminal otherwise: succeeds on 0 or AckRenew; fails if
+//     already terminal.
+func (st *shareAckState) tryAck(status AckStatus, strictZero bool) bool {
+	if strictZero || status == AckRenew {
+		return st.status.CompareAndSwap(0, int32(status))
+	}
+	for {
+		cur := st.status.Load()
+		if cur != 0 && cur != int32(AckRenew) {
+			return false
+		}
+		if st.status.CompareAndSwap(cur, int32(status)) {
+			return true
+		}
+	}
+}
+
+// filterStaleEntries mutates drains in-place to drop ack entries
+// (and gap ranges) that the broker cannot honor, reporting them via
+// the user callback as pre-filtered drops. Two categories, both
+// derived from the per-entry slab's ackSource and sessionEpoch:
 //
-//  1. b.source == s && b.sessionEpoch > epoch: same source, batch
-//     stamped with an epoch higher than the current session epoch:
-//     a session reset happened and the broker lost record state.
+//  1. slab.ackSource == s && slab.sessionEpoch > epoch: same source,
+//     entry stamped with an epoch higher than the current session
+//     epoch: a session reset happened and the broker lost record state.
 //
-//  2. b.source != s: the cursor migrated from the original source to
-//     s after the acks were queued. Acq state is not transferred to
-//     the new broker.
+//  2. slab.ackSource != s: the cursor migrated from the original
+//     source to s after the acks were queued. Acquisition state is
+//     not transferred to the new broker.
 //
 // Edge cases: enough epoch bumps happen, or the leader transfer from
 // A to B then back; it's fine, we'll just have a wasted round trip
@@ -2160,12 +2091,12 @@ func filterStaleEntries(s *source, epoch int32, drains []cursorAckDrain) (nUserA
 		var dropErr error
 		for _, e := range d.entries {
 			switch {
-			case e.source == s && e.sessionEpoch > epoch:
+			case e.slab.ackSource == s && e.slab.sessionEpoch > epoch:
 				nStaleUserAcks++
 				if dropErr == nil {
 					dropErr = kerr.InvalidShareSessionEpoch
 				}
-			case e.source != s:
+			case e.slab.ackSource != s:
 				nStaleUserAcks++
 				if dropErr == nil {
 					dropErr = kerr.InvalidRecordState
@@ -2222,8 +2153,8 @@ func ackTypes(t int8) []int8 {
 // contiguous same-type ranges merge regardless of insertion order.
 // The two are built separately (gaps are acked immediately so they
 // rarely coalesce with user entries).
-func buildAckRanges(entries []shareAckEntry, gaps []shareAckRange) (ranges []shareAckRange, hasRenew bool) {
-	slices.SortFunc(entries, func(a, b shareAckEntry) int {
+func buildAckRanges(entries []*shareAckState, gaps []shareAckRange) (ranges []shareAckRange, hasRenew bool) {
+	slices.SortFunc(entries, func(a, b *shareAckState) int {
 		return cmp.Compare(a.offset, b.offset)
 	})
 	slices.SortFunc(gaps, func(a, b shareAckRange) int {
@@ -2251,8 +2182,8 @@ func buildAckRanges(entries []shareAckEntry, gaps []shareAckRange) (ranges []sha
 		ranges = coalesceAppendRange(ranges, shareAckRange{
 			firstOffset:  e.offset,
 			lastOffset:   e.offset,
-			source:       e.source,
-			sessionEpoch: e.sessionEpoch,
+			source:       e.slab.ackSource,
+			sessionEpoch: e.slab.sessionEpoch,
 			ackType:      t,
 		})
 	}
@@ -2383,8 +2314,7 @@ func (s *source) shareFetch(doneFetch chan<- bool) (fetched bool) {
 			// Deadline hit or cl.ctx cancelled. Requeue piggybacked
 			// acks so closeShareSession or a later fetch can retry.
 			for _, pa := range piggybackAcks {
-				pa.cursor.requeueEntries(sc, pa.entries)
-				pa.cursor.requeueGaps(pa.gaps)
+				pa.requeue(sc)
 			}
 			return false
 		}
@@ -2392,8 +2322,7 @@ func (s *source) shareFetch(doneFetch chan<- bool) (fetched bool) {
 	case <-ctx.Done():
 		// cl.ctx cancelled or deadline. Requeue for closeShareSession.
 		for _, pa := range piggybackAcks {
-			pa.cursor.requeueEntries(sc, pa.entries)
-			pa.cursor.requeueGaps(pa.gaps)
+			pa.requeue(sc)
 		}
 		return false
 	}
@@ -2481,10 +2410,14 @@ func (s *source) handleShareReqResp(req *kmsg.ShareFetchRequest, resp *kmsg.Shar
 	sessionStale := s.share.sessionEpoch != epoch
 	if !sessionStale {
 		s.share.sessionEpoch++
-		for _, rt := range req.Topics {
-			for _, rp := range rt.Partitions {
-				s.share.sessionParts[tidp{rt.TopicID, rp.Partition}] = struct{}{}
-			}
+		// Only add cursors that were in the WANT set (usable) to
+		// sessionParts. req.Topics may also contain piggyback-only
+		// partitions for cursors that got revoked after we drained
+		// their acks: adding those to sessionParts would force us
+		// to forget them on the next request, generating an extra
+		// round trip of ForgottenTopicsData.
+		for _, c := range usable {
+			s.share.sessionParts[tidp{c.topicID, c.partition}] = struct{}{}
 		}
 		for _, ft := range req.ForgottenTopicsData {
 			for _, p := range ft.Partitions {
@@ -2575,9 +2508,8 @@ func (s *source) handleShareReqResp(req *kmsg.ShareFetchRequest, resp *kmsg.Shar
 					)
 				} else if isShareAckRetryable(ackErr) {
 					pa := piggybackAcks[pi]
-					pa.cursor.requeueEntries(sc, pa.entries)
+					pa.requeue(sc)
 					ackRequeued += int64(len(pa.entries))
-					pa.cursor.requeueGaps(pa.gaps)
 				} else {
 					ackResults = append(ackResults, ShareAckResult{topicName, rp.Partition, ackErr})
 				}
@@ -2846,6 +2778,8 @@ func (s *source) processSharePartition(topicName string, cursor *shareCursor, se
 			}
 			slab.states[idx] = shareAckState{
 				deliveryCount: deliveryCount,
+				offset:        r.Offset,
+				slab:          slab,
 			}
 			fp.Records[n] = r
 			n++
@@ -2932,12 +2866,7 @@ func (s *source) createShareReq(skipAckDrain bool) (
 	// Drain acks from ALL cursors on this source (not just usable
 	// ones) to piggyback on the ShareFetch request.
 	if !skipAckDrain {
-		for _, c := range s.share.cursors {
-			entries, gaps := c.drainAcks()
-			if len(entries) > 0 || len(gaps) > 0 {
-				piggybackAcks = append(piggybackAcks, cursorAckDrain{cursor: c, entries: entries, gaps: gaps})
-			}
-		}
+		piggybackAcks = s.drainAllShareAcks(false)
 		nAcks, nStaleAcks, staleResults = filterStaleEntries(s, epoch, piggybackAcks)
 		// Compute hasRenew once here so callers don't have to re-walk
 		// every entry's status atomic in a separate hasRenewAck pass.

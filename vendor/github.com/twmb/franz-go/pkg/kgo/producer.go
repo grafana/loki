@@ -61,7 +61,7 @@ type producer struct {
 
 	txnMu   xsync.Mutex
 	inTxn   bool
-	tx890p2 bool
+	tx890p2 atomic.Bool
 }
 
 // BufferedProduceRecords returns the number of records currently buffered for
@@ -258,11 +258,9 @@ func (p *producer) purgeTopics(topics []string) {
 
 			// Once abandoned, we now need to fail anything that
 			// was buffered.
-			go func() {
-				r.mu.Lock()
-				defer r.mu.Unlock()
-				r.failAllRecords(errPurged)
-			}()
+			r.mu.Lock()
+			r.failAllRecords(errPurged)
+			r.mu.Unlock()
 		}
 	}
 }
@@ -490,8 +488,9 @@ func (cl *Client) TryProduce(
 // If the client is configured to automatically flush the client currently has
 // the configured maximum amount of records buffered, Produce will block. The
 // context can be used to cancel waiting while records flush to make space. In
-// contrast, if flushing is configured, the record will be failed immediately
-// with ErrMaxBuffered (this same behavior can be had with TryProduce).
+// contrast, if manual flushing is configured, the record will be failed
+// immediately with ErrMaxBuffered (this same behavior can be had with
+// TryProduce).
 //
 // Once a record is buffered into a batch, it can be canceled in three ways:
 // canceling the context, the record timing out, or hitting the maximum
@@ -697,8 +696,8 @@ start:
 		pr.Attrs = b.attrs
 		recBroadcast := cl.finishRecordPromise(pr, b.err, b.beforeBuf)
 		broadcast = broadcast || recBroadcast
-		b.recs[i] = promisedRec{}
 	}
+	clear(b.recs) // drop references so the pooled slice does not retain them
 	if cap(b.recs) > 4 {
 		cl.prsPool.put(b.recs)
 	}
