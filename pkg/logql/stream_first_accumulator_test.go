@@ -1,9 +1,17 @@
 package logql
 
 import (
+	"fmt"
+	"math"
+	"math/rand/v2"
+	"slices"
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestCountAccumulator(t *testing.T) {
@@ -92,41 +100,710 @@ func TestCountAccumulator(t *testing.T) {
 	})
 }
 
-func TestStreamFirstRangeAggregation(t *testing.T) {
-	t.Run("accepts a bare sum of count_over_time", func(t *testing.T) {
-		rng, ok := StreamFirstRangeAggregation(`sum(count_over_time({app="foo"}[5m]))`)
+func TestSumAccumulator(t *testing.T) {
+	type stepValue struct {
+		value   float64
+		present bool
+	}
+
+	stepValues := func(t *testing.T, a stepAccumulator, steps int) []stepValue {
+		t.Helper()
+		out := make([]stepValue, steps)
+		for k := range steps {
+			v, ok := a.value(k)
+			if !ok {
+				require.Zero(t, v)
+			}
+			out[k] = stepValue{value: v, present: ok}
+		}
+		return out
+	}
+
+	t.Run("adds the value of a sample to every step from lo to hi", func(t *testing.T) {
+		a := newSumAccumulator(5)
+		a.add(1, 3, 2.5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0, false}, {2.5, true}, {2.5, true}, {2.5, true}, {0, false}}, stepValues(t, a, 5))
+	})
+
+	t.Run("adds up the samples that share a step", func(t *testing.T) {
+		a := newSumAccumulator(4)
+		a.add(0, 2, 1)
+		a.add(1, 3, 10)
+		a.add(1, 1, 100)
+		a.finish()
+
+		require.Equal(t, []stepValue{{1, true}, {111, true}, {11, true}, {10, true}}, stepValues(t, a, 4))
+	})
+
+	t.Run("adds a sample in the last step", func(t *testing.T) {
+		a := newSumAccumulator(3)
+		a.add(2, 2, 4)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0, false}, {0, false}, {4, true}}, stepValues(t, a, 3))
+	})
+
+	t.Run("reports no value for a step between two steps that hold samples", func(t *testing.T) {
+		a := newSumAccumulator(3)
+		a.add(0, 0, 2)
+		a.add(2, 2, 3)
+		a.finish()
+
+		require.Equal(t, []stepValue{{2, true}, {0, false}, {3, true}}, stepValues(t, a, 3))
+	})
+
+	t.Run("adds a sample in the only step of an instant query", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 3)
+		a.add(0, 0, 4)
+		a.finish()
+
+		require.Equal(t, []stepValue{{7, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("reports a value for a step whose samples sum to zero", func(t *testing.T) {
+		a := newSumAccumulator(3)
+		a.add(0, 1, 1.5)
+		a.add(0, 0, -1.5)
+		a.add(2, 2, 0)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0, true}, {1.5, true}, {0, true}}, stepValues(t, a, 3))
+	})
+
+	t.Run("reports no value for any step without samples", func(t *testing.T) {
+		a := newSumAccumulator(3)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0, false}, {0, false}, {0, false}}, stepValues(t, a, 3))
+	})
+
+	t.Run("keeps the sum of later steps exact after a large value in an earlier step", func(t *testing.T) {
+		a := newSumAccumulator(3)
+		a.add(0, 0, 1e16)
+		a.add(1, 1, 1.5)
+		a.add(2, 2, 0.1)
+		a.finish()
+
+		require.Equal(t, []stepValue{{1e16, true}, {1.5, true}, {0.1, true}}, stepValues(t, a, 3))
+	})
+
+	t.Run("keeps the sum of later steps exact after a large value that spans several steps", func(t *testing.T) {
+		a := newSumAccumulator(4)
+		a.add(0, 1, 123456789.123)
+		a.add(2, 3, 0.1)
+		a.finish()
+
+		require.Equal(t, []stepValue{{123456789.123, true}, {123456789.123, true}, {0.1, true}, {0.1, true}}, stepValues(t, a, 4))
+	})
+
+	t.Run("does not spread NaN to the steps after it", func(t *testing.T) {
+		a := newSumAccumulator(3)
+		a.add(0, 0, math.NaN())
+		a.add(1, 2, 2)
+		a.finish()
+
+		got := stepValues(t, a, 3)
+		require.True(t, math.IsNaN(got[0].value))
+		require.True(t, got[0].present)
+		require.Equal(t, []stepValue{{2, true}, {2, true}}, got[1:])
+	})
+
+	t.Run("does not spread infinity to the steps after it", func(t *testing.T) {
+		a := newSumAccumulator(4)
+		a.add(0, 0, math.Inf(1))
+		a.add(1, 1, 3)
+		a.add(2, 2, math.Inf(-1))
+		a.add(3, 3, 5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{math.Inf(1), true}, {3, true}, {math.Inf(-1), true}, {5, true}}, stepValues(t, a, 4))
+	})
+
+	t.Run("sums integer values exactly whatever the order of the samples", func(t *testing.T) {
+		const steps = 20
+
+		type sample struct {
+			lo, hi int
+			value  int64
+		}
+		rng := rand.New(rand.NewPCG(1, 2))
+		samples := make([]sample, 500)
+		want := make([]int64, steps)
+		for i := range samples {
+			lo := rng.IntN(steps)
+			hi := lo + rng.IntN(steps-lo)
+			samples[i] = sample{lo: lo, hi: hi, value: rng.Int64N(2_000_000_000_000) - 1_000_000_000_000}
+			for k := lo; k <= hi; k++ {
+				want[k] += samples[i].value
+			}
+		}
+
+		sumInOrder := func(samples []sample) []stepValue {
+			a := newSumAccumulator(steps)
+			for _, s := range samples {
+				a.add(s.lo, s.hi, float64(s.value))
+			}
+			a.finish()
+			return stepValues(t, a, steps)
+		}
+
+		forward := sumInOrder(samples)
+		slices.Reverse(samples)
+		reversed := sumInOrder(samples)
+		rng.Shuffle(len(samples), func(i, j int) { samples[i], samples[j] = samples[j], samples[i] })
+		shuffled := sumInOrder(samples)
+
+		require.Equal(t, forward, reversed)
+		require.Equal(t, forward, shuffled)
+		for k := range steps {
+			require.Equal(t, float64(want[k]), forward[k].value, "step %d", k)
+		}
+	})
+
+	t.Run("keeps the small samples that follow a large one in the same step", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 1e16)
+		for range 10 {
+			a.add(0, 0, 1)
+		}
+		a.finish()
+
+		require.Equal(t, []stepValue{{1e16 + 10, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("keeps the small samples between a large value and the same value negated", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 1e16)
+		for range 10 {
+			a.add(0, 0, 1)
+		}
+		a.add(0, 0, -1e16)
+		a.finish()
+
+		require.Equal(t, []stepValue{{10, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("keeps the small samples between a large value and the same value negated in every step of a range", func(t *testing.T) {
+		a := newSumAccumulator(4)
+		a.add(0, 3, 1e16)
+		for range 10 {
+			a.add(0, 3, 1)
+		}
+		a.add(0, 3, -1e16)
+		a.add(2, 3, 0.5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{10, true}, {10, true}, {10.5, true}, {10.5, true}}, stepValues(t, a, 4))
+	})
+
+	t.Run("keeps a negative compensation", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 1e16)
+		a.add(0, 0, -1)
+		a.add(0, 0, -1)
+		a.finish()
+
+		require.Equal(t, []stepValue{{1e16 - 2, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("keeps the compensation of steps after the first step of the range that first needs one", func(t *testing.T) {
+		a := newSumAccumulator(3)
+		a.add(1, 2, 1e16)
+		a.add(0, 2, 1)
+		a.add(0, 2, 1)
+		a.finish()
+
+		require.Equal(t, []stepValue{{2, true}, {1e16 + 2, true}, {1e16 + 2, true}}, stepValues(t, a, 3))
+	})
+
+	t.Run("returns NaN for a positive and a negative infinity in one step", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, math.Inf(1))
+		a.add(0, 0, math.Inf(-1))
+		a.finish()
+
+		got := stepValues(t, a, 1)
+		require.True(t, math.IsNaN(got[0].value))
+		require.True(t, got[0].present)
+	})
+
+	t.Run("returns infinity for an infinity and finite samples in one step", func(t *testing.T) {
+		a := newSumAccumulator(1)
+		a.add(0, 0, 1)
+		a.add(0, 0, math.Inf(1))
+		a.add(0, 0, 2.5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{math.Inf(1), true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("returns the same value as SumOverTime for the same samples in the same order", func(t *testing.T) {
+		const steps = 20
+
+		rng := rand.New(rand.NewPCG(3, 4))
+		acc := newSumAccumulator(steps)
+		want := make([]SumOverTime, steps)
+		for range 2000 {
+			lo := rng.IntN(steps)
+			hi := lo + rng.IntN(steps-lo)
+			v := rng.Float64() * math.Pow(10, float64(rng.IntN(17)))
+			if rng.IntN(2) == 0 {
+				v = -v
+			}
+			acc.add(lo, hi, v)
+			for k := lo; k <= hi; k++ {
+				want[k].agg(promql.FPoint{F: v})
+			}
+		}
+		acc.finish()
+
+		got := stepValues(t, acc, steps)
+		for k := range steps {
+			require.Equal(t, want[k].at(), got[k].value, "step %d", k)
+		}
+	})
+
+	t.Run("does not allocate the compensation while the sums are exact", func(t *testing.T) {
+		a := newSumAccumulator(10).(*sumAccumulator)
+		require.Zero(t, testing.AllocsPerRun(100, func() {
+			a.add(0, 9, 1234567)
+			a.add(3, 5, -89)
+		}))
+		require.Nil(t, a.compensations)
+	})
+
+	t.Run("does not allocate the compensation for fractional values that fall in separate steps", func(t *testing.T) {
+		a := newSumAccumulator(3).(*sumAccumulator)
+		a.add(0, 0, 0.1)
+		a.add(1, 1, 1e16)
+		a.add(2, 2, 123456789.123)
+
+		require.Nil(t, a.compensations)
+	})
+
+	t.Run("allocates the compensation once at the first inexact sum and never again", func(t *testing.T) {
+		var created stepAccumulator
+		withoutCompensation := testing.AllocsPerRun(100, func() {
+			created = newSumAccumulator(10)
+			created.add(0, 9, 1e16)
+		})
+		withCompensation := testing.AllocsPerRun(100, func() {
+			created = newSumAccumulator(10)
+			created.add(0, 9, 1e16)
+			created.add(0, 9, 1)
+			created.add(0, 9, 0.1)
+		})
+		require.Equal(t, withoutCompensation+1, withCompensation)
+
+		a := newSumAccumulator(10).(*sumAccumulator)
+		a.add(0, 9, 1e16)
+		a.add(0, 9, 1)
+		require.NotNil(t, a.compensations)
+		require.Zero(t, testing.AllocsPerRun(100, func() { a.add(0, 9, 0.1) }))
+	})
+
+	t.Run("allocates the struct and two slices when created and nothing while adding exact values or reading samples", func(t *testing.T) {
+		var created stepAccumulator
+		require.Equal(t, 3.0, testing.AllocsPerRun(100, func() { created = newSumAccumulator(10) }))
+		require.NotNil(t, created)
+
+		a := newSumAccumulator(10)
+		require.Zero(t, testing.AllocsPerRun(100, func() {
+			a.add(1, 3, 1)
+			a.finish()
+			_, _ = a.value(2)
+		}))
+	})
+
+	t.Run("panics when value is called before finish", func(t *testing.T) {
+		a := newSumAccumulator(2)
+		a.add(0, 1, 1)
+
+		require.Panics(t, func() { _, _ = a.value(0) })
+	})
+}
+
+func TestRateAccumulator(t *testing.T) {
+	const (
+		countRate  = `rate({app="foo"}[10s])`
+		unwrapRate = `rate({app="foo"} | logfmt | unwrap n [10s])`
+	)
+
+	type stepValue struct {
+		value   float64
+		present bool
+	}
+
+	newRateAccumulator := func(t *testing.T, query string) newStepAccumulatorFunc {
+		t.Helper()
+		newAccumulator, ok := newStepAccumulatorFuncFor(mustRangeAggregation(t, query))
 		require.True(t, ok)
-		require.NotNil(t, rng)
+		return newAccumulator
+	}
+
+	stepValues := func(t *testing.T, a stepAccumulator, steps int) []stepValue {
+		t.Helper()
+		out := make([]stepValue, steps)
+		for k := range steps {
+			v, ok := a.value(k)
+			if !ok {
+				require.Zero(t, v)
+			}
+			out[k] = stepValue{value: v, present: ok}
+		}
+		return out
+	}
+
+	t.Run("divides the sample count of each step by the range in seconds", func(t *testing.T) {
+		a := newRateAccumulator(t, countRate)(3)
+		a.add(0, 1, 1)
+		a.add(1, 2, 1)
+		a.add(1, 1, 1)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0.1, true}, {0.3, true}, {0.1, true}}, stepValues(t, a, 3))
 	})
 
-	t.Run("accepts a sum by of count_over_time", func(t *testing.T) {
-		rng, ok := StreamFirstRangeAggregation(`sum by (app) (count_over_time({app="foo"}[5m]))`)
-		require.True(t, ok)
-		require.NotNil(t, rng)
+	t.Run("counts a line sample whatever its value", func(t *testing.T) {
+		a := newRateAccumulator(t, countRate)(2)
+		a.add(0, 1, 7.5)
+		a.add(0, 0, -3)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0.2, true}, {0.1, true}}, stepValues(t, a, 2))
 	})
 
-	t.Run("rejects a bare count_over_time with no outer sum", func(t *testing.T) {
-		_, ok := StreamFirstRangeAggregation(`count_over_time({app="foo"}[5m])`)
-		require.False(t, ok)
+	t.Run("divides the sum of the values of each step by the range in seconds when the query has an unwrap", func(t *testing.T) {
+		a := newRateAccumulator(t, unwrapRate)(2)
+		a.add(0, 1, 2.5)
+		a.add(1, 1, 5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0.25, true}, {0.75, true}}, stepValues(t, a, 2))
 	})
 
-	t.Run("rejects a sum of an aggregation other than count_over_time", func(t *testing.T) {
-		_, ok := StreamFirstRangeAggregation(`sum(rate({app="foo"}[5m]))`)
-		require.False(t, ok)
+	t.Run("divides by the range vector duration and not by the offset when the query has an offset", func(t *testing.T) {
+		a := newRateAccumulator(t, `rate({app="foo"}[10s] offset 30s)`)(1)
+		a.add(0, 0, 1)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0.1, true}}, stepValues(t, a, 1))
 	})
 
-	t.Run("rejects an outer aggregation other than sum", func(t *testing.T) {
-		_, ok := StreamFirstRangeAggregation(`max(count_over_time({app="foo"}[5m]))`)
-		require.False(t, ok)
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{name: "a line count", query: countRate},
+		{name: "an unwrap sum", query: unwrapRate},
+	} {
+		t.Run("reports no value for a step without samples for "+tc.name, func(t *testing.T) {
+			a := newRateAccumulator(t, tc.query)(3)
+			a.add(1, 1, 1)
+			a.finish()
+
+			require.Equal(t, []stepValue{{0, false}, {0.1, true}, {0, false}}, stepValues(t, a, 3))
+		})
+	}
+
+	t.Run("reports a value for a step whose sample values sum to zero", func(t *testing.T) {
+		a := newRateAccumulator(t, unwrapRate)(1)
+		a.add(0, 0, 1.5)
+		a.add(0, 0, -1.5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0, true}}, stepValues(t, a, 1))
 	})
 
-	t.Run("rejects a log selector", func(t *testing.T) {
-		_, ok := StreamFirstRangeAggregation(`{app="foo"}`)
-		require.False(t, ok)
+	t.Run("reports a value for a step whose sample values sum to a negative number", func(t *testing.T) {
+		a := newRateAccumulator(t, unwrapRate)(1)
+		a.add(0, 0, -3)
+		a.finish()
+
+		require.Equal(t, []stepValue{{-0.3, true}}, stepValues(t, a, 1))
 	})
 
-	t.Run("rejects a query that fails to parse", func(t *testing.T) {
-		_, ok := StreamFirstRangeAggregation(`sum(`)
-		require.False(t, ok)
+	t.Run("keeps NaN in its own step when the query has an unwrap", func(t *testing.T) {
+		a := newRateAccumulator(t, unwrapRate)(2)
+		a.add(0, 0, math.NaN())
+		a.add(1, 1, 2)
+		a.finish()
+
+		got := stepValues(t, a, 2)
+		require.True(t, math.IsNaN(got[0].value))
+		require.True(t, got[0].present)
+		require.Equal(t, []stepValue{{0.2, true}}, got[1:])
 	})
+
+	t.Run("keeps infinity in its own step when the query has an unwrap", func(t *testing.T) {
+		a := newRateAccumulator(t, unwrapRate)(2)
+		a.add(0, 0, math.Inf(-1))
+		a.add(1, 1, 5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{math.Inf(-1), true}, {0.5, true}}, stepValues(t, a, 2))
+	})
+
+	t.Run("divides the sum of the values of each step by the range in seconds when the unwrap converts the values", func(t *testing.T) {
+		a := newRateAccumulator(t, `rate({app="foo"} | logfmt | unwrap bytes(n) [10s])`)(1)
+		a.add(0, 0, 2048)
+		a.finish()
+
+		require.Equal(t, []stepValue{{204.8, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("divides the sum of the values of each step by the range in seconds when the unwrap has a post filter", func(t *testing.T) {
+		a := newRateAccumulator(t, `rate({app="foo"} | logfmt | unwrap n | __error__="" [10s])`)(1)
+		a.add(0, 0, 2.5)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0.25, true}}, stepValues(t, a, 1))
+	})
+
+	t.Run("returns no value and not NaN for a step without samples when the range is zero", func(t *testing.T) {
+		a := newRateAccumulator(t, `rate({app="foo"}[0s])`)(2)
+		a.finish()
+
+		require.Equal(t, []stepValue{{0, false}, {0, false}}, stepValues(t, a, 2))
+	})
+
+	t.Run("returns the same value as the timestamp-first rate for a line count that grows by one sample at each step", func(t *testing.T) {
+		const maxCount = 2000
+
+		ranges := []time.Duration{500 * time.Millisecond}
+		for seconds := 1; seconds <= 120; seconds++ {
+			ranges = append(ranges, time.Duration(seconds)*time.Second)
+		}
+
+		points := make([]promql.FPoint, maxCount)
+		for _, selRange := range ranges {
+			a := newRateAccumulator(t, fmt.Sprintf(`rate({app="foo"}[%dms])`, selRange.Milliseconds()))(maxCount)
+			for k := range maxCount {
+				a.add(k, maxCount-1, 1)
+			}
+			a.finish()
+
+			got := stepValues(t, a, maxCount)
+			timestampFirst := rateLogs(selRange, false)
+			for k := range maxCount {
+				require.Equal(t, timestampFirst(points[:k+1], 0), got[k].value, "range %s, step %d", selRange, k)
+			}
+		}
+	})
+
+	t.Run("returns the same value as the timestamp-first rate for the same values in the same order when the query has an unwrap", func(t *testing.T) {
+		const steps = 20
+
+		rng := rand.New(rand.NewPCG(5, 6))
+		acc := newRateAccumulator(t, `rate({app="foo"} | logfmt | unwrap n [7s])`)(steps)
+		want := make([]RateLogsOverTime, steps)
+		for k := range want {
+			want[k] = RateLogsOverTime{selRange: 7 * time.Second, computeValues: true}
+		}
+		for range 2000 {
+			lo := rng.IntN(steps)
+			hi := lo + rng.IntN(steps-lo)
+			v := rng.Float64() * math.Pow(10, float64(rng.IntN(17)))
+			if rng.IntN(2) == 0 {
+				v = -v
+			}
+			acc.add(lo, hi, v)
+			for k := lo; k <= hi; k++ {
+				want[k].agg(promql.FPoint{F: v})
+			}
+		}
+		acc.finish()
+
+		got := stepValues(t, acc, steps)
+		for k := range steps {
+			require.Equal(t, want[k].at(), got[k].value, "step %d", k)
+		}
+	})
+
+	for _, tc := range []struct {
+		name   string
+		query  string
+		newRaw newStepAccumulatorFunc
+	}{
+		{name: "a line count", query: countRate, newRaw: newCountAccumulator},
+		{name: "an unwrap sum", query: unwrapRate, newRaw: newSumAccumulator},
+	} {
+		t.Run("allocates the wrapper on top of the accumulator that it wraps and nothing while adding or reading samples for "+tc.name, func(t *testing.T) {
+			newWrapped := newRateAccumulator(t, tc.query)
+
+			var created stepAccumulator
+			raw := testing.AllocsPerRun(100, func() { created = tc.newRaw(10) })
+			wrapped := testing.AllocsPerRun(100, func() { created = newWrapped(10) })
+			require.NotNil(t, created)
+			require.Equal(t, raw+1, wrapped)
+
+			a := newWrapped(10)
+			require.Zero(t, testing.AllocsPerRun(100, func() {
+				a.add(1, 3, 1)
+				a.finish()
+				_, _ = a.value(2)
+			}))
+		})
+
+		t.Run("panics when value is called before finish for "+tc.name, func(t *testing.T) {
+			a := newRateAccumulator(t, tc.query)(2)
+			a.add(0, 1, 1)
+
+			require.Panics(t, func() { _, _ = a.value(0) })
+		})
+	}
+}
+
+func TestStreamFirstRangeAggregationExpr(t *testing.T) {
+	supported := []string{
+		`sum(count_over_time({app="foo"}[5m]))`,
+		`sum by (app) (count_over_time({app="foo"}[5m]))`,
+		`sum(sum_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
+		`sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
+		`sum without (pod) (sum_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
+		`sum(sum_over_time({app="foo"} | logfmt | unwrap bytes(size) | __error__="" [5m] offset 1m))`,
+		`sum(rate({app="foo"}[5m]))`,
+		`sum by (app) (rate({app="foo"}[5m]))`,
+		`sum without (pod) (rate({app="foo"} |= "error" [5m] offset 1m))`,
+		`sum(rate({app="foo"} | logfmt | unwrap n [5m]))`,
+		`sum by (app) (rate({app="foo"} | logfmt | unwrap bytes(size) | __error__="" [5m]))`,
+	}
+	unsupported := []string{
+		`count_over_time({app="foo"}[5m])`,
+		`sum_over_time({app="foo"} | logfmt | unwrap n [5m])`,
+		`rate({app="foo"}[5m])`,
+		`avg(rate({app="foo"}[5m]))`,
+		`max(rate({app="foo"} | logfmt | unwrap n [5m]))`,
+		`sum(rate_counter({app="foo"} | logfmt | unwrap n [5m]))`,
+		`sum(bytes_rate({app="foo"}[5m]))`,
+		`sum(bytes_over_time({app="foo"}[5m]))`,
+		`sum(avg_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
+		`sum(max_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
+		`max(count_over_time({app="foo"}[5m]))`,
+		`max(sum_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
+		`{app="foo"}`,
+	}
+
+	t.Run("accepts every supported query", func(t *testing.T) {
+		for _, query := range supported {
+			t.Run(query, func(t *testing.T) {
+				rng, ok := StreamFirstRangeAggregationExpr(syntax.MustParseExpr(query))
+				require.True(t, ok)
+				require.NotNil(t, rng)
+			})
+		}
+	})
+
+	t.Run("rejects every unsupported query", func(t *testing.T) {
+		for _, query := range unsupported {
+			t.Run(query, func(t *testing.T) {
+				_, ok := StreamFirstRangeAggregationExpr(syntax.MustParseExpr(query))
+				require.False(t, ok)
+			})
+		}
+	})
+
+	t.Run("rejects an expression that only holds a supported query", func(t *testing.T) {
+		for _, query := range []string{
+			`topk(1, sum by (app) (count_over_time({app="foo"}[5m])))`,
+			`label_replace(sum(count_over_time({app="foo"}[5m])), "a", "b", "c", "d")`,
+			`sum(count_over_time({app="foo"}[5m])) > 1`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, ok := StreamFirstRangeAggregationExpr(syntax.MustParseExpr(query))
+				require.False(t, ok)
+			})
+		}
+	})
+}
+
+func TestStreamFirstRangeAggregations(t *testing.T) {
+	intervals := func(query string) []time.Duration {
+		var out []time.Duration
+		for _, rng := range StreamFirstRangeAggregations(syntax.MustParseExpr(query)) {
+			out = append(out, rng.Left.Interval)
+		}
+		return out
+	}
+
+	t.Run("returns the range aggregation of a supported query", func(t *testing.T) {
+		require.Equal(t, []time.Duration{5 * time.Minute}, intervals(`sum by (app) (count_over_time({app="foo"}[5m]))`))
+	})
+
+	t.Run("returns a supported query nested in another expression", func(t *testing.T) {
+		for _, query := range []string{
+			`label_replace(sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [5m])), "a", "b", "app", ".+")`,
+			`max by (node) (sum by (node, pod) (count_over_time({app="foo"}[5m])))`,
+			`topk(1, sum by (app) (count_over_time({app="foo"}[5m])))`,
+			`(sum(count_over_time({app="foo"}[5m])) or vector(0)) > bool 0`,
+			`sum(sum by (app) (count_over_time({app="foo"}[5m])))`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				require.Equal(t, []time.Duration{5 * time.Minute}, intervals(query))
+			})
+		}
+	})
+
+	t.Run("returns every supported query of a binary operator in walk order", func(t *testing.T) {
+		require.Equal(t,
+			[]time.Duration{time.Minute, 5 * time.Minute},
+			intervals(`sum(count_over_time({app="foo"}[1m])) / sum(sum_over_time({app="bar"} | logfmt | unwrap n [5m]))`),
+		)
+	})
+
+	t.Run("returns only the supported query of a binary operator with an unsupported one", func(t *testing.T) {
+		require.Equal(t,
+			[]time.Duration{time.Minute},
+			intervals(`sum(count_over_time({app="foo"}[1m])) + sum(avg_over_time({app="bar"} | logfmt | unwrap n [5m]))`),
+		)
+	})
+
+	t.Run("returns nothing when no part of the query is supported", func(t *testing.T) {
+		for _, query := range []string{
+			`sum(avg_over_time({app="foo"} | logfmt | unwrap n [5m]))`,
+			`count_over_time({app="foo"}[5m])`,
+			`max(count_over_time({app="foo"}[5m]))`,
+			`label_replace(count_over_time({app="foo"}[5m]), "a", "b", "c", "d")`,
+			`{app="foo"}`,
+			`vector(1)`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				require.Empty(t, StreamFirstRangeAggregations(syntax.MustParseExpr(query)))
+			})
+		}
+	})
+}
+
+// BenchmarkSumAccumulator measures the cost of adding one sample to the steps of its window. The
+// number of steps per sample is about selRange/step.
+func BenchmarkSumAccumulator(b *testing.B) {
+	const steps = 1440
+
+	for _, kind := range []string{"integer", "fractional"} {
+		rng := rand.New(rand.NewPCG(7, 8))
+		values := make([]float64, steps)
+		for i := range values {
+			values[i] = float64(rng.IntN(1000))
+			if kind == "fractional" {
+				values[i] += rng.Float64()
+			}
+		}
+
+		for _, stepsPerSample := range []int{1, 5, 60, 288} {
+			b.Run(fmt.Sprintf("values=%s/steps-per-sample=%d", kind, stepsPerSample), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					a := newSumAccumulator(steps)
+					for i, v := range values {
+						a.add(i, min(i+stepsPerSample-1, steps-1), v)
+					}
+					a.finish()
+				}
+				b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/steps, "ns/sample")
+			})
+		}
+	}
 }

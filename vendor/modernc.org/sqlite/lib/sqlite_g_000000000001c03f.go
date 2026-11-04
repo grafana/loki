@@ -649,6 +649,8 @@ func _unixShmBarrier(tls *libc.TLS, fd uintptr) {
 
 type daddr_t = Tdaddr_t
 
+type double_t = Tdouble_t
+
 type fixpt_t = Tfixpt_t
 
 const osFcntlOfd = "osFcntl"

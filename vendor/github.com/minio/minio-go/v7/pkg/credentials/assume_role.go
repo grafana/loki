@@ -99,7 +99,7 @@ type STSAssumeRoleOptions struct {
 	Policy       string // Optional to assign a policy to the assumed role
 
 	Location        string // Optional commonly needed with AWS STS.
-	DurationSeconds int    // Optional defaults to 1 hour.
+	DurationSeconds int    // Optional, omitted when zero so the server applies its default.
 
 	// Optional only valid if using with AWS STS
 	RoleARN         string
@@ -120,8 +120,6 @@ func NewSTSAssumeRole(stsEndpoint string, opts STSAssumeRoleOptions) (*Credentia
 		Options:     opts,
 	}), nil
 }
-
-const defaultDurationSeconds = 3600
 
 // closeResponse close non nil response with any response Body.
 // convenient wrapper to drain any remaining data on response body.
@@ -153,10 +151,8 @@ func getAssumeRoleCredentials(ctx context.Context, clnt *http.Client, endpoint s
 	if opts.RoleSessionName != "" {
 		v.Set("RoleSessionName", opts.RoleSessionName)
 	}
-	if opts.DurationSeconds > defaultDurationSeconds {
+	if opts.DurationSeconds != 0 {
 		v.Set("DurationSeconds", strconv.Itoa(opts.DurationSeconds))
-	} else {
-		v.Set("DurationSeconds", strconv.Itoa(defaultDurationSeconds))
 	}
 	if opts.Policy != "" {
 		v.Set("Policy", opts.Policy)

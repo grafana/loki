@@ -50,7 +50,8 @@ func buildLogMergePlan(
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
 		Runs:           task.Runs,
-		SortSchema:     task.SortSchema,
+		KeyRange:       task.KeyRange,
+		InputBytes:     task.InputBytes,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -71,11 +72,12 @@ func buildIndexFilterPlan(tenant, sourceIndexPath string, objectPaths []string) 
 	return physical.FromGraph(g)
 }
 
-func buildSortObjectPlan(sourceObjectPath string, sortSchema []string) *physical.Plan {
-	node := &physical.SortObject{
-		NodeID:           ulid.Make(),
-		SourceObjectPath: sourceObjectPath,
-		SortSchema:       sortSchema,
+// buildDeletionSweepPlan returns a single-root physical.Plan holding one
+// DeletionSweep node for tenant.
+func buildDeletionSweepPlan(tenant string) *physical.Plan {
+	node := &physical.DeletionSweep{
+		NodeID: ulid.Make(),
+		Tenant: tenant,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)

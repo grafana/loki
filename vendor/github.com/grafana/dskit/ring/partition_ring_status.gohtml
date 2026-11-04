@@ -15,6 +15,7 @@
                 <th>State</th>
                 <th>State updated at</th>
                 <th>Owners</th>
+                <th>Token scheme</th>
                 <th>Tokens</th>
                 <th>Ownership</th>
                 <th>Actions</th>
@@ -44,6 +45,7 @@
                         {{$ownerID}} <br />
                     {{ end }}
                 </td>
+                <td>{{ if not .Corrupted }}{{ .TokenScheme.CleanName }}{{ end }}</td>
                 <td>{{ .NumTokens }}</td>
                 <td>{{ .Ownership | humanFloat }}%</td>
                 <td>

@@ -16,7 +16,15 @@ type structFieldSet struct {
 	fieldIdx    int
 	key         string
 	keyLen      int64
-	err         error
+	// err is the cause of the type error of a field promoted from an embedded pointer to an unexported struct, at
+	// offset, which can't be allocated: it is reported only when the pointer is nil ( see unsettable ).
+	err error
+}
+
+// unsettable reports whether the field can't be set in the struct at p: it is promoted from an embedded pointer to
+// an unexported struct, which is nil. A pointer which is set is followed, as encoding/json does.
+func (f *structFieldSet) unsettable(p unsafe.Pointer) bool {
+	return f.err != nil && *(*unsafe.Pointer)(unsafe.Add(p, f.offset)) == nil
 }
 
 type structDecoder struct {
@@ -29,12 +37,8 @@ type structDecoder struct {
 	stringDecoder      *stringDecoder
 	structName         string
 	fieldName          string
-	// typ is the struct type, and typeName its name, which the type errors report.
-	typ      reflect.Type
-	typeName string
-	// embedded are the names of the embedded fields which the fields are promoted through, from the struct, which
-	// only the type errors report ( see typeErrorPath ).
-	embedded map[*structFieldSet][]string
+	// typ is the struct type, which the type errors of the fields which can't be set report.
+	typ reflect.Type
 }
 
 func newStructDecoder(structName, fieldName string) *structDecoder {
@@ -65,10 +69,6 @@ func (d *structDecoder) setFields(fields []*structFieldSet) {
 
 func (d *structDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
 	buf := ctx.Buf
-	depth++
-	if depth > maxDecodeNestingDepth {
-		return 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
-	}
 	buflen := int64(len(buf))
 	cursor = skipWhiteSpace(buf, cursor)
 	b := (*sliceHeader)(unsafe.Pointer(&buf)).data
@@ -80,8 +80,13 @@ func (d *structDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsaf
 		cursor += 4
 		return cursor, nil
 	case '{':
+		// only an object nests its values one level deeper: null or another value at the limit is not too deep
+		depth++
+		if depth > maxDecodeNestingDepth {
+			return 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
+		}
 	default:
-		return d.decodeOther(ctx, cursor, depth-1)
+		return d.decodeOther(ctx, cursor, depth)
 	}
 	cursor++
 	cursor = skipWhiteSpace(buf, cursor)
@@ -111,7 +116,7 @@ func (d *structDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsaf
 			return 0, errors.ErrExpected("object value after colon", cursor)
 		}
 		if field != nil {
-			if field.err != nil {
+			if field.unsettable(p) {
 				// a field which can't be set: the error is recorded as a type error, and the decoding goes on
 				c, err := d.unsettableField(ctx, cursor, depth, field.err)
 				if err != nil {
@@ -180,7 +185,8 @@ func (d *structDecoder) decodeObjectFirstWin(ctx *RuntimeContext, cursor, depth 
 		if field != nil {
 			// the first 64 fields are the bits of seen, in a register; the others are looked at by a call
 			var decoded bool
-			if field.err != nil {
+			unsettable := field.unsettable(p)
+			if unsettable {
 				// a field which can't be set: the error is recorded as a type error, and the decoding goes on
 				c, err := d.unsettableField(ctx, cursor, depth, field.err)
 				if err != nil {
@@ -195,7 +201,7 @@ func (d *structDecoder) decodeObjectFirstWin(ctx *RuntimeContext, cursor, depth 
 				decoded = d.decodedBefore(idx, &seenMore)
 			}
 			switch {
-			case field.err != nil:
+			case unsettable:
 			case decoded:
 				c, err := skipValue(buf, cursor, depth)
 				if err != nil {
@@ -258,7 +264,14 @@ func (d *structDecoder) decodedBefore(idx int, more *[]uint64) bool {
 //
 //go:noinline
 func (d *structDecoder) unsettableField(ctx *RuntimeContext, cursor, depth int64, err error) (int64, error) {
-	return ctx.unsettableFieldError(cursor, depth, d.typ, err)
+	buf := ctx.Buf
+	cursor = skipWhiteSpace(buf, cursor)
+	end, skipErr := skipValue(buf, cursor, depth)
+	if skipErr != nil {
+		return 0, skipErr
+	}
+	ctx.unsettableValueError(cursor, end, kindOf(buf[cursor]), d.typ, err)
+	return end, nil
 }
 
 func (d *structDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {

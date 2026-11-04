@@ -101,6 +101,13 @@ func (a *MonthInterval) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *MonthInterval) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 // MarshalJSON will create a json array out of a MonthInterval array,
 // each value will be an object of the form {"months": #} where
 // # is the numeric value of that index
@@ -176,9 +183,15 @@ func (b *MonthIntervalBuilder) AppendNull() {
 }
 
 func (b *MonthIntervalBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendNull()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendNulls(n)
 }
 
 func (b *MonthIntervalBuilder) AppendEmptyValue() {
@@ -186,9 +199,15 @@ func (b *MonthIntervalBuilder) AppendEmptyValue() {
 }
 
 func (b *MonthIntervalBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendEmptyValue()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendEmptyValues(b.data.Bytes(), arrow.MonthIntervalTraits.BytesRequired(1), n)
 }
 
 func (b *MonthIntervalBuilder) UnsafeAppend(v arrow.MonthInterval) {
@@ -406,6 +425,13 @@ func (a *DayTimeInterval) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *DayTimeInterval) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 // MarshalJSON will marshal this array to JSON as an array of objects,
 // consisting of the form {"days": #, "milliseconds": #} for each element.
 func (a *DayTimeInterval) MarshalJSON() ([]byte, error) {
@@ -479,9 +505,15 @@ func (b *DayTimeIntervalBuilder) AppendNull() {
 }
 
 func (b *DayTimeIntervalBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendNull()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendNulls(n)
 }
 
 func (b *DayTimeIntervalBuilder) AppendEmptyValue() {
@@ -489,9 +521,15 @@ func (b *DayTimeIntervalBuilder) AppendEmptyValue() {
 }
 
 func (b *DayTimeIntervalBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendEmptyValue()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendEmptyValues(b.data.Bytes(), arrow.DayTimeIntervalTraits.BytesRequired(1), n)
 }
 
 func (b *DayTimeIntervalBuilder) UnsafeAppend(v arrow.DayTimeInterval) {
@@ -710,6 +748,13 @@ func (a *MonthDayNanoInterval) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *MonthDayNanoInterval) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 // MarshalJSON will marshal this array to a JSON array with elements
 // marshalled to the form {"months": #, "days": #, "nanoseconds": #}
 func (a *MonthDayNanoInterval) MarshalJSON() ([]byte, error) {
@@ -785,9 +830,15 @@ func (b *MonthDayNanoIntervalBuilder) AppendNull() {
 }
 
 func (b *MonthDayNanoIntervalBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendNull()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendNulls(n)
 }
 
 func (b *MonthDayNanoIntervalBuilder) AppendEmptyValue() {
@@ -795,9 +846,15 @@ func (b *MonthDayNanoIntervalBuilder) AppendEmptyValue() {
 }
 
 func (b *MonthDayNanoIntervalBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendEmptyValue()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendEmptyValues(b.data.Bytes(), arrow.MonthDayNanoIntervalTraits.BytesRequired(1), n)
 }
 
 func (b *MonthDayNanoIntervalBuilder) UnsafeAppend(v arrow.MonthDayNanoInterval) {

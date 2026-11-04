@@ -1747,17 +1747,15 @@ The compressed or decompressed body of an HTTP push request to the distributor e
 
 **Default configuration:**
 
-- `distributor.max_recv_msg_size`: 100MB (compressed request body limit)
-- `distributor.max_decompressed_size`: 5000MB (decompressed body limit, defaults to 50× `max_recv_msg_size`)
+- `limits_config.max_push_size` (CLI flag `-distributor.max-push-size`): 2GB. The same value is used as the limit for both the compressed and decompressed request size, and it is configurable per tenant.
 
 **Resolution:**
 
-- **Increase the distributor receive message size limit**:
+- **Increase the distributor push size limit**:
 
   ```yaml
-  distributor:
-    max_recv_msg_size: 209715200      # 200MB compressed
-    max_decompressed_size: 10737418240  # 10GB decompressed
+  limits_config:
+    max_push_size: 4GB
   ```
 
 - **Reduce push batch sizes** in your log shipping client (Alloy, etc.) to send smaller individual requests.
@@ -1769,7 +1767,7 @@ The compressed or decompressed body of an HTTP push request to the distributor e
 - Enforced by: Distributor push handler
 - Retryable: No (request must be smaller or limits increased)
 - HTTP status: 413 Request Entity Too Large (compressed), 400 Bad Request (decompressed)
-- Configurable per tenant: No
+- Configurable per tenant: Yes
 
 ### Error: Response larger than max message size
 
@@ -1827,7 +1825,7 @@ The compressed body of an HTTP push request exceeds the distributor's configured
 
 **Default configuration:**
 
-- `distributor.max_recv_msg_size`: 100MB
+- `limits_config.max_push_size` (CLI flag `-distributor.max-push-size`): 2GB. Configurable per tenant.
 
 **Resolution:**
 
@@ -1836,8 +1834,8 @@ The compressed body of an HTTP push request exceeds the distributor's configured
 - **Increase the limit** if needed:
 
   ```yaml
-  distributor:
-    max_recv_msg_size: 209715200   # 200MB
+  limits_config:
+    max_push_size: 4GB
   ```
 
 **Properties:**
@@ -1845,7 +1843,7 @@ The compressed body of an HTTP push request exceeds the distributor's configured
 - Enforced by: Distributor push handler
 - Retryable: No (request must be smaller)
 - HTTP status: 400 Bad Request
-- Configurable per tenant: No
+- Configurable per tenant: Yes
 
 ## TLS and certificate errors
 

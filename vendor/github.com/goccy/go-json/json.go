@@ -7,6 +7,7 @@ import (
 
 	"github.com/goccy/go-json/internal/decoder"
 	"github.com/goccy/go-json/internal/encoder"
+	"github.com/goccy/go-json/internal/jsonstring"
 )
 
 // Marshaler is the interface implemented by types that
@@ -349,14 +350,9 @@ func Indent(dst *bytes.Buffer, src []byte, prefix, indent string) error {
 // escaping within <script> tags, so an alternative JSON encoding must
 // be used.
 func HTMLEscape(dst *bytes.Buffer, src []byte) {
-	var v any
-	dec := NewDecoder(bytes.NewBuffer(src))
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
-		return
-	}
-	buf, _ := marshal(v)
-	dst.Write(buf)
+	// the bytes are escaped wherever they are, and the rest is kept as it is, as encoding/json does
+	dst.Grow(len(src))
+	dst.Write(jsonstring.AppendHTMLEscaped(dst.AvailableBuffer(), src))
 }
 
 // Valid reports whether data is a valid JSON encoding.

@@ -87,7 +87,7 @@ func (r *instrumentedBucketReader) trackRequest(ctx context.Context, requests *x
 // not-found error, or a context error returned while ctx is done. It reports
 // whether err counts as a failure, and records nothing when ctx carries no region.
 func (r *instrumentedBucketReader) trackFailure(ctx context.Context, failures *xcap.StatisticInt64, err error) bool {
-	if err == nil || r.BucketReader.IsObjNotFoundErr(err) {
+	if err == nil || r.IsObjNotFoundErr(err) {
 		return false
 	}
 	if ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {

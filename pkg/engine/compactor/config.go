@@ -60,15 +60,29 @@ type Config struct {
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
-	// LogMaxRunsPerTask (K for log compaction) is the maximum number of runs a
-	// single LogMerge task may consume. A size level must also hold K runs
-	// before log compaction starts. Kept separate from index max runs.
+	// LogMaxRunsPerTask (K for log compaction) is the number of runs in each
+	// planned log merge. Log compaction merges only groups of K runs from one
+	// size level, and keeps the other runs unmerged.
+	//
+	// LogMaxTaskSize can split a planned merge into tasks by key range. A
+	// split task holds only the runs with data in its range, so it can hold
+	// fewer than K runs. Kept separate from index max runs.
 	LogMaxRunsPerTask int `yaml:"logs_max_runs_per_task"`
 
 	// LogMinCompactionSize is the minimum total compactable data (sum of all
 	// runs' uncompressed size) that justifies log compaction. Windows below
 	// this floor are skipped.
 	LogMinCompactionSize flagext.Bytes `yaml:"logs_min_compaction_size"`
+
+	// LogMaxTaskSize is the maximum uncompressed input size of one LogMerge
+	// task. The planner splits a larger merge into tasks by stream sort
+	// prefix. 0 disables the split.
+	LogMaxTaskSize flagext.Bytes `yaml:"logs_max_task_size"`
+
+	// LogMaxKeySize is the maximum uncompressed input of one stream sort
+	// prefix in a planned log merge. The planner skips a merge with a larger
+	// sort prefix and keeps its runs unmerged. 0 disables the check.
+	LogMaxKeySize flagext.Bytes `yaml:"logs_max_key_size"`
 
 	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
 	// call. NOT a task TTL — applied as context.WithTimeout around the metastore
@@ -89,8 +103,7 @@ type Config struct {
 	PlanVersion uint `yaml:"plan_version"`
 
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
-	// endpoint for the embedded engine.Scheduler instance. See
-	// pkg/engine/scheduler.go for the underlying SchedulerParams.
+	// endpoint for the embedded scheduler.
 	Scheduler SchedulerConfig `yaml:"scheduler"`
 
 	// Worker holds the worker-side knobs for the dataobj-compaction-worker
@@ -110,8 +123,7 @@ type Config struct {
 	LogsobjBuilder logsobj.BuilderBaseConfig `yaml:"logsobj_builder" category:"experimental"`
 }
 
-// SchedulerConfig holds the scheduler-side parameters that get passed
-// to engine.NewScheduler when the compaction planner target boots.
+// SchedulerConfig holds the parameters of the embedded compaction scheduler.
 type SchedulerConfig struct {
 	// AdvertiseAddr is the host:port the embedded scheduler advertises to
 	// remote workers. Empty string keeps the scheduler in-process-only
@@ -120,15 +132,13 @@ type SchedulerConfig struct {
 
 	// Endpoint is the absolute path on the Loki HTTP router where the
 	// embedded scheduler listens for worker frame traffic. Defaults to
-	// "/api/v2/compaction-frame" so it never collides with the
-	// query-engine scheduler at "/api/v2/frame".
+	// "/api/v2/compaction-frame".
 	Endpoint string `yaml:"endpoint"`
 }
 
 // WorkerConfig holds the worker-side parameters that get passed to
 // engine.NewWorker when the dataobj-compaction-worker target boots.
-// The compaction worker runs in remote-transport mode only; it discovers
-// the compaction scheduler via DNS-SRV lookup.
+// The compaction worker discovers the compaction scheduler via DNS-SRV lookup.
 //
 // The worker module is gated by Loki target -target=dataobj-compaction-worker
 // AND the same dataobj.compaction.enabled flag the planner uses. There is
@@ -136,7 +146,7 @@ type SchedulerConfig struct {
 // Loki target.
 type WorkerConfig struct {
 	// WorkerThreads is the per-pod task concurrency. Zero means use
-	// GOMAXPROCS (matches the engine worker's default).
+	// GOMAXPROCS.
 	WorkerThreads int `yaml:"worker_threads"`
 
 	// SchedulerLookupAddress is the DNS-SRV address used to discover the
@@ -153,15 +163,12 @@ type WorkerConfig struct {
 
 	// AdvertiseAddr is the host:port the embedded worker advertises to
 	// schedulers and other workers. Required when the worker module
-	// actually initializes (enforced in NewWorker): the compaction worker
-	// uses no LocalScheduler, and engine.NewWorker requires one of
-	// AdvertiseAddr or LocalScheduler to be set.
+	// actually initializes (enforced in NewWorker).
 	AdvertiseAddr string `yaml:"advertise_addr"`
 
 	// Endpoint is the absolute path on the worker's HTTP router where the
 	// wire frame handler is registered. Defaults to
-	// "/api/v2/compaction-frame" so it never collides with the
-	// query-engine worker at "/api/v2/frame".
+	// "/api/v2/compaction-frame".
 	Endpoint string `yaml:"endpoint"`
 }
 
@@ -210,10 +217,15 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
-		"Experimental: Maximum runs per LogMerge task (K for log compaction). Log compaction starts only when a size level holds K runs, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
+		"Experimental: Runs per planned log merge (K for log compaction), before logs.max-task-size splits it into tasks. Log compaction merges only groups of K runs from one size level, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")
 	f.Var(&cfg.LogMinCompactionSize, prefix+"logs.min-compaction-size",
 		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Windows below this floor are skipped.")
+	f.Var(&cfg.LogMaxTaskSize, prefix+"logs.max-task-size",
+		"Experimental: Maximum uncompressed input size of one LogMerge task. The planner splits a larger merge into tasks by stream sort prefix and never splits one sort prefix. A task exceeds the maximum in two cases: a sort prefix above it gets a task of its own, and the last task of a merge can take in a leftover of up to 10% of it. 0 disables the split.")
+	_ = cfg.LogMaxKeySize.Set("100GB")
+	f.Var(&cfg.LogMaxKeySize, prefix+"logs.max-key-size",
+		"Experimental: Maximum uncompressed input of one stream sort prefix in a planned log merge. A merge writes all records of one sort prefix into one object, so this limits the size of the objects and the memory of a task. The planner skips a merge with a larger sort prefix and keeps its runs unmerged. 0 disables the check.")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,

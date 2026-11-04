@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
@@ -40,10 +41,6 @@ func (f *fakeLimits) CompactionPhases(userID string) (runIndex, runLog bool) {
 	return f.index[userID] || f.log[userID], f.log[userID]
 }
 
-func (*fakeLimits) SortSchemaLabels(string) []string {
-	return []string{"label:service_name"}
-}
-
 func (f *fakeLimits) setLog(userID string, on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -69,7 +66,7 @@ func TestPlanner_BootShutdown(t *testing.T) {
 	}
 
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	c, err := New(PlannerParams{
 		Config:          cfg,
 		Bucket:          bucket,
@@ -146,7 +143,7 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 		},
 	}
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	_, err := New(PlannerParams{
 		Config:          cfg,
 		Bucket:          bucket,
@@ -161,7 +158,7 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 // TestNew_NilLimitsErrors verifies that New returns an error when Limits is nil.
 func TestNew_NilLimitsErrors(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	_, err := New(PlannerParams{
 		Config:          Config{Enabled: true, Scheduler: SchedulerConfig{Endpoint: defaultEndpoint}},
 		Bucket:          bucket,

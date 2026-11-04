@@ -41,6 +41,12 @@ index_gateway:
     replication_factor: 2 # DEPRECATED
     instance_interface_names: ["eth0", "eth1"]
 
+bloom_build: # DEPRECATED
+  enabled: true
+
+bloom_gateway: # DEPRECATED
+  enabled: true
+
 compactor:
   working_directory: /tmp/loki/boltdb-shipper-active
   shared_store: gcs # DELETED
@@ -89,6 +95,8 @@ storage_config:
   index_queries_cache_config: # DELETED
     memcached: {}
   index_cache_validity: 1m # DELETED
+  bloom_shipper: # DEPRECATED
+    working_directory: /tmp/loki/bloomshipper
 
 schema_config:
   configs:
@@ -152,3 +160,15 @@ limits_config:
   per_tenant_override_config: ./overrides.yaml # DELETED
   per_tenant_override_period: 5s # DELETED
   allow_deletes: true # DELETED
+  bloom_gateway_enable_filtering: true # DEPRECATED
+  bloom_build_max_builders: 10 # DEPRECATED
+  bloom_build_task_max_retries: 3 # DEPRECATED
+  bloom_build_builder_response_timeout: 1m # DEPRECATED
+  bloom_creation_enabled: true # DEPRECATED
+  bloom_planning_strategy: split_keyspace_by_factor # DEPRECATED
+  bloom_split_series_keyspace_by: 256 # DEPRECATED
+  bloom_task_target_series_chunk_size: 20GB # DEPRECATED
+  bloom_block_encoding: none # DEPRECATED
+  bloom_prefetch_blocks: true # DEPRECATED
+  bloom_max_block_size: 200MB # DEPRECATED
+  bloom_max_bloom_size: 128MB # DEPRECATED

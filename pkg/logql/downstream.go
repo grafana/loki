@@ -13,10 +13,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -476,9 +476,11 @@ type DownstreamEvaluator struct {
 func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
 	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
 	if err != nil {
-		// Keep the usage of the shards that completed before the failure.
+		// Accumulators retain statistics even for results they reject. Move
+		// those local statistics to the discarded-work context on failure;
+		// they must not also reach the normal stats context below.
 		for _, res := range results {
-			stats.JoinPartial(ctx, res.Statistics)
+			stats.JoinDiscardedWork(ctx, res.Statistics)
 		}
 		return nil, err
 	}
@@ -532,7 +534,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	params Params,
-	isRootExpr bool,
+	nc NodeContext,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 
@@ -754,7 +756,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		inner := NewCountDistinctSketchMatrixStepEvaluator(matrix, params)
 		return NewCountDistinctSketchVectorStepEvaluator(inner), nil
 	default:
-		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, isRootExpr)
+		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, nc)
 	}
 }
 

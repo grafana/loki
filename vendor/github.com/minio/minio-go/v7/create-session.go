@@ -120,7 +120,7 @@ func (c *Client) createSessionRequest(ctx context.Context, bucketName string, se
 	targetURL := *c.endpointURL
 
 	// Fetch new host based on the bucket location.
-	host := getS3ExpressEndpoint(c.region, s3utils.IsS3ExpressBucket(bucketName))
+	host := getS3ExpressEndpoint(c.region, bucketName, c.s3DualstackEnabled)
 
 	// as it works in makeTargetURL method from api.go file
 	if h, p, err := net.SplitHostPort(host); err == nil {

@@ -10,10 +10,10 @@ import (
 
 	"github.com/grafana/jsonparser"
 
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
@@ -27,8 +27,10 @@ const (
 	// output. A stream label always takes its name. The parsers also count a structured-metadata
 	// key as taking its name, for the labels they extract.
 	//
-	// A rename appends the suffix once, so one trim recovers the original name. A key that
-	// genuinely ends with it is indistinguishable, so a reader must consider both names.
+	// A rename appends the suffix once, but a renamed name can clash and be renamed again. A
+	// nested json key can also leave extra underscores before the suffix. A key can end with the
+	// suffix by itself. A reader cannot tell it from a renamed key. So read each name that
+	// trimming the suffix gives, then each name that trimming trailing underscores gives.
 	DuplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
@@ -63,7 +65,9 @@ type JSONParser struct {
 	lbs             *LabelsBuilder
 	captureJSONPath bool
 
-	keys                  internedStringSet
+	// The caches are separate because an empty root key is invalid, while an empty nested path is valid.
+	rootKeys              parserFieldCache // keyed by the raw key of a top-level field
+	pathKeys              parserFieldCache // keyed by the sanitized path of a nested field
 	parserHints           ParserHint
 	sanitizedPrefixBuffer []byte
 }
@@ -72,7 +76,8 @@ type JSONParser struct {
 func NewJSONParser(captureJSONPath bool) *JSONParser {
 	return &JSONParser{
 		prefixBuffer:          [][]byte{},
-		keys:                  internedStringSet{},
+		rootKeys:              parserFieldCache{},
+		pathKeys:              parserFieldCache{},
 		captureJSONPath:       captureJSONPath,
 		sanitizedPrefixBuffer: make([]byte, 0, 64),
 	}
@@ -144,15 +149,11 @@ func (j *JSONParser) nextKeyPrefix(key []byte) bool {
 func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.ValueType) error {
 	// the first time we use the field as label key.
 	if len(j.prefixBuffer) == 0 {
-		sanitizedKey, ok := j.keys.Get(key, func() (string, bool) {
-			field := sanitizeLabelKey(string(key), true)
-			if len(field) == 0 {
-				return "", false
-			}
-
-			return field, true
+		sanitizedKey, shouldExtract := j.rootKeys.get(key, j.parserHints, func() (string, bool) {
+			field := sanitizeLabelKey(string(key))
+			return field, len(field) > 0
 		})
-		if !ok {
+		if !shouldExtract {
 			return nil
 		}
 
@@ -182,9 +183,16 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	j.prefixBuffer = append(j.prefixBuffer, key)
 
 	sanitized := j.buildSanitizedPrefixFromBuffer()
-	keyString, _ := j.keys.Get(sanitized, func() (string, bool) {
+	keyString, shouldExtract := j.pathKeys.get(sanitized, j.parserHints, func() (string, bool) {
 		return string(sanitized), true
 	})
+	// The rename below trims the whitespace around key and DuplicateSuffix together. For an empty key
+	// or a key with whitespace around it, the renamed path is not the cached path plus the suffix.
+	// So the cache can rule out only a key without outer whitespace.
+	if !shouldExtract && len(key) > 0 && len(bytes.TrimSpace(key)) == len(key) {
+		j.prefixBuffer = j.prefixBuffer[:prefixLen]
+		return nil
+	}
 
 	if j.lbs.BaseHas(keyString) || j.lbs.HasInCategory(keyString, StructuredMetadataLabel) {
 		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(DuplicateSuffix))
@@ -255,7 +263,12 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 
 // Hints implements Stage.
 func (j *JSONParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
@@ -297,7 +310,7 @@ type RegexpParser struct {
 	regex     *regexp.Regexp
 	nameIndex map[int]string
 
-	keys internedStringSet
+	keys parserFieldCache
 }
 
 // NewRegexpParser creates a new log stage that can extract labels from a log line using a regex expression.
@@ -330,24 +343,24 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	return &RegexpParser{
 		regex:     regex,
 		nameIndex: nameIndex,
-		keys:      internedStringSet{},
+		keys:      parserFieldCache{},
 	}, nil
 }
 
 func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	parserHints := lbs.ParserLabelHints()
 	labelFilterHints := lbs.LabelFilterHints()
+	if parserHints.NoLabels() {
+		return line, true
+	}
+
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
-			key, ok := r.keys.Get(unsafeGetBytes(name), func() (string, bool) {
-				sanitize := sanitizeLabelKey(name, true)
-				if len(sanitize) == 0 {
-					return "", false
-				}
-
-				return sanitize, true
+			key, shouldExtract := r.keys.get(unsafeGetBytes(name), parserHints, func() (string, bool) {
+				sanitized := sanitizeLabelKey(name)
+				return sanitized, len(sanitized) > 0
 			})
-			if !ok {
+			if !shouldExtract {
 				continue
 			}
 
@@ -370,7 +383,12 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (r *RegexpParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
@@ -379,7 +397,7 @@ type LogfmtParser struct {
 	strict    bool
 	keepEmpty bool
 	dec       *logfmt.Decoder
-	keys      internedStringSet
+	keys      parserFieldCache
 }
 
 // NewLogfmtParser creates a parser that can extract labels from a logfmt log line.
@@ -389,7 +407,7 @@ func NewLogfmtParser(strict, keepEmpty bool) *LogfmtParser {
 		strict:    strict,
 		keepEmpty: keepEmpty,
 		dec:       logfmt.NewDecoder(nil),
-		keys:      internedStringSet{},
+		keys:      parserFieldCache{},
 	}
 }
 
@@ -412,15 +430,11 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			continue
 		}
 
-		key, ok := l.keys.Get(l.dec.Key(), func() (string, bool) {
-			sanitized := sanitizeLabelKey(string(l.dec.Key()), true)
-			if len(sanitized) == 0 {
-				return "", false
-			}
-
-			return sanitized, true
+		key, shouldExtract := l.keys.get(l.dec.Key(), parserHints, func() (string, bool) {
+			sanitized := sanitizeLabelKey(string(l.dec.Key()))
+			return sanitized, len(sanitized) > 0
 		})
-		if !ok {
+		if !shouldExtract {
 			continue
 		}
 
@@ -455,7 +469,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if l.strict && l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt, l.dec.Err())
 
-		if !labelFilterHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
+		if !labelFilterHints.ShouldContinueParsingLine(logqlerr.ErrorLabel, lbs) {
 			return line, false
 		}
 		return line, true
@@ -466,7 +480,12 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (l *LogfmtParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
@@ -520,7 +539,12 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 
 // Hints implements Stage.
 func (l *PatternParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
@@ -528,7 +552,7 @@ func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
 type LogfmtExpressionParser struct {
 	expressions map[string][]interface{}
 	dec         *logfmt.Decoder
-	keys        internedStringSet
+	keys        parserFieldCache
 	strict      bool
 }
 
@@ -552,7 +576,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 	return &LogfmtExpressionParser{
 		expressions: paths,
 		dec:         logfmt.NewDecoder(nil),
-		keys:        internedStringSet{},
+		keys:        parserFieldCache{},
 		strict:      strict,
 	}, nil
 }
@@ -600,8 +624,8 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 
 		current = l.dec.Key()
-		key, ok := l.keys.Get(current, func() (string, bool) {
-			sanitized := sanitizeLabelKey(string(current), true)
+		key, shouldExtract := l.keys.lookup(current, func() (string, bool) {
+			sanitized := sanitizeLabelKey(string(current))
 			if len(sanitized) == 0 {
 				return "", false
 			}
@@ -611,7 +635,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			}
 			return sanitized, true
 		})
-		if !ok || (!alwaysExtract(key) && lbs.ParserLabelHints().Extracted(key)) {
+		if !shouldExtract || (!alwaysExtract(key) && lbs.ParserLabelHints().Extracted(key)) {
 			continue
 		}
 
@@ -654,7 +678,15 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 // Hints implements Stage.
 func (l *LogfmtExpressionParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+		ReadsLine:       true,
+		// It stops reading the line at an identifier that clashes with a stream label or a
+		// structured-metadata key. It stops only when the renamed key is not required or is already
+		// extracted. So a clash changes which later keys it extracts.
+		ReadsArbitraryLabels: true,
+	}
 }
 
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -662,7 +694,7 @@ func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string
 type JSONExpressionParser struct {
 	ids   []string
 	paths [][]string
-	keys  internedStringSet
+	keys  parserFieldCache
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
@@ -685,7 +717,7 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	return &JSONExpressionParser{
 		ids:   ids,
 		paths: paths,
-		keys:  internedStringSet{},
+		keys:  parserFieldCache{},
 	}, nil
 }
 
@@ -723,7 +755,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		}
 
 		identifier := j.ids[idx]
-		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
+		key, _ := j.keys.lookup(unsafeGetBytes(identifier), func() (string, bool) {
 			return identifier, true
 		})
 
@@ -766,14 +798,21 @@ func isValidJSONStart(data []byte) bool {
 
 // Hints implements Stage.
 func (j *JSONExpressionParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+		ReadsLine:       true,
+		// It writes an empty label for an identifier that the line lacks, unless a label of that
+		// name exists. RequiredLabelNames does not list the identifiers.
+		ReadsArbitraryLabels: true,
+	}
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type UnpackParser struct {
 	lbsBuffer []string
-	keys      internedStringSet
+	keys      parserFieldCache
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -783,13 +822,22 @@ type UnpackParser struct {
 func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{
 		lbsBuffer: make([]string, 0, 16),
-		keys:      internedStringSet{},
+		keys:      parserFieldCache{},
 	}
 }
 
 // Hints implements Stage.
 func (u *UnpackParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It turns the string-valued fields of a packed object into labels. It sets __error__ when
+		// the line is not a JSON object.
+		CanModifyLabels: true,
+		// It replaces the line with the _entry value when the line carries one. It leaves the line
+		// alone when the query needs no parsed label.
+		CanModifyLine:        true,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
@@ -823,7 +871,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	err := jsonparser.ObjectEach(entry, func(key, value []byte, typ jsonparser.ValueType, _ int) error {
 		switch typ {
 		case jsonparser.String:
-			if unsafeGetString(key) == logqlmodel.PackedEntryKey {
+			if unsafeGetString(key) == logqlerr.PackedEntryKey {
 				// Inlined bytes escape to save allocs
 				var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 				bU, err := jsonparser.Unescape(value, stackbuf[:])
@@ -836,9 +884,12 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				return nil
 			}
 
-			key, _ := u.keys.Get(key, func() (string, bool) {
+			key, shouldExtract := u.keys.get(key, lbs.ParserLabelHints(), func() (string, bool) {
 				return string(key), true
 			})
+			if !shouldExtract {
+				return nil
+			}
 
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = key + DuplicateSuffix
@@ -849,7 +900,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
+			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key), unescapeJSONString(value))
 		default:
 			return nil
 		}

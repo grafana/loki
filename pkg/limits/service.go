@@ -228,10 +228,11 @@ func (s *Service) CheckLimitsAndShard(
 	req *proto.CheckLimitsAndShardRequest,
 ) (*proto.CheckLimitsAndShardResponse, error) {
 	// A stream whose partition this instance does not consume is answered with
-	// an explicit ReasonNotOwned result. The frontend treats that the same as
-	// a missing result, one shard, but reporting it tells the two apart: a
-	// stream that reached the wrong instance looks identical to an unreachable
-	// instance otherwise.
+	// an explicit ReasonNotOwned result. The frontend's ring client does not
+	// count that as an answer and retries the stream against the next zone.
+	// Answering explicitly, rather than leaving the stream out of the response,
+	// keeps the two cases apart: a stream that reached an instance that does
+	// not own its partition, and an instance that could not be reached at all.
 	owned := make([]*proto.StreamMetadata, 0, len(req.Streams))
 	results := make([]*proto.StreamShardResult, 0, len(req.Streams))
 	for _, stream := range req.Streams {

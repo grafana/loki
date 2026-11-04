@@ -104,6 +104,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
     ],
   },
   fromNowPanel(title, metric_name)::
+    local metrics =
+      if std.isString(metric_name) then [metric_name]
+      else if std.isArray(metric_name) then metric_name
+      else error 'invalid type for metric_name';
     $.panel(title) +
     {
       type: 'stat',
@@ -129,11 +133,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
       targets: [
         {
-          expr: '%s{%s} * 1e3' % [metric_name, $.namespaceMatcher()],
-          refId: 'A',
+          expr: '%s{%s} * 1e3' % [m, $.namespaceMatcher()],
           instant: true,
           format: 'time_series',
-        },
+        }
+        for m in metrics
       ],
       options: {
         reduceOptions: {

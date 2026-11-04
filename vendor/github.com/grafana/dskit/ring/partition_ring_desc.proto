@@ -7,7 +7,8 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
-// PartitionRingDesc holds the state of the partitions ring.
+// PartitionRingDesc holds the stored state of the partitions ring, which may omit tokens.
+// Read resolved tokens through PartitionRing; only its build path and writer helpers access stored tokens.
 message PartitionRingDesc {
   // Mapping between partition ID and partition info.
   map<int32, PartitionDesc> partitions = 1 [(gogoproto.nullable) = false];
@@ -21,8 +22,8 @@ message PartitionDesc {
   // The partition ID. This value is the same as the key in the partitions map in PartitionRingDesc.
   int32 id = 4;
 
-  // Unique tokens, generated with deterministic token generator. Tokens MUST be immutable:
-  // if tokens get changed, the change will not be propagated via memberlist.
+  // Immutable stored tokens. Ignored when tokenScheme specifies derived tokens.
+  // Read resolved tokens through PartitionRing. Changes to stored tokens are not propagated via memberlist.
   repeated uint32 tokens = 1;
 
   // The state of the partition.
@@ -37,6 +38,17 @@ message PartitionDesc {
 
   // Unix timestamp (with seconds precision) of when has the state change lock been mutated last time for this partition.
   int64 stateChangeLockedTimestamp = 6;
+
+  // Immutable token scheme, set at creation. Unset means stored tokens.
+  PartitionTokenScheme tokenScheme = 7;
+}
+
+enum PartitionTokenScheme {
+  // Tokens are stored in the partition descriptor, including an empty token list.
+  PartitionTokensStored = 0;
+
+  // 512 spread-minimizing tokens derived from the partition ID in zone 0.
+  PartitionTokensSmt512 = 1;
 }
 
 enum PartitionState {

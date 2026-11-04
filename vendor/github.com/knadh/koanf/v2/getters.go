@@ -337,14 +337,16 @@ func (ko *Koanf) MustFloat64Map(path string) map[string]float64 {
 }
 
 // Duration returns the time.Duration value of a given key path assuming
-// that the key contains a valid numeric value.
+// that the key contains a numeric value or a duration string.
+// Duration strings support time.ParseDuration units and an additional
+// "d" suffix for 24 hour days.
 func (ko *Koanf) Duration(path string) time.Duration {
 	// Look for a parsable string representation first.
 	if v := ko.Int64(path); v != 0 {
 		return time.Duration(v)
 	}
 
-	v, _ := time.ParseDuration(ko.String(path))
+	v, _ := parseDuration(ko.String(path))
 	return v
 }
 

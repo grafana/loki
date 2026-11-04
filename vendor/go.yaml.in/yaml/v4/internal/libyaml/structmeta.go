@@ -76,41 +76,28 @@ func init() {
 	constructorType = reflect.ValueOf(&v).Elem().Type()
 }
 
-// hasConstructYAMLMethod checks if a type has an UnmarshalYAML method
-// that takes a *Node from an allowlisted v3 yaml package. This detects
-// v3 backward-compatible Unmarshaler implementations whose Node type
-// can't be checked via interface assertion from this package.
-func hasConstructYAMLMethod(t reflect.Type) bool {
+// v3NodeHook returns the node parameter of a known v3 hook, or nil.
+// Detection needs no dependency on either legacy package.
+func v3NodeHook(t reflect.Type) reflect.Type {
 	method, found := t.MethodByName("UnmarshalYAML")
 	if !found {
-		return false
+		return nil
 	}
-
-	// Check signature: func(*T) UnmarshalYAML(*Node) error
 	mtype := method.Type
-	if mtype.NumIn() != 2 || mtype.NumOut() != 1 {
-		return false
+	if mtype.NumIn() != 2 || mtype.NumOut() != 1 ||
+		mtype.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
+		return nil
 	}
-
-	// First param is receiver (already checked by MethodByName)
-	// Second param should be a pointer to a Node-like struct
 	paramType := mtype.In(1)
-	if paramType.Kind() != reflect.Ptr {
-		return false
+	if paramType.Kind() != reflect.Pointer {
+		return nil
 	}
-
 	elemType := paramType.Elem()
-	if elemType.Kind() != reflect.Struct || elemType.Name() != "Node" || !isYAMLNodePkg(elemType.PkgPath()) {
-		return false
+	if elemType.Kind() != reflect.Struct || elemType.Name() != "Node" ||
+		!isYAMLNodePkg(elemType.PkgPath()) {
+		return nil
 	}
-
-	// Return type should be error
-	retType := mtype.Out(0)
-	if retType.Kind() != reflect.Interface || retType.Name() != "error" {
-		return false
-	}
-
-	return true
+	return paramType
 }
 
 func isYAMLNodePkg(pkg string) bool {
@@ -188,8 +175,8 @@ func getStructInfo(st reflect.Type) (*structInfo, error) {
 				if ftype.Kind() != reflect.Struct {
 					return nil, errors.New("option ,inline may only be used on a struct or map field")
 				}
-				// Check for both libyaml.constructor and yaml.Unmarshaler (by method name)
-				if reflect.PointerTo(ftype).Implements(constructorType) || hasConstructYAMLMethod(reflect.PointerTo(ftype)) {
+				// Retain v3 hooks here so construction reports a migration error.
+				if reflect.PointerTo(ftype).Implements(constructorType) || v3NodeHook(reflect.PointerTo(ftype)) != nil {
 					inlineConstructors = append(inlineConstructors, []int{i})
 				} else {
 					sinfo, err := getStructInfo(ftype)

@@ -21,17 +21,11 @@ func VerifyMetadata(buffer []byte) error {
 	if err != nil {
 		return wrapRootDecodeError(err, 0)
 	}
-	if err := validateUTF8(metadata); err != nil {
-		return err
-	}
 	bufferLen := uint(len(buffer))
 	for offset < bufferLen {
 		var value any
 		rv := addressableValue{Value: reflect.ValueOf(&value).Elem()}
 		next, err := bounded.decodeValue(offset, rv, 0)
-		if err == nil {
-			err = validateUTF8(value)
-		}
 		if err != nil {
 			return mmdberrors.NewInvalidDatabaseError(
 				"invalid value after the metadata map (%v) at offset of %v",
@@ -41,7 +35,7 @@ func VerifyMetadata(buffer []byte) error {
 		}
 		offset = next
 	}
-	_, err = d.verifyFieldPointers(bufferLen, "metadata")
+	_, err = d.verifyFields(bufferLen, "metadata")
 	return err
 }
 
@@ -60,13 +54,6 @@ func (d *ReflectionDecoder) VerifyDataSection(offsets map[uint]bool) error {
 		newOffset, err := bounded.decodeValue(offset, rv, 0)
 		if err != nil {
 			return newDecodingErrorAt(err, offset)
-		}
-		if err := validateUTF8(data); err != nil {
-			return mmdberrors.NewInvalidDatabaseError(
-				"received validation error (%v) at offset of %v",
-				err,
-				offset,
-			)
 		}
 		if newOffset <= offset {
 			return mmdberrors.NewInvalidDatabaseError(
@@ -93,7 +80,7 @@ func (d *ReflectionDecoder) VerifyDataSection(offsets map[uint]bool) error {
 		)
 	}
 
-	starts, err := d.verifyFieldPointers(bufferLen, "data section")
+	starts, err := d.verifyFields(bufferLen, "data section")
 	if err != nil {
 		return err
 	}
@@ -158,13 +145,13 @@ func (f fieldStarts) has(offset uint) bool {
 	return f[offset/64]&(1<<(offset%64)) != 0
 }
 
-// verifyFieldPointers returns the start offset of each field in [0, end) and
-// checks that each pointer there points to the start of a field. The fields
-// must already be verified. section names the section in errors. The first
+// verifyFields returns the start offset of each field in [0, end), validates
+// UTF-8 strings, and checks that pointers target field starts. Structural
+// validation must run first. section names the section in errors. The first
 // pass marks the field starts and checks each backward pointer. The MaxMind
 // writers point only to data that they already wrote, so the second pass,
 // which checks forward pointers, runs only if the first pass finds one.
-func (d *DataDecoder) verifyFieldPointers(end uint, section string) (fieldStarts, error) {
+func (d *DataDecoder) verifyFields(end uint, section string) (fieldStarts, error) {
 	starts := make(fieldStarts, end/64+1)
 	var forward bool
 	err := d.forEachField(end, func(offset uint, isPointer bool, target uint) error {
@@ -205,9 +192,9 @@ func newPointerTargetError(section string, offset, target uint) error {
 // forEachField calls visit for each field in [0, end), in order. A map or
 // array header comes directly before its first child, so the walk also visits
 // nested fields. For a pointer, isPointer is true and target is the offset
-// that the pointer points to. The fields must already be verified. The rules
-// for the offset of the next field must match decodeCtrlData and
-// nextValueOffset.
+// that the pointer points to. It validates encoded strings so duplicate keys
+// cannot hide invalid values in a decoded map. Structural validation must run
+// first. The rules for the next offset must match decodeCtrlData and nextValueOffset.
 func (d *DataDecoder) forEachField(
 	end uint,
 	visit func(offset uint, isPointer bool, target uint) error,
@@ -226,6 +213,14 @@ func (d *DataDecoder) forEachField(
 			}
 		case KindMap, KindSlice, KindBool:
 			// Children follow the header, and a bool has no payload.
+		case KindString:
+			if !utf8.Valid(d.buffer[next : next+size]) {
+				return mmdberrors.NewInvalidDatabaseError(
+					"invalid UTF-8 string at offset %v",
+					offset,
+				)
+			}
+			next += size
 		default:
 			next += size
 		}
@@ -243,31 +238,4 @@ func newDecodingErrorAt(err error, offset uint) error {
 		err,
 		offset,
 	)
-}
-
-func validateUTF8(data any) error {
-	switch value := data.(type) {
-	case string:
-		if !utf8.ValidString(value) {
-			return mmdberrors.NewInvalidDatabaseError("invalid UTF-8 string")
-		}
-	case map[string]any:
-		for key, item := range value {
-			if !utf8.ValidString(key) {
-				return mmdberrors.NewInvalidDatabaseError("invalid UTF-8 map key")
-			}
-			if err := validateUTF8(item); err != nil {
-				return err
-			}
-		}
-	case []any:
-		for _, item := range value {
-			if err := validateUTF8(item); err != nil {
-				return err
-			}
-		}
-	default:
-		// Non-string scalar values require no UTF-8 validation.
-	}
-	return nil
 }

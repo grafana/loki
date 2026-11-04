@@ -22,7 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	v2 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -46,9 +46,10 @@ type queryFrontendExecutionStack struct {
 	newQuerier           newScriptQuerierFunc
 	handler              http.Handler
 
-	// dataObjStart is the time from which the querier reads stream-first queries from data
-	// objects. It is zero when the querier reads no data objects.
-	dataObjStart time.Time
+	// dataObjQueryStart is the time from which the tenant reads stream-first queries from data objects.
+	// Both the query-frontend and the querier use it. It is zero when the stack reads no data
+	// objects.
+	dataObjQueryStart time.Time
 
 	// querierMu guards the swap of querier against reads from in-flight sharded subqueries.
 	querierMu sync.RWMutex
@@ -56,58 +57,55 @@ type queryFrontendExecutionStack struct {
 }
 
 // newQueryFrontendTimestampFirstStack returns the query-frontend stack in timestamp-first order,
-// with query sharding on or off.
-func newQueryFrontendTimestampFirstStack(t *testing.T, queryShardingEnabled bool) (*queryFrontendExecutionStack, error) {
-	stackName := queryFrontendNoShardTimestampFirstStackName
-	if queryShardingEnabled {
-		stackName = queryFrontendShardTimestampFirstStackName
-	}
-	return newQueryFrontendStack(t, stackName, queryShardingEnabled, execLimits{}, newChunkQuerier)
+// changed by opts.
+func newQueryFrontendTimestampFirstStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	o := newStackOptions(opts...)
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{maxQuerySeries: o.maxQuerySeries}, newChunkQuerier, time.Time{})
 }
 
 // newQueryFrontendStreamFirstStack returns the query-frontend stack with query sharding and
-// stream-first execution on.
-func newQueryFrontendStreamFirstStack(t *testing.T) (*queryFrontendExecutionStack, error) {
-	return newQueryFrontendStack(t, queryFrontendShardStreamFirstStackName, true, execLimits{streamFirstExecutionEnabled: true}, newChunkQuerier)
+// stream-first execution on, changed by opts.
+func newQueryFrontendStreamFirstStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	o := newStackOptions(append([]stackOption{withQuerySharding()}, opts...)...)
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newChunkQuerier, time.Time{})
 }
 
 // newQueryFrontendDataObjStack returns the query-frontend stack with query sharding and
-// stream-first execution on. The stack reads all the data of stream-first queries from data
-// objects.
-func newQueryFrontendDataObjStack(t *testing.T) (*queryFrontendExecutionStack, error) {
-	return newQueryFrontendDataObjStackFrom(t, queryFrontendShardDataObjStackName, epoch)
+// stream-first execution on, changed by opts. The stack reads all the data of stream-first queries
+// from data objects.
+func newQueryFrontendDataObjStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendDataObjStackFrom(t, stackName, epoch, opts...)
 }
 
 // newQueryFrontendDataObjAndChunkStack returns the query-frontend stack with query sharding and
-// stream-first execution on. The stack reads the data of stream-first queries from chunks before
-// splitDataObjStart and from data objects after.
-func newQueryFrontendDataObjAndChunkStack(t *testing.T) (*queryFrontendExecutionStack, error) {
-	return newQueryFrontendDataObjStackFrom(t, queryFrontendShardDataObjAndChunkStackName, epoch.Add(splitDataObjStart))
+// stream-first execution on, changed by opts. The stack reads the data of stream-first queries
+// from chunks before splitDataObjStart and from data objects after.
+func newQueryFrontendDataObjAndChunkStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendDataObjStackFrom(t, stackName, epoch.Add(splitDataObjStart), opts...)
 }
 
 // newQueryFrontendDataObjStackFrom returns the query-frontend stack with query sharding and
-// stream-first execution on. The stack reads the data of stream-first queries from data objects
-// from dataObjStart on.
-func newQueryFrontendDataObjStackFrom(t *testing.T, stackName string, dataObjStart time.Time) (*queryFrontendExecutionStack, error) {
-	s, err := newQueryFrontendStack(t, stackName, true, execLimits{streamFirstExecutionEnabled: true}, newDataObjQuerierFunc(dataObjStart))
-	if err != nil {
-		return nil, err
-	}
-	s.dataObjStart = dataObjStart
-	return s, nil
+// stream-first execution on, changed by opts. The stack reads the data of stream-first queries
+// from data objects from dataObjQueryStart on.
+func newQueryFrontendDataObjStackFrom(t *testing.T, stackName string, dataObjQueryStart time.Time, opts ...stackOption) (*queryFrontendExecutionStack, error) {
+	o := newStackOptions(append([]stackOption{withQuerySharding()}, opts...)...)
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newDataObjQuerierFunc(dataObjQueryStart), dataObjQueryStart)
 }
 
 // newQueryFrontendStack builds a self-contained query-frontend + query-scheduler +
 // querier-worker loop wired over gRPC. The querier runs queries with limits, over the querier
 // that newQuerier builds.
-func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled bool, limits logql.Limits, newQuerier newScriptQuerierFunc) (*queryFrontendExecutionStack, error) {
+//
+// A non-zero dataObjQueryStart turns data objects on in the query-frontend from that time on. The
+// query-frontend then marks the queries that a querier may read from data objects.
+func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled bool, limits logql.Limits, newQuerier newScriptQuerierFunc, dataObjQueryStart time.Time) (*queryFrontendExecutionStack, error) {
 	var (
 		logger       = log.NewNopLogger()
 		ctx          = context.Background()
 		schemaConfig = newQueryFrontendSchemaConfig()
 	)
 
-	s := &queryFrontendExecutionStack{t: t, queryShardingEnabled: queryShardingEnabled, stackName: stackName, limits: limits, newQuerier: newQuerier}
+	s := &queryFrontendExecutionStack{t: t, queryShardingEnabled: queryShardingEnabled, stackName: stackName, limits: limits, newQuerier: newQuerier, dataObjQueryStart: dataObjQueryStart}
 
 	var shutdown []func()
 	stop := func() {
@@ -120,7 +118,7 @@ func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled 
 		return nil, err
 	}
 
-	overrides, err := newQueryFrontendOverrides()
+	overrides, err := newQueryFrontendOverrides(limits, dataObjQueryStart)
 	if err != nil {
 		return abort(err)
 	}
@@ -205,7 +203,7 @@ func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled 
 
 	// Tripperware + serialize handler: decode an HTTP request, run it through the tripperware onto
 	// the frontend, encode the response back.
-	tripperware, stopper, err := newQueryFrontendTripperware(logger, overrides, schemaConfig, queryShardingEnabled)
+	tripperware, stopper, err := newQueryFrontendTripperware(logger, overrides, schemaConfig, queryShardingEnabled, !dataObjQueryStart.IsZero())
 	if err != nil {
 		return abort(err)
 	}
@@ -297,7 +295,7 @@ func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, erro
 	if err != nil {
 		return res, err
 	}
-	return res, checkDataObjReads(cmd.query, res, s.dataObjStart)
+	return res, checkDataObjReads(cmd.query, res, s.dataObjQueryStart)
 }
 
 // queryHandler creates and returns a query handler function.
@@ -337,12 +335,30 @@ func (s *queryFrontendExecutionStack) queryHandler(logger log.Logger) queryrange
 	}
 }
 
-func newQueryFrontendOverrides() (*validation.Overrides, error) {
+// defaultMaxQuerySeries returns the default series limit of a tenant.
+func defaultMaxQuerySeries() int {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	return limits.MaxQuerySeries
+}
+
+// newQueryFrontendOverrides returns the limits of the query-frontend. They take the series limit and
+// stream-first execution from querierLimits, so the query-frontend and the querier agree. The
+// tenant reads data objects from dataObjQueryStart on. A zero dataObjQueryStart turns them off.
+func newQueryFrontendOverrides(querierLimits logql.Limits, dataObjQueryStart time.Time) (*validation.Overrides, error) {
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
 
-	// Set TSDBMaxBytesPerShard to a low value to deterministically fan out each query into a handful of shards.
+	limits.MaxQuerySeries = querierLimits.MaxQuerySeries(tenant)
+	limits.StreamFirstExecutionEnabled = querierLimits.StreamFirstExecutionEnabled(tenant)
+	limits.DataObjQueryStartTime = flagext.Time(dataObjQueryStart)
+
+	// Set both bytes-per-shard limits to a low value to deterministically fan out each query into a
+	// handful of shards.
 	if err := limits.TSDBMaxBytesPerShard.Set("1024"); err != nil {
+		return nil, err
+	}
+	if err := limits.DataObjMaxBytesPerShard.Set("1024"); err != nil {
 		return nil, err
 	}
 
@@ -375,9 +391,11 @@ func newQueryFrontendSchemaConfig() config.SchemaConfig {
 	return schema
 }
 
-func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overrides, schema config.SchemaConfig, sharded bool) (queryrangebase.Middleware, queryrange.Stopper, error) {
+func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overrides, schema config.SchemaConfig, sharded, dataObjEnabled bool) (queryrangebase.Middleware, queryrange.Stopper, error) {
 	var cfg queryrange.Config
 	flagext.DefaultValues(&cfg)
+	// The querier of the stack reads data objects up to now, with no storage lag.
+	cfg.DataObjEnabled = dataObjEnabled
 	cfg.CacheResults = false
 	cfg.CacheIndexStatsResults = false
 	cfg.CacheVolumeResults = false
@@ -401,7 +419,6 @@ func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overri
 	return queryrange.NewMiddleware(
 		cfg,
 		engineOpts,
-		queryrange.RouterConfig{},
 		nil,
 		logger,
 		overrides,

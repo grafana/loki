@@ -60,6 +60,18 @@ type GetObjectOptions struct {
 	RDMABuffer     unsafe.Pointer
 	RDMABufferSize int
 
+	// ParallelWorkers, when greater than 1, reads the object with up to
+	// this many concurrent range GETs, holding at most ParallelWorkers
+	// chunks in memory. It mostly helps when a single stream runs well
+	// below the link speed; when one stream already saturates the link it
+	// is slower. Reads with a Range, PartNumber, Checksum or RDMABuffer,
+	// and reads that start at a non-zero offset, use a single stream.
+	ParallelWorkers int
+	// ParallelChunkSize is the target size of each range GET. Defaults to
+	// 16 MiB, which is also the minimum; it grows when the object would
+	// need more than 10000 chunks, and the last range may be shorter.
+	ParallelChunkSize int64
+
 	// To be not used by external applications
 	Internal AdvancedGetOptions
 }

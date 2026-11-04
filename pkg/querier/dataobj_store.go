@@ -29,8 +29,8 @@ import (
 // DataObjStoreOption customizes the store returned by [NewDataObjStore].
 type DataObjStoreOption func(*DataObjStore)
 
-// WithDataObjMetadataCache serves each object's metadata region through cache, so opening an
-// object does not read that region from object storage. A nil cache disables it.
+// WithDataObjMetadataCache serves the metadata region of each log object through cache, or the entire
+// object if it is tiny. A nil cache disables it.
 func WithDataObjMetadataCache(cache dataobj.MetadataCache) DataObjStoreOption {
 	return func(s *DataObjStore) { s.metadataCache = cache }
 }
@@ -143,28 +143,31 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	if extractor == nil {
 		return iter.NoopSampleIterator, nil
 	}
-	extractor, err = deletion.SetupExtractor(req, extractor)
-	if err != nil {
-		return nil, err
-	}
-
 	selector, err := expr.Selector()
 	if err != nil {
 		return nil, err
-	}
-	matchers := dataObjStreamMatchers(selector.Matchers())
-	if len(matchers) == 0 {
-		// The metastore resolves nothing without a stream matcher, so an empty result would be
-		// a silently wrong answer rather than an empty one. LogQL cannot produce such a
-		// selector today, which is why this is an error and not a fallback.
-		return nil, fmt.Errorf("data object metric queries need at least one stream matcher, query %q has none", req.Selector)
 	}
 
 	deletes, err := dataObjDeleteSelectors(req)
 	if err != nil {
 		return nil, err
 	}
+
 	projection, err := dataobjread.NewProjectionPlan(expr, deletes)
+	if err != nil {
+		return nil, err
+	}
+
+	// The underlying reader applies the pushable line filters, so here we just have to apply
+	// the remaining pipeline stages (if any).
+	if unpushed := projection.UnpushedExpr(); unpushed != nil {
+		extractor, err = unpushed.Extractor()
+		if err != nil {
+			return nil, fmt.Errorf("building the extractor of %q: %w", unpushed, err)
+		}
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +179,7 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	query := dataobjread.QueryParams{
 		Start:      req.Start,
 		End:        req.End,
-		Matchers:   matchers,
+		Matchers:   dataObjStreamMatchers(selector.Matchers()),
 		Shard:      dataobjread.NewQueryShard(assignment),
 		Projection: projection,
 	}
@@ -186,10 +189,10 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 		filterer = s.filterer.ForRequest(ctx)
 	}
 
-	// One capture spans the query. When the reader closes, it reads the query stats from the
-	// logs.RegionRead and metastore.Sections regions. It also folds every region into the
-	// per-component object-store metrics. The planner's object opens and streams reads record
-	// into a region of their own, so only the metrics see them.
+	// One capture spans the query. When the reader closes, it adds the capture's figures to the query
+	// stats and to the per-component object-store metrics. The planner's object opens and streams
+	// reads record into a region of their own. The object counts and downloaded bytes in the query
+	// stats include that region, and so do the metrics.
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 
@@ -198,7 +201,6 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 
 	// The dataset layer records its statistics into the region the context carries, and nothing
 	// under logs.RowReader starts one, so without this the query's byte and row counts are lost.
-	// The region name matches what the v2 engine reads, so both report the same statistics.
 	readCtx, _ := xcap.StartRegion(ctx, logs.RegionRead)
 	reader := dataobjread.NewLogReader(readCtx, objects, tasks, s.maxConcurrency, dataobjread.DefaultReadBatchSize, s.metrics)
 

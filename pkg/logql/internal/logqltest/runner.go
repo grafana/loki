@@ -13,7 +13,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
@@ -37,9 +38,60 @@ const (
 func RunScript(t *testing.T, name, script string) {
 	t.Helper()
 
+	stacks := newExecutionStacks(t, name)
+	runScriptWith(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
+		runEval(t, name, stacks, cmd, exp)
+	})
+}
+
+// evalOutcome is how one eval ended on one execution stack.
+type evalOutcome struct {
+	// eval identifies the eval, as its subtest does.
+	eval string
+	// skipped is set when the stack does not support the eval, which then has no err.
+	skipped bool
+	// err is the error the query failed with, or nil when it succeeded.
+	err error
+}
+
+// isSeriesLimitFailure reports whether the query failed on the series limit. It reads the error
+// message, because a query-frontend stack returns the error decoded from an HTTP response, which
+// errors.Is cannot match against logqlmodel.ErrLimit.
+func (o evalOutcome) isSeriesLimitFailure() bool {
+	return o.err != nil && strings.Contains(o.err.Error(), "maximum number of series")
+}
+
+// runScript runs every eval of script on each of stacks and returns how each one ended,
+// by stack name, in script order. Every stack has an outcome for every eval, so the outcomes of two
+// stacks line up.
+//
+// It does not check the results against the eval expectations. A test compares the outcomes of
+// two stacks instead, so the stacks can run with options, such as a low series limit, that the
+// expectations don't account for.
+func runScript(t *testing.T, name, script string, stacks []executionStack) map[string][]evalOutcome {
+	t.Helper()
+
+	outcomes := make(map[string][]evalOutcome, len(stacks))
+	runScriptWith(t, name, script, stacks, func(cmd evalCmd, exp expectations) {
+		for _, stack := range stacks {
+			outcome := evalOutcome{eval: cmd.label(), skipped: !stack.isEvalSupported(cmd, exp)}
+			if !outcome.skipped {
+				_, outcome.err = stack.eval(cmd)
+			}
+			outcomes[stack.name()] = append(outcomes[stack.name()], outcome)
+		}
+	})
+	return outcomes
+}
+
+// runScriptWith parses script, loads its streams into every stack, and calls runEval for each of
+// its evals. Use runScript to compare how the evals end on the stacks; RunScript uses it to check
+// them against their expectations.
+func runScriptWith(t *testing.T, name, script string, stacks []executionStack, runEval func(cmd evalCmd, exp expectations)) {
+	t.Helper()
+
 	streams := newStreamsParser()
 	streamsChanged := true
-	stacks := newExecutionStacks(t, name)
 
 	// Every stack reads the same stores, which are expensive to build.
 	stores := newScriptStores(t)
@@ -96,7 +148,7 @@ func RunScript(t *testing.T, name, script string) {
 				t.Fatalf("%s: eval %q: %v", name, cmd.query, err)
 			}
 			refreshStreams()
-			runEval(t, name, stacks, cmd, exp)
+			runEval(cmd, exp)
 		default:
 			t.Fatalf("%s: unexpected command %q", name, fields[0])
 		}
@@ -116,16 +168,16 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 
 	return []executionStack{
 		// The engine runs straight over the querier.
-		newDirectTimestampFirstStack(t),
-		newDirectStreamFirstStack(t),
-		newDirectDataObjStack(t),
+		newDirectTimestampFirstStack(t, directTimestampFirstStackName),
+		newDirectStreamFirstStack(t, directStreamFirstStackName),
+		newDirectDataObjStack(t, directDataObjStackName),
 
 		// The engine runs behind a query-frontend and a query-scheduler.
-		must(newQueryFrontendTimestampFirstStack(t, false)),
-		must(newQueryFrontendTimestampFirstStack(t, true)),
-		must(newQueryFrontendStreamFirstStack(t)),
-		must(newQueryFrontendDataObjStack(t)),
-		must(newQueryFrontendDataObjAndChunkStack(t)),
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardTimestampFirstStackName)),
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendShardTimestampFirstStackName, withQuerySharding())),
+		must(newQueryFrontendStreamFirstStack(t, queryFrontendShardStreamFirstStackName)),
+		must(newQueryFrontendDataObjStack(t, queryFrontendShardDataObjStackName)),
+		must(newQueryFrontendDataObjAndChunkStack(t, queryFrontendShardDataObjAndChunkStackName)),
 	}
 }
 
@@ -133,19 +185,8 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 // query skips its subtest (visible in the output) instead of being omitted.
 func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, exp expectations) {
 	t.Helper()
-	label := cmd.query
-	switch cmd.mode {
-	case evalInstant:
-		label = "instant: " + label
-	case evalRange:
-		label = "range: " + label
-	case evalSelect:
-		label = "select " + strings.ToLower(cmd.direction.String()) + ": " + label
-	default:
-		panic(fmt.Sprintf("unknown eval mode %v", cmd.mode))
-	}
 
-	t.Run(label, func(t *testing.T) {
+	t.Run(cmd.label(), func(t *testing.T) {
 		for _, stack := range stacks {
 			t.Run(stack.name(), func(t *testing.T) {
 				if !stack.isEvalSupported(cmd, exp) {
@@ -198,7 +239,9 @@ func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res 
 	// An eligible query must report stream-first. The opposite (zero) does not always hold when
 	// the stack shards: the shard mapper can still promote part of an ineligible query into its own
 	// stream-first sub-query (see shardmapper.go). Skip the check in that case.
-	_, streamFirstEligible := logql.StreamFirstRangeAggregation(cmd.query)
+	expr, parseErr := syntax.ParseExpr(cmd.query)
+	require.NoErrorf(t, parseErr, "%s: query %q", name, cmd.query)
+	streamFirstEligible := len(logql.StreamFirstRangeAggregations(expr)) > 0
 	switch {
 	case streamFirstEnabled && streamFirstEligible:
 		require.Positivef(t, res.Statistics.Summary.StreamFirstQueries,

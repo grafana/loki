@@ -96,6 +96,9 @@ const (
 	// Selects and consumes the next character using a disjoint branch table.
 	// Operand 0 is an index into Code.Dispatches.
 	Dispatch InstOp = 48
+	// Removes the last capture, if present, with backtracking restore.
+	// Operand 0 is the dense capture slot.
+	ResetCapture InstOp = 49
 
 	// Modifiers for alternate modes
 
@@ -207,7 +210,7 @@ func opcodeBacktracks(op InstOp) bool {
 	switch op {
 	case Oneloop, Notoneloop, Setloop, Onelazy, Notonelazy, Setlazy, Lazybranch, Branchmark, Lazybranchmark,
 		Nullcount, Setcount, Branchcount, Lazybranchcount, Setmark, Capturemark, Getmark, Setjump, Backjump,
-		Forejump, Goto:
+		Forejump, Goto, ResetCapture:
 		return true
 
 	default:
@@ -224,7 +227,7 @@ func opcodeSize(op InstOp) int {
 		return 1
 
 	case One, Notone, Multi, Ref, Testref, Goto, Nullcount, Setcount, Lazybranch, Branchmark, Lazybranchmark,
-		Prune, Set, Dispatch:
+		Prune, Set, Dispatch, ResetCapture:
 		return 2
 
 	case Capturemark, Branchcount, Lazybranchcount, Onerep, Notonerep, Oneloop, Notoneloop, Onelazy, Notonelazy,
@@ -251,7 +254,7 @@ var codeStr = []string{
 	"Prune", "Stop",
 	"ECMABoundary", "NonECMABoundary",
 	"Oneloopatomic", "Notoneloopatomic", "Setloopatomic",
-	"Bumpalong", "Grapheme", "Dispatch",
+	"Bumpalong", "Grapheme", "Dispatch", "ResetCapture",
 }
 
 func operatorDescription(op InstOp) string {
@@ -311,7 +314,7 @@ func (c *Code) OpcodeDescription(offset int) string {
 	case Multi:
 		fmt.Fprintf(buf, "String = %s", string(c.Strings[c.Codes[offset+1]]))
 
-	case Ref, Testref:
+	case Ref, Testref, ResetCapture:
 		fmt.Fprintf(buf, "Index = %d", c.Codes[offset+1])
 
 	case Capturemark:

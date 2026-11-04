@@ -32,9 +32,9 @@ func NewReaderAdapter(innerOpts dataset.RowReaderOptions) *ReaderAdapter {
 func (r *ReaderAdapter) Reset(opts dataset.RowReaderOptions) {
 	r.inner.Reset(opts)
 
-	slicegrow.GrowToCap(r.colTypes, len(opts.Columns))
+	slicegrow.GrowToCap(r.colTypes, len(opts.ProjectedColumns))
 	r.colTypes = r.colTypes[:0]
-	for _, col := range opts.Columns {
+	for _, col := range opts.ProjectedColumns {
 		r.colTypes = append(r.colTypes, col.ColumnDesc().Type.Physical)
 	}
 }

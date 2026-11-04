@@ -61,9 +61,10 @@ func (d *Uploader) UnregisterMetrics(reg prometheus.Registerer) {
 	d.metrics.unregister(reg)
 }
 
-// ObjectKey determines the key for object using the ingestion object path
-// scheme and the requested hash prefix size.
-func ObjectKey(ctx context.Context, object *dataobj.Object, shaPrefixSize int) (string, error) {
+// getKey returns the object storage key of object: objects/<prefix>/<rest>,
+// where prefix is the first SHAPrefixSize hex characters of the SHA-224 of
+// object.
+func (d *Uploader) getKey(ctx context.Context, object *dataobj.Object) (string, error) {
 	hash := sha256.New224()
 
 	reader, err := object.Reader(ctx)
@@ -80,12 +81,7 @@ func ObjectKey(ctx context.Context, object *dataobj.Object, shaPrefixSize int) (
 	sum := hash.Sum(sumBytes[:0])
 	sumStr := hex.EncodeToString(sum)
 
-	return fmt.Sprintf("objects/%s/%s", sumStr[:shaPrefixSize], sumStr[shaPrefixSize:]), nil
-}
-
-// getKey determines the key in object storage to upload the object to, based on our path scheme.
-func (d *Uploader) getKey(ctx context.Context, object *dataobj.Object) (string, error) {
-	return ObjectKey(ctx, object, d.SHAPrefixSize)
+	return fmt.Sprintf("objects/%s/%s", sumStr[:d.SHAPrefixSize], sumStr[d.SHAPrefixSize:]), nil
 }
 
 // Upload uploads an object to the configured bucket and returns the key.

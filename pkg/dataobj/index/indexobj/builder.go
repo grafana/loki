@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,10 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -34,13 +35,21 @@ type Builder struct {
 
 	builder *dataobj.Builder // Inner builder for accumulating sections.
 
+	// layout is the stream layout of the data objects that the index
+	// describes, or nil before [Builder.SetLayout]. Every stats section
+	// records it. Reset clears it.
+	layout *streams.Layout
+
+	// sortSchema is the schema labels of layout joined for [stats.Stat].
+	// SetLayout computes it once, because AppendStat runs for every stat.
+	sortSchema string
+
 	// Each section builder is nil until first use, and Reset sets it back to
 	// nil. NewBuilder does not create them, so a Builder is cheap to create.
-	streams       *streams.Builder
-	pointers      *pointers.Builder
 	indexPointers *indexpointers.Builder
 	stats         *stats.Builder
 	postings      *postings.Builder
+	watermarks    *watermarks.Builder
 
 	state builderState
 }
@@ -87,12 +96,34 @@ func (b *Builder) getIndexPointersBuilder() *indexpointers.Builder {
 	return b.indexPointers
 }
 
-func (b *Builder) getStatsBuilder() *stats.Builder {
+func (b *Builder) getWatermarksBuilder() *watermarks.Builder {
+	if b.watermarks == nil {
+		b.watermarks = watermarks.NewBuilder(b.metrics.watermarks, b.tenant, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	}
+	return b.watermarks
+}
+
+// SetLayout sets the stream layout of the data objects that the index
+// describes. Every data object in one index must share a layout, so
+// SetLayout returns an error if the builder already has another layout.
+func (b *Builder) SetLayout(layout streams.Layout) error {
+	if b.layout != nil && !b.layout.Equal(layout) {
+		return fmt.Errorf("index already has stream layout %v, got %v", *b.layout, layout)
+	}
+	b.layout = &layout
+	b.sortSchema = strings.Join(layout.SchemaLabels(), ",")
+	return nil
+}
+
+func (b *Builder) getStatsBuilder() (*stats.Builder, error) {
 	if b.stats == nil {
-		b.stats = stats.NewBuilder(b.metrics.stats, stats.ColumnarSectionEncoder(int(b.cfg.TargetPageSize), b.cfg.MaxPageRows))
+		if b.layout == nil {
+			return nil, errors.New("appending a stat before the stream layout is set")
+		}
+		b.stats = stats.NewBuilder(b.metrics.stats, stats.ColumnarSectionEncoder(int(b.cfg.TargetPageSize), b.cfg.MaxPageRows), *b.layout)
 		b.stats.SetTenant(b.tenant)
 	}
-	return b.stats
+	return b.stats, nil
 }
 
 func (b *Builder) getPostingsBuilder() *postings.Builder {
@@ -103,18 +134,23 @@ func (b *Builder) getPostingsBuilder() *postings.Builder {
 	return b.postings
 }
 
-// AppendStat records a per-sort-key aggregate for a data object section.
+// AppendStat records a per-sort-key aggregate for a data object section. The
+// stat uses the schema labels of the layout that [Builder.SetLayout] set, and
+// AppendStat returns an error if no layout is set.
 func (b *Builder) AppendStat(objectPath string, sectionIdx int64,
-	shardBucket uint32, sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	shardBucket uint32, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
 	b.metrics.appendsTotal.Inc()
 
-	statsBuilder := b.getStatsBuilder()
+	statsBuilder, err := b.getStatsBuilder()
+	if err != nil {
+		return err
+	}
 
 	statsBuilder.Append(stats.Stat{
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIdx,
 		ShardBucket:      shardBucket,
-		SortSchema:       sortSchema,
+		SortSchema:       b.sortSchema,
 		Labels:           labels,
 		MinTimestamp:     minTs.UnixNano(),
 		MaxTimestamp:     maxTs.UnixNano(),
@@ -139,7 +175,7 @@ func (b *Builder) AppendStat(objectPath string, sectionIdx int64,
 // aggregated internally. The aggregated postings are flushed when
 // [Builder.Flush] is called.
 //
-// Unlike other section types (stats, pointers), postings are NOT flushed
+// Unlike other section types (stats, index pointers), postings are NOT flushed
 // mid-stream when they exceed TargetSectionSize. The aggregation model
 // requires all observations for a section to be present before encoding
 // (bitmap normalization, bloom filter construction).
@@ -163,6 +199,10 @@ func (b *Builder) PrepareBloomColumn(
 	shardBuckets int64,
 ) {
 	b.getPostingsBuilder().PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality, shardBuckets)
+
+	// The prepared column gives a bloom posting even without observations, so
+	// the builder has data to flush.
+	b.state = builderStateDirty
 }
 
 // ObserveBloomPosting records a bloom-filter posting observation for a data
@@ -178,12 +218,6 @@ func (b *Builder) ObserveBloomPosting(obs postings.BloomObservation) error {
 
 	b.state = builderStateDirty
 	return nil
-}
-
-// BloomBytes returns the marshaled bloom filter bytes for a specific column.
-// Returns an error if the column has not been prepared via PrepareBloomColumn.
-func (b *Builder) BloomBytes(objectPath string, sectionIdx int64, columnName string) ([]byte, error) {
-	return b.getPostingsBuilder().BloomBytes(objectPath, sectionIdx, columnName)
 }
 
 func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
@@ -202,100 +236,35 @@ func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
 	return nil
 }
 
-func (b *Builder) getStreamsBuilder() *streams.Builder {
-	if b.streams == nil {
-		b.streams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-		b.streams.SetTenant(b.tenant)
+// AppendWatermark records the highest offset of a Kafka topic and partition
+// whose records the object holds. A second call for the same topic and
+// partition replaces the first value.
+//
+// AppendWatermark returns an error if the topic is empty, if the partition or
+// the watermark is negative, or if the watermark is lower than the one already
+// recorded for the topic and partition.
+func (b *Builder) AppendWatermark(topic string, partition int32, watermark int64) error {
+	if err := b.getWatermarksBuilder().Set(topic, partition, watermark); err != nil {
+		return err
 	}
-	return b.streams
-}
 
-// AppendStream appends a stream to the object's stream section, returning the stream ID within this object.
-func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
 	b.metrics.appendsTotal.Inc()
-
-	streamsBuilder := b.getStreamsBuilder()
-
-	// Record the stream in the stream section.
-	// Once to capture the min timestamp and uncompressed size, again to record the max timestamp.
-	streamID := streamsBuilder.Record(stream.Labels, stream.MinTimestamp, stream.UncompressedSize)
-	_ = streamsBuilder.Record(stream.Labels, stream.MaxTimestamp, 0)
-
-	b.state = builderStateDirty
-
-	return streamID, nil
-}
-
-func (b *Builder) getPointersBuilder() *pointers.Builder {
-	if b.pointers == nil {
-		b.pointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-		b.pointers.SetTenant(b.tenant)
-	}
-	return b.pointers
-}
-
-// ObserveLogLine records a log line observation for a stream in the pointers section.
-func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
-	b.metrics.appendsTotal.Inc()
-
-	b.getPointersBuilder().ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
-
 	b.state = builderStateDirty
 	return nil
 }
 
-// AppendColumnIndex records a column index entry with bloom filter data in the pointers section.
-func (b *Builder) AppendColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
-	b.metrics.appendsTotal.Inc()
-
-	pointersBuilder := b.getPointersBuilder()
-
-	pointersBuilder.RecordColumnIndex(path, section, columnName, columnIndex, valuesBloom)
-	b.state = builderStateDirty
-
-	// If our logs section has gotten big enough, we want to flush it to the
-	// encoder and start a new section.
-	if pointersBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(pointersBuilder); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// TimeRange returns the builder's tenant and the time range of the data in the
-// builder. The range is the union of the ranges of the streams and postings
-// section builders; a section builder with no observations does not
-// contribute. MinTime and MaxTime are zero when neither has observations.
+// TimeRange returns the builder's tenant and the time range of the postings in
+// the builder. MinTime and MaxTime are zero when the builder holds no postings.
 func (b *Builder) TimeRange() dataobj.TimeRange {
 	var minTime, maxTime time.Time
-	if b.streams != nil {
-		sMin, sMax := b.streams.TimeRange()
-		minTime, maxTime = unionTimeRange(minTime, maxTime, sMin, sMax)
-	}
 	if b.postings != nil {
-		pMin, pMax := b.postings.TimeRange()
-		minTime, maxTime = unionTimeRange(minTime, maxTime, pMin, pMax)
+		minTime, maxTime = b.postings.TimeRange()
 	}
 	return dataobj.TimeRange{
 		Tenant:  b.tenant,
 		MinTime: minTime,
 		MaxTime: maxTime,
 	}
-}
-
-func unionTimeRange(curMin, curMax, candMin, candMax time.Time) (time.Time, time.Time) {
-	if candMin.IsZero() {
-		return curMin, curMax
-	}
-	if curMin.IsZero() || candMin.Before(curMin) {
-		curMin = candMin
-	}
-	if curMax.IsZero() || candMax.After(curMax) {
-		curMax = candMax
-	}
-	return curMin, curMax
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
@@ -317,12 +286,6 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	defer timer.ObserveDuration()
 
 	var flushErrors []error
-	if b.streams != nil && b.streams.EstimatedSize() > 0 {
-		flushErrors = append(flushErrors, b.builder.Append(b.streams))
-	}
-	if b.pointers != nil && b.pointers.EstimatedSize() > 0 {
-		flushErrors = append(flushErrors, b.builder.Append(b.pointers))
-	}
 	if b.indexPointers != nil && b.indexPointers.EstimatedSize() > 0 {
 		flushErrors = append(flushErrors, b.builder.Append(b.indexPointers))
 	}
@@ -331,6 +294,9 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	}
 	if b.postings != nil && b.postings.EstimatedSize() > 0 {
 		flushErrors = append(flushErrors, b.builder.Append(b.postings))
+	}
+	if b.watermarks != nil && b.watermarks.EstimatedSize() > 0 {
+		flushErrors = append(flushErrors, b.builder.Append(b.watermarks))
 	}
 
 	if err := errors.Join(flushErrors...); err != nil {
@@ -367,20 +333,14 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 				continue
 			}
 			errs = append(errs, b.metrics.indexPointers.Observe(ctx, indexPointerSection))
-		case pointers.CheckSection(sec):
-			pointerSection, err := pointers.Open(context.Background(), sec)
+
+		case watermarks.CheckSection(sec):
+			watermarksSection, err := watermarks.Open(ctx, sec)
 			if err != nil {
 				errs = append(errs, err)
 				continue
 			}
-			errs = append(errs, b.metrics.pointers.Observe(ctx, pointerSection))
-		case streams.CheckSection(sec):
-			streamSection, err := streams.Open(context.Background(), sec)
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
-			errs = append(errs, b.metrics.streams.Observe(ctx, streamSection))
+			errs = append(errs, b.metrics.watermarks.Observe(ctx, watermarksSection))
 		}
 	}
 
@@ -390,11 +350,12 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 // Reset discards pending data and resets the builder to an empty state.
 func (b *Builder) Reset() {
 	b.builder.Reset()
-	b.streams = nil
-	b.pointers = nil
 	b.indexPointers = nil
 	b.stats = nil
 	b.postings = nil
+	b.watermarks = nil
+	b.layout = nil
+	b.sortSchema = ""
 
 	b.state = builderStateEmpty
 }

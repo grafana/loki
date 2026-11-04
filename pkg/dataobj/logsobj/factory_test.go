@@ -20,16 +20,8 @@ func newTestBuilderFactory(t *testing.T, reg prometheus.Registerer, overrides Te
 	return bf
 }
 
-func TestBuilderFactory_NewSorterBuilder(t *testing.T) {
-	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), nil)
-
-	b, err := bf.NewSorterBuilder()
-	require.NoError(t, err)
-	require.NotNil(t, b)
-}
-
 func TestBuilderFactory_NewBuilder(t *testing.T) {
-	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), nil)
+	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), NoTenantOverrides{})
 
 	b, err := bf.NewBuilder()
 	require.NoError(t, err)
@@ -38,7 +30,7 @@ func TestBuilderFactory_NewBuilder(t *testing.T) {
 
 func TestBuilderFactory_RegistersMetrics(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	newTestBuilderFactory(t, reg, nil)
+	newTestBuilderFactory(t, reg, NoTenantOverrides{})
 
 	// Should be able to gather registered metrics.
 	n, err := testutil.GatherAndCount(reg)
@@ -46,15 +38,19 @@ func TestBuilderFactory_RegistersMetrics(t *testing.T) {
 	require.Greater(t, n, 0)
 }
 
+func TestNewBuilderFactory(t *testing.T) {
+	t.Run("returns an error when the overrides are nil", func(t *testing.T) {
+		bf, err := NewBuilderFactory(testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(), log.NewNopLogger(), nil)
+		require.EqualError(t, err, "tenant overrides must not be nil")
+		require.Nil(t, bf)
+	})
+}
+
 func TestBuilderFactory_SetsOverridesOnBuilders(t *testing.T) {
 	overrides := tenantOverrides{"tenant": {"label"}}
 	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), overrides)
 
 	b, err := bf.NewBuilder()
-	require.NoError(t, err)
-	require.Equal(t, overrides, b.overrides)
-
-	b, err = bf.NewSorterBuilder()
 	require.NoError(t, err)
 	require.Equal(t, overrides, b.overrides)
 }
