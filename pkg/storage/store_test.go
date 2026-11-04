@@ -748,6 +748,11 @@ func (f fakeChunkFilterer) RequiredLabelNames() []string {
 	return []string{"foo"}
 }
 
+func (f fakeChunkFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
 func TestLokiStore_SelectWithChunkFilterer(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,
