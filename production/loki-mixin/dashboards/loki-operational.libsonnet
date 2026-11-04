@@ -57,7 +57,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  distributor: [utils.selector.re($._config.per_component_label, if $._config.meta_monitoring.enabled then '(distributor|loki)' else 'distributor')],
                                  ingester: [utils.selector.re($._config.per_component_label, if $._config.meta_monitoring.enabled then '(partition-ingester.*|ingester.*|loki)' else '(ingester.*|partition-ingester.*)')],
                                  querier: [utils.selector.re($._config.per_component_label, if $._config.meta_monitoring.enabled then '(querier|loki)' else 'querier')],
-                                 backend: [utils.selector.re($._config.per_component_label, 'backend')],
                                },
                              }
                              + lokiOperational + {
