@@ -96,8 +96,6 @@ type StreamResolver interface {
 }
 
 type (
-	// RequestParser parses a push request. The returned streams carry their parsed labels,
-	// so that later stages need not parse them again.
 	RequestParser func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.ParsedPushRequest, *Stats, error)
 	ErrorWriter   func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
