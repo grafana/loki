@@ -196,7 +196,7 @@ Validation errors occur when log data doesn't meet Loki's requirements. These re
 
 **Cause:**
 
-The push request did not contain any streams at all (an empty `streams` list). This is checked before any per-stream validation runs, so it is distinct from `missing_labels`, which applies when a stream is present but has no labels.
+The push request did not contain any valid streams at all (an empty `streams` list). This is checked before any per-stream validation runs, so it is distinct from `missing_labels`, which applies when a stream is present but has no labels.
 
 **Default configuration:**
 
@@ -1282,6 +1282,8 @@ Follow this workflow when investigating ingestion issues:
    ```
 
    For details, refer to [Overrides exporter](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/overrides-exporter/).
+
+  Alternatively, you can check tenant limits using the `/config/tenant/v1/limits` API. This endpoint requires the `tenant_limits_allow_publish` setting to be enabled explicitly.
 
 * **Review configuration** for affected tenant or global limits.
 
