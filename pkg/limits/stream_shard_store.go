@@ -390,14 +390,18 @@ func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord)
 		return
 	}
 	var (
-		now         = s.clock.Now()
-		bucketStart = rec.ShardRateBucket.BucketStart
-		cutoff      = now.Add(-s.activeWindow).UnixNano()
+		now             = s.clock.Now()
+		bucketStart     = rec.ShardRateBucket.BucketStart
+		cutoff          = now.Add(-s.activeWindow).UnixNano()
+		policyBucket, _ = getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, rec.Metadata.IngestionPolicy)
 	)
+
+	if expiry := resolveIdleExpiry(s.limits, tenant, policyBucket); expiry > 0 {
+		cutoff = now.Add(-min(expiry, s.activeWindow)).UnixNano()
+	}
 	if bucketStart < cutoff {
 		return
 	}
-	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, rec.Metadata.IngestionPolicy)
 	var (
 		hash             = rec.Metadata.StreamHash
 		partition        = s.getPartitionForHash(hash)

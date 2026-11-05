@@ -38,16 +38,17 @@ func (m *mockLimitsWithIdleExpiry) PolicyLimitsServiceStreamsExpiry(_, policy st
 }
 
 // newIdleExpiryLimits returns limits where the backfill policy has its own
-// stream limit and an idle expiry, and the "expiry-only" policy has an idle
-// expiry but no bucket of its own.
+// stream limit and an idle expiry, the "expiry-only" policy has an idle
+// expiry but no bucket of its own, and the "long" policy has an expiry
+// longer than the tests' active windows.
 func newIdleExpiryLimits(t *testing.T) *mockLimitsWithIdleExpiry {
 	limits := &mockLimitsWithIdleExpiry{
 		mockLimits: mockLimits{
 			UnlimitedGlobalStreams: true,
 			ShardStreamsConfig:     shardstreams.Config{Enabled: true},
 		},
-		policyLimits: map[string]int{backfillPolicy: 100, "other": 100},
-		idleExpiries: map[string]time.Duration{backfillPolicy: testIdleExpiry, "expiry-only": testIdleExpiry},
+		policyLimits: map[string]int{backfillPolicy: 100, "other": 100, "long": 100},
+		idleExpiries: map[string]time.Duration{backfillPolicy: testIdleExpiry, "expiry-only": testIdleExpiry, "long": time.Hour},
 	}
 	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
 	return limits
@@ -168,4 +169,75 @@ func TestService_EvictIdleStreams(t *testing.T) {
 			testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonPerPolicyExpired)) == 1
 	}, time.Second, 10*time.Millisecond)
 	require.Zero(t, testutil.ToFloat64(s.metrics.streamEvictionsTotal.WithLabelValues("test", evictionReasonExpired)))
+}
+
+// expiredRecordTests are the records replayed from the metadata topic that
+// the stores must drop because they are older than their policy's streams
+// expiry, which EvictIdle would evict on its next run anyway.
+var expiredRecordTests = []struct {
+	name     string
+	policy   string
+	age      time.Duration
+	expected bool // Whether the record is kept.
+}{
+	{name: "older than the expiry", policy: backfillPolicy, age: testIdleExpiry + time.Minute},
+	{name: "within the expiry", policy: backfillPolicy, age: testIdleExpiry - time.Minute, expected: true},
+	{name: "policy without an expiry", policy: "other", age: testIdleExpiry + time.Minute, expected: true},
+	{name: "shared bucket", policy: "expiry-only", age: testIdleExpiry + time.Minute, expected: true},
+	// An expiry longer than the active window must not extend it.
+	{name: "expiry longer than the active window", policy: "long", age: 20 * time.Minute},
+}
+
+func TestUsageStore_UpdateDropsExpiredRecords(t *testing.T) {
+	for _, tc := range expiredRecordTests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, newIdleExpiryLimits(t), prometheus.NewRegistry())
+			require.NoError(t, err)
+			clock := quartz.NewMock(t)
+			s.clock = clock
+			clock.Advance(time.Hour)
+
+			err = s.Update("tenant", &proto.StreamMetadata{StreamHash: 0x1, IngestionPolicy: tc.policy}, clock.Now().Add(-tc.age))
+			n := 0
+			for range s.TenantActiveStreams("tenant") {
+				n++
+			}
+			if tc.expected {
+				require.NoError(t, err)
+				require.Equal(t, 1, n)
+				return
+			}
+			require.ErrorIs(t, err, errOutsideActiveWindow)
+			require.Zero(t, n)
+		})
+	}
+}
+
+func TestStreamShardStore_MergeDropsExpiredRecords(t *testing.T) {
+	for _, tc := range expiredRecordTests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := newStreamShardStore(testActiveWindow, testRateWindow, testBucketSize, 1, testZone, true, newIdleExpiryLimits(t), prometheus.NewRegistry())
+			require.NoError(t, err)
+			clock := quartz.NewMock(t)
+			s.clock = clock
+			clock.Advance(time.Hour)
+
+			s.merge("test", &proto.StreamMetadataRecord{
+				Zone:     "zone2",
+				Tenant:   "test",
+				Metadata: &proto.StreamMetadata{StreamHash: 0x1, IngestionPolicy: tc.policy},
+				ShardRateBucket: &proto.ShardRateBucket{
+					BucketStart: clock.Now().Add(-tc.age).Truncate(testBucketSize).UnixNano(),
+					Size_:       1,
+					Pushes:      1,
+				},
+				ShardCount: 1,
+			})
+			if tc.expected {
+				require.Equal(t, 1, countTrackedStreams(s))
+				return
+			}
+			require.Zero(t, countTrackedStreams(s))
+		})
+	}
 }

@@ -249,11 +249,18 @@ func (s *usageStore) TenantActiveStreams(tenant string) iter.Seq2[string, stream
 }
 
 func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenAt time.Time) error {
-	if !s.withinActiveWindow(seenAt.UnixNano()) {
+	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, metadata.IngestionPolicy)
+	expiry := resolveIdleExpiry(s.limits, tenant, policyBucket)
+
+	cutOff := s.activeWindow
+	if expiry > 0 {
+		cutOff = min(s.activeWindow, expiry)
+	}
+	if seenAt.Before(s.clock.Now().Add(-cutOff)) {
 		return errOutsideActiveWindow
 	}
+
 	partition := s.getPartitionForHash(metadata.StreamHash)
-	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, metadata.IngestionPolicy)
 	s.withLock(tenant, func(i int) {
 		s.update(i, tenant, partition, policyBucket, metadata, seenAt)
 	})
