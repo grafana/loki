@@ -56,6 +56,23 @@ func main() {
 		fmt.Println(version.Print("loki"))
 		os.Exit(0)
 	}
+
+	// List targets command - runs before config file parsing so that a config
+	// file is not required. A config file is still honoured when it is present.
+	// The available targets only depend on the modules registered by Loki, not
+	// on the config file, so config validation is skipped here.
+	if loki.ListTargetsRequested(os.Args[1:]) {
+		if err := cfg.DynamicUnmarshalOptionalConfig(&config, os.Args[1:], flag.CommandLine); err != nil {
+			fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
+			os.Exit(1)
+		}
+
+		t, err := loki.New(config.Config)
+		util_log.CheckFatal("initializing loki", err, util_log.Logger)
+		t.ListTargets()
+		exit(0)
+	}
+
 	if err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
@@ -137,11 +154,6 @@ func main() {
 	// Start Loki
 	t, err := loki.New(config.Config)
 	util_log.CheckFatal("initializing loki", err, util_log.Logger)
-
-	if config.ListTargets {
-		t.ListTargets()
-		exit(0)
-	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
 	level.Info(util_log.Logger).Log("msg", "Loading configuration file", "filename", config.ConfigFile)
