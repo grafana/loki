@@ -272,6 +272,140 @@ func TestBuilder_AppendRecord(t *testing.T) {
 	})
 }
 
+func TestBuilder_DropDuplicates(t *testing.T) {
+	const tenant = "t1"
+	ls := labels.FromStrings("app", "x")
+	ts := time.Unix(100, 0).UTC()
+	duplicate := logs.Record{
+		Timestamp: ts,
+		Metadata:  labels.FromStrings("trace_id", "123"),
+		Line:      []byte("duplicated line"),
+	}
+
+	newBuilder := func(t *testing.T, dropDuplicates bool) *Builder {
+		cfg := testBuilderConfig
+		cfg.DropDuplicates = dropDuplicates
+		builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
+		return builder
+	}
+
+	appendRecord := func(t *testing.T, builder *Builder, rec logs.Record) {
+		require.NoError(t, builder.AppendRecord(tenant, ls, rec.Copy(), rec.Timestamp))
+	}
+
+	// appendSplitDuplicates appends the duplicate, then enough unique records
+	// to exceed TargetSectionSize, then the duplicate again. It returns the
+	// unique records, which include one copy of the duplicate.
+	appendSplitDuplicates := func(t *testing.T, builder *Builder) []logs.Record {
+		unique := []logs.Record{duplicate}
+		appendRecord(t, builder, duplicate)
+		for i := range int(testBuilderConfig.TargetSectionSize)/1024 + 1 {
+			rec := logs.Record{Timestamp: ts.Add(time.Duration(i+1) * time.Second), Line: bytes.Repeat([]byte("a"), 1024)}
+			appendRecord(t, builder, rec)
+			unique = append(unique, rec)
+		}
+		appendRecord(t, builder, duplicate)
+		return unique
+	}
+
+	flushAndSort := func(t *testing.T, builder *Builder) *dataobj.Object {
+		obj, closer, err := builder.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj
+	}
+
+	onlyStream := func(t *testing.T, obj *dataobj.Object) streams.Stream {
+		var got []streams.Stream
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			streamSec, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamSec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				got = append(got, val)
+			}
+		}
+		require.Len(t, got, 1)
+		return got[0]
+	}
+
+	t.Run("FlushAndSort excludes a dropped duplicate from the stream stats", func(t *testing.T) {
+		builder := newBuilder(t, true)
+		appendRecord(t, builder, duplicate)
+		appendRecord(t, builder, duplicate)
+
+		obj := flushAndSort(t, builder)
+
+		require.Equal(t, []string{string(duplicate.Line)}, recordLines(t, obj, tenant))
+		stream := onlyStream(t, obj)
+		require.Equal(t, 1, stream.Rows)
+		require.Equal(t, duplicate.UncompressedSize(), stream.UncompressedSize)
+		require.Equal(t, ts, stream.MinTimestamp.UTC())
+		require.Equal(t, ts, stream.MaxTimestamp.UTC())
+	})
+
+	t.Run("FlushAndSort excludes a duplicate split across logs sections from the stream stats", func(t *testing.T) {
+		unsorted := newBuilder(t, true)
+		appendSplitDuplicates(t, unsorted)
+		unsortedObj, closer, err := unsorted.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		var sectionsWithDuplicate int
+		for _, sec := range unsortedObj.Sections().Filter(logs.CheckSection) {
+			for res := range iterLogsSection(t, sec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				if bytes.Equal(val.Line, duplicate.Line) {
+					sectionsWithDuplicate++
+				}
+			}
+		}
+		require.Equal(t, 2, sectionsWithDuplicate, "each copy of the duplicate must start in its own logs section")
+
+		builder := newBuilder(t, true)
+		unique := appendSplitDuplicates(t, builder)
+
+		obj := flushAndSort(t, builder)
+
+		require.Len(t, recordLines(t, obj, tenant), len(unique))
+		var wantSize int64
+		for _, rec := range unique {
+			wantSize += rec.UncompressedSize()
+		}
+		stream := onlyStream(t, obj)
+		require.Equal(t, len(unique), stream.Rows)
+		require.Equal(t, wantSize, stream.UncompressedSize)
+	})
+
+	t.Run("FlushAndSort keeps and counts duplicates when DropDuplicates is unset", func(t *testing.T) {
+		builder := newBuilder(t, false)
+		appendRecord(t, builder, duplicate)
+		appendRecord(t, builder, duplicate)
+
+		obj := flushAndSort(t, builder)
+
+		require.Len(t, recordLines(t, obj, tenant), 2)
+		stream := onlyStream(t, obj)
+		require.Equal(t, 2, stream.Rows)
+		require.Equal(t, 2*duplicate.UncompressedSize(), stream.UncompressedSize)
+	})
+
+	t.Run("Flush returns an error and resets the builder when DropDuplicates is set", func(t *testing.T) {
+		builder := newBuilder(t, true)
+		appendRecord(t, builder, duplicate)
+
+		obj, closer, err := builder.Flush()
+		require.ErrorIs(t, err, ErrFlushDropDuplicates)
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+
+		_, _, err = builder.FlushAndSort(t.Context())
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+	})
+}
+
 // TestBuilder_EarliestRecordTime ensures the builder tracks the earliest
 // record time seen across appends and resets it when the builder is reset.
 func TestBuilder_EarliestRecordTime(t *testing.T) {
