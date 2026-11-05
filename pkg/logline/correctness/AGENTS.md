@@ -21,12 +21,17 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
    - False positives are hint ranges with no sampled result timestamp; they are tracked via metrics but do not affect correctness.
    - Coverage boundaries in `coverTimestamp` are inclusive on both start and end.
    - `verificationReport.Correct` requires zero false negatives and at least one result (`FalseNegatives == 0 && TotalResults > 0`).
-   - Cycles pick among four hint-query shapes with equal weight: structured
+   - Cycles pick among five hint-query shapes with equal weight: structured
      metadata label filter (`sm_label_filter`), stream label filter
      (`label_filter`), post-parser JSON (`json_label_filter`:
      `{sel} | json | field="value"` from a top-level JSON string on the
-     sampled line), and line filter (`|= "needle"`). The chosen path is
-     tried first; on failure the cycle falls back to a line-filter needle.
+     sampled line), line filter (`|= "needle"`), and metric range
+     (`metric_range`: `sum(count_over_time(<line filter> [5m0s]))` at a
+     1-minute step). The chosen path is tried first; on failure the cycle
+     falls back to a line-filter needle. The metric arm also falls back when
+     the widened `ReadStart` is before `store.MinDate()` or
+     `max(startedAt, now-maxLookback)`, or when `AlignQueriesWithStep` is set
+     and the sampled line is after `end` truncated to the minute.
      JSON fields must be LogQL identifiers, long enough for n-grams,
      `IsVerbatimLineLiteral`, and a substring of the raw line. Keys that
      already exist as stream or SM labels are skipped (`| json` extracts
@@ -35,13 +40,19 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
      Loki query requests must send
      `X-Loki-Response-Encoding-Flags: categorize-labels` so SM appears on
      entries (otherwise Loki folds it into stream labels). Loki and ProvideHints
-     must see the same query string: Logline looks up value n-grams for all
-     four shapes, but Loki's result set differs.
+     must see the same query string: Logline looks up value n-grams for the
+     log shapes, but Loki's result set differs.
+   - A `metric_range` cycle does not call `ProvideHints`. It runs that query
+     twice on one endpoint, `X-Logline-Index: live` with
+     `X-Logline-Skip-Cache` and `X-Logline-Index: off`, both with
+     `Cache-Control: no-cache`. `Correct` means the two matrices are equal and
+     the live matrix has a sample greater than zero. Both empty, or a match of
+     only zeros, is incorrect. Overlapping indexes use the widened read bounds.
 
 4. **Operator visibility**
    - Every non-skipped cycle emits a `msg="correctness cycle step"` log at each major step: `picked_range`, `picked_label_value`, `fetched_sample_logs`, `picked_needle`, `fetched_verification_results`.
    - Final outcome is logged as `msg="correctness cycle completed"` with the cycle report (selector, range, needle, candidate counts, true/false positives, correctness).
-   - On incorrect cycles, `correctness failure detail` includes `excluded_covering_fn_count`, and each matching index is logged as `correctness failure FN covered by ingester-window index` — candidates for the Loki event-time vs logline `min_rec_ts` asymmetry (metadata only; no term probe).
+   - On incorrect cycles, `correctness failure detail` includes `excluded_covering_fn_count`, and each matching index is logged as `correctness failure FN covered by ingester-window index` — candidates for the Loki event-time vs logline `min_rec_ts` asymmetry (metadata only; no term probe). A `metric_range` failure emits `correctness failure detail` and `correctness failure overlapping index` only.
    - Aggregate counters are exported via Prometheus metrics.
 
 5. **Queryable token requirement**
