@@ -273,6 +273,25 @@ func applySign(sign string, v float64) float64 {
 	return v
 }
 
+// UsesHistograms reports whether expr evaluates a histogram anywhere: it has histogram_over_time, or one of the
+// functions that read it. It does not matter whether the expression is valid, so it also finds the histogram
+// that a query cannot return.
+func UsesHistograms(expr Expr) bool {
+	found := false
+	expr.Walk(func(e Expr) bool {
+		switch e := e.(type) {
+		case *HistogramFuncExpr:
+			found = true
+		case *RangeAggregationExpr:
+			// Not found = ...: returning false from Walk does not end the walk. It skips the children of the
+			// node, and the next sibling is still visited, such as the rate in histogram_count(...) + rate(...).
+			found = found || e.Operation == OpRangeTypeHistogram
+		}
+		return !found
+	})
+	return found
+}
+
 // isHistogramValued reports whether expr evaluates to a histogram vector, which
 // only histogram_over_time and the sum of a histogram vector do.
 //

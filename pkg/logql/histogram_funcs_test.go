@@ -19,11 +19,28 @@ import (
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
-// histogramRunQuery runs a query like the engine of a querier does: the query is parsed and validated, and its
-// result is the one that the API returns.
+// histogramRunQuery runs a query like the engine of a querier does, with the histograms enabled: the query is parsed
+// and validated, and its result is the one that the API returns.
 func histogramRunQuery(t *testing.T, streams []logproto.Stream, query string, start, end time.Time, step time.Duration) (promql_parser.Value, error) {
 	t.Helper()
-	eng := NewEngine(EngineOpts{}, NewMockQuerier(0, streams), NoLimits, log.NewNopLogger())
+	return histogramRunQueryAt(t, EngineOpts{EnableHistograms: true}, streams, query, start, end, step)
+}
+
+// histogramRunQueryWith runs an instant query at 60s with the given options, and returns its vector.
+func histogramRunQueryWith(t *testing.T, opts EngineOpts, streams []logproto.Stream, query string) (promql.Vector, error) {
+	t.Helper()
+	res, err := histogramRunQueryAt(t, opts, streams, query, histogramAt(60), histogramAt(60), 0)
+	if err != nil {
+		return nil, err
+	}
+	vec, ok := res.(promql.Vector)
+	require.True(t, ok, "%T", res)
+	return vec, nil
+}
+
+func histogramRunQueryAt(t *testing.T, opts EngineOpts, streams []logproto.Stream, query string, start, end time.Time, step time.Duration) (promql_parser.Value, error) {
+	t.Helper()
+	eng := NewEngine(opts, NewMockQuerier(0, streams), NoLimits, log.NewNopLogger())
 	params, err := NewLiteralParams(query, start, end, step, 0, logproto.FORWARD, 1000, nil, nil)
 	require.NoError(t, err)
 	res, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))

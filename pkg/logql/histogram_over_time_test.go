@@ -438,7 +438,7 @@ func TestHistogramOverTime_onlySumAddsHistograms(t *testing.T) {
 // checks it again, so that one that gets through is an error and not a series of zeros.
 func TestEngine_HistogramIsNotAResult(t *testing.T) {
 	streams := []logproto.Stream{histogramStream(`{app="a"}`, histogramTimedValue{histogramSeconds(10), "0.1"})}
-	eng := NewEngine(EngineOpts{}, NewMockQuerier(0, streams), NoLimits, log.NewNopLogger())
+	eng := NewEngine(EngineOpts{EnableHistograms: true}, NewMockQuerier(0, streams), NoLimits, log.NewNopLogger())
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
 	for name, rangeQuery := range map[string]bool{"range": true, "instant": false} {
