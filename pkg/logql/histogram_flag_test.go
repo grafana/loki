@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"flag"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -209,7 +210,10 @@ func TestEngineOpts_EnableHistogramsConfig(t *testing.T) {
 
 	t.Run("the YAML key", func(t *testing.T) {
 		var opts EngineOpts
-		require.NoError(t, yaml.UnmarshalStrict([]byte("enable_histograms: true\n"), &opts))
+		// Strict, as the loading of the configuration is, so that a key that is not known is an error.
+		dec := yaml.NewDecoder(strings.NewReader("enable_histograms: true\n"))
+		dec.KnownFields(true)
+		require.NoError(t, dec.Decode(&opts))
 		require.True(t, opts.EnableHistograms)
 	})
 
