@@ -9,7 +9,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   GO_VERSION: "1.27.3"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-  RELEASE_AS: "4.0.0-rc.2"
+  RELEASE_AS: "4.0.0-rc.3"
   RELEASE_LIB_REF: "84115a2e9d807167f054d106c81f5e9f3230387e"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
