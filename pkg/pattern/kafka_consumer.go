@@ -23,7 +23,7 @@ func (i *Ingester) initKafka() error {
 	if err != nil {
 		return fmt.Errorf("failed to create kafka decoder: %w", err)
 	}
-	i.lagObserver, err = newLagObserver(i.registerer)
+	i.lagObserver, err = newLagObserver(prometheus.WrapRegistererWithPrefix("pattern_ingester_kafka_", i.registerer))
 	if err != nil {
 		return fmt.Errorf("failed to create lag observer: %w", err)
 	}

@@ -13,7 +13,7 @@ var (
 	// consumerLagDesc is a gauge which tracks the consumer lag of each
 	// partition.
 	consumerLagDesc = prometheus.NewDesc(
-		"loki_pattern_ingester_kafka_consumer_lag_seconds",
+		"consumer_lag_seconds",
 		"The consumer lag of each assigned partition, measured as the age of the last record consumed from Kafka.",
 		[]string{"partition"},
 		nil,
