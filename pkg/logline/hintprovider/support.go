@@ -14,7 +14,7 @@ import (
 
 // DefaultMaxConjunctions is the most needle sets a query is planned into when
 // no other value is configured.
-const DefaultMaxConjunctions = 64
+const DefaultMaxConjunctions = 4
 
 // SupportedQuery returns the needles for query shapes that can use logline
 // index hints. The result is True when the query has no needle.
@@ -122,6 +122,14 @@ func (p planner) regex(pattern string, keep func(string) (string, bool)) needle.
 func (p planner) lineFilterStage(f *syntax.LineFilterExpr) needle.Expr {
 	var clauses []needle.Expr
 	for curr := f; curr != nil; curr = curr.Left {
+		if hasEmptyOrBranch(curr) {
+			// Loki does not run an or chain with an empty branch as a plain
+			// OR, and the result depends on where "" sits: |= "" or "" or "a"
+			// keeps every line, |= "a" or "" or "" does not. Skip the chain,
+			// the other filters still narrow.
+			// TODO: Revisit once logql properly define the "OR" semantic
+			continue
+		}
 		branches := []needle.Expr{p.lineFilter(curr.LineFilter)}
 		for or := curr.Or; or != nil; or = or.Or {
 			branches = append(branches, p.lineFilter(or.LineFilter))
@@ -129,6 +137,19 @@ func (p planner) lineFilterStage(f *syntax.LineFilterExpr) needle.Expr {
 		clauses = append(clauses, needle.Or(p.maxConjunctions, branches...))
 	}
 	return needle.And(p.maxConjunctions, clauses...)
+}
+
+// hasEmptyOrBranch reports whether f has an or chain with a "" branch.
+func hasEmptyOrBranch(f *syntax.LineFilterExpr) bool {
+	if f.Or == nil {
+		return false
+	}
+	for or := f; or != nil; or = or.Or {
+		if or.Match == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // lineFilter is the needle of a single line filter.

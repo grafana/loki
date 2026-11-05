@@ -116,8 +116,10 @@ Query-shape support and hint lookup for logline index lookups.
       than `ngramLength`, `""`, non-verbatim post-parser values, matchers other
       than `=` and `=~`, reserved `__*` names, numeric, duration and bytes label
       filters, and regexes with no required literal.
-    - Loki drops a TRUE branch from an or (`|= "abcdef" or ""` runs as
-      `|= "abcdef"`). We plan it as TRUE, which is safe, only less narrow.
+    - An or chain with a `""` branch anywhere is skipped. Loki runs it
+      differently depending on where `""` sits (`|= "" or "" or "a"` keeps
+      every line, `|= "a" or "" or ""` does not), so we plan nothing for it
+      until LogQL defines the semantic.
 16. **`maxConjunctions` bounds the needle sets**
     - `SupportedQuery` ANDs every clause with `needle.And(maxConjunctions, ...)`
       and prunes once at the end. Over the limit a clause collapses to the
@@ -125,6 +127,4 @@ Query-shape support and hint lookup for logline index lookups.
       shares.
     - The query-frontend sends its value in `LoglineIndexRequest.max_conjunctions`.
       The querier uses it when above 0, else its own default.
-    - Guarded by `TestSupportedQuery_NoFalseNegatives`, which runs random
-      pipelines through Loki and checks every kept line against every index
-      version at 1, 4 and 64 conjunctions.
+    - Default 4. Examples are pinned in `TestSupportedQuery_Or`.

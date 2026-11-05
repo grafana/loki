@@ -1,6 +1,9 @@
 package hintprovider
 
 import (
+	"fmt"
+	"math/rand"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -977,4 +980,105 @@ func literals(t *testing.T, e needle.Expr) []string {
 		return nil
 	}
 	return conjs[0]
+}
+
+func TestSupportedQuery_Or(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		query           string
+		maxConjunctions int
+		want            string
+	}{
+		// Line filter or.
+		{"line filter or", `{app="foo"} |= "abcdef" or "ghijkl"`, 64, `{"ABCDEF"} or {"GHIJKL"}`},
+		{
+			"or next to a required filter", `{app="foo"} |= "seed text" |= "option_a" or "option_b"`, 64,
+			`{"OPTION_A", "SEED TEXT"} or {"OPTION_B", "SEED TEXT"}`,
+		},
+		{"or chain of three", `{app="foo"} |= "abcdef" or "ghijkl" or "mnopqr"`, 64, `{"ABCDEF"} or {"GHIJKL"} or {"MNOPQR"}`},
+		{"or absorbs a longer branch", `{app="foo"} |= "timeout" or "timeouts"`, 64, `{"TIMEOUT"}`},
+		{"regex or chain", `{app="foo"} |~ "abcdef" or "ghi.*jkl123"`, 64, `{"ABCDEF"} or {"JKL123"}`},
+
+		// A branch we cannot look up makes the whole or True.
+		{"or with a short branch", `{app="foo"} |= "abcdef" or "ab"`, 64, "TRUE"},
+		{"or with an empty branch", `{app="foo"} |= "abcdef" or ""`, 64, "TRUE"},
+		{"or with an ip branch", `{app="foo"} |= "abcdef" or ip("10.0.0.1")`, 64, "TRUE"},
+		{"true or next to a required filter", `{app="foo"} |= "seed text" |= "abcdef" or "ab"`, 64, `{"SEED TEXT"}`},
+		// Loki runs an or chain with an empty branch differently depending on
+		// where "" sits, so the chain is skipped wherever it is.
+		{"empty branch first", `{app="foo"} |= "seed text" |= "" or "abcdef"`, 64, `{"SEED TEXT"}`},
+		{"empty branches first", `{app="foo"} |= "seed text" |= "" or "" or "abcdef"`, 64, `{"SEED TEXT"}`},
+		{"empty branches last", `{app="foo"} |= "seed text" |= "abcdef" or "" or ""`, 64, `{"SEED TEXT"}`},
+		{"empty branch in a regex or chain", `{app="foo"} |= "seed text" |~ "abcdef" or ""`, 64, `{"SEED TEXT"}`},
+		{"empty filter without or", `{app="foo"} |= "seed text" |= ""`, 64, `{"SEED TEXT"}`},
+		{"negative or is an and of negatives", `{app="foo"} |= "seed text" != "abcdef" or "ghijkl"`, 64, `{"SEED TEXT"}`},
+
+		// Regex alternation.
+		{"regex alternation", `{app="foo"} |~ "abcdef|ghijkl"`, 64, `{"ABCDEF"} or {"GHIJKL"}`},
+		{"regex alternation joined to text", `{app="foo"} |~ "(GET|POST) /api/users"`, 64, `{"GET /API/USERS"} or {"POST /API/USERS"}`},
+		{"regex alternation with a short branch", `{app="foo"} |~ "abcdef|ab"`, 64, "TRUE"},
+
+		// Label filters.
+		{"label or", `{app="foo"} | x="abcdef" or y="ghijkl"`, 64, `{"ABCDEF"} or {"GHIJKL"}`},
+		{"label and", `{app="foo"} | x="abcdef" and y="ghijkl"`, 64, `{"ABCDEF", "GHIJKL"}`},
+		{"label regex alternation", `{app="foo"} | x=~"abcdef|ghijkl"`, 64, `{"ABCDEF"} or {"GHIJKL"}`},
+		{"label or with a numeric branch", `{app="foo"} | x="abcdef" or y > 5`, 64, "TRUE"},
+		{"label or with a reserved name", `{app="foo"} | x="abcdef" or __error__="ghijkl"`, 64, "TRUE"},
+
+		// Post-parser filters.
+		{"post-parser or", `{app="foo"} | json | x="abcdef" or y="ghijkl"`, 64, `{"ABCDEF"} or {"GHIJKL"}`},
+		{"post-parser or with a non-verbatim branch", `{app="foo"} | json | x="abcdef" or y="ghi\"jkl"`, 64, "TRUE"},
+
+		// maxConjunctions.
+		{
+			"product of two ors", `{app="foo"} |= "aaaaaa" or "bbbbbb" |= "cccccc" or "dddddd"`, 64,
+			`{"AAAAAA", "CCCCCC"} or {"AAAAAA", "DDDDDD"} or {"BBBBBB", "CCCCCC"} or {"BBBBBB", "DDDDDD"}`,
+		},
+		{
+			"product over the limit collapses one or", `{app="foo"} |= "aaaaaa" or "bbbbbb" |= "cccccc" or "dddddd"`, 3,
+			`{"CCCCCC"} or {"DDDDDD"}`,
+		},
+		{
+			"collapse keeps the shared literal", `{app="foo"} |~ "(abc|def|ghi)_shared_suffix"`, 2,
+			`{"_SHARED_SUFFIX"}`,
+		},
+		{"one conjunction keeps today's needles", `{app="foo"} |= "seed text" |= "option_a" or "option_b"`, 1, `{"SEED TEXT"}`},
+		{"one conjunction without shared needles", `{app="foo"} |= "abcdef" or "ghijkl"`, 1, "TRUE"},
+		{"zero means the default", `{app="foo"} |= "abcdef" or "ghijkl"`, 0, `{"ABCDEF"} or {"GHIJKL"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := syntax.ParseExpr(tc.query)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, SupportedQuery(expr, 6, tc.maxConjunctions).String())
+		})
+	}
+}
+
+func BenchmarkSupportedQuery(b *testing.B) {
+	rng := rand.New(rand.NewSource(1))
+	ids := make([]string, 1000)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("%016x", rng.Uint64())
+	}
+	var product strings.Builder
+	product.WriteString(`{app="foo"}`)
+	for i := range 6 {
+		fmt.Fprintf(&product, ` |= "clause%d_a" or "clause%d_b"`, i, i)
+	}
+
+	for _, bc := range []struct {
+		name  string
+		query string
+	}{
+		{"trace_id_alternation_1000", `{app="foo"} |~ "trace_id=(` + strings.Join(ids, "|") + `)"`},
+		{"or_product_6_clauses", product.String()},
+	} {
+		expr, err := syntax.ParseExpr(bc.query)
+		require.NoError(b, err)
+		b.Run(bc.name, func(b *testing.B) {
+			for b.Loop() {
+				SupportedQuery(expr, 6, DefaultMaxConjunctions)
+			}
+		})
+	}
 }

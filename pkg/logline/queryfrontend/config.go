@@ -9,7 +9,7 @@ import (
 const (
 	defaultNgramLength                    = 6
 	defaultMaxHintParallel                = 64
-	defaultMaxConjunctions                = 64
+	defaultMaxConjunctions                = 4
 	defaultHintTimeout                    = 15 * time.Second
 	defaultShardPlanningEnabled           = true
 	defaultShardPlanningMinReductionRatio = 0.75
@@ -58,7 +58,7 @@ type Config struct {
 	// MaxConjunctions is the most needle sets a query is planned into. A filter
 	// with an or, or a regex with alternation, gives one set per branch, and
 	// the sets are ORed. Over the limit, sets collapse to the needles they
-	// share. 1 gives one set, the needles every branch shares. Defaults to 64
+	// share. 1 gives one set, the needles every branch shares. Defaults to 4
 	// when zero.
 	MaxConjunctions int `yaml:"max_conjunctions"`
 	// QueryIngestersWithin is the window of recent data that lives only in

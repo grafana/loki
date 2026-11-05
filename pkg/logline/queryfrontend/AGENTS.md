@@ -33,7 +33,7 @@ or attach hint ranges for time intervals that the logline index proves contain n
   `limits_config` fields (`logline_query_mode`, `logline_query_min_query_bytes_for_index`),
   so a tenant overrides them in the runtime config like any other limit.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
-- **`max_conjunctions`** (default 64) bounds the needle sets a query is planned
+- **`max_conjunctions`** (default 4) bounds the needle sets a query is planned
   into. The frontend uses it for the eligibility check and sends it to the
   querier in `LoglineIndexRequest.max_conjunctions`, like `ngram_length`. Set it
   to 1 on a cell to go back to the needles every branch of an OR shares.
