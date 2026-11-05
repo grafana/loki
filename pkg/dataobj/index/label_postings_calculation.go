@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -27,30 +28,80 @@ func (c *labelPostingsCalculation) Prepare(_ context.Context, _ *logsCalculation
 	return nil
 }
 
+// ProcessBatch observes the stream labels once per run of consecutive records
+// of one stream, instead of once per record. A posting keeps only the minimum
+// and maximum timestamp and the sum of sizes, so the result is the same.
 func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculationContext, batch []logs.Record) error {
-	for _, log := range batch {
-		streamLbls, labelsOK := calcCtx.streamLabels[log.StreamID]
-		shardBucket, shardOK := calcCtx.streamShardBuckets[log.StreamID]
-
-		if !labelsOK || !shardOK {
-			return fmt.Errorf("unknown stream ID %d in log record", log.StreamID)
+	for len(batch) > 0 {
+		run := streamRun{
+			streamID:     batch[0].StreamID,
+			minTimestamp: batch[0].Timestamp,
+			maxTimestamp: batch[0].Timestamp,
 		}
+		n := 0
+		for ; n < len(batch) && batch[n].StreamID == run.streamID; n++ {
+			run.add(batch[n])
+		}
+		batch = batch[n:]
 
-		uncompressedSize := log.UncompressedSize()
-		streamLbls.Range(func(lbl labels.Label) {
-			calcCtx.builder.ObserveLabelPosting(postings.LabelObservation{
-				ObjectPath:       calcCtx.objectPath,
-				ShardBuckets:     int64(calcCtx.shardLayout.Buckets()),
-				SectionIndex:     calcCtx.sectionIdx,
-				ColumnName:       lbl.Name,
-				LabelValue:       lbl.Value,
-				StreamID:         log.StreamID,
-				Timestamp:        log.Timestamp,
-				UncompressedSize: uncompressedSize,
-				ShardBucket:      shardBucket,
-			})
-		})
+		if err := c.observeRun(calcCtx, run); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+// streamRun aggregates consecutive records of one stream.
+type streamRun struct {
+	streamID         int64
+	minTimestamp     time.Time
+	maxTimestamp     time.Time
+	uncompressedSize int64
+}
+
+func (r *streamRun) add(record logs.Record) {
+	if record.Timestamp.Before(r.minTimestamp) {
+		r.minTimestamp = record.Timestamp
+	}
+	if record.Timestamp.After(r.maxTimestamp) {
+		r.maxTimestamp = record.Timestamp
+	}
+	r.uncompressedSize += record.UncompressedSize()
+}
+
+// observeRun observes every label of the run's stream. It observes the
+// minimum timestamp with the full size, then the maximum timestamp with no
+// size.
+func (c *labelPostingsCalculation) observeRun(calcCtx *logsCalculationContext, run streamRun) error {
+	streamLbls, labelsOK := calcCtx.streamLabels[run.streamID]
+	shardBucket, shardOK := calcCtx.streamShardBuckets[run.streamID]
+	if !labelsOK || !shardOK {
+		return fmt.Errorf("unknown stream ID %d in log record", run.streamID)
+	}
+
+	streamLbls.Range(func(lbl labels.Label) {
+		obs := postings.LabelObservation{
+			ObjectPath:       calcCtx.objectPath,
+			ShardBuckets:     int64(calcCtx.shardLayout.Buckets()),
+			SectionIndex:     calcCtx.sectionIdx,
+			ColumnName:       lbl.Name,
+			LabelValue:       lbl.Value,
+			StreamID:         run.streamID,
+			Timestamp:        run.minTimestamp,
+			UncompressedSize: run.uncompressedSize,
+			ShardBucket:      shardBucket,
+		}
+		calcCtx.builder.ObserveLabelPosting(obs)
+
+		// Observe the end timestamp too, so the posting covers the full time
+		// range of the run. Use a size of 0 because the first observation
+		// already counted the size of the run.
+		if !run.maxTimestamp.Equal(run.minTimestamp) {
+			obs.Timestamp = run.maxTimestamp
+			obs.UncompressedSize = 0
+			calcCtx.builder.ObserveLabelPosting(obs)
+		}
+	})
 	return nil
 }
 
