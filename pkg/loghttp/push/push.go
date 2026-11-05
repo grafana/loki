@@ -371,7 +371,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
 		}
 
-		calculateStreamStats(r.Context(), s, lbs, streamResolver, tenantConfigs, logPushRequestStreams, pushStats)
+		calculateStreamStats(r.Context(), s, lbs, streamResolver, logPushRequestStreams, pushStats)
 
 		req.Streams[i] = s
 	}
@@ -380,7 +380,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 }
 
 // calculateStreamStats modifies pushStats with statistics about one stream s.
-func calculateStreamStats(ctx context.Context, s push.Stream, lbs labels.Labels, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, logPushRequestStreams bool, pushStats *Stats) {
+func calculateStreamStats(ctx context.Context, s push.Stream, lbs labels.Labels, streamResolver StreamResolver, logPushRequestStreams bool, pushStats *Stats) {
 	// Record the new size of labels
 	pushStats.StreamLabelsSize += int64(len(s.Labels))
 
