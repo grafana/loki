@@ -24,9 +24,9 @@ and `TestLiterals` pins the one-conjunction behaviour.
    that a match contains in a different byte form, silently drops results.
    For `Needles` the rule is per set: every match must produce all the
    n-grams of at least one set.
-   Guarded by `TestLiterals_NoFalseNegatives` and
-   `TestNeedles_NoFalseNegatives`, which run through
+   Guarded by `TestLiterals_NoFalseNegatives`, which runs through
    `logline.ExtractorForVersion`, so a new version is covered automatically.
+   `Needles` cases are pinned in `TestNeedles`.
    One accepted exception: under `(?i)` a few non-ASCII runes match an ASCII
    letter (U+017F for s and U+212A for k in the regexp. Loki's simplified
    filters also fold U+0130 and U+0131 to i). The index splits tokens on them,

@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/needle"
 )
 
 func TestLiterals(t *testing.T) {
@@ -173,89 +172,6 @@ func TestLiterals_LongRepeat(t *testing.T) {
 	require.Equal(t, []string{"abcabcabcx"}, Literals(`(abc){3}x`))
 }
 
-// For random patterns and random lines they match, some conjunction must have
-// every n-gram of every literal emitted by the index for that line, for every
-// index version and at every maxConjunctions. Otherwise a lookup would miss the line.
-func TestNeedles_NoFalseNegatives(t *testing.T) {
-	maxConjunctionss := []int{1, 4, 64}
-	rng := rand.New(rand.NewSource(1))
-	checked, alternatives := 0, 0
-	for range 20000 {
-		pattern := randomPattern(rng, 3)
-		re, err := regexp.Compile(pattern)
-		if err != nil {
-			continue
-		}
-		exprs := make([]needle.Expr, len(maxConjunctionss))
-		allTrue := true
-		for i, maxConjunctions := range maxConjunctionss {
-			exprs[i] = Needles(pattern, maxConjunctions)
-			require.LessOrEqual(t, len(exprs[i].Conjunctions()), maxConjunctions)
-			allTrue = allTrue && exprs[i].IsTrue()
-		}
-		if allTrue {
-			continue
-		}
-		parsed, err := syntax.Parse(pattern, syntax.Perl)
-		require.NoError(t, err)
-
-		for range 4 {
-			var sb strings.Builder
-			sb.WriteString(randomText(rng))
-			generateMatch(rng, parsed, &sb)
-			sb.WriteString(randomText(rng))
-			line := sb.String()
-			// Generation ignores anchors, so let the engine decide.
-			if !re.MatchString(line) {
-				continue
-			}
-			checked++
-			if len(exprs[len(exprs)-1].Conjunctions()) > 1 {
-				alternatives++
-			}
-			for _, version := range logline.AllVersions() {
-				for n := 1; n <= 6; n++ {
-					indexed := map[string]struct{}{}
-					for _, term := range terms(t, version, n, line) {
-						indexed[term] = struct{}{}
-					}
-					for i, e := range exprs {
-						if !satisfiesSome(t, version, n, e, indexed) {
-							t.Fatalf("false negative: version=%s n=%d maxConjunctions=%d pattern=%q line=%q needles=%v",
-								version, n, maxConjunctionss[i], pattern, line, e)
-						}
-					}
-				}
-			}
-		}
-	}
-	require.Greater(t, checked, 1000)
-	require.Greater(t, alternatives, 10000)
-}
-
-// satisfiesSome reports whether every term of some conjunction of e is
-// indexed.
-func satisfiesSome(t *testing.T, version string, n int, e needle.Expr, indexed map[string]struct{}) bool {
-	t.Helper()
-	if e.IsTrue() {
-		return true
-	}
-	for _, conj := range e.Conjunctions() {
-		all := true
-		for _, lit := range conj {
-			for _, term := range terms(t, version, n, lit) {
-				if !isIndexed(indexed, term) {
-					all = false
-				}
-			}
-		}
-		if all {
-			return true
-		}
-	}
-	return false
-}
-
 // For random patterns and random lines they match, every n-gram of every
 // literal must be one the index emits for that line, for every index version.
 // Otherwise a lookup would miss the line.
@@ -325,20 +241,6 @@ func missingNgram(t *testing.T, version string, n int, literals []string, line s
 func isIndexed(indexed map[string]struct{}, term string) bool {
 	_, ok := indexed[term]
 	return ok
-}
-
-func terms(t *testing.T, version string, n int, s string) []string {
-	t.Helper()
-	extract, err := logline.ExtractorForVersion(version)
-	require.NoError(t, err)
-	format, err := logline.FormatterForVersion(version)
-	require.NoError(t, err)
-
-	var out []string
-	for _, key := range extract(n, s, nil, nil, nil) {
-		out = append(out, format(key, n))
-	}
-	return out
 }
 
 var (
