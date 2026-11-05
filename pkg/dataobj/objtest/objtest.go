@@ -14,6 +14,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	compactionv2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -39,11 +41,6 @@ import (
 // Tenant is the tenant a [Builder] stores logs for. A Builder holds one tenant
 // because the index Calculator accepts only single-tenant objects.
 const Tenant = "objtest"
-
-// indexPrefix is where index objects and their table of contents live within the bucket.
-// metastore.Config's default IndexStoragePrefix matches it, so a metastore built over the
-// bucket finds them.
-const indexPrefix = "index/v0"
 
 // objectsPerIndex is the most logs objects that one index covers. [Builder.Close] starts a new
 // index when the current one reaches this count, or when the next object has another layout.
@@ -59,6 +56,14 @@ type builderOptions struct {
 	bufferSize        flagext.Bytes
 	maxPageRows       int
 	overrides         logsobj.TenantOverrides
+	compactedLayout   bool
+}
+
+// WithCompactedLayout stores every logs object and every index object under the keys the compactor
+// uses. A query then counts them as compacted objects. The default keys are the ones the builders
+// use.
+func WithCompactedLayout() Option {
+	return func(o *builderOptions) { o.compactedLayout = true }
 }
 
 // WithTargetSectionSize targets the uncompressed data one logs section holds, so a small value
@@ -115,6 +120,7 @@ type Builder struct {
 	dirty  bool // Whether there's any pending data to flush.
 	closed bool // Whether Close has written the indexes.
 
+	compactedLayout                     bool // Whether objects use the keys of the compactor.
 	builderConfig                       logsobj.BuilderBaseConfig
 	uploader                            *uploader.Uploader
 	bucket, indexBucket                 objstore.Bucket
@@ -134,7 +140,7 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 	dir := t.TempDir()
 
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "tocs"), 0700), "could not create object toc directory")
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, indexPrefix, "tocs"), 0700), "could not create index toc directory")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, metastore.IndexStoragePrefix, "tocs"), 0700), "could not create index toc directory")
 
 	bucket, err := filesystem.NewBucket(dir)
 	require.NoError(t, err, "expected to be able to create bucket")
@@ -164,7 +170,7 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), options.overrides)
 	require.NoError(t, err, "expected to be able to create logs builder")
 
-	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexPrefix)
+	indexWriterBucket := metastore.NewIndexBucket(bucket)
 	logsMetastoreToc := newTableOfContentsWriter(bucket, logger)
 	indexMetastoreToc := newTableOfContentsWriter(indexWriterBucket, logger)
 
@@ -173,6 +179,7 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 		dir:    dir,
 		logger: logger,
 
+		compactedLayout:   options.compactedLayout,
 		builderConfig:     builderConfig,
 		uploader:          uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, logger),
 		bucket:            bucket,
@@ -222,7 +229,12 @@ func (b *Builder) flush(ctx context.Context) error {
 	defer closer.Close()
 
 	// Upload the logs object.
-	path, err := b.uploader.Upload(ctx, obj)
+	var path string
+	if b.compactedLayout {
+		path, err = uploadCompacted(ctx, b.bucket, obj, compactionv2.CompactedLogObjectPath)
+	} else {
+		path, err = b.uploader.Upload(ctx, obj)
+	}
 	if err != nil {
 		return fmt.Errorf("uploading logs object: %w", err)
 	}
@@ -353,7 +365,12 @@ func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculat
 	}
 	defer closer.Close()
 
-	key, err := index.ObjectKey(ctx, obj)
+	var key string
+	if b.compactedLayout {
+		key, err = compactedKey(ctx, obj, compactionv2.CompactedIndexPath)
+	} else {
+		key, err = index.ObjectKey(ctx, obj)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create object key: %w", err)
 	}
@@ -374,6 +391,34 @@ func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculat
 	return nil
 }
 
+// compactedKey returns the key that the compactor gives obj. The compactor names an object by its
+// tenant and its content, so name reads the whole object.
+func compactedKey(ctx context.Context, obj *dataobj.Object, name func(tenant string, r io.Reader) (string, error)) (string, error) {
+	reader, err := obj.Reader(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	return name(Tenant, reader)
+}
+
+// uploadCompacted stores obj in bucket under its compacted key and returns the key.
+func uploadCompacted(ctx context.Context, bucket objstore.Bucket, obj *dataobj.Object, name func(tenant string, r io.Reader) (string, error)) (string, error) {
+	key, err := compactedKey(ctx, obj, name)
+	if err != nil {
+		return "", err
+	}
+
+	reader, err := obj.Reader(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	return key, bucket.Upload(ctx, key, reader)
+}
+
 // Location holds information about where objects for a [Builder] are stored.
 // Location can be used to read data from a builder.
 type Location struct {
@@ -386,7 +431,7 @@ type Location struct {
 func (b *Builder) Location() Location {
 	return Location{
 		Bucket:      b.bucket,
-		IndexPrefix: indexPrefix,
+		IndexPrefix: metastore.IndexStoragePrefix,
 	}
 }
 
@@ -397,9 +442,9 @@ func (b *Builder) Metastore() *metastore.ObjectMetastore {
 
 	return metastore.NewObjectMetastore(
 		b.bucket,
-		metastore.Config{IndexStoragePrefix: indexPrefix},
+		metastore.Config{},
 		b.logger,
-		metastore.NewObjectMetastoreMetrics(nil),
+		nil,
 	)
 }
 

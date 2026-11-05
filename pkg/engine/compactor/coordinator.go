@@ -245,11 +245,12 @@ func (c *coordinator) compactTenantLogs(
 //
 // It plans LogMerge tasks that keep the sort schema of the source index. An
 // IndexFilter of the source index keeps the runs that the strategy does not
-// merge.
+// merge, and the runs of the merges that the maximum key size skips.
 // Compaction never changes the layout of an object.
 //
 // planLogCompaction returns a plan with no work if the index has no sections
-// for tenant, is below the minimum compaction size, or needs no compaction.
+// for tenant, is below the minimum compaction size, needs no compaction, or
+// has a sort prefix above the maximum key size in every planned merge.
 func (c *coordinator) planLogCompaction(
 	ctx context.Context,
 	tenant string,
@@ -276,10 +277,11 @@ func (c *coordinator) planLogMerge(
 ) (logCompactionPlan, error) {
 	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndex.Path)
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
+	singleRuns := countSingleObjectRuns(runs)
 	if v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) ||
 		!c.logMergePlanningStrategy.NeedsCompaction(runs) {
 		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
-		return logCompactionPlan{}, nil
+		return logCompactionPlan{singleObjectRuns: singleRuns}, nil
 	}
 
 	merges, unmerged := c.logMergePlanningStrategy.Plan(runs, tenant)
@@ -288,6 +290,15 @@ func (c *coordinator) planLogMerge(
 	}
 
 	keys := newSectionKeySizes(sections)
+	merges, skipped := c.skipOversizedMerges(entryLogger, tenant, keys, merges)
+	if len(merges) == 0 {
+		return logCompactionPlan{}, nil
+	}
+	unmergedRuns := skipped
+	for _, run := range unmerged {
+		unmergedRuns = append(unmergedRuns, &compactionv2pb.RunRef{Sections: run.Sections()})
+	}
+
 	var splitter logTaskSplitter = newNoopLogTaskSplitter(keys)
 	if c.cfg.LogMaxTaskSize > 0 {
 		splitter = newSizeLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), keys)
@@ -297,21 +308,55 @@ func (c *coordinator) planLogMerge(
 		specs = append(specs, splitter.split(merge)...)
 	}
 
-	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmerged))
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmergedRuns))
 	logMergeTaskDetails(entryLogger, specs)
 
 	plan := logCompactionPlan{
-		window:      window,
-		sourceIndex: sourceIndex,
-		tasks:       make([]logCompactionTask, 0, len(specs)+1),
+		window:           window,
+		sourceIndex:      sourceIndex,
+		tasks:            make([]logCompactionTask, 0, len(specs)+1),
+		singleObjectRuns: singleRuns,
 	}
 	for _, spec := range specs {
 		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
 	}
-	if len(unmerged) > 0 {
-		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmerged))
+	if len(unmergedRuns) > 0 {
+		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmergedRuns))
 	}
 	return plan, nil
+}
+
+// skipOversizedMerges removes the merges whose largest sort prefix is above
+// cfg.LogMaxKeySize, and returns the runs of the removed merges.
+//
+// A merge writes all records of one sort prefix into one object, and the task
+// splitter cannot cut a sort prefix. Such a merge makes an object too large
+// for a worker, so its tasks fail on every attempt. A failed task also cancels
+// the other tasks of the plan, so the whole index never compacts.
+//
+// The returned runs must stay unmerged, because no task rewrites their data.
+func (c *coordinator) skipOversizedMerges(logger log.Logger, tenant string, keys sectionKeySizes, merges []*compactionv2pb.TaskSpec) (kept []*compactionv2pb.TaskSpec, skipped []*compactionv2pb.RunRef) {
+	if c.cfg.LogMaxKeySize == 0 {
+		return merges, nil
+	}
+	for _, merge := range merges {
+		key, size := keys.largestKey(merge.Runs)
+		if size <= uint64(c.cfg.LogMaxKeySize) {
+			kept = append(kept, merge)
+			continue
+		}
+		level.Warn(logger).Log(
+			"msg", "log-compaction: skipping merge, because a sort prefix is larger than the maximum key size",
+			"runs", len(merge.Runs),
+			"shard_bucket", key.prefix.ShardBucket,
+			"sort_prefix", strings.Join(key.labels, ","),
+			"size", size,
+			"max_key_size", uint64(c.cfg.LogMaxKeySize),
+		)
+		c.metrics.logMergeSkippedMergesTotal.WithLabelValues(tenant).Inc()
+		skipped = append(skipped, merge.Runs...)
+	}
+	return kept, skipped
 }
 
 // executeLogCompaction dispatches the tasks of plan and swaps its source index
@@ -380,14 +425,30 @@ func (c *coordinator) existsInToC(ctx context.Context, tenant string, window tim
 	return false, nil
 }
 
+// countSingleObjectRuns returns the number of runs that hold exactly one
+// object. A run holds one object when all its sections share one path,
+// because an object can have many sections.
+func countSingleObjectRuns(runs []v2.Run) int {
+	var count int
+	for _, run := range runs {
+		sections := run.Sections()
+		if len(sections) == 0 {
+			continue
+		}
+		path := sections[0].ObjectPath
+		if !slices.ContainsFunc(sections[1:], func(s *compactionv2pb.SectionRef) bool { return s.ObjectPath != path }) {
+			count++
+		}
+	}
+	return count
+}
+
 // indexFilterForUnmerged returns an IndexFilter task that keeps only the
 // unmerged runs from sourceIndex. Its ToC entry spans the unmerged runs.
-func indexFilterForUnmerged(sourceIndex indexEntry, unmerged []v2.Run) indexFilterTask {
-	runRefs := make([]*compactionv2pb.RunRef, len(unmerged))
+func indexFilterForUnmerged(sourceIndex indexEntry, unmerged []*compactionv2pb.RunRef) indexFilterTask {
 	var objectPaths []string
-	for i, run := range unmerged {
-		runRefs[i] = &compactionv2pb.RunRef{Sections: run.Sections()}
-		for _, section := range run.Sections() {
+	for _, run := range unmerged {
+		for _, section := range run.Sections {
 			objectPaths = append(objectPaths, section.ObjectPath)
 		}
 	}
@@ -396,7 +457,7 @@ func indexFilterForUnmerged(sourceIndex indexEntry, unmerged []v2.Run) indexFilt
 	return indexFilterTask{
 		sourceIndexPath: sourceIndex.Path,
 		objectPaths:     objectPaths,
-		entry:           runsToCEntry(runRefs),
+		entry:           runsToCEntry(unmerged),
 	}
 }
 
@@ -742,6 +803,10 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 // shows the whole phase. The last plan timestamp moves only when every index
 // planned without an error, so a partial total is visible as stale.
 //
+// The single-object log runs gauge also moves only when every index planned
+// without an error. A partial sum is lower than the true value, so it would
+// look like compaction is keeping up.
+//
 // The phase holds every plan in memory to avoid a second read of each index.
 // Its memory grows with the number of windows and indexes. A held plan stays
 // safe to execute because index objects are written once. A plan fails before
@@ -754,7 +819,7 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 // unless an index failed.
 func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phaseOutcome {
 	start := c.clock()
-	plans, anyError := c.planLogCompactions(ctx, tenant)
+	plans, singleObjectRuns, anyError := c.planLogCompactions(ctx, tenant)
 	if ctx.Err() != nil {
 		return phaseOutcomeInterrupted
 	}
@@ -763,6 +828,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 	pending, pendingBytes := startPendingLogBytes(c.metrics.pendingLogBytes, tenant, newLogAgeBuckets(c.cfg.WindowLookback), planTime, plans)
 	if !anyError {
 		c.metrics.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(planTime.UnixNano()) / 1e9)
+		c.metrics.singleObjectLogRuns.WithLabelValues(tenant).Set(float64(singleObjectRuns))
 	}
 
 	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "plans", len(plans), "pending_bytes", pendingBytes)
@@ -838,7 +904,10 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 // was done. The plans for the other indexes are still returned, so one bad
 // index does not block the rest. A corrupt index does not set anyError,
 // because no retry can fix it. corruptIndexesTotal records it instead.
-func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (plans []logCompactionPlan, anyError bool) {
+//
+// singleObjectRuns is the sum of the single-object log runs of every index
+// that planned, including indexes with no work.
+func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (plans []logCompactionPlan, singleObjectRuns int, anyError bool) {
 	for _, window := range c.windows() {
 		entries, ok := c.tenantEntries(ctx, tenant, window)
 		if !ok {
@@ -847,7 +916,7 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 		}
 		for _, entry := range entries {
 			if ctx.Err() != nil {
-				return plans, true
+				return plans, singleObjectRuns, true
 			}
 			plan, err := c.planLogCompaction(ctx, tenant, window, entry)
 			if errors.Is(err, errCorruptIndex) {
@@ -858,7 +927,7 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 				if ctx.Err() != nil {
 					level.Info(c.logger).Log("msg", "log-merge phase: planning stopped by shutdown",
 						"tenant", tenant, "window", window, "index", entry.Path, "err", err)
-					return plans, true
+					return plans, singleObjectRuns, true
 				}
 				level.Warn(c.logger).Log("msg", "log-merge phase: planning index failed",
 					"tenant", tenant, "window", window, "index", entry.Path, "err", err)
@@ -866,12 +935,13 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 				anyError = true
 				continue
 			}
+			singleObjectRuns += plan.singleObjectRuns
 			if plan.hasWork() {
 				plans = append(plans, plan)
 			}
 		}
 	}
-	return plans, anyError
+	return plans, singleObjectRuns, anyError
 }
 
 // runTenantLoop alternates IndexMerge and LogMerge for tenant until ctx is

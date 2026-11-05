@@ -176,23 +176,24 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	if err != nil {
 		return nil, err
 	}
-	query := dataobjread.QueryParams{
-		Start:      req.Start,
-		End:        req.End,
-		Matchers:   dataObjStreamMatchers(selector.Matchers()),
-		Shard:      dataobjread.NewQueryShard(assignment),
-		Projection: projection,
-	}
 
 	var filterer chunk.Filterer
 	if s.filterer != nil {
 		filterer = s.filterer.ForRequest(ctx)
 	}
 
-	// One capture spans the query. When the reader closes, it reads the query stats from the
-	// logs.RegionRead and metastore.Sections regions. It also folds every region into the
-	// per-component object-store metrics. The planner's object opens and streams reads record
-	// into a region of their own, so only the metrics see them.
+	query := dataobjread.QueryParams{
+		Start:      req.Start,
+		End:        req.End,
+		Matchers:   dataObjStreamMatchers(selector.Matchers(), filterer),
+		Shard:      dataobjread.NewQueryShard(assignment),
+		Projection: projection,
+	}
+
+	// One capture spans the query. When the reader closes, it adds the capture's figures to the query
+	// stats and to the per-component object-store metrics. The planner's object opens and streams
+	// reads record into a region of their own. The object counts and downloaded bytes in the query
+	// stats include that region, and so do the metrics.
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 
@@ -210,13 +211,30 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 
 // dataObjStreamMatchers drops the synthetic matchers the metastore does not understand, leaving
 // the tenant's stream-label selector.
-func dataObjStreamMatchers(matchers []*labels.Matcher) []*labels.Matcher {
+//
+// It also adds the pushable label matchers of the filterer, so the metastore leaves out streams the
+// filterer would drop. The planner still calls the filterer on each stream the metastore lists.
+func dataObjStreamMatchers(matchers []*labels.Matcher, filterer chunk.Filterer) []*labels.Matcher {
 	out := make([]*labels.Matcher, 0, len(matchers))
 	for _, matcher := range matchers {
 		if matcher.Name == model.MetricNameLabel || matcher.Name == astmapper.ShardLabel {
 			continue
 		}
 		out = append(out, matcher)
+	}
+
+	// It adds nothing to an empty selector. The metastore rejects a request without a matcher of its
+	// own, and the added matchers must not hide that.
+	if filterer != nil && len(out) > 0 {
+		for _, matcher := range filterer.PushableLabelMatchers() {
+			// Skip a matcher that matches the empty string. It prunes little, because it admits the
+			// streams that lack the label, and the metastore needs an extra scan to evaluate it. The
+			// metastore also reads =~".*" as a matcher that needs the label, so it drops those streams.
+			if matcher.Matches("") {
+				continue
+			}
+			out = append(out, matcher)
+		}
 	}
 	return out
 }

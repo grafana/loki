@@ -79,6 +79,11 @@ message Logline {
   // Nanosecond wall time during which at least one sub-request was held
   // waiting for the hint lookup. Overlapping waits count once.
   int64 hintWaitTime = 14 [(gogoproto.jsontag) = "hintWaitTime"];
+  // Sub-requests sent on without hint ranges. This covers the ingester window,
+  // time before the index min date, and lookup fallbacks (timeout, unsupported,
+  // or error). Together with skippedRequests and narrowedRequests it accounts
+  // for every sub-request the hint filter classified.
+  int64 passthroughRequests = 15 [(gogoproto.jsontag) = "passthroughRequests"];
 }
 
 message Caches {
@@ -316,6 +321,29 @@ message Dataobj {
   // Longest time one data-object read spent resolving sections, in nanoseconds. Results merge it
   // as a max across reads, not a sum.
   int64 sectionsResolutionMaxTime = 15 [(gogoproto.jsontag) = "sectionsResolutionMaxTime"];
+
+  // Number of compacted logs data objects the reads opened. The compactor wrote these objects.
+  int64 logsCompactedObjectsCount = 16 [(gogoproto.jsontag) = "logsCompactedObjectsCount,omitempty"];
+
+  // Number of uncompacted logs data objects the reads opened. A builder wrote these objects.
+  int64 logsUncompactedObjectsCount = 17 [(gogoproto.jsontag) = "logsUncompactedObjectsCount,omitempty"];
+
+  // Number of compacted index data objects the reads opened. The compactor wrote these objects. It
+  // does not count the table-of-contents objects.
+  int64 indexCompactedObjectsCount = 18 [(gogoproto.jsontag) = "indexCompactedObjectsCount,omitempty"];
+
+  // Number of uncompacted index data objects the reads opened. A builder wrote these objects.
+  int64 indexUncompactedObjectsCount = 19 [(gogoproto.jsontag) = "indexUncompactedObjectsCount,omitempty"];
+
+  // Bytes the reads downloaded from logs data objects. It counts every byte transferred from the
+  // object store, including metadata. It counts nothing for a request that the metadata cache
+  // answers.
+  int64 logsDownloadedBytes = 20 [(gogoproto.jsontag) = "logsDownloadedBytes,omitempty"];
+
+  // Bytes the reads downloaded from index data objects. It counts every byte transferred from the
+  // object store, including metadata. It counts nothing for a request that the metadata cache
+  // answers. It leaves out the table-of-contents objects.
+  int64 indexDownloadedBytes = 21 [(gogoproto.jsontag) = "indexDownloadedBytes,omitempty"];
 }
 
 message Chunk {

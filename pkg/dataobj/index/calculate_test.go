@@ -256,6 +256,15 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 	})
 
+	t.Run("builds an index object key that IsCompactedObjectPath rejects, because a builder wrote the object", func(t *testing.T) {
+		obj := calculateConcurrently(t, newMultiSectionSource(t))
+
+		key, err := ObjectKey(t.Context(), obj)
+		require.NoError(t, err)
+
+		require.False(t, dataobj.IsCompactedObjectPath(key))
+	})
+
 	t.Run("writes the stats rows of a multi-section object in ascending section order", func(t *testing.T) {
 		obj := calculateConcurrently(t, newMultiSectionSource(t))
 

@@ -27,8 +27,10 @@ const (
 	// output. A stream label always takes its name. The parsers also count a structured-metadata
 	// key as taking its name, for the labels they extract.
 	//
-	// A rename appends the suffix once, so one trim recovers the original name. A key that
-	// genuinely ends with it is indistinguishable, so a reader must consider both names.
+	// A rename appends the suffix once, but a renamed name can clash and be renamed again. A
+	// nested json key can also leave extra underscores before the suffix. A key can end with the
+	// suffix by itself. A reader cannot tell it from a renamed key. So read each name that
+	// trimming the suffix gives, then each name that trimming trailing underscores gives.
 	DuplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
@@ -261,7 +263,12 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 
 // Hints implements Stage.
 func (j *JSONParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true, CanModifyLine: false}
+	return StageHints{
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
@@ -376,7 +383,12 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (r *RegexpParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true, CanModifyLine: false}
+	return StageHints{
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
@@ -468,7 +480,12 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (l *LogfmtParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true, CanModifyLine: false}
+	return StageHints{
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
@@ -522,7 +539,12 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 
 // Hints implements Stage.
 func (l *PatternParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true, CanModifyLine: false}
+	return StageHints{
+		CanModifyLabels:      true,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
@@ -656,7 +678,15 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 // Hints implements Stage.
 func (l *LogfmtExpressionParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true, CanModifyLine: false}
+	return StageHints{
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+		ReadsLine:       true,
+		// It stops reading the line at an identifier that clashes with a stream label or a
+		// structured-metadata key. It stops only when the renamed key is not required or is already
+		// extracted. So a clash changes which later keys it extracts.
+		ReadsArbitraryLabels: true,
+	}
 }
 
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -768,7 +798,14 @@ func isValidJSONStart(data []byte) bool {
 
 // Hints implements Stage.
 func (j *JSONExpressionParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true, CanModifyLine: false}
+	return StageHints{
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+		ReadsLine:       true,
+		// It writes an empty label for an identifier that the line lacks, unless a label of that
+		// name exists. RequiredLabelNames does not list the identifiers.
+		ReadsArbitraryLabels: true,
+	}
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -797,7 +834,9 @@ func (u *UnpackParser) Hints() StageHints {
 		CanModifyLabels: true,
 		// It replaces the line with the _entry value when the line carries one. It leaves the line
 		// alone when the query needs no parsed label.
-		CanModifyLine: true,
+		CanModifyLine:        true,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
 	}
 }
 

@@ -67,8 +67,15 @@ func TestChunkFlushingIdle(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	testData := pushTestSamples(t, ing)
 
-	// wait beyond idle time so samples flush
-	time.Sleep(cfg.MaxChunkIdle * 2)
+	// wait until all idle chunks are flushed
+	require.Eventually(t, func() bool {
+		for userID, streams := range testData {
+			if len(store.getChunksForUser(userID)) < len(streams) {
+				return false
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
 	store.checkData(t, testData)
 }
 
@@ -236,7 +243,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki")
+		_, err := lockThenPush(pushCtx, s, e, rec, false, nil, "loki")
 		recordPool.PutRecord(rec)
 		if err != nil {
 			b.Fatal(err)

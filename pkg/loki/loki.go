@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -40,6 +41,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	dataobjbuilder "github.com/grafana/loki/v3/pkg/dataobj/builder"
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
@@ -375,6 +377,11 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
 	}
+	if c.DataObj.Enabled {
+		if err := c.DataObj.Metastore.Validate(c.DataObj.StorageLag); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj metastore config"))
+		}
+	}
 	// Only validated for the selected target. The builder's config has required
 	// fields with no sensible defaults, so validating it unconditionally would
 	// break every deployment that does not run logline.
@@ -496,6 +503,15 @@ type Loki struct {
 	dataObjCompactionWorker   *enginecompactor.Worker
 	scratchStore              scratch.Store
 
+	// The DataObjCache module sets the caches. They are nil when data objects are disabled or no metadata cache is
+	// configured. The DataObjMetastore module sets the bucket and the metastore. They are nil when data objects are
+	// disabled.
+	dataObjLogsCache  *metadatacache.Cache
+	dataObjIndexCache *metadatacache.Cache
+	dataObjTOCCache   *metadatacache.Cache
+	dataObjBucket     objstore.Bucket
+	dataObjMetastore  *metastore.ObjectMetastore
+
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
@@ -506,8 +522,6 @@ type Loki struct {
 	Metrics *server.Metrics
 
 	UsageTracker push.UsageTracker
-
-	metastoreMetrics *metastore.ObjectMetastoreMetrics
 
 	// lbacChunkFilterer is nil when label access is disabled.
 	lbacChunkFilterer chunk.RequestChunkFilterer
@@ -520,7 +534,6 @@ func New(cfg Config) (*Loki, error) {
 		ClientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 		Codec:               queryrange.DefaultCodec,
-		metastoreMetrics:    metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer),
 	}
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
@@ -816,6 +829,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IngestLimits, t.initIngestLimits)
 	mm.RegisterModule(IngestLimitsFrontend, t.initIngestLimitsFrontend)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
+	mm.RegisterModule(DataObjCache, t.initDataObjCache, modules.UserInvisibleModule)
+	mm.RegisterModule(DataObjMetastore, t.initDataObjMetastore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier, modules.UserInvisibleModule)
@@ -874,7 +889,9 @@ func (t *Loki) setupModuleManager() error {
 		IngestLimitsFrontendRing: {RuntimeConfig, Server, MemberlistKV},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		DataObjCache:             {},
+		DataObjMetastore:         {DataObjCache},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, DataObjCache, DataObjMetastore},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, LoglineQueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},

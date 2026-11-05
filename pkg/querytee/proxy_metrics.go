@@ -60,6 +60,22 @@ var execTimeBuckets = []statBucket{
 	{upperBound: math.Inf(1), label: "more_than_60s"},
 }
 
+// querierWallTimeBuckets are the buckets for the querier wall time of the primary backend, in
+// seconds. The query-frontend sums the time of all the queriers that ran the query. The sum is
+// longer than the execution time of the query, so the buckets reach higher than execTimeBuckets.
+var querierWallTimeBuckets = []statBucket{
+	{upperBound: 0.1, label: "less_than_100ms"},
+	{upperBound: 0.5, label: "100ms_to_500ms"},
+	{upperBound: 1, label: "500ms_to_1s"},
+	{upperBound: 5, label: "1s_to_5s"},
+	{upperBound: 10, label: "5s_to_10s"},
+	{upperBound: 30, label: "10s_to_30s"},
+	{upperBound: 60, label: "30s_to_60s"},
+	{upperBound: 300, label: "1m_to_5m"},
+	{upperBound: 1800, label: "5m_to_30m"},
+	{upperBound: math.Inf(1), label: "more_than_30m"},
+}
+
 // bucketLabel returns the label of the first bucket that holds value. The buckets must be in
 // ascending order of upper bound.
 func bucketLabel(buckets []statBucket, value float64) string {
@@ -162,6 +178,7 @@ func (m *ProxyMetrics) observeSecondaryBackendStats(route string, primary, secon
 	}{
 		{"bytes_processed", bytesProcessedBuckets, float64(primary.Summary.TotalBytesProcessed), float64(secondary.Summary.TotalBytesProcessed)},
 		{"exec_time", execTimeBuckets, primary.Summary.ExecTime, secondary.Summary.ExecTime},
+		{"querier_wall_time", querierWallTimeBuckets, primary.Querier.QuerierExecTime, secondary.Querier.QuerierExecTime},
 	} {
 		if stat.primary == 0 {
 			continue

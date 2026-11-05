@@ -21,7 +21,7 @@ import (
 )
 
 // DefaultTocBuilderConfig is the builder config for ToC objects. Its sizes are
-// smaller than those for logs objects, because a ToC holds only index pointers.
+// smaller than those for logs objects, because a ToC holds index pointers and a few watermark rows.
 var DefaultTocBuilderConfig = logsobj.BuilderBaseConfig{
 	TargetObjectSize:  32 * 1024 * 1024,
 	TargetPageSize:    4 * 1024 * 1024,

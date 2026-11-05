@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -858,6 +859,44 @@ func TestDoLogObjectMerge_ZeroOutputObjectsErrors(t *testing.T) {
 	require.Error(t, err, "zero output objects must error")
 }
 
+// liveHandlesStore wraps a scratch.Store and counts the handles that are put
+// but not yet removed. If onPut is set, Put calls it after each put.
+type liveHandlesStore struct {
+	scratch.Store
+	onPut func()
+
+	mu   sync.Mutex
+	live map[scratch.Handle]struct{}
+}
+
+func newLiveHandlesStore() *liveHandlesStore {
+	return &liveHandlesStore{Store: scratch.NewMemory(), live: make(map[scratch.Handle]struct{})}
+}
+
+func (s *liveHandlesStore) Put(p []byte) scratch.Handle {
+	h := s.Store.Put(p)
+	s.mu.Lock()
+	s.live[h] = struct{}{}
+	s.mu.Unlock()
+	if s.onPut != nil {
+		s.onPut()
+	}
+	return h
+}
+
+func (s *liveHandlesStore) Remove(h scratch.Handle) error {
+	s.mu.Lock()
+	delete(s.live, h)
+	s.mu.Unlock()
+	return s.Store.Remove(h)
+}
+
+func (s *liveHandlesStore) Live() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.live)
+}
+
 // removeFailingStore wraps a scratch.Store and fails every Remove, simulating a
 // scratch-cleanup failure surfaced through a flushed object's closer.
 type removeFailingStore struct {
@@ -1253,6 +1292,64 @@ func TestDoLogObjectMerge(t *testing.T) {
 		})
 
 		require.Equal(t, readLogObjectRecords(ctx, t, dataBucket, "objA", tenant), got)
+	})
+
+	// splitSources builds sources that a small-object context merges into
+	// several output objects, each with several sections.
+	splitSources := func(t *testing.T) (objstore.Bucket, []*compactionv2pb.RunRef) {
+		t.Helper()
+		dataBucket := objstore.NewInMemBucket()
+		day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		for i, path := range []string{"objA", "objB", "objC"} {
+			var streamSet []testStream
+			for _, app := range []string{"a", "b", "c", "d", "e"} {
+				streamSet = append(streamSet, testStream{labels: fmt.Sprintf(`{app=%q}`, app), entries: wideLinesAt(day.Add(time.Duration(i)*time.Hour), 8)})
+			}
+			buildSourceLogObject(t, dataBucket, path, sortSchema, map[string][]testStream{tenant: streamSet})
+		}
+		return dataBucket, sourceLogRuns(t, dataBucket, tenant, "objA", "objB", "objC")
+	}
+
+	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
+		dataBucket, runs := splitSources(t)
+		store := newLiveHandlesStore()
+		c := newSmallObjectExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		c.scratchStore = store
+
+		_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: runs})
+		require.NoError(t, err)
+		require.Zero(t, store.Live())
+	})
+
+	t.Run("releases its scratch space when it fails after the last record", func(t *testing.T) {
+		dataBucket, runs := splitSources(t)
+		store := newLiveHandlesStore()
+		c := newSmallObjectExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		c.scratchStore = store
+		// A one-byte section size makes the index builder put sections in
+		// scratch for the objects that the merge uploaded before it failed.
+		c.indexobjCfg.TargetSectionSize = 1
+
+		_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: runs, InputBytes: 1})
+		require.ErrorContains(t, err, "input bytes")
+		require.Zero(t, store.Live())
+	})
+
+	t.Run("releases its scratch space when its context is cancelled during the merge", func(t *testing.T) {
+		dataBucket, runs := splitSources(t)
+		cancelCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		store := newLiveHandlesStore()
+		store.onPut = cancel
+		c := newSmallObjectExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		c.scratchStore = store
+
+		_, err := c.doLogObjectMerge(cancelCtx, &physical.LogMerge{Tenant: tenant, Runs: runs})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, store.Live())
 	})
 }
 
