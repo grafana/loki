@@ -643,6 +643,8 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	// fill a size level and trigger a merge.
 	compactionCfg.LogMaxRunsPerTask = 2
 	compactionCfg.ToCConsolidateTimeout = 10 * time.Second
+	compactionCfg.TaskRetryMinBackoff = time.Millisecond
+	compactionCfg.TaskRetryMaxBackoff = time.Millisecond
 	require.NoError(t, compactionCfg.Validate())
 
 	w, err := worker.New(worker.Config{
@@ -664,19 +666,20 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	run := func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 		return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
 	}
+	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
 	return &coordinator{
 		cfg:             compactionCfg,
 		logger:          log.NewNopLogger(),
 		bucket:          bucket,
-		indexDispatcher: &planDispatcher{runPlan: run, limit: compactionCfg.MaxRunningCompactionTasks},
-		logDispatcher:   &planDispatcher{runPlan: run, limit: compactionCfg.LogMaxRunningCompactionTasks},
+		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			timeout: compactionCfg.ToCConsolidateTimeout,
 			dryRun:  compactionCfg.DryRun,
 		},
 		clock:   func() time.Time { return now },
-		metrics: newCoordinatorMetrics(prometheus.NewRegistry()),
+		metrics: metrics,
 
 		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, compactionCfg.LogMaxRunsPerTask),
 	}
@@ -688,9 +691,44 @@ func TestDeletionSweepDispatch(t *testing.T) {
 		defer cancel()
 		c := newIntegrationCoordinator(ctx, t, objstore.NewInMemBucket(), time.Now(), nil)
 
+		require.Positive(t, c.cfg.TaskMaxRetries)
+
 		_, err := c.logDispatcher.Run(ctx, "acme", []*physical.Plan{buildDeletionSweepPlan("acme")})
 		require.ErrorContains(t, err, "deletion-sweep job:")
 		require.ErrorContains(t, err, "DeletionSweep: not implemented")
+		require.ErrorContains(t, err, fmt.Sprintf("(attempts: %d)", c.cfg.TaskMaxRetries+1), "every retry must run on the worker")
+	})
+}
+
+func TestRunPlan(t *testing.T) {
+	t.Run("runs the same plan twice on the scheduler and worker with the same artifact", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+		window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": {
+			{path: "indexes/aa/src-0", start: window.Add(time.Hour), end: window.Add(5 * time.Hour)},
+			{path: "indexes/bb/src-1", start: window.Add(2 * time.Hour), end: window.Add(6 * time.Hour)},
+		}})
+		seedSourceIndexObject(ctx, t, bucket, "indexes/aa/src-0", window.Add(time.Hour), "acme")
+		seedSourceIndexObject(ctx, t, bucket, "indexes/bb/src-1", window.Add(2*time.Hour), "acme")
+		c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
+		entries := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
+		sections, err := indexSectionRefsFor(ctx, bucket, "acme", entries)
+		require.NoError(t, err)
+		specs := v2.Plan(v2.CalculateRuns(sections, compareIndexSortKey), "acme", c.cfg.MaxRunsPerTask)
+		require.Len(t, specs, 1)
+		plan := buildIndexMergePlan("acme", window, specs[0])
+		opts := workflow.Options{Tenant: "acme", Actor: []string{"compaction", "index-merge"}}
+
+		first, err := c.indexDispatcher.runPlan(ctx, opts, plan)
+		require.NoError(t, err)
+		second, err := c.indexDispatcher.runPlan(ctx, opts, plan)
+		require.NoError(t, err)
+
+		require.Equal(t, first, second)
+		_, err = bucket.Attributes(ctx, second.Path)
+		require.NoError(t, err)
 	})
 }
 
