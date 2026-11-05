@@ -2103,7 +2103,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver, constants.Loki)
+		_, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -2143,7 +2143,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
+			parsed, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
 				Labels: tc.origLabels,
 			}), streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
@@ -2151,9 +2151,9 @@ func TestParseStreamLabels(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedLabels.String(), lbsString)
-			require.Equal(t, tc.expectedLabels, lbs)
-			require.Equal(t, labels.StableHash(tc.expectedLabels), hash)
+			require.Equal(t, tc.expectedLabels.String(), parsed.labelsString)
+			require.Equal(t, tc.expectedLabels, parsed.lbs)
+			require.Equal(t, labels.StableHash(tc.expectedLabels), parsed.hash)
 		})
 	}
 }
