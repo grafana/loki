@@ -7,50 +7,17 @@ import (
 	"slices"
 	"strings"
 
-	s3_types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/grafana/dskit/flagext"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore/providers/s3"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/http"
+	"github.com/grafana/loki/v3/pkg/storage/common/aws"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-const (
-	// SSEKMS config type constant to configure S3 server side encryption using KMS
-	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html
-	SSEKMS = "SSE-KMS"
-
-	// SSES3 config type constant to configure S3 server side encryption with AES-256
-	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html
-	SSES3 = "SSE-S3"
-)
-
-var (
-	supportedSSETypes       = []string{SSEKMS, SSES3}
-	supportedStorageClasses = []s3_types.ObjectStorageClass{
-		s3_types.ObjectStorageClassStandard,
-		s3_types.ObjectStorageClassStandardIa,
-	}
-	supportedBucketLookupTypes = thanosS3BucketLookupTypesValues()
-)
-
-func supportedBucketLookupTypesToString(in []s3_types.ObjectStorageClass) []string {
-	var out []string
-	for _, o := range in {
-		out = append(out, string(o))
-	}
-	return out
-}
-
-var (
-	errUnsupportedSSEType      = errors.New("unsupported S3 SSE type")
-	errUnsupportedStorageClass = fmt.Errorf("unsupported S3 storage class (supported values: %s)", strings.Join(supportedBucketLookupTypesToString(supportedStorageClasses), ", "))
-	errInvalidSSEContext       = errors.New("invalid S3 SSE encryption context")
-	errInvalidEndpointPrefix   = errors.New("the endpoint must not prefixed with the bucket name")
-	errInvalidSTSEndpoint      = errors.New("sts-endpoint must be a valid url")
-)
+var supportedBucketLookupTypes = thanosS3BucketLookupTypesValues()
 
 var thanosS3BucketLookupTypes = map[string]s3.BucketLookupType{
 	s3.AutoLookup.String():        s3.AutoLookup,
@@ -106,7 +73,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.ListObjectsVersion, prefix+"s3.list-objects-version", "", "Use a specific version of the S3 list object API. Supported values are v1 or v2. Default is unset.")
-	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", "", "The S3 storage class to use, not set by default. Details can be found at https://aws.amazon.com/s3/storage-classes/. Supported values are: "+strings.Join(supportedBucketLookupTypesToString(supportedStorageClasses), ", "))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", "", "The S3 storage class to use, not set by default. Details can be found at https://aws.amazon.com/s3/storage-classes/. Supported values are: "+strings.Join(aws.ToStringSlice(aws.SupportedStorageClasses), ", "))
 	f.BoolVar(&cfg.NativeAWSAuthEnabled, prefix+"s3.native-aws-auth-enabled", false, "If enabled, it will use the default authentication methods of the AWS SDK for go based on known environment variables and known AWS config files.")
 	f.Uint64Var(&cfg.PartSize, prefix+"s3.part-size", 0, "The minimum file size in bytes used for multipart uploads. If 0, the value is optimally computed for each object.")
 	f.BoolVar(&cfg.SendContentMd5, prefix+"s3.send-content-md5", false, "If enabled, a Content-MD5 header is sent with S3 Put Object requests. Consumes more resources to compute the MD5, but may improve compatibility with object storage services that do not support checksums.")
@@ -124,14 +91,14 @@ func (cfg *Config) Validate() error {
 	if cfg.Endpoint != "" {
 		endpoint := strings.Split(cfg.Endpoint, ".")
 		if cfg.BucketName != "" && endpoint[0] != "" && endpoint[0] == cfg.BucketName {
-			return errInvalidEndpointPrefix
+			return aws.ErrInvalidEndpointPrefix
 		}
 	}
 	if cfg.STSEndpoint != "" && !util.IsValidURL(cfg.STSEndpoint) {
-		return errInvalidSTSEndpoint
+		return aws.ErrInvalidSTSEndpoint
 	}
-	if !slices.Contains(supportedBucketLookupTypesToString(supportedStorageClasses), cfg.StorageClass) && cfg.StorageClass != "" {
-		return errUnsupportedStorageClass
+	if !slices.Contains(aws.ToStringSlice(aws.SupportedStorageClasses), cfg.StorageClass) && cfg.StorageClass != "" {
+		return aws.ErrUnsupportedStorageClass
 	}
 
 	return cfg.SSE.Validate()
@@ -151,18 +118,18 @@ func (cfg *SSEConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *SSEConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Type, prefix+"type", "", fmt.Sprintf("Enable AWS Server Side Encryption. Supported values: %s.", strings.Join(supportedSSETypes, ", ")))
+	f.StringVar(&cfg.Type, prefix+"type", "", fmt.Sprintf("Enable AWS Server Side Encryption. Supported values: %s.", strings.Join(aws.SupportedSSETypes, ", ")))
 	f.StringVar(&cfg.KMSKeyID, prefix+"kms-key-id", "", "KMS Key ID used to encrypt objects in S3")
 	f.StringVar(&cfg.KMSEncryptionContext, prefix+"kms-encryption-context", "", "KMS Encryption Context used for object encryption. It expects JSON formatted string.")
 }
 
 func (cfg *SSEConfig) Validate() error {
-	if cfg.Type != "" && !util.StringsContain(supportedSSETypes, cfg.Type) {
-		return errUnsupportedSSEType
+	if cfg.Type != "" && !util.StringsContain(aws.SupportedSSETypes, cfg.Type) {
+		return aws.ErrUnsupportedSSEType
 	}
 
 	if _, err := parseKMSEncryptionContext(cfg.KMSEncryptionContext); err != nil {
-		return errInvalidSSEContext
+		return aws.ErrInvalidSSEContext
 	}
 
 	return nil
@@ -173,7 +140,7 @@ func (cfg *SSEConfig) BuildThanosConfig() (s3.SSEConfig, error) {
 	switch cfg.Type {
 	case "":
 		return s3.SSEConfig{}, nil
-	case SSEKMS:
+	case s3.SSEKMS:
 		encryptionCtx, err := parseKMSEncryptionContext(cfg.KMSEncryptionContext)
 		if err != nil {
 			return s3.SSEConfig{}, err
@@ -184,12 +151,12 @@ func (cfg *SSEConfig) BuildThanosConfig() (s3.SSEConfig, error) {
 			KMSKeyID:             cfg.KMSKeyID,
 			KMSEncryptionContext: encryptionCtx,
 		}, nil
-	case SSES3:
+	case s3.SSES3:
 		return s3.SSEConfig{
 			Type: s3.SSES3,
 		}, nil
 	default:
-		return s3.SSEConfig{}, errUnsupportedSSEType
+		return s3.SSEConfig{}, aws.ErrUnsupportedSSEType
 	}
 }
 
@@ -198,7 +165,7 @@ func (cfg *SSEConfig) BuildMinioConfig() (encrypt.ServerSide, error) {
 	switch cfg.Type {
 	case "":
 		return nil, nil
-	case SSEKMS:
+	case s3.SSEKMS:
 		encryptionCtx, err := parseKMSEncryptionContext(cfg.KMSEncryptionContext)
 		if err != nil {
 			return nil, err
@@ -209,10 +176,10 @@ func (cfg *SSEConfig) BuildMinioConfig() (encrypt.ServerSide, error) {
 			return encrypt.NewSSEKMS(cfg.KMSKeyID, nil)
 		}
 		return encrypt.NewSSEKMS(cfg.KMSKeyID, encryptionCtx)
-	case SSES3:
+	case s3.SSES3:
 		return encrypt.NewSSE(), nil
 	default:
-		return nil, errUnsupportedSSEType
+		return nil, aws.ErrUnsupportedSSEType
 	}
 }
 

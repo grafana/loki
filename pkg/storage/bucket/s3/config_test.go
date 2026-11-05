@@ -15,7 +15,10 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore/providers/s3"
 	"go.yaml.in/yaml/v3"
+
+	aws "github.com/grafana/loki/v3/pkg/storage/common/aws"
 )
 
 func TestSSEConfig_Validate(t *testing.T) {
@@ -37,21 +40,21 @@ func TestSSEConfig_Validate(t *testing.T) {
 					Type: "unknown",
 				}
 			},
-			expected: errUnsupportedSSEType,
+			expected: aws.ErrUnsupportedSSEType,
 		},
 		"should fail on invalid SSE KMS encryption context": {
 			setup: func() *SSEConfig {
 				return &SSEConfig{
-					Type:                 SSEKMS,
+					Type:                 s3.SSEKMS,
 					KMSEncryptionContext: "!{}!",
 				}
 			},
-			expected: errInvalidSSEContext,
+			expected: aws.ErrInvalidSSEContext,
 		},
 		"should pass on valid SSE KMS encryption context": {
 			setup: func() *SSEConfig {
 				return &SSEConfig{
-					Type:                 SSEKMS,
+					Type:                 s3.SSEKMS,
 					KMSEncryptionContext: `{"department": "10103.0"}`,
 				}
 			},
@@ -89,7 +92,7 @@ func TestConfig_Validate(t *testing.T) {
 					StorageClass: "foo",
 				}
 			},
-			expected: errUnsupportedStorageClass,
+			expected: aws.ErrUnsupportedStorageClass,
 		},
 		"should fail on invalid endpoint prefix": {
 			setup: func() *Config {
@@ -99,7 +102,7 @@ func TestConfig_Validate(t *testing.T) {
 					StorageClass: string(s3_types.ObjectStorageClassStandard),
 				}
 			},
-			expected: errInvalidEndpointPrefix,
+			expected: aws.ErrInvalidEndpointPrefix,
 		},
 		"should pass if native_aws_auth_enabled is set": {
 			setup: func() *Config {
@@ -133,7 +136,7 @@ func TestConfig_Validate(t *testing.T) {
 				}
 				return cfg
 			},
-			expected: errInvalidSTSEndpoint,
+			expected: aws.ErrInvalidSTSEndpoint,
 		},
 	}
 
@@ -153,7 +156,7 @@ func TestSSEConfig_BuildMinioConfig(t *testing.T) {
 	}{
 		"SSE KMS without encryption context": {
 			cfg: &SSEConfig{
-				Type:     SSEKMS,
+				Type:     s3.SSEKMS,
 				KMSKeyID: "test-key",
 			},
 			expectedType:    "aws:kms",
@@ -162,7 +165,7 @@ func TestSSEConfig_BuildMinioConfig(t *testing.T) {
 		},
 		"SSE KMS with encryption context": {
 			cfg: &SSEConfig{
-				Type:                 SSEKMS,
+				Type:                 s3.SSEKMS,
 				KMSKeyID:             "test-key",
 				KMSEncryptionContext: "{\"department\":\"10103.0\"}",
 			},

@@ -5975,9 +5975,8 @@ http_config:
 # CLI flag: -<prefix>.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
-# The S3 storage class which objects will use. Supported values are: GLACIER,
-# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
-# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# The S3 storage class which objects will use. Supported values are: STANDARD,
+# STANDARD_IA.
 # CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
