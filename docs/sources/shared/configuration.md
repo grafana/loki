@@ -973,6 +973,12 @@ kafka_config:
   # CLI flag: -kafka.tracing-enabled
   [tracing_enabled: <boolean> | default = false]
 
+  # The highest ApiVersions request version the Kafka client sends. The default
+  # keeps franz-go >= 1.22 compatible with backends that close the connection on
+  # ApiVersions v5 (WarpStream). 0 to use the franz-go default.
+  # CLI flag: -kafka.api-versions-max-version
+  [api_versions_max_version: <int> | default = 4]
+
 dataobj:
   builder:
     logsobj_builder:
