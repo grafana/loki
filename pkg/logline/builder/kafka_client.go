@@ -10,6 +10,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
 // createKafkaClient builds the consumer-group Kafka client.
@@ -71,6 +73,8 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 		kgo.OnPartitionsRevoked(s.onPartitionsLostOrRevoked),
 		kgo.OnPartitionsLost(s.onPartitionsLostOrRevoked),
 	}
+
+	opts = append(opts, kafka.APIVersionsMaxVersionOpts(s.cfg.Kafka.APIVersionsMaxVersion)...)
 
 	balancer := newCooperativeActiveStickyBalancer(s.partitionRing, log.With(s.logger, "component", "active-sticky-balancer"))
 	opts = append(opts, kgo.Balancers(balancer))

@@ -755,14 +755,9 @@ func buildLabelBloomSection(t testing.TB, labelsIn []labelPosting, bloomsIn []bl
 	for _, lp := range labelsIn {
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-			StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
+			StreamID: lp.streamID, UncompressedSize: 0, ShardBucket: lp.shardBucket,
+			Time: postings.At(time.Unix(0, lp.minTs).UTC()).Extend(time.Unix(0, lp.maxTs).UTC()),
 		})
-		if lp.maxTs > lp.minTs {
-			b.ObserveLabelPosting(postings.LabelObservation{
-				ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.maxTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
-			})
-		}
 	}
 	for _, bp := range bloomsIn {
 		b.PrepareBloomColumn(bp.obj, bp.section, bp.columnName, 1000, 0)
@@ -814,7 +809,7 @@ func buildSplitPostingsSections(t testing.TB, perSection ...[]labelPosting) ([]*
 		for _, lp := range lps {
 			b.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
+				StreamID: lp.streamID, Time: postings.At(time.Unix(0, lp.minTs).UTC()), UncompressedSize: 0, ShardBucket: lp.shardBucket,
 			})
 		}
 		builders = append(builders, b)

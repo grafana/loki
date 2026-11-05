@@ -29,23 +29,27 @@ type directExecutionStack struct {
 	dataObjQueryStart time.Time
 }
 
-// newDirectTimestampFirstStack returns the direct stack in timestamp-first order.
-func newDirectTimestampFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directTimestampFirstStackName, limits: execLimits{}, newQuerier: newChunkQuerier}
+// newDirectTimestampFirstStack returns the direct stack in timestamp-first order, changed by opts.
+func newDirectTimestampFirstStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{maxQuerySeries: o.maxQuerySeries}, newQuerier: newChunkQuerier}
 }
 
-// newDirectStreamFirstStack returns the direct stack with stream-first execution enabled.
-func newDirectStreamFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directStreamFirstStackName, limits: execLimits{streamFirstExecutionEnabled: true}, newQuerier: newChunkQuerier}
+// newDirectStreamFirstStack returns the direct stack with stream-first execution enabled, changed
+// by opts.
+func newDirectStreamFirstStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newQuerier: newChunkQuerier}
 }
 
-// newDirectDataObjStack returns the direct stack with stream-first execution enabled. The stack
-// reads all the data of stream-first queries from data objects.
-func newDirectDataObjStack(t *testing.T) *directExecutionStack {
+// newDirectDataObjStack returns the direct stack with stream-first execution enabled, changed by
+// opts. The stack reads all the data of stream-first queries from data objects.
+func newDirectDataObjStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
 	return &directExecutionStack{
 		t:                 t,
-		stackName:         directDataObjStackName,
-		limits:            execLimits{streamFirstExecutionEnabled: true},
+		stackName:         stackName,
+		limits:            execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries},
 		newQuerier:        newDataObjQuerierFunc(epoch),
 		dataObjQueryStart: epoch,
 	}

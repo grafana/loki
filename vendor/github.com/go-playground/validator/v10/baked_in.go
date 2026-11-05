@@ -175,6 +175,7 @@ var (
 		"uuid3":                         isUUID3,
 		"uuid4":                         isUUID4,
 		"uuid5":                         isUUID5,
+		"uuid7":                         isUUID7,
 		"uuid_rfc4122":                  isUUIDRFC4122,
 		"uuid3_rfc4122":                 isUUID3RFC4122,
 		"uuid4_rfc4122":                 isUUID4RFC4122,
@@ -217,6 +218,7 @@ var (
 		"mac":                           isMAC,
 		"hostname":                      isHostnameRFC952,  // RFC 952
 		"hostname_rfc1123":              isHostnameRFC1123, // RFC 1123
+		"hostname_label":                isHostnameLabel,
 		"fqdn":                          isFQDN,
 		"unique":                        isUnique,
 		"oneof":                         isOneOf,
@@ -261,6 +263,7 @@ var (
 		"cron":                          isCron,
 		"spicedb":                       isSpiceDB,
 		"ein":                           isEIN,
+		"duration":                      isDuration,
 		"validateFn":                    isValidateFn,
 	}
 )
@@ -644,6 +647,11 @@ func isASCII(fl FieldLevel) bool {
 // isUUID5 is the validation function for validating if the field's value is a valid v5 UUID.
 func isUUID5(fl FieldLevel) bool {
 	return fieldMatchesRegexByStringerValOrString(uUID5Regex, fl)
+}
+
+// isUUID7 is the validation function for validating if the field's value is a valid v7 UUID.
+func isUUID7(fl FieldLevel) bool {
+	return fieldMatchesRegexByStringerValOrString(uUID7Regex, fl)
 }
 
 // isUUID4 is the validation function for validating if the field's value is a valid v4 UUID.
@@ -1070,8 +1078,8 @@ func isNeField(fl FieldLevel) bool {
 		fieldType := field.Type()
 
 		if fieldType.ConvertibleTo(timeType) && currentField.Type().ConvertibleTo(timeType) {
-			t := getValue(currentField).(time.Time)
-			fieldTime := getValue(field).(time.Time)
+			t := getValue(currentField.Convert(timeType)).(time.Time)
+			fieldTime := getValue(field.Convert(timeType)).(time.Time)
 
 			return !fieldTime.Equal(t)
 		}
@@ -2253,8 +2261,11 @@ func requiredWithAll(fl FieldLevel) bool {
 // excludedWithout is the validation function
 // The field under validation must not be present or is empty when any of the other specified fields are not present.
 func excludedWithout(fl FieldLevel) bool {
-	if requireCheckFieldKind(fl, strings.TrimSpace(fl.Param()), true) {
-		return !hasValue(fl)
+	params := parseOneOfParam2(fl.Param())
+	for _, param := range params {
+		if requireCheckFieldKind(fl, param, true) {
+			return !hasValue(fl)
+		}
 	}
 	return true
 }
@@ -2914,6 +2925,35 @@ func isHostnameRFC1123(fl FieldLevel) bool {
 	return hostnameRegexRFC1123().MatchString(fl.Field().String())
 }
 
+func isHostnameLabel(fl FieldLevel) bool {
+	v := fl.Field().String()
+	n := len(v)
+
+	// A valid hostname label must be between 1 and 63 characters long.
+	if n <= 0 || n > 63 {
+		return false
+	}
+
+	for i := range n {
+		c := v[i]
+
+		// 1. Allow alphanumeric characters anywhere
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			continue
+		}
+
+		// 2. Allow hyphens only in the middle (not at the start or end)
+		if c == '-' && i > 0 && i < n-1 {
+			continue
+		}
+
+		// 3. Any other character, or a hyphen at the boundaries, is invalid
+		return false
+	}
+
+	return true
+}
+
 func isFQDN(fl FieldLevel) bool {
 	val := fl.Field().String()
 
@@ -3358,7 +3398,13 @@ func isBCP47StrictLanguageTag(fl FieldLevel) bool {
 	//  variant       = 5*8alphanum         ; registered variants
 	//                  / (DIGIT 3alphanum)
 	if variant != "" {
+		seen := make(map[string]struct{})
 		for v := range strings.SplitSeq(variant, "-") {
+			if _, duplicate := seen[v]; duplicate {
+				return false
+			}
+			seen[v] = struct{}{}
+
 			_, err := language.ParseVariant(v)
 			if err != nil {
 				return false
@@ -3533,6 +3579,17 @@ func isEIN(fl FieldLevel) bool {
 	}
 
 	return einRegex().MatchString(field.String())
+}
+
+func isDuration(fl FieldLevel) bool {
+	field := fl.Field()
+
+	if field.Kind() != reflect.String {
+		return false
+	}
+
+	_, err := time.ParseDuration(field.String())
+	return err == nil
 }
 
 var (

@@ -3,7 +3,6 @@ package logqltest
 import (
 	"context"
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -87,6 +86,38 @@ func isQueryShardingSupported(query string) bool {
 	return shardable
 }
 
+// stackOptions change an execution stack from its defaults. The zero value changes nothing.
+type stackOptions struct {
+	// maxQuerySeries, when positive, is the series limit of every query the stack runs, in the
+	// querier and in the query-frontend.
+	maxQuerySeries int
+
+	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
+	queryShardingEnabled bool
+}
+
+// stackOption changes one aspect of an execution stack from its default.
+type stackOption func(*stackOptions)
+
+// withMaxQuerySeries returns the stackOption that sets the series limit of the stack.
+func withMaxQuerySeries(maxQuerySeries int) stackOption {
+	return func(o *stackOptions) { o.maxQuerySeries = maxQuerySeries }
+}
+
+// withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
+func withQuerySharding() stackOption {
+	return func(o *stackOptions) { o.queryShardingEnabled = true }
+}
+
+// newStackOptions returns the stackOptions that opts build on top of the defaults.
+func newStackOptions(opts ...stackOption) stackOptions {
+	var o stackOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
+}
+
 // newScriptQuerierFunc builds the querier of an execution stack over stores.
 type newScriptQuerierFunc func(t *testing.T, stores *scriptStores) logql.Querier
 
@@ -105,12 +136,19 @@ func newDataObjQuerierFunc(dataObjQueryStart time.Time) newScriptQuerierFunc {
 }
 
 // execLimits are the limits an execution stack runs queries with. They apply to every tenant. The
-// series limit and the query timeout are high enough that no script reaches them.
+// query timeout is high enough that no script reaches it. The series limit is the default limit of
+// a tenant, unless maxQuerySeries sets another.
 type execLimits struct {
 	streamFirstExecutionEnabled bool
+	maxQuerySeries              int
 }
 
-func (execLimits) MaxQuerySeries(string) int { return math.MaxInt32 }
+func (l execLimits) MaxQuerySeries(string) int {
+	if l.maxQuerySeries > 0 {
+		return l.maxQuerySeries
+	}
+	return defaultMaxQuerySeries()
+}
 
 func (execLimits) MaxQueryRange(context.Context, string) time.Duration { return 0 }
 

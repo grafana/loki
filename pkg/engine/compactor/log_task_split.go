@@ -54,6 +54,28 @@ func (s sectionKeySizes) bytesIn(runs []*compactionv2pb.RunRef, keyRange v2.KeyR
 	return s.sum(runs, func(key logSortPrefix) bool { return keyRange.Contains(key) })
 }
 
+// largestKey returns the sort prefix with the most bytes in the sections of
+// runs, summed over all sections, and its size. It returns a size of 0 if
+// runs hold no section.
+func (s sectionKeySizes) largestKey(runs []*compactionv2pb.RunRef) (logSortPrefix, uint64) {
+	totals := make(map[streams.SortPrefix]uint64)
+	var (
+		largest     logSortPrefix
+		largestSize uint64
+	)
+	for _, run := range runs {
+		for _, ref := range run.Sections {
+			for _, key := range s.of(ref) {
+				totals[key.Key.prefix] += key.UncompressedSize
+				if size := totals[key.Key.prefix]; size > largestSize {
+					largest, largestSize = key.Key, size
+				}
+			}
+		}
+	}
+	return largest, largestSize
+}
+
 // sum adds up the sizes of the kept sort prefixes in the sections of runs.
 func (s sectionKeySizes) sum(runs []*compactionv2pb.RunRef, keep func(logSortPrefix) bool) int64 {
 	var total uint64

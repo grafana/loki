@@ -317,6 +317,12 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
 	s.Dataobj.SectionsResolutionMaxTime = max(s.Dataobj.SectionsResolutionMaxTime, m.Dataobj.SectionsResolutionMaxTime)
+	s.Dataobj.LogsCompactedObjectsCount += m.Dataobj.LogsCompactedObjectsCount
+	s.Dataobj.LogsUncompactedObjectsCount += m.Dataobj.LogsUncompactedObjectsCount
+	s.Dataobj.IndexCompactedObjectsCount += m.Dataobj.IndexCompactedObjectsCount
+	s.Dataobj.IndexUncompactedObjectsCount += m.Dataobj.IndexUncompactedObjectsCount
+	s.Dataobj.LogsDownloadedBytes += m.Dataobj.LogsDownloadedBytes
+	s.Dataobj.IndexDownloadedBytes += m.Dataobj.IndexDownloadedBytes
 	s.ChunkFetchFailures += m.ChunkFetchFailures
 	s.TotalChunksScanned += m.TotalChunksScanned
 	if m.QueryReferencedStructured {
@@ -383,6 +389,7 @@ func (i Index) ChunkFilterRatio() (float64, bool) {
 func (l *Logline) Merge(m Logline) {
 	l.SkippedRequests += m.SkippedRequests
 	l.NarrowedRequests += m.NarrowedRequests
+	l.PassthroughRequests += m.PassthroughRequests
 
 	keepFirst(&l.Outcome, m.Outcome)
 	keepFirst(&l.HintStatus, m.HintStatus)
@@ -740,6 +747,40 @@ func (c *Context) RecordDataobjSectionsResolutionTime(d time.Duration) {
 			return
 		}
 	}
+}
+
+// AddDataobjLogsCompactedObjectsCount adds i to the number of compacted logs data objects the query
+// opened.
+func (c *Context) AddDataobjLogsCompactedObjectsCount(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.LogsCompactedObjectsCount, i)
+}
+
+// AddDataobjLogsUncompactedObjectsCount adds i to the number of uncompacted logs data objects the
+// query opened.
+func (c *Context) AddDataobjLogsUncompactedObjectsCount(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.LogsUncompactedObjectsCount, i)
+}
+
+// AddDataobjIndexCompactedObjectsCount adds i to the number of compacted index data objects the query
+// opened.
+func (c *Context) AddDataobjIndexCompactedObjectsCount(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.IndexCompactedObjectsCount, i)
+}
+
+// AddDataobjIndexUncompactedObjectsCount adds i to the number of uncompacted index data objects the
+// query opened.
+func (c *Context) AddDataobjIndexUncompactedObjectsCount(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.IndexUncompactedObjectsCount, i)
+}
+
+// AddDataobjLogsDownloadedBytes adds i to the bytes the query downloaded from logs data objects.
+func (c *Context) AddDataobjLogsDownloadedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.LogsDownloadedBytes, i)
+}
+
+// AddDataobjIndexDownloadedBytes adds i to the bytes the query downloaded from index data objects.
+func (c *Context) AddDataobjIndexDownloadedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.IndexDownloadedBytes, i)
 }
 
 func (c *Context) AddPrePredicateDecompressedRows(i int64) {

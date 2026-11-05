@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 )
 
 func TestWriteEntry(t *testing.T) {
@@ -1216,4 +1217,48 @@ func filterRows(rows []tocRow, tenants ...string) []tocRow {
 		}
 	}
 	return out
+}
+
+func TestForEachTocPointer(t *testing.T) {
+	t.Run("reads the same pointers when the ToC has a watermarks section", func(t *testing.T) {
+		pointers := []indexpointers.IndexPointer{
+			{Path: "index/path-0", StartTs: time.Unix(10, 0).UTC(), EndTs: time.Unix(20, 0).UTC()},
+			{Path: "index/path-1", StartTs: time.Unix(30, 0).UTC(), EndTs: time.Unix(40, 0).UTC()},
+		}
+
+		builder, err := indexobj.NewBuilder("tenant", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		require.NoError(t, builder.AppendWatermark("topic", 3, 99))
+		for _, p := range pointers {
+			require.NoError(t, builder.AppendIndexPointer(p))
+		}
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+		require.Equal(t, 1, obj.Sections().Count(watermarks.CheckSection))
+
+		var got []indexpointers.IndexPointer
+		require.NoError(t, forEachTocPointer(t.Context(), obj, func(p indexpointers.IndexPointer) error {
+			p.StartTs, p.EndTs = p.StartTs.UTC(), p.EndTs.UTC()
+			got = append(got, p)
+			return nil
+		}))
+		require.Equal(t, pointers, got)
+	})
+
+	t.Run("reads no pointers when the ToC has only a watermarks section", func(t *testing.T) {
+		builder, err := indexobj.NewBuilder("tenant", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		require.NoError(t, builder.AppendWatermark("topic", 3, 99))
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		require.NoError(t, forEachTocPointer(t.Context(), obj, func(indexpointers.IndexPointer) error {
+			t.Fatal("unexpected pointer")
+			return nil
+		}))
+	})
 }

@@ -194,7 +194,7 @@ type processedLogsSection struct {
 // The provided section index counts only logs sections, matching the indexes yielded by Filter, not positions in reader.Sections().
 // The caller must pass the result to flushLogsSection, which runs the Flush of each step.
 func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, layout streams.Layout, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) (*processedLogsSection, error) {
-	logsBuf := make([]logs.Record, 8192)
+	logsBuf := make([]logs.Record, 1024)
 
 	logsSection, err := logs.Open(ctx, section)
 	if err != nil {

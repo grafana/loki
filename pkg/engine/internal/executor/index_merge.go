@@ -57,6 +57,7 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
+	defer builder.Reset()
 
 	// Merge postings sections
 	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {

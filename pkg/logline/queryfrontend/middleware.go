@@ -269,12 +269,17 @@ func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult
 	l.Outcome = loglineOutcome(l, result.stats.Snapshot().PrefetchTimeouts > 0)
 }
 
-// lokiResponseStats returns the statistics of a log or metric response.
+// lokiResponseStats returns the statistics of a log, metric, quantile sketch,
+// or count-min sketch response.
 func lokiResponseStats(resp queryrangebase.Response) *logqlstats.Result {
 	switch r := resp.(type) {
 	case *queryrange.LokiResponse:
 		return &r.Statistics
 	case *queryrange.LokiPromResponse:
+		return &r.Statistics
+	case *queryrange.QuantileSketchResponse:
+		return &r.Statistics
+	case *queryrange.CountMinSketchResponse:
 		return &r.Statistics
 	default:
 		return nil
@@ -499,6 +504,33 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	return totalBytes, nil
 }
 
+// firstStepWindowEnd returns the end of the oldest step's lookback, given the
+// start of the read window.
+// A supported metric query has one log selector, so it has one matcher group.
+// A log selector has a zero interval, so its first window ends at readStart.
+func firstStepWindowEnd(expr syntax.Expr, readStart time.Time) time.Time {
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		return readStart.Add(groups[0].Interval)
+	}
+	return readStart
+}
+
+// dryRunScoresNoStep reports whether the first step's window ends after the
+// ingester cutoff. Every later window does too, so the dry-run report would
+// skip them all.
+func dryRunScoresNoStep(cutoff, firstWindowEnd time.Time) bool {
+	return !cutoff.IsZero() && cutoff.Before(firstWindowEnd)
+}
+
+// ingesterWindowStart returns the oldest time queriers read from ingesters, or
+// the zero time when QueryIngestersWithin is unset.
+func (h *loglinePrefetchHandler) ingesterWindowStart(now time.Time) time.Time {
+	if h.queryIngestersWithin <= 0 {
+		return time.Time{}
+	}
+	return now.Add(-h.queryIngestersWithin).UTC()
+}
+
 // dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
 // The hint may not be the line that produced the sample. TotalEntries counts the positive
 // steps whose lookback ended at or before the ingester cutoff. A miss records that whole lookback.
@@ -680,27 +712,17 @@ func (h *loglinePrefetchHandler) doDryRun(
 	direction logproto.Direction,
 	expr syntax.Expr,
 	qb querybounds.QueryBounds,
+	firstWindowEnd, cutoff time.Time,
 	queryBytes uint64,
 ) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, h.logger)
-
-	readStart, readEnd := qb.ReadStart, qb.ReadEnd
-	firstWindowEnd := readStart
-	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-		// End of the oldest lookback. A log selector has a zero interval, so this stays at readStart.
-		firstWindowEnd = readStart.Add(groups[0].Interval)
+	if dryRunScoresNoStep(cutoff, firstWindowEnd) {
+		return h.next.Do(ctx, req)
 	}
+	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 	eligibleEnd := readEnd
-	if h.queryIngestersWithin > 0 {
-		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
-		// If the oldest window ends after the ingester cutoff, every later step does too.
-		// The correctness report would skip them all, so skip the hint lookup.
-		if cutoff.Before(firstWindowEnd) {
-			return h.next.Do(ctx, req)
-		}
-		if cutoff.Before(readEnd) {
-			eligibleEnd = cutoff
-		}
+	if !cutoff.IsZero() && cutoff.Before(readEnd) {
+		eligibleEnd = cutoff
 	}
 
 	if !h.dryRunInflight.CompareAndSwap(0, 1) {
@@ -962,8 +984,17 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// Shared eligibility: stats-based byte threshold.
 	readStart := qb.ReadStart
 	readEnd := qb.ReadEnd
+	firstWindowEnd := firstStepWindowEnd(expr, readStart)
+	cutoff := h.ingesterWindowStart(time.Now())
+	// A lookup that would read only the ingester window never runs, so the
+	// size estimate would be an index-stats call for nothing. Neither does a
+	// dry-run lookup whose report would score no step.
+	recentOnly := !cutoff.IsZero() && !cutoff.After(readStart)
+	if mode == ModeDryRun {
+		recentOnly = dryRunScoresNoStep(cutoff, firstWindowEnd)
+	}
 	queryBytes := uint64(0)
-	if minQueryBytes > 0 {
+	if minQueryBytes > 0 && !recentOnly {
 		queryBytes, err = h.getQueryBytes(ctx, expr, readStart, readEnd)
 		if err != nil {
 			level.Warn(logger).Log(
@@ -995,12 +1026,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	if mode == ModeDryRun {
-		return h.doDryRun(ctx, req, direction, expr, qb, queryBytes)
+		return h.doDryRun(ctx, req, direction, expr, qb, firstWindowEnd, cutoff, queryBytes)
 	}
 
 	ingesterCutoff := readEnd
-	if h.queryIngestersWithin > 0 {
-		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
+	if !cutoff.IsZero() {
 		if cutoff.After(readStart) && cutoff.Before(readEnd) {
 			ingesterCutoff = cutoff
 		} else if !cutoff.After(readStart) {
@@ -1181,7 +1211,15 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 
 	// A metric split reads before its start. Overlap and clipping use that window
 	// so a lookback match is not treated as a miss. Log queries widen by zero.
-	expr, _ := syntax.ParseExpr(req.GetQuery())
+	// Shard requests store internal operations in Query. Those strings do not
+	// parse, so the plan is read first. A request that cannot be read at all
+	// passes through, because a nil expression would be treated as a log query.
+	expr, err := requestExpr(req)
+	if err != nil {
+		h.metrics.passthroughSubRequests.WithLabelValues("unparseable_query").Inc()
+		level.Warn(logger).Log("msg", "cannot read the request expression, passing through", "err", err, "query", req.GetQuery())
+		return h.passthrough(ctx, req)
+	}
 	readStart, readEnd := intervalStart, intervalEnd
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
 		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
@@ -1191,11 +1229,18 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// without waiting for it.
 	if readEnd.After(result.ingesterCutoff) {
 		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 	if !readEnd.After(result.minDate) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
+	}
+
+	// Metric overlap uses the exclusive end of rangeVectorReadWindow and
+	// selectSampleParamsFor. Log splits and the cutoff checks above stay on readEnd.
+	overlapEnd := readEnd
+	if _, isMetric := expr.(syntax.SampleExpr); isMetric {
+		overlapEnd = readEnd.Add(time.Nanosecond)
 	}
 
 	timedOut, err := result.waitForLookup(ctx, h.hintTimeout)
@@ -1206,7 +1251,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	if timedOut {
 		h.metrics.hintPassthrough.WithLabelValues("timeout").Inc()
 		level.Warn(logger).Log("msg", "hint prefetch timeout, falling back to passthrough", "timeout", h.hintTimeout)
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 
 	if result.err != nil {
@@ -1216,26 +1261,24 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 			h.metrics.hintPassthrough.WithLabelValues("error").Inc()
 			level.Warn(logger).Log("msg", "hint provider error, passing through", "err", result.err)
 		}
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 
-	overlapping := rangesOverlapping(result.ranges, readStart, readEnd)
+	overlapping := rangesOverlapping(result.ranges, readStart, overlapEnd)
 	if len(overlapping) == 0 {
-		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedResponse(req, expr), nil
+		return h.skip(ctx, req, expr)
 	}
 
-	hints := clipHintRangesForInterval(overlapping, readStart, readEnd)
+	hints := clipHintRangesForInterval(overlapping, readStart, overlapEnd)
 	if len(hints) == 0 {
-		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedResponse(req, expr), nil
+		return h.skip(ctx, req, expr)
 	}
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
 	// the querier scans the interval normally.
-	if passthroughCoversInterval(overlapping, hints, readStart, readEnd) {
+	if passthroughCoversInterval(overlapping, hints, readStart, overlapEnd) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req)
 	}
 
 	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
@@ -1243,14 +1286,87 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// The count travels on the sub-request's response, so the split and shard
 	// merges add it up and discarded responses (retries) drop it.
 	if err == nil {
-		switch r := resp.(type) {
-		case *queryrange.LokiResponse:
-			r.Statistics.LoglineStats().NarrowedRequests++
-		case *queryrange.LokiPromResponse:
-			r.Statistics.LoglineStats().NarrowedRequests++
+		if st := lokiResponseStats(resp); st != nil {
+			st.LoglineStats().NarrowedRequests++
 		}
 	}
 	return resp, err
+}
+
+// passthrough sends the sub-request on without hint ranges and counts it when
+// the downstream call succeeds. The count covers the ingester window, time
+// before the index min date, and lookup fallbacks. It travels on the response
+// so split and shard merges add it up and discarded responses drop it.
+func (h *loglineFilterHandler) passthrough(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	resp, err := h.next.Do(ctx, req)
+	if err != nil {
+		return resp, err
+	}
+	if st := lokiResponseStats(resp); st != nil {
+		st.LoglineStats().PassthroughRequests++
+	}
+	return resp, nil
+}
+
+// skip answers a sub-request with an empty response. Quantile sketch shards and
+// count-min sketch shards cannot take that response: each merger accepts only
+// its sketch. Those shards run unchanged.
+func (h *loglineFilterHandler) skip(ctx context.Context, req queryrangebase.Request, expr syntax.Expr) (queryrangebase.Response, error) {
+	if isQuantileSketch(expr) || isCountMinSketch(expr) {
+		h.metrics.passthroughSubRequests.WithLabelValues("sketch_shard").Inc()
+		return h.passthrough(ctx, req)
+	}
+	h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
+	return skippedResponse(req, expr), nil
+}
+
+// requestExpr returns the planned expression. A shard request puts an internal
+// operation in Query, and that string is not LogQL, so the plan comes first.
+func requestExpr(req queryrangebase.Request) (syntax.Expr, error) {
+	var planned syntax.Expr
+	query := req.GetQuery()
+	switch r := req.(type) {
+	case *queryrange.LokiRequest:
+		if r.Plan != nil {
+			planned = r.Plan.AST
+		}
+		query = r.Query
+	case *queryrange.LokiInstantRequest:
+		if r.Plan != nil {
+			planned = r.Plan.AST
+		}
+		query = r.Query
+	}
+	if planned != nil {
+		return planned, nil
+	}
+	return syntax.ParseExpr(query)
+}
+
+// isQuantileSketch reports whether expr is a shard of a sharded
+// quantile_over_time. Its merge accepts only sketch responses, so an empty
+// matrix cannot stand in for it.
+func isQuantileSketch(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return isQuantileSketch(e.Left)
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeQuantileSketch
+	default:
+		return false
+	}
+}
+
+// isCountMinSketch reports whether expr is a shard of approx_topk. Those
+// shards are instant requests, and their merge accepts only a count-min
+// sketch, so an empty vector cannot stand in for one.
+func isCountMinSketch(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return e.Operation == syntax.OpTypeCountMinSketch || isCountMinSketch(e.Left)
+	default:
+		return false
+	}
 }
 
 func skippedResponse(req queryrangebase.Request, expr syntax.Expr) queryrangebase.Response {
