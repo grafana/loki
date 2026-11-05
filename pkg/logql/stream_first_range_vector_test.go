@@ -7,12 +7,12 @@ import (
 	"math"
 	"math/rand"
 	"sort"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
