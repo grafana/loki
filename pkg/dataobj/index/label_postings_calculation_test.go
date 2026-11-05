@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -318,6 +319,98 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	require.Equal(t, ts3.UTC(), row["max_timestamp.timestamp"])
 	expectedSize := int64(len("hello") + len("world!") + len("mid"))
 	require.Equal(t, expectedSize, row["uncompressed_size.int64"])
+}
+
+func TestLabelPostingsCalculation_ProcessBatch(t *testing.T) {
+	ts10 := time.Unix(10, 0).UTC()
+	ts20 := time.Unix(20, 0).UTC()
+	ts30 := time.Unix(30, 0).UTC()
+
+	runTests := []struct {
+		name  string
+		batch []logs.Record
+	}{
+		{
+			name: "reports min and max timestamps when a run is in descending order",
+			batch: []logs.Record{
+				{StreamID: 1, Timestamp: ts30, Line: []byte("a")},
+				{StreamID: 1, Timestamp: ts20, Line: []byte("bb")},
+				{StreamID: 1, Timestamp: ts10, Line: []byte("ccc")},
+			},
+		},
+		{
+			name: "reports min and max timestamps when a run is unordered",
+			batch: []logs.Record{
+				{StreamID: 1, Timestamp: ts20, Line: []byte("a")},
+				{StreamID: 1, Timestamp: ts10, Line: []byte("bb")},
+				{StreamID: 1, Timestamp: ts30, Line: []byte("ccc")},
+			},
+		},
+	}
+	for _, tc := range runTests {
+		t.Run(tc.name, func(t *testing.T) {
+			builder := newTestIndexBuilder(t)
+			calcCtx := makeTestCalcContext(builder)
+			calc := &labelPostingsCalculation{}
+
+			require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
+			require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, tc.batch))
+			require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
+
+			tbl := flushAndReadAllPostingsTable(t, builder)
+			i := findRow(tbl.rows, map[string]any{
+				"column_name.utf8": "service_name",
+				"label_value.utf8": "svcA",
+			})
+			require.NotEqual(t, -1, i)
+			row := tbl.rows[i]
+			require.Equal(t, ts10, row["min_timestamp.timestamp"])
+			require.Equal(t, ts30, row["max_timestamp.timestamp"])
+			require.Equal(t, int64(len("a")+len("bb")+len("ccc")), row["uncompressed_size.int64"])
+		})
+	}
+
+	t.Run("produces the same postings as per-record observation for a random batch", func(t *testing.T) {
+		rnd := rand.New(rand.NewSource(1))
+		var batch []logs.Record
+		for range 200 {
+			streamID := int64(rnd.Intn(4) + 1)
+			for range rnd.Intn(10) + 1 {
+				batch = append(batch, logs.Record{
+					StreamID:  streamID,
+					Timestamp: time.Unix(int64(rnd.Intn(1000)), 0).UTC(),
+					Line:      make([]byte, rnd.Intn(64)),
+				})
+			}
+		}
+
+		perRunBuilder := newTestIndexBuilder(t)
+		perRunCtx := makeTestCalcContext(perRunBuilder)
+		calc := &labelPostingsCalculation{}
+		require.NoError(t, calc.Prepare(context.Background(), perRunCtx, nil, logs.Stats{}))
+		require.NoError(t, calc.ProcessBatch(context.Background(), perRunCtx, batch))
+		require.NoError(t, calc.Flush(context.Background(), perRunCtx, perRunBuilder))
+
+		perRecordBuilder := newTestIndexBuilder(t)
+		perRecordCtx := makeTestCalcContext(perRecordBuilder)
+		for _, record := range batch {
+			perRecordCtx.streamLabels[record.StreamID].Range(func(lbl labels.Label) {
+				perRecordBuilder.ObserveLabelPosting(postings.LabelObservation{
+					ObjectPath:       perRecordCtx.objectPath,
+					ShardBuckets:     int64(perRecordCtx.shardLayout.Buckets()),
+					SectionIndex:     perRecordCtx.sectionIdx,
+					ColumnName:       lbl.Name,
+					LabelValue:       lbl.Value,
+					StreamID:         record.StreamID,
+					Timestamp:        record.Timestamp,
+					UncompressedSize: record.UncompressedSize(),
+					ShardBucket:      perRecordCtx.streamShardBuckets[record.StreamID],
+				})
+			})
+		}
+
+		require.Equal(t, flushAndReadAllPostingsTable(t, perRecordBuilder), flushAndReadAllPostingsTable(t, perRunBuilder))
+	})
 }
 
 func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {

@@ -88,6 +88,10 @@ func observeStreamRun(calcCtx *logsCalculationContext, streamID int64, run strea
 			ShardBucket:      shardBucket,
 		}
 		calcCtx.builder.ObserveLabelPosting(obs)
+
+		// Observe the end timestamp too, so the posting covers the full time
+		// range of the run. Use a size of 0 because the first observation
+		// already counted the size of the run.
 		if !run.maxTimestamp.Equal(run.minTimestamp) {
 			obs.Timestamp = run.maxTimestamp
 			obs.UncompressedSize = 0
