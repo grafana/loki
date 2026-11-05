@@ -418,7 +418,7 @@ The `storage_config.aws.storage_class` field (or the equivalent field on a named
 
 **Resolution:**
 
-- **Use a supported storage class**, such as `STANDARD`, `STANDARD_IA`, `INTELLIGENT_TIERING`, `GLACIER`, or `DEEP_ARCHIVE`. Refer to the AWS S3 documentation for the full list, and check the value against Loki's supported list for your release.
+- **Use a supported storage class**:`STANDARD` or `STANDARD_IA`.
 
 **Properties:**
 
@@ -1668,15 +1668,9 @@ The KV store responded but returned an empty or invalid ring descriptor. This ca
 instance not found in the ring
 ```
 
-Or:
-
-```text
-inconsistent ring tokens information
-```
-
 **Cause:**
 
-These are sibling sentinel errors alongside the formatted "instance `<id>` not found in the ring" error above. `instance not found in the ring` is the unformatted sentinel version used internally when no specific instance ID is available. `inconsistent ring tokens information` indicates the ring's token data is internally inconsistent, which can happen after a partial write to the KV store or during a KV store issue.
+This is a sibling sentinel error alongside the formatted "instance `<id>` not found in the ring" error above. `instance not found in the ring` is the unformatted sentinel version used internally when no specific instance ID is available.
 
 **Resolution:**
 
@@ -1713,36 +1707,6 @@ An instance tried to claim ring tokens, but the ring has no members yet. This is
 - Retryable: Yes (after ring initializes)
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
-
-### Error: Lifecycler not running
-
-**Error message:**
-
-```text
-lifecycler not running
-```
-
-**Cause:**
-
-A ring operation was attempted on a lifecycler that hasn't started yet or has already stopped. This typically indicates a startup-ordering or shutdown-ordering issue within Loki itself, rather than something an operator directly caused.
-
-**Resolution:**
-
-- **Check startup/shutdown logs** around the time of the error for the sequence of events.
-- **Restart the affected instance** if it's stuck in this state.
-
-**Properties:**
-
-- Enforced by: Ring lifecycler
-- Retryable: Yes (after lifecycler state resolves)
-- HTTP status: N/A (internal state error)
-- Configurable per tenant: No
-
-{{< admonition type="note" >}}
-You may also see these related log messages from the ring lifecycler, which don't return errors to clients but are useful for diagnosing startup and shutdown behavior:
-- `found empty ring when trying to unregister` — logged when an instance tries to remove itself from the ring during shutdown, but the ring is already empty.
-- `waiting for %v after being ready` — logged during the `min_ready_duration` wait after an instance joins the ring and becomes healthy, before it starts serving traffic.
-{{< /admonition >}}
 
 ### Error: Partition not found in the ring
 
