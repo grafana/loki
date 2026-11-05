@@ -1,4 +1,4 @@
-package pattern
+package kafkav2
 
 import (
 	"bytes"
@@ -57,7 +57,7 @@ func TestPartitionLagTracker_RunOnce(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			tracker := newPartitionLagTracker(log.NewLogfmtLogger(&buf))
+			tracker := NewPartitionLagTracker(log.NewLogfmtLogger(&buf))
 			for _, o := range test.observations {
 				tracker.Observe(o.partition, o.lag, o.offset)
 			}

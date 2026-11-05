@@ -46,7 +46,7 @@ func (i *Ingester) initKafka() error {
 	}
 	i.kafkaDecoder = decoder
 	i.kafkaRecords = make(chan *kgo.Record)
-	i.kafkaLag = newPartitionLagTracker(i.logger)
+	i.kafkaLag = kafkav2.NewPartitionLagTracker(i.logger)
 	i.kafkaConsumer = kafkav2.NewGroupConsumer(
 		i.kafkaClient,
 		cfg.KafkaConfig.Topic,

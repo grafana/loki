@@ -275,7 +275,7 @@ type Ingester struct {
 	kafkaDecoder  *kafka.Decoder
 	kafkaDone     sync.WaitGroup
 	kafkaStopOnce sync.Once
-	kafkaLag      *partitionLagTracker
+	kafkaLag      *kafkav2.PartitionLagTracker
 }
 
 func New(

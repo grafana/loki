@@ -1,4 +1,4 @@
-package pattern
+package kafkav2
 
 import (
 	"context"
@@ -16,18 +16,20 @@ type partitionLag struct {
 	maxLagOffset, currentLagOffset int64
 }
 
-// partitionLagTracker tracks the consumer lag of all consumed partitions.
+// PartitionLagTracker tracks the consumer lag of all consumed partitions.
 // Partitions that did not consume any records since the last iteration of the
 // lag tracker are removed.
-type partitionLagTracker struct {
+type PartitionLagTracker struct {
 	*services.BasicService
 	mtx        sync.Mutex
 	partitions map[int32]partitionLag
 	logger     log.Logger
 }
 
-func newPartitionLagTracker(logger log.Logger) *partitionLagTracker {
-	t := &partitionLagTracker{
+// NewPartitionLagTracker returns a PartitionLagTracker that logs the observed
+// lag of each partition once per minute.
+func NewPartitionLagTracker(logger log.Logger) *PartitionLagTracker {
+	t := &PartitionLagTracker{
 		partitions: make(map[int32]partitionLag),
 		logger:     logger,
 	}
@@ -36,7 +38,7 @@ func newPartitionLagTracker(logger log.Logger) *partitionLagTracker {
 }
 
 // Observe records the lag for the partition.
-func (t *partitionLagTracker) Observe(partition int32, lag time.Duration, offset int64) {
+func (t *PartitionLagTracker) Observe(partition int32, lag time.Duration, offset int64) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 	tmp := t.partitions[partition]
@@ -50,7 +52,7 @@ func (t *partitionLagTracker) Observe(partition int32, lag time.Duration, offset
 }
 
 // runOnce logs the lag of each partition observed since the last call.
-func (t *partitionLagTracker) runOnce(_ context.Context) error {
+func (t *PartitionLagTracker) runOnce(_ context.Context) error {
 	t.mtx.Lock()
 	partitions := t.partitions
 	t.partitions = make(map[int32]partitionLag)
