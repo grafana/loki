@@ -5208,11 +5208,11 @@ engine:
   [max_query_series_cutoff: <boolean> | default = false]
 
   # Experimental: Enable the histogram functions, histogram_over_time and the
-  # functions that read its result, such as histogram_quantile. They are in
-  # development, so a query that uses one fails while this is disabled. Enable
-  # it on the queriers, on the query frontends, and on the rulers that evaluate
-  # rules themselves, because each of them refuses a query that uses histograms
-  # without it.
+  # functions that read its result, such as histogram_quantile. The functions
+  # are in development, so a query that uses one fails while this is disabled.
+  # Enable it on the queriers, on the query frontends, and on the rulers that
+  # evaluate rules themselves, because each of them refuses a query that uses
+  # histograms without it.
   # CLI flag: -querier.engine.enable-histograms
   [enable_histograms: <boolean> | default = false]
 

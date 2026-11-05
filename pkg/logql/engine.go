@@ -189,7 +189,7 @@ type EngineOpts struct {
 	MaxQuerySeriesCutoff bool `yaml:"max_query_series_cutoff" category:"experimental"`
 
 	// EnableHistograms enables the histogram functions: histogram_over_time, and the functions that read it.
-	// A query that uses one fails while this is off. They are in development, so they are off by default.
+	// A query that uses one fails while this is off. The functions are in development, so they are off by default.
 	EnableHistograms bool `yaml:"enable_histograms" category:"experimental"`
 }
 
@@ -201,7 +201,7 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
-	f.BoolVar(&opts.EnableHistograms, prefix+"enable-histograms", false, "Experimental: Enable the histogram functions, histogram_over_time and the functions that read its result, such as histogram_quantile. They are in development, so a query that uses one fails while this is disabled. Enable it on the queriers, on the query frontends, and on the rulers that evaluate rules themselves, because each of them refuses a query that uses histograms without it.")
+	f.BoolVar(&opts.EnableHistograms, prefix+"enable-histograms", false, "Experimental: Enable the histogram functions, histogram_over_time and the functions that read its result, such as histogram_quantile. The functions are in development, so a query that uses one fails while this is disabled. Enable it on the queriers, on the query frontends, and on the rulers that evaluate rules themselves, because each of them refuses a query that uses histograms without it.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
