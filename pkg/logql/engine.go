@@ -201,6 +201,23 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	opts.LogExecutingQuery = true
 }
 
+// queryOpts is the subset of EngineOpts that a query reads at execution time. The remaining
+// EngineOpts fields only matter when an engine or its evaluator is constructed.
+type queryOpts struct {
+	// logExecutingQuery controls if the query is logged when Exec is called.
+	logExecutingQuery bool
+	// earlySeriesCutoff controls if max_query_series is enforced before the output is built.
+	earlySeriesCutoff bool
+}
+
+// newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
+func newQueryOpts(opts EngineOpts) queryOpts {
+	return queryOpts{
+		logExecutingQuery: opts.LogExecutingQuery,
+		earlySeriesCutoff: opts.EarlySeriesCutoff,
+	}
+}
+
 func (opts *EngineOpts) applyDefault() {
 	if opts.MaxLookBackPeriod == 0 {
 		opts.MaxLookBackPeriod = 30 * time.Second
@@ -236,7 +253,7 @@ func (qe *QueryEngine) Query(params Params) Query {
 		params:    params,
 		evaluator: qe.evaluatorFactory,
 		record:    true,
-		opts:      qe.opts,
+		opts:      newQueryOpts(qe.opts),
 		limits:    qe.limits,
 	}
 }
@@ -253,7 +270,7 @@ type query struct {
 	limits    Limits
 	evaluator EvaluatorFactory
 	record    bool
-	opts      EngineOpts
+	opts      queryOpts
 }
 
 func (q *query) resultLength(res promql_parser.Value) int {
@@ -286,7 +303,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 		attribute.String("length", q.params.End().Sub(q.params.Start()).String()),
 	)
 
-	if q.opts.LogExecutingQuery {
+	if q.opts.logExecutingQuery {
 		queryHash := util.HashedQuery(q.params.QueryString())
 
 		logValues := []interface{}{
@@ -503,7 +520,7 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 // query's output is built, or zero when the early cut-off is off. Logs Drilldown requests are
 // exempt, so they still get partial results and a warning from JoinSampleVector.
 func (q *query) earlySeriesCutoffLimit(ctx context.Context, maxSeries int) int {
-	if !q.opts.EarlySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
+	if !q.opts.earlySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
 		return 0
 	}
 	// vector() steps in whole milliseconds and the range iterators in nanoseconds, so below a

@@ -65,8 +65,9 @@ func (ng *DownstreamEngine) Opts() EngineOpts { return ng.opts }
 
 // Query constructs a Query
 func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
-	opts := ng.opts
-	opts.LogExecutingQuery = false
+	// we leave out logExecutingQuery here because the downstream query is logged by the
+	// engine that issued it and we don't need to propagate it down.
+	opts := queryOpts{earlySeriesCutoff: ng.opts.EarlySeriesCutoff}
 
 	return &query{
 		logger:    ng.logger,
