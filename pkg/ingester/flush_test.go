@@ -112,10 +112,12 @@ func TestChunkFlushingPolicyIdle(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond)
 
 	// The live stream must remain in memory.
+	var remaining []string
 	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
-		require.False(t, s.labels.Has("__backfill__"))
+		remaining = append(remaining, s.labels.String())
 		return true, nil
 	})
+	require.Equal(t, []string{liveLabels}, remaining)
 
 	chunks := store.getChunksForUser(userID)
 	require.Len(t, chunks, 1)
