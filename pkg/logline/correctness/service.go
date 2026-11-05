@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand" //#nosec G404 -- Cycle sampling is not security-sensitive. -- nosemgrep: math-random-used
 	"net/http"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -338,16 +339,25 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"hint_query", hq.query,
 	)
 
+	qt := querybounds.QueryTypeLog
+	step := time.Duration(0)
 	if hq.queryType == hintQueryTypeMetricRange {
-		return s.fetchMetricResults(ctx, report, hq, rangeStart, rangeEnd)
+		qt = querybounds.QueryTypeMetricRange
+		step = metricStep
 	}
+	qb := querybounds.GetQueryBounds(rangeStart, rangeEnd, step.Milliseconds(), hq.expr, qt, s.cfg.AlignQueriesWithStep)
+	readStart, readEnd := qb.ReadStart, qb.ReadEnd
 
-	overlapping := s.indexStore.IndexesForRange(rangeStart, rangeEnd)
+	overlapping := s.indexStore.IndexesForRange(readStart, readEnd)
 	ids := make([]string, len(overlapping))
 	for i, m := range overlapping {
 		ids[i] = m.ID()
 	}
 	report.OverlappingIndexIDs = ids
+
+	if hq.queryType == hintQueryTypeMetricRange {
+		return s.fetchMetricResults(ctx, report, hq, rangeStart, rangeEnd, overlapping)
+	}
 
 	resultEntries, _, err := s.queryRange(ctx, hq.query, rangeStart, rangeEnd, s.cfg.LogQueryLimit)
 	if err != nil {
@@ -436,6 +446,48 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	s.metrics.totalIncorrectTests.Inc()
 	s.metrics.lastIncorrectTestTs.Set(float64(now.Unix()))
 
+	s.logCorrectnessFailure(report, overlapping, hintRanges, true, rangeStart, rangeEnd)
+
+	s.metrics.falseNegativesTotal.Add(float64(vr.FalseNegatives))
+	s.metrics.falsePositivesTotal.Add(float64(vr.FalsePositives))
+
+	return report, nil
+}
+
+// fetchMetricResults runs the metric query with logline forced on and forced off.
+// Both requests go to the same endpoint. The cycle is correct when the two
+// matrices are equal and the live matrix has a sample greater than zero.
+func (s *Service) fetchMetricResults(ctx context.Context, report CycleReport, hq hintQuery, start, end time.Time, overlapping []store.Meta) (CycleReport, error) {
+	live, off, err := s.queryMetricPair(ctx, hq.query, start, end)
+	if err != nil {
+		return report, err
+	}
+	level.Info(s.logger).Log(
+		"msg", "correctness cycle step",
+		"step", "fetched_metric_results",
+		"live_series", len(live),
+		"off_series", len(off),
+	)
+
+	equal := reflect.DeepEqual(live, off)
+	report.Correct = equal && matrixHasPositiveSample(live)
+	s.metrics.totalTests.Inc()
+	if report.Correct {
+		s.metrics.totalCorrectTests.Inc()
+		s.metrics.lastSuccessfulTestTs.Set(float64(report.Timestamp.Unix()))
+		return report, nil
+	}
+
+	s.metrics.totalIncorrectTests.Inc()
+	s.metrics.lastIncorrectTestTs.Set(float64(report.Timestamp.Unix()))
+	s.logCorrectnessFailure(report, overlapping, nil, false, start, end)
+	return report, nil
+}
+
+// logCorrectnessFailure writes the shared failure lines. Hint breakdown and
+// ingester-window false-negative lines describe a hint lookup, so the metric
+// comparison skips them.
+func (s *Service) logCorrectnessFailure(report CycleReport, overlapping []store.Meta, hintRanges []hintprovider.HintTimeRange, logHintBreakdown bool, rangeStart, rangeEnd time.Time) {
 	excludedCoveringFN := s.excludedIndexesCoveringFNs(report.FalseNegativeTimestamps, rangeStart, rangeEnd)
 
 	// Log failure detail: which indexes were consulted, which timestamps were missed.
@@ -447,14 +499,16 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"excluded_covering_fn_count", len(excludedCoveringFN),
 	)
 
-	// Log per-index hint breakdown: which indexes contributed hints and which didn't.
-	indexesWithHints, indexesWithoutHints := hintBreakdownByIndex(hintRanges, report.OverlappingIndexIDs)
-	level.Warn(s.logger).Log(
-		"msg", "correctness failure hint breakdown",
-		"hint_query", report.HintQuery,
-		"indexes_with_hints", strings.Join(indexesWithHints, ","),
-		"indexes_without_hints", strings.Join(indexesWithoutHints, ","),
-	)
+	if logHintBreakdown {
+		// Log per-index hint breakdown: which indexes contributed hints and which didn't.
+		indexesWithHints, indexesWithoutHints := hintBreakdownByIndex(hintRanges, report.OverlappingIndexIDs)
+		level.Warn(s.logger).Log(
+			"msg", "correctness failure hint breakdown",
+			"hint_query", report.HintQuery,
+			"indexes_with_hints", strings.Join(indexesWithHints, ","),
+			"indexes_without_hints", strings.Join(indexesWithoutHints, ","),
+		)
+	}
 
 	// Log full metadata for each overlapping index.
 	for _, m := range overlapping {
@@ -485,27 +539,17 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 			"compacted_from", strings.Join(m.CompactedFrom, ","),
 		)
 	}
-
-	s.metrics.falseNegativesTotal.Add(float64(vr.FalseNegatives))
-	s.metrics.falsePositivesTotal.Add(float64(vr.FalsePositives))
-
-	return report, nil
 }
 
-// fetchMetricResults runs the metric query with logline forced on and forced off.
-// Both requests go to the same endpoint. Scoring the two matrices comes next.
-func (s *Service) fetchMetricResults(ctx context.Context, report CycleReport, hq hintQuery, start, end time.Time) (CycleReport, error) {
-	live, off, err := s.queryMetricPair(ctx, hq.query, start, end)
-	if err != nil {
-		return report, err
+func matrixHasPositiveSample(matrix loghttp.Matrix) bool {
+	for _, stream := range matrix {
+		for _, sample := range stream.Values {
+			if sample.Value > 0 {
+				return true
+			}
+		}
 	}
-	level.Info(s.logger).Log(
-		"msg", "correctness cycle step",
-		"step", "fetched_metric_results",
-		"live_samples", len(live),
-		"off_samples", len(off),
-	)
-	return report, nil
+	return false
 }
 
 // excludedIndexesCoveringFNs returns ingester-window-excluded indexes whose log
@@ -694,7 +738,7 @@ func (s *Service) queryRange(
 	return nil, "", lastErr
 }
 
-func (s *Service) queryMetricPair(ctx context.Context, query string, start, end time.Time) (live, off []metricSample, err error) {
+func (s *Service) queryMetricPair(ctx context.Context, query string, start, end time.Time) (live, off loghttp.Matrix, err error) {
 	if end.Before(start) {
 		end = start
 	}
@@ -722,7 +766,7 @@ func (s *Service) queryMetricPair(ctx context.Context, query string, start, end 
 	return nil, nil, lastErr
 }
 
-func (s *Service) queryMetric(ctx context.Context, client lokiclient.Client, query string, start, end time.Time) ([]metricSample, error) {
+func (s *Service) queryMetric(ctx context.Context, client lokiclient.Client, query string, start, end time.Time) (loghttp.Matrix, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -731,7 +775,7 @@ func (s *Service) queryMetric(ctx context.Context, client lokiclient.Client, que
 	if err != nil {
 		return nil, err
 	}
-	return queryResponseSamples(resp)
+	return queryResponseMatrix(resp)
 }
 
 // metricLiveHeaders and metricOffHeaders are logcli CustomHeaders lines
@@ -799,7 +843,7 @@ func queryResponseEntries(resp *loghttp.QueryResponse) ([]queryEntry, error) {
 	return entries, nil
 }
 
-func queryResponseSamples(resp *loghttp.QueryResponse) ([]metricSample, error) {
+func queryResponseMatrix(resp *loghttp.QueryResponse) (loghttp.Matrix, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("nil query response")
 	}
@@ -807,27 +851,13 @@ func queryResponseSamples(resp *loghttp.QueryResponse) ([]metricSample, error) {
 		return nil, fmt.Errorf("loki query status %q", resp.Status)
 	}
 	if resp.Data.Result == nil {
-		return []metricSample{}, nil
+		return nil, nil
 	}
 	matrix, ok := resp.Data.Result.(loghttp.Matrix)
 	if !ok {
 		return nil, fmt.Errorf("unexpected Loki query result type: %T", resp.Data.Result)
 	}
-	samples := make([]metricSample, 0)
-	for _, stream := range matrix {
-		for _, pair := range stream.Values {
-			samples = append(samples, metricSample{
-				Time:  pair.Timestamp.Time().UTC(),
-				Value: float64(pair.Value),
-			})
-		}
-	}
-	return samples, nil
-}
-
-type metricSample struct {
-	Time  time.Time
-	Value float64
+	return matrix, nil
 }
 
 func newLokiEndpointClients(cfg Config) []lokiEndpointClient {

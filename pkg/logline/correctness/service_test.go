@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
@@ -584,84 +585,11 @@ func TestPickHintQuery_MetricWindow(t *testing.T) {
 func TestRunVerificationCycle_MetricQueriesBothWays(t *testing.T) {
 	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 	needle := "9fA81cD2Ef0077aa"
+	report, got := runUntilMetricCycle(t, newTestStore(t), base, needle, func(string) any {
+		return map[string]any{"resultType": "matrix", "result": []any{}}
+	})
 
-	type recordedQuery struct {
-		query        string
-		step         string
-		logline      string
-		skipCache    string
-		cacheControl string
-	}
-	var mu sync.Mutex
-	var got []recordedQuery
-
-	writeEnvelope := func(w http.ResponseWriter, data any) {
-		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"data":   data,
-		}))
-	}
-	loki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "test-tenant", r.Header.Get("X-Scope-OrgID"))
-		switch r.URL.Path {
-		case "/loki/api/v1/labels":
-			writeEnvelope(w, []string{"job"})
-		case "/loki/api/v1/label/job/values":
-			writeEnvelope(w, []string{"api"})
-		case "/loki/api/v1/query_range":
-			q := recordedQuery{
-				query:        r.URL.Query().Get("query"),
-				step:         r.URL.Query().Get("step"),
-				logline:      r.Header.Get("X-Logline-Index"),
-				skipCache:    r.Header.Get("X-Logline-Skip-Cache"),
-				cacheControl: r.Header.Get("Cache-Control"),
-			}
-			mu.Lock()
-			got = append(got, q)
-			mu.Unlock()
-			if q.step != "" {
-				writeEnvelope(w, map[string]any{"resultType": "matrix", "result": []any{}})
-				return
-			}
-			startNS, err := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
-			require.NoError(t, err)
-			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
-			require.NoError(t, err)
-			mid := startNS + (endNS-startNS)/2
-			writeEnvelope(w, map[string]any{
-				"resultType": "streams",
-				"result": []map[string]any{{
-					"stream": map[string]string{"job": "api"},
-					"values": [][]string{{strconv.FormatInt(mid, 10), "request trace=" + needle + " completed"}},
-				}},
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer loki.Close()
-
-	svc := newTestService(t, newTestStore(t), loki.URL, base.Add(-2*time.Hour))
-	svc.nowFn = func() time.Time { return base.Add(3 * time.Minute) }
-
-	var report CycleReport
-	found := false
-	for seed := int64(0); seed < 40 && !found; seed++ {
-		mu.Lock()
-		got = nil
-		mu.Unlock()
-		svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
-		var err error
-		report, err = svc.runVerificationCycle(context.Background())
-		require.NoError(t, err)
-		found = report.HintQueryType == string(hintQueryTypeMetricRange)
-	}
-	require.True(t, found, "expected a seed to run the metric query")
-
-	mu.Lock()
-	defer mu.Unlock()
-	var logs, metrics []recordedQuery
+	var logs, metrics []recordedMetricQuery
 	for _, q := range got {
 		if q.step == "" {
 			logs = append(logs, q)
@@ -685,6 +613,175 @@ func TestRunVerificationCycle_MetricQueriesBothWays(t *testing.T) {
 	require.Equal(t, "off", metrics[1].logline)
 	require.Empty(t, metrics[1].skipCache)
 	require.Equal(t, "no-cache", metrics[1].cacheControl)
+
+	require.False(t, report.Correct)
+	requireMetricIdentity(t, report, needle)
+}
+
+func TestRunVerificationCycle_MetricMatricesEqual(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	indexStore := newTestStore(t)
+	same := metricMatrix([]any{1_760_000_000.0, "1"}, []any{1_760_000_060.0, "3"})
+	report, svc, seed := runUntilMetricCycleSvc(t, indexStore, base, needle, func(string) any {
+		return same
+	})
+	require.True(t, report.Correct)
+	requireMetricIdentity(t, report, needle)
+
+	expr, err := syntax.ParseExpr(report.HintQuery)
+	require.NoError(t, err)
+	qb := querybounds.GetQueryBounds(report.RangeStart, report.RangeEnd, time.Minute.Milliseconds(), expr, querybounds.QueryTypeMetricRange, svc.cfg.AlignQueriesWithStep)
+	// Ends before the requested start, so only the widened read range overlaps it.
+	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, qb.ReadStart, report.RangeStart.Add(-time.Millisecond))
+	writeTestIndex(t, indexStore, "cccccccccccccccc", needle, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC))
+
+	svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+	again, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.True(t, again.Correct)
+	require.True(t, again.RangeStart.Equal(report.RangeStart))
+	require.Equal(t, indexIDsForRange(indexStore, qb.ReadStart, qb.ReadEnd), again.OverlappingIndexIDs)
+	require.NotEqual(t, indexIDsForRange(indexStore, report.RangeStart, report.RangeEnd), again.OverlappingIndexIDs)
+}
+
+func TestRunVerificationCycle_MetricMatricesMismatch(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	report, _ := runUntilMetricCycle(t, newTestStore(t), base, needle, func(logline string) any {
+		if logline == "live" {
+			return metricMatrix([]any{1_760_000_000.0, "2"})
+		}
+		return metricMatrix([]any{1_760_000_000.0, "1"})
+	})
+	require.False(t, report.Correct)
+	requireMetricIdentity(t, report, needle)
+}
+
+type recordedMetricQuery struct {
+	query        string
+	step         string
+	logline      string
+	skipCache    string
+	cacheControl string
+}
+
+func runUntilMetricCycle(t *testing.T, indexStore *store.Store, base time.Time, needle string, matrix func(logline string) any) (CycleReport, []recordedMetricQuery) {
+	t.Helper()
+	report, _, _, got := runMetricCycle(t, indexStore, base, needle, matrix)
+	return report, got
+}
+
+func runUntilMetricCycleSvc(t *testing.T, indexStore *store.Store, base time.Time, needle string, matrix func(logline string) any) (CycleReport, *Service, int64) {
+	t.Helper()
+	report, svc, seed, _ := runMetricCycle(t, indexStore, base, needle, matrix)
+	return report, svc, seed
+}
+
+func runMetricCycle(t *testing.T, indexStore *store.Store, base time.Time, needle string, matrix func(logline string) any) (CycleReport, *Service, int64, []recordedMetricQuery) {
+	t.Helper()
+
+	var mu sync.Mutex
+	var got []recordedMetricQuery
+	writeEnvelope := func(w http.ResponseWriter, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"data":   data,
+		}))
+	}
+	loki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "test-tenant", r.Header.Get("X-Scope-OrgID"))
+		switch r.URL.Path {
+		case "/loki/api/v1/labels":
+			writeEnvelope(w, []string{"job"})
+		case "/loki/api/v1/label/job/values":
+			writeEnvelope(w, []string{"api"})
+		case "/loki/api/v1/query_range":
+			q := recordedMetricQuery{
+				query:        r.URL.Query().Get("query"),
+				step:         r.URL.Query().Get("step"),
+				logline:      r.Header.Get("X-Logline-Index"),
+				skipCache:    r.Header.Get("X-Logline-Skip-Cache"),
+				cacheControl: r.Header.Get("Cache-Control"),
+			}
+			mu.Lock()
+			got = append(got, q)
+			mu.Unlock()
+			if q.step != "" {
+				writeEnvelope(w, matrix(q.logline))
+				return
+			}
+			startNS, err := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
+			require.NoError(t, err)
+			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
+			require.NoError(t, err)
+			mid := startNS + (endNS-startNS)/2
+			writeEnvelope(w, map[string]any{
+				"resultType": "streams",
+				"result": []map[string]any{{
+					"stream": map[string]string{"job": "api"},
+					"values": [][]string{{strconv.FormatInt(mid, 10), "request trace=" + needle + " completed"}},
+				}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(loki.Close)
+
+	svc := newTestService(t, indexStore, loki.URL, base.Add(-2*time.Hour))
+	svc.nowFn = func() time.Time { return base.Add(3 * time.Minute) }
+
+	var report CycleReport
+	var seed int64
+	found := false
+	for seed = 0; seed < 40 && !found; seed++ {
+		mu.Lock()
+		got = nil
+		mu.Unlock()
+		svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+		var err error
+		report, err = svc.runVerificationCycle(context.Background())
+		require.NoError(t, err)
+		found = report.HintQueryType == string(hintQueryTypeMetricRange)
+	}
+	require.True(t, found, "expected a seed to run the metric query")
+
+	mu.Lock()
+	defer mu.Unlock()
+	recorded := append([]recordedMetricQuery(nil), got...)
+	return report, svc, seed - 1, recorded
+}
+
+func metricMatrix(values ...[]any) map[string]any {
+	return map[string]any{
+		"resultType": "matrix",
+		"result": []any{map[string]any{
+			"metric": map[string]string{},
+			"values": values,
+		}},
+	}
+}
+
+func requireMetricIdentity(t *testing.T, report CycleReport, needle string) {
+	t.Helper()
+	require.Equal(t, string(hintQueryTypeMetricRange), report.HintQueryType)
+	require.Equal(t, needle, report.Needle)
+	require.NotEmpty(t, report.HintQuery)
+	require.Zero(t, report.FalseNegatives)
+	require.Empty(t, report.FalseNegativeTimestamps)
+	require.Zero(t, report.FalsePositives)
+	require.Zero(t, report.CoveredResults)
+}
+
+func indexIDsForRange(indexStore *store.Store, start, end time.Time) []string {
+	overlapping := indexStore.IndexesForRange(start, end)
+	ids := make([]string, len(overlapping))
+	for i, m := range overlapping {
+		ids[i] = m.ID()
+	}
+	return ids
 }
 
 // useLogHintSeed fixes the cycle RNG so the hint pick stays a line filter.
