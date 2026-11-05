@@ -723,3 +723,59 @@ func TestPerPolicyConfigOverride_ApplyTo(t *testing.T) {
 		})
 	}
 }
+
+func TestPolicyOverridableLimits_ValidateChunkIdlePeriod(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		idle    *model.Duration
+		wantErr bool
+	}{
+		{name: "unset"},
+		{name: "zero", idle: ptr(model.Duration(0))},
+		{name: "minimum", idle: ptr(model.Duration(MinChunkIdlePeriod))},
+		{name: "above minimum", idle: ptr(model.Duration(5 * time.Minute))},
+		{name: "below minimum", idle: ptr(model.Duration(30 * time.Second)), wantErr: true},
+		{name: "negative", idle: ptr(model.Duration(-time.Minute)), wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := PolicyOverridableLimits{ChunkIdlePeriod: tc.idle}.Validate()
+			if tc.wantErr {
+				require.ErrorContains(t, err, "chunk_idle_period")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestOverrides_PolicyChunkIdlePeriod(t *testing.T) {
+	overrides := &Overrides{defaultLimits: &Limits{
+		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+			"backfill": {ChunkIdlePeriod: ptr(model.Duration(5 * time.Minute))},
+			"zero":     {ChunkIdlePeriod: ptr(model.Duration(0))},
+			"unset":    {MaxGlobalStreamsPerUser: ptr(100)},
+			// inherit_limits does not apply to chunk_idle_period.
+			"inherit": {InheritLimits: true},
+		},
+	}}
+
+	for _, tc := range []struct {
+		name     string
+		policy   string
+		expected time.Duration
+		ok       bool
+	}{
+		{name: "set", policy: "backfill", expected: 5 * time.Minute, ok: true},
+		{name: "zero", policy: "zero"},
+		{name: "unset", policy: "unset"},
+		{name: "inherit limits", policy: "inherit"},
+		{name: "unknown policy", policy: "unknown"},
+		{name: "no policy", policy: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			idle, ok := overrides.PolicyChunkIdlePeriod("tenant", tc.policy)
+			require.Equal(t, tc.ok, ok)
+			require.Equal(t, tc.expected, idle)
+		})
+	}
+}

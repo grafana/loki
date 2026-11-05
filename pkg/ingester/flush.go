@@ -342,10 +342,13 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 		return
 	}
 
-	lastChunk := stream.chunks[len(stream.chunks)-1]
-	shouldFlush, _ := i.shouldFlushChunk(&lastChunk)
-	if len(stream.chunks) == 1 && !immediate && !shouldFlush && !instance.ownedStreamsSvc.isStreamNotOwned(stream.fp) {
-		return
+	// Streams with more than one chunk, or swept for an immediate flush, are
+	// always enqueued, so only resolve the chunk idle period when it matters.
+	if len(stream.chunks) == 1 && !immediate {
+		shouldFlush, _ := i.shouldFlushChunk(&stream.chunks[0], i.chunkIdlePeriod(instance.instanceID, stream))
+		if !shouldFlush && !instance.ownedStreamsSvc.isStreamNotOwned(stream.fp) {
+			return
+		}
 	}
 
 	flushQueueIndex := i.flushQueueIndex(stream.fp)
@@ -494,10 +497,11 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
 	notOwnedStream := instance.ownedStreamsSvc.isStreamNotOwned(fp)
+	maxIdle := i.chunkIdlePeriod(instance.instanceID, stream)
 
 	var result []*chunkDesc
 	for j := range stream.chunks {
-		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
+		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j], maxIdle)
 		if !shouldFlush && notOwnedStream {
 			shouldFlush, reason = true, flushReasonNotOwned
 		}
@@ -520,7 +524,20 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	return result, stream.labels, &stream.chunkMtx
 }
 
-func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
+// chunkIdlePeriod returns how long the chunks of the stream may go without
+// appends before being flushed: the chunk_idle_period of the stream's policy,
+// or -ingester.chunks-idle-period if the policy does not override it.
+func (i *Ingester) chunkIdlePeriod(tenant string, s *stream) time.Duration {
+	if s.policy == "" {
+		return i.cfg.MaxChunkIdle
+	}
+	if idle, ok := i.limiter.limits.PolicyChunkIdlePeriod(tenant, s.policy); ok {
+		return idle
+	}
+	return i.cfg.MaxChunkIdle
+}
+
+func (i *Ingester) shouldFlushChunk(chunk *chunkDesc, maxIdle time.Duration) (bool, string) {
 	// Append should close the chunk when the a new one is added.
 	if chunk.closed {
 		if chunk.synced {
@@ -529,7 +546,7 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 		return true, flushReasonFull
 	}
 
-	if time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle {
+	if time.Since(chunk.lastUpdated) > maxIdle {
 		return true, flushReasonIdle
 	}
 
