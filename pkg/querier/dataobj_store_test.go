@@ -921,6 +921,11 @@ func (f denyAppFilterer) ShouldFilter(streamLabels labels.Labels) bool {
 
 func (f denyAppFilterer) RequiredLabelNames() []string { return []string{"app"} }
 
+func (f denyAppFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
 // denyEverythingFilterer denies every stream.
 type denyEverythingFilterer struct{}
 
@@ -929,6 +934,11 @@ func (f denyEverythingFilterer) ForRequest(context.Context) chunk.Filterer { ret
 func (f denyEverythingFilterer) ShouldFilter(labels.Labels) bool { return true }
 
 func (f denyEverythingFilterer) RequiredLabelNames() []string { return nil }
+
+func (f denyEverythingFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
 
 // fixedMetastore yields the descriptors a test supplies as one batch from every SectionsStream
 // call. A test uses it for an object that no real index can describe, such as one that holds two

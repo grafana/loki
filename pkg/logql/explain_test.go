@@ -40,7 +40,7 @@ func TestExplain(t *testing.T) {
 	}
 
 	sampleExpr := expr.(syntax.SampleExpr)
-	ev, err := downEv.NewStepEvaluator(ctx, downEv, sampleExpr, params, RootContext(sampleExpr))
+	ev, err := downEv.NewStepEvaluator(ctx, downEv, sampleExpr, params, RootContext(sampleExpr, 0))
 	require.NoError(t, err)
 
 	tree := NewTree()
