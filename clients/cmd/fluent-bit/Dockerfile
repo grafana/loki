@@ -1,4 +1,4 @@
-FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS builder
+FROM golang:1.27.3-bookworm@sha256:c93aa68d51e382ec1ab4caa559ae9efd7858d8e5330051671c56c1096eaccd66 AS builder
 
 COPY . /src
 
