@@ -368,10 +368,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
 		}
 
-		err = CalculateStreamStats(r.Context(), userID, s, lbs, streamResolver, tenantConfigs, logPushRequestStreams, pushStats)
-		if err != nil {
-			return nil, nil, err
-		}
+		calculateStreamStats(r.Context(), s, lbs, streamResolver, tenantConfigs, logPushRequestStreams, pushStats)
 
 		req.Streams[i] = s
 	}
@@ -379,8 +376,8 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	return logproto.FromPushRequest(req), pushStats, nil
 }
 
-// CalculateStreamStats modifies pushStats with statistics about one stream s.
-func CalculateStreamStats(ctx context.Context, userID string, s push.Stream, lbs labels.Labels, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, logPushRequestStreams bool, pushStats *Stats) error {
+// calculateStreamStats modifies pushStats with statistics about one stream s.
+func calculateStreamStats(ctx context.Context, s push.Stream, lbs labels.Labels, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, logPushRequestStreams bool, pushStats *Stats) {
 	// Record the new size of labels
 	pushStats.StreamLabelsSize += int64(len(s.Labels))
 
@@ -425,7 +422,6 @@ func CalculateStreamStats(ctx context.Context, userID string, s push.Stream, lbs
 		pushStats.MostRecentEntryTimestampPerStream[s.Labels] = mostRecentEntryTimestamp
 		pushStats.StreamSizeBytes[s.Labels] = streamSizeBytes
 	}
-	return nil
 }
 
 func RetentionPeriodToString(retentionPeriod time.Duration) string {
