@@ -84,7 +84,7 @@ service:
 
 Since the OpenTelemetry protocol differs from the Loki storage model, here is how data in the OpenTelemetry format will be mapped by default to the Loki data model during ingestion, which can be changed as explained later:
 
-- Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. The default list of Resource Attributes to store as Index labels can be configured using `default_resource_attributes_as_index_labels` under [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). The distributor's `otlp_config` also supports `defer_attribute_expansion`, which controls whether resource and scope attributes are expanded into Structured Metadata during parsing or only when needed downstream; most users do not need to change this setting. By default, the following resource attributes will be stored as index labels, while the remaining attributes are stored as [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/) with each log entry:
+- Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. The default list of Resource Attributes to store as Index labels can be configured using `default_resource_attributes_as_index_labels` under [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). By default, the following resource attributes will be stored as index labels, while the remaining attributes are stored as [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/) with each log entry:
   - cloud.availability_zone
   - cloud.region
   - container.name
@@ -118,7 +118,7 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
 
 - LogLine: `LogRecord.Body` holds the body of the log. However, since Loki only supports Log body in string format, we will stringify non-string values using the [AsString method from the OTel collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
 
-- [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/): Anything not stored as an Index label or LogLine is stored as Structured Metadata. This includes:
+- [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/): Anything not stored as an Index label is stored as Structured Metadata. This includes:
   - Resource Attributes not stored as Index labels. These are replicated and stored with each log entry.
   - Scope (InstrumentationScope) fields, replicated and stored with each log entry:
     - `scope_name`: the instrumentation scope name (when non-empty).
