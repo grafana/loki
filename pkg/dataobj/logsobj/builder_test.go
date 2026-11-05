@@ -274,12 +274,44 @@ func TestBuilder_AppendRecord(t *testing.T) {
 
 func TestBuilder_DropDuplicates(t *testing.T) {
 	const tenant = "t1"
-	ls := labels.FromStrings("app", "x")
 	ts := time.Unix(100, 0).UTC()
-	duplicate := logs.Record{
+
+	// The sort assigns stream IDs in sort key order. appendedFirst sorts after
+	// appendedSecond, so the sort swaps their IDs.
+	sortKey := func(ls labels.Labels) streams.SortKey {
+		key, err := emptyRankedSortKey(ls, nil, streams.DefaultShardLayout())
+		require.NoError(t, err)
+		return key.SortKey
+	}
+	appendedFirst, appendedSecond := labels.FromStrings("app", "x"), labels.FromStrings("app", "y")
+	if streams.CompareSortKey(sortKey(appendedFirst), sortKey(appendedSecond)) < 0 {
+		appendedFirst, appendedSecond = appendedSecond, appendedFirst
+	}
+
+	firstDuplicate := logs.Record{
 		Timestamp: ts,
 		Metadata:  labels.FromStrings("trace_id", "123"),
-		Line:      []byte("duplicated line"),
+		Line:      []byte("first stream duplicate"),
+	}
+	secondDuplicate := logs.Record{
+		Timestamp: ts,
+		Line:      []byte("second stream duplicate, with a longer line"),
+	}
+	secondUnique := logs.Record{
+		Timestamp: ts.Add(time.Second),
+		Line:      []byte("second stream unique"),
+	}
+
+	type stats struct {
+		rows int
+		size int64
+	}
+	statsOf := func(recs ...logs.Record) stats {
+		s := stats{rows: len(recs)}
+		for _, rec := range recs {
+			s.size += rec.UncompressedSize()
+		}
+		return s
 	}
 
 	newBuilder := func(t *testing.T, dropDuplicates bool) *Builder {
@@ -290,23 +322,35 @@ func TestBuilder_DropDuplicates(t *testing.T) {
 		return builder
 	}
 
-	appendRecord := func(t *testing.T, builder *Builder, rec logs.Record) {
-		require.NoError(t, builder.AppendRecord(tenant, ls, rec.Copy(), rec.Timestamp))
+	appendRecords := func(t *testing.T, builder *Builder, ls labels.Labels, recs ...logs.Record) {
+		for _, rec := range recs {
+			require.NoError(t, builder.AppendRecord(tenant, ls, rec.Copy(), rec.Timestamp))
+		}
 	}
 
-	// appendSplitDuplicates appends the duplicate, then enough unique records
-	// to exceed TargetSectionSize, then the duplicate again. It returns the
-	// unique records, which include one copy of the duplicate.
+	// appendDuplicates appends firstDuplicate twice to appendedFirst, and
+	// secondDuplicate three times plus secondUnique to appendedSecond. The
+	// streams alternate, so each stream is appended to more than once.
+	appendDuplicates := func(t *testing.T, builder *Builder) {
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
+		appendRecords(t, builder, appendedSecond, secondDuplicate, secondUnique)
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
+		appendRecords(t, builder, appendedSecond, secondDuplicate, secondDuplicate)
+	}
+
+	// appendSplitDuplicates appends firstDuplicate, then enough unique records
+	// to exceed TargetSectionSize, then firstDuplicate again, all to
+	// appendedFirst. It returns the records that a drop of duplicates keeps.
 	appendSplitDuplicates := func(t *testing.T, builder *Builder) []logs.Record {
-		unique := []logs.Record{duplicate}
-		appendRecord(t, builder, duplicate)
+		kept := []logs.Record{firstDuplicate}
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
 		for i := range int(testBuilderConfig.TargetSectionSize)/1024 + 1 {
 			rec := logs.Record{Timestamp: ts.Add(time.Duration(i+1) * time.Second), Line: bytes.Repeat([]byte("a"), 1024)}
-			appendRecord(t, builder, rec)
-			unique = append(unique, rec)
+			appendRecords(t, builder, appendedFirst, rec)
+			kept = append(kept, rec)
 		}
-		appendRecord(t, builder, duplicate)
-		return unique
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
+		return kept
 	}
 
 	flushAndSort := func(t *testing.T, builder *Builder) *dataobj.Object {
@@ -316,34 +360,50 @@ func TestBuilder_DropDuplicates(t *testing.T) {
 		return obj
 	}
 
-	onlyStream := func(t *testing.T, obj *dataobj.Object) streams.Stream {
-		var got []streams.Stream
+	readStreams := func(t *testing.T, obj *dataobj.Object) map[string]streams.Stream {
+		got := make(map[string]streams.Stream)
 		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
 			streamSec, err := streams.Open(t.Context(), sec)
 			require.NoError(t, err)
 			for res := range streams.IterSection(t.Context(), streamSec) {
 				val, err := res.Value()
 				require.NoError(t, err)
-				got = append(got, val)
+				got[val.Labels.String()] = val
 			}
 		}
-		require.Len(t, got, 1)
-		return got[0]
+		return got
 	}
 
-	t.Run("FlushAndSort excludes a dropped duplicate from the stream stats", func(t *testing.T) {
+	readStats := func(t *testing.T, obj *dataobj.Object) map[string]stats {
+		got := make(map[string]stats)
+		for key, stream := range readStreams(t, obj) {
+			got[key] = stats{rows: stream.Rows, size: stream.UncompressedSize}
+		}
+		return got
+	}
+
+	t.Run("FlushAndSort excludes dropped duplicates from the stats of each stream", func(t *testing.T) {
 		builder := newBuilder(t, true)
-		appendRecord(t, builder, duplicate)
-		appendRecord(t, builder, duplicate)
+		appendDuplicates(t, builder)
 
 		obj := flushAndSort(t, builder)
 
-		require.Equal(t, []string{string(duplicate.Line)}, recordLines(t, obj, tenant))
-		stream := onlyStream(t, obj)
-		require.Equal(t, 1, stream.Rows)
-		require.Equal(t, duplicate.UncompressedSize(), stream.UncompressedSize)
-		require.Equal(t, ts, stream.MinTimestamp.UTC())
-		require.Equal(t, ts, stream.MaxTimestamp.UTC())
+		require.ElementsMatch(t, []string{
+			string(firstDuplicate.Line),
+			string(secondDuplicate.Line),
+			string(secondUnique.Line),
+		}, recordLines(t, obj, tenant))
+
+		got := readStreams(t, obj)
+		require.Equal(t, int64(2), got[appendedFirst.String()].ID, "the sort must swap the stream IDs")
+		require.Equal(t, map[string]stats{
+			appendedFirst.String():  statsOf(firstDuplicate),
+			appendedSecond.String(): statsOf(secondDuplicate, secondUnique),
+		}, readStats(t, obj))
+		require.Equal(t, ts, got[appendedFirst.String()].MinTimestamp.UTC())
+		require.Equal(t, ts, got[appendedFirst.String()].MaxTimestamp.UTC())
+		require.Equal(t, ts, got[appendedSecond.String()].MinTimestamp.UTC())
+		require.Equal(t, secondUnique.Timestamp, got[appendedSecond.String()].MaxTimestamp.UTC())
 	})
 
 	t.Run("FlushAndSort excludes a duplicate split across logs sections from the stream stats", func(t *testing.T) {
@@ -357,7 +417,7 @@ func TestBuilder_DropDuplicates(t *testing.T) {
 			for res := range iterLogsSection(t, sec) {
 				val, err := res.Value()
 				require.NoError(t, err)
-				if bytes.Equal(val.Line, duplicate.Line) {
+				if bytes.Equal(val.Line, firstDuplicate.Line) {
 					sectionsWithDuplicate++
 				}
 			}
@@ -365,44 +425,51 @@ func TestBuilder_DropDuplicates(t *testing.T) {
 		require.Equal(t, 2, sectionsWithDuplicate, "each copy of the duplicate must start in its own logs section")
 
 		builder := newBuilder(t, true)
-		unique := appendSplitDuplicates(t, builder)
+		kept := appendSplitDuplicates(t, builder)
+		appendRecords(t, builder, appendedSecond, secondDuplicate, secondDuplicate)
 
 		obj := flushAndSort(t, builder)
 
-		require.Len(t, recordLines(t, obj, tenant), len(unique))
-		var wantSize int64
-		for _, rec := range unique {
-			wantSize += rec.UncompressedSize()
-		}
-		stream := onlyStream(t, obj)
-		require.Equal(t, len(unique), stream.Rows)
-		require.Equal(t, wantSize, stream.UncompressedSize)
+		require.Len(t, recordLines(t, obj, tenant), len(kept)+1)
+		require.Equal(t, map[string]stats{
+			appendedFirst.String():  statsOf(kept...),
+			appendedSecond.String(): statsOf(secondDuplicate),
+		}, readStats(t, obj))
 	})
 
 	t.Run("FlushAndSort keeps and counts duplicates when DropDuplicates is unset", func(t *testing.T) {
 		builder := newBuilder(t, false)
-		appendRecord(t, builder, duplicate)
-		appendRecord(t, builder, duplicate)
+		appendDuplicates(t, builder)
 
 		obj := flushAndSort(t, builder)
 
-		require.Len(t, recordLines(t, obj, tenant), 2)
-		stream := onlyStream(t, obj)
-		require.Equal(t, 2, stream.Rows)
-		require.Equal(t, 2*duplicate.UncompressedSize(), stream.UncompressedSize)
+		require.Len(t, recordLines(t, obj, tenant), 6)
+		require.Equal(t, map[string]stats{
+			appendedFirst.String():  statsOf(firstDuplicate, firstDuplicate),
+			appendedSecond.String(): statsOf(secondDuplicate, secondDuplicate, secondDuplicate, secondUnique),
+		}, readStats(t, obj))
 	})
 
-	t.Run("Flush returns an error and resets the builder when DropDuplicates is set", func(t *testing.T) {
+	t.Run("Flush returns an error, counts a failure and resets the builder when DropDuplicates is set", func(t *testing.T) {
 		builder := newBuilder(t, true)
-		appendRecord(t, builder, duplicate)
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
 
 		obj, closer, err := builder.Flush()
 		require.ErrorIs(t, err, ErrFlushDropDuplicates)
 		require.Nil(t, obj)
 		require.Nil(t, closer)
+		require.Equal(t, 1.0, testutil.ToFloat64(builder.metrics.flushFailures))
 
 		_, _, err = builder.FlushAndSort(t.Context())
 		require.ErrorIs(t, err, ErrBuilderEmpty)
+	})
+
+	t.Run("Flush returns ErrBuilderEmpty on an empty builder when DropDuplicates is set", func(t *testing.T) {
+		builder := newBuilder(t, true)
+
+		_, _, err := builder.Flush()
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+		require.Zero(t, testutil.ToFloat64(builder.metrics.flushFailures))
 	})
 }
 

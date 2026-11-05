@@ -489,14 +489,16 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 // release the object's backing scratch storage; reads of the object fail once
 // it is closed. If an error is returned the closer is always nil.
 //
-// Flush returns [ErrFlushDropDuplicates] if DropDuplicates is set. The logs
-// sections drop duplicates after the streams section counted them, so the
-// stream stats would be wrong. Use [Builder.FlushAndSort] instead.
+// Flush returns [ErrFlushDropDuplicates] if DropDuplicates is set and the
+// builder is not empty. The logs sections drop duplicates after the streams
+// section counted them, so the stream stats would be wrong. Use
+// [Builder.FlushAndSort] instead.
 //
 // Flush always resets Builder.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
-	if b.cfg.DropDuplicates {
+	if b.cfg.DropDuplicates && b.state != builderStateEmpty {
 		b.Reset()
+		b.metrics.flushFailures.Inc()
 		return nil, nil, ErrFlushDropDuplicates
 	}
 	return b.flush(true)
