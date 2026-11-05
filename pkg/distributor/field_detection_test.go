@@ -69,7 +69,7 @@ func TestDistributor_SharedFieldDetection(t *testing.T) {
 			req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{Labels: ls, ResourceLogs: []logproto.ResourceLogs{{Attrs: tc.resource, ScopeLogs: []logproto.ScopeLogs{{
 				Attrs: tc.scope, Entries: []logproto.Entry{{Timestamp: time.Now(), Line: `{"level":"fatal", "user_id":"line"}`, StructuredMetadata: tc.own}},
 			}}}}}}}
-			_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+			_, err := d.pushWithResolver(ctx, toParsedPushRequest(req), newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 			require.NoError(t, err)
 			got := ing.Peek()
 			require.NotNil(t, got)

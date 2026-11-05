@@ -3,6 +3,8 @@ package logproto
 import (
 	"slices"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/push"
 )
 
@@ -37,23 +39,53 @@ func (s *InternalStreamAdapter) EntryCount() int {
 	return n
 }
 
+// ParsedStream is an InternalStreamAdapter together with the parsed form of its Labels.
+type ParsedStream struct {
+	InternalStreamAdapter
+	// ParsedLabels is the result of parsing Labels, or empty if they have not been parsed yet.
+	ParsedLabels labels.Labels
+}
+
+// ParsedPushRequest is an InternalPushRequest whose streams carry their parsed labels,
+// so that consumers need not parse them again. It is not serialized.
+type ParsedPushRequest struct {
+	Streams []ParsedStream
+	Format  string
+}
+
+// Size returns the size of the InternalPushRequest encoding of r.
+func (r *ParsedPushRequest) Size() (n int) {
+	if r == nil {
+		return 0
+	}
+	for i := range r.Streams {
+		l := r.Streams[i].Size()
+		n += 1 + l + sovInternalPush(uint64(l))
+	}
+	if l := len(r.Format); l > 0 {
+		n += 1 + l + sovInternalPush(uint64(l))
+	}
+	return n
+}
+
 // FromPushRequest wraps each flat stream in one resource and scope with no shared attributes.
 // Entry slices are shared with req; wrapper storage is allocated once per request.
-func FromPushRequest(req *PushRequest) *InternalPushRequest {
-	streams := make([]InternalStreamAdapter, len(req.Streams))
+// The streams' ParsedLabels are left empty.
+func FromPushRequest(req *PushRequest) *ParsedPushRequest {
+	streams := make([]ParsedStream, len(req.Streams))
 	resources := make([]ResourceLogs, len(req.Streams))
 	scopes := make([]ScopeLogs, len(req.Streams))
 	for i, stream := range req.Streams {
 		scopes[i].Entries = stream.Entries
 		// Cap each group slice so appends cannot overwrite another stream's groups.
 		resources[i].ScopeLogs = scopes[i : i+1 : i+1]
-		streams[i] = InternalStreamAdapter{
+		streams[i].InternalStreamAdapter = InternalStreamAdapter{
 			Labels:       stream.Labels,
 			Hash:         stream.Hash,
 			ResourceLogs: resources[i : i+1 : i+1],
 		}
 	}
-	return &InternalPushRequest{Streams: streams, Format: req.Format}
+	return &ParsedPushRequest{Streams: streams, Format: req.Format}
 }
 
 // FromStream wraps a flat stream in one resource and scope with no shared attributes.

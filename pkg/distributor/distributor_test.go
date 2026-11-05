@@ -613,9 +613,9 @@ func Test_PushInternalRequest(t *testing.T) {
 			distributors, _ := prepare(t, 1, 3, limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
 			d := distributors[0]
 
-			req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+			req := toParsedPushRequest(&logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
 				Labels: `{job="internal"}`, ResourceLogs: tc.groups,
-			}}}
+			}}})
 			_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -953,7 +953,7 @@ func Test_DiscardAccounting(t *testing.T) {
 				}
 				var err error
 				if nested {
-					_, err = d.pushWithResolver(ctx, &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{stream}}, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+					_, err = d.pushWithResolver(ctx, toParsedPushRequest(&logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{stream}}), newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 				} else {
 					var flat logproto.Stream
 					stream.ToStream(&flat)
@@ -1587,7 +1587,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 							{Attrs: buildNestedAttrs("scope.name", "second"), Entries: []logproto.Entry{second}},
 						}}},
 					}}}
-					_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+					_, err := d.pushWithResolver(ctx, toParsedPushRequest(req), newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 					if tc.wantErr != "" {
 						require.ErrorContains(t, err, tc.wantErr)
 						require.Empty(t, producer.records)
@@ -2103,7 +2103,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver, constants.Loki)
+		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, labels.EmptyLabels(), *logproto.FromStream(stream), streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -2143,7 +2143,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
+			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, labels.EmptyLabels(), *logproto.FromStream(logproto.Stream{
 				Labels: tc.origLabels,
 			}), streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
@@ -2899,7 +2899,7 @@ func TestDistributor_SharedMetadataLimits(t *testing.T) {
 					{Attrs: scopeAttrs, Entries: []logproto.Entry{entry("a"), entry("b")}},
 					{Attrs: scopeAttrs, Entries: []logproto.Entry{entry("c"), entry("d")}},
 				}}}}
-				_, err := d.pushWithResolver(ctx, &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{stream}}, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+				_, err := d.pushWithResolver(ctx, toParsedPushRequest(&logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{stream}}), newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 				if tc.wantErr != "" {
 					require.ErrorContains(t, err, tc.wantErr)
 					require.Nil(t, ing.Peek())
@@ -3456,6 +3456,15 @@ func makeWriteRequestWithLabels(lines, size int, labels []string, addStructuredM
 	}
 }
 
+// toParsedPushRequest wraps req's streams without parsed labels, sharing their storage.
+func toParsedPushRequest(req *logproto.InternalPushRequest) *logproto.ParsedPushRequest {
+	streams := make([]logproto.ParsedStream, len(req.Streams))
+	for i := range req.Streams {
+		streams[i].InternalStreamAdapter = req.Streams[i]
+	}
+	return &logproto.ParsedPushRequest{Streams: streams, Format: req.Format}
+}
+
 func makeWriteRequest(lines, size int) *logproto.PushRequest {
 	return makeWriteRequestWithLabels(lines, size, []string{`{foo="bar"}`}, false, false, false)
 }
@@ -3981,7 +3990,7 @@ func TestDistributor_SharedMetadataNormalization(t *testing.T) {
 					{Attrs: scopeAttrs, Entries: entries()},
 				}}},
 			}}}
-			_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+			_, err := d.pushWithResolver(ctx, toParsedPushRequest(req), newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 			require.NoError(t, err)
 			require.Equal(t, resourceBefore, resourceAttrs, "resource attributes can be shared with other streams")
 			require.Equal(t, scopeBefore, scopeAttrs, "scope attributes can be shared with other groups")
@@ -4060,7 +4069,7 @@ func TestDistributor_SharedMetadataNormalizationLimits(t *testing.T) {
 			if tc.entryName != "" {
 				req.Streams[0].ResourceLogs[0].ScopeLogs[0].Entries[0].StructuredMetadata = buildNestedAttrs(tc.entryName, "entry")
 			}
-			_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+			_, err := d.pushWithResolver(ctx, toParsedPushRequest(req), newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 				require.Nil(t, ing.Peek())
@@ -4097,9 +4106,9 @@ func TestDistributor_SharedMetadataCountAfterNormalization(t *testing.T) {
 				if separateScopes {
 					scopes = []logproto.ScopeLogs{{Entries: []logproto.Entry{first}}, {Entries: []logproto.Entry{second}}}
 				}
-				req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+				req := toParsedPushRequest(&logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
 					Labels: `{app="shared"}`, ResourceLogs: []logproto.ResourceLogs{{Attrs: tc.attrs, ScopeLogs: scopes}},
-				}}}
+				}}})
 
 				// Validation must count all three submitted attributes, even after normalization removes one.
 				_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
@@ -4602,7 +4611,7 @@ func TestDistributor_NestedLimitsServiceShard(t *testing.T) {
 				d.ingestLimits = newIngestLimits(&mockClient, prometheus.NewRegistry())
 
 				pushCtx := user.InjectOrgID(context.Background(), "test")
-				_, err := d.pushWithResolver(pushCtx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+				_, err := d.pushWithResolver(pushCtx, toParsedPushRequest(req), newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 				require.NoError(t, err)
 				// Shadow mode calls both RPCs, live mode only
 				// CheckLimitsAndShard: it already enforces the limits.

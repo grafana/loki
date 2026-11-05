@@ -186,7 +186,7 @@ func (d *Distributor) recordParsedRequest(
 	r *http.Request,
 	logger log.Logger,
 	tenantID, format, presumedAgentIP string,
-	req *logproto.InternalPushRequest,
+	req *logproto.ParsedPushRequest,
 	pushStats *loghttppush.Stats,
 	streamResolver *requestScopedStreamResolver,
 ) {
@@ -353,17 +353,21 @@ func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP stri
 func (d *Distributor) logPushRequestStreams(
 	ctx context.Context,
 	logger log.Logger,
-	streams []logproto.InternalStreamAdapter,
+	streams []logproto.ParsedStream,
 	streamResolver *requestScopedStreamResolver,
 	pushStats *loghttppush.Stats,
 	presumedAgentIP string,
 ) {
 	for _, s := range streams {
-		lbs, err := syntax.ParseLabels(s.Labels)
-		if err != nil {
-			// We just log the error and continue, we need the parsed labels to log the policy.
-			// In this case, the lbs will be empty and the policy will be empty.
-			level.Error(logger).Log("msg", "error parsing labels before logging push request", "err", err)
+		lbs := s.ParsedLabels
+		if lbs.IsEmpty() {
+			var err error
+			lbs, err = syntax.ParseLabels(s.Labels)
+			if err != nil {
+				// We just log the error and continue, we need the parsed labels to log the policy.
+				// In this case, the lbs will be empty and the policy will be empty.
+				level.Error(logger).Log("msg", "error parsing labels before logging push request", "err", err)
+			}
 		}
 
 		logValues := []interface{}{

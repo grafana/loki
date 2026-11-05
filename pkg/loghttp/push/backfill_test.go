@@ -70,7 +70,7 @@ func TestBackfillShardContext(t *testing.T) {
 func TestParseRequest_BackfillShard(t *testing.T) {
 	const lokiBody = `{"streams":[{"stream":{"foo":"bar"},"values":[["1570818238000000000","fizzbuzz"]]}]}`
 
-	parse := func(r *http.Request, parser RequestParser, limits *fakeLimits) (*logproto.InternalPushRequest, error) {
+	parse := func(r *http.Request, parser RequestParser, limits *fakeLimits) (*logproto.ParsedPushRequest, error) {
 		streamResolver := newMockStreamResolver("fake", limits)
 
 		// Mirrors the backfill-shard wiring the distributor's pushHandler does before invoking
