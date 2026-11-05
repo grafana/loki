@@ -3902,6 +3902,36 @@ func TestFilter_FirstWithTimestampShardSkipsMatrix(t *testing.T) {
 	require.Equal(t, int64(1), prom.Statistics.Logline.SkippedRequests)
 }
 
+// A quantile sketch under a vector aggregation is still a sketch shard, so a
+// miss must run it unchanged. An empty matrix is not a sketch, so the sketch
+// merge would reject it.
+func TestFilter_WrappedQuantileSketchPassesThroughOnMiss(t *testing.T) {
+	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	miss := hintprovider.HintTimeRange{Start: start.Add(-10 * time.Minute), End: start.Add(-6 * time.Minute)}
+
+	parsed, err := syntax.ParseSampleExpr(`sum(quantile_over_time(0.99, {app="api"} |= "timeout" | unwrap latency [5m]))`)
+	require.NoError(t, err)
+	parsed.(*syntax.VectorAggregationExpr).Left.(*syntax.RangeAggregationExpr).Operation = syntax.OpRangeTypeQuantileSketch
+
+	sketch := &queryrange.QuantileSketchResponse{}
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		require.Empty(t, req.(*queryrange.LokiRequest).HintRanges)
+		return sketch, nil
+	})
+	handler := NewLoglineFilterMiddleware(10*time.Second, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(parsed.String(), start, end)
+	req.Plan = &plan.QueryPlan{AST: parsed}
+
+	resp, err := handler.Do(sketchShardContext(t, miss, end), req)
+	require.NoError(t, err)
+	require.Same(t, sketch, resp)
+	require.Equal(t, 1, nextCalled)
+	require.Equal(t, int64(1), sketch.Statistics.Logline.PassthroughRequests)
+}
+
 func quantileSketchExpr(t *testing.T) *syntax.RangeAggregationExpr {
 	t.Helper()
 	parsed, err := syntax.ParseSampleExpr(`quantile_over_time(0.99, {app="api"} |= "timeout" | unwrap latency [5m])`)

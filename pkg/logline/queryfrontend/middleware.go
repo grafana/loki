@@ -269,12 +269,15 @@ func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult
 	l.Outcome = loglineOutcome(l, result.stats.Snapshot().PrefetchTimeouts > 0)
 }
 
-// lokiResponseStats returns the statistics of a log or metric response.
+// lokiResponseStats returns the statistics of a log, metric or quantile sketch
+// response.
 func lokiResponseStats(resp queryrangebase.Response) *logqlstats.Result {
 	switch r := resp.(type) {
 	case *queryrange.LokiResponse:
 		return &r.Statistics
 	case *queryrange.LokiPromResponse:
+		return &r.Statistics
+	case *queryrange.QuantileSketchResponse:
 		return &r.Statistics
 	default:
 		return nil
@@ -1204,9 +1207,12 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// A metric split reads before its start. Overlap and clipping use that window
 	// so a lookback match is not treated as a miss. Log queries widen by zero.
 	// Shard requests store internal operations in Query. Those strings do not
-	// parse, and a nil expression is then treated as a log query.
+	// parse, so the plan is read first. A request that cannot be read at all
+	// passes through, because a nil expression would be treated as a log query.
 	expr, err := requestExpr(lokiReq)
 	if err != nil {
+		h.metrics.passthroughSubRequests.WithLabelValues("unparseable_query").Inc()
+		level.Warn(logger).Log("msg", "cannot read the request expression, passing through", "err", err, "query", lokiReq.Query)
 		return h.passthrough(ctx, req)
 	}
 	readStart, readEnd := intervalStart, intervalEnd
@@ -1275,13 +1281,8 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// The count travels on the sub-request's response, so the split and shard
 	// merges add it up and discarded responses (retries) drop it.
 	if err == nil {
-		switch r := resp.(type) {
-		case *queryrange.LokiResponse:
-			r.Statistics.LoglineStats().NarrowedRequests++
-		case *queryrange.LokiPromResponse:
-			r.Statistics.LoglineStats().NarrowedRequests++
-		case *queryrange.QuantileSketchResponse:
-			r.Statistics.LoglineStats().NarrowedRequests++
+		if st := lokiResponseStats(resp); st != nil {
+			st.LoglineStats().NarrowedRequests++
 		}
 	}
 	return resp, err
@@ -1296,13 +1297,8 @@ func (h *loglineFilterHandler) passthrough(ctx context.Context, req queryrangeba
 	if err != nil {
 		return resp, err
 	}
-	switch r := resp.(type) {
-	case *queryrange.LokiResponse:
-		r.Statistics.LoglineStats().PassthroughRequests++
-	case *queryrange.LokiPromResponse:
-		r.Statistics.LoglineStats().PassthroughRequests++
-	case *queryrange.QuantileSketchResponse:
-		r.Statistics.LoglineStats().PassthroughRequests++
+	if st := lokiResponseStats(resp); st != nil {
+		st.LoglineStats().PassthroughRequests++
 	}
 	return resp, nil
 }
@@ -1312,6 +1308,7 @@ func (h *loglineFilterHandler) passthrough(ctx context.Context, req queryrangeba
 // fails the merge unless it has one vector per step. Those shards run unchanged.
 func (h *loglineFilterHandler) skip(ctx context.Context, req *queryrange.LokiRequest, expr syntax.Expr) (queryrangebase.Response, error) {
 	if isQuantileSketch(expr) {
+		h.metrics.passthroughSubRequests.WithLabelValues("sketch_shard").Inc()
 		return h.passthrough(ctx, req)
 	}
 	h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
@@ -1327,6 +1324,11 @@ func requestExpr(req *queryrange.LokiRequest) (syntax.Expr, error) {
 	return syntax.ParseExpr(req.Query)
 }
 
+// isQuantileSketch reports whether expr is a shard of a sharded
+// quantile_over_time. Its merge accepts only sketch responses, so an empty
+// matrix cannot stand in for it. approx_topk's count-min shards never reach
+// the filter: approx_topk runs only as an instant query, and the filter passes
+// instant requests through.
 func isQuantileSketch(expr syntax.Expr) bool {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
