@@ -151,7 +151,7 @@ func (r *MemRecoverer) SetStream(_ context.Context, userID string, series record
 	return nil
 }
 
-func (r *MemRecoverer) Push(userID string, entries wal.RefEntries) error {
+func (r *MemRecoverer) Push(userID string, _ time.Time, entries wal.RefEntries) error {
 	r.Lock()
 	defer r.Unlock()
 
@@ -345,4 +345,60 @@ func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
+}
+
+// The timestamp of the record the entries were ingested from is restored on WAL replay, so a chunk
+// that was open during a restart ends up with the same highest record timestamp as before.
+func TestRecoveryRestoresRecordTimestampFromWAL(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	i, err := New(defaultIngesterTestConfig(t), client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockReadRingWithOneActiveIngester(), nil)
+	require.NoError(t, err)
+
+	var (
+		first  = time.UnixMilli(1_700_000_000_000)
+		second = first.Add(time.Hour)
+		lbls   = labels.FromStrings("app", "foo")
+	)
+
+	series := &wal.Record{
+		UserID: "test",
+		Series: []record.RefSeries{{Ref: 1, Labels: lbls}},
+	}
+	entries := func(version wal.RecordType, counter int64, ts time.Time, line string) []byte {
+		rec := &wal.Record{}
+		rec.Reset()
+		rec.UserID = "test"
+		rec.IngestedAt = ts
+		rec.AddEntries(1, counter, logproto.Entry{Timestamp: time.Unix(counter, 0), Line: line})
+		return rec.EncodeEntries(version, nil)
+	}
+
+	// The records arrive out of order of their timestamps, the highest one wins.
+	reader := &MemoryWALReader{xs: [][]byte{
+		series.EncodeSeries(nil),
+		entries(wal.WALRecordEntriesV4, 1, second, "a"),
+		entries(wal.WALRecordEntriesV4, 2, first, "b"),
+		// A record without a timestamp doesn't change it.
+		entries(wal.WALRecordEntriesV4, 3, time.Time{}, "c"),
+		// Neither does a record written by an older version, which can't store the timestamp.
+		entries(wal.WALRecordEntriesV3, 4, second.Add(time.Hour), "d"),
+	}}
+
+	recoverer := newIngesterRecoverer(i)
+	require.NoError(t, RecoverWAL(context.Background(), reader, recoverer))
+	recoverer.Close()
+
+	var got []time.Time
+	for _, inst := range i.getInstances() {
+		require.NoError(t, inst.forAllStreams(context.Background(), func(s *stream) error {
+			for _, c := range s.chunks {
+				got = append(got, c.ingestedAt)
+			}
+			return nil
+		}))
+	}
+	require.Len(t, got, 1)
+	require.True(t, second.Equal(got[0]), "got %s, want %s", got[0], second)
 }
