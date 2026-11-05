@@ -5103,7 +5103,7 @@ func sumCounterVec(t *testing.T, c prometheus.Collector) float64 {
 
 func ptr[T any](v T) *T { return &v }
 
-func TestDistributor_rateLimitError(t *testing.T) {
+func TestRateLimitError(t *testing.T) {
 	tests := []struct {
 		name     string
 		buckets  []*rateLimitBucket
@@ -5162,8 +5162,7 @@ func TestDistributor_rateLimitError(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			d := &Distributor{}
-			require.EqualError(t, d.rateLimitError(tc.buckets), tc.expected)
+			require.EqualError(t, rateLimitError(tc.buckets), tc.expected)
 		})
 	}
 }
