@@ -82,8 +82,6 @@ func TestChunkFlushingPolicyIdle(t *testing.T) {
 		"backfill": {{Selector: `{__backfill__="true"}`, Priority: 1}},
 	}
 	require.NoError(t, limitsCfg.PolicyStreamMapping.Validate())
-	// Set directly, as Validate rejects periods below
-	// validation.MinChunkIdlePeriod.
 	limitsCfg.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
 		"backfill": {ChunkIdlePeriod: ptr(model.Duration(policyIdle))},
 	}

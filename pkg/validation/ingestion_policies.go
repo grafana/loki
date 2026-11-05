@@ -381,11 +381,6 @@ func (o *PerPolicyConfigOverride) ApplyTo(base shardstreams.Config) shardstreams
 	return base
 }
 
-// MinChunkIdlePeriod is the shortest chunk_idle_period a policy may set. A
-// shorter period would flush tiny chunks for streams with short pauses between
-// pushes.
-const MinChunkIdlePeriod = time.Minute
-
 // PolicyOverridableLimits holds the per-policy overrides for a single policy. Every limit field is
 // a pointer: a nil field means "not overridden" (the tenant value is inherited and usage counts
 // against the shared tenant bucket); a non-nil field overrides the tenant value for streams
@@ -406,12 +401,10 @@ type PolicyOverridableLimits struct {
 	// affected by inherit_limits.
 	RejectPartialWrites bool `yaml:"reject_partial_writes" json:"reject_partial_writes" doc:"hidden"`
 
-	// ChunkIdlePeriod makes ingesters flush the chunks of the policy's
-	// streams once they go this long without appends, instead of
-	// -ingester.chunks-idle-period. Streams of short-lived policies, such as
-	// backfills, then leave ingester memory sooner. 0 disables it; otherwise
-	// it must be at least MinChunkIdlePeriod. It is not affected by
-	// inherit_limits.
+	// ChunkIdlePeriod overrides -ingester.chunks-idle-period for the policy's streams.
+	// Unset or 0 keeps -ingester.chunks-idle-period.
+	// Note: a very short periods may flush too small chunks.
+	// It is not affected by inherit_limits.
 	ChunkIdlePeriod *model.Duration `yaml:"chunk_idle_period" json:"chunk_idle_period" doc:"hidden"`
 
 	// InheritLimits, when true, makes every unset limit field resolve to the tenant-level value
@@ -422,9 +415,8 @@ type PolicyOverridableLimits struct {
 	InheritLimits bool `yaml:"inherit_limits" json:"inherit_limits" doc:"hidden"`
 }
 
-// Validate checks that the overridden values are non-negative, and that chunk_idle_period is
-// either 0 or at least MinChunkIdlePeriod. Returned errors are field-scoped; callers add the
-// policy context.
+// Validate checks that the overridden values are non-negative. Returned errors are field-scoped;
+// callers add the policy context.
 func (p PolicyOverridableLimits) Validate() error {
 	if (p.IngestionRateMB != nil && *p.IngestionRateMB < 0) || (p.IngestionBurstSizeMB != nil && *p.IngestionBurstSizeMB < 0) {
 		return errors.New("ingestion_rate_mb and ingestion_burst_size_mb must be >= 0")
@@ -435,8 +427,8 @@ func (p PolicyOverridableLimits) Validate() error {
 	if p.ShardStreams != nil && p.ShardStreams.DesiredRate != nil && p.ShardStreams.DesiredRate.Val() < 0 {
 		return errors.New("shard_streams.desired_rate must be >= 0")
 	}
-	if p.ChunkIdlePeriod != nil && *p.ChunkIdlePeriod != 0 && time.Duration(*p.ChunkIdlePeriod) < MinChunkIdlePeriod {
-		return fmt.Errorf("chunk_idle_period must be 0 or >= %s", MinChunkIdlePeriod)
+	if p.ChunkIdlePeriod != nil && *p.ChunkIdlePeriod < 0 {
+		return errors.New("chunk_idle_period must be >= 0")
 	}
 	return nil
 }

@@ -732,9 +732,7 @@ func TestPolicyOverridableLimits_ValidateChunkIdlePeriod(t *testing.T) {
 	}{
 		{name: "unset"},
 		{name: "zero", idle: ptr(model.Duration(0))},
-		{name: "minimum", idle: ptr(model.Duration(MinChunkIdlePeriod))},
-		{name: "above minimum", idle: ptr(model.Duration(5 * time.Minute))},
-		{name: "below minimum", idle: ptr(model.Duration(30 * time.Second)), wantErr: true},
+		{name: "positive", idle: ptr(model.Duration(30 * time.Second))},
 		{name: "negative", idle: ptr(model.Duration(-time.Minute)), wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

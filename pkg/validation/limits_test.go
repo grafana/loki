@@ -837,30 +837,18 @@ func TestLimits_PolicyChunkIdlePeriodYAML(t *testing.T) {
 	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
 	setDefaultLimitsForYAML(t, defaults)
 
-	t.Run("valid", func(t *testing.T) {
-		var l Limits
-		require.NoError(t, yaml.Unmarshal([]byte(`
+	var l Limits
+	require.NoError(t, yaml.Unmarshal([]byte(`
 policy_override_limits:
   backfill:
     chunk_idle_period: 5m
 `), &l))
-		require.NoError(t, l.Validate())
+	require.NoError(t, l.Validate())
 
-		overrides := &Overrides{defaultLimits: &l}
-		idle, ok := overrides.PolicyChunkIdlePeriod("tenant1", "backfill")
-		require.True(t, ok)
-		require.Equal(t, 5*time.Minute, idle)
-	})
-
-	t.Run("below minimum", func(t *testing.T) {
-		var l Limits
-		require.NoError(t, yaml.Unmarshal([]byte(`
-policy_override_limits:
-  backfill:
-    chunk_idle_period: 30s
-`), &l))
-		require.EqualError(t, l.Validate(), `policy_override_limits["backfill"]: chunk_idle_period must be 0 or >= 1m0s`)
-	})
+	overrides := &Overrides{defaultLimits: &l}
+	idle, ok := overrides.PolicyChunkIdlePeriod("tenant1", "backfill")
+	require.True(t, ok)
+	require.Equal(t, 5*time.Minute, idle)
 }
 
 func TestPolicyShardStreams(t *testing.T) {
