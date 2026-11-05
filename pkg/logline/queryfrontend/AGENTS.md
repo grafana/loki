@@ -44,8 +44,8 @@ widening and no extra nanosecond.
 - **Per-tenant settings are limits.** The mode and the minimum query bytes are
   `limits_config` fields (`logline_query_mode`, `logline_query_min_query_bytes_for_index`),
   so a tenant overrides them in the runtime config like any other limit. A request
-  with `X-Logline-Index: live` skips that byte threshold. Live mode from the tenant
-  limit or the cell default still applies it, as does `dry_run`.
+  with `X-Logline-Index: live` skips that byte threshold. Dry-run, and live mode from
+  the tenant limit or the `logline.query` settings, still apply it.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
 - **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges
@@ -69,11 +69,11 @@ live query skipped this way records `recent_data_only`, not `query_too_small` or
 window ends after the cutoff, even if its lookback reaches past it: every later window
 ends after the cutoff too, so the report would score no step.
 
-`X-Logline-Index: live` skips the index-stats check that enforces the byte threshold,
-including when that call would fail. Live mode from the tenant limit or the cell
-default still runs the check, as does dry-run. The ingester-window short circuit stays
-in front of it, so a live-header query that only reads recent data still records
-`recent_data_only` and still skips the lookup.
+`X-Logline-Index: live` skips the index-stats call that checks the byte threshold, so
+the lookup runs even when that call would fail. Dry-run, and live mode from the tenant
+limit or the `logline.query` settings, still make the call. A live-header query that
+only reads the ingester window still skips the lookup and records `recent_data_only`,
+because the check that starts the lookup doesn't depend on the byte threshold.
 
 ### Pass-through intervals don't wait for the lookup
 
@@ -163,9 +163,9 @@ why it didn't:
 1. The three early skips in the prefetch handler record `unsupported_query`,
    `size_estimate_failed` and `query_too_small`, in live mode only. A query that
    reads only the ingester window skips the size estimate, so it never records the
-   last two. `X-Logline-Index: live` also skips the estimate, so `query_too_small`
-   and `size_estimate_failed` are recorded only for live mode that came from the
-   tenant limit or the cell default. Metric queries that `SupportedMetricQuery`
+   last two. `X-Logline-Index: live` also skips the estimate, so only live mode from
+   the tenant limit or the `logline.query` settings records `size_estimate_failed`
+   and `query_too_small`. Metric queries that `SupportedMetricQuery`
    rejects, and `absent_over_time` queries, return before these skips. They get no
    `Logline` stats, so outcome counts leave them out. `absent_over_time` stays
    unhinted because a skipped split returns an empty matrix, which drops the 1

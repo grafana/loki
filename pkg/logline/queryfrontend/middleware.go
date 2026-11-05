@@ -54,7 +54,7 @@ import (
 //   - "dry_run" — opt in to logline dry-run verification
 //   - "live" — override dry-run config and perform live query acceleration.
 //     This value also skips the min-query-bytes size gate. Live mode from
-//     the tenant limit or the cell default does not.
+//     the tenant limit or the logline.query settings does not.
 //   - "off" — force-disable logline handling for this request
 const LoglineIndexHeader = "X-Logline-Index"
 
@@ -995,7 +995,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	queryBytes := uint64(0)
 	// The live header is an explicit per-request opt-in. It skips the size
 	// gate so correctness tests can look up hints for small queries. Live
-	// mode from the tenant limit or the cell default still applies it.
+	// mode from the tenant limit or the logline.query settings still applies it.
 	if minQueryBytes > 0 && !recentOnly && LoglineIndexHeaderValue(header) != LoglineIndexLive {
 		queryBytes, err = h.getQueryBytes(ctx, expr, readStart, readEnd)
 		if err != nil {

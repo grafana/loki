@@ -1312,15 +1312,15 @@ func TestPrefetchFilter_QueryBytesBelowThreshold_SkipsHintPrefetch(t *testing.T)
 	now := time.Now().Truncate(time.Millisecond)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
-	// Neither cell-default live nor tenant live mode carries the live header,
-	// so both still apply the size gate.
+	// These requests have no live header, so live mode from the logline.query
+	// settings and from the tenant limit both apply the size gate.
 	for _, tc := range []struct {
 		name   string
 		cfg    Config
 		limits mockLimits
 	}{
 		{
-			name:   "cell default live",
+			name:   "logline.query default live",
 			limits: mockLimits{defaultMinQueryBytes: 500},
 		},
 		{
@@ -1656,14 +1656,26 @@ func TestPrefetchFilter_IngesterWindowSkipsQueryStats(t *testing.T) {
 		modes                map[string]Mode
 		queryIngestersWithin time.Duration
 		req                  *queryrange.LokiRequest
-		// wantStats is set when the size estimate runs. The live header skips it,
-		// and a lookup that only reads the ingester window never starts.
+		// wantLookup is set when the lookup starts. A lookup that only reads the
+		// ingester window never starts, and the size estimate doesn't run either.
 		wantLookup bool
-		wantStats  bool
+		// wantStats is set when the size estimate runs. The live header skips it.
+		// The stats call reports bytes above the threshold, so a query that gets
+		// the estimate also starts a lookup.
+		wantStats bool
 	}{
 		{
 			name:                 "log query inside the window",
 			ctx:                  testTenantContextWithLive(),
+			queryIngestersWithin: 2 * time.Hour,
+			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
+		},
+		{
+			// The live header skips the size estimate on its own. Tenant live
+			// mode checks that the ingester window skips it too.
+			name:                 "tenant live log query inside the window",
+			ctx:                  testTenantContext(),
+			modes:                map[string]Mode{"test": ModeLive},
 			queryIngestersWithin: 2 * time.Hour,
 			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
 		},
@@ -2815,7 +2827,7 @@ func TestPrefetchFilter_LoglineOutcome(t *testing.T) {
 		{name: "no shard planning", wantOutcome: outcomeSkipRatioUnavailable},
 		{name: "every sub-request passed through", hints: preMinDateHints, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeTimeRangeNotIndexed},
 		{name: "whole query in ingester window", queryIngestersWithin: 2 * time.Hour, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeRecentDataOnly},
-		{name: "whole query in ingester window skips the size estimate", minQueryBytes: 500, indexStatsErr: errors.New("stats unavailable"), queryIngestersWithin: 2 * time.Hour, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeRecentDataOnly},
+		{name: "whole query in ingester window skips the size estimate", ctx: testTenantContext(), tenantMode: ModeLive, minQueryBytes: 500, indexStatsErr: errors.New("stats unavailable"), queryIngestersWithin: 2 * time.Hour, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeRecentDataOnly},
 		{name: "lookup reports unsupported query", hintErr: hintprovider.ErrUnsupported, wantOutcome: outcomeUnsupportedQuery},
 		{name: "lookup failed", hintErr: errors.New("index unavailable"), wantOutcome: outcomeLookupFailed},
 		{name: "lookup canceled", hintErr: context.Canceled, wantOutcome: outcomeCanceled},
