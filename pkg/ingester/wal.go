@@ -55,7 +55,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 5*time.Minute, "Interval at which checkpoints should be created.")
 	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown.")
 	f.Float64Var(&cfg.DiskFullThreshold, "ingester.wal-disk-full-threshold", 0.90, "Threshold for disk usage (0.0 to 1.0) at which the WAL will throttle incoming writes. Set to 0 to disable throttling.")
-	f.BoolVar(&cfg.RecordV4Enabled, "ingester.wal-record-v4-enabled", false, "Write WAL entries records as V4, which adds the timestamp of the Kafka record each push was read from, so a replay restores it. It sets the ingestion time of backfilled chunks. Older versions can't replay V4 records. When disabled, records are written as V3 and the timestamps in V4 records are ignored on replay.")
+	f.BoolVar(&cfg.RecordV4Enabled, "ingester.wal-record-v4-enabled", false, "Write WAL records as V4, which store the Kafka record timestamp. Older versions can't replay them. When disabled, records are written as V3 and V4 timestamps are ignored on replay.")
 
 	// Need to set default here
 	cfg.ReplayMemoryCeiling = flagext.ByteSize(defaultCeiling)

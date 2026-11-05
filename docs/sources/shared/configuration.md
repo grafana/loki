@@ -3863,11 +3863,9 @@ wal:
   # CLI flag: -ingester.wal-disk-full-threshold
   [disk_full_threshold: <float> | default = 0.9]
 
-  # Write WAL entries records as V4, which adds the timestamp of the Kafka
-  # record each push was read from, so a replay restores it. It sets the
-  # ingestion time of backfilled chunks. Older versions can't replay V4 records.
-  # When disabled, records are written as V3 and the timestamps in V4 records
-  # are ignored on replay.
+  # Write WAL records as V4, which store the Kafka record timestamp. Older
+  # versions can't replay them. When disabled, records are written as V3 and V4
+  # timestamps are ignored on replay.
   # CLI flag: -ingester.wal-record-v4-enabled
   [record_v4_enabled: <boolean> | default = false]
 
