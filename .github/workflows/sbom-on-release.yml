@@ -20,7 +20,7 @@ permissions: {}
 jobs:
   export-sbom:
     name: Export SBOM and attach to release
-    # Only Loki server releases (v*). Operator (operator/v*) and Helm releases are skipped.
+    # Only Loki server releases (v*). Helm releases are skipped.
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
     runs-on: ubuntu-x64
     permissions:
