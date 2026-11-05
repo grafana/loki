@@ -1203,7 +1203,12 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 
 	// A metric split reads before its start. Overlap and clipping use that window
 	// so a lookback match is not treated as a miss. Log queries widen by zero.
-	expr, _ := syntax.ParseExpr(lokiReq.Query)
+	// Shard requests store internal operations in Query. Those strings do not
+	// parse, and a nil expression is then treated as a log query.
+	expr, err := requestExpr(lokiReq)
+	if err != nil {
+		return h.passthrough(ctx, req)
+	}
 	readStart, readEnd := intervalStart, intervalEnd
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
 		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
@@ -1250,14 +1255,12 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 
 	overlapping := rangesOverlapping(result.ranges, readStart, overlapEnd)
 	if len(overlapping) == 0 {
-		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedResponse(lokiReq, expr), nil
+		return h.skip(ctx, lokiReq, expr)
 	}
 
 	hints := clipHintRangesForInterval(overlapping, readStart, overlapEnd)
 	if len(hints) == 0 {
-		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedResponse(lokiReq, expr), nil
+		return h.skip(ctx, lokiReq, expr)
 	}
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
@@ -1276,6 +1279,8 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		case *queryrange.LokiResponse:
 			r.Statistics.LoglineStats().NarrowedRequests++
 		case *queryrange.LokiPromResponse:
+			r.Statistics.LoglineStats().NarrowedRequests++
+		case *queryrange.QuantileSketchResponse:
 			r.Statistics.LoglineStats().NarrowedRequests++
 		}
 	}
@@ -1296,8 +1301,41 @@ func (h *loglineFilterHandler) passthrough(ctx context.Context, req queryrangeba
 		r.Statistics.LoglineStats().PassthroughRequests++
 	case *queryrange.LokiPromResponse:
 		r.Statistics.LoglineStats().PassthroughRequests++
+	case *queryrange.QuantileSketchResponse:
+		r.Statistics.LoglineStats().PassthroughRequests++
 	}
 	return resp, nil
+}
+
+// skip answers a split with an empty response. A quantile sketch shard cannot
+// take an empty matrix: the merger accepts only a sketch, and an empty sketch
+// fails the merge unless it has one vector per step. Those shards run unchanged.
+func (h *loglineFilterHandler) skip(ctx context.Context, req *queryrange.LokiRequest, expr syntax.Expr) (queryrangebase.Response, error) {
+	if isQuantileSketch(expr) {
+		return h.passthrough(ctx, req)
+	}
+	h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
+	return skippedResponse(req, expr), nil
+}
+
+// requestExpr returns the planned expression. A shard request puts an internal
+// operation in Query, and that string is not LogQL, so the plan comes first.
+func requestExpr(req *queryrange.LokiRequest) (syntax.Expr, error) {
+	if req.Plan != nil && req.Plan.AST != nil {
+		return req.Plan.AST, nil
+	}
+	return syntax.ParseExpr(req.Query)
+}
+
+func isQuantileSketch(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return isQuantileSketch(e.Left)
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeQuantileSketch
+	default:
+		return false
+	}
 }
 
 func skippedResponse(req *queryrange.LokiRequest, expr syntax.Expr) queryrangebase.Response {

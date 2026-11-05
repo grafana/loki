@@ -24,6 +24,7 @@ import (
 	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -3804,6 +3805,121 @@ func TestLive_MetricRange_FiltersByLookback(t *testing.T) {
 			Start: readEnd,
 			End:   readEnd.UTC().Add(time.Nanosecond),
 		}}, got.HintRanges)
+	})
+}
+
+func TestFilter_QuantileSketchShard(t *testing.T) {
+	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	// The sample window is [start-5m, end]. This hint sits only in the lookback.
+	lookback := hintprovider.HintTimeRange{Start: start.Add(-4 * time.Minute), End: start.Add(-time.Minute)}
+	expr := quantileSketchExpr(t)
+	sketchResp := &queryrange.QuantileSketchResponse{}
+
+	t.Run("lookback hint is narrowed from the plan", func(t *testing.T) {
+		var got *queryrange.LokiRequest
+		nextCalled := 0
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			nextCalled++
+			got = req.(*queryrange.LokiRequest)
+			return sketchResp, nil
+		})
+		handler := NewLoglineFilterMiddleware(10*time.Second, newTestMetrics(), nil).Wrap(next)
+		req := newTestLokiRequest(expr.String(), start, end)
+		req.Plan = &plan.QueryPlan{AST: expr}
+
+		resp, err := handler.Do(sketchShardContext(t, lookback, end), req)
+		require.NoError(t, err)
+		require.Same(t, sketchResp, resp)
+		require.Equal(t, 1, nextCalled)
+		require.Equal(t, start, got.StartTs)
+		require.Equal(t, end, got.EndTs)
+		require.Equal(t, []logproto.HintTimeRange{{Start: lookback.Start, End: lookback.End}}, got.HintRanges)
+		require.Equal(t, int64(1), resp.(*queryrange.QuantileSketchResponse).Statistics.Logline.NarrowedRequests)
+	})
+
+	t.Run("no matching hint runs the shard", func(t *testing.T) {
+		miss := hintprovider.HintTimeRange{Start: start.Add(-10 * time.Minute), End: start.Add(-6 * time.Minute)}
+		nextCalled := 0
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			nextCalled++
+			require.Empty(t, req.(*queryrange.LokiRequest).HintRanges)
+			return sketchResp, nil
+		})
+		handler := NewLoglineFilterMiddleware(10*time.Second, newTestMetrics(), nil).Wrap(next)
+		req := newTestLokiRequest(expr.String(), start, end)
+		req.Plan = &plan.QueryPlan{AST: expr}
+
+		resp, err := handler.Do(sketchShardContext(t, miss, end), req)
+		require.NoError(t, err)
+		require.Same(t, sketchResp, resp)
+		require.Equal(t, 1, nextCalled)
+		require.Equal(t, int64(1), resp.(*queryrange.QuantileSketchResponse).Statistics.Logline.PassthroughRequests)
+	})
+
+	t.Run("unparsed query passes through", func(t *testing.T) {
+		nextCalled := 0
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			nextCalled++
+			require.Empty(t, req.(*queryrange.LokiRequest).HintRanges)
+			return sketchResp, nil
+		})
+		handler := NewLoglineFilterMiddleware(10*time.Second, newTestMetrics(), nil).Wrap(next)
+		// Query is the sketch string and there is no plan, so the filter cannot
+		// tell a sketch shard from a log query. Skipping would return streams.
+		req := newTestLokiRequest(expr.String(), start, end)
+
+		resp, err := handler.Do(sketchShardContext(t, lookback, end), req)
+		require.NoError(t, err)
+		require.Same(t, sketchResp, resp)
+		require.Equal(t, 1, nextCalled)
+	})
+}
+
+func TestFilter_FirstWithTimestampShardSkipsMatrix(t *testing.T) {
+	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	parsed, err := syntax.ParseSampleExpr(`first_over_time({app="api"} |= "timeout" | unwrap latency [5m])`)
+	require.NoError(t, err)
+	parsed.(*syntax.RangeAggregationExpr).Operation = syntax.OpRangeTypeFirstWithTimestamp
+	miss := hintprovider.HintTimeRange{Start: start.Add(-10 * time.Minute), End: start.Add(-6 * time.Minute)}
+
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		return metricMatrixResponse(1, end), nil
+	})
+	handler := NewLoglineFilterMiddleware(10*time.Second, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(parsed.String(), start, end)
+	req.Plan = &plan.QueryPlan{AST: parsed}
+
+	resp, err := handler.Do(sketchShardContext(t, miss, end), req)
+	require.NoError(t, err)
+	require.Equal(t, 0, nextCalled)
+	prom := resp.(*queryrange.LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeMatrix, prom.Response.Data.ResultType)
+	require.Empty(t, prom.Response.Data.Result)
+	require.Equal(t, int64(1), prom.Statistics.Logline.SkippedRequests)
+}
+
+func quantileSketchExpr(t *testing.T) *syntax.RangeAggregationExpr {
+	t.Helper()
+	parsed, err := syntax.ParseSampleExpr(`quantile_over_time(0.99, {app="api"} |= "timeout" | unwrap latency [5m])`)
+	require.NoError(t, err)
+	expr := parsed.(*syntax.RangeAggregationExpr)
+	expr.Operation = syntax.OpRangeTypeQuantileSketch
+	return expr
+}
+
+func sketchShardContext(t *testing.T, hint hintprovider.HintTimeRange, cutoff time.Time) context.Context {
+	t.Helper()
+	done := make(chan struct{})
+	close(done)
+	return withHintPrefetch(testTenantContextWithLive(), &hintPrefetchResult{
+		ranges:         []hintprovider.HintTimeRange{hint},
+		ingesterCutoff: cutoff,
+		stats:          hintprovider.NewQueryStats(),
+		done:           done,
 	})
 }
 
