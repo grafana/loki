@@ -187,3 +187,20 @@ func TestBuildLogMergePlan(t *testing.T) {
 
 	require.NotEqual(t, root.ID(), p2Root.ID(), "every build must mint a fresh NodeID")
 }
+
+func TestBuildDeletionSweepPlan(t *testing.T) {
+	t.Run("returns a plan with one DeletionSweep root for the tenant", func(t *testing.T) {
+		root, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		require.IsType(t, &physical.DeletionSweep{}, root)
+		require.Equal(t, "t1", root.(*physical.DeletionSweep).Tenant)
+	})
+
+	t.Run("mints a fresh NodeID for every build", func(t *testing.T) {
+		n1, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		n2, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		require.NotEqual(t, n1.ID(), n2.ID())
+	})
+}

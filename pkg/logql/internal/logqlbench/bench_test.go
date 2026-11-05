@@ -168,6 +168,12 @@ var queries = []benchQuery{
 		streamFirstSupported: true,
 	},
 	{
+		expr:                 fmt.Sprintf("sum by(%s) (rate(%s | logfmt | unwrap value [5m]))", labelMediumCardName, selectorAll),
+		description:          "high input, medium output, unwrap",
+		instant:              false,
+		streamFirstSupported: true,
+	},
+	{
 		expr:                 fmt.Sprintf("count_over_time(%s[24h])", selectorMedium),
 		description:          "medium input, medium output",
 		instant:              true,

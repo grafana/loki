@@ -49,6 +49,14 @@ The logline index only covers data in object storage. Recent data still in inges
 is always passed through. The `ingesterCutoff` is computed from
 `QueryIngestersWithin` (from Loki's querier config).
 
+The prefetch middleware reads the clock once per query, before the byte threshold, and
+the dry-run and live paths use that cutoff. When the lookup would only read the ingester
+window, the lookup never starts, so the middleware skips the index-stats call too. A
+live query skipped this way records `recent_data_only`, not `query_too_small` or
+`size_estimate_failed`. Dry-run also skips the lookup and the call when the first step's
+window ends after the cutoff, even if its lookback reaches past it: every later window
+ends after the cutoff too, so the report would score no step.
+
 ### Pass-through intervals don't wait for the lookup
 
 Ingester-window and pre-min-date intervals pass through whatever the lookup returns,
@@ -135,7 +143,9 @@ both per split, so splits that bypass shard planning count toward neither.
 why it didn't:
 
 1. The three early skips in the prefetch handler record `unsupported_query`,
-   `size_estimate_failed` and `query_too_small`, in live mode only.
+   `size_estimate_failed` and `query_too_small`, in live mode only. A query that
+   reads only the ingester window skips the size estimate, so it never records the
+   last two.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
    `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
    A lookup still running when the query returns is `lookup_timeout` if a

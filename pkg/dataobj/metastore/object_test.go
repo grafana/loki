@@ -31,12 +31,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -108,12 +110,15 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	return path
 }
 
-// getRecordingBucket records the names of every object read through Get.
+// getRecordingBucket records the names of every object read through Get, and counts the reads
+// through GetRange.
 type getRecordingBucket struct {
 	objstore.Bucket
 
 	mtx   sync.Mutex
 	names []string
+
+	rangeReads atomic.Int64
 }
 
 func (b *getRecordingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -123,12 +128,18 @@ func (b *getRecordingBucket) Get(ctx context.Context, name string) (io.ReadClose
 	return b.Bucket.Get(ctx, name)
 }
 
+func (b *getRecordingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	b.rangeReads.Inc()
+	return b.Bucket.GetRange(ctx, name, off, length)
+}
+
 func (b *getRecordingBucket) tocReads() []string {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 	var out []string
+	// The metastore adds the index prefix before a read reaches this bucket.
 	for _, name := range b.names {
-		if strings.HasPrefix(name, TocPrefix) {
+		if strings.HasPrefix(name, IndexStoragePrefix+"/"+TocPrefix) {
 			out = append(out, name)
 		}
 	}
@@ -234,14 +245,15 @@ func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
 	t.Cleanup(func() { _ = closer.Close() })
 
 	bucket := objstore.NewInMemBucket()
+	indexBucket := NewIndexBucket(bucket)
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+	metastoreTocWriter := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
@@ -355,14 +367,15 @@ func TestObjectMetastore_Sections_PredicateMatchers(t *testing.T) {
 	t.Cleanup(func() { _ = closer.Close() })
 
 	bucket := objstore.NewInMemBucket()
+	indexBucket := NewIndexBucket(bucket)
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+	metastoreTocWriter := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
@@ -488,7 +501,7 @@ func TestObjectMetastore_Sections_ShardBucketRange(t *testing.T) {
 
 	t.Run("a range that resolves no section leaves the resolved-sections ratio sum finite", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		recording := NewObjectMetastore(bucketClient, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(reg))
+		recording := NewObjectMetastore(bucketClient, log.NewNopLogger(), NewObjectMetastoreMetrics(reg))
 
 		resp, err := recording.Sections(ctx, requestWithBucketRange(&postings.ShardBucketRange{From: 4, To: 19}))
 		require.NoError(t, err)
@@ -596,9 +609,9 @@ type indexedLine struct {
 	timestamp  time.Time
 }
 
-// addIndexObject builds an index object holding lines, uploads it to bucket, adds it to the ToC
-// and returns its path. The key of an uploaded object comes from its content, so two index
-// objects need different lines to get different keys.
+// addIndexObject builds an index object holding lines, uploads it under the index prefix of
+// bucket, adds it to the ToC and returns its path. The key of an uploaded object comes from its
+// content, so two index objects need different lines to get different keys.
 func addIndexObject(t *testing.T, bucket objstore.Bucket, lines []indexedLine) string {
 	t.Helper()
 
@@ -623,32 +636,34 @@ func addIndexObject(t *testing.T, bucket objstore.Bucket, lines []indexedLine) s
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 
-	up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	indexBucket := NewIndexBucket(bucket)
+	up := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 	require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
 	path, err := up.Upload(t.Context(), obj)
 	require.NoError(t, err)
 
-	toc := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+	toc := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, writeTimeRanges(t.Context(), toc, path, timeRanges))
 	return path
 }
 
 func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
-	// addPostingsIndexObject builds an index object with only a postings section, uploads it to
-	// bucket, adds it to the ToC and returns its path. The metastore reads it in the postings flow,
-	// which reports no row count or size.
+	// addPostingsIndexObject builds an index object with only a postings section, uploads it under
+	// the index prefix of bucket, adds it to the ToC and returns its path. The metastore reads it in
+	// the postings flow, which reports no row count or size.
 	addPostingsIndexObject := func(t *testing.T, bucket objstore.Bucket, observations []postings.LabelObservation) string {
 		t.Helper()
 
 		obj, closer := buildIndexObject(t, tenantID, observations)
 		t.Cleanup(closer)
 
-		up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+		indexBucket := NewIndexBucket(bucket)
+		up := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 		require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
 		path, err := up.Upload(context.Background(), obj)
 		require.NoError(t, err)
 
-		toc := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+		toc := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, toc.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{
 			Path:      path,
 			StartTime: now.Add(-time.Minute),
@@ -829,6 +844,54 @@ func TestObjectMetastore_Sections(t *testing.T) {
 	})
 }
 
+func TestObjectMetastore_MetadataCache(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), tenantID)
+	request := SectionsRequest{
+		Start:    now.Add(-time.Hour),
+		End:      now.Add(time.Hour),
+		Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+	}
+
+	t.Run("resolves a cached index object without reading it from object storage", func(t *testing.T) {
+		inMem := objstore.NewInMemBucket()
+		addIndexObject(t, inMem, sectionOf("object-a"))
+		bucket := &getRecordingBucket{Bucket: inMem}
+		m, _ := newTestMetastoreWithCache(bucket)
+
+		cold, err := m.Sections(ctx, request)
+		require.NoError(t, err)
+		require.NotEmpty(t, cold.Sections)
+		require.Positive(t, bucket.rangeReads.Load())
+
+		bucket.rangeReads.Store(0)
+		warm, err := m.Sections(ctx, request)
+		require.NoError(t, err)
+		require.Zero(t, bucket.rangeReads.Load())
+		require.Equal(t, cold.Sections, warm.Sections)
+	})
+
+	t.Run("reads the ToC from object storage on every resolution and never caches it", func(t *testing.T) {
+		inMem := objstore.NewInMemBucket()
+		addIndexObject(t, inMem, sectionOf("object-a"))
+		bucket := &getRecordingBucket{Bucket: inMem}
+		m, memoryCache := newTestMetastoreWithCache(bucket)
+
+		_, err := m.Sections(ctx, request)
+		require.NoError(t, err)
+		tocReadsPerResolution := len(bucket.tocReads())
+		require.Positive(t, tocReadsPerResolution)
+
+		_, err = m.Sections(ctx, request)
+		require.NoError(t, err)
+
+		require.Len(t, bucket.tocReads(), 2*tocReadsPerResolution)
+		require.NotEmpty(t, memoryCache.GetInternal(), "the index object is cached, so the check below is not vacuous")
+		for key := range memoryCache.GetInternal() {
+			require.NotContains(t, key, TocPrefix)
+		}
+	})
+}
+
 func TestObjectMetastore_SectionsStream(t *testing.T) {
 	ctx := user.InjectOrgID(t.Context(), tenantID)
 	request := SectionsRequest{
@@ -979,7 +1042,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 			return nil
 		})
 		reg := prometheus.NewRegistry()
-		m := NewObjectMetastore(inMem, Config{}, logger, NewObjectMetastoreMetrics(reg))
+		m := NewObjectMetastore(inMem, logger, NewObjectMetastoreMetrics(reg))
 		boundedCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
@@ -1257,14 +1320,15 @@ func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
 	t.Cleanup(func() { _ = closer.Close() })
 
 	bucket := objstore.NewInMemBucket()
+	indexBucket := NewIndexBucket(bucket)
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+	metastoreTocWriter := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
@@ -1380,7 +1444,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, NewIndexBucket(bucket), log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	path, err := uploader.Upload(context.Background(), obj)
@@ -1530,9 +1594,10 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, logger, NewTocWriterMetrics(prometheus.NewPedanticRegistry()), indexobj.NewBuilderMetrics(nil))
+	indexBucket := NewIndexBucket(bucket)
+	meta := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, logger, NewTocWriterMetrics(prometheus.NewPedanticRegistry()), indexobj.NewBuilderMetrics(nil))
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, logger)
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, logger)
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	return &testDataBuilder{
@@ -1545,7 +1610,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 }
 
 func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
-	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+	return NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
 }
 
 // uploadIndexObject uploads obj to a fresh in-memory bucket and returns a
@@ -1591,7 +1656,7 @@ func observeBloomPostings(t testing.TB, builder *indexobj.Builder, path string, 
 func uploadIndexObject(t *testing.T, obj *dataobj.Object) (*ObjectMetastore, string) {
 	t.Helper()
 	bucket := objstore.NewInMemBucket()
-	up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	up := uploader.New(uploader.Config{SHAPrefixSize: 2}, NewIndexBucket(bucket), log.NewNopLogger())
 	require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
 	path, err := up.Upload(context.Background(), obj)
 	require.NoError(t, err)
@@ -1802,6 +1867,54 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 	})
 }
 
+func TestNewIndexBucket(t *testing.T) {
+	t.Run("writes objects under the index/v0 prefix of the wrapped bucket", func(t *testing.T) {
+		underlying := objstore.NewInMemBucket()
+
+		require.NoError(t, NewIndexBucket(underlying).Upload(t.Context(), "tocs/a", strings.NewReader("toc")))
+
+		require.Equal(t, "toc", readObject(t, underlying, "index/v0/tocs/a"))
+	})
+
+	t.Run("reads objects stored under the index/v0 prefix of the wrapped bucket", func(t *testing.T) {
+		underlying := objstore.NewInMemBucket()
+		require.NoError(t, underlying.Upload(t.Context(), "index/v0/indexes/b", strings.NewReader("index")))
+
+		require.Equal(t, "index", readObject(t, NewIndexBucket(underlying), "indexes/b"))
+	})
+}
+
+func TestNewObjectMetastore(t *testing.T) {
+	request := GetIndexesRequest{Start: now.Add(-time.Hour), End: now.Add(time.Hour)}
+	observations := []postings.LabelObservation{{
+		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
+		StreamID: 1, Timestamp: now,
+	}}
+
+	t.Run("resolves index objects stored under the index/v0 prefix of the bucket", func(t *testing.T) {
+		ctx := user.InjectOrgID(t.Context(), tenantID)
+		bucket := objstore.NewInMemBucket()
+		path := createIndexObject(ctx, t, bucket, observations)
+
+		resp, err := NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry())).GetIndexes(ctx, request)
+		require.NoError(t, err)
+		require.Len(t, resp.Indexes, 1)
+		require.Equal(t, path, resp.Indexes[0].Path)
+	})
+
+	t.Run("resolves no index objects stored at the root of the bucket", func(t *testing.T) {
+		ctx := user.InjectOrgID(t.Context(), tenantID)
+		bucket := objstore.NewInMemBucket()
+		obj, closer := buildIndexObject(t, tenantID, observations)
+		t.Cleanup(closer)
+		uploadAndRegisterIndexObject(ctx, t, bucket, obj)
+
+		resp, err := NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry())).GetIndexes(ctx, request)
+		require.NoError(t, err)
+		require.Empty(t, resp.Indexes)
+	})
+}
+
 // newTestMetastore returns a metastore over bucket, the registry of its metrics and the buffer that
 // receives its logs. Several goroutines of one resolution can log, so the buffer sits behind a lock.
 // Read the buffer after the resolution ends.
@@ -1809,18 +1922,18 @@ func newTestMetastore(bucket objstore.Bucket) (*ObjectMetastore, *prometheus.Reg
 	reg := prometheus.NewRegistry()
 	logs := bytes.NewBuffer(nil)
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(logs))
-	return NewObjectMetastore(bucket, Config{}, logger, NewObjectMetastoreMetrics(reg)), reg, logs
+	return NewObjectMetastore(bucket, logger, NewObjectMetastoreMetrics(reg)), reg, logs
 }
 
-// createIndexObject uploads an index object with one postings section and one stats section for
-// each of layouts, adds it to the ToC, and returns its path. With no layouts, the index object has
-// no stats section.
+// createIndexObject uploads an index object under the index prefix of bucket. The object has one
+// postings section and one stats section for each of layouts. It adds the object to the ToC and
+// returns its path. With no layouts, the index object has no stats section.
 func createIndexObject(ctx context.Context, t testing.TB, bucket objstore.Bucket, observations []postings.LabelObservation, layouts ...streams.Layout) string {
 	t.Helper()
 
 	obj, closer := buildIndexObject(t, tenantID, observations, layouts...)
 	t.Cleanup(closer)
-	return uploadAndRegisterIndexObject(ctx, t, bucket, obj)
+	return uploadAndRegisterIndexObject(ctx, t, NewIndexBucket(bucket), obj)
 }
 
 // uploadAndRegisterIndexObject uploads obj to bucket, adds it to the ToC, and returns its path.
@@ -1927,14 +2040,15 @@ func newGatedBucket(bucket objstore.Bucket) *gatedBucket {
 	return &gatedBucket{Bucket: bucket, gates: make(map[string]*readGate), reading: make(map[string]int)}
 }
 
-// hold makes every read of the object at path wait. A read ends when the gate opens or its context
-// ends. Once the gate opens, the reads fail with err, or go through when err is nil.
+// hold makes every read of the index object at path wait. A read ends when the gate opens or its
+// context ends. Once the gate opens, the reads fail with err, or go through when err is nil.
 func (b *gatedBucket) hold(path string, err error) *readGate {
 	gate := &readGate{entered: make(chan struct{}), left: make(chan struct{}), release: make(chan struct{}), err: err}
 
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
-	b.gates[path] = gate
+	// The metastore adds the index prefix before a read reaches this bucket.
+	b.gates[IndexStoragePrefix+"/"+path] = gate
 	return gate
 }
 
@@ -2055,4 +2169,23 @@ func (g *readGate) waitUntilLeft(t *testing.T) {
 
 func (g *readGate) open() {
 	close(g.release)
+}
+
+// newTestMetastoreWithCache returns a metastore that caches index objects in the returned in-memory
+// backend.
+func newTestMetastoreWithCache(bucket objstore.Bucket) (*ObjectMetastore, cache.MockCache) {
+	memoryCache := cache.NewMockCache()
+	metadataCache := metadatacache.NewCache(memoryCache, 0, metadatacache.KindIndex, metadatacache.NewMetrics(nil), nil)
+	return NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()), WithIndexMetadataCache(metadataCache)), memoryCache
+}
+
+func readObject(t *testing.T, bucket objstore.BucketReader, name string) string {
+	t.Helper()
+
+	reader, err := bucket.Get(t.Context(), name)
+	require.NoError(t, err)
+	defer reader.Close()
+	got, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	return string(got)
 }

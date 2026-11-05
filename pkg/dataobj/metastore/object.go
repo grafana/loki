@@ -44,7 +44,8 @@ const (
 
 	tocFileName = "toc.toc"
 
-	// indexPrefetchBytes is how many bytes Sections reads up front from an index object.
+	// indexPrefetchBytes is how many bytes Sections reads up front from an index object. A cache hit
+	// replaces this read.
 	indexPrefetchBytes = 64 * 1024
 )
 
@@ -60,12 +61,28 @@ var (
 	errDifferentSectionStatistics = errors.New("the same section was found in multiple index objects with different statistics")
 )
 
+// ObjectMetastoreOption customizes an ObjectMetastore.
+type ObjectMetastoreOption func(*ObjectMetastore)
+
+// WithIndexMetadataCache serves the metadata region of index objects through cache, or the entire
+// object if it is tiny. A nil cache disables it.
+func WithIndexMetadataCache(cache dataobj.MetadataCache) ObjectMetastoreOption {
+	return func(m *ObjectMetastore) { m.indexMetadataCache = cache }
+}
+
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
 	bucket      objstore.BucketReader
 	parallelism int
 	logger      log.Logger
 	metrics     *ObjectMetastoreMetrics
+
+	// indexMetadataCache caches the metadata region of index objects. It is nil when no cache is
+	// configured.
+	//
+	// It must never serve a ToC. The writer rewrites a ToC at the same path, so a cached copy would go
+	// stale.
+	indexMetadataCache dataobj.MetadataCache
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -265,20 +282,21 @@ func IterTableOfContentsPaths(tenant string, start, end time.Time) iter.Seq[stri
 	}
 }
 
-func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+// NewObjectMetastore returns a metastore that reads tables of contents and
+// index objects under [IndexStoragePrefix] in b.
+func NewObjectMetastore(b objstore.Bucket, logger log.Logger, metrics *ObjectMetastoreMetrics, opts ...ObjectMetastoreOption) *ObjectMetastore {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
-	if cfg.IndexStoragePrefix != "" {
-		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
-	}
-
 	store := &ObjectMetastore{
-		bucket:      dataobj.NewInstrumentedBucketReader(b),
+		bucket:      dataobj.NewInstrumentedBucketReader(NewIndexBucket(b)),
 		parallelism: 64,
 		logger:      logger,
 		metrics:     metrics,
+	}
+	for _, opt := range opts {
+		opt(store)
 	}
 
 	return store
@@ -657,7 +675,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes)
+	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes, dataobj.WithMetadataCache(m.indexMetadataCache))
 	if err != nil {
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
@@ -784,4 +802,17 @@ func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*Dataobj
 		existing.merge(row)
 	}
 	return nil
+}
+
+// IndexStoragePrefix is the object storage prefix of the index objects and the
+// tables of contents.
+const IndexStoragePrefix = "index/v0"
+
+// NewIndexBucket returns b scoped to [IndexStoragePrefix].
+//
+// Use it to write or read index objects and tables of contents without a
+// metastore. [NewObjectMetastore] adds the prefix itself, so pass it the
+// unwrapped bucket.
+func NewIndexBucket(b objstore.Bucket) objstore.Bucket {
+	return objstore.NewPrefixedBucket(b, IndexStoragePrefix)
 }

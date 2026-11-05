@@ -41,6 +41,7 @@ message Node {
     IndexMerge index_merge = 17;
     LogMerge log_merge = 18;
     IndexFilter index_filter = 20;
+    DeletionSweep deletion_sweep = 21;
   }
 }
 
@@ -80,4 +81,9 @@ message IndexFilter {
   string tenant = 1;
   string source_index_path = 2;
   repeated string object_paths = 3;
+}
+
+// DeletionSweep applies delete requests to the objects of one tenant.
+message DeletionSweep {
+  string tenant = 1;
 }

@@ -218,7 +218,18 @@ func (b *BitSet) extendSet(i uint) {
 	if b.set == nil {
 		b.set = make([]uint64, nsize)
 	} else if cap(b.set) >= nsize {
-		b.set = b.set[:nsize] // fast resize
+		// New words must be zeroed. They may hold stale bits because functions
+		// such as CopyFull, ReadFrom, and DeleteAt shrink the slice, and
+		// extendSet accepts slices whose capacity is arbitrary. After extension
+		// those stale bits would get revived unless zeroed here.
+		oldLen := len(b.set)
+		b.set = b.set[:nsize]
+		if oldLen < nsize {
+			newWords := b.set[oldLen:]
+			for j := range newWords {
+				newWords[j] = 0
+			}
+		}
 	} else if len(b.set) < nsize {
 		newset := make([]uint64, nsize, 2*nsize) // increase capacity 2x
 		copy(newset, b.set)
@@ -418,6 +429,9 @@ func (b *BitSet) FlipRange(start, end uint) *BitSet {
 // remain in memory until the GC frees it.
 // If you are memory constrained, this function may cause a panic.
 func (b *BitSet) Shrink(lastbitindex uint) *BitSet {
+	if lastbitindex >= b.length {
+		return b
+	}
 	length := lastbitindex + 1
 	idx := wordsNeeded(length)
 	if idx > len(b.set) {
@@ -464,15 +478,15 @@ func (b *BitSet) Compact() *BitSet {
 // this method could be extremely slow and in some cases might cause the entire BitSet
 // to be recopied.
 func (b *BitSet) InsertAt(idx uint) *BitSet {
-	insertAtElement := idx >> log2WordSize
-
-	// if length of set is a multiple of wordSize we need to allocate more space first
-	if b.isLenExactMultiple() {
-		b.set = append(b.set, uint64(0))
+	if idx >= b.length {
+		b.extendSet(idx)
+		return b
 	}
 
-	var i uint
-	for i = uint(len(b.set) - 1); i > insertAtElement; i-- {
+	insertAtElement := idx >> log2WordSize
+	b.extendSet(b.length)
+
+	for i := uint(len(b.set) - 1); i > insertAtElement; i-- {
 		// all elements above the position where we want to insert can simply by shifted
 		b.set[i] <<= 1
 
@@ -486,16 +500,13 @@ func (b *BitSet) InsertAt(idx uint) *BitSet {
 	dataMask := uint64(1)<<uint64(wordsIndex(idx)) - 1
 
 	// extract that data that we'll shift
-	data := b.set[i] & (^dataMask)
+	data := b.set[insertAtElement] & (^dataMask)
 
 	// set the positions of the data mask to 0 in the element where we insert
-	b.set[i] &= dataMask
+	b.set[insertAtElement] &= dataMask
 
 	// shift data mask to the left and insert its data to the slice element
-	b.set[i] |= data << 1
-
-	// add 1 to length of BitSet
-	b.length++
+	b.set[insertAtElement] |= data << 1
 
 	return b
 }
@@ -533,6 +544,9 @@ func (b *BitSet) String() string {
 // The running time of this operation may potentially be
 // relatively slow, O(length)
 func (b *BitSet) DeleteAt(i uint) *BitSet {
+	if i >= b.length {
+		return b
+	}
 	// the index of the slice element where we'll delete a bit
 	deleteAtElement := i >> log2WordSize
 
@@ -565,12 +579,9 @@ func (b *BitSet) DeleteAt(i uint) *BitSet {
 	// of the package expects. Otherwise, functions that scan the whole
 	// slice (e.g., SetAll, Count) would operate on a word that lies
 	// beyond the length of the bitset.
+	// Note that discarded words are not zeroed here. extendSet zeroes
+	// words on growth.
 	if wordCount := b.wordCount(); wordCount < len(b.set) {
-		// the discarded words must be zeroed: extendSet may later revive
-		// them with a fast resize, and they must not carry stale bits.
-		for i := wordCount; i < len(b.set); i++ {
-			b.set[i] = 0
-		}
 		b.set = b.set[:wordCount]
 	}
 
@@ -791,6 +802,9 @@ func (b *BitSet) PreviousSet(i uint) (uint, bool) {
 // including possibly the current index
 // along with an error code (true = valid, false = no clear bit found i.e. all bits are set)
 func (b *BitSet) PreviousClear(i uint) (uint, bool) {
+	if i >= b.length {
+		return 0, false
+	}
 	x := int(i >> log2WordSize)
 	if x >= len(b.set) {
 		return 0, false
@@ -1399,6 +1413,8 @@ func (b *BitSet) ReadFrom(stream io.Reader) (int64, error) {
 		return 0, err
 	}
 
+	b.cleanLastWord()
+
 	return int64(b.BinaryStorageSize()), nil
 }
 
@@ -1590,15 +1606,14 @@ func (b *BitSet) ShiftRight(bits uint) {
 	}
 
 	if bits > top {
-		b.set = make([]uint64, wordsNeeded(b.length))
+		b.ClearAll()
 		return
 	}
 
 	pad, idx := top%wordSize, top>>log2WordSize
 	shift, pages := bits%wordSize, bits>>log2WordSize
-	if bits%wordSize == 0 { // happy case: just clear pages
-		b.set = b.set[pages:]
-		b.length -= pages * wordSize
+	if bits%wordSize == 0 { // happy case: just copy pages
+		copy(b.set, b.set[pages:idx+1])
 	} else {
 		for i := 0; i <= int(idx-pages); i++ {
 			if i < int(idx-pages) {

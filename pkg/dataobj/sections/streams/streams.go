@@ -17,6 +17,9 @@ var sectionType = dataobj.SectionType{
 	Version:   columnar.FormatVersion,
 }
 
+// SectionType returns the type of streams sections.
+func SectionType() dataobj.SectionType { return sectionType }
+
 // CheckSection returns true if section is a streams section.
 func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }
 

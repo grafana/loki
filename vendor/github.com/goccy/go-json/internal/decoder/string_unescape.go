@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
+	"github.com/goccy/go-json/internal/jsonstring"
 )
 
 // decodeStringRest is decodeStringValue for a long string, which scanString stopped in: it scans the rest of the
@@ -82,7 +83,7 @@ func (d *stringDecoder) unescapeRest(ctx *RuntimeContext, literal []byte, cursor
 	out := ctx.unescaped[:0]
 	if escaped {
 		out = growBytes(out, len(literal)+64)
-		out = out[:unescapeTo(unsafe.Pointer(unsafe.SliceData(out)), literal, info.firstEscape)]
+		out = out[:jsonstring.UnescapeTo(unsafe.Pointer(unsafe.SliceData(out)), literal, info.firstEscape)]
 	}
 	// run is the position of the plain bytes which are not in out yet, once the string has an escape.
 	run := cursor
@@ -117,7 +118,7 @@ func (d *stringDecoder) unescapeRest(ctx *RuntimeContext, literal []byte, cursor
 			cursor++
 			switch e := char(b, cursor); e {
 			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
-				out = append(out, unescapeMap[e])
+				out = append(out, jsonstring.UnescapeMap[e])
 				cursor++
 			case 'u':
 				code, ok := hex4(b, cursor+1, buflen)
@@ -152,7 +153,7 @@ func (d *stringDecoder) unescapeRest(ctx *RuntimeContext, literal []byte, cursor
 			if high&msb != 0 && !utf8.Valid(out) {
 				return string(coerceUTF8(out)), next, true, nil
 			}
-			return ctx.copyString(out), next, true, nil
+			return string(out), next, true, nil
 		case nul:
 			return d.skipOtherValue(ctx, errors.ErrUnexpectedEndOfJSON("string", cursor))
 		default:
@@ -184,7 +185,7 @@ func hex4(b unsafe.Pointer, pos, buflen int64) (rune, bool) {
 		if !(('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')) {
 			return 0, false
 		}
-		code = code<<4 | rune(hexToInt[c])
+		code = code<<4 | rune(jsonstring.HexToInt[c])
 	}
 	return code, true
 }

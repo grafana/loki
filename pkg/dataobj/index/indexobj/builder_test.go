@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -110,6 +111,128 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 		pointerCount++
 	}
 	require.Greater(t, pointerCount, 0)
+}
+
+func TestBuilder_AppendWatermark(t *testing.T) {
+	testPointers := []indexpointers.IndexPointer{
+		{Path: "test/path-0", StartTs: time.Unix(10, 0).UTC(), EndTs: time.Unix(20, 0).UTC()},
+		{Path: "test/path-1", StartTs: time.Unix(30, 0).UTC(), EndTs: time.Unix(40, 0).UTC()},
+	}
+
+	newBuilder := func(t *testing.T) *Builder {
+		t.Helper()
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		return builder
+	}
+
+	readWatermarks := func(t *testing.T, obj *dataobj.Object) []watermarks.Watermark {
+		t.Helper()
+		var got []watermarks.Watermark
+		for res := range watermarks.Iter(t.Context(), obj) {
+			wm, err := res.Value()
+			require.NoError(t, err)
+			got = append(got, wm)
+		}
+		return got
+	}
+
+	readPointers := func(t *testing.T, obj *dataobj.Object) []indexpointers.IndexPointer {
+		t.Helper()
+		var got []indexpointers.IndexPointer
+		for res := range indexpointers.Iter(t.Context(), obj) {
+			tip, err := res.Value()
+			require.NoError(t, err)
+			require.Equal(t, testTenant, tip.Tenant)
+			tip.StartTs, tip.EndTs = tip.StartTs.UTC(), tip.EndTs.UTC()
+			got = append(got, tip.IndexPointer)
+		}
+		return got
+	}
+
+	t.Run("builds a watermarks section for the builder's tenant", func(t *testing.T) {
+		builder := newBuilder(t)
+		require.NoError(t, builder.AppendWatermark("topic-b", 1, 200))
+		require.NoError(t, builder.AppendWatermark("topic-a", 0, 100))
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		require.Equal(t, 1, obj.Sections().Count(watermarks.CheckSection))
+		require.Equal(t, testTenant, obj.Sections()[0].Tenant)
+		require.Equal(t, []watermarks.Watermark{
+			{Topic: "topic-a", Partition: 0, Watermark: 100},
+			{Topic: "topic-b", Partition: 1, Watermark: 200},
+		}, readWatermarks(t, obj))
+	})
+
+	t.Run("holds index pointers and watermarks in one object", func(t *testing.T) {
+		builder := newBuilder(t)
+		require.NoError(t, builder.AppendWatermark("topic", 7, 42))
+		require.NoError(t, builder.AppendWatermark("topic", 8, 43))
+		require.NoError(t, builder.AppendWatermark("other-topic", 8, 44))
+		for _, p := range testPointers {
+			require.NoError(t, builder.AppendIndexPointer(p))
+		}
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		require.Equal(t, testPointers, readPointers(t, obj))
+		require.Equal(t, []watermarks.Watermark{
+			{Topic: "other-topic", Partition: 8, Watermark: 44},
+			{Topic: "topic", Partition: 7, Watermark: 42},
+			{Topic: "topic", Partition: 8, Watermark: 43},
+		}, readWatermarks(t, obj))
+	})
+
+	t.Run("returns an error and records nothing for an invalid watermark", func(t *testing.T) {
+		builder := newBuilder(t)
+		require.Error(t, builder.AppendWatermark("", 0, 1))
+		require.Error(t, builder.AppendWatermark("topic", -1, 1))
+		require.Error(t, builder.AppendWatermark("topic", 0, -1))
+
+		_, _, err := builder.Flush()
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+	})
+
+	t.Run("returns an error and keeps the old value when the watermark is lower", func(t *testing.T) {
+		builder := newBuilder(t)
+		require.NoError(t, builder.AppendWatermark("topic", 1, 5))
+		require.Error(t, builder.AppendWatermark("topic", 1, 4))
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		require.Equal(t, []watermarks.Watermark{{Topic: "topic", Partition: 1, Watermark: 5}}, readWatermarks(t, obj))
+	})
+
+	t.Run("builds nothing for a watermark after Reset", func(t *testing.T) {
+		builder := newBuilder(t)
+		require.NoError(t, builder.AppendWatermark("topic", 0, 1))
+		builder.Reset()
+
+		_, _, err := builder.Flush()
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+	})
+
+	t.Run("a flush does not carry watermarks into the next object", func(t *testing.T) {
+		builder := newBuilder(t)
+		require.NoError(t, builder.AppendWatermark("topic", 0, 1))
+		_, closer, err := builder.Flush()
+		require.NoError(t, err)
+		require.NoError(t, closer.Close())
+
+		require.NoError(t, builder.AppendIndexPointer(testPointers[0]))
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		require.Zero(t, obj.Sections().Count(watermarks.CheckSection))
+	})
 }
 
 func TestBuilder_TimeRange(t *testing.T) {

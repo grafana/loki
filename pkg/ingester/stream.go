@@ -165,20 +165,13 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
+// Push ingests entries received from a live push request. chunkMtx must be held by the caller.
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
 	// WAL record to add push contents to.
 	// May be nil to disable this functionality.
 	record *wal.Record,
-	// Counter used in WAL replay to avoid duplicates.
-	// If this is non-zero, the stream will reject entries
-	// with a counter value less than or equal to it's own.
-	// It is set to zero and thus bypassed outside of WAL replays.
-	counter int64,
-	// Lock chunkMtx while pushing.
-	// If this is false, chunkMtx must be held outside Push.
-	lockChunk bool,
 	// Whether nor not to ingest all at once or not. It is a per-tenant configuration.
 	rateLimitWholeStream bool,
 
@@ -187,13 +180,41 @@ func (s *stream) Push(
 	format string,
 
 ) (int, error) {
-	if lockChunk {
-		s.chunkMtx.Lock()
-		defer s.chunkMtx.Unlock()
+	toStore, invalid := s.validateEntries(ctx, entries, false, rateLimitWholeStream, usageTracker, format)
+	if rateLimitWholeStream && hasRateLimitErr(invalid) {
+		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
 
-	isReplay := counter > 0
-	if isReplay && counter <= s.entryCt {
+	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format)
+	if len(storedEntries) > 0 && record != nil {
+		record.AddEntries(uint64(s.fp), s.entryCt, storedEntries...)
+	}
+	s.sendToTailers(storedEntries)
+
+	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), len(entries))
+}
+
+// PushWalReplay ingests entries read back from WAL segments during recovery.
+// Entries are not written to a WAL record again. It takes chunkMtx itself, so
+// callers must not hold it. Whole-stream rate limiting does not apply, and
+// replayed entries are not sent to tailers.
+// The WAL does not record the request format, so discard metrics for replayed
+// entries are always attributed to "loki".
+func (s *stream) PushWalReplay(
+	ctx context.Context,
+	entries []logproto.Entry,
+	// Counter of the WAL record the entries came from. Entries are rejected
+	// with ErrEntriesExist if it is positive and less than or equal to the
+	// stream's own entry count, which avoids duplicates between checkpoints and
+	// WAL segments. Zero means the record carries no counter (WAL V1) and
+	// bypasses both the check and the validity window, as live pushes do.
+	counter int64,
+	usageTracker push.UsageTracker,
+) (int, error) {
+	s.chunkMtx.Lock()
+	defer s.chunkMtx.Unlock()
+
+	if counter > 0 && counter <= s.entryCt {
 		var byteCt int
 		for _, e := range entries {
 			byteCt += len(e.Line)
@@ -204,11 +225,20 @@ func (s *stream) Push(
 		return 0, ErrEntriesExist
 	}
 
-	toStore, invalid := s.validateEntries(ctx, entries, isReplay, rateLimitWholeStream, usageTracker, format)
-	if rateLimitWholeStream && hasRateLimitErr(invalid) {
-		return 0, errorForFailedEntries(s, invalid, len(entries))
+	const format = "loki"
+	toStore, invalid := s.validateEntries(ctx, entries, counter > 0, false, usageTracker, format)
+
+	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format)
+	if len(storedEntries) > 0 {
+		s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
 	}
 
+	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), len(entries))
+}
+
+// appendEntries makes sure the stream has a chunk, stores the validated entries
+// and keeps the memory chunk metric up to date. chunkMtx must be held.
+func (s *stream) appendEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
@@ -218,14 +248,12 @@ func (s *stream) Push(
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
-	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format)
-	s.recordAndSendToTailers(record, storedEntries)
+	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, entries, usageTracker, format)
 
 	if len(s.chunks) != prevNumChunks {
 		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
-
-	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), len(entries))
+	return bytesAdded, storedEntries, entriesWithErr
 }
 
 func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
@@ -276,17 +304,9 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.Entry) {
+func (s *stream) sendToTailers(entries []logproto.Entry) {
 	if len(entries) == 0 {
 		return
-	}
-
-	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
-	if record != nil {
-		record.AddEntries(uint64(s.fp), s.entryCt, entries...)
-	} else {
-		// If record is nil, this is a WAL recovery.
-		s.metrics.recoveredEntriesTotal.Add(float64(len(entries)))
 	}
 
 	s.tailerMtx.RLock()

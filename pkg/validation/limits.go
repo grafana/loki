@@ -278,9 +278,13 @@ type Limits struct {
 }
 
 // ShardFactor is the number of shard buckets that data objects divide a
-// tenant's streams into. It must be a power of two. Zero means the default,
-// [streams.DefaultShardBuckets].
+// tenant's streams into. It must be a power of two up to [MaxShardFactor].
+// Zero means the default, [streams.DefaultShardBuckets].
 type ShardFactor uint32
+
+// MaxShardFactor is the largest [ShardFactor] that [ShardFactor.Validate]
+// accepts.
+const MaxShardFactor = 256
 
 // Layout returns the shard layout for f. Zero gives
 // [streams.DefaultShardLayout]. Layout returns an error if f is not a valid
@@ -292,20 +296,17 @@ func (f ShardFactor) Layout() (streams.ShardLayout, error) {
 	return streams.ShardLayoutFromBuckets(uint32(f))
 }
 
-// Validate returns an error if f is not a supported shard factor.
-//
-// Validate accepts only the default factor. The compactor merges only objects
-// of the default shard layout, so it cannot compact objects with another
-// factor.
+// Validate returns an error if f is not zero or a power of two up to
+// [MaxShardFactor].
 func (f ShardFactor) Validate() error {
-	layout, err := f.Layout()
-	if err != nil {
-		return err
+	// Layout accepts every power of two up to 65536, the limit of
+	// [streams.ShardLayout]. Check the maximum first, so that a larger factor
+	// reports MaxShardFactor and not that limit.
+	if f > MaxShardFactor {
+		return fmt.Errorf("shard factor %d is more than the maximum %d", f, MaxShardFactor)
 	}
-	if layout != streams.DefaultShardLayout() {
-		return fmt.Errorf("shard factor %d is not supported, only %d is", f, streams.DefaultShardBuckets)
-	}
-	return nil
+	_, err := f.Layout()
+	return err
 }
 
 // String implements flag.Value.
@@ -628,7 +629,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	l.SortSchema = DefaultSortSchema
 	l.DataObjShardFactor = streams.DefaultShardBuckets
-	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Only %d is supported.", streams.DefaultShardBuckets))
+	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two from 1 to %d.", MaxShardFactor))
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 

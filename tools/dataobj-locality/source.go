@@ -38,11 +38,10 @@ type sectionSource interface {
 // It backs both the object-storage and local-directory sources; only the
 // underlying bucket differs.
 type indexObjectSource struct {
-	rawBucket    objstore.Bucket
-	metastoreCfg metastore.Config
-	tenant       string
-	from, to     time.Time
-	logger       log.Logger
+	rawBucket objstore.Bucket
+	tenant    string
+	from, to  time.Time
+	logger    log.Logger
 	// concurrency bounds how many index objects are opened and scanned in
 	// parallel. Defaults to 8 if unset (see [indexObjectSource.each]).
 	concurrency int
@@ -51,11 +50,10 @@ type indexObjectSource struct {
 func (s *indexObjectSource) each(ctx context.Context, fn func(sec *dataobj.Section, objPath string, sectionIdx int64) error) error {
 	ctx = user.InjectOrgID(ctx, s.tenant)
 
-	// metastore.NewObjectMetastore applies IndexStoragePrefix internally, so it
+	// metastore.NewObjectMetastore applies the index prefix itself, so it
 	// receives the raw (un-index-prefixed) bucket.
 	store := metastore.NewObjectMetastore(
 		s.rawBucket,
-		s.metastoreCfg,
 		s.logger,
 		metastore.NewObjectMetastoreMetrics(nil),
 	)
@@ -68,12 +66,9 @@ func (s *indexObjectSource) each(ctx context.Context, fn func(sec *dataobj.Secti
 	total := len(indexes.Indexes)
 	level.Info(s.logger).Log("msg", "index objects found", "count", total)
 
-	// The metastore hands back index-pointer paths relative to the
-	// IndexStoragePrefix view, so direct object reads must use the same view.
-	idxBucket := s.rawBucket
-	if p := s.metastoreCfg.IndexStoragePrefix; p != "" {
-		idxBucket = objstore.NewPrefixedBucket(s.rawBucket, p)
-	}
+	// The metastore hands back index-pointer paths relative to the index
+	// prefix, so direct object reads must use the same view.
+	idxBucket := metastore.NewIndexBucket(s.rawBucket)
 
 	concurrency := s.concurrency
 	if concurrency < 1 {
@@ -125,9 +120,9 @@ func isCompactedIndexPath(path string) bool {
 }
 
 // buildBucketFromLokiConfig loads a full Loki config file and derives the
-// object-store bucket and metastore config from it, mirroring the
-// getDataObjBucket + compaction-worker wiring in pkg/loki/modules.go.
-func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv bool, logger log.Logger) (objstore.Bucket, metastore.Config, error) {
+// object-store bucket from it, mirroring the getDataObjBucket wiring in
+// pkg/loki/modules.go.
+func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv bool, logger log.Logger) (objstore.Bucket, error) {
 	level.Info(logger).Log("msg", "loading loki config", "file", configFile)
 
 	args := []string{"-config.file=" + configFile}
@@ -136,13 +131,13 @@ func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv
 	}
 	var c loki.ConfigWrapper
 	if err := lokicfg.DynamicUnmarshal(&c, args, flag.NewFlagSet("loki-config", flag.ContinueOnError)); err != nil {
-		return nil, metastore.Config{}, fmt.Errorf("loading loki config %s: %w", configFile, err)
+		return nil, fmt.Errorf("loading loki config %s: %w", configFile, err)
 	}
 
 	// Derive the backend from the schema, mirroring getDataObjBucket.
 	schema, err := c.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
-		return nil, metastore.Config{}, fmt.Errorf("resolving schema for current time: %w", err)
+		return nil, fmt.Errorf("resolving schema for current time: %w", err)
 	}
 
 	// Apply named-store resolution before creating the client.
@@ -151,21 +146,19 @@ func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv
 	if st, ok := objCfg.NamedStores.LookupStoreType(schema.ObjectType); ok {
 		backend = st
 		if err := objCfg.NamedStores.OverrideConfig(&objCfg.Config, schema.ObjectType); err != nil {
-			return nil, metastore.Config{}, fmt.Errorf("resolving named store %q: %w", schema.ObjectType, err)
+			return nil, fmt.Errorf("resolving named store %q: %w", schema.ObjectType, err)
 		}
 	}
 
-	mCfg := c.DataObj.Metastore
 	level.Info(logger).Log(
 		"msg", "config loaded",
 		"backend", backend,
 		"dataobj_prefix", c.DataObj.StorageBucketPrefix,
-		"index_prefix", mCfg.IndexStoragePrefix,
 	)
 
 	ib, err := bucket.NewClient(ctx, backend, objCfg.Config, "dataobj-locality", logger, nil)
 	if err != nil {
-		return nil, metastore.Config{}, fmt.Errorf("creating bucket client: %w", err)
+		return nil, fmt.Errorf("creating bucket client: %w", err)
 	}
 
 	// Apply the dataobj-level namespace prefix so paths resolve identically to
@@ -176,5 +169,5 @@ func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv
 		b = objstore.NewPrefixedBucket(b, p)
 	}
 
-	return b, mCfg, nil
+	return b, nil
 }

@@ -8,6 +8,8 @@
 package libyaml
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -15,9 +17,10 @@ import (
 // Composer produces a node tree out of a libyaml event stream.
 type Composer struct {
 	Parser       Parser
+	source       *EventReader
 	event        Event
 	doc          *Node
-	anchors      map[string]*Node
+	aliasData    AliasDataContext
 	doneInit     bool
 	Textless     bool
 	streamNodes  bool     // enable stream node emission
@@ -37,9 +40,7 @@ func NewComposer(b []byte, opts *Options) *Composer {
 		b = []byte{'\n'}
 	}
 	p.Parser.SetInputString(b)
-	if opts != nil {
-		p.Parser.depthCheck = opts.DepthCheck
-	}
+	p.configureInput(bytes.NewReader(b))
 	return &p
 }
 
@@ -50,10 +51,52 @@ func NewComposerFromReader(r io.Reader, opts *Options) *Composer {
 		opts:   opts,
 	}
 	p.Parser.SetInputReader(r)
-	if opts != nil {
-		p.Parser.depthCheck = opts.DepthCheck
-	}
+	p.configureInput(r)
 	return &p
+}
+
+// configureInput applies options that affect the YAML input pipeline.
+func (c *Composer) configureInput(r io.Reader) {
+	if hasInputPlugins(c.opts) {
+		c.source = NewEventReader(r, c.opts)
+	}
+	if c.opts != nil {
+		c.Parser.depthCheck = c.opts.DepthCheck
+		c.Parser.formatError = c.opts.FormatLoadError
+		c.Parser.indentConfig = c.opts.IndentConfig
+	}
+}
+
+// NewComposerFromEvents creates a composer that reads an existing event
+// stream instead of parsing YAML text.
+func NewComposerFromEvents(events []Event, opts *Options) *Composer {
+	c := Composer{
+		Parser: NewParser(),
+		opts:   opts,
+	}
+	c.Parser.SetInputEvents(events)
+	if opts != nil {
+		c.Parser.depthCheck = opts.DepthCheck
+		c.Parser.formatError = opts.FormatLoadError
+	}
+	return &c
+}
+
+// ComposeEvents resolves an event stream into document nodes.
+func ComposeEvents(events []Event, opts *Options) (nodes []*Node, err error) {
+	defer handleErr(&err)
+	c := NewComposerFromEvents(events, opts)
+	defer c.Destroy()
+	r := NewResolver(opts)
+	for {
+		node := c.Compose()
+		if node == nil {
+			break
+		}
+		r.Resolve(node)
+		nodes = append(nodes, node)
+	}
+	return nodes, nil
 }
 
 // Compose composes the next YAML node from the event stream.
@@ -137,6 +180,10 @@ func (c *Composer) node(kind Kind, tag, value string) *Node {
 // document composes a document node by parsing its content between
 // DOCUMENT_START and DOCUMENT_END events.
 func (c *Composer) document() *Node {
+	if err := c.aliasData.BeginDocument(); err != nil {
+		c.failAliasData(err, c.event.StartMark)
+	}
+
 	n := c.node(DocumentNode, "", "")
 	c.doc = n
 	c.expect(DOCUMENT_START_EVENT)
@@ -145,6 +192,9 @@ func (c *Composer) document() *Node {
 		n.FootComment = string(c.event.FootComment)
 	}
 	c.expect(DOCUMENT_END_EVENT)
+	if err := c.aliasData.EndDocument(); err != nil {
+		c.failAliasData(err, Mark{Line: n.Line, Column: n.Column})
+	}
 
 	// If stream nodes enabled, prepare to return a stream node next
 	if c.streamNodes {
@@ -175,10 +225,22 @@ func (c *Composer) createStreamNode() *Node {
 // alias composes an alias node by resolving the referenced anchor.
 func (c *Composer) alias() *Node {
 	n := c.node(AliasNode, "", string(c.event.Anchor))
-	n.Alias = c.anchors[n.Value]
-	if n.Alias == nil {
+	var found bool
+	var err error
+	n.Alias, found, err = c.aliasData.ResolveAlias(n.Value)
+	if err != nil {
+		c.failAliasData(err, Mark{Line: n.Line, Column: n.Column})
+	}
+	if found && (n.Alias == nil ||
+		(n.Alias.Kind == AliasNode && n.Alias.Alias == nil) ||
+		(n.Alias.Kind != ScalarNode && n.Alias.Kind != SequenceNode &&
+			n.Alias.Kind != MappingNode && n.Alias.Kind != AliasNode)) {
+		c.failAliasData(fmt.Errorf("alias-data: invalid node for %q", n.Value),
+			Mark{Line: n.Line, Column: n.Column})
+	}
+	if !found {
 		msg := fmt.Sprintf("unknown anchor '%s' referenced", n.Value)
-		Fail(formatComposerError(msg, Mark{
+		Fail(c.formatComposerError(msg, Mark{
 			Line:   n.Line,
 			Column: n.Column,
 		}))
@@ -276,7 +338,21 @@ func (c *Composer) init() {
 	if c.doneInit {
 		return
 	}
-	c.anchors = make(map[string]*Node)
+	opts := c.opts
+	if opts == nil {
+		opts = DefaultOptions
+	}
+	c.aliasData = NewAliasDataPolicy(AliasDataSources{})
+	if opts.AliasData != nil {
+		context, err := opts.AliasData.NewAliasDataContext(aliasDataServices(opts))
+		if err != nil {
+			c.failAliasData(err, Mark{})
+		}
+		if context == nil {
+			c.failAliasData(errors.New("alias-data: nil context"), Mark{})
+		}
+		c.aliasData = context
+	}
 	// Peek to get the encoding from STREAM_START_EVENT
 	if c.peek() == STREAM_START_EVENT {
 		c.encoding = c.event.GetEncoding()
@@ -297,6 +373,9 @@ func (c *Composer) Destroy() {
 		c.event.Delete()
 	}
 	c.Parser.Delete()
+	if c.source != nil {
+		c.source.Delete()
+	}
 }
 
 // SetStreamNodes enables or disables stream node emission.
@@ -308,18 +387,18 @@ func (c *Composer) SetStreamNodes(enable bool) {
 // checks that it's of the expected type.
 func (c *Composer) expect(e EventType) {
 	if c.event.Type == NO_EVENT {
-		if err := c.Parser.Parse(&c.event); err != nil {
+		if err := c.nextEvent(); err != nil {
 			c.fail(err)
 		}
 	}
 	if c.event.Type == STREAM_END_EVENT {
-		Fail(formatComposerError(
+		Fail(c.formatComposerError(
 			"attempted to go past the end of stream; corrupted value?",
 			Mark{Line: c.event.StartMark.Line, Column: c.event.StartMark.Column},
 		))
 	}
 	if c.event.Type != e {
-		Fail(formatComposerError(
+		Fail(c.formatComposerError(
 			fmt.Sprintf("expected %s event but got %s", e, c.event.Type),
 			Mark{Line: c.event.StartMark.Line, Column: c.event.StartMark.Column},
 		))
@@ -337,7 +416,7 @@ func (c *Composer) peek() EventType {
 	// It's curious choice from the underlying API to generally return a
 	// positive result on success, but on this case return true in an error
 	// scenario. This was the source of bugs in the past (issue #666).
-	if err := c.Parser.Parse(&c.event); err != nil {
+	if err := c.nextEvent(); err != nil {
 		c.fail(err)
 	}
 	return c.event.Type
@@ -352,7 +431,9 @@ func (c *Composer) fail(err error) {
 func (c *Composer) anchor(n *Node, anchor []byte) {
 	if anchor != nil {
 		n.Anchor = string(anchor)
-		c.anchors[n.Anchor] = n
+		if err := c.aliasData.DefineAnchor(n.Anchor, n); err != nil {
+			c.failAliasData(err, Mark{Line: n.Line, Column: n.Column})
+		}
 	}
 }
 
@@ -386,7 +467,7 @@ func (c *Composer) captureDirectives(n *Node) {
 	}
 }
 
-// Fail panics with a YAMLError wrapping the given error.
+// Fail panics with a [YAMLError] wrapping the given error.
 func Fail(err error) {
 	panic(&YAMLError{err})
 }
@@ -397,22 +478,45 @@ func failf(format string, args ...any) {
 }
 
 // formatComposerError creates a LoadError for composer-stage errors.
-func formatComposerError(message string, mark Mark) *LoadError {
+func (c *Composer) formatComposerError(message string, mark Mark) *LoadError {
+	var formatter func(*LoadError) string
+	if c.opts != nil {
+		formatter = c.opts.FormatLoadError
+	}
 	return &LoadError{
-		Stage:   ComposerStage,
-		Mark:    mark,
-		Message: message,
+		Stage:     ComposerStage,
+		Mark:      mark,
+		Message:   message,
+		formatter: formatter,
 	}
 }
 
 // formatComposerErrorContext creates a LoadError with both context and
 // problem information for composer-stage errors.
-func formatComposerErrorContext(context string, contextMark Mark, message string, mark Mark) *LoadError {
+func (c *Composer) formatComposerErrorContext(context string, contextMark Mark, message string, mark Mark) *LoadError {
+	var formatter func(*LoadError) string
+	if c.opts != nil {
+		formatter = c.opts.FormatLoadError
+	}
 	return &LoadError{
 		Stage:       ComposerStage,
 		ContextMark: contextMark,
 		ContextMsg:  context,
 		Mark:        mark,
 		Message:     message,
+		formatter:   formatter,
 	}
+}
+
+func (c *Composer) failAliasData(err error, mark Mark) {
+	failure := c.formatComposerError(err.Error(), mark)
+	failure.err = err
+	Fail(failure)
+}
+
+func (c *Composer) nextEvent() error {
+	if c.source != nil {
+		return c.source.Parse(&c.event)
+	}
+	return c.Parser.Parse(&c.event)
 }
