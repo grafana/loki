@@ -2019,6 +2019,29 @@ func TestPrefetchFilter_ClipsHintsToInterval(t *testing.T) {
 	}, got.HintRanges)
 }
 
+func TestPrefetchFilter_LogSplitEndStaysExclusive(t *testing.T) {
+	intervalStart := time.Date(2026, 9, 8, 12, 10, 0, 0, time.UTC)
+	intervalEnd := time.Date(2026, 9, 8, 12, 40, 0, 0, time.UTC)
+	// A log split is half-open at its end, so a line at intervalEnd belongs to
+	// the next split. The hint must not extend by 1ns to keep it here.
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+			{Start: intervalStart, End: intervalEnd.Add(time.Minute)},
+		}},
+	}
+
+	var got *queryrange.LokiRequest
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		got = req.(*queryrange.LokiRequest)
+		return emptyStreamResponse(), nil
+	})
+
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
+	_, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd))
+	require.NoError(t, err)
+	require.Equal(t, []logproto.HintTimeRange{{Start: intervalStart, End: intervalEnd}}, got.HintRanges)
+}
+
 func TestPrefetchFilter_HintsOutsideIntervalIgnored(t *testing.T) {
 	intervalStart := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	intervalEnd := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
@@ -3714,6 +3737,73 @@ func TestLive_MetricRange_FiltersByLookback(t *testing.T) {
 		require.Equal(t, loghttp.ResultTypeMatrix, prom.Response.Data.ResultType)
 		require.Empty(t, prom.Response.Data.Result)
 		require.Equal(t, int64(1), prom.Statistics.Logline.SkippedRequests)
+	})
+
+	t.Run("line at the split end is kept", func(t *testing.T) {
+		// The sample at now counts lines in (now-5m, now]. A hint that covers
+		// only that instant must narrow the split, with the end extended by
+		// 1ns so the querier keeps a line at exactly now.
+		hint := hintprovider.HintTimeRange{Start: now, End: now.Add(time.Millisecond)}
+		hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hint}}}
+		var got *queryrange.LokiRequest
+		nextCalled := 0
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			nextCalled++
+			got = req.(*queryrange.LokiRequest)
+			return metricMatrixResponse(1, now), nil
+		})
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+
+		_, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(query, reqStart, now))
+		require.NoError(t, err)
+		require.Equal(t, 1, nextCalled)
+		require.Equal(t, []logproto.HintTimeRange{{
+			Start: now,
+			End:   now.UTC().Add(time.Nanosecond),
+		}}, got.HintRanges)
+	})
+
+	t.Run("hint past the split end includes the last instant", func(t *testing.T) {
+		hint := hintprovider.HintTimeRange{Start: reqStart.Add(-4 * time.Minute), End: now.Add(time.Minute)}
+		hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hint}}}
+		var got *queryrange.LokiRequest
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			got = req.(*queryrange.LokiRequest)
+			return metricMatrixResponse(1, now), nil
+		})
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+
+		_, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(query, reqStart, now))
+		require.NoError(t, err)
+		require.Equal(t, []logproto.HintTimeRange{{
+			Start: hint.Start,
+			End:   now.UTC().Add(time.Nanosecond),
+		}}, got.HintRanges)
+	})
+
+	t.Run("offset line at the shifted split end is kept", func(t *testing.T) {
+		// offset 10m moves the read end to now-10m. The line at that instant
+		// is the last line the last step counts.
+		offsetQuery := `sum(count_over_time({app="api"} |= "timeout" [5m] offset 10m))`
+		readEnd := now.Add(-10 * time.Minute)
+		hint := hintprovider.HintTimeRange{Start: readEnd, End: readEnd.Add(time.Millisecond)}
+		hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hint}}}
+		var got *queryrange.LokiRequest
+		nextCalled := 0
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			nextCalled++
+			got = req.(*queryrange.LokiRequest)
+			return metricMatrixResponse(1, now), nil
+		})
+		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+
+		_, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(offsetQuery, reqStart, now))
+		require.NoError(t, err)
+		require.Equal(t, 1, nextCalled)
+		require.Equal(t, []logproto.HintTimeRange{{
+			Start: readEnd,
+			End:   readEnd.UTC().Add(time.Nanosecond),
+		}}, got.HintRanges)
 	})
 }
 

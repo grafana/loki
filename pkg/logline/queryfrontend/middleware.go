@@ -1220,6 +1220,13 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.passthrough(ctx, req)
 	}
 
+	// Metric overlap uses the exclusive end of rangeVectorReadWindow and
+	// selectSampleParamsFor. Log splits and the cutoff checks above stay on readEnd.
+	overlapEnd := readEnd
+	if _, isMetric := expr.(syntax.SampleExpr); isMetric {
+		overlapEnd = readEnd.Add(time.Nanosecond)
+	}
+
 	timedOut, err := result.waitForLookup(ctx, h.hintTimeout)
 	if err != nil {
 		return nil, err
@@ -1241,13 +1248,13 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.passthrough(ctx, req)
 	}
 
-	overlapping := rangesOverlapping(result.ranges, readStart, readEnd)
+	overlapping := rangesOverlapping(result.ranges, readStart, overlapEnd)
 	if len(overlapping) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
 		return skippedResponse(lokiReq, expr), nil
 	}
 
-	hints := clipHintRangesForInterval(overlapping, readStart, readEnd)
+	hints := clipHintRangesForInterval(overlapping, readStart, overlapEnd)
 	if len(hints) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
 		return skippedResponse(lokiReq, expr), nil
@@ -1255,7 +1262,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
 	// the querier scans the interval normally.
-	if passthroughCoversInterval(overlapping, hints, readStart, readEnd) {
+	if passthroughCoversInterval(overlapping, hints, readStart, overlapEnd) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
 		return h.passthrough(ctx, req)
 	}
