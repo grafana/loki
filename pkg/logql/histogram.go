@@ -14,8 +14,10 @@ import (
 
 const (
 	// histogramSchema is the schema of the default, exponential buckets. Every doubling of a value is
-	// divided into 2^3 = 8 buckets, so a bucket is 9% wider than the one before it and a value is
-	// placed within 4.4% of where it is, before an interpolation.
+	// divided into 2^3 = 8 buckets, so a bucket is 9% wider than the one before it, and a value is known to
+	// within 4.4% of the middle of its bucket. A quantile is interpolated inside its bucket, so it is
+	// close when the bucket holds many observations, and it can be off by the width of the bucket when it
+	// holds few.
 	histogramSchema = 3
 
 	// maxHistogramBuckets is the most non-empty buckets a histogram may have. A query that goes over
