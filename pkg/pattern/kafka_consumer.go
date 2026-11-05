@@ -46,6 +46,7 @@ func (i *Ingester) initKafka() error {
 	}
 	i.kafkaDecoder = decoder
 	i.kafkaRecords = make(chan *kgo.Record)
+	i.kafkaLag = newPartitionLagTracker(i.logger)
 	i.kafkaConsumer = kafkav2.NewGroupConsumer(
 		i.kafkaClient,
 		cfg.KafkaConfig.Topic,
@@ -62,7 +63,9 @@ func (i *Ingester) initKafka() error {
 func (i *Ingester) consumeRecords(ctx context.Context, records <-chan *kgo.Record) {
 	for rec := range records {
 		i.metrics.kafkaRecordsTotal.Inc()
-		i.metrics.kafkaConsumerLagHighWatermark.Observe(time.Since(rec.Timestamp).Seconds())
+		lag := time.Since(rec.Timestamp)
+		i.metrics.kafkaConsumerLagHighWatermark.Observe(lag.Seconds())
+		i.kafkaLag.Observe(rec.Partition, lag, rec.Offset)
 		stream, err := i.kafkaDecoder.DecodeWithoutLabels(rec.Value)
 		if err != nil {
 			level.Error(i.logger).Log("msg", "failed to decode record", "offset", rec.Offset, "err", err)
@@ -98,6 +101,11 @@ func (i *Ingester) stopKafka() {
 		}
 		// Wait for goroutine running consumeRecords to also stop.
 		i.kafkaDone.Wait()
+		// Stop logging the lag of each partition. This is done after consumeRecords
+		// has stopped so the lag of the last records is observed.
+		if err := services.StopAndAwaitTerminated(stopCtx, i.kafkaLag); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to stop kafka lag tracker", "err", err)
+		}
 		// Close the franz-go client.
 		i.kafkaClient.Close()
 	})

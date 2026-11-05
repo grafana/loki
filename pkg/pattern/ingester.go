@@ -275,6 +275,7 @@ type Ingester struct {
 	kafkaDecoder  *kafka.Decoder
 	kafkaDone     sync.WaitGroup
 	kafkaStopOnce sync.Once
+	kafkaLag      *partitionLagTracker
 }
 
 func New(
@@ -360,6 +361,9 @@ func (i *Ingester) starting(ctx context.Context) error {
 	go i.loop()
 
 	if i.kafkaConsumer != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.kafkaLag); err != nil {
+			return fmt.Errorf("failed to start kafka lag tracker: %w", err)
+		}
 		if err := services.StartAndAwaitRunning(ctx, i.kafkaConsumer); err != nil {
 			return fmt.Errorf("failed to start kafka consumer: %w", err)
 		}
