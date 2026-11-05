@@ -112,6 +112,8 @@ type instance struct {
 
 	buf     []byte // buffer used to compute fps.
 	streams *streamsMap
+	// Keep a bounded high-water mark so recreated streams do not reuse WAL counters.
+	removedStreamEntryCt atomic.Int64
 
 	index  *index.Multi
 	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
@@ -322,6 +324,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
+		s.entryCt = i.removedStreamEntryCt.Load()
 		record.Series = append(record.Series, tsdb_record.RefSeries{
 			Ref:    chunks.HeadSeriesRef(fp),
 			Labels: sortedLabels,
@@ -456,6 +459,11 @@ func (i *instance) getOrCreateStream(ctx context.Context, pushReqStream logproto
 
 // removeStream removes a stream from the instance.
 func (i *instance) removeStream(s *stream) {
+	for previous := i.removedStreamEntryCt.Load(); s.entryCt > previous; previous = i.removedStreamEntryCt.Load() {
+		if i.removedStreamEntryCt.CompareAndSwap(previous, s.entryCt) {
+			break
+		}
+	}
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
