@@ -41,6 +41,9 @@ const (
 	skipQueryUnsupported = "query_unsupported"
 )
 
+// metricLookback is the range selector on a correctness metric query.
+const metricLookback = 5 * time.Minute
+
 var (
 	tokenCandidateRE = regexp.MustCompile(`[A-Za-z0-9._:/@%?-]{6,128}`)
 	// jsonLabelNameRE is the subset of LogQL identifiers we will put after
@@ -82,8 +85,9 @@ type CycleReport struct {
 	Needle     string    `json:"needle"`
 	HintQuery  string    `json:"hint_query"`
 	// HintQueryType is "line_filter", "label_filter" (stream label),
-	// "sm_label_filter" (structured metadata), or "json_label_filter"
-	// (`| json | field="value"`).
+	// "sm_label_filter" (structured metadata), "json_label_filter"
+	// (`| json | field="value"`), or "metric_range"
+	// (`sum(count_over_time(<line filter> [5m0s]))`, queried at a 1m step).
 	HintQueryType           string        `json:"hint_query_type"`
 	CandidateTimeRanges     int           `json:"candidate_time_ranges"`
 	TotalResults            int           `json:"total_results"`
@@ -850,6 +854,7 @@ const (
 	hintQueryTypeLabelFilter     hintQueryType = "label_filter"
 	hintQueryTypeSMLabelFilter   hintQueryType = "sm_label_filter"
 	hintQueryTypeJSONLabelFilter hintQueryType = "json_label_filter"
+	hintQueryTypeMetricRange     hintQueryType = "metric_range"
 )
 
 // hintQuery is a validated query used to fetch Loki results and Logline hints.
@@ -881,16 +886,21 @@ func buildJSONLabelFilterHintQuery(selector, label, value string) string {
 	return fmt.Sprintf("%s | json | %s=%s", selector, label, strconv.Quote(value))
 }
 
-// pickHintQuery chooses among SM, stream-label, post-parser JSON, and line
-// filters with equal weight. The chosen path is tried first; on failure
-// (ineligible value / parse error / no JSON field) we fall back to a
-// line-filter needle. Loki matches the label/SM/JSON key; Logline only looks
-// up value n-grams.
+func buildMetricQuery(qt hintQueryType, hq hintQuery) (hintQuery, error) {
+	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, metricLookback.String())
+	return newHintQuery(qt, hq.needle, query)
+}
+
+// pickHintQuery chooses among SM, stream-label, post-parser JSON, line
+// filters, and a metric range with equal weight. The chosen path is tried
+// first; on failure (ineligible value / parse error / no JSON field) we fall
+// back to a line-filter needle. Loki matches the label/SM/JSON key; Logline
+// only looks up value n-grams. The metric range wraps that line-filter needle.
 func (s *Service) pickHintQuery(
 	selector, label, value string,
 	logs []queryEntry,
 ) (hintQuery, bool) {
-	switch s.randIntn(4) {
+	switch s.randIntn(5) {
 	case 0:
 		if hq, ok := s.trySMLabelFilterHintQuery(selector, logs); ok {
 			return hq, true
@@ -903,8 +913,28 @@ func (s *Service) pickHintQuery(
 		if hq, ok := s.tryJSONLabelFilterHintQuery(selector, logs); ok {
 			return hq, true
 		}
+	case 3:
+		if hq, ok := s.tryMetricHintQuery(selector, logs); ok {
+			return hq, true
+		}
 	}
 	return s.tryLineFilterHintQuery(selector, logs)
+}
+
+func (s *Service) tryMetricHintQuery(selector string, logs []queryEntry) (hintQuery, bool) {
+	hq, ok := s.tryLineFilterHintQuery(selector, logs)
+	if !ok {
+		return hintQuery{}, false
+	}
+	metric, err := buildMetricQuery(hintQueryTypeMetricRange, hq)
+	if err != nil {
+		level.Warn(s.logger).Log(
+			"msg", "failed to build metric hint query; falling back to line filter",
+			"err", err,
+		)
+		return hintQuery{}, false
+	}
+	return metric, true
 }
 
 // trySMLabelFilterHintQuery builds a label-filter hint from the first usable SM

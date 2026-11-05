@@ -42,6 +42,7 @@ func TestRunVerificationCycle_Correct(t *testing.T) {
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base.Add(50*time.Second), base.Add(70*time.Second))
 
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
@@ -66,6 +67,7 @@ func TestRunVerificationCycle_FalseNegative(t *testing.T) {
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, base.Add(110*time.Second), base.Add(115*time.Second))
 
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
@@ -100,6 +102,7 @@ func TestRunVerificationCycle_ExcludedIndexCoveringFN(t *testing.T) {
 	)
 
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
@@ -125,6 +128,7 @@ func TestRunVerificationCycle_UnsupportedQuery(t *testing.T) {
 
 	indexStore := newTestStore(t)
 	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
 	svc.hintProvider = unsupportedHintProvider{}
 
 	report, err := svc.runVerificationCycle(context.Background())
@@ -151,6 +155,19 @@ func TestBuildLabelFilterHintQuery(t *testing.T) {
 func TestBuildJSONLabelFilterHintQuery(t *testing.T) {
 	query := buildJSONLabelFilterHintQuery(`{job="api"}`, "dashboardUID", "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec")
 	require.Equal(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, query)
+}
+
+func TestBuildMetricQuery(t *testing.T) {
+	hq, err := newHintQuery(hintQueryTypeLineFilter, "9fA81cD2Ef0077aa", `{job="api"} |= "9fA81cD2Ef0077aa"`)
+	require.NoError(t, err)
+
+	got, err := buildMetricQuery(hintQueryTypeMetricRange, hq)
+	require.NoError(t, err)
+	require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, got.query)
+	require.Equal(t, hintQueryTypeMetricRange, got.queryType)
+	require.Equal(t, "9fA81cD2Ef0077aa", got.needle)
+	require.NotNil(t, got.expr)
+	require.NotEmpty(t, hintprovider.SupportedMetricQuery(got.expr, 6))
 }
 
 func TestPickJSONField(t *testing.T) {
@@ -226,13 +243,19 @@ func TestPickHintQuery_ShortValueUsesLineFilter(t *testing.T) {
 	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
 
 	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
 		require.True(t, ok)
-		require.Equal(t, hintQueryTypeLineFilter, h.queryType)
-		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
-		require.Equal(t, `{job="api"} |= "9fA81cD2Ef0077aa"`, h.query)
 		require.NotNil(t, h.expr)
+		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+		switch h.queryType {
+		case hintQueryTypeLineFilter:
+			require.Equal(t, `{job="api"} |= "9fA81cD2Ef0077aa"`, h.query)
+		case hintQueryTypeMetricRange:
+			require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, h.query)
+		default:
+			t.Fatalf("unexpected query type %q", h.queryType)
+		}
 	}
 }
 
@@ -263,6 +286,9 @@ func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
 			sawLine = true
 			require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
 			require.Equal(t, `{job="checkout-service"} |= "9fA81cD2Ef0077aa"`, h.query)
+		case hintQueryTypeMetricRange:
+			require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+			require.Equal(t, `sum(count_over_time({job="checkout-service"} |= "9fA81cD2Ef0077aa" [5m0s]))`, h.query)
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -271,7 +297,7 @@ func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
 	require.True(t, sawLine, "expected some seeds to pick line_filter")
 }
 
-func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
+func TestPickHintQuery_FiveWayWhenAllEligible(t *testing.T) {
 	indexStore := newTestStore(t)
 	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
 	defer loki.Close()
@@ -291,8 +317,8 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 	lineNeedle, _, ok := pickNeedle(protoEntries(logs), 6)
 	require.True(t, ok)
 
-	sawSM, sawLabel, sawJSON, sawLine := false, false, false, false
-	for seed := int64(0); seed < 100 && (!sawSM || !sawLabel || !sawJSON || !sawLine); seed++ {
+	sawSM, sawLabel, sawJSON, sawLine, sawMetricRange := false, false, false, false, false
+	for seed := int64(0); seed < 200 && (!sawSM || !sawLabel || !sawJSON || !sawLine || !sawMetricRange); seed++ {
 		svc.randMu.Lock()
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
@@ -314,6 +340,10 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 		case hintQueryTypeLineFilter:
 			sawLine = true
 			require.Equal(t, lineNeedle, h.needle)
+		case hintQueryTypeMetricRange:
+			sawMetricRange = true
+			require.Equal(t, lineNeedle, h.needle)
+			require.Equal(t, `sum(count_over_time({job="checkout-service"} |= "`+lineNeedle+`" [5m0s]))`, h.query)
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -321,6 +351,7 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 	require.True(t, sawSM, "expected some seeds to pick sm_label_filter")
 	require.True(t, sawLabel, "expected some seeds to pick label_filter")
 	require.True(t, sawJSON, "expected some seeds to pick json_label_filter")
+	require.True(t, sawMetricRange, "expected some seeds to pick metric_range")
 	require.True(t, sawLine, "expected some seeds to pick line_filter")
 }
 
@@ -351,6 +382,7 @@ func TestPickHintQuery_CanUseJSONLabelFilter(t *testing.T) {
 			require.Equal(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, h.query)
 		case hintQueryTypeLineFilter:
 			sawLine = true
+		case hintQueryTypeMetricRange:
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -393,6 +425,7 @@ func TestPickHintQuery_CanUseStructuredMetadata(t *testing.T) {
 			require.Equal(t, `{job="api"} | trace_id="traceidvalue99"`, h.query)
 		case hintQueryTypeLineFilter:
 			sawLine = true
+		case hintQueryTypeMetricRange:
 		default:
 			t.Fatalf("unexpected query type %q", h.queryType)
 		}
@@ -422,7 +455,7 @@ func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
 
 	sawSMFirst := false
 	for seed := int64(0); seed < 100; seed++ {
-		if rand.New(rand.NewSource(seed)).Intn(4) != 0 {
+		if rand.New(rand.NewSource(seed)).Intn(5) != 0 {
 			continue
 		}
 		sawSMFirst = true
@@ -438,6 +471,13 @@ func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
 		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
 	}
 	require.True(t, sawSMFirst, "expected at least one seed that picks the SM branch first")
+}
+
+// useLogHintSeed fixes the cycle RNG so the hint pick stays a line filter.
+// With one label value, the cycle draws Intn(1) and then Intn(5). Seed 0
+// draws 4, which is the line-filter arm.
+func useLogHintSeed(svc *Service) {
+	svc.rand = rand.New(rand.NewSource(0)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
 }
 
 type unsupportedHintProvider struct{}
@@ -584,6 +624,7 @@ func TestRunning_CompletesTests(t *testing.T) {
 	svc.nowFn = func() time.Time {
 		return base.Add(3 * time.Minute)
 	}
+	useLogHintSeed(svc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
