@@ -396,10 +396,11 @@ func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord)
 		policyBucket, _ = getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, rec.Metadata.IngestionPolicy)
 	)
 
+	admissionCutoff := cutoff
 	if expiry := resolveIdleExpiry(s.limits, tenant, policyBucket); expiry > 0 {
-		cutoff = now.Add(-min(expiry, s.activeWindow)).UnixNano()
+		admissionCutoff = now.Add(-min(expiry, s.activeWindow)).UnixNano()
 	}
-	if bucketStart < cutoff {
+	if bucketStart < admissionCutoff {
 		return
 	}
 	var (

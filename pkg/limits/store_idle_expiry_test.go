@@ -241,3 +241,49 @@ func TestStreamShardStore_MergeDropsExpiredRecords(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamShardStore_MergeKeepsShardsWithinActiveWindow(t *testing.T) {
+	s, err := newStreamShardStore(testActiveWindow, testRateWindow, testBucketSize, 1, testZone, true, newIdleExpiryLimits(t), prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	clock.Advance(time.Hour)
+
+	// A live backfill stream holding four shards last covered longer ago
+	// than the policy's expiry, but within the active window.
+	lastUsed := clock.Now().Add(-testIdleExpiry - time.Minute).UnixNano()
+	slots := func() uint64 {
+		var n uint64
+		s.withLock("test", func(i int) {
+			n = s.stripes[i]["test"][0][backfillPolicy].slots
+		})
+		return n
+	}
+	s.withLock("test", func(i int) {
+		s.checkInitMap(i, "test", 0, backfillPolicy).put(streamShardUsage{
+			hash:          0x1,
+			policy:        backfillPolicy,
+			shardCount:    4,
+			lastSeenAt:    lastUsed,
+			shardLastUsed: refreshLiveShards(nil, 4, lastUsed),
+		}, clock.Now().Add(-testActiveWindow).UnixNano())
+	})
+	require.Equal(t, uint64(4), slots())
+
+	// A fresh record lowers the shard count to one. The other three shards
+	// still exist at the ingesters until the active window passes, so they
+	// must keep counting against the budget: the expiry only decides which
+	// records are accepted.
+	s.merge("test", &proto.StreamMetadataRecord{
+		Zone:     "zone2",
+		Tenant:   "test",
+		Metadata: &proto.StreamMetadata{StreamHash: 0x1, IngestionPolicy: backfillPolicy},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: clock.Now().Add(-30 * time.Second).Truncate(testBucketSize).UnixNano(),
+			Size_:       1,
+			Pushes:      1,
+		},
+		ShardCount: 1,
+	})
+	require.Equal(t, uint64(4), slots())
+}
