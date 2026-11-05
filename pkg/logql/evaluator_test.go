@@ -7,6 +7,7 @@ import (
 	"maps"
 	"math"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 

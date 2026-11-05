@@ -299,6 +299,9 @@ Each `eval` runs on multiple execution stacks:
   querier may read from data objects.
 - `query-frontend + query-scheduler (sharding, dataobj and chunk)` — the same, but the querier reads
   the samples before 90s from chunks.
+- `query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)` — the
+  unsharded loop with max query series cutoff on in every engine.
+
 Every stack runs with the default series limit of a tenant, which no script reaches.
 
 A stack with another stack-wide series limit is built with a `stackOption` such as
@@ -306,6 +309,8 @@ A stack with another stack-wide series limit is built with a `stackOption` such 
 eval expectations, so don't add such a stack to `stackNames` and `newExecutionStacks`. Compare how
 each eval ends on two stacks instead, with `runScript`, as
 `TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFrontendStacks` does.
+`TestLogQLScripts_ShouldFailWithTheMaxQuerySeriesCutoffOnlyWhereTheyFailWithoutIt` does the same with
+max query series cutoff off and on.
 
 ## Example
 

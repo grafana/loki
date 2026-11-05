@@ -178,6 +178,9 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 		must(newQueryFrontendStreamFirstStack(t, queryFrontendShardStreamFirstStackName)),
 		must(newQueryFrontendDataObjStack(t, queryFrontendShardDataObjStackName)),
 		must(newQueryFrontendDataObjAndChunkStack(t, queryFrontendShardDataObjAndChunkStackName)),
+
+		// Every engine runs with max query series cutoff on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardMaxQuerySeriesCutoffStackName, withMaxQuerySeriesCutoff())),
 	}
 }
 
