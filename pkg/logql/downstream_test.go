@@ -1,7 +1,6 @@
 package logql
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -28,41 +27,34 @@ var (
 	nilRangeMetrics = NewRangeMapperMetrics(nil)
 )
 
-func TestDownstreamEngine_ShouldNotLogTheExecutingQuery(t *testing.T) {
-	const query = `rate({a=~".+"}[1s])`
+func TestDownstreamEngine_Query_ShouldOnlyPropagateTheEarlySeriesCutoff(t *testing.T) {
+	tests := map[string]struct {
+		opts     EngineOpts
+		expected queryOpts
+	}{
+		"the executing query is never logged, even when the options ask for it": {
+			opts:     EngineOpts{LogExecutingQuery: true},
+			expected: queryOpts{logExecutingQuery: false},
+		},
+		"the early series cutoff is propagated": {
+			opts:     EngineOpts{EarlySeriesCutoff: true},
+			expected: queryOpts{earlySeriesCutoff: true},
+		},
+		"the early series cutoff is off by default": {
+			opts:     EngineOpts{},
+			expected: queryOpts{},
+		},
+	}
 
-	var (
-		shards  = 3
-		streams = randomStreams(10, 2, shards, []string{"a", "b"}, true)
-		opts    = EngineOpts{LogExecutingQuery: true}
-		ctx     = user.InjectOrgID(context.Background(), "fake")
-	)
-	params, err := NewLiteralParams(query, time.Unix(0, 0), time.Unix(0, int64(time.Second)), time.Second, 0, logproto.FORWARD, 100, nil, nil)
-	require.NoError(t, err)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ng := NewDownstreamEngine(tc.opts, MockDownstreamer{}, NoLimits, log.NewNopLogger())
 
-	regular := NewEngine(EngineOpts{}, NewMockQuerier(shards, streams), NoLimits, log.NewNopLogger())
-
-	t.Run("the engine logs it, so the downstream engine opting out is not vacuous", func(t *testing.T) {
-		var logs bytes.Buffer
-		_, err := NewEngine(opts, NewMockQuerier(shards, streams), NoLimits, log.NewLogfmtLogger(&logs)).Query(params).Exec(ctx)
-		require.NoError(t, err)
-
-		require.Contains(t, logs.String(), "executing query")
-	})
-
-	t.Run("the downstream engine does not log it even when its options ask for it", func(t *testing.T) {
-		var logs bytes.Buffer
-		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewLogfmtLogger(&logs))
-
-		strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
-		_, _, mapped, err := NewShardMapper(strategy, nilShardMetrics, nil).Parse(params.GetExpression())
-		require.NoError(t, err)
-
-		_, err = sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped}).Exec(ctx)
-		require.NoError(t, err)
-
-		require.NotContains(t, logs.String(), "executing query")
-	})
+			q, ok := ng.Query(context.Background(), LiteralParams{}).(*query)
+			require.True(t, ok)
+			require.Equal(t, tc.expected, q.opts)
+		})
+	}
 }
 
 func TestMappingEquivalence(t *testing.T) {
