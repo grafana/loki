@@ -185,7 +185,7 @@ type EngineOpts struct {
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
 
-	EarlySeriesCutoff bool `yaml:"early_series_cutoff" category:"experimental"`
+	MaxQuerySeriesCutoff bool `yaml:"max_query_series_cutoff" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -195,7 +195,7 @@ func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
-	f.BoolVar(&opts.EarlySeriesCutoff, prefix+"early-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
+	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -206,15 +206,15 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 type queryOpts struct {
 	// logExecutingQuery controls if the query is logged when Exec is called.
 	logExecutingQuery bool
-	// earlySeriesCutoff controls if max_query_series is enforced before the output is built.
-	earlySeriesCutoff bool
+	// maxQuerySeriesCutoff controls if max_query_series is enforced before the output is built.
+	maxQuerySeriesCutoff bool
 }
 
 // newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
 func newQueryOpts(opts EngineOpts) queryOpts {
 	return queryOpts{
-		logExecutingQuery: opts.LogExecutingQuery,
-		earlySeriesCutoff: opts.EarlySeriesCutoff,
+		logExecutingQuery:    opts.LogExecutingQuery,
+		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
 	}
 }
 
@@ -444,7 +444,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.earlySeriesCutoffLimit(ctx, maxSeries)))
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)))
 	if err != nil {
 		return nil, err
 	}
@@ -516,11 +516,11 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	return limitExceeded
 }
 
-// earlySeriesCutoffLimit returns the limit that preserving expressions may fail on before the
+// maxQuerySeriesCutoffLimit returns the limit that preserving expressions may fail on before the
 // query's output is built, or zero when the early cut-off is off. Logs Drilldown requests are
 // exempt, so they still get partial results and a warning from JoinSampleVector.
-func (q *query) earlySeriesCutoffLimit(ctx context.Context, maxSeries int) int {
-	if !q.opts.earlySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
+func (q *query) maxQuerySeriesCutoffLimit(ctx context.Context, maxSeries int) int {
+	if !q.opts.maxQuerySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
 		return 0
 	}
 	// vector() steps in whole milliseconds and the range iterators in nanoseconds, so below a

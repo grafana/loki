@@ -5204,8 +5204,8 @@ engine:
   # Experimental: Fail a query on max_query_series as soon as a range iterator
   # or vector aggregation holds more series than the limit, where the query's
   # output cannot be smaller. Logs Drilldown requests are exempt.
-  # CLI flag: -querier.engine.early-series-cutoff
-  [early_series_cutoff: <boolean> | default = false]
+  # CLI flag: -querier.engine.max-query-series-cutoff
+  [max_query_series_cutoff: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

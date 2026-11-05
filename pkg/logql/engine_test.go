@@ -1482,7 +1482,7 @@ func distinctStreams(n int, end time.Time) []logproto.Stream {
 	return streams
 }
 
-func TestEngine_EarlySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
+func TestEngine_MaxQuerySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
 	const maxSeries = 3
 	var (
 		start = time.Unix(60, 0)
@@ -1492,7 +1492,7 @@ func TestEngine_EarlySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
 		t.Helper()
 		var read atomic.Int64
 		querier := newCountingQuerier(NewMockQuerier(1, distinctStreams(numSeries, end)), &read)
-		eng := NewEngine(EngineOpts{EarlySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+		eng := NewEngine(EngineOpts{MaxQuerySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
 		params, err := NewLiteralParams(query, start, end, 30*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
 		require.NoError(t, err)
 		res, err := eng.Query(params).Exec(ctx)
@@ -1556,7 +1556,7 @@ func TestEngine_EarlySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
 	})
 }
 
-func TestEngine_EarlySeriesCutoff_ShouldEndLikeWithoutItWhenOrDiscardsSteps(t *testing.T) {
+func TestEngine_MaxQuerySeriesCutoff_ShouldEndLikeWithoutItWhenOrDiscardsSteps(t *testing.T) {
 	const maxSeries = 2
 	start := time.Unix(10, 0)
 
@@ -1618,7 +1618,7 @@ func TestEngine_EarlySeriesCutoff_ShouldEndLikeWithoutItWhenOrDiscardsSteps(t *t
 				})
 			}
 			run := func(cutoff bool) (logqlmodel.Result, error) {
-				eng := NewEngine(EngineOpts{EarlySeriesCutoff: cutoff}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+				eng := NewEngine(EngineOpts{MaxQuerySeriesCutoff: cutoff}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
 				params, err := NewLiteralParams(tc.query, tc.start, tc.end, tc.step, 0, logproto.FORWARD, 1000, nil, nil)
 				require.NoError(t, err)
 				return eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))

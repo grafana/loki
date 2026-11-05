@@ -682,7 +682,7 @@ func TestCountDistinctSketchExpr_ShouldNotFailEarlyOnSeriesLimit(t *testing.T) {
 		ExpressionOverride: syntax.NewCountDistinctSketchFromLabelAggregation(parsed),
 	}
 
-	eng := NewEngine(EngineOpts{EarlySeriesCutoff: true}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+	eng := NewEngine(EngineOpts{MaxQuerySeriesCutoff: true}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
 	_, err = eng.Query(sketchParams).Exec(user.InjectOrgID(context.Background(), "fake"))
 	require.NoError(t, err)
 }

@@ -27,7 +27,7 @@ var (
 	nilRangeMetrics = NewRangeMapperMetrics(nil)
 )
 
-func TestDownstreamEngine_Query_ShouldOnlyPropagateTheEarlySeriesCutoff(t *testing.T) {
+func TestDownstreamEngine_Query_ShouldOnlyPropagateMaxQuerySeriesCutoff(t *testing.T) {
 	tests := map[string]struct {
 		opts     EngineOpts
 		expected queryOpts
@@ -36,11 +36,11 @@ func TestDownstreamEngine_Query_ShouldOnlyPropagateTheEarlySeriesCutoff(t *testi
 			opts:     EngineOpts{LogExecutingQuery: true},
 			expected: queryOpts{logExecutingQuery: false},
 		},
-		"the early series cutoff is propagated": {
-			opts:     EngineOpts{EarlySeriesCutoff: true},
-			expected: queryOpts{earlySeriesCutoff: true},
+		"max query series cutoff is propagated": {
+			opts:     EngineOpts{MaxQuerySeriesCutoff: true},
+			expected: queryOpts{maxQuerySeriesCutoff: true},
 		},
-		"the early series cutoff is off by default": {
+		"max query series cutoff is off by default": {
 			opts:     EngineOpts{},
 			expected: queryOpts{},
 		},
