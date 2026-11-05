@@ -28,8 +28,11 @@ const (
 )
 
 var (
-	supportedSSETypes          = []string{SSEKMS, SSES3}
-	supportedStorageClasses    = s3_types.ObjectStorageClassStandard.Values()
+	supportedSSETypes       = []string{SSEKMS, SSES3}
+	supportedStorageClasses = []s3_types.ObjectStorageClass{
+		s3_types.ObjectStorageClassStandard,
+		s3_types.ObjectStorageClassStandardIa,
+	}
 	supportedBucketLookupTypes = thanosS3BucketLookupTypesValues()
 )
 
