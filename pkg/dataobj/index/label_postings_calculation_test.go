@@ -402,7 +402,7 @@ func TestLabelPostingsCalculation_ProcessBatch(t *testing.T) {
 					ColumnName:       lbl.Name,
 					LabelValue:       lbl.Value,
 					StreamID:         record.StreamID,
-					Timestamp:        record.Timestamp,
+					Time:             postings.At(record.Timestamp),
 					UncompressedSize: record.UncompressedSize(),
 					ShardBucket:      perRecordCtx.streamShardBuckets[record.StreamID],
 				})
