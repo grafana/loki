@@ -643,6 +643,8 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	// fill a size level and trigger a merge.
 	compactionCfg.LogMaxRunsPerTask = 2
 	compactionCfg.ToCConsolidateTimeout = 10 * time.Second
+	compactionCfg.TaskRetryMinBackoff = time.Millisecond
+	compactionCfg.TaskRetryMaxBackoff = time.Millisecond
 	require.NoError(t, compactionCfg.Validate())
 
 	w, err := worker.New(worker.Config{
@@ -669,8 +671,8 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		cfg:             compactionCfg,
 		logger:          log.NewNopLogger(),
 		bucket:          bucket,
-		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, metrics.taskAttemptsTotal),
-		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, metrics.taskAttemptsTotal),
+		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			timeout: compactionCfg.ToCConsolidateTimeout,

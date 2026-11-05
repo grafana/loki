@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -38,7 +39,8 @@ func TestPlanDispatcherRun(t *testing.T) {
 	}
 	newDispatcher := func(run runFunc, maxRetries int) (*planDispatcher, *prometheus.CounterVec) {
 		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
-		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, counter), counter
+		retryBackoff := backoff.Config{MinBackoff: time.Millisecond, MaxBackoff: time.Millisecond}
+		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, retryBackoff, counter), counter
 	}
 	attempts := func(counter *prometheus.CounterVec, outcome string) float64 {
 		return testutil.ToFloat64(counter.WithLabelValues("index-merge", outcome))
@@ -258,5 +260,57 @@ func TestPlanDispatcherRun(t *testing.T) {
 		require.NoError(t, runCtxErr.Load(), "the retry must not see the cancellation of the caller")
 		require.Equal(t, 1.0, attempts(counter, attemptOutcomeRetry))
 		require.Equal(t, 1.0, attempts(counter, attemptOutcomeSuccess))
+	})
+
+	t.Run("waits for the backoff before each retry", func(t *testing.T) {
+		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
+		retryBackoff := backoff.Config{MinBackoff: 50 * time.Millisecond, MaxBackoff: 50 * time.Millisecond}
+		runner := &fakeRunner{err: errors.New("boom")}
+		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 2, retryBackoff, counter)
+
+		start := time.Now()
+		_, err := d.Run(t.Context(), "acme", plans[:1])
+		require.EqualError(t, err, "index-merge job: boom (attempts: 3)")
+		require.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond)
+		require.Len(t, runner.snapshot(), 3)
+	})
+
+	t.Run("fails a task without another attempt when the context is cancelled during the backoff", func(t *testing.T) {
+		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
+		retryBackoff := backoff.Config{MinBackoff: time.Hour, MaxBackoff: time.Hour}
+		ctx, cancel := context.WithCancel(t.Context())
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			time.AfterFunc(10*time.Millisecond, cancel)
+			return nil, errors.New("boom")
+		}}
+		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 3, retryBackoff, counter)
+
+		_, err := d.Run(ctx, "acme", plans[:1])
+		require.EqualError(t, err, "index-merge job: boom (attempts: 1, retries stopped: context canceled)")
+		require.NotErrorIs(t, err, context.Canceled)
+		require.Len(t, runner.snapshot(), 1)
+		require.Equal(t, 0.0, attempts(counter, attemptOutcomeRetry))
+		require.Equal(t, 1.0, attempts(counter, attemptOutcomeFailed))
+	})
+}
+
+func TestPlanDispatcherRunPlanWithRetries(t *testing.T) {
+	t.Run("counts a cancelled attempt without another attempt when a sibling task fails during the backoff", func(t *testing.T) {
+		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
+		retryBackoff := backoff.Config{MinBackoff: time.Hour, MaxBackoff: time.Hour}
+		siblingCtx, siblingFailed := context.WithCancel(t.Context())
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			time.AfterFunc(10*time.Millisecond, siblingFailed)
+			return nil, errors.New("boom")
+		}}
+		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 3, retryBackoff, counter)
+		run := planRun{tenant: "acme", siblingCtx: siblingCtx, retryCtx: t.Context()}
+
+		_, err := d.runPlanWithRetries(run, log.NewNopLogger(), buildIndexMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}))
+		require.ErrorIs(t, err, context.Canceled)
+		require.Len(t, runner.snapshot(), 1)
+		require.Equal(t, 1.0, testutil.ToFloat64(counter.WithLabelValues("index-merge", attemptOutcomeCancelled)))
+		require.Equal(t, 0.0, testutil.ToFloat64(counter.WithLabelValues("index-merge", attemptOutcomeRetry)))
+		require.Equal(t, 0.0, testutil.ToFloat64(counter.WithLabelValues("index-merge", attemptOutcomeFailed)))
 	})
 }

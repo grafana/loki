@@ -28,6 +28,8 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"min backoff negative", func(c *Config) { c.MinBackoff = -1 }, errInvalidMinBackoff},
 		{"max backoff below min", func(c *Config) { c.MinBackoff = 2 * time.Minute; c.MaxBackoff = time.Minute }, errInvalidMaxBackoff},
 		{"window lookback below one", func(c *Config) { c.WindowLookback = 0 }, errInvalidWindowLookback},
+		{"task retry min backoff zero", func(c *Config) { c.TaskRetryMinBackoff = 0 }, errInvalidTaskRetryMinBackoff},
+		{"task retry max backoff below min", func(c *Config) { c.TaskRetryMinBackoff = time.Minute; c.TaskRetryMaxBackoff = time.Second }, errInvalidTaskRetryMaxBackoff},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

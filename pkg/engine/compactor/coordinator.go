@@ -74,8 +74,8 @@ func newCoordinator(
 		cfg:             cfg,
 		logger:          logger,
 		bucket:          bucket,
-		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, metrics.taskAttemptsTotal),
-		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, metrics.taskAttemptsTotal),
+		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,
@@ -534,6 +534,10 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		}
 		stats, err := c.compactTenantIndexesGroup(ctx, tenant, window, groupIndexEntries)
 		if err != nil {
+			// A Canceled error is an interruption only when ctx is done. While
+			// ctx is live, a Canceled error comes from somewhere else, for
+			// example a bucket client, so it counts as a group failure and
+			// does not hide one.
 			if ctx.Err() != nil && errors.Is(err, context.Canceled) {
 				return stop(err)
 			}

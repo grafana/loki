@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/backoff"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -191,6 +192,8 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		LogMinCompactionSize: 1,
 		PlanVersion:          1,
 		Scheduler:            SchedulerConfig{Endpoint: defaultEndpoint},
+		TaskRetryMinBackoff:  time.Millisecond,
+		TaskRetryMaxBackoff:  time.Millisecond,
 	}
 	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
 	logger := log.NewNopLogger()
@@ -198,8 +201,8 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		cfg:             cfg,
 		logger:          logger,
 		bucket:          bucket,
-		indexDispatcher: newPlanDispatcher(logger, runner.run, 4, cfg.TaskMaxRetries, metrics.taskAttemptsTotal),
-		logDispatcher:   newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, metrics.taskAttemptsTotal),
+		indexDispatcher: newPlanDispatcher(logger, runner.run, 4, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher:       &tocPublisher{writer: replacer, timeout: 30 * time.Second},
 		clock:           clock,
 		sleep:           sleepUntil,
@@ -211,11 +214,13 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 }
 
 func TestNewCoordinator(t *testing.T) {
-	t.Run("passes the task retry limit and the concurrency limits to the dispatchers", func(t *testing.T) {
+	t.Run("passes the task retry settings and the concurrency limits to the dispatchers", func(t *testing.T) {
 		cfg := Config{
 			MaxRunningCompactionTasks:    5,
 			LogMaxRunningCompactionTasks: 7,
 			TaskMaxRetries:               2,
+			TaskRetryMinBackoff:          3 * time.Second,
+			TaskRetryMaxBackoff:          4 * time.Second,
 			LogMaxRunsPerTask:            2,
 		}
 
@@ -225,6 +230,9 @@ func TestNewCoordinator(t *testing.T) {
 		require.Equal(t, 7, c.logDispatcher.limit)
 		require.Equal(t, 2, c.indexDispatcher.maxRetries)
 		require.Equal(t, 2, c.logDispatcher.maxRetries)
+		wantBackoff := backoff.Config{MinBackoff: 3 * time.Second, MaxBackoff: 4 * time.Second}
+		require.Equal(t, wantBackoff, c.indexDispatcher.retryBackoff)
+		require.Equal(t, wantBackoff, c.logDispatcher.retryBackoff)
 	})
 }
 

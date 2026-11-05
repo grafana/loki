@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
@@ -23,9 +25,10 @@ const (
 	attemptOutcomeSuccess = "success"
 	attemptOutcomeRetry   = "retry"
 	attemptOutcomeFailed  = "failed"
-	// attemptOutcomeCancelled counts an attempt that ended after a failed
-	// sibling task cancelled the Run. The attempt records no retry or failed
-	// outcome. A plan that skips its attempt records no outcome.
+	// attemptOutcomeCancelled counts an attempt that a failed sibling task
+	// cut short, while it ran or while it waited to retry. The attempt
+	// records no retry or failed outcome. A plan that skips its attempt
+	// records no outcome.
 	attemptOutcomeCancelled = "cancelled"
 )
 
@@ -40,18 +43,22 @@ type planDispatcher struct {
 	// maxRetries is how many times a failed plan runs again before it fails
 	// the Run. Zero disables retries.
 	maxRetries int
-	attempts   *prometheus.CounterVec
+	// retryBackoff sets the wait before each retry. Its MaxRetries is
+	// ignored, because maxRetries limits the retries.
+	retryBackoff backoff.Config
+	attempts     *prometheus.CounterVec
 }
 
 // newPlanDispatcher returns a planDispatcher that counts task attempts in
 // attempts, by actor and outcome.
-func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int, attempts *prometheus.CounterVec) *planDispatcher {
+func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int, retryBackoff backoff.Config, attempts *prometheus.CounterVec) *planDispatcher {
 	return &planDispatcher{
-		logger:     logger,
-		runPlan:    runPlan,
-		limit:      limit,
-		maxRetries: maxRetries,
-		attempts:   attempts,
+		logger:       logger,
+		runPlan:      runPlan,
+		limit:        limit,
+		maxRetries:   maxRetries,
+		retryBackoff: retryBackoff,
+		attempts:     attempts,
 	}
 }
 
@@ -59,21 +66,22 @@ func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int
 type planRun struct {
 	tenant string
 
-	// siblingFailed is done when a plan of the Run failed. Run then discards
+	// siblingCtx is done when a plan of the Run failed. Run then discards
 	// every result.
-	siblingFailed context.Context
+	siblingCtx context.Context
 
-	// stopRetries returns an error after the caller cancelled the Run, at
-	// shutdown or when the tenant stops.
-	stopRetries func() error
+	// retryCtx is the context of the caller. It is done at shutdown or when
+	// the tenant stops. No retry starts after that, and a backoff wait ends
+	// early.
+	retryCtx context.Context
 }
 
 // Run executes every plan and returns their artifacts in plan order. Each
 // plan runs under the actor of its root node.
 //
-// A failed plan runs again at once, up to maxRetries times. There is no wait
-// between attempts: a plan runs for minutes, so a short wait does not spread
-// load. The tenant loop backs off after a failed phase.
+// A failed plan runs again up to maxRetries times, after an exponential
+// backoff. Failures often come in bursts, for example while the scheduler or
+// a worker restarts, and the backoff lets a later attempt outlast the burst.
 //
 // Run returns an error if any plan fails with no retry left, and then returns
 // no artifacts. The first such failure cancels the running plans, and the
@@ -96,11 +104,11 @@ type planRun struct {
 // No-work decisions belong to planning, before dispatch.
 func (d *planDispatcher) Run(ctx context.Context, tenant string, plans []*physical.Plan) ([]v2.ResultArtifact, error) {
 	artifacts := make([]v2.ResultArtifact, len(plans))
-	g, siblingFailed := errgroup.WithContext(context.WithoutCancel(ctx))
+	g, siblingCtx := errgroup.WithContext(context.WithoutCancel(ctx))
 	if d.limit > 0 {
 		g.SetLimit(d.limit)
 	}
-	run := planRun{tenant: tenant, siblingFailed: siblingFailed, stopRetries: ctx.Err}
+	run := planRun{tenant: tenant, siblingCtx: siblingCtx, retryCtx: ctx}
 	for i, plan := range plans {
 		g.Go(func() error {
 			logger := log.With(d.logger, "tenant", tenant, "plan", i, "plans", len(plans))
@@ -134,25 +142,20 @@ func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan
 		return nil, err
 	}
 	logger = log.With(logger, "actor", actor, "node_id", root.ID())
+	retryBackoff := backoff.New(context.Background(), d.retryBackoff)
 	for attempt := 1; ; attempt++ {
 		// After a sibling fails, Run discards every result, so skip the
 		// attempt.
-		if err := run.siblingFailed.Err(); err != nil {
+		if err := run.siblingCtx.Err(); err != nil {
 			return nil, err
 		}
-		artifact, err := d.runOne(run.siblingFailed, run.tenant, actor, plan)
+		artifact, err := d.runOne(run.siblingCtx, run.tenant, actor, plan)
 		if err == nil {
 			d.attempts.WithLabelValues(actor, attemptOutcomeSuccess).Inc()
 			return artifact, nil
 		}
-		if run.siblingFailed.Err() != nil {
-			d.attempts.WithLabelValues(actor, attemptOutcomeCancelled).Inc()
-			// Run returns only its first error, so log this one here.
-			lvl := level.Warn
-			if errors.Is(err, context.Canceled) {
-				lvl = level.Debug
-			}
-			lvl(logger).Log("msg", "compaction task attempt ended after a sibling task failed", "attempt", attempt, "err", err)
+		if run.siblingCtx.Err() != nil {
+			d.siblingCancelled(logger, actor, attempt, err)
 			return nil, err
 		}
 		attemptLogger := log.With(logger, "attempt", attempt, "max_retries", d.maxRetries, "err", err)
@@ -161,16 +164,41 @@ func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan
 			level.Warn(attemptLogger).Log("msg", "compaction task failed, no retries left")
 			return nil, fmt.Errorf("%w (attempts: %d)", err, attempt)
 		}
-		// Format stopErr with %v, not %w. The task failed, so the caller
-		// must not mistake the error for an interruption.
-		if stopErr := run.stopRetries(); stopErr != nil {
+		if run.retryCtx.Err() == nil {
+			delay := retryBackoff.NextDelay()
+			level.Warn(attemptLogger).Log("msg", "compaction task failed, retrying after backoff", "backoff", delay)
+			wait := time.NewTimer(delay)
+			select {
+			case <-wait.C:
+			case <-run.retryCtx.Done():
+			case <-run.siblingCtx.Done():
+			}
+			wait.Stop()
+		}
+		if stopErr := run.retryCtx.Err(); stopErr != nil {
 			d.attempts.WithLabelValues(actor, attemptOutcomeFailed).Inc()
 			level.Warn(attemptLogger).Log("msg", "compaction task failed, retries stopped", "reason", stopErr)
+			// Format stopErr with %v, not %w. The task failed, so the caller
+			// must not mistake the error for an interruption.
 			return nil, fmt.Errorf("%w (attempts: %d, retries stopped: %v)", err, attempt, stopErr)
 		}
+		if run.siblingCtx.Err() != nil {
+			d.siblingCancelled(logger, actor, attempt, err)
+			return nil, run.siblingCtx.Err()
+		}
 		d.attempts.WithLabelValues(actor, attemptOutcomeRetry).Inc()
-		level.Warn(attemptLogger).Log("msg", "compaction task failed, retrying")
 	}
+}
+
+// siblingCancelled records an attempt that a failed sibling task cut short.
+// Run returns only its first error, so siblingCancelled logs err.
+func (d *planDispatcher) siblingCancelled(logger log.Logger, actor string, attempt int, err error) {
+	d.attempts.WithLabelValues(actor, attemptOutcomeCancelled).Inc()
+	lvl := level.Warn
+	if errors.Is(err, context.Canceled) {
+		lvl = level.Debug
+	}
+	lvl(logger).Log("msg", "compaction task attempt ended after a sibling task failed", "attempt", attempt, "err", err)
 }
 
 func (d *planDispatcher) runOne(ctx context.Context, tenant, actor string, plan *physical.Plan) (*v2.ResultArtifact, error) {

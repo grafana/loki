@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -36,10 +37,19 @@ type Config struct {
 	LogMaxRunningCompactionTasks int `yaml:"logs_max_running_compaction_tasks"`
 
 	// TaskMaxRetries is how many times the coordinator runs a failed
-	// compaction task again. A retry starts immediately, with no backoff. The
-	// coordinator does not retry after shutdown begins or the tenant stops.
-	// Zero disables retries. Validate rejects negative values.
+	// compaction task again. The coordinator does not retry after shutdown
+	// begins or the tenant stops. Zero disables retries. Validate rejects
+	// negative values.
 	TaskMaxRetries int `yaml:"task_max_retries"`
+
+	// TaskRetryMinBackoff is the shortest wait before the first retry of a
+	// compaction task. The wait grows exponentially with each retry, with
+	// jitter, up to TaskRetryMaxBackoff.
+	TaskRetryMinBackoff time.Duration `yaml:"task_retry_min_backoff"`
+
+	// TaskRetryMaxBackoff is the longest wait before a retry of a compaction
+	// task.
+	TaskRetryMaxBackoff time.Duration `yaml:"task_retry_max_backoff"`
 
 	// PollingInterval is the cadence of the coordinator's main loop. Each
 	// tick reads the most-recent ToC and plans compaction per tenant.
@@ -178,12 +188,19 @@ type WorkerConfig struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
+// taskRetryBackoff returns the backoff before each retry of a compaction task.
+func (cfg *Config) taskRetryBackoff() backoff.Config {
+	return backoff.Config{MinBackoff: cfg.TaskRetryMinBackoff, MaxBackoff: cfg.TaskRetryMaxBackoff}
+}
+
 // Default values intentionally chosen conservative for the scaffold; the
 // real values get tuned alongside the coordinator in a follow-up change.
 const (
 	defaultMaxRunningCompactionTasks    = 16
 	defaultLogMaxRunningCompactionTasks = 16
 	defaultTaskMaxRetries               = 3
+	defaultTaskRetryMinBackoff          = 10 * time.Second
+	defaultTaskRetryMaxBackoff          = time.Minute
 	defaultEndpoint                     = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
@@ -214,7 +231,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		defaultLogMaxRunningCompactionTasks,
 		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
 	f.IntVar(&cfg.TaskMaxRetries, prefix+"task-max-retries", defaultTaskMaxRetries,
-		"Experimental: Number of times the coordinator runs a failed compaction task again. A retry starts immediately, with no backoff. 0 disables retries.")
+		"Experimental: Number of times the coordinator runs a failed compaction task again. 0 disables retries.")
+	f.DurationVar(&cfg.TaskRetryMinBackoff, prefix+"task-retry-min-backoff", defaultTaskRetryMinBackoff,
+		"Experimental: Shortest wait before the first retry of a failed compaction task. The wait grows exponentially with each retry, with jitter, up to task-retry-max-backoff.")
+	f.DurationVar(&cfg.TaskRetryMaxBackoff, prefix+"task-retry-max-backoff", defaultTaskRetryMaxBackoff,
+		"Experimental: Longest wait before a retry of a failed compaction task.")
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
 	f.DurationVar(&cfg.MinBackoff, prefix+"min-backoff", defaultMinBackoff,
@@ -322,6 +343,12 @@ func (cfg *Config) Validate() error {
 	if cfg.LogMinCompactionSize == 0 {
 		return errInvalidLogMinCompactionSize
 	}
+	if cfg.TaskRetryMinBackoff <= 0 {
+		return errInvalidTaskRetryMinBackoff
+	}
+	if cfg.TaskRetryMaxBackoff < cfg.TaskRetryMinBackoff {
+		return errInvalidTaskRetryMaxBackoff
+	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
@@ -338,6 +365,8 @@ var (
 	errInvalidMaxRunningCompactionTasks    = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
 	errInvalidLogMaxRunningCompactionTasks = errors.New("dataobj.compaction.logs.max_running_compaction_tasks must be >= 0")
 	errInvalidTaskMaxRetries               = errors.New("dataobj.compaction.task_max_retries must be >= 0")
+	errInvalidTaskRetryMinBackoff          = errors.New("dataobj.compaction.task_retry_min_backoff must be > 0 when compaction is enabled")
+	errInvalidTaskRetryMaxBackoff          = errors.New("dataobj.compaction.task_retry_max_backoff must be >= dataobj.compaction.task_retry_min_backoff when compaction is enabled")
 	errEmptySchedulerEndpoint              = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")
