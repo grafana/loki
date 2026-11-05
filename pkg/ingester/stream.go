@@ -229,6 +229,9 @@ func (s *stream) PushWalReplay(
 	toStore, invalid := s.validateEntries(ctx, entries, counter > 0, false, usageTracker, format)
 
 	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format)
+	// Counters may start above zero after stream recreation. Preserve the
+	// persisted counter for checkpoint deduplication and subsequent writes.
+	s.entryCt = max(s.entryCt, counter)
 	if len(storedEntries) > 0 {
 		s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
 	}
