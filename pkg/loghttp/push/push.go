@@ -294,6 +294,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	// backfill labels added below.
 	backfillShard := ExtractBackfillShardContext(r.Context())
 
+	// If the tenant allows it and the X-Loki-Labels header is set, every stream gets these labels,
+	// overriding labels with the same name.
+	trustedLabels := ExtractTrustedLabelsContext(r.Context())
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 
@@ -334,6 +338,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			lb := labels.NewBuilder(lbs)
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
 		}
+
+		// Applied after service name discovery, as in the OTLP parser, so a header label also overrides
+		// a discovered service_name, and header labels never feed discovery.
+		lbs = applyTrustedLabels(lbs, trustedLabels)
 
 		if backfillShard != "" {
 			lbs = labels.NewBuilder(lbs).
