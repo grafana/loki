@@ -37,6 +37,23 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Retention monitoring
+
+The compactor exposes `loki_compactor_retention_enabled`, which is `1` when
+`compactor.retention_enabled` is true and `0` otherwise.
+
+The Loki mixin adds two warning alerts:
+
+- `LokiCompactorRetentionStalled`: the last successful retention run is more than
+  six hours old, and the condition persists for one hour.
+- `LokiCompactorRetentionNeverSucceeded`: retention is enabled and its success
+  timestamp remains zero for six continuous hours of monitoring. This alert
+  requires the new enabled metric and does not cover older Loki versions.
+
+Both alerts aggregate by deployment so a successful instance suppresses standby
+instances. Missing metrics are not treated as zero; monitor scrape health
+separately. The startup grace period restarts if the alert condition disappears.
+
 ### Statistics in detected-field query responses
 
 The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON

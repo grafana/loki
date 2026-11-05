@@ -88,3 +88,28 @@ groups:
           for: 1h
           labels:
             severity: critical
+        - alert: LokiCompactorRetentionStalled
+          annotations:
+            description: |
+                {{ $labels.cluster }} {{ $labels.namespace }} has not successfully applied retention in the last 6 hours. Expired logs may accumulate in storage.
+            summary: Loki retention has not succeeded in the last 6 hours.
+          expr: |
+            min (
+              time() - (loki_compactor_apply_retention_last_successful_run_timestamp_seconds > 0)
+            ) by (cluster, namespace) > 60 * 60 * 6
+          for: 1h
+          labels:
+            severity: warning
+        - alert: LokiCompactorRetentionNeverSucceeded
+          annotations:
+            description: |
+                {{ $labels.cluster }} {{ $labels.namespace }} has retention enabled but no successful retention run during 6 continuous hours of monitoring. Expired logs may accumulate in storage.
+            summary: Loki retention has never succeeded during 6 hours of monitoring.
+          expr: |
+            # Disabled retention also reports zero; require an explicit enabled signal.
+            (max(loki_compactor_apply_retention_last_successful_run_timestamp_seconds) by (cluster, namespace) == 0)
+            and on (cluster, namespace)
+            (max(loki_compactor_retention_enabled) by (cluster, namespace) == 1)
+          for: 6h
+          labels:
+            severity: warning

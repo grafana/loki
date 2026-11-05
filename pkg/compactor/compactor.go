@@ -324,7 +324,7 @@ func (c *Compactor) init(
 		}
 	}
 
-	c.metrics = newMetrics(r)
+	c.metrics = newMetrics(r, c.cfg.RetentionEnabled)
 	c.tablesManager = newTablesManager(c.cfg, c.storeContainers, c.indexCompactors, c.schemaConfig, c.expirationChecker, c.metrics)
 
 	if c.cfg.RetentionEnabled {

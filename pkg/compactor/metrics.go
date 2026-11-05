@@ -19,12 +19,13 @@ type metrics struct {
 	applyRetentionOperationTotal           *prometheus.CounterVec
 	applyRetentionOperationDurationSeconds prometheus.Gauge
 	applyRetentionLastSuccess              prometheus.Gauge
+	retentionEnabled                       prometheus.Gauge
 	compactorRunning                       prometheus.Gauge
 	skippedCompactingLockedTables          *prometheus.GaugeVec
 }
 
-func newMetrics(r prometheus.Registerer) *metrics {
-	return &metrics{
+func newMetrics(r prometheus.Registerer, retentionEnabled bool) *metrics {
+	m := &metrics{
 		compactTablesOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "tsdb_shipper_compact_tables_operation_total",
@@ -55,6 +56,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "compactor_apply_retention_last_successful_run_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful retention run",
 		}),
+		retentionEnabled: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "compactor_retention_enabled",
+			Help:      "Whether retention is enabled on this compactor (1 for enabled, 0 for disabled)",
+		}),
 		compactorRunning: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "tsdb_shipper_compactor_running",
@@ -66,4 +72,8 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Help:      "Number of times uncompacted tables were consecutively skipped due to them being locked by retention",
 		}, []string{"table_name"}),
 	}
+	if retentionEnabled {
+		m.retentionEnabled.Set(1)
+	}
+	return m
 }

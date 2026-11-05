@@ -129,6 +129,44 @@
               |||, 'cluster', $._config.per_cluster_label),
             },
           },
+          {
+            alert: 'LokiCompactorRetentionStalled',
+            expr: |||
+              min (
+                time() - (loki_compactor_apply_retention_last_successful_run_timestamp_seconds > 0)
+              ) by (%(group_by_cluster)s) > 60 * 60 * 6
+            ||| % $._config,
+            'for': '1h',
+            labels: {
+              severity: 'warning',
+            },
+            annotations: {
+              summary: 'Loki retention has not succeeded in the last 6 hours.',
+              description: |||
+                {{ $labels.%(per_cluster_label)s }} {{ $labels.%(per_namespace_label)s }} has not successfully applied retention in the last 6 hours. Expired logs may accumulate in storage.
+              ||| % $._config,
+            },
+          },
+          {
+            alert: 'LokiCompactorRetentionNeverSucceeded',
+            expr: |||
+              # Disabled retention also reports zero; require an explicit enabled signal.
+              (max(loki_compactor_apply_retention_last_successful_run_timestamp_seconds) by (%(group_by_cluster)s) == 0)
+              and on (%(group_by_cluster)s)
+              (max(loki_compactor_retention_enabled) by (%(group_by_cluster)s) == 1)
+            ||| % $._config,
+            // A range selector does not guarantee six hours of history.
+            'for': '6h',
+            labels: {
+              severity: 'warning',
+            },
+            annotations: {
+              summary: 'Loki retention has never succeeded during 6 hours of monitoring.',
+              description: |||
+                {{ $labels.%(per_cluster_label)s }} {{ $labels.%(per_namespace_label)s }} has retention enabled but no successful retention run during 6 continuous hours of monitoring. Expired logs may accumulate in storage.
+              ||| % $._config,
+            },
+          },
         ],
       },
     ],
