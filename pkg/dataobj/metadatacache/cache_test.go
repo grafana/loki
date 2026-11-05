@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -275,6 +276,140 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	})
 }
 
+func TestCache_GetOrLoad(t *testing.T) {
+	acceptPrefix := func(prefix string) func([]byte) bool {
+		return func(buf []byte) bool { return strings.HasPrefix(string(buf), prefix) }
+	}
+
+	t.Run("returns a hit that accept approves and does not load", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		c := newTestCache(mc, 0, nil)
+
+		_, err := c.GetOrLoad(t.Context(), "obj", nil, func(context.Context) ([]byte, error) { return []byte("fresh-1"), nil })
+		require.NoError(t, err)
+
+		var loads int
+		got, err := c.GetOrLoad(t.Context(), "obj", acceptPrefix("fresh"), func(context.Context) ([]byte, error) {
+			loads++
+			return []byte("fresh-2"), nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, []byte("fresh-1"), got)
+		require.Zero(t, loads)
+		require.Equal(t, float64(1), testutil.ToFloat64(c.hits))
+	})
+
+	t.Run("loads, stores over the old value and returns the new bytes when accept rejects the hit", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		c := newTestCache(mc, 0, nil)
+
+		_, err := c.GetOrLoad(t.Context(), "obj", nil, func(context.Context) ([]byte, error) { return []byte("stale-1"), nil })
+		require.NoError(t, err)
+
+		got, err := c.GetOrLoad(t.Context(), "obj", acceptPrefix("fresh"), func(context.Context) ([]byte, error) {
+			return []byte("fresh-2"), nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, []byte("fresh-2"), got)
+		require.Equal(t, []byte("fresh-2"), mc.GetInternal()[keyPrefix+"obj"])
+		require.Zero(t, testutil.ToFloat64(c.hits), "a rejected hit is not a hit")
+		require.Equal(t, float64(2), testutil.ToFloat64(c.misses), "the first load and the rejected hit are misses")
+	})
+
+	t.Run("loads and stores when the key is missing", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		c := newTestCache(mc, 0, nil)
+
+		got, err := c.GetOrLoad(t.Context(), "obj", acceptPrefix("fresh"), func(context.Context) ([]byte, error) {
+			return []byte("fresh-1"), nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, []byte("fresh-1"), got)
+		require.Equal(t, []byte("fresh-1"), mc.GetInternal()[keyPrefix+"obj"])
+	})
+
+	t.Run("makes one load for concurrent callers that find a rejected hit", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			const callers = 8
+
+			mc := cache.NewMockCache()
+			c := newTestCache(mc, 0, nil)
+			require.NoError(t, mc.Store(t.Context(), []string{keyPrefix + "obj"}, [][]byte{[]byte("stale")}))
+
+			var loads atomic.Int64
+			release := make(chan struct{})
+			load := func(context.Context) ([]byte, error) {
+				loads.Add(1)
+				<-release
+				return []byte("fresh"), nil
+			}
+
+			results := make([][]byte, callers)
+			errs := make([]error, callers)
+			var wg sync.WaitGroup
+			for i := range callers {
+				wg.Go(func() {
+					results[i], errs[i] = c.GetOrLoad(t.Context(), "obj", acceptPrefix("fresh"), load)
+				})
+			}
+
+			synctest.Wait()
+			close(release)
+			wg.Wait()
+
+			require.Equal(t, int64(1), loads.Load())
+			for i, got := range results {
+				require.NoError(t, errs[i])
+				require.Equal(t, []byte("fresh"), got)
+			}
+		})
+	})
+
+	t.Run("degrades to a load when the cache fetch fails", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		mc.SetErr(nil, errors.New("fetch failure"))
+		c := newTestCache(mc, 0, nil)
+
+		got, err := c.GetOrLoad(t.Context(), "obj", acceptPrefix("fresh"), func(context.Context) ([]byte, error) {
+			return []byte("fresh"), nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, []byte("fresh"), got)
+		require.Equal(t, float64(1), testutil.ToFloat64(c.errors.WithLabelValues("fetch")))
+	})
+
+	t.Run("returns a loaded value above the item limit, keeps the rejected one and loads again", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		c := newTestCache(mc, 8, nil)
+		require.NoError(t, mc.Store(t.Context(), []string{keyPrefix + "obj"}, [][]byte{[]byte("stale")}))
+
+		var loads int
+		for range 2 {
+			got, err := c.GetOrLoad(t.Context(), "obj", acceptPrefix("fresh"), func(context.Context) ([]byte, error) {
+				loads++
+				return []byte("fresh-and-too-large"), nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, []byte("fresh-and-too-large"), got)
+		}
+
+		require.Equal(t, 2, loads)
+		require.Equal(t, []byte("stale"), mc.GetInternal()[keyPrefix+"obj"])
+	})
+
+	t.Run("accepts every hit when accept is nil", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		c := newTestCache(mc, 0, nil)
+		require.NoError(t, mc.Store(t.Context(), []string{keyPrefix + "obj"}, [][]byte{[]byte("anything")}))
+
+		got, err := c.GetOrLoad(t.Context(), "obj", nil, func(context.Context) ([]byte, error) {
+			return nil, errors.New("load must not run")
+		})
+		require.NoError(t, err)
+		require.Equal(t, []byte("anything"), got)
+	})
+}
+
 func TestNewCache(t *testing.T) {
 	t.Run("caches of different kinds that share a backend and metrics count under their own kind", func(t *testing.T) {
 		reg := prometheus.NewPedanticRegistry()
@@ -296,7 +431,7 @@ func TestNewCache(t *testing.T) {
 
 		series, err := testutil.GatherAndCount(reg, "loki_dataobj_metadata_cache_hits_total")
 		require.NoError(t, err)
-		require.Equal(t, 2, series, "one series for each kind")
+		require.Equal(t, 3, series, "one series for each kind")
 	})
 
 	t.Run("stopping a cache stops its backend", func(t *testing.T) {

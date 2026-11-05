@@ -1091,8 +1091,42 @@ dataobj:
     # CLI flag: -dataobj.uploader.sha-prefix-size
     [sha_prefix_size: <int> | default = 2]
 
+  metastore:
+    toc_resolver:
+      # Experimental: Keep the table of contents (ToC) that queries requested
+      # recently in memory. Refresh them in the background, so a query rarely
+      # reads them from object storage. It has no effect unless -dataobj.enabled
+      # is set. Only the querier module uses it.
+      # CLI flag: -dataobj-metastore.toc-resolver.enabled
+      [enabled: <boolean> | default = true]
+
+      # How often the resolver refreshes the ToCs in memory. A query reads a ToC
+      # that is older than twice this interval from object storage. A refresh
+      # reads through the data object metadata cache when one is configured
+      # (-dataobj.metadata-cache.*). The refresh accepts a cached ToC that is at
+      # most half this interval old. The interval must be at least one second,
+      # and twice the interval must not exceed a tenth of -dataobj.storage-lag.
+      # CLI flag: -dataobj-metastore.toc-resolver.refresh-interval
+      [refresh_interval: <duration> | default = 1m]
+
+      # A ToC is refreshed while a query requested it within this time. The
+      # resolver drops a ToC that no query requested for longer. It must not be
+      # shorter than the refresh interval.
+      # CLI flag: -dataobj-metastore.toc-resolver.active-window
+      [active_window: <duration> | default = 5m]
+
+      # Size limit of the ToCs kept in memory. It must be positive. The resolver
+      # does not store a ToC that would take the size over the limit. When the
+      # size is over nine tenths of the limit, a refresh drops the least
+      # recently requested ToCs. It stops once the size is at most nine tenths
+      # of the limit.
+      # CLI flag: -dataobj-metastore.toc-resolver.max-memory-cache-bytes
+      [max_memory_cache_bytes: <int> | default = 64MB]
+
   # Caches the metadata region of the log objects and index objects the querier
-  # reads, or the entire object if it is tiny. The cache is enabled when a
+  # reads, or the entire object if it is tiny. When the ToC resolver is enabled
+  # (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables
+  # of contents (ToCs) that the resolver refreshes. The cache is enabled when a
   # backend is configured. Entries are keyed by object path, so the cache cannot
   # differentiate entries between different buckets and clusters. Multiple
   # installations must not share the same cache backend.
@@ -1164,6 +1198,14 @@ dataobj:
     # take in a leftover of up to 10% of it. 0 disables the split.
     # CLI flag: -dataobj.compaction.logs.max-task-size
     [logs_max_task_size: <int> | default = 0B]
+
+    # Experimental: Maximum uncompressed input of one stream sort prefix in a
+    # planned log merge. A merge writes all records of one sort prefix into one
+    # object, so this limits the size of the objects and the memory of a task.
+    # The planner skips a merge with a larger sort prefix and keeps its runs
+    # unmerged. 0 disables the check.
+    # CLI flag: -dataobj.compaction.logs.max-key-size
+    [logs_max_key_size: <int> | default = 100GiB]
 
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.

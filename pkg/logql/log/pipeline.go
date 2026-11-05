@@ -105,15 +105,24 @@ type StageHints struct {
 
 	// CanModifyLine reports whether the stage can return a line that differs from the one it received.
 	CanModifyLine bool
+
+	// ReadsLine reports whether the result of the stage can depend on the line.
+	ReadsLine bool
+
+	// ReadsArbitraryLabels reports whether the result of the stage can depend on labels that
+	// RequiredLabelNames does not list.
+	ReadsArbitraryLabels bool
 }
 
 // Merge combines the hints of two stages that both run on a line.
 func (h StageHints) Merge(other StageHints) StageHints {
 	return StageHints{
-		CanModifyLabels:   h.CanModifyLabels || other.CanModifyLabels,
-		ReadsErrorLabel:   h.ReadsErrorLabel || other.ReadsErrorLabel,
-		KeepsErroredLines: h.KeepsErroredLines || other.KeepsErroredLines,
-		CanModifyLine:     h.CanModifyLine || other.CanModifyLine,
+		CanModifyLabels:      h.CanModifyLabels || other.CanModifyLabels,
+		ReadsErrorLabel:      h.ReadsErrorLabel || other.ReadsErrorLabel,
+		KeepsErroredLines:    h.KeepsErroredLines || other.KeepsErroredLines,
+		CanModifyLine:        h.CanModifyLine || other.CanModifyLine,
+		ReadsLine:            h.ReadsLine || other.ReadsLine,
+		ReadsArbitraryLabels: h.ReadsArbitraryLabels || other.ReadsArbitraryLabels,
 	}
 }
 
@@ -191,8 +200,13 @@ func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) 
 
 // Hints implements Stage.
 func (noopStage) Hints() StageHints {
-	// It does nothing, so it changes no labels and no line.
-	return StageHints{CanModifyLabels: false, CanModifyLine: false}
+	// It does nothing, so it changes and reads no labels and no line.
+	return StageHints{
+		CanModifyLabels:      false,
+		CanModifyLine:        false,
+		ReadsLine:            false,
+		ReadsArbitraryLabels: false,
+	}
 }
 
 func (noopStage) RequiredLabelNames() []string { return []string{} }

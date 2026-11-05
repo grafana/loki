@@ -2,8 +2,6 @@ module github.com/grafana/loki/v3
 
 go 1.27.3
 
-godebug multipathtcp=0
-
 ignore ./tools/dev
 
 require (
@@ -128,7 +126,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.47.0
 	go.uber.org/atomic v1.12.0
 	go.uber.org/goleak v1.3.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	go.yaml.in/yaml/v4 v4.0.0-rc.7
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
 	golang.org/x/net v0.62.0
@@ -274,12 +272,12 @@ require (
 	github.com/knadh/koanf/v2 v2.4.1 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
-	github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5 // indirect
+	github.com/lufia/plan9stats v0.0.0-20261101121723-be84dd9509a0 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/mdlayher/socket v0.8.0 // indirect
-	github.com/mdlayher/vsock v1.3.0 // indirect
+	github.com/mdlayher/vsock v1.4.0 // indirect
 	github.com/miekg/dns v1.1.73 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
