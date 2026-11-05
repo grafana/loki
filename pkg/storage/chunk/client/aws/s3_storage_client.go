@@ -24,7 +24,6 @@ import (
 
 	"github.com/aws/smithy-go"
 
-	s3_types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
@@ -136,7 +135,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
 	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"s3.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the S3 endpoint.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
-	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", string(s3_types.StorageClassStandard), fmt.Sprintf("The S3 storage class which objects will use. Supported values are: %s.", strings.Join(commonaws.ToStringSlice(commonaws.SupportedStorageClasses), ", ")))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", string(types.StorageClassStandard), fmt.Sprintf("The S3 storage class which objects will use. Supported values are: %s.", strings.Join(commonaws.ToStringSlice(commonaws.SupportedStorageClasses), ", ")))
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
