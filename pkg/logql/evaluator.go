@@ -376,11 +376,6 @@ type EntryEvaluatorFactory interface {
 	NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error)
 }
 
-// errHistogramsNotSupported is returned for histogram queries, which parse but cannot be evaluated yet.
-// It wraps ErrParse so that it is served as a client error. A server error would be retried by the
-// query frontend and count against the error rate.
-var errHistogramsNotSupported = fmt.Errorf("%w: histogram functions are not supported yet", logqlerr.ErrParse)
-
 // EvaluatorUnsupportedType is a helper for signaling that an evaluator does not support an Expr type
 func EvaluatorUnsupportedType(expr syntax.Expr, ev EvaluatorFactory) error {
 	return errors.Errorf("unexpected expr type (%T) for Evaluator type (%T) ", expr, ev)
@@ -487,7 +482,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *syntax.LabelReplaceExpr:
 		return newLabelReplaceEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.HistogramFuncExpr:
-		return nil, errHistogramsNotSupported
+		return newHistogramFuncEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.VectorExpr:
 		val, err := e.Value()
 		if err != nil {
