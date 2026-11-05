@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1449,11 +1450,11 @@ func TestJoinSampleVector_RangeQueryVectorOverwrite(t *testing.T) {
 // countingQuerier counts the samples read from the iterators that Querier returns.
 type countingQuerier struct {
 	Querier
-	read *int
+	read *atomic.Int64
 }
 
 // newCountingQuerier returns a Querier over q that counts the samples read into read.
-func newCountingQuerier(q Querier, read *int) countingQuerier {
+func newCountingQuerier(q Querier, read *atomic.Int64) countingQuerier {
 	return countingQuerier{Querier: q, read: read}
 }
 
@@ -1489,13 +1490,13 @@ func TestEngine_EarlySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
 	)
 	run := func(t *testing.T, ctx context.Context, cutoff bool, query string, numSeries int) (logqlmodel.Result, int, error) {
 		t.Helper()
-		read := 0
+		var read atomic.Int64
 		querier := newCountingQuerier(NewMockQuerier(1, distinctStreams(numSeries, end)), &read)
 		eng := NewEngine(EngineOpts{EarlySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
 		params, err := NewLiteralParams(query, start, end, 30*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
 		require.NoError(t, err)
 		res, err := eng.Query(params).Exec(ctx)
-		return res, read, err
+		return res, int(read.Load()), err
 	}
 
 	for name, tc := range map[string]struct {

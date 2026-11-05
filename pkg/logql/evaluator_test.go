@@ -7,6 +7,7 @@ import (
 	"maps"
 	"math"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -789,7 +790,7 @@ func (l tenantStreamFirstLimits) StreamFirstExecutionEnabled(userID string) bool
 type seriesQuerier struct {
 	series       []logproto.Series
 	sampleParams SelectSampleParams
-	samplesRead  int
+	samplesRead  atomic.Int64
 }
 
 func (q *seriesQuerier) SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error) {
@@ -808,14 +809,14 @@ func (q *seriesQuerier) SelectSamples(_ context.Context, params SelectSamplePara
 // countingSampleIterator counts the samples its caller reads.
 type countingSampleIterator struct {
 	iter.SampleIterator
-	count *int
+	count *atomic.Int64
 }
 
 func (it *countingSampleIterator) Next() bool {
 	if !it.SampleIterator.Next() {
 		return false
 	}
-	*it.count++
+	it.count.Add(1)
 	return true
 }
 
@@ -1157,7 +1158,7 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		for _, s := range querier.series {
 			totalSamples += len(s.Samples)
 		}
-		require.Less(t, querier.samplesRead, totalSamples)
+		require.Less(t, int(querier.samplesRead.Load()), totalSamples)
 	})
 
 	t.Run("fails with the pipeline error at the first series that carries an error label without reading the remaining samples", func(t *testing.T) {
@@ -1172,7 +1173,7 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		for _, s := range querier.series {
 			totalSamples += len(s.Samples)
 		}
-		require.Less(t, querier.samplesRead, totalSamples)
+		require.Less(t, int(querier.samplesRead.Load()), totalSamples)
 	})
 
 	t.Run("returns the series that carry an error label when the query keeps errored lines", func(t *testing.T) {

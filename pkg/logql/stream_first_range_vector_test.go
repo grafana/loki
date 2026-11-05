@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -423,7 +424,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		for i := range input {
 			input[i] = labeledSample{labels: fmt.Sprintf(`{__error__="SampleExtractionErr", app="foo", n="%d"}`, i), timestamp: sec(5)}
 		}
-		var read int
+		var read atomic.Int64
 		counted := iter.NewPeekingSampleIterator(&countingSampleIterator{SampleIterator: newLabeledSampleIterator(input), count: &read})
 
 		const maxSeries = 2
@@ -433,7 +434,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.False(t, it.Next())
 		firstErrored := labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo", "n", "0")
 		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(firstErrored).Error())
-		require.Less(t, read, 10)
+		require.Less(t, read.Load(), int64(10))
 	})
 
 	t.Run("keeps the series that carry an error label when the query keeps errored lines", func(t *testing.T) {
