@@ -33,15 +33,18 @@ func (c *labelPostingsCalculation) Prepare(_ context.Context, _ *logsCalculation
 // and maximum timestamp and the sum of sizes, so the result is the same.
 func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculationContext, batch []logs.Record) error {
 	for len(batch) > 0 {
-		streamID := batch[0].StreamID
-		run := streamRun{minTimestamp: batch[0].Timestamp, maxTimestamp: batch[0].Timestamp}
+		run := streamRun{
+			streamID:     batch[0].StreamID,
+			minTimestamp: batch[0].Timestamp,
+			maxTimestamp: batch[0].Timestamp,
+		}
 		n := 0
-		for ; n < len(batch) && batch[n].StreamID == streamID; n++ {
+		for ; n < len(batch) && batch[n].StreamID == run.streamID; n++ {
 			run.add(batch[n])
 		}
 		batch = batch[n:]
 
-		if err := observeStreamRun(calcCtx, streamID, run); err != nil {
+		if err := c.observeRun(calcCtx, run); err != nil {
 			return err
 		}
 	}
@@ -50,6 +53,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 
 // streamRun aggregates consecutive records of one stream.
 type streamRun struct {
+	streamID         int64
 	minTimestamp     time.Time
 	maxTimestamp     time.Time
 	uncompressedSize int64
@@ -65,14 +69,14 @@ func (r *streamRun) add(record logs.Record) {
 	r.uncompressedSize += record.UncompressedSize()
 }
 
-// observeStreamRun observes every label of the stream for run. It observes
-// the minimum timestamp with the full size, then the maximum timestamp with
-// no size.
-func observeStreamRun(calcCtx *logsCalculationContext, streamID int64, run streamRun) error {
-	streamLbls, labelsOK := calcCtx.streamLabels[streamID]
-	shardBucket, shardOK := calcCtx.streamShardBuckets[streamID]
+// observeRun observes every label of the run's stream. It observes the
+// minimum timestamp with the full size, then the maximum timestamp with no
+// size.
+func (c *labelPostingsCalculation) observeRun(calcCtx *logsCalculationContext, run streamRun) error {
+	streamLbls, labelsOK := calcCtx.streamLabels[run.streamID]
+	shardBucket, shardOK := calcCtx.streamShardBuckets[run.streamID]
 	if !labelsOK || !shardOK {
-		return fmt.Errorf("unknown stream ID %d in log record", streamID)
+		return fmt.Errorf("unknown stream ID %d in log record", run.streamID)
 	}
 
 	streamLbls.Range(func(lbl labels.Label) {
@@ -82,7 +86,7 @@ func observeStreamRun(calcCtx *logsCalculationContext, streamID int64, run strea
 			SectionIndex:     calcCtx.sectionIdx,
 			ColumnName:       lbl.Name,
 			LabelValue:       lbl.Value,
-			StreamID:         streamID,
+			StreamID:         run.streamID,
 			Timestamp:        run.minTimestamp,
 			UncompressedSize: run.uncompressedSize,
 			ShardBucket:      shardBucket,
