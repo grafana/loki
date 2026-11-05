@@ -37,6 +37,11 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Limit allowed S3 storage classes
+
+Loki now rejects S3 storage classes other than any of the STANDARD classes, such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
+If you have been using such classes, you must switch to `STANDARD` or `STANDARD_IA` before upgrading.
+
 ### Ingester WAL entries records have a new version
 
 Ingesters now write WAL entries records as `WALRecordEntriesV4`, which adds the timestamp of the
