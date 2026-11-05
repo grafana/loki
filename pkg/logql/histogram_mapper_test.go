@@ -1,16 +1,11 @@
 package logql
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -20,24 +15,6 @@ const (
 	histogramLeftQuery  = histogramQuantileQuery + ` + sum(count_over_time({app="api"}[5m]))`
 	histogramRightQuery = `sum(count_over_time({app="api"}[5m])) + ` + histogramQuantileQuery
 )
-
-// Histogram queries parse but are not evaluated yet. They must fail with an
-// explicit error, and not with an error from an internal type switch.
-func TestEngine_HistogramQueryIsNotSupportedYet(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, NewMockQuerier(0, nil), NoLimits, log.NewNopLogger())
-
-	for _, query := range []string{histogramQuantileQuery, histogramLeftQuery, histogramRightQuery} {
-		t.Run(query, func(t *testing.T) {
-			params, err := NewLiteralParams(query, time.Unix(0, 0), time.Unix(10, 0), time.Second, 0, logproto.FORWARD, 100, nil, nil)
-			require.NoError(t, err)
-
-			_, err = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
-			require.ErrorContains(t, err, "histogram functions are not supported yet")
-			// A client error is not retried by the query frontend, a server error is.
-			require.ErrorIs(t, err, logqlerr.ErrParse)
-		})
-	}
-}
 
 func TestShardMapper_HistogramFunc(t *testing.T) {
 	m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, nil)

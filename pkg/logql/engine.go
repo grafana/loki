@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -186,6 +187,10 @@ type EngineOpts struct {
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
 
 	MaxQuerySeriesCutoff bool `yaml:"max_query_series_cutoff" category:"experimental"`
+
+	// EnableHistograms enables the histogram functions: histogram_over_time, and the functions that read it.
+	// A query that uses one fails while this is off. The functions are in development, so they are off by default.
+	EnableHistograms bool `yaml:"enable_histograms" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -196,6 +201,7 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
+	f.BoolVar(&opts.EnableHistograms, prefix+"enable-histograms", false, "Experimental: Enable the histogram functions, histogram_over_time and the functions that read its result, such as histogram_quantile. The functions are in development, so a query that uses one fails while this is disabled. Enable it on the queriers, on the query frontends, and on the rulers that evaluate rules themselves, because each of them refuses a query that uses histograms without it.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -208,6 +214,9 @@ type queryOpts struct {
 	logExecutingQuery bool
 	// maxQuerySeriesCutoff controls if max_query_series is enforced before the output is built.
 	maxQuerySeriesCutoff bool
+	// histogramsEnabled controls if the histogram functions are allowed. A query that uses them fails
+	// without it.
+	histogramsEnabled bool
 }
 
 // newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
@@ -215,7 +224,29 @@ func newQueryOpts(opts EngineOpts) queryOpts {
 	return queryOpts{
 		logExecutingQuery:    opts.LogExecutingQuery,
 		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
+		histogramsEnabled:    opts.EnableHistograms,
 	}
+}
+
+// errHistogramsDisabled is returned for a query that uses histograms when they are not enabled. It wraps
+// ErrParse so that it is served as a client error: a server error is retried by the query frontend and
+// counts against the error rate.
+var errHistogramsDisabled = fmt.Errorf("%w: histogram functions are experimental and not enabled, "+
+	"set -querier.engine.enable-histograms to enable them", logqlerr.ErrParse)
+
+// checkNoHistograms fails when a sample of vec holds a histogram. The result of a query is a vector or
+// a matrix of floats, and a histogram that reached it would be dropped, which leaves a series with the
+// value zero. The parser does not allow a query that returns a histogram, so this is a second check.
+//
+// Like the other guards of the histograms, it wraps ErrParse: what is wrong is the query, and it is the same
+// on every retry, so it is a client error and not one that the query frontend retries.
+func checkNoHistograms(vec promql.Vector) error {
+	for _, s := range vec {
+		if s.H != nil {
+			return fmt.Errorf("%w: a query cannot return a histogram, read it with a histogram_* function", logqlerr.ErrParse)
+		}
+	}
+	return nil
 }
 
 func (opts *EngineOpts) applyDefault() {
@@ -411,6 +442,10 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return q.evalVector(ctx, vec)
 	}
 
+	if !q.opts.histogramsEnabled && syntax.UsesHistograms(expr) {
+		return nil, errHistogramsDisabled
+	}
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -536,6 +571,9 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()
+		if err := checkNoHistograms(vec); err != nil {
+			return nil, err
+		}
 	}
 	seriesIndex := map[uint64]promql.Series{}
 
@@ -594,6 +632,12 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		next, _, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
+		}
+		// The first vector was checked above, so this is each of the other ones, once.
+		if next {
+			if err := checkNoHistograms(r.SampleVector()); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -733,9 +777,67 @@ type groupedAggregation struct {
 	mean float64
 	// sum is the accumulation state of OpTypeSum. avg is the accumulation state of OpTypeAvg.
 	// Neither operation accumulates in value, mean or groupCount.
-	sum         kahanSum
-	avg         kahanAvg
+	sum kahanSum
+	avg kahanAvg
+	// hasFloat reports whether OpTypeSum added a float to the group. histogram is the sum of the
+	// histograms that it added instead, and histogramC the Kahan compensation of that sum. A group
+	// sums floats or histograms, and not both.
+	hasFloat    bool
+	histogram   *histogram.FloatHistogram
+	histogramC  *histogram.FloatHistogram
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
 }
+
+// addToSum adds a sample to the sum of the group. A group sums floats or histograms. Mixing them is an
+// error: there is no sum of a float and a histogram.
+func (g *groupedAggregation) addToSum(s promql.Sample) error {
+	if s.H == nil {
+		if g.histogram != nil {
+			return errMixedHistogramsAndFloats
+		}
+		g.hasFloat = true
+		g.sum.addValue(s.F)
+		return nil
+	}
+
+	if g.hasFloat {
+		return errMixedHistogramsAndFloats
+	}
+	if g.histogram == nil {
+		// The histogram of the sample is not changed, because the sum is, and a histogram may be
+		// shared with whoever produced it.
+		g.histogram = s.H.Copy()
+		return nil
+	}
+
+	var err error
+	g.histogramC, _, _, err = g.histogram.KahanAdd(s.H, g.histogramC)
+	return err
+}
+
+// histogramSum returns the sum of the histograms of the group, with the rounding that the Kahan
+// summation kept aside added back in.
+//
+// It fails when the sum has more buckets than a histogram may have. The buckets of the sum are those of
+// all the histograms that were added, so if the sum of a part of them is over the limit, the sum of all
+// of them is too. A query therefore fails in the same cases whether it is sharded or not.
+func (g *groupedAggregation) histogramSum() (*histogram.FloatHistogram, error) {
+	h := g.histogram
+	if g.histogramC != nil {
+		var err error
+		h, _, _, err = h.Add(g.histogramC)
+		if err != nil {
+			return nil, err
+		}
+	}
+	h.Compact(0)
+	if err := checkHistogramBuckets(h); err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
+// errMixedHistogramsAndFloats wraps ErrParse, as the other guards of the histograms do, see checkNoHistograms.
+var errMixedHistogramsAndFloats = fmt.Errorf("%w: cannot sum histograms and floats together", logqlerr.ErrParse)
