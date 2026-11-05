@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 
@@ -624,4 +625,42 @@ func scope(attrs []push.LabelAdapter, entries ...push.Entry) ScopeLogs {
 		Attrs:   attrs,
 		Entries: entries,
 	}
+}
+
+func TestInternalPushRequestMemorySize(t *testing.T) {
+	req := &InternalPushRequest{
+		Format: "otlp",
+		Streams: []InternalStreamAdapter{{
+			Labels: `{a="b"}`,
+			ResourceLogs: []ResourceLogs{{
+				Attrs: []push.LabelAdapter{{Name: "r", Value: "1"}},
+				ScopeLogs: []ScopeLogs{{
+					Attrs:   []push.LabelAdapter{{Name: "s", Value: "22"}},
+					Entries: []push.Entry{{Line: "hello"}},
+				}},
+			}},
+		}},
+	}
+	want := int(unsafe.Sizeof(InternalPushRequest{})) + 4 +
+		int(unsafe.Sizeof(InternalStreamAdapter{})) + 7 +
+		int(unsafe.Sizeof(ResourceLogs{})) + int(unsafe.Sizeof(push.LabelAdapter{})) + 2 +
+		int(unsafe.Sizeof(ScopeLogs{})) + int(unsafe.Sizeof(push.LabelAdapter{})) + 3 +
+		int(unsafe.Sizeof(push.Entry{})) + 5
+	require.Equal(t, want, req.MemorySize())
+	require.Equal(t, 0, (*InternalPushRequest)(nil).MemorySize())
+}
+
+func TestInternalPushRequestMemorySizeSharedAttrs(t *testing.T) {
+	res := []push.LabelAdapter{{Name: "r", Value: "1"}}
+	scope := []push.LabelAdapter{{Name: "s", Value: "22"}}
+	stream := func() InternalStreamAdapter {
+		return InternalStreamAdapter{ResourceLogs: []ResourceLogs{{
+			Attrs:     res,
+			ScopeLogs: []ScopeLogs{{Attrs: scope}},
+		}}}
+	}
+	one := &InternalPushRequest{Streams: []InternalStreamAdapter{stream()}}
+	two := &InternalPushRequest{Streams: []InternalStreamAdapter{stream(), stream()}}
+	perStream := int(unsafe.Sizeof(InternalStreamAdapter{})) + int(unsafe.Sizeof(ResourceLogs{})) + int(unsafe.Sizeof(ScopeLogs{}))
+	require.Equal(t, one.MemorySize()+perStream, two.MemorySize())
 }

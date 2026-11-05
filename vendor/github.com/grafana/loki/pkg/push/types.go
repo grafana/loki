@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.
@@ -685,6 +686,75 @@ func (m *LabelAdapter) Unmarshal(dAtA []byte) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+// MemorySize returns the approximate number of bytes this request occupies on
+// the Go heap, as opposed to Size which returns the protobuf encoded size.
+// It does not use reflection.
+func (m *PushRequest) MemorySize() int {
+	if m == nil {
+		return 0
+	}
+	n := int(unsafe.Sizeof(*m)) + len(m.Format)
+	n += cap(m.Streams) * int(unsafe.Sizeof(Stream{}))
+	for i := range m.Streams {
+		n += m.Streams[i].memorySizeOwned()
+	}
+	return n
+}
+
+// MemorySize returns the approximate number of bytes this stream occupies on the Go heap.
+func (m *Stream) MemorySize() int {
+	if m == nil {
+		return 0
+	}
+	return int(unsafe.Sizeof(*m)) + m.memorySizeOwned()
+}
+
+// memorySizeOwned returns the heap bytes referenced by the stream, excluding the struct itself.
+func (m *Stream) memorySizeOwned() int {
+	n := len(m.Labels) + cap(m.Entries)*int(unsafe.Sizeof(Entry{}))
+	for i := range m.Entries {
+		n += m.Entries[i].memorySizeOwned()
+	}
+	return n
+}
+
+// MemorySize returns the approximate number of bytes this entry occupies on the Go heap.
+func (m *Entry) MemorySize() int {
+	if m == nil {
+		return 0
+	}
+	return int(unsafe.Sizeof(*m)) + m.memorySizeOwned()
+}
+
+// memorySizeOwned returns the heap bytes referenced by the entry, excluding the struct itself.
+func (m *Entry) memorySizeOwned() int {
+	return len(m.Line) + m.StructuredMetadata.memorySize() + m.Parsed.memorySize()
+}
+
+// memorySize returns the heap bytes of the backing array and strings.
+func (ls LabelsAdapter) memorySize() int {
+	n := cap(ls) * int(unsafe.Sizeof(LabelAdapter{}))
+	for i := range ls {
+		n += len(ls[i].Name) + len(ls[i].Value)
+	}
+	return n
+}
+
+// EntriesMemorySize returns the approximate Go heap bytes of the backing array of entries
+// and everything the entries reference.
+func EntriesMemorySize(entries []Entry) int {
+	n := cap(entries) * int(unsafe.Sizeof(Entry{}))
+	for i := range entries {
+		n += entries[i].memorySizeOwned()
+	}
+	return n
+}
+
+// LabelsMemorySize returns the approximate Go heap bytes of the backing array of ls and its strings.
+func LabelsMemorySize(ls []LabelAdapter) int {
+	return LabelsAdapter(ls).memorySize()
 }
 
 func (m *Stream) Size() (n int) {
