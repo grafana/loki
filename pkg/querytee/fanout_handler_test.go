@@ -67,9 +67,10 @@ func TestFanOutHandler_Do(t *testing.T) {
 		return fmt.Sprintf(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"test"},"values":[["1000000000","line"]]}],"stats":{"summary":{"totalBytesProcessed":%d,"queueTime":%d},"cache":{%q:{"entriesFound":%d}}}}}`, bytesProcessed, queueTime, cache, cacheEntriesFound)
 	}
 
-	// bodyWithSummary returns a response body whose stats carry the given summary.
-	bodyWithSummary := func(summary string) string {
-		return fmt.Sprintf(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"test"},"values":[["1000000000","line"]]}],"stats":{"summary":%s}}}`, summary)
+	// bodyWithSummary returns a response body whose stats carry the given summary and the given
+	// querier wall time in seconds.
+	bodyWithSummary := func(summary string, querierWallTime float64) string {
+		return fmt.Sprintf(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"test"},"values":[["1000000000","line"]]}],"stats":{"summary":%s,"querier":{"querierExecTime":%v}}}}`, summary, querierWallTime)
 	}
 
 	// statRatio returns the count and the sum of the observed ratios of a stat.
@@ -164,12 +165,12 @@ func TestFanOutHandler_Do(t *testing.T) {
 		require.Empty(t, comp.recorded())
 	})
 
-	t.Run("counts a match and observes the ratio of the bytes processed and the execution time when both backends answer", func(t *testing.T) {
+	t.Run("counts a match and observes the ratio of the bytes processed and the execution times when both backends answer", func(t *testing.T) {
 		secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK,
-			bodyWithSummary(`{"totalBytesProcessed":250,"totalLinesProcessed":300,"execTime":1,"queueTime":0.02,"splits":8,"shards":3}`))
+			bodyWithSummary(`{"totalBytesProcessed":250,"totalLinesProcessed":300,"execTime":1,"queueTime":0.02,"splits":8,"shards":3}`, 3))
 		handler := newHandler(staticComparator{summary: &comparator.ComparisonSummary{}},
 			newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK,
-				bodyWithSummary(`{"totalBytesProcessed":1000,"totalLinesProcessed":400,"execTime":2,"queueTime":0.05,"splits":4}`)),
+				bodyWithSummary(`{"totalBytesProcessed":1000,"totalLinesProcessed":400,"execTime":2,"queueTime":0.05,"splits":4}`, 12)),
 			secondary,
 		)
 
@@ -181,15 +182,52 @@ func TestFanOutHandler_Do(t *testing.T) {
 			primaryBucket string
 			expectedRatio float64
 		}{
-			"bytes_processed": {primaryBucket: "less_than_1gb", expectedRatio: 0.25},
-			"exec_time":       {primaryBucket: "1s_to_5s", expectedRatio: 0.5},
+			"bytes_processed":   {primaryBucket: "less_than_1gb", expectedRatio: 0.25},
+			"exec_time":         {primaryBucket: "1s_to_5s", expectedRatio: 0.5},
+			"querier_wall_time": {primaryBucket: "10s_to_30s", expectedRatio: 0.25},
 		} {
 			count, sum := statRatio(t, handler, stat, tc.primaryBucket, "both_idle", "both_miss")
 			require.Equal(t, uint64(1), count, stat)
 			require.InDelta(t, tc.expectedRatio, sum, 1e-9, stat)
 		}
-		require.Equal(t, 2, prom_testutil.CollectAndCount(handler.metrics.secondaryBackendStatsRatio))
+		require.Equal(t, 3, prom_testutil.CollectAndCount(handler.metrics.secondaryBackendStatsRatio))
 	})
+
+	for name, tc := range map[string]struct {
+		querierWallTime float64
+		bucket          string
+	}{
+		"puts a primary querier wall time of 50 ms in the less_than_100ms bucket":    {querierWallTime: 0.05, bucket: "less_than_100ms"},
+		"puts a primary querier wall time of 300 ms in the 100ms_to_500ms bucket":    {querierWallTime: 0.3, bucket: "100ms_to_500ms"},
+		"puts a primary querier wall time of 800 ms in the 500ms_to_1s bucket":       {querierWallTime: 0.8, bucket: "500ms_to_1s"},
+		"puts a primary querier wall time of 3 s in the 1s_to_5s bucket":             {querierWallTime: 3, bucket: "1s_to_5s"},
+		"puts a primary querier wall time of 7 s in the 5s_to_10s bucket":            {querierWallTime: 7, bucket: "5s_to_10s"},
+		"puts a primary querier wall time of 20 s in the 10s_to_30s bucket":          {querierWallTime: 20, bucket: "10s_to_30s"},
+		"puts a primary querier wall time of 45 s in the 30s_to_60s bucket":          {querierWallTime: 45, bucket: "30s_to_60s"},
+		"puts a primary querier wall time of exactly 60 s in the 30s_to_60s bucket":  {querierWallTime: 60, bucket: "30s_to_60s"},
+		"puts a primary querier wall time of 61 s in the 1m_to_5m bucket":            {querierWallTime: 61, bucket: "1m_to_5m"},
+		"puts a primary querier wall time of exactly 5 min in the 1m_to_5m bucket":   {querierWallTime: 300, bucket: "1m_to_5m"},
+		"puts a primary querier wall time of 10 min in the 5m_to_30m bucket":         {querierWallTime: 600, bucket: "5m_to_30m"},
+		"puts a primary querier wall time of exactly 30 min in the 5m_to_30m bucket": {querierWallTime: 1800, bucket: "5m_to_30m"},
+		"puts a primary querier wall time of 31 min in the more_than_30m bucket":     {querierWallTime: 1860, bucket: "more_than_30m"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, bodyWithSummary(`{}`, tc.querierWallTime))
+			handler := newHandler(staticComparator{summary: &comparator.ComparisonSummary{}},
+				newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithSummary(`{}`, tc.querierWallTime)),
+				secondary,
+			)
+
+			_, err := handler.Do(user.InjectOrgID(t.Context(), tenantID), req)
+
+			require.NoError(t, err)
+			require.Eventually(t, func() bool { return comparedCount(handler, secondary, comparisonMatch, "") == 1 }, 5*time.Second, 10*time.Millisecond)
+			count, sum := statRatio(t, handler, "querier_wall_time", tc.bucket, "both_idle", "both_miss")
+			require.Equal(t, uint64(1), count)
+			require.InDelta(t, 1, sum, 1e-9)
+			require.Equal(t, 1, prom_testutil.CollectAndCount(handler.metrics.secondaryBackendStatsRatio))
+		})
+	}
 
 	for name, tc := range map[string]struct {
 		summary, stat, bucket string
@@ -213,9 +251,9 @@ func TestFanOutHandler_Do(t *testing.T) {
 		"puts a primary of 61 s in the more_than_60s execution time bucket":    {summary: `{"execTime":61}`, stat: "exec_time", bucket: "more_than_60s"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, bodyWithSummary(tc.summary))
+			secondary := newTestBackend(t, "backend-2", RoleSecondary, 0, http.StatusOK, bodyWithSummary(tc.summary, 0))
 			handler := newHandler(staticComparator{summary: &comparator.ComparisonSummary{}},
-				newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithSummary(tc.summary)),
+				newTestBackend(t, "backend-1", RolePrimary, 0, http.StatusOK, bodyWithSummary(tc.summary, 0)),
 				secondary,
 			)
 
