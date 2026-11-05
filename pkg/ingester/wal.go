@@ -34,6 +34,8 @@ type WALConfig struct {
 	FlushOnShutdown     bool             `yaml:"flush_on_shutdown"`
 	ReplayMemoryCeiling flagext.ByteSize `yaml:"replay_memory_ceiling"`
 	DiskFullThreshold   float64          `yaml:"disk_full_threshold"`
+
+	RecordV4Enabled bool `yaml:"record_v4_enabled"`
 }
 
 func (cfg *WALConfig) Validate() error {
@@ -53,6 +55,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 5*time.Minute, "Interval at which checkpoints should be created.")
 	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown.")
 	f.Float64Var(&cfg.DiskFullThreshold, "ingester.wal-disk-full-threshold", 0.90, "Threshold for disk usage (0.0 to 1.0) at which the WAL will throttle incoming writes. Set to 0 to disable throttling.")
+	f.BoolVar(&cfg.RecordV4Enabled, "ingester.wal-record-v4-enabled", false, "Write WAL entries records as V4, which adds the timestamp of the Kafka record each push was read from, so a replay restores it. It sets the ingestion time of backfilled chunks. Older versions can't replay V4 records. When disabled, records are written as V3 and the timestamps in V4 records are ignored on replay.")
 
 	// Need to set default here
 	cfg.ReplayMemoryCeiling = flagext.ByteSize(defaultCeiling)
@@ -139,7 +142,12 @@ func (w *walWrapper) Log(record *wal.Record) error {
 			*buf = (*buf)[:0]
 		}
 		if len(record.RefEntries) > 0 {
-			*buf = record.EncodeEntries(wal.CurrentEntriesRec, *buf)
+			// Only V4 stores the record timestamp, but older versions can't read it.
+			version := wal.WALRecordEntriesV3
+			if w.cfg.RecordV4Enabled {
+				version = wal.WALRecordEntriesV4
+			}
+			*buf = record.EncodeEntries(version, *buf)
 			if err := w.wal.Log(*buf); err != nil {
 				return err
 			}
