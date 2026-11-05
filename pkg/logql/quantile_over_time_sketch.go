@@ -189,29 +189,8 @@ func newQuantileSketchIterator(
 	selRange, step, start, end, offset int64,
 	limits iteratorLimits,
 ) RangeVectorIterator {
-	// forces at least one step.
-	if step == 0 {
-		step = 1
-	}
-	if offset != 0 {
-		start = start - offset
-		end = end - offset
-	}
-
-	inner := &batchRangeVectorIterator{
-		iter:     it,
-		step:     step,
-		end:      end,
-		selRange: selRange,
-		metrics:  map[string]labels.Labels{},
-		window:   map[string]*promql.Series{},
-		agg:      nil,
-		current:  start - step, // first loop iteration will set it to start
-		offset:   offset,
-		limits:   limits,
-	}
 	return &quantileSketchBatchRangeVectorIterator{
-		batchRangeVectorIterator: inner,
+		batchRangeVectorIterator: newBatchRangeVectorIterator(it, selRange, step, start, end, offset, limits),
 	}
 }
 

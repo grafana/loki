@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -216,6 +217,21 @@ func newQueryOpts(opts EngineOpts) queryOpts {
 		logExecutingQuery:    opts.LogExecutingQuery,
 		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
 	}
+}
+
+// checkNoHistograms fails when a sample of vec holds a histogram. The result of a query is a vector or
+// a matrix of floats, and a histogram that reached it would be dropped, which leaves a series with the
+// value zero. The parser does not allow a query that returns a histogram, so this is a second check.
+//
+// Like the other guards of the histograms, it wraps ErrParse: what is wrong is the query, and it is the same
+// on every retry, so it is a client error and not one that the query frontend retries.
+func checkNoHistograms(vec promql.Vector) error {
+	for _, s := range vec {
+		if s.H != nil {
+			return fmt.Errorf("%w: a query cannot return a histogram, read it with a histogram_* function", logqlerr.ErrParse)
+		}
+	}
+	return nil
 }
 
 func (opts *EngineOpts) applyDefault() {
@@ -536,6 +552,9 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()
+		if err := checkNoHistograms(vec); err != nil {
+			return nil, err
+		}
 	}
 	seriesIndex := map[uint64]promql.Series{}
 
@@ -594,6 +613,12 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		next, _, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
+		}
+		// The first vector was checked above, so this is each of the other ones, once.
+		if next {
+			if err := checkNoHistograms(r.SampleVector()); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -733,9 +758,67 @@ type groupedAggregation struct {
 	mean float64
 	// sum is the accumulation state of OpTypeSum. avg is the accumulation state of OpTypeAvg.
 	// Neither operation accumulates in value, mean or groupCount.
-	sum         kahanSum
-	avg         kahanAvg
+	sum kahanSum
+	avg kahanAvg
+	// hasFloat reports whether OpTypeSum added a float to the group. histogram is the sum of the
+	// histograms that it added instead, and histogramC the Kahan compensation of that sum. A group
+	// sums floats or histograms, and not both.
+	hasFloat    bool
+	histogram   *histogram.FloatHistogram
+	histogramC  *histogram.FloatHistogram
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
 }
+
+// addToSum adds a sample to the sum of the group. A group sums floats or histograms. Mixing them is an
+// error: there is no sum of a float and a histogram.
+func (g *groupedAggregation) addToSum(s promql.Sample) error {
+	if s.H == nil {
+		if g.histogram != nil {
+			return errMixedHistogramsAndFloats
+		}
+		g.hasFloat = true
+		g.sum.addValue(s.F)
+		return nil
+	}
+
+	if g.hasFloat {
+		return errMixedHistogramsAndFloats
+	}
+	if g.histogram == nil {
+		// The histogram of the sample is not changed, because the sum is, and a histogram may be
+		// shared with whoever produced it.
+		g.histogram = s.H.Copy()
+		return nil
+	}
+
+	var err error
+	g.histogramC, _, _, err = g.histogram.KahanAdd(s.H, g.histogramC)
+	return err
+}
+
+// histogramSum returns the sum of the histograms of the group, with the rounding that the Kahan
+// summation kept aside added back in.
+//
+// It fails when the sum has more buckets than a histogram may have. The buckets of the sum are those of
+// all the histograms that were added, so if the sum of a part of them is over the limit, the sum of all
+// of them is too. A query therefore fails in the same cases whether it is sharded or not.
+func (g *groupedAggregation) histogramSum() (*histogram.FloatHistogram, error) {
+	h := g.histogram
+	if g.histogramC != nil {
+		var err error
+		h, _, _, err = h.Add(g.histogramC)
+		if err != nil {
+			return nil, err
+		}
+	}
+	h.Compact(0)
+	if err := checkHistogramBuckets(h); err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
+// errMixedHistogramsAndFloats wraps ErrParse, as the other guards of the histograms do, see checkNoHistograms.
+var errMixedHistogramsAndFloats = fmt.Errorf("%w: cannot sum histograms and floats together", logqlerr.ErrParse)
