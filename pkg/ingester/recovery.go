@@ -199,6 +199,11 @@ func (r *ingesterRecoverer) Push(userID string, ingestedAt time.Time, entries wa
 			return fmt.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
 		}
 
+		// Disabling V4 records also drops the record timestamps already in the WAL.
+		if !r.ing.cfg.WAL.RecordV4Enabled {
+			ingestedAt = time.Time{}
+		}
+
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
 		bytesAdded, err := s.(*stream).PushWalReplay(context.Background(), entries.Entries, entries.Counter, r.ing.customStreamsTracker, ingestedAt)
 		r.ing.replayController.Add(int64(bytesAdded))

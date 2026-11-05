@@ -32,8 +32,9 @@ const (
 	WALRecordEntriesV4
 )
 
-// The current type of Entries that this distribution writes.
-// Loki can read in a backwards compatible manner, but will write the newest variant.
+// The newest type of Entries that this distribution can write.
+// Loki can read in a backwards compatible manner, but the ingester only writes WALRecordEntriesV4
+// when -ingester.wal-record-v4-enabled is set, and WALRecordEntriesV3 otherwise.
 const CurrentEntriesRec = WALRecordEntriesV4
 
 // Record is a struct combining the series and samples record.

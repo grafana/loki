@@ -348,14 +348,9 @@ func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
 }
 
 // The timestamp of the record the entries were ingested from is restored on WAL replay, so a chunk
-// that was open during a restart ends up with the same highest record timestamp as before.
+// that was open during a restart ends up with the same highest record timestamp as before. With
+// V4 records disabled, the entries still replay but their timestamps are ignored.
 func TestRecoveryRestoresRecordTimestampFromWAL(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	require.NoError(t, err)
-
-	i, err := New(defaultIngesterTestConfig(t), client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockReadRingWithOneActiveIngester(), nil)
-	require.NoError(t, err)
-
 	var (
 		first  = time.UnixMilli(1_700_000_000_000)
 		second = first.Add(time.Hour)
@@ -375,30 +370,50 @@ func TestRecoveryRestoresRecordTimestampFromWAL(t *testing.T) {
 		return rec.EncodeEntries(version, nil)
 	}
 
-	// The records arrive out of order of their timestamps, the highest one wins.
-	reader := &MemoryWALReader{xs: [][]byte{
-		series.EncodeSeries(nil),
-		entries(wal.WALRecordEntriesV4, 1, second, "a"),
-		entries(wal.WALRecordEntriesV4, 2, first, "b"),
-		// A record without a timestamp doesn't change it.
-		entries(wal.WALRecordEntriesV4, 3, time.Time{}, "c"),
-		// Neither does a record written by an older version, which can't store the timestamp.
-		entries(wal.WALRecordEntriesV3, 4, second.Add(time.Hour), "d"),
-	}}
+	for _, tc := range []struct {
+		desc    string
+		enabled bool
+		want    time.Time
+	}{
+		{desc: "enabled", enabled: true, want: second},
+		{desc: "disabled", enabled: false, want: time.Time{}},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
 
-	recoverer := newIngesterRecoverer(i)
-	require.NoError(t, RecoverWAL(context.Background(), reader, recoverer))
-	recoverer.Close()
+			cfg := defaultIngesterTestConfig(t)
+			cfg.WAL.RecordV4Enabled = tc.enabled
+			i, err := New(cfg, client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockReadRingWithOneActiveIngester(), nil)
+			require.NoError(t, err)
 
-	var got []time.Time
-	for _, inst := range i.getInstances() {
-		require.NoError(t, inst.forAllStreams(context.Background(), func(s *stream) error {
-			for _, c := range s.chunks {
-				got = append(got, c.ingestedAt)
+			// The records arrive out of order of their timestamps, the highest one wins.
+			reader := &MemoryWALReader{xs: [][]byte{
+				series.EncodeSeries(nil),
+				entries(wal.WALRecordEntriesV4, 1, second, "a"),
+				entries(wal.WALRecordEntriesV4, 2, first, "b"),
+				// A record without a timestamp doesn't change it.
+				entries(wal.WALRecordEntriesV4, 3, time.Time{}, "c"),
+				// Neither does a record written by an older version, which can't store the timestamp.
+				entries(wal.WALRecordEntriesV3, 4, second.Add(time.Hour), "d"),
+			}}
+
+			recoverer := newIngesterRecoverer(i)
+			require.NoError(t, RecoverWAL(context.Background(), reader, recoverer))
+			recoverer.Close()
+
+			var chunks []*chunkDesc
+			for _, inst := range i.getInstances() {
+				require.NoError(t, inst.forAllStreams(context.Background(), func(s *stream) error {
+					for j := range s.chunks {
+						chunks = append(chunks, &s.chunks[j])
+					}
+					return nil
+				}))
 			}
-			return nil
-		}))
+			require.Len(t, chunks, 1)
+			require.Equal(t, 4, chunks[0].chunk.Size())
+			require.True(t, tc.want.Equal(chunks[0].ingestedAt), "got %s, want %s", chunks[0].ingestedAt, tc.want)
+		})
 	}
-	require.Len(t, got, 1)
-	require.True(t, second.Equal(got[0]), "got %s, want %s", got[0], second)
 }

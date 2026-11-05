@@ -39,13 +39,17 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Ingester WAL entries records have a new version
 
-Ingesters now write WAL entries records as `WALRecordEntriesV4`, which adds the timestamp of the
-Kafka record the entries were ingested from. Older versions can't read this record version.
-If you roll an ingester back, it can't replay the WAL records written since the upgrade. It logs
+Ingesters can write WAL entries records as `WALRecordEntriesV4`, which adds the timestamp of the
+Kafka record the entries were ingested from. It's disabled by default. To enable it, set
+`-ingester.wal-record-v4-enabled` (`ingester.wal.record_v4_enabled`). When it's
+disabled, ingesters write `WALRecordEntriesV3` and ignore the timestamps of `WALRecordEntriesV4`
+records on replay.
+
+Older versions can't read this record version. If you roll an ingester back after enabling it, it
+can't replay the WAL records written since its last checkpoint. It logs
 `Recovered from WAL segments with errors`, increments
-`loki_ingester_wal_corruptions_total{type="segment"}`, and starts without them, so entries that
-were not flushed yet are lost. To avoid that, shut the ingester down with a flush before rolling
-back, for example with `/ingester/shutdown?flush=true`.
+`loki_ingester_wal_corruptions_total{type="segment"}`, and starts without them, so those entries
+are lost.
 
 ### Statistics in detected-field query responses
 
