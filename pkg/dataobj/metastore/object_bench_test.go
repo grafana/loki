@@ -267,7 +267,7 @@ func BenchmarkSections_ShardBucketRange(b *testing.B) {
 						ColumnName:   label.Name,
 						LabelValue:   label.Value,
 						StreamID:     int64(stream + 1),
-						Timestamp:    now,
+						Time:         postings.At(now),
 						ShardBucket:  firstBucket + uint32(stream%2),
 					})
 				}

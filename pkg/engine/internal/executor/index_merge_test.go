@@ -645,7 +645,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		ColumnName:       "service",
 		LabelValue:       "api",
 		StreamID:         1,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 		ShardBuckets:     16,
 	})
@@ -680,7 +680,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant,
 		ColumnName:       "service",
 		LabelValue:       "api",
 		StreamID:         1,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 
@@ -889,13 +889,13 @@ func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
 	ts := time.Unix(0, 100)
 
 	buildSourcePostingsObjectSized(t, bucket, "tenant", "src/a", 1, []postings.LabelObservation{
-		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 10},
-		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "us", StreamID: 2, Timestamp: ts, UncompressedSize: 20},
+		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Time: postings.At(ts), UncompressedSize: 10},
+		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "us", StreamID: 2, Time: postings.At(ts), UncompressedSize: 20},
 	})
 	buildSourcePostingsObjectSized(t, bucket, "tenant", "src/b", 1, []postings.LabelObservation{
 		// (log-B, 0, svc, api) duplicates src/a's first row exactly (same ts).
-		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 10},
-		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "eu", StreamID: 3, Timestamp: ts, UncompressedSize: 30},
+		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Time: postings.At(ts), UncompressedSize: 10},
+		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "eu", StreamID: 3, Time: postings.At(ts), UncompressedSize: 30},
 	})
 
 	node := &physical.IndexMerge{
@@ -987,7 +987,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "api",
 			StreamID:         1,
-			Timestamp:        time.Unix(0, 100),
+			Time:             postings.At(time.Unix(0, 100)),
 			UncompressedSize: 100,
 		},
 		{
@@ -996,7 +996,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "auth",
 			StreamID:         2,
-			Timestamp:        time.Unix(0, 200),
+			Time:             postings.At(time.Unix(0, 200)),
 			UncompressedSize: 200,
 		},
 	})
@@ -1010,7 +1010,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "api",
 			StreamID:         99,
-			Timestamp:        time.Unix(0, 150),
+			Time:             postings.At(time.Unix(0, 150)),
 			UncompressedSize: 300,
 		},
 	})
@@ -1169,7 +1169,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "api",
 			StreamID:         1,
-			Timestamp:        time.Unix(0, 100),
+			Time:             postings.At(time.Unix(0, 100)),
 			UncompressedSize: 100,
 		},
 	})
@@ -1486,7 +1486,7 @@ func buildMultiTenantSourceObject(t *testing.T, bucket objstore.Bucket, path str
 				ColumnName:       "service_name",
 				LabelValue:       fmt.Sprintf("svc-%s-%s-%d", tr.tenant, path, i),
 				StreamID:         int64(i + 1),
-				Timestamp:        ts,
+				Time:             postings.At(ts),
 				UncompressedSize: 100,
 			})
 

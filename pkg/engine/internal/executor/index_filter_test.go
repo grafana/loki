@@ -55,7 +55,7 @@ func appendFilterPostings(t *testing.T, objBuilder *dataobj.Builder, tenant stri
 		ts := time.Unix(0, int64(1_000+i))
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: object, ColumnName: "service_name", LabelValue: object,
-			StreamID: 1, Timestamp: ts, UncompressedSize: 100,
+			StreamID: 1, Time: postings.At(ts), UncompressedSize: 100,
 		})
 		if withBlooms {
 			postingsBuilder.PrepareBloomColumn(object, 0, "trace_id", 1, 1)

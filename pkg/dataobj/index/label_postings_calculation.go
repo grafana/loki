@@ -3,7 +3,6 @@ package index
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -29,14 +28,14 @@ func (c *labelPostingsCalculation) Prepare(_ context.Context, _ *logsCalculation
 }
 
 // ProcessBatch observes the stream labels once per run of consecutive records
-// of one stream, instead of once per record. A posting keeps only the minimum
-// and maximum timestamp and the sum of sizes, so the result is the same.
+// of one stream. A posting keeps only a time range, a sum of sizes and a set
+// of streams, so one observation per run gives the same posting as one
+// observation per record.
 func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculationContext, batch []logs.Record) error {
 	for len(batch) > 0 {
 		run := streamRun{
-			streamID:     batch[0].StreamID,
-			minTimestamp: batch[0].Timestamp,
-			maxTimestamp: batch[0].Timestamp,
+			streamID: batch[0].StreamID,
+			time:     postings.At(batch[0].Timestamp),
 		}
 		n := 0
 		for ; n < len(batch) && batch[n].StreamID == run.streamID; n++ {
@@ -54,24 +53,16 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 // streamRun aggregates consecutive records of one stream.
 type streamRun struct {
 	streamID         int64
-	minTimestamp     time.Time
-	maxTimestamp     time.Time
+	time             postings.TimeRange
 	uncompressedSize int64
 }
 
 func (r *streamRun) add(record logs.Record) {
-	if record.Timestamp.Before(r.minTimestamp) {
-		r.minTimestamp = record.Timestamp
-	}
-	if record.Timestamp.After(r.maxTimestamp) {
-		r.maxTimestamp = record.Timestamp
-	}
+	r.time = r.time.Extend(record.Timestamp)
 	r.uncompressedSize += record.UncompressedSize()
 }
 
-// observeRun observes every label of the run's stream. It observes the
-// minimum timestamp with the full size, then the maximum timestamp with no
-// size.
+// observeRun observes every label of the run's stream.
 func (c *labelPostingsCalculation) observeRun(calcCtx *logsCalculationContext, run streamRun) error {
 	streamLbls, labelsOK := calcCtx.streamLabels[run.streamID]
 	shardBucket, shardOK := calcCtx.streamShardBuckets[run.streamID]
@@ -80,27 +71,17 @@ func (c *labelPostingsCalculation) observeRun(calcCtx *logsCalculationContext, r
 	}
 
 	streamLbls.Range(func(lbl labels.Label) {
-		obs := postings.LabelObservation{
+		calcCtx.builder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath:       calcCtx.objectPath,
 			ShardBuckets:     int64(calcCtx.shardLayout.Buckets()),
 			SectionIndex:     calcCtx.sectionIdx,
 			ColumnName:       lbl.Name,
 			LabelValue:       lbl.Value,
 			StreamID:         run.streamID,
-			Timestamp:        run.minTimestamp,
+			Time:             run.time,
 			UncompressedSize: run.uncompressedSize,
 			ShardBucket:      shardBucket,
-		}
-		calcCtx.builder.ObserveLabelPosting(obs)
-
-		// Observe the end timestamp too, so the posting covers the full time
-		// range of the run. Use a size of 0 because the first observation
-		// already counted the size of the run.
-		if !run.maxTimestamp.Equal(run.minTimestamp) {
-			obs.Timestamp = run.maxTimestamp
-			obs.UncompressedSize = 0
-			calcCtx.builder.ObserveLabelPosting(obs)
-		}
+		})
 	})
 	return nil
 }

@@ -314,7 +314,7 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: sourcePath, ShardBuckets: shardCount, SectionIndex: 0,
 			ColumnName: "app", LabelValue: "api", StreamID: 0,
-			Timestamp: ts, UncompressedSize: 100,
+			Time: postings.At(ts), UncompressedSize: 100,
 		})
 	}
 	storeIntegrationObject(ctx, t, bucket, path, postingsBuilder, statsBuilder)
@@ -759,7 +759,7 @@ func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bu
 				ColumnName:       "service",
 				LabelValue:       value,
 				StreamID:         int64(streamID),
-				Timestamp:        ts,
+				Time:             postings.At(ts),
 				UncompressedSize: 100,
 			})
 		}
