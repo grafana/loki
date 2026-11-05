@@ -1011,6 +1011,12 @@ func TestSupportedQuery_Or(t *testing.T) {
 		{"empty branches last", `{app="foo"} |= "seed text" |= "abcdef" or "" or ""`, 64, `{"SEED TEXT"}`},
 		{"empty branch in a regex or chain", `{app="foo"} |= "seed text" |~ "abcdef" or ""`, 64, `{"SEED TEXT"}`},
 		{"empty filter without or", `{app="foo"} |= "seed text" |= ""`, 64, `{"SEED TEXT"}`},
+		// Loki turns these regexes into a TrueFilter too, and drops that side of
+		// the or. They have no required literal, so they plan TRUE and the
+		// chain narrows nothing.
+		{"match-all regex branch last", `{app="foo"} |= "seed text" |~ "abcdef" or ".*"`, 64, `{"SEED TEXT"}`},
+		{"match-all regex branch first", `{app="foo"} |= "seed text" |~ ".*" or "abcdef"`, 64, `{"SEED TEXT"}`},
+		{"empty regex branch", `{app="foo"} |= "seed text" |~ "abcdef" or "(?:)"`, 64, `{"SEED TEXT"}`},
 		{"negative or is an and of negatives", `{app="foo"} |= "seed text" != "abcdef" or "ghijkl"`, 64, `{"SEED TEXT"}`},
 
 		// Regex alternation.
