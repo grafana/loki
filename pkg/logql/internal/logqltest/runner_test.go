@@ -72,7 +72,7 @@ func TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFr
 
 // TestLogQLScripts_ShouldNotChangeAnyOutcomeWithTheMaxQuerySeriesCutoff runs every script
 // under a low series limit on each stack, with max query series cutoff disabled and enabled, and checks
-// that the cut-off changes no eval's outcome. The one allowed difference is a tie: the cut-off can
+// that the cut-off does not change the eval outcome. The one allowed difference is a tie: the cut-off can
 // fail on the series limit in the step where the query without it fails on a pipeline error.
 func TestLogQLScripts_ShouldNotChangeAnyOutcomeWithTheMaxQuerySeriesCutoff(t *testing.T) {
 	const maxQuerySeries = 2
