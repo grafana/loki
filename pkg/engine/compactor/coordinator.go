@@ -325,7 +325,7 @@ func (c *coordinator) planLogMerge(
 		singleObjectRuns: singleRuns,
 	}
 	for _, spec := range specs {
-		plan.tasks = append(plan.tasks, newLogMergeTask(window, spec))
+		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
 	}
 	if len(unmergedRuns) > 0 {
 		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmergedRuns))
@@ -392,7 +392,7 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex.Path)
 	}
 
-	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.dispatchTasks())
+	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.physicalPlans(tenant))
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
@@ -556,17 +556,6 @@ func (c *coordinator) skipCorruptIndex(tenant string, window time.Time, path, ph
 	c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phase).Inc()
 }
 
-// indexMergeTask merges the index runs of spec into one new index for the ToC
-// window that starts at window.
-type indexMergeTask struct {
-	window time.Time
-	spec   *compactionv2pb.TaskSpec
-}
-
-func (t indexMergeTask) physicalPlan(tenant string) *physical.Plan {
-	return buildIndexMergePlan(tenant, t.window, t.spec)
-}
-
 func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
 	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
@@ -596,21 +585,21 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	for _, entry := range entries {
 		entriesByPath[entry.Path] = entry
 	}
-	dispatchTasks := make([]dispatchTask, len(tasks))
+	plans := make([]*physical.Plan, len(tasks))
 	newEntries := make([]metastore.TableOfContentsEntry, len(tasks))
 	for i, task := range tasks {
 		start, end, err := indexTaskBounds(task, entriesByPath)
 		if err != nil {
 			return compactionStats{}, fmt.Errorf("build index ToC entries: task %d: %w", i, err)
 		}
-		dispatchTasks[i] = indexMergeTask{window: window, spec: task}
+		plans[i] = buildIndexMergePlan(tenant, window, task)
 		newEntries[i] = metastore.TableOfContentsEntry{
 			StartTime: start.UTC(),
 			EndTime:   end.UTC(),
 		}
 	}
 
-	artifacts, err := c.indexDispatcher.Run(ctx, tenant, dispatchTasks)
+	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}

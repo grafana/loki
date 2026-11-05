@@ -14,7 +14,7 @@ import (
 func TestLogCompactionPlanLogTaskStats(t *testing.T) {
 	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	mergeTask := func(oldest time.Time, bytes uint64) logMergeTask {
-		return newLogMergeTask(time.Time{}, &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+		return newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
 			{ObjectPath: "logs/a", MinTimestamp: oldest.UnixNano(), MaxTimestamp: oldest.UnixNano(), UncompressedSize: int64(bytes)},
 		}}}})
 	}
@@ -60,7 +60,7 @@ func TestLogMergeTaskLogStats(t *testing.T) {
 	}
 
 	t.Run("uses the earliest timestamp across all runs and sums every section", func(t *testing.T) {
-		task := newLogMergeTask(time.Time{}, &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+		task := newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{section("logs/a", 500, 10), section("logs/a", 600, 20)}},
 			{Sections: []*compactionv2pb.SectionRef{section("logs/b", 100, 30)}},
 		}})
@@ -69,7 +69,7 @@ func TestLogMergeTaskLogStats(t *testing.T) {
 	})
 
 	t.Run("reports the input bytes of the spec instead of the section sizes when it has them", func(t *testing.T) {
-		task := newLogMergeTask(time.Time{}, &compactionv2pb.TaskSpec{
+		task := newLogMergeTask(&compactionv2pb.TaskSpec{
 			Runs:       []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{section("logs/a", 500, 100), section("logs/b", 100, 50)}}},
 			InputBytes: 70,
 		})

@@ -497,7 +497,7 @@ func TestPlanLogCompaction(t *testing.T) {
 			merge, ok := task.(logMergeTask)
 			require.True(t, ok)
 			require.Equal(t, wantRanges[i], merge.spec.KeyRange)
-			require.Equal(t, []string{"logs/log-0", "logs/log-1"}, planObjectPaths(t, merge.physicalPlan("acme")))
+			require.Equal(t, []string{"logs/log-0", "logs/log-1"}, planObjectPaths(t, merge.physicalPlan("acme", window)))
 		}
 	})
 
@@ -557,7 +557,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Len(t, plan.tasks, 2)
 		merge, ok := plan.tasks[0].(logMergeTask)
 		require.True(t, ok)
-		require.Equal(t, []string{"logs/small-0", "logs/small-1"}, planObjectPaths(t, merge.physicalPlan("acme")))
+		require.Equal(t, []string{"logs/small-0", "logs/small-1"}, planObjectPaths(t, merge.physicalPlan("acme", window)))
 		filter, ok := plan.tasks[1].(indexFilterTask)
 		require.True(t, ok)
 		var want []string
@@ -650,10 +650,10 @@ func TestExecuteLogCompaction(t *testing.T) {
 		window:      window,
 		sourceIndex: indexEntry{Path: "indexes/source"},
 		tasks: []logCompactionTask{
-			newLogMergeTask(window, &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/a"}}},
 			}}),
-			newLogMergeTask(window, &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
+			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b"}}},
 			}}),
 		},
