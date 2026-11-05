@@ -30,6 +30,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/querybounds"
+	"github.com/grafana/loki/v3/pkg/logline/queryfrontend"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
@@ -42,8 +43,12 @@ const (
 	skipQueryUnsupported = "query_unsupported"
 )
 
-// metricLookback is the range selector on a correctness metric query.
-const metricLookback = 5 * time.Minute
+const (
+	// metricLookback is the range selector on a correctness metric query.
+	metricLookback = 5 * time.Minute
+	// metricStep is the resolution sent with that range query.
+	metricStep = time.Minute
+)
 
 var (
 	tokenCandidateRE = regexp.MustCompile(`[A-Za-z0-9._:/@%?-]{6,128}`)
@@ -73,6 +78,12 @@ type Service struct {
 type lokiEndpointClient struct {
 	endpoint string
 	client   lokiclient.Client
+	// live and off are the same endpoint with the metric comparison headers
+	// fixed on the client. logcli copies CustomHeaders onto every request it
+	// builds, so these calls do not share a header slot with label and sample
+	// queries, which use client.
+	live lokiclient.Client
+	off  lokiclient.Client
 }
 
 // CycleReport captures one verification cycle for operator diagnostics.
@@ -327,6 +338,10 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"hint_query", hq.query,
 	)
 
+	if hq.queryType == hintQueryTypeMetricRange {
+		return s.fetchMetricResults(ctx, report, hq, rangeStart, rangeEnd)
+	}
+
 	overlapping := s.indexStore.IndexesForRange(rangeStart, rangeEnd)
 	ids := make([]string, len(overlapping))
 	for i, m := range overlapping {
@@ -474,6 +489,22 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 	s.metrics.falseNegativesTotal.Add(float64(vr.FalseNegatives))
 	s.metrics.falsePositivesTotal.Add(float64(vr.FalsePositives))
 
+	return report, nil
+}
+
+// fetchMetricResults runs the metric query with logline forced on and forced off.
+// Both requests go to the same endpoint. Scoring the two matrices comes next.
+func (s *Service) fetchMetricResults(ctx context.Context, report CycleReport, hq hintQuery, start, end time.Time) (CycleReport, error) {
+	live, off, err := s.queryMetricPair(ctx, hq.query, start, end)
+	if err != nil {
+		return report, err
+	}
+	level.Info(s.logger).Log(
+		"msg", "correctness cycle step",
+		"step", "fetched_metric_results",
+		"live_samples", len(live),
+		"off_samples", len(off),
+	)
 	return report, nil
 }
 
@@ -663,6 +694,61 @@ func (s *Service) queryRange(
 	return nil, "", lastErr
 }
 
+func (s *Service) queryMetricPair(ctx context.Context, query string, start, end time.Time) (live, off []metricSample, err error) {
+	if end.Before(start) {
+		end = start
+	}
+	var lastErr error
+	for _, idx := range s.shuffledClientIndexes() {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		c := s.lokiClients[idx]
+		live, err = s.queryMetric(ctx, c.live, query, start, end)
+		if err != nil {
+			lastErr = fmt.Errorf("endpoint %s query metrics live: %w", c.endpoint, err)
+			continue
+		}
+		off, err = s.queryMetric(ctx, c.off, query, start, end)
+		if err != nil {
+			lastErr = fmt.Errorf("endpoint %s query metrics off: %w", c.endpoint, err)
+			continue
+		}
+		return live, off, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no Loki clients configured")
+	}
+	return nil, nil, lastErr
+}
+
+func (s *Service) queryMetric(ctx context.Context, client lokiclient.Client, query string, start, end time.Time) ([]metricSample, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// The query API rejects limit 0. Metric execution does not apply this line cap.
+	resp, err := client.QueryRange(query, s.cfg.LogQueryLimit, start, end, logproto.BACKWARD, metricStep, 0, true)
+	if err != nil {
+		return nil, err
+	}
+	return queryResponseSamples(resp)
+}
+
+// metricLiveHeaders and metricOffHeaders are logcli CustomHeaders lines
+// ("Name: value"). Cache-Control is set with DefaultClient.NoCache.
+func metricLiveHeaders() []string {
+	return []string{
+		fmt.Sprintf("%s: %s", queryfrontend.LoglineIndexHeader, queryfrontend.LoglineIndexLive),
+		fmt.Sprintf("%s: true", queryfrontend.LoglineSkipCacheHeader),
+	}
+}
+
+func metricOffHeaders() []string {
+	return []string{
+		fmt.Sprintf("%s: %s", queryfrontend.LoglineIndexHeader, queryfrontend.LoglineIndexOff),
+	}
+}
+
 func (s *Service) recordSkipped(reason string) {
 	s.metrics.cycleSkippedTotal.WithLabelValues(reason).Inc()
 }
@@ -713,7 +799,51 @@ func queryResponseEntries(resp *loghttp.QueryResponse) ([]queryEntry, error) {
 	return entries, nil
 }
 
+func queryResponseSamples(resp *loghttp.QueryResponse) ([]metricSample, error) {
+	if resp == nil {
+		return nil, fmt.Errorf("nil query response")
+	}
+	if resp.Status != string(loghttp.QueryStatusSuccess) {
+		return nil, fmt.Errorf("loki query status %q", resp.Status)
+	}
+	if resp.Data.Result == nil {
+		return []metricSample{}, nil
+	}
+	matrix, ok := resp.Data.Result.(loghttp.Matrix)
+	if !ok {
+		return nil, fmt.Errorf("unexpected Loki query result type: %T", resp.Data.Result)
+	}
+	samples := make([]metricSample, 0)
+	for _, stream := range matrix {
+		for _, pair := range stream.Values {
+			samples = append(samples, metricSample{
+				Time:  pair.Timestamp.Time().UTC(),
+				Value: float64(pair.Value),
+			})
+		}
+	}
+	return samples, nil
+}
+
+type metricSample struct {
+	Time  time.Time
+	Value float64
+}
+
 func newLokiEndpointClients(cfg Config) []lokiEndpointClient {
+	result := make([]lokiEndpointClient, 0, len(cfg.LokiQueryEndpoints))
+	for _, endpoint := range cfg.LokiQueryEndpoints {
+		result = append(result, lokiEndpointClient{
+			endpoint: endpoint,
+			client:   newEndpointClient(cfg, endpoint, false, nil),
+			live:     newEndpointClient(cfg, endpoint, true, metricLiveHeaders()),
+			off:      newEndpointClient(cfg, endpoint, true, metricOffHeaders()),
+		})
+	}
+	return result
+}
+
+func newEndpointClient(cfg Config, endpoint string, noCache bool, headers []string) *lokiclient.DefaultClient {
 	minBackoff := int(cfg.ErrorBackoffMin / time.Second)
 	maxBackoff := int(cfg.ErrorBackoffMax / time.Second)
 	if minBackoff < 1 {
@@ -722,30 +852,23 @@ func newLokiEndpointClients(cfg Config) []lokiEndpointClient {
 	if maxBackoff < minBackoff {
 		maxBackoff = minBackoff
 	}
-
-	result := make([]lokiEndpointClient, 0, len(cfg.LokiQueryEndpoints))
-	for _, endpoint := range cfg.LokiQueryEndpoints {
-		client := &lokiclient.DefaultClient{
-			Address: endpoint,
-			OrgID:   cfg.TenantID,
-			Retries: 0,
-			BackoffConfig: lokiclient.BackoffConfig{
-				MinBackoff: minBackoff,
-				MaxBackoff: maxBackoff,
-			},
-			Tripperware: func(next http.RoundTripper) http.RoundTripper {
-				return &timeoutRoundTripper{
-					next:    next,
-					timeout: cfg.RequestTimeout,
-				}
-			},
-		}
-		result = append(result, lokiEndpointClient{
-			endpoint: endpoint,
-			client:   client,
-		})
+	return &lokiclient.DefaultClient{
+		Address:       endpoint,
+		OrgID:         cfg.TenantID,
+		Retries:       0,
+		NoCache:       noCache,
+		CustomHeaders: headers,
+		BackoffConfig: lokiclient.BackoffConfig{
+			MinBackoff: minBackoff,
+			MaxBackoff: maxBackoff,
+		},
+		Tripperware: func(next http.RoundTripper) http.RoundTripper {
+			return &timeoutRoundTripper{
+				next:    next,
+				timeout: cfg.RequestTimeout,
+			}
+		},
 	}
-	return result
 }
 
 type timeoutRoundTripper struct {

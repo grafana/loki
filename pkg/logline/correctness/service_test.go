@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -578,6 +579,112 @@ func TestPickHintQuery_MetricWindow(t *testing.T) {
 			require.Equal(t, hintQueryTypeLineFilter, h.queryType)
 		})
 	}
+}
+
+func TestRunVerificationCycle_MetricQueriesBothWays(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+
+	type recordedQuery struct {
+		query        string
+		step         string
+		logline      string
+		skipCache    string
+		cacheControl string
+	}
+	var mu sync.Mutex
+	var got []recordedQuery
+
+	writeEnvelope := func(w http.ResponseWriter, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"data":   data,
+		}))
+	}
+	loki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "test-tenant", r.Header.Get("X-Scope-OrgID"))
+		switch r.URL.Path {
+		case "/loki/api/v1/labels":
+			writeEnvelope(w, []string{"job"})
+		case "/loki/api/v1/label/job/values":
+			writeEnvelope(w, []string{"api"})
+		case "/loki/api/v1/query_range":
+			q := recordedQuery{
+				query:        r.URL.Query().Get("query"),
+				step:         r.URL.Query().Get("step"),
+				logline:      r.Header.Get("X-Logline-Index"),
+				skipCache:    r.Header.Get("X-Logline-Skip-Cache"),
+				cacheControl: r.Header.Get("Cache-Control"),
+			}
+			mu.Lock()
+			got = append(got, q)
+			mu.Unlock()
+			if q.step != "" {
+				writeEnvelope(w, map[string]any{"resultType": "matrix", "result": []any{}})
+				return
+			}
+			startNS, err := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
+			require.NoError(t, err)
+			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
+			require.NoError(t, err)
+			mid := startNS + (endNS-startNS)/2
+			writeEnvelope(w, map[string]any{
+				"resultType": "streams",
+				"result": []map[string]any{{
+					"stream": map[string]string{"job": "api"},
+					"values": [][]string{{strconv.FormatInt(mid, 10), "request trace=" + needle + " completed"}},
+				}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer loki.Close()
+
+	svc := newTestService(t, newTestStore(t), loki.URL, base.Add(-2*time.Hour))
+	svc.nowFn = func() time.Time { return base.Add(3 * time.Minute) }
+
+	var report CycleReport
+	found := false
+	for seed := int64(0); seed < 40 && !found; seed++ {
+		mu.Lock()
+		got = nil
+		mu.Unlock()
+		svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+		var err error
+		report, err = svc.runVerificationCycle(context.Background())
+		require.NoError(t, err)
+		found = report.HintQueryType == string(hintQueryTypeMetricRange)
+	}
+	require.True(t, found, "expected a seed to run the metric query")
+
+	mu.Lock()
+	defer mu.Unlock()
+	var logs, metrics []recordedQuery
+	for _, q := range got {
+		if q.step == "" {
+			logs = append(logs, q)
+			continue
+		}
+		metrics = append(metrics, q)
+	}
+	require.Len(t, logs, 1)
+	require.Empty(t, logs[0].logline)
+	require.Empty(t, logs[0].skipCache)
+	require.Empty(t, logs[0].cacheControl)
+
+	require.Len(t, metrics, 2)
+	require.Equal(t, report.HintQuery, metrics[0].query)
+	require.Equal(t, metrics[0].query, metrics[1].query)
+	require.Equal(t, "60", metrics[0].step)
+	require.Equal(t, "60", metrics[1].step)
+	require.Equal(t, "live", metrics[0].logline)
+	require.Equal(t, "true", metrics[0].skipCache)
+	require.Equal(t, "no-cache", metrics[0].cacheControl)
+	require.Equal(t, "off", metrics[1].logline)
+	require.Empty(t, metrics[1].skipCache)
+	require.Equal(t, "no-cache", metrics[1].cacheControl)
 }
 
 // useLogHintSeed fixes the cycle RNG so the hint pick stays a line filter.
