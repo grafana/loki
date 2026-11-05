@@ -2534,9 +2534,11 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 	// the index does not record it, so a reader must use the value the builder
 	// did. The store's ingester window comes from loglineStoreConfig, so
 	// IndexesForRange and IndexesExcludedByIngesterWindow match production
-	// narrowing.
+	// narrowing. AlignQueriesWithStep comes from query_range, so a metric
+	// cycle uses the same step alignment as the query frontend.
 	cfg := t.Cfg.Logline.Correctness
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+	cfg.AlignQueriesWithStep = t.Cfg.QueryRange.AlignQueriesWithStep
 
 	indexStore, err := loglinestore.New(
 		context.Background(),
