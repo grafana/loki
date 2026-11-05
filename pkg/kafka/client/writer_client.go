@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
+        "github.com/twmb/franz-go/pkg/kversion"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -47,6 +48,7 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, logger log.Logger,
 		kgo.SeedBrokers(kafkaCfg.WriterConfig.Address),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
 		kgo.DefaultProduceTopic(kafkaCfg.Topic),
+
 
 		// We set the partition field in each record.
 		kgo.RecordPartitioner(kgo.ManualPartitioner()),
@@ -160,6 +162,7 @@ func (o onlySampledTraces) Inject(ctx context.Context, carrier propagation.TextM
 
 func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger log.Logger) []kgo.Opt {
 	opts := []kgo.Opt{
+                kgo.MaxVersions(kversion.V4_3_0()),
 		kgo.DialTimeout(cfg.DialTimeout),
 
 		// A cluster metadata update is a request sent to a broker and getting back the map of partitions and
