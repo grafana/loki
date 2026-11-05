@@ -71,10 +71,16 @@ func resolveIdleExpiry(limits Limits, tenant, policyBucket string) time.Duration
 	return expiry
 }
 
+// policyBucketUsage is the per-policy-bucket state of a partition in
+// usageStore and streamShardStore.
+type policyBucketUsage interface {
+	map[uint64]streamUsage | *streamShardPolicyUsage
+}
+
 // tenantIdleExpiries returns the idle expiry of each of the tenant's policy
 // buckets that has one, resolving each policy once rather than once per
 // partition.
-func tenantIdleExpiries[B any](limits Limits, tenant string, partitions map[int32]map[string]B) map[string]time.Duration {
+func tenantIdleExpiries[B policyBucketUsage](limits Limits, tenant string, partitions map[int32]map[string]B) map[string]time.Duration {
 	var expiries map[string]time.Duration
 	seen := make(map[string]struct{})
 	for _, policies := range partitions {
