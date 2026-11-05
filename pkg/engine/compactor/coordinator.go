@@ -69,12 +69,13 @@ func newCoordinator(
 	run := func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 		return runPlan(ctx, logger, runner, opts, plan)
 	}
+	metrics := newCoordinatorMetrics(reg)
 	return &coordinator{
 		cfg:             cfg,
 		logger:          logger,
 		bucket:          bucket,
-		indexDispatcher: &planDispatcher{runPlan: run, limit: cfg.MaxRunningCompactionTasks},
-		logDispatcher:   &planDispatcher{runPlan: run, limit: cfg.LogMaxRunningCompactionTasks},
+		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,
@@ -82,7 +83,7 @@ func newCoordinator(
 		},
 		clock:                    time.Now,
 		sleep:                    sleepUntil,
-		metrics:                  newCoordinatorMetrics(reg),
+		metrics:                  metrics,
 		limits:                   limits,
 		logMergePlanningStrategy: logMergePlanningStrategy,
 	}, nil
@@ -106,9 +107,10 @@ func sleepUntil(ctx context.Context, d time.Duration) {
 // window's ToC and is enabled for compaction. It re-checks every
 // PollingInterval until ctx is cancelled, then waits for all workers to exit.
 //
-// Cancelling ctx stops new dispatches. A dispatch in progress runs to its ToC
-// swap, so Run returns after the slowest one finishes. Nothing bounds that
-// wait; the process supervisor must allow for it.
+// Cancelling ctx stops new dispatches and retries. A dispatch in progress
+// runs its tasks to completion, then swaps the ToC if every task succeeded.
+// Run returns after the slowest one finishes. Nothing bounds that wait, so
+// the process supervisor must allow for it.
 func (c *coordinator) Run(ctx context.Context) error {
 	level.Info(c.logger).Log(
 		"msg", "starting dataobj compaction coordinator",
@@ -188,6 +190,11 @@ type layoutKey struct {
 	schemaLabels string
 	shardBuckets uint32
 	streamOrder  streams.StreamOrder
+}
+
+// String returns k in a form for logs and errors.
+func (k layoutKey) String() string {
+	return fmt.Sprintf("{schema=%q shards=%d order=%d}", k.schemaLabels, k.shardBuckets, k.streamOrder)
 }
 
 func newLayoutKey(layout streams.Layout) layoutKey {
@@ -385,14 +392,14 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex.Path)
 	}
 
-	// Detach from cancellation so the dispatched tasks run to the ToC swap.
-	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
-	// worker time, and the next pass repeats them.
-	ctx = context.WithoutCancel(ctx)
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.physicalPlans(tenant))
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
+	// Detach only after Run. Run needs ctx to stop retries at shutdown or a
+	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
+	// the next pass runs the tasks again.
+	ctx = context.WithoutCancel(ctx)
 	entries := plan.tocEntries()
 	if err := assignArtifactPaths(entries, artifacts); err != nil {
 		return compactionStats{}, fmt.Errorf("build log ToC entries: %w", err)
@@ -486,6 +493,11 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 // Indexes are grouped by stream layout, so indexes in different groups never
 // merge. It skips corrupt indexes, so they do not block the other indexes of
 // the tenant.
+//
+// The stats count every group that succeeded, even when the error is non-nil.
+//
+// When ctx is done, no new group starts. The error is the shutdown error only
+// if no group failed, so a shutdown does not hide a real failure.
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	groups := make(map[layoutKey][]indexEntry)
 	for _, entry := range entries {
@@ -506,18 +518,39 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		groups[key] = append(groups[key], entry)
 	}
 
+	// A failed group does not stop the other groups, because groups never
+	// merge with each other.
 	var total compactionStats
-	for _, groupIndexEntries := range groups {
+	var errs []error
+	stop := func(shutdownErr error) (compactionStats, error) {
+		if len(errs) > 0 {
+			return total, errors.Join(errs...)
+		}
+		return total, shutdownErr
+	}
+	for key, groupIndexEntries := range groups {
 		if err := ctx.Err(); err != nil {
-			return total, err
+			return stop(err)
 		}
 		stats, err := c.compactTenantIndexesGroup(ctx, tenant, window, groupIndexEntries)
 		if err != nil {
-			return total, err
+			// A Canceled error is an interruption only when ctx is done. While
+			// ctx is live, a Canceled error comes from somewhere else, for
+			// example a bucket client, so it counts as a group failure and
+			// does not hide one.
+			if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+				return stop(err)
+			}
+			err = fmt.Errorf("layout group %s: %w", key, err)
+			errs = append(errs, err)
+			level.Warn(c.logger).Log("msg", "index-merge: layout group failed",
+				"tenant", tenant, "window", window, "indexes", len(groupIndexEntries), "err", err)
+			c.metrics.indexMergeFailedGroupsTotal.WithLabelValues(tenant).Inc()
+			continue
 		}
 		total = total.Merge(stats)
 	}
-	return total, nil
+	return total, errors.Join(errs...)
 }
 
 // skipCorruptIndex records that phase skipped the corrupt index at path.
@@ -570,14 +603,14 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		}
 	}
 
-	// Detach from cancellation so the dispatched tasks run to the ToC swap.
-	// Shutdown and a tenant stop both cancel ctx. Abandoned tasks waste
-	// worker time, and the next pass repeats them.
-	ctx = context.WithoutCancel(ctx)
 	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
+	// Detach only after Run. Run needs ctx to stop retries at shutdown or a
+	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
+	// the next pass runs the tasks again.
+	ctx = context.WithoutCancel(ctx)
 	if err := assignArtifactPaths(newEntries, artifacts); err != nil {
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
@@ -759,7 +792,13 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 		}
 		level.Warn(c.logger).Log("msg", "index-merge phase failed",
 			"tenant", tenant, "window", window, "err", err)
-		c.metrics.observeTenantCycle(tenant, "failed", dur, compactionStats{})
+		// A failed group does not undo the swaps of the other groups, so the
+		// cycle still counts as compacted when any group swapped.
+		if stats.added > 0 {
+			c.metrics.observeTenantCycle(tenant, "compacted", dur, stats)
+		} else {
+			c.metrics.observeTenantCycle(tenant, "failed", dur, compactionStats{})
+		}
 		return phaseOutcomeError
 	}
 	// compactTenantIndexes returns zero stats for every no-op success. A real
@@ -946,7 +985,8 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 
 // runTenantLoop alternates IndexMerge and LogMerge for tenant until ctx is
 // cancelled or both phases are disabled. After ctx is cancelled, a dispatch
-// in progress runs to its ToC swap before the loop returns.
+// in progress runs its tasks to completion, then swaps the ToC if every task
+// succeeded, before the loop returns.
 //
 // Each phase runs against every window in c.windows(). An IndexMerge phase
 // with an error runs again. A LogMerge phase always flips to IndexMerge.

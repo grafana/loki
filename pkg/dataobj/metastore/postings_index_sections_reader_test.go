@@ -22,8 +22,8 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsResultBatch(t *testing.T) {
 
 	ts := now.Add(-2 * time.Hour)
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "nginx", StreamID: 7, Timestamp: ts, UncompressedSize: 0},
-		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "loki", StreamID: 9, Timestamp: ts, UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "nginx", StreamID: 7, Time: postings.At(ts), UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "loki", StreamID: 9, Time: postings.At(ts), UncompressedSize: 0},
 	})
 	defer closer()
 
@@ -55,7 +55,7 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsResultBatch(t *testing.T) {
 
 func TestPostingsIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: now, UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Time: postings.At(now), UncompressedSize: 0},
 	})
 	defer closer()
 
@@ -73,9 +73,9 @@ func TestPostingsIndexSectionsReader_PaginatesByBatchSize(t *testing.T) {
 
 	ts := now.Add(-2 * time.Hour)
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: ts, UncompressedSize: 0},
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 2, Timestamp: ts, UncompressedSize: 0},
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 3, Timestamp: ts, UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Time: postings.At(ts), UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 2, Time: postings.At(ts), UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 3, Time: postings.At(ts), UncompressedSize: 0},
 	})
 	defer closer()
 
@@ -103,7 +103,7 @@ func TestPostingsIndexSectionsReader_PaginatesByBatchSize(t *testing.T) {
 func TestPostingsIndexSectionsReader_ZeroMatchersEOF(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: now, UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Time: postings.At(now), UncompressedSize: 0},
 	})
 	defer closer()
 
@@ -151,7 +151,7 @@ func TestPostingsReader_ExpandsBitmapToStreamRows(t *testing.T) {
 func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 	ctx := user.InjectOrgID(t.Context(), tenantID)
 	observations := []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(now)},
 	}
 	eightBuckets := streams.NewLayout(streams.MustShardLayoutFromBuckets(8), nil)
 	sixtyFourBuckets := streams.NewLayout(streams.MustShardLayoutFromBuckets(64), nil)
