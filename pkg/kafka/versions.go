@@ -20,7 +20,7 @@ const apiVersionsMaxVersionUsage = "The highest ApiVersions request version the 
 	"0 to use the franz-go default."
 
 // APIVersionsMaxVersionOpts returns the client options that cap ApiVersions at
-// maxVersion, or none if maxVersion is 0.
+// maxVersion, or none if maxVersion is 0 or less.
 func APIVersionsMaxVersionOpts(maxVersion int) []kgo.Opt {
 	if maxVersion <= 0 {
 		return nil

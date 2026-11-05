@@ -2,8 +2,11 @@ package client
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,7 +35,7 @@ func recordAPIVersions(cluster *kfake.Cluster) func() []int16 {
 	return func() []int16 {
 		mu.Lock()
 		defer mu.Unlock()
-		return append([]int16(nil), versions...)
+		return slices.Clone(versions)
 	}
 }
 
@@ -79,4 +82,59 @@ func TestClientsCapAPIVersions(t *testing.T) {
 			})
 		}
 	}
+}
+
+// recordRequestVersions returns the highest version of each request type the cluster receives.
+func recordRequestVersions(cluster *kfake.Cluster) func() map[int16]int16 {
+	var (
+		mu       sync.Mutex
+		versions = map[int16]int16{}
+	)
+	cluster.Control(func(req kmsg.Request) (kmsg.Response, error, bool) {
+		cluster.KeepControl()
+		mu.Lock()
+		versions[req.Key()] = max(versions[req.Key()], req.GetVersion())
+		mu.Unlock()
+		return nil, nil, false
+	})
+	return func() map[int16]int16 {
+		mu.Lock()
+		defer mu.Unlock()
+		return maps.Clone(versions)
+	}
+}
+
+// TestAPIVersionsCapChangesNoOtherRequest checks that the cap changes only the
+// ApiVersions request: every other request uses the same version as without the cap.
+func TestAPIVersionsCapChangesNoOtherRequest(t *testing.T) {
+	requestVersions := func(t *testing.T, maxVersion int) map[int16]int16 {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		t.Cleanup(cancel)
+
+		cluster, cfg := testkafka.CreateCluster(t, 1, "test")
+		seen := recordRequestVersions(cluster)
+		cfg.APIVersionsMaxVersion = maxVersion
+
+		writer, err := NewWriterClient("test-writer", cfg, log.NewNopLogger(), prometheus.NewRegistry())
+		require.NoError(t, err)
+		t.Cleanup(writer.Close)
+		require.NoError(t, writer.ProduceSync(ctx, &kgo.Record{Topic: "test", Value: []byte("x")}).FirstErr())
+
+		reader, err := NewReaderClient("test-reader", cfg, log.NewNopLogger(), prometheus.NewRegistry(),
+			kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{"test": {0: kgo.NewOffset().AtStart()}}))
+		require.NoError(t, err)
+		t.Cleanup(reader.Close)
+		require.Equal(t, 1, reader.PollFetches(ctx).NumRecords())
+
+		return seen()
+	}
+
+	uncapped := requestVersions(t, 0)
+	capped := requestVersions(t, 3)
+	require.Equal(t, int16(3), capped[kmsg.ApiVersions.Int16()])
+
+	delete(uncapped, kmsg.ApiVersions.Int16())
+	delete(capped, kmsg.ApiVersions.Int16())
+	require.NotEmpty(t, capped)
+	require.Equal(t, uncapped, capped)
 }
