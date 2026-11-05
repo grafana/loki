@@ -19,13 +19,23 @@ or attach hint ranges for time intervals that the logline index proves contain n
 2. **Filter middleware** (`loglineFilterHandler`): Sits *below* `SplitByInterval` and
    below the results cache. For each interval sub-request, it consults the prefetched
    hints to either:
-   - **Skip** the interval entirely (return empty response) if no hint ranges overlap
+   - **Skip** the interval entirely (return empty response) if no hint ranges overlap.
+     Quantile sketch shards (sharded `quantile_over_time`) are the exception: the sketch
+     merge rejects an empty matrix, so they pass through instead. `approx_topk` runs only
+     as an instant query, so its count-min shards never reach the filter.
    - **Forward** one request with the clipped raw hint ranges attached. Request bounds
      stay the split interval. Queriers use the ranges to skip storage work.
    - **Pass through** if the interval is in the ingester window, is covered only by a
      pre-min-date sentinel, or on error/timeout. Ingester-window and pre-min-date
      intervals pass through before waiting for the lookup, so a limited query can
      return from them while the lookup is still running.
+
+The filter reads the request's expression from `Plan.AST`, falling back to parsing
+`Query`, because shard requests carry an internal operation in `Query` that is not LogQL.
+A request it cannot read passes through. A metric split reads before its start, so
+overlap and clipping use the window widened by the range interval and offset, with an
+exclusive end of end minus offset plus 1ns (the querier's read window). Log splits use no
+widening and no extra nanosecond.
 
 ## Key integration points
 
@@ -155,7 +165,11 @@ why it didn't:
    reads only the ingester window skips the size estimate, so it never records the
    last two. `X-Logline-Index: live` also skips the estimate, so `query_too_small`
    and `size_estimate_failed` are recorded only for live mode that came from the
-   tenant limit or the cell default.
+   tenant limit or the cell default. Metric queries that `SupportedMetricQuery`
+   rejects, and `absent_over_time` queries, return before these skips. They get no
+   `Logline` stats, so outcome counts leave them out. `absent_over_time` stays
+   unhinted because a skipped split returns an empty matrix, which drops the 1
+   that an empty window returns.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
    `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
    A lookup still running when the query returns is `lookup_timeout` if a
