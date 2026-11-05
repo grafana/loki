@@ -50,6 +50,7 @@ func TestClientsCapAPIVersions(t *testing.T) {
 	}{
 		{name: "default", maxVersion: kafka.DefaultAPIVersionsMaxVersion, want: kafka.DefaultAPIVersionsMaxVersion},
 		{name: "lower cap", maxVersion: 3, want: 3},
+		{name: "too high is capped at the default", maxVersion: 65539, want: kafka.DefaultAPIVersionsMaxVersion},
 	}
 
 	newClients := map[string]func(cfg kafka.Config) (*kgo.Client, error){
