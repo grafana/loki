@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
@@ -302,7 +303,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		return report, nil
 	}
 
-	hq, ok := s.pickHintQuery(selector, label, value, logs)
+	hq, ok := s.pickHintQuery(selector, label, value, logs, rangeStart, rangeEnd)
 	if !ok {
 		report.SkippedReason = skipNoNeedle
 		s.recordSkipped(skipNoNeedle)
@@ -893,12 +894,14 @@ func buildMetricQuery(qt hintQueryType, hq hintQuery) (hintQuery, error) {
 
 // pickHintQuery chooses among SM, stream-label, post-parser JSON, line
 // filters, and a metric range with equal weight. The chosen path is tried
-// first; on failure (ineligible value / parse error / no JSON field) we fall
+// first; on failure (ineligible value / parse error / no JSON field / a metric
+// window that would read before the index or drop the sampled line) we fall
 // back to a line-filter needle. Loki matches the label/SM/JSON key; Logline
 // only looks up value n-grams. The metric range wraps that line-filter needle.
 func (s *Service) pickHintQuery(
 	selector, label, value string,
 	logs []queryEntry,
+	start, end time.Time,
 ) (hintQuery, bool) {
 	switch s.randIntn(5) {
 	case 0:
@@ -914,15 +917,16 @@ func (s *Service) pickHintQuery(
 			return hq, true
 		}
 	case 3:
-		if hq, ok := s.tryMetricHintQuery(selector, logs); ok {
+		if hq, ok := s.tryMetricHintQuery(selector, logs, start, end); ok {
 			return hq, true
 		}
 	}
-	return s.tryLineFilterHintQuery(selector, logs)
+	hq, _, ok := s.tryLineFilterHintQuery(selector, logs)
+	return hq, ok
 }
 
-func (s *Service) tryMetricHintQuery(selector string, logs []queryEntry) (hintQuery, bool) {
-	hq, ok := s.tryLineFilterHintQuery(selector, logs)
+func (s *Service) tryMetricHintQuery(selector string, logs []queryEntry, start, end time.Time) (hintQuery, bool) {
+	hq, entry, ok := s.tryLineFilterHintQuery(selector, logs)
 	if !ok {
 		return hintQuery{}, false
 	}
@@ -934,7 +938,38 @@ func (s *Service) tryMetricHintQuery(selector string, logs []queryEntry) (hintQu
 		)
 		return hintQuery{}, false
 	}
+	if !s.metricRangeUsable(start, end, entry.Timestamp, metric.expr) {
+		return hintQuery{}, false
+	}
 	return metric, true
+}
+
+// metricRangeUsable reports whether [start, end] can host a metric check.
+// The 5m range selector reads before the requested start, and step alignment
+// can drop a line in the final partial minute.
+func (s *Service) metricRangeUsable(start, end, needleTs time.Time, expr syntax.Expr) bool {
+	qb := querybounds.GetQueryBounds(
+		start, end, time.Minute.Milliseconds(), expr,
+		querybounds.QueryTypeMetricRange, s.cfg.AlignQueriesWithStep,
+	)
+	if qb.ReadStart.Before(s.indexStore.MinDate()) || qb.ReadStart.Before(s.earliestQueryable()) {
+		return false
+	}
+	if s.cfg.AlignQueriesWithStep && needleTs.After(end.Truncate(time.Minute)) {
+		return false
+	}
+	return true
+}
+
+// earliestQueryable is the oldest timestamp a cycle may read:
+// max(startedAt, now-maxLookback).
+func (s *Service) earliestQueryable() time.Time {
+	now := s.nowFn().UTC()
+	earliest := s.startedAt
+	if lookbackStart := now.Add(-s.cfg.MaxLookback); lookbackStart.After(earliest) {
+		earliest = lookbackStart
+	}
+	return earliest
 }
 
 // trySMLabelFilterHintQuery builds a label-filter hint from the first usable SM
@@ -976,10 +1011,10 @@ func (s *Service) tryJSONLabelFilterHintQuery(selector string, logs []queryEntry
 	return hq, true
 }
 
-func (s *Service) tryLineFilterHintQuery(selector string, logs []queryEntry) (hintQuery, bool) {
-	needle, _, ok := pickNeedle(protoEntries(logs), s.cfg.NgramLength)
+func (s *Service) tryLineFilterHintQuery(selector string, logs []queryEntry) (hintQuery, logproto.Entry, bool) {
+	needle, entry, ok := pickNeedle(protoEntries(logs), s.cfg.NgramLength)
 	if !ok {
-		return hintQuery{}, false
+		return hintQuery{}, logproto.Entry{}, false
 	}
 	hq, err := newHintQuery(hintQueryTypeLineFilter, needle, buildLineFilterHintQuery(selector, needle))
 	if err != nil {
@@ -988,9 +1023,9 @@ func (s *Service) tryLineFilterHintQuery(selector string, logs []queryEntry) (hi
 			"needle", needle,
 			"err", err,
 		)
-		return hintQuery{}, false
+		return hintQuery{}, logproto.Entry{}, false
 	}
-	return hq, true
+	return hq, entry, true
 }
 
 // labelFilterHintQuery builds and parses a label-filter hint query. Callers must

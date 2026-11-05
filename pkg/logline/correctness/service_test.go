@@ -243,8 +243,9 @@ func TestPickHintQuery_ShortValueUsesLineFilter(t *testing.T) {
 	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
 
 	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
+	start, end := usableMetricPickRange(svc)
 	for i := 0; i < 20; i++ {
-		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, start, end)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
@@ -268,13 +269,14 @@ func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
 	// No SM: SM path falls back to line; stream-label and line paths remain.
 	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
 	value := "checkout-service"
+	start, end := usableMetricPickRange(svc)
 	sawLabel, sawLine := false, false
 	for seed := int64(0); seed < 50 && (!sawLabel || !sawLine); seed++ {
 		svc.randMu.Lock()
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", value, logs)
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", value, logs, start, end)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		switch h.queryType {
@@ -316,6 +318,7 @@ func TestPickHintQuery_FiveWayWhenAllEligible(t *testing.T) {
 	}}
 	lineNeedle, _, ok := pickNeedle(protoEntries(logs), 6)
 	require.True(t, ok)
+	start, end := usableMetricPickRange(svc)
 
 	sawSM, sawLabel, sawJSON, sawLine, sawMetricRange := false, false, false, false, false
 	for seed := int64(0); seed < 200 && (!sawSM || !sawLabel || !sawJSON || !sawLine || !sawMetricRange); seed++ {
@@ -323,7 +326,7 @@ func TestPickHintQuery_FiveWayWhenAllEligible(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs)
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs, start, end)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		switch h.queryType {
@@ -365,6 +368,7 @@ func TestPickHintQuery_CanUseJSONLabelFilter(t *testing.T) {
 	logs := []queryEntry{{
 		Entry: logproto.Entry{Line: `{"dashboardUID":"grafana_slo_app-klu4xpj1w5lmbmvi8u6ec","trace-id":"9fA81cD2Ef0077aa"}`},
 	}}
+	start, end := usableMetricPickRange(svc)
 
 	sawJSON, sawLine := false, false
 	for seed := int64(0); seed < 80 && (!sawJSON || !sawLine); seed++ {
@@ -372,7 +376,7 @@ func TestPickHintQuery_CanUseJSONLabelFilter(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, start, end)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		switch h.queryType {
@@ -407,6 +411,7 @@ func TestPickHintQuery_CanUseStructuredMetadata(t *testing.T) {
 			},
 		},
 	}}
+	start, end := usableMetricPickRange(svc)
 
 	// Stream label value is short, so the stream-label path falls back to line.
 	sawSM, sawLine := false, false
@@ -415,7 +420,7 @@ func TestPickHintQuery_CanUseStructuredMetadata(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs)
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, start, end)
 		require.True(t, ok)
 		require.NotNil(t, h.expr)
 		switch h.queryType {
@@ -452,6 +457,7 @@ func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
 			},
 		},
 	}}
+	start, end := usableMetricPickRange(svc)
 
 	sawSMFirst := false
 	for seed := int64(0); seed < 100; seed++ {
@@ -464,13 +470,114 @@ func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
 
-		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs)
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs, start, end)
 		require.True(t, ok)
 		require.Equal(t, hintQueryTypeLineFilter, h.queryType,
 			"SM-first with ineligible SM must fall back to line_filter, not label_filter")
 		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
 	}
 	require.True(t, sawSMFirst, "expected at least one seed that picks the SM branch first")
+}
+
+// usableMetricPickRange is a window whose 5m lookback stays after startedAt
+// and the test store's min date.
+func usableMetricPickRange(svc *Service) (time.Time, time.Time) {
+	start := svc.startedAt.Add(time.Hour)
+	return start, start.Add(15 * time.Minute)
+}
+
+// seedMetricPick fixes the RNG so the next pickHintQuery chooses the metric arm.
+func seedMetricPick(t *testing.T, svc *Service) {
+	t.Helper()
+	for seed := int64(0); seed < 100; seed++ {
+		if rand.New(rand.NewSource(seed)).Intn(5) == 3 {
+			svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+			return
+		}
+	}
+	t.Fatal("no seed selects the metric arm")
+}
+
+func TestPickHintQuery_MetricWindow(t *testing.T) {
+	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
+	defer loki.Close()
+	needle := "9fA81cD2Ef0077aa"
+
+	tests := []struct {
+		name       string
+		minDate    string
+		startedAt  time.Time
+		now        time.Time
+		start      time.Time
+		end        time.Time
+		needleTs   time.Time
+		align      bool
+		wantMetric bool
+	}{
+		{
+			name:       "lookback before min date",
+			minDate:    "2026-06-01",
+			startedAt:  time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC),
+			start:      time.Date(2026, 6, 1, 0, 2, 0, 0, time.UTC),
+			end:        time.Date(2026, 6, 1, 0, 20, 0, 0, time.UTC),
+			needleTs:   time.Date(2026, 6, 1, 0, 10, 0, 0, time.UTC),
+			wantMetric: false,
+		},
+		{
+			name:       "lookback before earliest",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 10, 3, 0, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 10, 15, 0, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC),
+			wantMetric: false,
+		},
+		{
+			name:       "aligned query drops the final partial minute",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 12, 5, 30, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 12, 5, 10, 0, time.UTC),
+			align:      true,
+			wantMetric: false,
+		},
+		{
+			name:       "unaligned query keeps the final partial minute",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 12, 5, 30, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 12, 5, 10, 0, time.UTC),
+			wantMetric: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestService(t, newTestStoreMinDate(t, tc.minDate), loki.URL, tc.startedAt)
+			svc.nowFn = func() time.Time { return tc.now }
+			svc.cfg.AlignQueriesWithStep = tc.align
+			seedMetricPick(t, svc)
+
+			logs := []queryEntry{{Entry: logproto.Entry{
+				Timestamp: tc.needleTs,
+				Line:      "request trace=" + needle + " completed",
+			}}}
+			h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, tc.start, tc.end)
+			require.True(t, ok)
+			require.Equal(t, needle, h.needle)
+			if tc.wantMetric {
+				require.Equal(t, hintQueryTypeMetricRange, h.queryType)
+				return
+			}
+			require.Equal(t, hintQueryTypeLineFilter, h.queryType)
+		})
+	}
 }
 
 // useLogHintSeed fixes the cycle RNG so the hint pick stays a line filter.
@@ -521,8 +628,13 @@ func newTestService(t *testing.T, indexStore *store.Store, endpoint string, star
 
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
+	return newTestStoreMinDate(t, "0001-01-01")
+}
+
+func newTestStoreMinDate(t *testing.T, minDate string) *store.Store {
+	t.Helper()
 	bucket := objstore.NewInMemBucket()
-	indexStore, err := store.NewStore(bucket, store.Config{MinDate: "0001-01-01"}, log.NewNopLogger(), prometheus.NewRegistry())
+	indexStore, err := store.NewStore(bucket, store.Config{MinDate: minDate}, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	return indexStore
 }
