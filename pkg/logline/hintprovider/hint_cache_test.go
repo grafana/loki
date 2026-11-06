@@ -115,6 +115,7 @@ type stubHintProvider struct {
 	err     error
 	delay   time.Duration
 	minDate time.Time
+	onCall  func()
 
 	calls int
 }
@@ -132,8 +133,12 @@ func (s *stubHintProvider) ProvideHints(
 	stats := s.stats
 	err := s.err
 	delay := s.delay
+	onCall := s.onCall
 	s.mu.Unlock()
 
+	if onCall != nil {
+		onCall()
+	}
 	if delay > 0 {
 		time.Sleep(delay)
 	}
@@ -505,6 +510,89 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	}
 	require.Equal(t, 1, delegate.Calls(), "singleflight should coalesce identical misses")
 	require.Equal(t, 1, backend.StoreCalls(), "coalesced miss should store once")
+}
+
+func TestCachingHintProvider_SingleflightJoinerRecordsNoIOWait(t *testing.T) {
+	const readTime = 5 * time.Second
+	const lookupTime = 200 * time.Millisecond
+
+	shared := NewQueryStats()
+	shared.totalIOWaitNanos.Store(readTime.Nanoseconds())
+	shared.headerReads.Store(4)
+
+	release := make(chan struct{})
+	entered := make(chan struct{})
+	delegate := &stubHintProvider{
+		stats: shared,
+		hints: &Hints{TimeRanges: []HintTimeRange{{
+			Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+			End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
+		}}},
+		onCall: func() {
+			close(entered)
+			<-release
+		},
+	}
+	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
+
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	tenant := "tenant-a"
+	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 23, 0, 0, 0, time.UTC).UnixNano())
+
+	type callResult struct {
+		stats *QueryStats
+		wall  time.Duration
+	}
+	results := make(chan callResult, 2)
+	errCh := make(chan error, 2)
+	var wg sync.WaitGroup
+	call := func() {
+		wg.Go(func() {
+			start := time.Now()
+			_, stats, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+			errCh <- err
+			results <- callResult{stats: stats, wall: time.Since(start)}
+		})
+	}
+
+	call()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("leader did not start the lookup")
+	}
+	call()
+	time.Sleep(lookupTime)
+	close(release)
+	wg.Wait()
+	close(results)
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	var leader, joiner callResult
+	for result := range results {
+		if result.stats.totalIOWaitNanos.Load() == readTime.Nanoseconds() {
+			leader = result
+			continue
+		}
+		joiner = result
+	}
+	require.NotNil(t, leader.stats)
+	require.NotNil(t, joiner.stats)
+	require.Equal(t, 1, delegate.Calls())
+	require.Equal(t, int64(4), leader.stats.headerReads.Load())
+	require.Equal(t, int64(4), joiner.stats.headerReads.Load())
+
+	require.Equal(t, int64(0), joiner.stats.totalIOWaitNanos.Load())
+
+	joiner.stats.SetWallTime(joiner.wall)
+	require.Equal(t, 0.0, joiner.stats.Snapshot().EffectiveConcurrency)
+
+	leader.stats.SetWallTime(leader.wall)
+	require.InDelta(t, float64(readTime)/float64(leader.wall), leader.stats.Snapshot().EffectiveConcurrency, 0.01)
 }
 
 // cancelFirstCallHintProvider blocks its first call until that call's context
