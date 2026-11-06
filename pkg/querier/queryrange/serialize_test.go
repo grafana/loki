@@ -171,6 +171,22 @@ func requestWithHintRanges() *LokiRequest {
 	}
 }
 
+// instantRequestWithHintRanges returns an instant request that carries hint ranges, as a client could send it.
+func instantRequestWithHintRanges() *LokiInstantRequest {
+	ts := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	return &LokiInstantRequest{
+		Query:     `sum(count_over_time({foo="bar"}[5m]))`,
+		Limit:     100,
+		Path:      "/loki/api/v1/query",
+		TimeTs:    ts,
+		Direction: logproto.BACKWARD,
+		HintRanges: []logproto.HintTimeRange{{
+			Start: ts.Add(-4 * time.Minute),
+			End:   ts.Add(-time.Minute),
+		}},
+	}
+}
+
 // successResponseFor returns a successful response of the type that the codec expects for the request.
 func successResponseFor(req queryrangebase.Request) queryrangebase.Response {
 	if _, ok := req.(*LokiInstantRequest); ok {
@@ -212,6 +228,12 @@ func TestSerializeRoundTripperStripsClientHints(t *testing.T) {
 		require.Empty(t, got.(*LokiRequest).HintRanges)
 	})
 
+	t.Run("clears the hint ranges a client sends with an instant request", func(t *testing.T) {
+		got := roundTrip(t, instantRequestWithHintRanges())
+
+		require.Empty(t, got.(*LokiInstantRequest).HintRanges)
+	})
+
 	t.Run("clears the data-object options a client sends with a range request", func(t *testing.T) {
 		got := roundTrip(t, dataObjRangeRequest(true))
 
@@ -250,6 +272,12 @@ func TestSerializeHTTPHandlerStripsClientHints(t *testing.T) {
 		got := serve(t, requestWithHintRanges())
 
 		require.Empty(t, got.(*LokiRequest).HintRanges)
+	})
+
+	t.Run("clears the hint ranges a client sends with an instant request", func(t *testing.T) {
+		got := serve(t, instantRequestWithHintRanges())
+
+		require.Empty(t, got.(*LokiInstantRequest).HintRanges)
 	})
 
 	t.Run("clears the data-object options a client sends with a range request", func(t *testing.T) {

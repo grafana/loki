@@ -832,6 +832,25 @@ policy_override_limits:
 	require.Equal(t, float64(2*bytesInMB), rateBytes)
 }
 
+func TestLimits_PolicyChunkIdlePeriodYAML(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+	setDefaultLimitsForYAML(t, defaults)
+
+	var l Limits
+	require.NoError(t, yaml.Unmarshal([]byte(`
+policy_override_limits:
+  backfill:
+    chunk_idle_period: 5m
+`), &l))
+	require.NoError(t, l.Validate())
+
+	overrides := &Overrides{defaultLimits: &l}
+	idle, ok := overrides.PolicyChunkIdlePeriod("tenant1", "backfill")
+	require.True(t, ok)
+	require.Equal(t, 5*time.Minute, idle)
+}
+
 func TestPolicyShardStreams(t *testing.T) {
 	timeOn := true
 	desired := flagext.ByteSize(512 * 1024)
