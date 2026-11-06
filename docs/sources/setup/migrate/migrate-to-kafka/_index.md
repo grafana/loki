@@ -65,7 +65,7 @@ ingester:
 ```
 
 - `ingester.kafka_ingestion.enabled: true` makes this group join the partition ring and start consuming from its assigned Kafka partitions.
-- `ingester.lifecycler.ring.kvstore.prefix` isolates this group's registration in the classic hash ring from your existing ingesters. Every ingester, including Kafka-consuming ones, always registers in the classic hash ring. Giving the new group a different key-value store prefix keeps the distributor's gRPC write path and the querier's classic-ring lookups from ever discovering or routing to them, so they don't receive duplicate gRPC writes.
+- `ingester.lifecycler.ring.kvstore.prefix` isolates this group's registration in the classic hash ring from your existing ingesters. Every ingester, including Kafka-consuming ones, always registers in the classic hash ring. Giving the new group a different key-value store prefix keeps the distributor's gRPC write path from discovering or routing to them, so they don't receive duplicate gRPC writes. It also keeps the querier's classic-ring lookups from discovering them until [step 5](#5-switch-the-query-path-to-the-partition-ring), where you point the querier at the same prefix.
 
 Leave your existing ingesters' configuration unchanged at this point: `kafka_ingestion.enabled` stays `false` (the default), and they keep the default `ingester.lifecycler.ring.kvstore.prefix`.
 
@@ -78,7 +78,7 @@ Roll out this new ingester group before you enable any Kafka writes in the next 
 ### 3. Enable dual-write
 
 On your distributors, set `distributor.kafka_writes_enabled: true` while keeping `distributor.ingester_writes_enabled: true` (the default).
-Additionally, set `ingester.kafka_ingestion.enabled: true` while keeping it `false` on the existing ingester group. This means, that the old ingester group and the distributors cannot share the same config file. (Not setting this would cause the error `kafka enabled in distributor but not in ingester` on startup.)
+Additionally, set `ingester.kafka_ingestion.enabled: true` while keeping it `false` on the existing ingester group. This means that the old ingester group and the distributors cannot share the same config file. (Not setting this would cause the error `kafka is enabled in distributor but not in ingester` on startup.)
 
 ```yaml
 # Distributor config
@@ -112,7 +112,7 @@ Keep both ingester groups running for this entire step. Budget at least `querier
 Only move to the next step after both of these are true:
 
 - The metrics above have looked healthy for a representative period, for example a few hours or a full day of traffic.
-- The time since you deployed your Kafka-consuming ingesters is at least as long as your `querier.query_ingesters_within` setting.
+- The time since dual-write was fully rolled out to all distributors is at least as long as your `querier.query_ingesters_within` setting.
 
 ### 5. Switch the query path to the partition ring
 
