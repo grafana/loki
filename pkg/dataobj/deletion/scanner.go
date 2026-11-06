@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -60,17 +61,23 @@ func NewScanner(bucket objstore.BucketReader, indexPrefix string, maxOpenFiles i
 // List returns the file list of tenant at now. The list holds the sorted
 // paths of all log objects and index objects of tenant that were last
 // modified at least [MinObjectAge] before now. The paths are relative to the
-// bucket of the Scanner.
+// bucket of the Scanner. List does not include ToCs.
 //
-// Compacted objects have the tenant in their path, so List includes them
-// without opening them. Ingest objects have no tenant in their path. List
-// opens each of them and includes it only if tenant is its only tenant. List
-// logs an ingest object that holds tenant together with other tenants, and
-// does not include it.
+// List finds two kinds of objects:
 //
-// List does not include ToCs. It returns an error if it cannot open an ingest
-// object, or if the bucket does not report the modification time of an
-// object.
+//   - Compacted objects. The compactor writes them to
+//     objects/tenants/<tenant>/ and <indexPrefix>/indexes/tenants/<tenant>/.
+//     List includes them without opening them.
+//   - Ingest objects. The uploader and the index builder write them to
+//     objects/<prefix>/ and <indexPrefix>/indexes/<prefix>/, where prefix is
+//     the first hex characters of a content hash. Their path holds no tenant,
+//     so List opens each of them to read its tenants. List includes an
+//     ingest object only if tenant is its only tenant. It logs an ingest
+//     object that holds tenant together with other tenants, and does not
+//     include it.
+//
+// List returns an error if it cannot open an ingest object, or if the bucket
+// does not report the modification time of an object.
 func (s *Scanner) List(ctx context.Context, tenant string, now time.Time) (FileList, error) {
 	if err := validateTenant(tenant); err != nil {
 		return FileList{}, err
@@ -86,7 +93,7 @@ func (s *Scanner) List(ctx context.Context, tenant string, now time.Time) (FileL
 	g.SetLimit(s.maxOpenFiles)
 
 	sc := &scan{
-		Scanner: s,
+		scanner: s,
 		tenant:  tenant,
 		cutoff:  now.Add(-MinObjectAge),
 		paths:   []string{},
@@ -103,33 +110,39 @@ func (s *Scanner) List(ctx context.Context, tenant string, now time.Time) (FileL
 
 	sc.logSummary()
 	slices.Sort(sc.paths)
-	return FileList{Tenant: tenant, CreatedAt: now, Paths: sc.paths}, nil
+	list := FileList{Tenant: tenant, CreatedAt: now, Paths: sc.paths}
+	// A path can appear twice if the index prefix is inside objects/.
+	if err := list.validate(); err != nil {
+		return FileList{}, fmt.Errorf("scan produced an invalid file list: %w", err)
+	}
+	return list, nil
 }
 
+const metadataPrefetchBytes = 64 << 10
+
 // scan holds the state of one List call.
-//
-// The walk and the open goroutines update paths and the counters, so mu
-// guards them.
 type scan struct {
-	*Scanner
-	tenant string
+	scanner *Scanner
+	tenant  string
 	// cutoff is the latest modification time of an object that the scan
 	// includes.
 	cutoff time.Time
 
-	mu          sync.Mutex
-	paths       []string
-	listed      int
-	tooYoung    int
-	opened      int
-	multiTenant int
+	// The walk and the open goroutines add paths, so mu guards paths.
+	mu    sync.Mutex
+	paths []string
+
+	listed      atomic.Int64
+	tooYoung    atomic.Int64
+	opened      atomic.Int64
+	multiTenant atomic.Int64
 }
 
 // walk searches objects/ and <indexPrefix>/indexes/. It adds each compacted
 // object of the tenant, and calls ingest for each ingest object of any
 // tenant. It skips objects modified after the cutoff.
 func (sc *scan) walk(ctx context.Context, ingest func(path string)) error {
-	for _, root := range []string{"objects", path.Join(sc.indexPrefix, "indexes")} {
+	for _, root := range []string{"objects", path.Join(sc.scanner.indexPrefix, "indexes")} {
 		tenantDir := tenantsDir(root) + sc.tenant + objstore.DirDelim
 		if err := sc.iterFiles(ctx, tenantDir, sc.add); err != nil {
 			return fmt.Errorf("listing compacted objects in %s: %w", tenantDir, err)
@@ -148,63 +161,73 @@ func tenantsDir(root string) string {
 }
 
 // iterIngestObjects calls f for each object below root, except the objects in
-// the tenants directory. It lists root one level deep first, so that it skips
-// the tenants directory without a recursive listing of the compacted objects
-// of every tenant.
+// the tenants directory.
+//
+// iterIngestObjects needs a bucket that lists keys in lexical order, and hash
+// directories that sort before the tenants directory. Otherwise it misses
+// ingest objects without an error. The S3, GCS, Azure and filesystem buckets
+// list in lexical order.
+//
+// It lists root recursively, so that each request returns up to a page of
+// objects from many hash directories. It stops at the first key in the
+// tenants directory, so that it does not list the compacted objects of every
+// tenant. It stops by cancelling the listing context and not by returning an
+// error, because the bucket metrics count an error as a failed operation.
 func (sc *scan) iterIngestObjects(ctx context.Context, root string, f func(path string)) error {
+	listCtx, stop := context.WithCancel(ctx)
+	defer stop()
+
 	skip := tenantsDir(root)
-	return sc.bucket.IterWithAttributes(ctx, root+objstore.DirDelim, func(attrs objstore.IterObjectAttributes) error {
-		switch {
-		case attrs.Name == skip:
-			return nil
-		case strings.HasSuffix(attrs.Name, objstore.DirDelim):
-			return sc.iterFiles(ctx, attrs.Name, f)
-		default:
-			return sc.visit(attrs, f)
+	stopped := false
+	err := sc.scanner.bucket.IterWithAttributes(listCtx, root+objstore.DirDelim, func(attrs objstore.IterObjectAttributes) error {
+		if stopped || strings.HasPrefix(attrs.Name, skip) {
+			stopped = true
+			stop()
+			return listCtx.Err()
 		}
-	}, objstore.WithUpdatedAt())
+		return sc.visit(attrs, f)
+	}, objstore.WithRecursiveIter(), objstore.WithUpdatedAt())
+	if stopped && ctx.Err() == nil {
+		return nil
+	}
+	return err
 }
 
 func (sc *scan) iterFiles(ctx context.Context, dir string, f func(path string)) error {
-	return sc.bucket.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+	return sc.scanner.bucket.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
 		return sc.visit(attrs, f)
 	}, objstore.WithRecursiveIter(), objstore.WithUpdatedAt())
 }
 
 // visit calls f for the object of attrs if it was last modified at or before
-// the cutoff.
+// the cutoff. It skips keys that end in a slash. Some buckets hold such empty
+// placeholder objects for directories, and they are not data objects.
 func (sc *scan) visit(attrs objstore.IterObjectAttributes, f func(path string)) error {
+	if strings.HasSuffix(attrs.Name, objstore.DirDelim) {
+		return nil
+	}
 	modified, ok := attrs.LastModified()
 	if !ok {
 		return fmt.Errorf("bucket did not report the modification time of %s", attrs.Name)
 	}
-
-	sc.mu.Lock()
-	sc.listed++
-	tooYoung := modified.After(sc.cutoff)
-	if tooYoung {
-		sc.tooYoung++
+	sc.listed.Add(1)
+	if modified.After(sc.cutoff) {
+		sc.tooYoung.Add(1)
+		return nil
 	}
-	sc.mu.Unlock()
-
-	if !tooYoung {
-		f(attrs.Name)
-	}
+	f(attrs.Name)
 	return nil
 }
 
 // checkIngestObject opens the ingest object at p and adds it if the tenant is
 // its only tenant.
 func (sc *scan) checkIngestObject(ctx context.Context, p string) error {
-	obj, err := dataobj.FromBucket(ctx, sc.bucket, p, 0)
+	obj, err := dataobj.FromBucket(ctx, sc.scanner.bucket, p, metadataPrefetchBytes)
 	if err != nil {
 		return fmt.Errorf("opening object %s: %w", p, err)
 	}
+	sc.opened.Add(1)
 	tenants := obj.Tenants()
-
-	sc.mu.Lock()
-	sc.opened++
-	sc.mu.Unlock()
 
 	switch {
 	case len(tenants) == 1 && tenants[0] == sc.tenant:
@@ -213,10 +236,8 @@ func (sc *scan) checkIngestObject(ctx context.Context, p string) error {
 		// Every object is expected to hold a single tenant. A section with the
 		// empty tenant holds data of more than one tenant. Logging the object
 		// lets an operator find data that the list does not cover.
-		level.Warn(sc.logger).Log("msg", "skipped object with more than one tenant", "tenant", sc.tenant, "path", p, "tenants", strings.Join(tenants, ","))
-		sc.mu.Lock()
-		sc.multiTenant++
-		sc.mu.Unlock()
+		level.Warn(sc.scanner.logger).Log("msg", "skipped object with more than one tenant", "tenant", sc.tenant, "path", p, "tenants", strings.Join(tenants, ","))
+		sc.multiTenant.Add(1)
 	}
 	return nil
 }
@@ -231,15 +252,16 @@ func (sc *scan) add(p string) {
 // wrong bucket root or index prefix, and the listed count shows that.
 func (sc *scan) logSummary() {
 	sc.mu.Lock()
-	defer sc.mu.Unlock()
-	level.Info(sc.logger).Log(
+	included := len(sc.paths)
+	sc.mu.Unlock()
+	level.Info(sc.scanner.logger).Log(
 		"msg", "listed objects of tenant",
 		"tenant", sc.tenant,
 		"cutoff", sc.cutoff.Format(time.RFC3339),
-		"listed", sc.listed,
-		"too_young", sc.tooYoung,
-		"opened", sc.opened,
-		"multi_tenant", sc.multiTenant,
-		"included", len(sc.paths),
+		"listed", sc.listed.Load(),
+		"too_young", sc.tooYoung.Load(),
+		"opened", sc.opened.Load(),
+		"multi_tenant", sc.multiTenant.Load(),
+		"included", included,
 	)
 }

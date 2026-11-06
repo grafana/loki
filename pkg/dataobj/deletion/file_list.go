@@ -3,12 +3,11 @@ package deletion
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -21,60 +20,53 @@ import (
 
 // FileList is the list of objects that hold data of a tenant at CreatedAt.
 //
-// FileList is stored as JSON. When two writers store a file list for the same
-// tenant, the list with the later CreatedAt wins.
+// When two writers store a file list for the same tenant, the list with the
+// later CreatedAt wins.
 type FileList struct {
-	Tenant    string    `json:"tenant"`
-	CreatedAt time.Time `json:"created_at"`
-	// Paths are sorted and relative to the root of the data object storage.
-	Paths []string `json:"paths"`
+	Tenant    string
+	CreatedAt time.Time
+	// Paths are relative to the root of the data object storage. They are not
+	// empty, are valid UTF-8, and are in strictly increasing order. JSON
+	// replaces invalid UTF-8, so a stored path would not match the object key.
+	Paths []string
 }
 
 // Path returns the object storage path of the file list, relative to the root
 // of the data object storage.
 func (l FileList) Path() string {
-	return "deletion/" + l.Tenant + "/files.json"
+	return fileListPath(l.Tenant)
+}
+
+func (l FileList) header() fileListHeader {
+	return fileListHeader{Version: fileListVersion, Tenant: l.Tenant, CreatedAt: l.CreatedAt}
 }
 
 func (l FileList) validate() error {
-	if err := validateTenant(l.Tenant); err != nil {
-		return err
+	if err := l.header().validate(); err != nil {
+		return fmt.Errorf("invalid file list: %w", err)
 	}
-	if l.CreatedAt.IsZero() {
-		return errors.New("file list creation time must be set")
+	for i, p := range l.Paths {
+		if p == "" {
+			return errors.New("file list paths must not be empty")
+		}
+		if !utf8.ValidString(p) {
+			return fmt.Errorf("file list path %q is not valid UTF-8", p)
+		}
+		if i > 0 && p <= l.Paths[i-1] {
+			return fmt.Errorf("file list paths must be in strictly increasing order: %q is not after %q", p, l.Paths[i-1])
+		}
 	}
 	return nil
 }
 
-// checkReplaces returns nil if l may replace stored. It returns
-// errAlreadyStored if stored is the same list as l, and an error that wraps
-// ErrSuperseded if stored is a different list that is not older than l.
-func (l FileList) checkReplaces(stored FileList) error {
-	if stored.Tenant != l.Tenant {
-		return fmt.Errorf("%w: stored file list holds tenant %q, want %q", errUnrecoverable, stored.Tenant, l.Tenant)
-	}
-	if stored.CreatedAt.Equal(l.CreatedAt) && slices.Equal(stored.Paths, l.Paths) {
-		return errAlreadyStored
-	}
+// checkReplaces returns nil if l may replace the stored list with the header
+// stored. It returns an error that wraps ErrSuperseded if the stored list is
+// not older than l. The caller checks that stored holds the tenant of l.
+func (l FileList) checkReplaces(stored fileListHeader) error {
 	if !l.CreatedAt.After(stored.CreatedAt) {
 		return fmt.Errorf("%w: stored file list created at %s", ErrSuperseded, stored.CreatedAt.Format(time.RFC3339Nano))
 	}
 	return nil
-}
-
-// decodeFileList decodes a stored file list. It rejects unknown fields, so
-// that a writer never replaces a list in a format that it does not know.
-func decodeFileList(data []byte) (FileList, error) {
-	if len(data) == 0 {
-		return FileList{}, fmt.Errorf("%w: stored file list is empty", errUnrecoverable)
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	var list FileList
-	if err := dec.Decode(&list); err != nil {
-		return FileList{}, fmt.Errorf("%w: decoding stored file list: %w", errUnrecoverable, err)
-	}
-	return list, nil
 }
 
 func validateTenant(id string) error {
@@ -87,18 +79,9 @@ func validateTenant(id string) error {
 	return nil
 }
 
-// ErrSuperseded means that the stored file list of the tenant is a different
-// list, and its creation time is the same as or later than the creation time
-// of the list to write.
+// ErrSuperseded means that the stored file list of the tenant has the same or
+// a later creation time than the list to write.
 var ErrSuperseded = errors.New("stored file list is not older than the file list to write")
-
-var (
-	// errUnrecoverable marks a write error that retrying cannot fix.
-	errUnrecoverable = errors.New("unrecoverable file list error")
-	// errAlreadyStored means that the stored file list is the list to write,
-	// for example because a previous attempt wrote it and lost the response.
-	errAlreadyStored = errors.New("file list is already stored")
-)
 
 // FileListWriter stores file lists in a data object bucket.
 //
@@ -127,19 +110,22 @@ func NewFileListWriter(bucket objstore.Bucket, backoffCfg backoff.Config, logger
 // no list is stored yet. Two concurrent first writes to S3 both succeed, and
 // the last one wins.
 //
-// If the stored file list is a different list that is not older than list,
-// Write leaves it unchanged and returns an error that wraps ErrSuperseded. If
-// the stored file list is equal to list, Write returns nil.
+// If the stored list is not older than list, Write leaves it unchanged and
+// returns an error that wraps ErrSuperseded. The stored list can be the list
+// that a previous attempt of the same call wrote before it lost the response.
+// The stored state is correct in that case too, so Write does not tell the
+// two cases apart.
 //
-// Write retries a failed write with the backoff config of the writer. It does
-// not retry if the stored file list is empty, malformed, or belongs to another
-// tenant.
+// Write reads only the header of the stored list. It retries a failed write
+// with the backoff config of the writer. It does not retry if the stored
+// header is malformed, holds another tenant, or has an unknown version. The
+// error then wraps ErrMalformedFileList.
 func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 	if err := list.validate(); err != nil {
 		return err
 	}
 
-	encoded, err := json.Marshal(list)
+	encoded, err := encodeFileList(list)
 	if err != nil {
 		return fmt.Errorf("encoding file list: %w", err)
 	}
@@ -160,15 +146,12 @@ func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 
 		switch {
 		case err == nil:
-			level.Info(logger).Log("msg", "wrote file list", "paths", len(list.Paths))
-			return nil
-		case errors.Is(err, errAlreadyStored):
-			level.Info(logger).Log("msg", "file list is already stored")
+			level.Info(logger).Log("msg", "wrote file list", "paths", len(list.Paths), "bytes", len(encoded))
 			return nil
 		case errors.Is(err, ErrSuperseded):
 			level.Info(logger).Log("msg", "skipped file list write: stored file list is not older", "err", err)
 			return err
-		case errors.Is(err, errUnrecoverable):
+		case errors.Is(err, ErrMalformedFileList):
 			level.Error(logger).Log("msg", "file list write failed unrecoverably", "err", err)
 			return err
 		case ctx.Err() != nil:
@@ -190,16 +173,11 @@ func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 }
 
 // checkStored returns nil if list may replace the stored file list read from
-// r. It reads r in full before it decodes, so that a read error stays
-// retryable.
+// r.
 func checkStored(r io.Reader, list FileList) error {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return fmt.Errorf("reading stored file list: %w", err)
-	}
-	stored, err := decodeFileList(data)
+	dec, err := newFileListDecoder(r, list.Tenant)
 	if err != nil {
 		return err
 	}
-	return list.checkReplaces(stored)
+	return list.checkReplaces(dec.header)
 }

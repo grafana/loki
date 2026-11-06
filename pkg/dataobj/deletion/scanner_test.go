@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
@@ -19,12 +20,18 @@ import (
 )
 
 func TestNewScanner(t *testing.T) {
-	t.Run("returns an error when max open files is less than one", func(t *testing.T) {
-		for _, maxOpenFiles := range []int{0, -1} {
-			_, err := NewScanner(newFileBucket(t), "index/v0", maxOpenFiles, log.NewNopLogger())
+	for _, tc := range []struct {
+		name         string
+		maxOpenFiles int
+	}{
+		{"returns an error when max open files is zero", 0},
+		{"returns an error when max open files is negative", -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewScanner(newFileBucket(t), "index/v0", tc.maxOpenFiles, log.NewNopLogger())
 			require.ErrorContains(t, err, "max open files")
-		}
-	})
+		})
+	}
 
 	t.Run("returns an error when the bucket does not report modification times", func(t *testing.T) {
 		_, err := NewScanner(objstore.NewInMemBucket(), "index/v0", 2, log.NewNopLogger())
@@ -54,7 +61,7 @@ func TestScanner_List(t *testing.T) {
 		bucket.put(t, "index/v0/indexes/00/single-a", objectBytes(t, "a"), old)
 		bucket.put(t, "index/v0/indexes/01/multi-a-b", objectBytes(t, "a", "b"), old)
 		bucket.put(t, "index/v0/tocs/2026-11-04T00_00_00Z/a/toc.toc", notADataObject, old)
-		bucket.put(t, "deletion/a/files.json", notADataObject, old)
+		bucket.put(t, "deletion/a/files.jsonl.gz", notADataObject, old)
 
 		list, err := newTestScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
 		require.NoError(t, err)
@@ -66,11 +73,13 @@ func TestScanner_List(t *testing.T) {
 		}, list.Paths)
 	})
 
-	t.Run("logs skipped ingest objects that hold the tenant with other tenants", func(t *testing.T) {
+	t.Run("logs skipped ingest objects that hold the tenant with other tenants and a summary of the scan", func(t *testing.T) {
 		bucket := newFileBucket(t)
+		bucket.put(t, "objects/01/single-a", objectBytes(t, "a"), old)
 		bucket.put(t, "objects/02/multi-a-b", objectBytes(t, "a", "b"), old)
 		bucket.put(t, "objects/03/multi-b-c", objectBytes(t, "b", "c"), old)
 		bucket.put(t, "objects/04/empty-tenant", objectBytes(t, ""), old)
+		bucket.put(t, "objects/05/young", notADataObject, now)
 
 		var logs bytes.Buffer
 		scanner, err := NewScanner(bucket, "index/v0", 2, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
@@ -78,10 +87,11 @@ func TestScanner_List(t *testing.T) {
 
 		list, err := scanner.List(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Empty(t, list.Paths)
+		require.Equal(t, []string{"objects/01/single-a"}, list.Paths)
 		require.Contains(t, logs.String(), "path=objects/02/multi-a-b")
 		require.Contains(t, logs.String(), "path=objects/04/empty-tenant")
 		require.NotContains(t, logs.String(), "path=objects/03/multi-b-c")
+		require.Contains(t, logs.String(), "listed=5 too_young=1 opened=4 multi_tenant=2 included=1")
 	})
 
 	t.Run("returns the tenant and the scan time in the file list", func(t *testing.T) {
@@ -132,6 +142,85 @@ func TestScanner_List(t *testing.T) {
 		}, list.Paths)
 	})
 
+	t.Run("lists each root with one recursive listing and the tenant directory with another", func(t *testing.T) {
+		files := newFileBucket(t)
+		files.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
+		files.put(t, "objects/01/single-b", objectBytes(t, "b"), old)
+		files.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
+		bucket := &listRecordingBucket{fileBucket: files}
+
+		_, err := newTestScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		require.NoError(t, err)
+		require.Equal(t, []string{
+			"objects/tenants/a/",
+			"objects/",
+			"index/v0/indexes/tenants/a/",
+			"index/v0/indexes/",
+		}, bucket.dirs)
+	})
+
+	t.Run("stops the ingest listing at the first key in the tenants directory", func(t *testing.T) {
+		files := newFileBucket(t)
+		files.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
+		files.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
+		files.put(t, "objects/tenants/c/aa/compacted", notADataObject, old)
+		files.put(t, "index/v0/indexes/00/single-a", objectBytes(t, "a"), old)
+		files.put(t, "index/v0/indexes/tenants/b/bb/compacted", notADataObject, old)
+		files.put(t, "index/v0/indexes/tenants/c/bb/compacted", notADataObject, old)
+		bucket := &listRecordingBucket{fileBucket: files}
+
+		_, err := newTestScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		require.NoError(t, err)
+		require.Equal(t, []string{"objects/00/single-a", "objects/tenants/b/aa/compacted"}, bucket.names["objects/"])
+		require.Equal(t, []string{"index/v0/indexes/00/single-a", "index/v0/indexes/tenants/b/bb/compacted"}, bucket.names["index/v0/indexes/"])
+	})
+
+	t.Run("does not count the stop of the ingest listing as a failed bucket operation", func(t *testing.T) {
+		files := newFileBucket(t)
+		files.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
+		files.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
+		reg := prometheus.NewRegistry()
+		bucket := objstore.WrapWith(files, objstore.BucketMetrics(reg, "test"))
+
+		list, err := newTestScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		require.NoError(t, err)
+		require.Equal(t, []string{"objects/00/single-a"}, list.Paths)
+		require.Zero(t, iterFailures(t, reg))
+	})
+
+	t.Run("does not list ingest objects that sort after the tenants directory", func(t *testing.T) {
+		bucket := newFileBucket(t)
+		bucket.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
+		bucket.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
+		bucket.put(t, "objects/zz/single-a", objectBytes(t, "a"), old)
+
+		list, err := newTestScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		require.NoError(t, err)
+		require.Equal(t, []string{"objects/00/single-a"}, list.Paths)
+	})
+
+	t.Run("skips directory placeholder objects in both listings", func(t *testing.T) {
+		files := newFileBucket(t)
+		files.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
+		files.put(t, "objects/tenants/a/aa/compacted", notADataObject, old)
+		bucket := &placeholderBucket{fileBucket: files, modified: old, placeholders: map[string]string{
+			"objects/":           "objects/00/",
+			"objects/tenants/a/": "objects/tenants/a/aa/",
+		}}
+
+		list, err := newTestScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		require.NoError(t, err)
+		require.Equal(t, []string{"objects/00/single-a", "objects/tenants/a/aa/compacted"}, list.Paths)
+	})
+
+	t.Run("returns an error when the index prefix makes the scan list an object twice", func(t *testing.T) {
+		bucket := newFileBucket(t)
+		bucket.put(t, "objects/indexes/00/single-a", objectBytes(t, "a"), old)
+
+		_, err := newTestScanner(t, bucket, "objects").List(t.Context(), "a", now)
+		require.ErrorContains(t, err, "invalid file list")
+	})
+
 	t.Run("returns an error naming the object when an ingest object cannot be opened", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
@@ -171,13 +260,20 @@ func TestScanner_List(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 	})
 
-	t.Run("returns an error for an empty or unsafe tenant", func(t *testing.T) {
-		scanner := newTestScanner(t, newFileBucket(t), "index/v0")
-		for _, tenant := range []string{"", ".", "..", "a/aa"} {
-			_, err := scanner.List(t.Context(), tenant, now)
-			require.Error(t, err, "tenant %q", tenant)
-		}
-	})
+	for _, tc := range []struct {
+		name   string
+		tenant string
+	}{
+		{"returns an error for an empty tenant", ""},
+		{"returns an error for a current directory tenant", "."},
+		{"returns an error for a parent directory tenant", ".."},
+		{"returns an error for a tenant with a slash", "a/aa"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := newTestScanner(t, newFileBucket(t), "index/v0").List(t.Context(), tc.tenant, now)
+			require.ErrorContains(t, err, "tenant")
+		})
+	}
 }
 
 func newTestScanner(t *testing.T, bucket objstore.BucketReader, indexPrefix string) *Scanner {
@@ -227,6 +323,68 @@ func (b *blockingBucket) IterWithAttributes(ctx context.Context, dir string, f f
 		}
 		return nil
 	}, options...)
+}
+
+// listRecordingBucket records the directory of each listing, and the names
+// that each listing gives to its callback.
+//
+// listRecordingBucket is not safe for concurrent use.
+type listRecordingBucket struct {
+	fileBucket
+	dirs  []string
+	names map[string][]string
+}
+
+func (b *listRecordingBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	b.dirs = append(b.dirs, dir)
+	if b.names == nil {
+		b.names = map[string][]string{}
+	}
+	return b.fileBucket.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		b.names[dir] = append(b.names[dir], attrs.Name)
+		return f(attrs)
+	}, options...)
+}
+
+// placeholderBucket gives an empty directory placeholder object to the
+// callback of a listing of each directory in placeholders, before the other
+// objects. The filesystem bucket cannot hold keys that end in a slash.
+type placeholderBucket struct {
+	fileBucket
+	placeholders map[string]string
+	modified     time.Time
+}
+
+func (b *placeholderBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if name, ok := b.placeholders[dir]; ok {
+		attrs := objstore.IterObjectAttributes{Name: name}
+		attrs.SetLastModified(b.modified)
+		if err := f(attrs); err != nil {
+			return err
+		}
+	}
+	return b.fileBucket.IterWithAttributes(ctx, dir, f, options...)
+}
+
+// iterFailures returns the number of failed iter operations that the bucket
+// metrics in reg counted.
+func iterFailures(t *testing.T, reg *prometheus.Registry) float64 {
+	t.Helper()
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() != "objstore_bucket_operation_failures_total" {
+			continue
+		}
+		for _, m := range family.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "operation" && l.GetValue() == objstore.OpIter {
+					return m.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return 0
 }
 
 // noModTimeBucket reports no modification time for the object name.
