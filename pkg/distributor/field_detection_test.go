@@ -705,6 +705,52 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 	}
 }
 
+func Test_normalizeLogLevel_singleLetterSeverityText(t *testing.T) {
+	for _, tc := range []struct {
+		severityText string
+		want         string
+	}{
+		{severityText: "I", want: constants.LogLevelInfo},
+		{severityText: "i", want: constants.LogLevelInfo},
+		{severityText: "W", want: constants.LogLevelWarn},
+		{severityText: "w", want: constants.LogLevelWarn},
+		{severityText: "E", want: constants.LogLevelError},
+		{severityText: "e", want: constants.LogLevelError},
+	} {
+		t.Run(tc.severityText, func(t *testing.T) {
+			require.Equal(t, tc.want, normalizeLogLevel(tc.severityText))
+		})
+	}
+}
+
+func Test_extractLogLevel_normalizesSingleLetterOTLPSeverityText(t *testing.T) {
+	for _, tc := range []struct {
+		severityText   string
+		severityNumber plog.SeverityNumber
+		want           string
+	}{
+		{severityText: "I", severityNumber: plog.SeverityNumberInfo, want: constants.LogLevelInfo},
+		{severityText: "W", severityNumber: plog.SeverityNumberWarn, want: constants.LogLevelWarn},
+		{severityText: "E", severityNumber: plog.SeverityNumberError, want: constants.LogLevelError},
+	} {
+		t.Run(tc.severityText, func(t *testing.T) {
+			ld := newFieldDetector(validationContext{discoverLogLevels: true, allowStructuredMetadata: true})
+			entry := logproto.Entry{
+				Line: "a message without a severity word",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: loghttp_push.OTLPSeverityText, Value: tc.severityText},
+					{Name: loghttp_push.OTLPSeverityNumber, Value: fmt.Sprintf("%d", tc.severityNumber)},
+				},
+			}
+			structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+			level, ok := ld.extractLogLevel(labels.EmptyLabels(), structuredMetadata, entry)
+			require.True(t, ok)
+			require.Equal(t, constants.LevelLabel, level.Name)
+			require.Equal(t, tc.want, level.Value)
+		})
+	}
+}
+
 func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 	ld := newFieldDetector(
 		validationContext{
