@@ -178,6 +178,38 @@ func TestExtractLabelMatchers(t *testing.T) {
 		},
 
 		{
+			name:  "case-insensitive regex literal is unsupported",
+			input: `{app="foo"} | device_id=~"(?i)value"`,
+			expect: []v1.LabelMatcher{
+				v1.UnsupportedLabelMatcher{},
+			},
+		},
+
+		{
+			name:  "case-insensitive regex with char class is unsupported",
+			input: `{app="foo"} | key1=~"(?i)value[ab]"`,
+			expect: []v1.LabelMatcher{
+				v1.UnsupportedLabelMatcher{},
+			},
+		},
+
+		{
+			name:  "case-insensitive literal after prefix is unsupported",
+			input: `{app="foo"} | key1=~"a(?i)b"`,
+			expect: []v1.LabelMatcher{
+				v1.UnsupportedLabelMatcher{},
+			},
+		},
+
+		{
+			name:  "case-insensitive char class after prefix is unsupported",
+			input: `{app="foo"} | key1=~"value(?i)[ab]"`,
+			expect: []v1.LabelMatcher{
+				v1.UnsupportedLabelMatcher{},
+			},
+		},
+
+		{
 			name:  "unsupported label matchers",
 			input: `{app="foo"} | key1!="value1"`,
 			expect: []v1.LabelMatcher{
