@@ -49,6 +49,13 @@ This covers the Bloom Planner, Bloom Builder, and Bloom Gateway components and t
 The components and settings still work. Each bloom component logs a deprecation warning on startup.
 The `deprecated-config-checker` tool flags the deprecated settings.
 
+### Breaking change: Limit allowed S3 storage classes
+
+Loki now rejects S3 storage classes other than `STANDARD`, `STANDARD_IA`, and `REDUCED_REDUNDANCY`, such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
+If you have been using such classes, you must switch to a supported class before upgrading.
+
+`REDUCED_REDUNDANCY` is only intended for use with MinIO.
+
 ### Breaking change: Compactor and retention metrics are renamed 
 
 A number of legacy Prometheus metrics prefixed with `loki_boltdb_shipper_*` are renamed to `loki_tsdb_shipper_*`.
