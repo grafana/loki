@@ -62,6 +62,11 @@ type Scheduler struct {
 	connectedFrontendsMu sync.Mutex
 	connectedFrontends   map[string]*connectedFrontend
 
+	// stopCh is closed when the scheduler starts stopping. Every FrontendLoop() selects on it, because a frontend that
+	// is idle never reads from its stream and so cannot be told to disconnect by a message.
+	stopCh   chan struct{}
+	stopOnce sync.Once
+
 	requestQueue *queue.RequestQueue
 	activeUsers  *util.ActiveUsersCleanupService
 
@@ -159,6 +164,7 @@ func NewScheduler(cfg Config, schedulerLimits Limits, log log.Logger, ringManage
 
 		pendingRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
+		stopCh:             make(chan struct{}),
 		queueMetrics:       queueMetrics,
 		ringManager:        ringManager,
 		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, limits.NewQueueLimits(schedulerLimits), queueMetrics),
@@ -258,10 +264,41 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 		}
 	}
 
+	// Receive in a goroutine so that the loop below can also react to the scheduler stopping: an idle frontend never
+	// sends anything, so a blocking Recv() would keep this handler, and with it the gRPC server's graceful stop, alive.
+	// Once this method returns the stream is finished and the pending Recv() fails, so the goroutine does not leak.
+	type received struct {
+		msg *schedulerpb.FrontendToScheduler
+		err error
+	}
+	recvCh := make(chan received)
+	recvDone := make(chan struct{})
+	defer close(recvDone)
+	go func() {
+		for {
+			msg, err := frontend.Recv()
+			select {
+			case recvCh <- received{msg: msg, err: err}:
+			case <-recvDone:
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
 	// We stop accepting new queries in Stopping state. By returning quickly, we disconnect frontends, which in turns
 	// cancels all their queries.
+loop:
 	for s.State() == services.Running {
-		msg, err := frontend.Recv()
+		var in received
+		select {
+		case in = <-recvCh:
+		case <-s.stopCh:
+			break loop // send SHUTTING_DOWN and return, which ends the stream.
+		}
+		msg, err := in.msg, in.err
 		if err != nil {
 			// No need to report this as error, it is expected when query-frontend performs SendClose() (as frontendSchedulerWorker does).
 			if err == io.EOF {
@@ -692,9 +729,12 @@ func (s *Scheduler) notifyFrontendsShuttingDown() {
 
 // Close the Scheduler.
 func (s *Scheduler) stopping(_ error) error {
-	// An idle frontend sits in a blocking Recv() in FrontendLoop() and only learns that the scheduler stopped when it
-	// receives a message, which keeps the gRPC server from stopping gracefully. Tell the frontends first.
-	s.notifyFrontendsShuttingDown()
+	// Wake every FrontendLoop() so it returns and ends its stream, including those of idle frontends.
+	s.stopOnce.Do(func() {
+		if s.stopCh != nil {
+			close(s.stopCh)
+		}
+	})
 
 	// This will also stop the requests queue, which stop accepting new requests and errors out any pending requests.
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)

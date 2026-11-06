@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -114,17 +115,18 @@ func TestFrontendConnectsToRunningSchedulerButBeforeShouldRun(t *testing.T) {
 
 }
 
-// An idle frontend blocks in Recv() inside FrontendLoop(). When the scheduler stops it has to tell the frontend, otherwise
-// the connection stays open and the gRPC server cannot stop gracefully.
-func TestSchedulerStoppingDisconnectsIdleFrontend(t *testing.T) {
-	var s *Scheduler
-	s = &Scheduler{
+// Idle frontends never read from their stream, so telling them that the scheduler is stopping cannot make them
+// disconnect. Every FrontendLoop() has to return by itself when the scheduler stops, one per stream, otherwise the gRPC
+// server cannot stop gracefully.
+func TestSchedulerStoppingEndsIdleFrontendStreams(t *testing.T) {
+	s := &Scheduler{
 		log: util_log.Logger,
 		schedulerRunning: promauto.With(nil).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_query_scheduler_running",
 			Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
 		}),
 		connectedFrontends: map[string]*connectedFrontend{},
+		stopCh:             make(chan struct{}),
 	}
 	var err error
 	s.subservices, err = services.NewManager(services.NewIdleService(nil, nil))
@@ -139,46 +141,59 @@ func TestSchedulerStoppingDisconnectsIdleFrontend(t *testing.T) {
 	require.NoError(t, s.StartAsync(t.Context()))
 	require.NoError(t, s.AwaitRunning(t.Context()))
 
-	frontend := newBlockingFrontendLoopServer("127.0.0.1:9095")
-	loopDone := make(chan error, 1)
-	go func() { loopDone <- s.FrontendLoop(frontend) }()
+	// A frontend opens several streams (scheduler_worker_concurrency) from the same address.
+	const streams = 3
+	frontends := make([]*idleFrontendLoopServer, streams)
+	loopDone := make(chan error, streams)
+	for i := range frontends {
+		frontends[i] = newIdleFrontendLoopServer("127.0.0.1:9095")
+		go func(f *idleFrontendLoopServer) { loopDone <- s.FrontendLoop(f) }(frontends[i])
+	}
+	t.Cleanup(func() {
+		for _, f := range frontends {
+			f.finish()
+		}
+	})
 
-	// Wait for the INIT response, after which the loop is idle in Recv().
-	select {
-	case msg := <-frontend.sent:
-		require.Equal(t, schedulerpb.OK, msg.Status)
-	case <-time.After(5 * time.Second):
-		t.Fatal("scheduler did not answer INIT")
+	// Wait for the INIT response of every stream, after which they are all idle.
+	for _, f := range frontends {
+		select {
+		case msg := <-f.sent:
+			require.Equal(t, schedulerpb.OK, msg.Status)
+		case <-time.After(5 * time.Second):
+			t.Fatal("scheduler did not answer INIT")
+		}
 	}
 
 	s.StopAsync()
 
-	select {
-	case msg := <-frontend.sent:
-		require.Equal(t, schedulerpb.SHUTTING_DOWN, msg.Status)
-	case <-time.After(5 * time.Second):
-		t.Fatal("scheduler stopped without telling the idle frontend that it is shutting down")
+	for range frontends {
+		select {
+		case err := <-loopDone:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("FrontendLoop of an idle frontend did not return after the scheduler stopped")
+		}
 	}
-	select {
-	case err := <-loopDone:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("FrontendLoop did not return after the scheduler stopped")
+	for _, f := range frontends {
+		msg := <-f.sent
+		require.Equal(t, schedulerpb.SHUTTING_DOWN, msg.Status)
 	}
 	require.NoError(t, s.AwaitTerminated(t.Context()))
 }
 
-// blockingFrontendLoopServer plays a frontend that sent INIT and then stays idle: Recv() blocks until the scheduler
-// sends SHUTTING_DOWN, which makes a real frontend close its side of the stream.
-type blockingFrontendLoopServer struct {
+// idleFrontendLoopServer plays a stream of a frontend that sent INIT and then stays idle. Like a real gRPC stream, its
+// Recv() only fails once the handler has returned (finish), never because of anything the scheduler sends.
+type idleFrontendLoopServer struct {
 	mockSchedulerForFrontendFrontendLoopServer
 	sent chan *schedulerpb.SchedulerToFrontend
 	init chan struct{}
 	done chan struct{}
+	once sync.Once
 }
 
-func newBlockingFrontendLoopServer(addr string) *blockingFrontendLoopServer {
-	b := &blockingFrontendLoopServer{
+func newIdleFrontendLoopServer(addr string) *idleFrontendLoopServer {
+	b := &idleFrontendLoopServer{
 		sent: make(chan *schedulerpb.SchedulerToFrontend, 10),
 		init: make(chan struct{}, 1),
 		done: make(chan struct{}),
@@ -195,16 +210,13 @@ func newBlockingFrontendLoopServer(addr string) *blockingFrontendLoopServer {
 	return b
 }
 
-func (b *blockingFrontendLoopServer) Send(msg *schedulerpb.SchedulerToFrontend) error {
+func (b *idleFrontendLoopServer) Send(msg *schedulerpb.SchedulerToFrontend) error {
 	b.sent <- msg
-	if msg.Status == schedulerpb.SHUTTING_DOWN {
-		select {
-		case <-b.done:
-		default:
-			close(b.done)
-		}
-	}
 	return nil
+}
+
+func (b *idleFrontendLoopServer) finish() {
+	b.once.Do(func() { close(b.done) })
 }
 
 func TestProtobufBackwardsCompatibility(t *testing.T) {
