@@ -13,6 +13,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+	"github.com/twmb/franz-go/pkg/kversion"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/plugin/kotel"
 	"github.com/twmb/franz-go/plugin/kprom"
@@ -159,7 +160,16 @@ func (o onlySampledTraces) Inject(ctx context.Context, carrier propagation.TextM
 }
 
 func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger log.Logger) []kgo.Opt {
+	// WarpStream and some other Kafka-protocol-compatible backends close the connection instead of
+	// replying UNSUPPORTED_VERSION when they receive an ApiVersions request newer than they know.
+	// franz-go >= v1.22 negotiates with ApiVersions v5 (KIP-1242), which breaks those backends, so we
+	// cap only the ApiVersions request at v4 while leaving every other request at its stable version.
+	// See https://github.com/grafana/loki/issues/24790.
+	versions := kversion.Stable()
+	versions.SetMaxKeyVersion(kmsg.ApiVersions.Int16(), 4)
+
 	opts := []kgo.Opt{
+		kgo.MaxVersions(versions),
 		kgo.DialTimeout(cfg.DialTimeout),
 
 		// A cluster metadata update is a request sent to a broker and getting back the map of partitions and

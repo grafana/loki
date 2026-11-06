@@ -8,6 +8,8 @@ franz-go is a pure Go Kafka client library. The `kgo` package is the main client
 
 - Never use non-ASCII characters in code or comments, use simple characters instead: dashes, => for arrows, etc.
 - Always run `gofmt` before committing
+- Write "retryable", never "retriable".
+- Do not name Kafka Java classes or methods in comments; "Kafka", "a real broker", or a KIP number is fine.
 - Internal comments should explain WHY we are doing something, not just WHAT we are doing. WHAT comments are almost never useful, unless the block that follows is complex.
 - Comments around subtle race conditions (logic or data) should contain a walkthrough of how the race is encountered. Don't JUST say what the race is, but also how a sequence of events can encounter the race.
 

@@ -45,14 +45,21 @@ func (c *Cluster) handleProduce(creq *clientReq) (kmsg.Response, error) {
 		return nil, err
 	}
 
+	// A fault can answer a partition before the work runs. The work's own
+	// answer for that partition must not add an entry or replace the code.
+	answered := make(map[tp]int)
 	donep := func(t kmsg.ProduceRequestTopic, p kmsg.ProduceRequestTopicPartition, errCode int16, errMsg string) *kmsg.ProduceResponseTopicPartition {
+		ps := tdone[id(t)]
+		if i, ok := answered[tp{t.Topic, p.Partition}]; ok {
+			return &ps[i]
+		}
+		answered[tp{t.Topic, p.Partition}] = len(ps)
 		sp := kmsg.NewProduceResponseTopicPartition()
 		sp.Partition = p.Partition
 		sp.ErrorCode = errCode
 		if req.Version >= 8 && errMsg != "" {
 			sp.ErrorMessage = &errMsg
 		}
-		ps := tdone[id(t)]
 		ps = append(ps, sp)
 		tdone[id(t)] = ps
 		return &ps[len(ps)-1]
@@ -100,18 +107,27 @@ func (c *Cluster) handleProduce(creq *clientReq) (kmsg.Response, error) {
 		if req.Version >= 13 {
 			topic, ok := c.data.id2t[rt.TopicID]
 			if !ok {
-				donet(rt, kerr.UnknownTopicID.Code, "Unknown topic ID.")
+				for _, rp := range rt.Partitions {
+					if e := creq.faults.check(faultKey{topicID: rt.TopicID}.part(rp.Partition)); e != nil {
+						donep(rt, rp, e.Code, e.Message)
+						continue
+					}
+					donep(rt, rp, kerr.UnknownTopicID.Code, "Unknown topic ID.")
+				}
 				continue
 			}
 			rt.Topic = topic
 		}
-		if !c.allowedACL(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationWrite) {
-			donet(rt, kerr.TopicAuthorizationFailed.Code, kerr.TopicAuthorizationFailed.Message)
-			continue
-		}
 		maxMessageBytes := c.data.maxMessageBytes(rt.Topic)
 		for _, rp := range rt.Partitions {
 			pd, ok := c.data.tps.getp(rt.Topic, rp.Partition)
+			k := faultKey{topic: rt.Topic, topicID: rt.TopicID, misrouted: ok && pd.leader != b}
+			if e := c.deny(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationWrite, k.part(rp.Partition)); e != nil {
+				donep(rt, rp, e.Code, e.Message)
+				if creq.skipsWork(e) { // a timed-out append still appends
+					continue
+				}
+			}
 			if !ok {
 				donep(rt, rp, kerr.UnknownTopicOrPartition.Code, "Unknown topic or partition.")
 				continue
@@ -188,6 +204,15 @@ func (c *Cluster) handleProduce(creq *clientReq) (kmsg.Response, error) {
 			var baseOffset, lso int64
 
 			if b.ProducerID >= 0 {
+				// Kafka has the coordinator check a transactional
+				// batch's epoch before it adds or verifies the
+				// partition, and answers a mismatch either way with
+				// INVALID_PRODUCER_EPOCH.
+				if p := c.pids.getpid(b.ProducerID); txnal && p != nil && p.epoch != b.ProducerEpoch {
+					donep(rt, rp, kerr.InvalidProducerEpoch.Code, "")
+					continue
+				}
+
 				// For KIP-890 (v12+), pass pd to implicitly add
 				// the partition to the transaction if not yet added.
 				var implicit *partData
@@ -206,9 +231,10 @@ func (c *Cluster) handleProduce(creq *clientReq) (kmsg.Response, error) {
 					pidinf, window = c.pids.getOrCreateNonTx(b.ProducerID, b.ProducerEpoch, rt.Topic, rp.Partition)
 				}
 
-				// Reject non-transactional produce during an
-				// active transaction.
-				if pidinf != nil && pidinf.inTx && !txnal {
+				// Kafka rejects a non-transactional batch only on a
+				// partition holding the producer's records of a
+				// transaction that is not yet committed or aborted.
+				if _, open := pd.uncommittedPIDs[b.ProducerID]; open && !txnal {
 					errCode = kerr.InvalidTxnState.Code
 				}
 
@@ -216,21 +242,39 @@ func (c *Cluster) handleProduce(creq *clientReq) (kmsg.Response, error) {
 					errCode = kerr.InvalidTxnState.Code
 				}
 
+				// Brokers below 2.5 (KIP-360) reject an append that
+				// continues its sequence into a log that never saw
+				// the producer, transactional or not. 2.5+ accepts
+				// any first sequence for unknown producer state.
+				if errCode == 0 && window != nil && !window.seen && b.FirstSequence != 0 && c.maxVersion(int16(kmsg.InitProducerID)) < 3 {
+					errCode = kerr.UnknownProducerID.Code
+				}
+
+				// KAFKA-15591: if a partition's log has never held a
+				// record, we accept only a first sequence of zero
+				// from a producer we have no state for. Otherwise a
+				// client can have two produces in flight to a just
+				// created partition. We can handle them out of order,
+				// and the earlier one is then lost with no error. A
+				// partition that once held records accepts any first
+				// sequence, even after the records are gone.
+				if errCode == 0 && c.rejectsNeverWrittenNonzeroSeq() && window != nil && !window.seen && b.FirstSequence != 0 && pd.highWatermark == 0 {
+					errCode = kerr.OutOfOrderSequenceNumber.Code
+				}
+
 				if errCode == 0 {
 					switch {
 					case window == nil && b.ProducerEpoch != -1:
 						errCode = kerr.InvalidTxnState.Code
-					case window != nil && b.ProducerEpoch < pidinf.epoch:
+					case window != nil && !txnal && window.seen && b.ProducerEpoch < window.epoch:
+						// Kafka keeps producer state per partition and
+						// rejects only an epoch below the one stored
+						// there. An idempotent producer bumps its epoch
+						// itself (KIP-360), so a partition that has not
+						// yet seen the bump accepts the old epoch. A
+						// higher epoch must restart at sequence 0, see
+						// pushAndValidate.
 						errCode = kerr.InvalidProducerEpoch.Code
-					case window != nil && b.ProducerEpoch > pidinf.epoch:
-						// KIP-360: the real broker accepts any batchEpoch >= storedEpoch
-						// for data batches (ProducerAppendInfo.java:119 -- only rejects
-						// batchEpoch < storedEpoch). Non-txn idempotent producers bump
-						// locally on produce errors; firstSeq==0 is enforced downstream
-						// in pushAndValidate, which returns OOOSN (not InvalidProducerEpoch)
-						// on violation -- matching the broker's error-code semantics.
-						pidinf.epoch = b.ProducerEpoch
-						fallthrough
 					default:
 						var seqOk bool
 						seqOk, dup, baseOffset = window.pushAndValidate(b.ProducerEpoch, b.FirstSequence, b.NumRecords, pd.highWatermark)
