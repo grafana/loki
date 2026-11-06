@@ -45,6 +45,12 @@ const (
 	SignatureVersionV4 = "v4"
 )
 
+// Checksum algorithms supported for upload integrity checking on PutObject.
+const (
+	S3ChecksumAlgorithmSHA256 = "sha256"
+	S3ChecksumAlgorithmNone   = "none"
+)
+
 // S3 error codes returned by the AWS SDK as smithy.APIError values.
 const (
 	errCodeRequestTimeout           = "RequestTimeout"           // 400
@@ -79,20 +85,21 @@ type S3Config struct {
 	S3               flagext.URLValue
 	S3ForcePathStyle bool
 
-	BucketNames      string              `yaml:"bucketnames"`
-	Endpoint         string              `yaml:"endpoint"`
-	Region           string              `yaml:"region"`
-	AccessKeyID      string              `yaml:"access_key_id"`
-	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
-	SessionToken     flagext.Secret      `yaml:"session_token"`
-	Insecure         bool                `yaml:"insecure"`
-	ChunkDelimiter   string              `yaml:"chunk_delimiter"`
-	HTTPConfig       HTTPConfig          `yaml:"http_config"`
-	SignatureVersion string              `yaml:"signature_version"`
-	StorageClass     string              `yaml:"storage_class"`
-	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
-	BackoffConfig    backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
-	DisableDualstack bool                `yaml:"disable_dualstack"`
+	BucketNames       string              `yaml:"bucketnames"`
+	Endpoint          string              `yaml:"endpoint"`
+	Region            string              `yaml:"region"`
+	AccessKeyID       string              `yaml:"access_key_id"`
+	SecretAccessKey   flagext.Secret      `yaml:"secret_access_key"`
+	SessionToken      flagext.Secret      `yaml:"session_token"`
+	Insecure          bool                `yaml:"insecure"`
+	ChunkDelimiter    string              `yaml:"chunk_delimiter"`
+	HTTPConfig        HTTPConfig          `yaml:"http_config"`
+	SignatureVersion  string              `yaml:"signature_version"`
+	StorageClass      string              `yaml:"storage_class"`
+	SSEConfig         bucket_s3.SSEConfig `yaml:"sse"`
+	BackoffConfig     backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
+	DisableDualstack  bool                `yaml:"disable_dualstack"`
+	ChecksumAlgorithm string              `yaml:"checksum_algorithm"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -126,6 +133,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection. This does not affect TLS certificate verification for HTTPS connections; use s3.http.insecure-skip-verify (or s3.http.ca-file) for that.")
 	f.StringVar(&cfg.ChunkDelimiter, prefix+"s3.chunk-delimiter", "", "Delimiter used to replace the default delimiter ':' in chunk IDs when storing chunks. This is mainly intended when you run a MinIO instance on a Windows machine. You must not change this value during operations, otherwise you may not be able to read existing chunks from object storage.")
 	f.BoolVar(&cfg.DisableDualstack, prefix+"s3.disable-dualstack", false, "Disable forcing S3 dualstack endpoint usage.")
+	f.StringVar(&cfg.ChecksumAlgorithm, prefix+"s3.checksum-algorithm", S3ChecksumAlgorithmSHA256, fmt.Sprintf("The checksum algorithm sent with PutObject requests for upload integrity checking. Supported values are: %s, %s. Set to %s to disable sending checksums on uploads, e.g. for S3-compatible backends that mishandle checksum headers. Buckets with Object Lock enabled require a checksum.", S3ChecksumAlgorithmSHA256, S3ChecksumAlgorithmNone, S3ChecksumAlgorithmNone))
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
@@ -146,6 +154,12 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 func (cfg *S3Config) Validate() error {
 	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
 		return errUnsupportedSignatureVersion
+	}
+
+	switch cfg.ChecksumAlgorithm {
+	case "", S3ChecksumAlgorithmSHA256, S3ChecksumAlgorithmNone:
+	default:
+		return fmt.Errorf("unsupported checksum algorithm %q: supported values are %q and %q", cfg.ChecksumAlgorithm, S3ChecksumAlgorithmSHA256, S3ChecksumAlgorithmNone)
 	}
 
 	return storageawscommon.ValidateStorageClass(cfg.StorageClass)
@@ -365,6 +379,13 @@ func s3ClientConfigFunc(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (
 			opts.Credentials = credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
 		}
 
+		if cfg.ChecksumAlgorithm == S3ChecksumAlgorithmNone {
+			// The SDK's default WhenSupported policy would still attach a
+			// CRC32 checksum to uploads; the operator explicitly asked for
+			// no checksums, so only compute one when the API requires it.
+			opts.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		}
+
 		opts.HTTPClient = httpClient
 	}, nil
 }
@@ -540,32 +561,33 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			return err
 		}
 
-		// Pre-compute SHA-256 checksum before calling the SDK so the checksum
-		// is sent as a plain request header (x-amz-checksum-sha256) rather than
-		// as an aws-chunked trailer.
-		//
-		// When ChecksumAlgorithm is set without a pre-computed value, the AWS SDK
-		// v2 switches to trailing-checksum mode which wraps the body in
-		// aws-chunked transfer encoding (Content-Encoding: aws-chunked). This
-		// encoding is an AWS-proprietary protocol that S3-compatible backends
-		// such as OpenStack Swift do not support, causing 501 NotImplemented
-		// errors (grafana/loki#21791).
-		h := sha256.New()
-		if _, err := io.Copy(h, readSeeker); err != nil {
-			return fmt.Errorf("computing sha256 checksum for PutObject: %w", err)
-		}
-		sha256Checksum := base64.StdEncoding.EncodeToString(h.Sum(nil))
-		if _, err := readSeeker.Seek(0, io.SeekStart); err != nil {
-			return fmt.Errorf("rewinding body after checksum computation: %w", err)
+		putObjectInput := &s3.PutObjectInput{
+			Body:         readSeeker,
+			Bucket:       aws.String(a.bucketFromKey(objectKey)),
+			Key:          aws.String(a.rewriteKey(objectKey)),
+			StorageClass: types.StorageClass(a.cfg.StorageClass),
 		}
 
-		putObjectInput := &s3.PutObjectInput{
-			Body:              readSeeker,
-			Bucket:            aws.String(a.bucketFromKey(objectKey)),
-			Key:               aws.String(a.rewriteKey(objectKey)),
-			StorageClass:      types.StorageClass(a.cfg.StorageClass),
-			ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
-			ChecksumSHA256:    aws.String(sha256Checksum),
+		if a.cfg.ChecksumAlgorithm != S3ChecksumAlgorithmNone {
+			// Pre-compute SHA-256 checksum before calling the SDK so the checksum
+			// is sent as a plain request header (x-amz-checksum-sha256) rather than
+			// as an aws-chunked trailer.
+			//
+			// When ChecksumAlgorithm is set without a pre-computed value, the AWS SDK
+			// v2 switches to trailing-checksum mode which wraps the body in
+			// aws-chunked transfer encoding (Content-Encoding: aws-chunked). This
+			// encoding is an AWS-proprietary protocol that S3-compatible backends
+			// such as OpenStack Swift do not support, causing 501 NotImplemented
+			// errors (grafana/loki#21791).
+			h := sha256.New()
+			if _, err := io.Copy(h, readSeeker); err != nil {
+				return fmt.Errorf("computing sha256 checksum for PutObject: %w", err)
+			}
+			putObjectInput.ChecksumAlgorithm = types.ChecksumAlgorithmSha256
+			putObjectInput.ChecksumSHA256 = aws.String(base64.StdEncoding.EncodeToString(h.Sum(nil)))
+			if _, err := readSeeker.Seek(0, io.SeekStart); err != nil {
+				return fmt.Errorf("rewinding body after checksum computation: %w", err)
+			}
 		}
 
 		if a.sseConfig != nil {

@@ -3,6 +3,8 @@ package aws
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +26,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	storageawscommon "github.com/grafana/loki/v3/pkg/storage/common/aws"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -634,6 +637,182 @@ func TestPutObject_SwiftRejects_AWSChunked(t *testing.T) {
 	err = client.PutObject(context.Background(), "logs/chunk-001", bytes.NewReader(body))
 	require.NoError(t, err,
 		"PutObject must succeed against OpenStack Swift (no aws-chunked should be sent)")
+}
+
+// TestPutObject_ChecksumAlgorithmNone verifies the escape hatch from
+// https://github.com/grafana/loki/issues/24206: with checksum_algorithm set
+// to "none", PutObject sends no checksum at all — neither the explicit
+// x-amz-checksum-sha256 header nor the CRC32 the AWS SDK attaches by
+// default — and never falls back to aws-chunked framing. The stored object
+// must be byte-identical to what was sent.
+func TestPutObject_ChecksumAlgorithmNone(t *testing.T) {
+	var capturedReq *http.Request
+	var capturedBody []byte
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedReq = r
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><PutObjectResponse/>`))
+	}))
+	defer ts.Close()
+
+	cfg := S3Config{
+		Endpoint:          ts.URL,
+		BucketNames:       "test-bucket",
+		S3ForcePathStyle:  true,
+		AccessKeyID:       "test-key",
+		SecretAccessKey:   flagext.SecretWithValue("test-secret"),
+		ChecksumAlgorithm: S3ChecksumAlgorithmNone,
+		Inject: func(_ http.RoundTripper) http.RoundTripper {
+			return ts.Client().Transport
+		},
+	}
+
+	client, err := NewS3ObjectClient(cfg, hedging.Config{})
+	require.NoError(t, err)
+
+	body := []byte("chunk payload that must go out without any checksum")
+	err = client.PutObject(context.Background(), "test/key", bytes.NewReader(body))
+	require.NoError(t, err)
+	require.NotNil(t, capturedReq, "server should have received a request")
+
+	for _, h := range []string{
+		"x-amz-checksum-sha256",
+		"x-amz-checksum-sha1",
+		"x-amz-checksum-crc32",
+		"x-amz-checksum-crc32c",
+		"x-amz-checksum-crc64nvme",
+		"x-amz-trailer",
+	} {
+		require.Empty(t, capturedReq.Header.Get(h), "no checksum headers expected with checksum_algorithm: none, found %s", h)
+	}
+
+	require.NotContains(t, capturedReq.Header.Get("Content-Encoding"), "aws-chunked",
+		"PutObject must not use aws-chunked encoding")
+	require.Equal(t, body, capturedBody, "the stored object must be byte-identical to what was sent")
+}
+
+// capturingS3 records the last PutObjectInput handed to the SDK.
+type capturingS3 struct {
+	*s3.Client
+	putInput *s3.PutObjectInput
+}
+
+func (c *capturingS3) PutObject(_ context.Context, params *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	c.putInput = params
+	return &s3.PutObjectOutput{}, nil
+}
+
+// TestPutObject_ChecksumAlgorithmInput asserts on the exact PutObjectInput the
+// client builds for each checksum_algorithm setting: the zero value and an
+// explicit "sha256" both attach a pre-computed SHA-256, while "none" leaves
+// both checksum fields unset. In every case the body must be left readable
+// from the start (the checksum path rewinds the seeker after hashing).
+func TestPutObject_ChecksumAlgorithmInput(t *testing.T) {
+	body := []byte("hello checksum world")
+	sum := sha256.Sum256(body)
+	wantSHA256 := base64.StdEncoding.EncodeToString(sum[:])
+
+	for _, tc := range []struct {
+		name              string
+		checksumAlgorithm string
+		wantChecksum      bool
+	}{
+		{name: "unset defaults to sha256", checksumAlgorithm: "", wantChecksum: true},
+		{name: "explicit sha256", checksumAlgorithm: S3ChecksumAlgorithmSHA256, wantChecksum: true},
+		{name: "none disables the checksum", checksumAlgorithm: S3ChecksumAlgorithmNone, wantChecksum: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &capturingS3{}
+			client := &S3ObjectClient{
+				cfg:         S3Config{BucketNames: "bucket", ChecksumAlgorithm: tc.checksumAlgorithm},
+				bucketNames: []string{"bucket"},
+				S3:          mock,
+				hedgedS3:    mock,
+			}
+
+			err := client.PutObject(context.Background(), "key", bytes.NewReader(body))
+			require.NoError(t, err)
+			require.NotNil(t, mock.putInput)
+
+			if tc.wantChecksum {
+				require.Equal(t, types.ChecksumAlgorithmSha256, mock.putInput.ChecksumAlgorithm)
+				require.NotNil(t, mock.putInput.ChecksumSHA256)
+				require.Equal(t, wantSHA256, aws.ToString(mock.putInput.ChecksumSHA256))
+			} else {
+				require.Empty(t, string(mock.putInput.ChecksumAlgorithm))
+				require.Nil(t, mock.putInput.ChecksumSHA256)
+			}
+
+			got, err := io.ReadAll(mock.putInput.Body)
+			require.NoError(t, err)
+			require.Equal(t, body, got, "the body must be readable in full after checksum handling")
+		})
+	}
+}
+
+// TestS3Config_Validate_ChecksumAlgorithm pins the accepted values for the
+// checksum_algorithm setting: empty (kept for backwards compatibility) and
+// the two supported algorithms; anything else is rejected at startup.
+func TestS3Config_Validate_ChecksumAlgorithm(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		algorithm string
+		wantErr   bool
+	}{
+		{name: "unset is accepted", algorithm: ""},
+		{name: "sha256 is accepted", algorithm: S3ChecksumAlgorithmSHA256},
+		{name: "none is accepted", algorithm: S3ChecksumAlgorithmNone},
+		{name: "md5 is rejected", algorithm: "md5", wantErr: true},
+		{name: "crc32 is rejected", algorithm: "crc32", wantErr: true},
+		{name: "uppercase SHA256 is rejected", algorithm: "SHA256", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := S3Config{
+				SignatureVersion:  SignatureVersionV4,
+				StorageClass:      storageawscommon.StorageClassStandard,
+				ChecksumAlgorithm: tc.algorithm,
+			}
+			err := cfg.Validate()
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestS3ClientConfigFunc_ChecksumCalculation verifies that opting out of
+// checksums also stops the AWS SDK from attaching its default CRC32: with
+// checksum_algorithm: none the client only computes a checksum when the API
+// requires one, while the default configuration leaves the SDK policy
+// untouched.
+func TestS3ClientConfigFunc_ChecksumCalculation(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		checksumAlgorithm string
+		wantWhenRequired  bool
+	}{
+		{name: "none restricts calculation to when required", checksumAlgorithm: S3ChecksumAlgorithmNone, wantWhenRequired: true},
+		{name: "sha256 leaves the SDK default untouched", checksumAlgorithm: S3ChecksumAlgorithmSHA256, wantWhenRequired: false},
+		{name: "unset leaves the SDK default untouched", checksumAlgorithm: "", wantWhenRequired: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fn, err := s3ClientConfigFunc(S3Config{BucketNames: "bucket", ChecksumAlgorithm: tc.checksumAlgorithm}, hedging.Config{}, false)
+			require.NoError(t, err)
+
+			opts := &s3.Options{}
+			fn(opts)
+
+			if tc.wantWhenRequired {
+				require.Equal(t, aws.RequestChecksumCalculationWhenRequired, opts.RequestChecksumCalculation)
+			} else {
+				require.NotEqual(t, aws.RequestChecksumCalculationWhenRequired, opts.RequestChecksumCalculation)
+			}
+		})
+	}
 }
 
 // TestRewriteKey asserts the fix for rewriting using a chunk delimiter
