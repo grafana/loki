@@ -1131,7 +1131,7 @@ func (s *Service) metricRangeUsable(start, end, needleTs time.Time, expr syntax.
 		start, end, time.Minute.Milliseconds(), expr,
 		querybounds.QueryTypeMetricRange, s.cfg.AlignQueriesWithStep,
 	)
-	if qb.ReadStart.Before(s.indexStore.MinDate()) || qb.ReadStart.Before(s.earliestQueryable()) {
+	if qb.ReadStart.Before(s.earliestQueryable()) {
 		return false
 	}
 	if needleTs.After(qb.ReadEnd) {
@@ -1141,13 +1141,17 @@ func (s *Service) metricRangeUsable(start, end, needleTs time.Time, expr syntax.
 	return !qb.ReadEnd.After(ingesterCutoff)
 }
 
-// earliestQueryable is the oldest timestamp a cycle may read:
-// max(startedAt, now-maxLookback).
+// earliestQueryable is the oldest timestamp a metric cycle may read:
+// max(startedAt, now-maxLookback, store min date). Data before the min date
+// has no index coverage, so the live request passes it through.
 func (s *Service) earliestQueryable() time.Time {
 	now := s.nowFn().UTC()
 	earliest := s.startedAt
 	if lookbackStart := now.Add(-s.cfg.MaxLookback); lookbackStart.After(earliest) {
 		earliest = lookbackStart
+	}
+	if minDate := s.indexStore.MinDate(); minDate.After(earliest) {
+		earliest = minDate
 	}
 	return earliest
 }
