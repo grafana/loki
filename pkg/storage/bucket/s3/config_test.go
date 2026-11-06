@@ -92,7 +92,7 @@ func TestConfig_Validate(t *testing.T) {
 					StorageClass: "foo",
 				}
 			},
-			expected: aws.ErrUnsupportedStorageClass,
+			expected: aws.ErrUnsupportedStorageClass("foo"),
 		},
 		"should fail on invalid endpoint prefix": {
 			setup: func() *Config {

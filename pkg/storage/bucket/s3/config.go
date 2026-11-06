@@ -73,7 +73,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.ListObjectsVersion, prefix+"s3.list-objects-version", "", "Use a specific version of the S3 list object API. Supported values are v1 or v2. Default is unset.")
-	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", "", "The S3 storage class to use, not set by default. Details can be found at https://aws.amazon.com/s3/storage-classes/. Supported values are: "+strings.Join(aws.ToStringSlice(aws.SupportedStorageClasses), ", "))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", "", fmt.Sprintf("The S3 storage class to use, not set by default. Details can be found at https://aws.amazon.com/s3/storage-classes/. Supported values are: %s.", strings.Join(aws.ToStringSlice(aws.SupportedStorageClasses), ", ")))
 	f.BoolVar(&cfg.NativeAWSAuthEnabled, prefix+"s3.native-aws-auth-enabled", false, "If enabled, it will use the default authentication methods of the AWS SDK for go based on known environment variables and known AWS config files.")
 	f.Uint64Var(&cfg.PartSize, prefix+"s3.part-size", 0, "The minimum file size in bytes used for multipart uploads. If 0, the value is optimally computed for each object.")
 	f.BoolVar(&cfg.SendContentMd5, prefix+"s3.send-content-md5", false, "If enabled, a Content-MD5 header is sent with S3 Put Object requests. Consumes more resources to compute the MD5, but may improve compatibility with object storage services that do not support checksums.")
@@ -97,8 +97,8 @@ func (cfg *Config) Validate() error {
 	if cfg.STSEndpoint != "" && !util.IsValidURL(cfg.STSEndpoint) {
 		return aws.ErrInvalidSTSEndpoint
 	}
-	if !slices.Contains(aws.ToStringSlice(aws.SupportedStorageClasses), cfg.StorageClass) && cfg.StorageClass != "" {
-		return aws.ErrUnsupportedStorageClass
+	if err := aws.ValidateStorageClass(cfg.StorageClass); err != nil {
+		return err
 	}
 
 	return cfg.SSE.Validate()

@@ -1,9 +1,6 @@
 package aws
 
 import (
-	"fmt"
-	"strings"
-
 	s3_types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/thanos-io/objstore/providers/s3"
 
@@ -27,10 +24,12 @@ func ToStringSlice[T ~string](in []T) []string {
 }
 
 func ValidateStorageClass(storageClass string) error {
+	if storageClass == "" {
+		return nil
+	}
 	storageClasses := ToStringSlice(SupportedStorageClasses)
 	if !util.StringsContain(storageClasses, storageClass) {
-		return fmt.Errorf("unsupported S3 storage class: %s. Supported values: %s", storageClass, strings.Join(storageClasses, ", "))
+		return ErrUnsupportedStorageClass(storageClass)
 	}
-
 	return nil
 }

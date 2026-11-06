@@ -1,8 +1,6 @@
 package aws
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -16,7 +14,7 @@ func TestValidateStorageClass(t *testing.T) {
 	}{
 		"should return error if storage class is invalid": {
 			"foo",
-			fmt.Errorf("unsupported S3 storage class: foo. Supported values: %s", strings.Join(ToStringSlice(SupportedStorageClasses), ", ")),
+			ErrUnsupportedStorageClass("foo"),
 		},
 		"should not return error if storage class is within supported values": {
 			string(s3types.StorageClassStandardIa),

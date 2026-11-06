@@ -6851,7 +6851,7 @@ s3:
 
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
-  # STANDARD_IA
+  # STANDARD_IA.
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 
