@@ -93,6 +93,17 @@ func Test_lineFormatter_Format(t *testing.T) {
 			nil,
 		},
 		{
+			"substr and trunc multi-byte",
+			newMustLineFormatter(
+				`{{.foo | substr 1 3 }} {{ .bar  | trunc 2 }} {{ .bar  | trunc -4 }}`,
+			),
+			labels.FromStrings("foo", "日本語ログ", "bar", "héllo"),
+			0,
+			[]byte("本語 hé éllo"),
+			labels.FromStrings("foo", "日本語ログ", "bar", "héllo"),
+			nil,
+		},
+		{
 			"trim",
 			newMustLineFormatter(
 				`{{.foo | trim }} {{ .bar  | trimAll "op" }} {{ .bar  | trimPrefix "b" }} {{ .bar  | trimSuffix "p" }}`,

@@ -72,6 +72,10 @@ var (
 		"alignLeft":        alignLeft,
 		"alignRight":       alignRight,
 		"b64dec":           base64Decode,
+		// Rune-aware replacements for the sprig versions, which slice by byte
+		// and can cut a multi-byte UTF-8 character.
+		"trunc":  trunc,
+		"substr": substring,
 	}
 
 	// sprig template functions
@@ -80,8 +84,6 @@ var (
 		"lower",
 		"upper",
 		"title",
-		"trunc",
-		"substr",
 		"contains",
 		"hasPrefix",
 		"hasSuffix",
