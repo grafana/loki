@@ -79,6 +79,110 @@ func TestChunkFlushingIdle(t *testing.T) {
 	store.checkData(t, testData)
 }
 
+func TestChunkFlushingPolicyIdle(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.FlushCheckPeriod = 20 * time.Millisecond
+
+	const policyIdle = 100 * time.Millisecond
+	limitsCfg := defaultLimitsTestConfig()
+	limitsCfg.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"backfill": {{Selector: `{__backfill__="true"}`, Priority: 1}},
+	}
+	require.NoError(t, limitsCfg.PolicyStreamMapping.Validate())
+	limitsCfg.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"backfill": {ChunkIdlePeriod: ptr(model.Duration(policyIdle))},
+	}
+
+	store, ing := newTestStoreWithLimits(t, cfg, limitsCfg, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	const userID = "1"
+	backfillLabels := `{__backfill__="true", job="testjob"}`
+	liveLabels := `{job="testjob"}`
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err := ing.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: backfillLabels, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: "backfill"}}},
+		{Labels: liveLabels, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: "live"}}},
+	}})
+	require.NoError(t, err)
+
+	instance, ok := ing.getInstanceByID(userID)
+	require.True(t, ok)
+
+	// The backfill stream is flushed and removed once idle for its policy's
+	// period. The live stream uses the global period, which tests set to
+	// many hours.
+	require.Eventually(t, func() bool {
+		return instance.streams.Len() == 1
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// The live stream must remain in memory.
+	var remaining []string
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+		remaining = append(remaining, s.labels.String())
+		return true, nil
+	})
+	require.Equal(t, []string{liveLabels}, remaining)
+
+	chunks := store.getChunksForUser(userID)
+	require.Len(t, chunks, 1)
+	require.Equal(t, "true", chunks[0].Metric.Get("__backfill__"))
+}
+
+func TestShouldFlushChunk(t *testing.T) {
+	ing := &Ingester{cfg: Config{MaxChunkAge: time.Hour}}
+	newChunk := func(t *testing.T, lastUpdated time.Time, entries ...time.Time) *chunkDesc {
+		c := &chunkDesc{chunk: chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 1500*1024), lastUpdated: lastUpdated}
+		for _, ts := range entries {
+			_, err := c.chunk.Append(&logproto.Entry{Timestamp: ts, Line: "line"})
+			require.NoError(t, err)
+		}
+		return c
+	}
+
+	now := time.Now()
+	for _, tc := range []struct {
+		name           string
+		chunk          *chunkDesc
+		maxIdle        time.Duration
+		expectedFlush  bool
+		expectedReason string
+	}{
+		{
+			name:    "not idle",
+			chunk:   newChunk(t, now.Add(-time.Minute), now),
+			maxIdle: 5 * time.Minute,
+		},
+		{
+			name:           "idle",
+			chunk:          newChunk(t, now.Add(-10*time.Minute), now),
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonIdle,
+		},
+		{
+			name:           "max age",
+			chunk:          newChunk(t, now, now.Add(-2*time.Hour), now),
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonMaxAge,
+		},
+		{
+			name:           "closed",
+			chunk:          &chunkDesc{closed: true, lastUpdated: now},
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonFull,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shouldFlush, reason := ing.shouldFlushChunk(tc.chunk, tc.maxIdle)
+			require.Equal(t, tc.expectedFlush, shouldFlush)
+			require.Equal(t, tc.expectedReason, reason)
+		})
+	}
+}
+
 func TestChunkFlushingShutdown(t *testing.T) {
 	store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
 	testData := pushTestSamples(t, ing)
@@ -1104,13 +1208,17 @@ func (s *testStore) FlushIndexes(_ context.Context) error {
 // Because of this, ensure any WAL directories exist/are cleaned up even when overriding the wal.
 // This is an ugly hook for testing :(
 func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, *Ingester) {
+	return newTestStoreWithLimits(t, cfg, defaultLimitsTestConfig(), walOverride)
+}
+
+func newTestStoreWithLimits(t require.TestingT, cfg Config, limitsCfg validation.Limits, walOverride WAL) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := validation.NewOverrides(limitsCfg, nil)
 	require.NoError(t, err)
 
 	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil, readRingMock, nil)

@@ -401,6 +401,12 @@ type PolicyOverridableLimits struct {
 	// affected by inherit_limits.
 	RejectPartialWrites bool `yaml:"reject_partial_writes" json:"reject_partial_writes" doc:"hidden"`
 
+	// ChunkIdlePeriod overrides -ingester.chunks-idle-period for the policy's streams.
+	// Unset or 0 keeps -ingester.chunks-idle-period.
+	// Note: a very short period may flush too-small chunks.
+	// It is not affected by inherit_limits.
+	ChunkIdlePeriod *model.Duration `yaml:"chunk_idle_period" json:"chunk_idle_period" doc:"hidden"`
+
 	// InheritLimits, when true, makes every unset limit field resolve to the tenant-level value
 	// while still reporting overridden=true, so the policy gets the same limits as the tenant but
 	// tracked in its own bucket. Explicitly set fields take precedence. It applies to
@@ -420,6 +426,9 @@ func (p PolicyOverridableLimits) Validate() error {
 	}
 	if p.ShardStreams != nil && p.ShardStreams.DesiredRate != nil && p.ShardStreams.DesiredRate.Val() < 0 {
 		return errors.New("shard_streams.desired_rate must be >= 0")
+	}
+	if p.ChunkIdlePeriod != nil && *p.ChunkIdlePeriod < 0 {
+		return errors.New("chunk_idle_period must be >= 0")
 	}
 	return nil
 }
@@ -538,6 +547,17 @@ func (o *Overrides) PolicyPerStreamRateLimit(userID, policy string) (RateLimit, 
 func (o *Overrides) PolicyRejectPartialWrites(userID, policy string) bool {
 	pl, ok := o.policyOverride(userID, policy)
 	return ok && pl.RejectPartialWrites
+}
+
+// PolicyChunkIdlePeriod returns how long a chunk of the policy's streams may go without appends
+// before ingesters flush it. It reports false when the policy does not set a positive period.
+// See PolicyOverridableLimits.ChunkIdlePeriod.
+func (o *Overrides) PolicyChunkIdlePeriod(userID, policy string) (time.Duration, bool) {
+	pl, ok := o.policyOverride(userID, policy)
+	if !ok || pl.ChunkIdlePeriod == nil || *pl.ChunkIdlePeriod <= 0 {
+		return 0, false
+	}
+	return time.Duration(*pl.ChunkIdlePeriod), true
 }
 
 // PolicyShardStreams returns the effective shard_streams config for the policy (the tenant config

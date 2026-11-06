@@ -34,6 +34,7 @@ type Limits interface {
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
+	PolicyChunkIdlePeriod(userID, policy string) (time.Duration, bool)
 
 	validation.IngestionPolicyOverrideLimits
 	retention.Limits
