@@ -1034,7 +1034,8 @@ const (
 	hintQueryTypeMetricRange     hintQueryType = "metric_range"
 )
 
-// hintQuery is a validated query used to fetch Loki results and Logline hints.
+// hintQuery is a validated correctness query. A log shape fetches Loki results
+// and Logline hints with it. A metric range runs it with logline live and off.
 // Construct only via newHintQuery, which guarantees expr is the parse of query.
 type hintQuery struct {
 	needle    string
@@ -1063,9 +1064,10 @@ func buildJSONLabelFilterHintQuery(selector, label, value string) string {
 	return fmt.Sprintf("%s | json | %s=%s", selector, label, strconv.Quote(value))
 }
 
-func buildMetricQuery(qt hintQueryType, hq hintQuery) (hintQuery, error) {
+// buildMetricQuery wraps a line-filter query in sum(count_over_time(... [5m0s])).
+func buildMetricQuery(hq hintQuery) (hintQuery, error) {
 	query := fmt.Sprintf("sum(count_over_time(%s [%s]))", hq.query, metricLookback.String())
-	return newHintQuery(qt, hq.needle, query)
+	return newHintQuery(hintQueryTypeMetricRange, hq.needle, query)
 }
 
 // pickHintQuery chooses among SM, stream-label, post-parser JSON, line
@@ -1106,7 +1108,7 @@ func (s *Service) tryMetricHintQuery(selector string, logs []queryEntry, start, 
 	if !ok {
 		return hintQuery{}, false
 	}
-	metric, err := buildMetricQuery(hintQueryTypeMetricRange, hq)
+	metric, err := buildMetricQuery(hq)
 	if err != nil {
 		level.Warn(s.logger).Log(
 			"msg", "failed to build metric hint query; falling back to line filter",

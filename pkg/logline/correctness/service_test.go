@@ -164,7 +164,7 @@ func TestBuildMetricQuery(t *testing.T) {
 	hq, err := newHintQuery(hintQueryTypeLineFilter, "9fA81cD2Ef0077aa", `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	require.NoError(t, err)
 
-	got, err := buildMetricQuery(hintQueryTypeMetricRange, hq)
+	got, err := buildMetricQuery(hq)
 	require.NoError(t, err)
 	require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, got.query)
 	require.Equal(t, hintQueryTypeMetricRange, got.queryType)

@@ -66,3 +66,4 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
 6. **Debug handler consistency**
    - The `/correctness/debug` handler must use the same core logic as `runVerificationCycle`: `buildLineFilterHintQuery` / `buildLabelFilterHintQuery` / `buildJSONLabelFilterHintQuery` + `newHintQuery` for query construction (via `query_type`), `rangeCoversTimestamp` for boundary checks, and `verifyHints` for coverage analysis.
    - Never duplicate or inline these primitives — drift between the debug endpoint and the cycle makes the debug endpoint unreliable for diagnosing correctness failures.
+   - `metric_range` cycles are excluded for now: the handler rejects that `query_type`, so a metric failure cannot be replayed through it. Support is planned for a follow-up.
