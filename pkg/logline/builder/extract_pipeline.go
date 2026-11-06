@@ -34,7 +34,7 @@ type extractItem struct {
 	labels     labels.Labels
 	hasLabels  bool
 	enqueuedAt time.Time
-	ref        recordRef
+	ref        RecordRef
 }
 
 // extractPipeline fans decoded streams out to N competing extract workers over
@@ -48,7 +48,7 @@ type extractItem struct {
 // Lifecycle: workers start at builder construction and exit either when drain
 // closes the queue (flush-time barrier) or when their own ingest fails. The
 // first worker error is latched and: (a) every subsequent enqueue fails fast
-// with it — surfacing through processStream exactly like a serial spill error
+// with it — surfacing through ProcessStream exactly like a serial spill error
 // (running() fails, pod restarts); (b) drain returns it, so a flush racing the
 // error cannot commit offsets for pairs the failed worker dropped.
 type extractPipeline struct {
@@ -119,7 +119,7 @@ func (p *extractPipeline) err() error {
 // failed. Called with builderMtx held (processRecordBatch), and never
 // concurrently with drain: a builder is swapped out under builderMtx before
 // its flush (and thus its drain) starts, so no enqueue can race the close.
-func (p *extractPipeline) enqueue(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
+func (p *extractPipeline) enqueue(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref RecordRef) error {
 	if err := p.err(); err != nil {
 		return err
 	}
@@ -153,7 +153,7 @@ func (p *extractPipeline) enqueue(stream *logproto.Stream, parsedLabels *labels.
 // drain is the flush-time barrier: stop accepting work, wait for every worker
 // to finish its in-flight items and exit, and report the first worker error.
 // Idempotent (close is once-guarded; the error stays latched), so retried
-// prepareIndexes calls and the clear() backstop can all invoke it.
+// prepareIndexes calls and the Clear() backstop can all invoke it.
 func (p *extractPipeline) drain() error {
 	p.closeOnce.Do(func() { close(p.workC) })
 	p.wg.Wait()
