@@ -2,12 +2,26 @@ package logdriver
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 
 	"github.com/gogo/protobuf/proto"
 )
 
+// ErrPayloadUnmarshal reports a frame whose payload could not be unmarshalled.
+// The frame was read in full first, so the stream is still aligned on a frame
+// boundary and decoding can continue with the next one. Every other Decode
+// error leaves the offset unknown.
+var ErrPayloadUnmarshal = errors.New("log entry payload could not be unmarshalled")
+
 const binaryEncodeLen = 4
+
+// maxFrameSize bounds the payload a single frame may declare. Decode sizes its
+// buffer from the length prefix before any protobuf validation, so without this
+// a corrupt frame forces an arbitrary allocation. Matches the limit the
+// gogo/protobuf reader this replaced was constructed with.
+const maxFrameSize uint32 = 1e6
 
 // LogEntryEncoder encodes a LogEntry to a protobuf stream.
 // The stream format is [uint32 big-endian size][protobuf message].
@@ -68,7 +82,13 @@ func (d *logEntryDecoder) Decode(l *LogEntry) error {
 		return err
 	}
 
-	size := int(binary.BigEndian.Uint32(d.lenBuf))
+	// Compared as uint32: on a 32-bit build int(size) would wrap negative and
+	// slip past the bound.
+	frameSize := binary.BigEndian.Uint32(d.lenBuf)
+	if frameSize > maxFrameSize {
+		return fmt.Errorf("log entry frame size %d exceeds maximum %d", frameSize, maxFrameSize)
+	}
+	size := int(frameSize)
 	if len(d.buf) < size {
 		d.buf = make([]byte, size)
 	}
@@ -76,5 +96,8 @@ func (d *logEntryDecoder) Decode(l *LogEntry) error {
 	if _, err := io.ReadFull(d.r, d.buf[:size]); err != nil {
 		return err
 	}
-	return proto.Unmarshal(d.buf[:size], l)
+	if err := proto.Unmarshal(d.buf[:size], l); err != nil {
+		return fmt.Errorf("%w: %w", ErrPayloadUnmarshal, err)
+	}
+	return nil
 }
