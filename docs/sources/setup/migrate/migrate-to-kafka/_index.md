@@ -58,15 +58,16 @@ Apply the following configuration to this new group only:
 ingester:
   kafka_ingestion:
     enabled: true
-  ring:
-    kvstore:
+  lifecycler:
+    ring:
+      kvstore:
       prefix: kafka-ingesters/ # any value different from the default, "collectors/"
 ```
 
 - `ingester.kafka_ingestion.enabled: true` makes this group join the partition ring and start consuming from its assigned Kafka partitions.
-- `ingester.ring.kvstore.prefix` isolates this group's registration in the classic hash ring from your existing ingesters. Every ingester, including Kafka-consuming ones, always registers in the classic hash ring. Giving the new group a different key-value store prefix keeps the distributor's gRPC write path and the querier's classic-ring lookups from ever discovering or routing to them, so they don't receive duplicate gRPC writes.
+- `ingester.lifecycler.ring.kvstore.prefix` isolates this group's registration in the classic hash ring from your existing ingesters. Every ingester, including Kafka-consuming ones, always registers in the classic hash ring. Giving the new group a different key-value store prefix keeps the distributor's gRPC write path and the querier's classic-ring lookups from ever discovering or routing to them, so they don't receive duplicate gRPC writes.
 
-Leave your existing ingesters' configuration unchanged at this point: `kafka_ingestion.enabled` stays `false` (the default), and they keep the default `ring.kvstore.prefix`.
+Leave your existing ingesters' configuration unchanged at this point: `kafka_ingestion.enabled` stays `false` (the default), and they keep the default `ingester.lifecycler.ring.kvstore.prefix`.
 
 {{< admonition type="note" >}}
 Don't change `ingester.kafka_ingestion.partition_ring` settings from their defaults on either ingester group. Every component that participates in the partition ring, the distributor, both ingester groups, and the querier, must agree on the same partition ring key-value store configuration. Only the classic ring prefix above is meant to differ.
