@@ -16,7 +16,7 @@ services:
       <<: *logging
     image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
     entrypoint: sh
-    command: -c 'mkdir -p /data/loki && exec /usr/bin/silo server --console-address :9001 /data'
+    command: -c 'mkdir -p /data/loki /data/automq-data /data/automq-ops /data/mimir-blocks /data/mimir-ruler /data/mimir-alertmanager && exec /usr/bin/silo server --console-address :9001 /data'
     environment:
       - MINIO_ROOT_USER=loki
       - MINIO_ROOT_PASSWORD=supersecret
@@ -25,6 +25,125 @@ services:
       - 9001:9001
     volumes:
       - .data-minio:/data:delegated
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  automq:
+    logging:
+      <<: *logging
+    image: automqinc/automq:1.6.0
+    hostname: automq
+    stop_grace_period: 1m
+    depends_on:
+      silo:
+        condition: service_healthy
+    environment:
+      - KAFKA_S3_ACCESS_KEY=loki
+      - KAFKA_S3_SECRET_KEY=supersecret
+      - KAFKA_HEAP_OPTS=-Xms1g -Xmx2g -XX:MetaspaceSize=96m -XX:MaxDirectMemorySize=1G
+      - CLUSTER_ID=GPULNX8cRyK1QmEYusk0vQ
+    command:
+      - bash
+      - -c
+      - |
+        /opt/automq/kafka/bin/kafka-server-start.sh \
+        /opt/automq/kafka/config/kraft/server.properties \
+        --override cluster.id=$$CLUSTER_ID \
+        --override node.id=0 \
+        --override controller.quorum.voters=0@automq:9093 \
+        --override controller.quorum.bootstrap.servers=automq:9093 \
+        --override listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT \
+        --override listeners=PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:9192 \
+        --override advertised.listeners=PLAINTEXT://automq:9092,HOST://localhost:9092 \
+        --override inter.broker.listener.name=PLAINTEXT \
+        --override log.dirs=/data/kraft \
+        --override s3.telemetry.metrics.exporter.uri='prometheus://?host=0.0.0.0&port=9090' \
+        --override s3.data.buckets='0@s3://automq-data?region=us-east-1&endpoint=http://silo:9000&pathStyle=true' \
+        --override s3.ops.buckets='1@s3://automq-ops?region=us-east-1&endpoint=http://silo:9000&pathStyle=true' \
+        --override s3.wal.path='0@s3://automq-data?region=us-east-1&endpoint=http://silo:9000&pathStyle=true'
+    # The `HOST` listener is published on the standard Kafka port, which the
+    # in-network `PLAINTEXT` listener already holds inside the container.
+    ports:
+      - 9092:9192
+    volumes:
+      - automq-kraft:/data
+
+  # Creates the `loki` topic up front so the partition count is deterministic
+  # rather than whatever the broker's num.partitions happens to be.
+  kafka-init:
+    logging:
+      <<: *logging
+    image: automqinc/automq:1.6.0
+    depends_on:
+      - automq
+    restart: on-failure
+    entrypoint: [ "bash", "-c" ]
+    command:
+      - |
+        until /opt/automq/kafka/bin/kafka-topics.sh --bootstrap-server automq:9092 --list > /dev/null 2>&1; do
+          echo 'waiting for automq to accept connections...'
+          sleep 2
+        done
+        /opt/automq/kafka/bin/kafka-topics.sh --bootstrap-server automq:9092 \
+          --create --if-not-exists --topic loki --partitions 4 --replication-factor 1
+        # An ingester reads its committed offset as it starts, which needs a group
+        # coordinator, and `__consumer_offsets` is only created once something asks
+        # for one. Ask here, or the ingesters race its creation and die on the
+        # COORDINATOR_NOT_AVAILABLE that first request comes back with.
+        for group in ingester-1 ingester-2; do
+          until /opt/automq/kafka/bin/kafka-consumer-groups.sh --bootstrap-server automq:9092 \
+            --describe --group "$$group" > /dev/null 2>&1; do
+            echo "waiting for the group coordinator for $$group..."
+            sleep 2
+          done
+        done
+        /opt/automq/kafka/bin/kafka-topics.sh --bootstrap-server automq:9092 --describe --topic loki
+
+  kafka-ui:
+    logging:
+      <<: *logging
+    image: provectuslabs/kafka-ui:latest
+    depends_on:
+      - automq
+    environment:
+      KAFKA_CLUSTERS_0_NAME: automq
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: automq:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    ports:
+      - 8080:8080
+
+  mimir:
+    logging:
+      <<: *logging
+    image: grafana/mimir:3.2.2
+    command: [ "-config.file=/etc/mimir/mimir.yaml" ]
+    depends_on:
+      silo:
+        condition: service_healthy
+    ports:
+      - 9009:9009
+    volumes:
+      - ./config/mimir.yaml:/etc/mimir/mimir.yaml
+      - .data-mimir:/data:delegated
+
+  alloy:
+    logging:
+      <<: *logging
+    image: grafana/alloy:v1.21.0
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    depends_on:
+      - mimir
+      - automq
+    volumes:
+      - ./config/alloy.alloy:/etc/alloy/config.alloy
+      - alloy-data:/var/lib/alloy/data
 
   memcached:
     logging:
@@ -49,9 +168,14 @@ services:
     image: loki
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18001 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
     depends_on:
-      - ingester-1
-      - ingester-2
-      - consul
+      consul:
+        condition: service_started
+      ingester-1:
+        condition: service_started
+      ingester-2:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
@@ -63,14 +187,22 @@ services:
   ingester-1:
     logging:
       <<: *logging
+    # The partition this ingester consumes is taken from the number on the end
+    # of its instance ID, which defaults to the hostname. Compose would
+    # otherwise leave that as the container ID, which has no partition in it.
+    hostname: ingester-1
     build:
       context:    .
       dockerfile: dev.dockerfile
     image: loki
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18002 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
     depends_on:
-      - consul
-      - silo
+      consul:
+        condition: service_started
+      silo:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
@@ -83,14 +215,22 @@ services:
   ingester-2:
     logging:
       <<: *logging
+    # The partition this ingester consumes is taken from the number on the end
+    # of its instance ID, which defaults to the hostname. Compose would
+    # otherwise leave that as the container ID, which has no partition in it.
+    hostname: ingester-2
     build:
       context:    .
       dockerfile: dev.dockerfile
     image: loki
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18003 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003"]
     depends_on:
-      - consul
-      - silo
+      consul:
+        condition: service_started
+      silo:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
@@ -207,6 +347,7 @@ services:
     depends_on:
       - query-frontend
       - querier
+      - mimir
     environment:
       - GF_PATHS_PROVISIONING=/etc/config/grafana/provisioning
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -215,6 +356,8 @@ services:
       - 3000:3000
     volumes:
       - ./config/datasource.yaml:/etc/config/grafana/provisioning/datasources/ds.yaml
+      - ./config/grafana-dashboards.yaml:/etc/config/grafana/provisioning/dashboards/dashboards.yaml
+      - ./config/dashboards:/var/lib/grafana/dashboards
 
   log-gen:
     logging:
@@ -235,3 +378,7 @@ services:
     command: ["-f", "json", "-l", "-d", "2s"]
     depends_on:
       - distributor
+
+volumes:
+  automq-kraft:
+  alloy-data:

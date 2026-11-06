@@ -4,6 +4,14 @@ datasources:
     type: jaeger
     access: proxy
     url: http://jaeger:16686 
+  - name: Mimir
+    type: prometheus
+    uid: mimir
+    access: proxy
+    url: http://mimir:9009/prometheus
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
   - name: Loki
     type: loki
     access: proxy

@@ -15,6 +15,8 @@ compactor:
   delete_request_store: s3
   working_directory: /data/compactor
 distributor:
+  kafka_writes_enabled: true
+  ingester_writes_enabled: false
   ring:
     kvstore:
       consul:
@@ -41,6 +43,13 @@ ingester:
   chunk_retain_period: 6m
   chunk_target_size: 1.572864e+06
   flush_op_timeout: 10m
+  kafka_ingestion:
+    enabled: true
+    partition_ring:
+      kvstore:
+        consul:
+          host: consul:8500
+        store: consul
   lifecycler:
     heartbeat_period: 10s
     interface_names:
@@ -66,6 +75,13 @@ ingester_client:
   grpc_client_config:
     max_recv_msg_size: 6.7108864e+07
   remote_timeout: 1s
+kafka_config:
+  topic: loki
+  reader_config:
+    address: automq:9092
+  writer_config:
+    address: automq:9092
+  auto_create_topic_enabled: false
 limits_config:
   cardinality_limit: 100000
   ingestion_burst_size_mb: 5
@@ -89,6 +105,7 @@ limits_config:
     - approx_topk
 querier:
   query_ingesters_within: 2h
+  query_partition_ingesters: true
   multi_tenant_queries_enabled: true
   per_request_limits_enabled: true
   max_concurrent: 6
