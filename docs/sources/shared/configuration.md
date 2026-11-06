@@ -1395,6 +1395,12 @@ ingest_limits:
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
 
+  # How often to evict the streams of ingestion policies with a
+  # limits_service_streams_expiry that have been idle for longer than that
+  # expiry.
+  # CLI flag: -ingest-limits.policies-custom-eviction-interval
+  [policies_custom_eviction_interval: <duration> | default = 1m]
+
   # Enable durability for stream sharding. Rate buckets are written to the
   # stream metadata topic and restored from it, which removes the warm-up period
   # after a restart or a partition rebalance during which streams are not
