@@ -334,7 +334,7 @@ func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
 
 			require.Positive(t, xcap.ValueFromRegion[int64](capture, RegionSections, StatMetastoreSectionsDuration))
 			require.Positive(t, xcap.Value[int64](capture, dataobj.StatObjectRequestsGet))
-			require.Positive(t, xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded))
+			require.Positive(t, xcap.Value[int64](capture, dataobj.StatObjectBytesFetched))
 
 			var getIndexesDuration dto.Metric
 			require.NoError(t, mstore.metrics.getIndexesTotalDuration.WithLabelValues(resultSuccess).(prometheus.Histogram).Write(&getIndexesDuration))

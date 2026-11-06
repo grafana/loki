@@ -394,7 +394,7 @@ func TestPlanner_Plan(t *testing.T) {
 		require.NotNil(t, region, "the planner opens its objects in the streams-reader region")
 		require.True(t, region.ParentID().IsZero(), "the region is a root, so its requests count for the streams-reader component")
 		require.Positive(t, xcap.ValueFromRegion[int64](capture, regionStreamsReader, dataobj.StatObjectRequestsGetRange))
-		require.Positive(t, xcap.ValueFromRegion[int64](capture, regionStreamsReader, dataobj.StatObjectBytesDownloaded))
+		require.Positive(t, xcap.ValueFromRegion[int64](capture, regionStreamsReader, dataobj.StatObjectBytesFetched))
 	})
 }
 

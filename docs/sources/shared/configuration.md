@@ -1139,6 +1139,33 @@ dataobj:
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
+  # Caches the byte ranges that the querier reads from log objects and index
+  # objects, in aligned blocks. The cache is enabled when a backend is
+  # configured. It stores the object attributes in the metadata cache when that
+  # is enabled, and in its own backend otherwise.
+  bucket_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is: dataobj.bucket-cache
+    [<cache_config>]
+
+    # Size in bytes of the aligned blocks that the cache stores. Reads are split
+    # into blocks of this size. The maximum is 524288.
+    # CLI flag: -dataobj.bucket-cache.subrange-size
+    [subrange_size: <int> | default = 16000]
+
+    # Maximum number of object attributes to keep in memory. A lookup that
+    # misses goes to the cache backend. 0 disables the in-memory cache.
+    # CLI flag: -dataobj.bucket-cache.attributes-in-memory-max-items
+    [attributes_in_memory_max_items: <int> | default = 50000]
+
+    # Maximum number of requests that one read sends to object storage to fetch
+    # the blocks that the cache does not hold. When the missing blocks need more
+    # requests, the cache merges them and reads the cached blocks between them
+    # again. 0 means no limit.
+    # CLI flag: -dataobj.bucket-cache.max-get-range-subrequests
+    [max_get_range_subrequests: <int> | default = 3]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -2193,6 +2220,7 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom.metas-cache`
+- `dataobj.bucket-cache`
 - `dataobj.metadata-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
@@ -7294,6 +7322,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
+- `dataobj.bucket-cache.memcached`
 - `dataobj.metadata-cache.memcached`
 - `distributor.ring.etcd`
 - `etcd`

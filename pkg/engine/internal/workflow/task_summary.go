@@ -78,7 +78,7 @@ func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPa
 		"pages_pruned", xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned),
 		"pages_downloaded", pagesDownloaded,
 		"pages_bytes_downloaded", bytesDownloaded,
-		"total_bytes_downloaded", xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded),
+		"total_bytes_downloaded", xcap.Value[int64](capture, dataobj.StatObjectBytesFetched),
 
 		// Stage 10 counters.
 		"batches_emitted", xcap.Value[int64](capture, workerstat.TaskRecordsSent),

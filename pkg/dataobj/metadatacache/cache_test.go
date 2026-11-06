@@ -431,7 +431,7 @@ func TestNewCache(t *testing.T) {
 
 		series, err := testutil.GatherAndCount(reg, "loki_dataobj_metadata_cache_hits_total")
 		require.NoError(t, err)
-		require.Equal(t, 3, series, "one series for each kind")
+		require.Equal(t, len(kinds), series, "one series for each kind")
 	})
 
 	t.Run("stopping a cache stops its backend", func(t *testing.T) {

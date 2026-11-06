@@ -46,15 +46,15 @@ func TestMetrics_Record(t *testing.T) {
 		_, metastoreRegion := xcap.StartRegion(ctx, "metastore.Sections")
 		metastoreRegion.Record(dataobj.StatObjectRequestsGet.Observe(1))
 		metastoreRegion.Record(dataobj.StatObjectRequestsGetRange.Observe(3))
-		metastoreRegion.Record(dataobj.StatObjectBytesDownloaded.Observe(100))
+		metastoreRegion.Record(dataobj.StatObjectBytesFetched.Observe(100))
 
 		_, streamsRegion := xcap.StartRegion(ctx, regionStreamsReader)
 		streamsRegion.Record(dataobj.StatObjectRequestsAttributes.Observe(2))
-		streamsRegion.Record(dataobj.StatObjectBytesDownloaded.Observe(30))
+		streamsRegion.Record(dataobj.StatObjectBytesFetched.Observe(30))
 
 		_, logsRegion := xcap.StartRegion(ctx, logs.RegionRead)
 		logsRegion.Record(dataobj.StatObjectRequestsGetRange.Observe(5))
-		logsRegion.Record(dataobj.StatObjectBytesDownloaded.Observe(20))
+		logsRegion.Record(dataobj.StatObjectBytesFetched.Observe(20))
 
 		m := NewMetrics(nil)
 		m.Record(capture)
@@ -122,10 +122,10 @@ func TestMetrics_Record(t *testing.T) {
 
 		_, first := xcap.StartRegion(ctx, "metastore.Sections")
 		first.Record(dataobj.StatObjectRequestsGetRange.Observe(2))
-		first.Record(dataobj.StatObjectBytesDownloaded.Observe(10))
+		first.Record(dataobj.StatObjectBytesFetched.Observe(10))
 		_, second := xcap.StartRegion(ctx, "metastore.GetIndexes")
 		second.Record(dataobj.StatObjectRequestsGetRange.Observe(4))
-		second.Record(dataobj.StatObjectBytesDownloaded.Observe(5))
+		second.Record(dataobj.StatObjectBytesFetched.Observe(5))
 
 		m := NewMetrics(nil)
 		m.Record(capture)
@@ -138,10 +138,10 @@ func TestMetrics_Record(t *testing.T) {
 		ctx, capture := xcap.NewCapture(context.Background(), nil)
 
 		metastoreCtx, root := xcap.StartRegion(ctx, "metastore.Sections")
-		root.Record(dataobj.StatObjectBytesDownloaded.Observe(40))
+		root.Record(dataobj.StatObjectBytesFetched.Observe(40))
 		nestedCtx, nested := xcap.StartRegion(metastoreCtx, "streams.Reader.Read")
 		nested.Record(dataobj.StatObjectRequestsGetRange.Observe(4))
-		nested.Record(dataobj.StatObjectBytesDownloaded.Observe(60))
+		nested.Record(dataobj.StatObjectBytesFetched.Observe(60))
 		_, deeper := xcap.StartRegion(nestedCtx, "pointers.Reader.Read")
 		deeper.Record(dataobj.StatObjectRequestsGet.Observe(1))
 
@@ -160,7 +160,7 @@ func TestMetrics_Record(t *testing.T) {
 
 		_, region := xcap.StartRegion(ctx, "something.else")
 		region.Record(dataobj.StatObjectRequestsGet.Observe(2))
-		region.Record(dataobj.StatObjectBytesDownloaded.Observe(11))
+		region.Record(dataobj.StatObjectBytesFetched.Observe(11))
 
 		m := NewMetrics(nil)
 		m.Record(capture)

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketcache"
 	"github.com/grafana/loki/v3/pkg/dataobj/builder"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -24,6 +25,9 @@ type Config struct {
 	// holds the tables of contents (ToCs) that the resolver refreshes. It is enabled when a backend is
 	// configured.
 	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata region of the log objects and index objects the querier reads, or the entire object if it is tiny. When the ToC resolver is enabled (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables of contents (ToCs) that the resolver refreshes. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
+	// BucketCache caches the byte ranges that the querier reads from log objects and index objects.
+	// It is enabled when a backend is configured.
+	BucketCache bucketcache.Config `yaml:"bucket_cache" doc:"description=Caches the byte ranges that the querier reads from log objects and index objects, in aligned blocks. The cache is enabled when a backend is configured. It stores the object attributes in the metadata cache when that is enabled, and in its own backend otherwise."`
 	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
 	// to the top-level Enabled flag opts the deployment in.
@@ -39,6 +43,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Uploader.RegisterFlagsWithPrefix("dataobj.uploader.", f)
 	cfg.Metastore.RegisterFlags(f)
 	cfg.MetadataCache.RegisterFlagsWithPrefix("dataobj.metadata-cache.", "", f)
+	cfg.BucketCache.RegisterFlagsWithPrefix("dataobj.bucket-cache.", f)
 	cfg.Compaction.RegisterFlags(f)
 	f.StringVar(
 		&cfg.StorageBucketPrefix,
@@ -72,6 +77,9 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 	if err := cfg.Compaction.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.BucketCache.Validate(); err != nil {
 		return err
 	}
 	return nil

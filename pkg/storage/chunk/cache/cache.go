@@ -17,7 +17,7 @@ import (
 // Cache byte arrays by key.
 type Cache interface {
 	Store(ctx context.Context, key []string, buf [][]byte) error
-	Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
+	Fetch(ctx context.Context, keys []string, opts ...Option) (found []string, bufs [][]byte, missing []string, err error)
 	Stop()
 	// GetCacheType returns a string indicating the cache "type" for the purpose of grouping cache usage statistics
 	GetCacheType() stats.CacheType

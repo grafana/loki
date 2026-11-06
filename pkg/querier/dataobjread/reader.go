@@ -375,22 +375,22 @@ func (r *LogReader) recordStats() {
 
 	r.metrics.Record(r.capture)
 
-	// statsFrom sums the downloaded bytes and the opened objects of the regions whose root region
+	// statsFrom sums the fetched bytes and the opened objects of the regions whose root region
 	// belongs to one of the wanted components.
-	statsFrom := func(wanted ...string) (downloadedBytes, compactedObjects, uncompactedObjects int64) {
+	statsFrom := func(wanted ...string) (fetchedBytes, compactedObjects, uncompactedObjects int64) {
 		for root, tree := range r.capture.RootRegions() {
 			if !slices.Contains(wanted, componentForRootRegion(root.Name())) {
 				continue
 			}
 			for _, region := range tree {
 				if region.Name() != metastore.RegionGetIndexes {
-					downloadedBytes += regionInt64(region, dataobj.StatObjectBytesDownloaded)
+					fetchedBytes += regionInt64(region, dataobj.StatObjectBytesFetched)
 				}
 				compactedObjects += regionInt64(region, dataobj.StatObjectsOpenedCompacted)
 				uncompactedObjects += regionInt64(region, dataobj.StatObjectsOpenedUncompacted)
 			}
 		}
-		return downloadedBytes, compactedObjects, uncompactedObjects
+		return fetchedBytes, compactedObjects, uncompactedObjects
 	}
 
 	logsBytes, logsCompacted, logsUncompacted := statsFrom(componentStreamsReader, componentLogsReader)

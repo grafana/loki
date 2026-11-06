@@ -43,7 +43,7 @@ func (m *mockCache) Store(_ context.Context, keys []string, bufs [][]byte) error
 	return nil
 }
 
-func (m *mockCache) Fetch(_ context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (m *mockCache) Fetch(_ context.Context, keys []string, _ ...Option) (found []string, bufs [][]byte, missing []string, err error) {
 	if m.fetchErr != nil {
 		return nil, nil, nil, m.fetchErr
 	}

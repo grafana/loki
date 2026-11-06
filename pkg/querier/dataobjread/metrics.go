@@ -64,11 +64,11 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}),
 		fetchedCompressedBytes: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_fetched_compressed_bytes_total",
-			Help: "Compressed bytes read from object storage for data-object queries, by read-path component. Includes the table of contents, the head prefetch of each object, section metadata and page reads.",
+			Help: "Compressed bytes that data-object queries read through the bucket (optionally via cache), by read-path component. Includes the table of contents, the head prefetch of each object, section metadata and page reads.",
 		}, []string{"component"}),
 		objectStoreRequests: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_object_store_requests_total",
-			Help: "Object-store requests issued for data-object queries, by read-path component and operation (attributes, get, get_range). Counts every request when it is issued, whatever its outcome.",
+			Help: "Requests that data-object queries issue through the bucket (optionally via cache), by read-path component and operation (attributes, get, get_range). Counts every request when it is issued, whatever its outcome.",
 		}, []string{"component", "operation"}),
 		objectStoreRequestsFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_object_store_requests_failed_total",
@@ -119,7 +119,7 @@ func (m *Metrics) Record(capture *xcap.Capture) {
 		}
 
 		for _, r := range tree {
-			t.fetchedCompressedBytes += regionInt64(r, dataobj.StatObjectBytesDownloaded)
+			t.fetchedCompressedBytes += regionInt64(r, dataobj.StatObjectBytesFetched)
 			for i, op := range objectStoreOperations {
 				t.requestsByOperation[i] += regionInt64(r, op.requests)
 				t.failuresByOperation[i] += regionInt64(r, op.failures)

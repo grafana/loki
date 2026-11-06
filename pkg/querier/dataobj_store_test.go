@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"io"
 	stditer "iter"
 	"maps"
 	"math"
@@ -21,8 +22,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketcache"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -147,6 +150,36 @@ func TestWithDataObjMetadataCache(t *testing.T) {
 		got := store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.NotEmpty(t, got)
+	})
+}
+
+func TestDataObjStore_SelectSamples_WithBucketCache(t *testing.T) {
+	randomStream := logproto.Stream{Labels: `{app="a", env="prod"}`, Entries: randomLineEntries(t, 4000, 300)}
+	const query = `sum by (app) (count_over_time({env="prod"} |= "zz" [1m]))`
+
+	newCachedStore := func(t *testing.T) (*testDataObjStore, *getRangeCounter) {
+		counter := &getRangeCounter{}
+		store := newTestDataObjStore(t, []logproto.Stream{randomStream}, withBucketWrapper(func(bucket objstore.Bucket) objstore.Bucket {
+			counter.Bucket = bucket
+			attributes := metadatacache.NewCache(cache.NewMockCache(), 0, metadatacache.KindObjectAttributes, metadatacache.NewMetrics(prometheus.NewRegistry()), nil)
+			cached, err := bucketcache.New(counter, cache.NewMockCache(), attributes, bucketcache.Config{SubrangeSize: bucketcache.DefaultSubrangeSize}, "test", prometheus.NewRegistry())
+			require.NoError(t, err)
+			return cached
+		}))
+		return store, counter
+	}
+
+	t.Run("a second query reads no object ranges from the bucket and returns the same samples", func(t *testing.T) {
+		store, counter := newCachedStore(t)
+
+		fromBucket := store.selectSamples(testCtx(t), query, at(0), at(10))
+		afterFirst := counter.calls.Load()
+		fromCache := store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.NotEmpty(t, fromBucket)
+		require.NotZero(t, afterFirst, "the first query reads the objects from the bucket")
+		require.Equal(t, afterFirst, counter.calls.Load())
+		require.Equal(t, fromBucket, fromCache)
 	})
 }
 
@@ -997,6 +1030,7 @@ type testStoreOptions struct {
 	metadataCache    dataobj.MetadataCache
 	registerer       prometheus.Registerer
 	compactedLayout  bool
+	wrapBucket       func(objstore.Bucket) objstore.Bucket
 }
 
 type testStoreOption func(*testStoreOptions)
@@ -1031,6 +1065,12 @@ func withStreamFilterer(filterer chunk.RequestChunkFilterer) testStoreOption {
 
 func withMetadataCache(metadataCache dataobj.MetadataCache) testStoreOption {
 	return func(o *testStoreOptions) { o.metadataCache = metadataCache }
+}
+
+// withBucketWrapper gives the store a bucket that wraps the one that holds the objects. The metastore
+// keeps the original bucket.
+func withBucketWrapper(wrap func(objstore.Bucket) objstore.Bucket) testStoreOption {
+	return func(o *testStoreOptions) { o.wrapBucket = wrap }
 }
 
 func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testStoreOption) *testDataObjStore {
@@ -1074,8 +1114,12 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 	}
 
 	location := builder.Location()
+	bucket := location.Bucket
+	if options.wrapBucket != nil {
+		bucket = options.wrapBucket(bucket)
+	}
 	chunkStore := &chunkStoreSpy{}
-	store, err := NewDataObjStore(chunkStore, location.Bucket, builder.Metastore(), options.registerer, storeOpts...)
+	store, err := NewDataObjStore(chunkStore, bucket, builder.Metastore(), options.registerer, storeOpts...)
 	require.NoError(t, err)
 
 	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
@@ -1405,4 +1449,15 @@ func (o *shardLayoutOverrides) SortSchemaLabels(string) []string { return nil }
 
 func (o *shardLayoutOverrides) DataObjShardLayout(string) dataobjstreams.ShardLayout {
 	return o.layout
+}
+
+// getRangeCounter counts the GetRange calls that reach the bucket.
+type getRangeCounter struct {
+	objstore.Bucket
+	calls atomic.Int64
+}
+
+func (c *getRangeCounter) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
+	c.calls.Add(1)
+	return c.Bucket.GetRange(ctx, name, offset, length)
 }

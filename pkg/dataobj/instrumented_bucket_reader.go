@@ -25,7 +25,7 @@ import (
 //   - the end of the body.
 //
 // When the caller closes a body, the reader also records the bytes it delivered
-// in [StatObjectBytesDownloaded].
+// in [StatObjectBytesFetched].
 //
 // Other methods, such as Iter and Exists, pass through and record nothing.
 func NewInstrumentedBucketReader(bucket objstore.BucketReader) objstore.BucketReader {
@@ -99,9 +99,9 @@ func (r *instrumentedBucketReader) trackFailure(ctx context.Context, failures *x
 
 // instrumentedReadCloser wraps an [io.ReadCloser] returned by an object-store
 // request and counts the bytes read from it. When the body is closed, it records
-// the total in [StatObjectBytesDownloaded], in the region of the request's
-// context if any. The total reflects the bytes transferred from storage, not the
-// requested range size.
+// the total in [StatObjectBytesFetched], in the region of the request's
+// context if any. The total is the number of bytes the caller read from the body,
+// not the requested range size.
 //
 // The body also records one failure of its request when a read fails with an
 // unexpected error.
@@ -139,7 +139,7 @@ func (rc *instrumentedReadCloser) Read(p []byte) (int, error) {
 
 func (rc *instrumentedReadCloser) Close() error {
 	if rc.n > 0 {
-		rc.region.Record(StatObjectBytesDownloaded.Observe(rc.n))
+		rc.region.Record(StatObjectBytesFetched.Observe(rc.n))
 		rc.n = 0
 	}
 	return rc.inner.Close()

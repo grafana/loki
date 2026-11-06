@@ -15,9 +15,9 @@ func TestNewMetrics(t *testing.T) {
 		NewMetrics(reg)
 
 		for name, wantSeries := range map[string]int{
-			"loki_dataobj_metadata_cache_hits_total":   3,
-			"loki_dataobj_metadata_cache_misses_total": 3,
-			"loki_dataobj_metadata_cache_errors_total": 6,
+			"loki_dataobj_metadata_cache_hits_total":   len(kinds),
+			"loki_dataobj_metadata_cache_misses_total": len(kinds),
+			"loki_dataobj_metadata_cache_errors_total": len(kinds) * len(operations),
 		} {
 			gotSeries, err := testutil.GatherAndCount(reg, name)
 			require.NoError(t, err)
