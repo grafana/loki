@@ -26,6 +26,7 @@ import (
 	lokiclient "github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlstats "github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
@@ -49,6 +50,11 @@ const (
 	metricLookback = 5 * time.Minute
 	// metricStep is the resolution sent with that range query.
 	metricStep = time.Minute
+	// stats.logline.hintStatus values the query frontend reports when the hint
+	// lookup failed, did not finish in time, or was canceled.
+	loglineHintStatusError      = "error"
+	loglineHintStatusIncomplete = "incomplete"
+	loglineHintStatusCanceled   = "canceled"
 )
 
 var (
@@ -455,10 +461,11 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 }
 
 // fetchMetricResults runs the metric query with logline forced on and forced off.
-// Both requests go to the same endpoint. The cycle is correct when the two
-// matrices are equal and the live matrix has a sample greater than zero.
+// Both requests go to the same endpoint. A live hint lookup that failed, did not
+// finish, or was canceled is a cycle error. Otherwise the cycle is correct when
+// the two matrices are equal and the live matrix has a sample greater than zero.
 func (s *Service) fetchMetricResults(ctx context.Context, report CycleReport, hq hintQuery, start, end time.Time, overlapping []store.Meta) (CycleReport, error) {
-	live, off, err := s.queryMetricPair(ctx, hq.query, start, end)
+	live, off, hintStats, err := s.queryMetricPair(ctx, hq.query, start, end)
 	if err != nil {
 		return report, err
 	}
@@ -469,6 +476,16 @@ func (s *Service) fetchMetricResults(ctx context.Context, report CycleReport, hq
 		"off_series", len(off),
 	)
 
+	// The log path returns a failed ProvideHints as a cycle error, so a failed
+	// live lookup is one too.
+	switch hintStatus := hintStats.GetHintStatus(); hintStatus {
+	case loglineHintStatusError, loglineHintStatusIncomplete, loglineHintStatusCanceled:
+		return report, fmt.Errorf("live metric query hint lookup ended %q, outcome %q", hintStatus, hintStats.GetOutcome())
+	}
+
+	// A live request the frontend passed through for another reason (size
+	// gate, unsupported query, logline off, nothing narrowed) is scored too.
+	// It runs the same plan as the off request, so its matrices match.
 	equal := reflect.DeepEqual(live, off)
 	report.Correct = equal && matrixHasPositiveSample(live)
 	s.metrics.totalTests.Inc()
@@ -738,44 +755,50 @@ func (s *Service) queryRange(
 	return nil, "", lastErr
 }
 
-func (s *Service) queryMetricPair(ctx context.Context, query string, start, end time.Time) (live, off loghttp.Matrix, err error) {
+// queryMetricPair returns both matrices and the stats.logline block of the live
+// response, which is nil when the query frontend did not attach one.
+func (s *Service) queryMetricPair(ctx context.Context, query string, start, end time.Time) (live, off loghttp.Matrix, hintStats *logqlstats.Logline, err error) {
 	if end.Before(start) {
 		end = start
 	}
 	var lastErr error
 	for _, idx := range s.shuffledClientIndexes() {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		c := s.lokiClients[idx]
-		live, err = s.queryMetric(ctx, c.live, query, start, end)
+		live, hintStats, err = s.queryMetric(ctx, c.live, query, start, end)
 		if err != nil {
 			lastErr = fmt.Errorf("endpoint %s query metrics live: %w", c.endpoint, err)
 			continue
 		}
-		off, err = s.queryMetric(ctx, c.off, query, start, end)
+		off, _, err = s.queryMetric(ctx, c.off, query, start, end)
 		if err != nil {
 			lastErr = fmt.Errorf("endpoint %s query metrics off: %w", c.endpoint, err)
 			continue
 		}
-		return live, off, nil
+		return live, off, hintStats, nil
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no Loki clients configured")
 	}
-	return nil, nil, lastErr
+	return nil, nil, nil, lastErr
 }
 
-func (s *Service) queryMetric(ctx context.Context, client lokiclient.Client, query string, start, end time.Time) (loghttp.Matrix, error) {
+func (s *Service) queryMetric(ctx context.Context, client lokiclient.Client, query string, start, end time.Time) (loghttp.Matrix, *logqlstats.Logline, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// The query API rejects limit 0. Metric execution does not apply this line cap.
 	resp, err := client.QueryRange(query, s.cfg.LogQueryLimit, start, end, logproto.BACKWARD, metricStep, 0, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return queryResponseMatrix(resp)
+	matrix, err := queryResponseMatrix(resp)
+	if err != nil {
+		return nil, nil, err
+	}
+	return matrix, resp.Data.Statistics.Logline, nil
 }
 
 // metricLiveHeaders and metricOffHeaders are logcli CustomHeaders lines
@@ -1098,8 +1121,9 @@ func (s *Service) tryMetricHintQuery(selector string, logs []queryEntry, start, 
 }
 
 // metricRangeUsable reports whether [start, end] can host a metric check.
-// The 5m range selector reads before the requested start, and step alignment
-// can drop a line in the final partial minute.
+// The 5m range selector reads before the requested start. The read ends at the
+// last step, which step alignment can move before the sampled line or, when
+// the splitter rounds the end up, into the ingester window.
 func (s *Service) metricRangeUsable(start, end, needleTs time.Time, expr syntax.Expr) bool {
 	qb := querybounds.GetQueryBounds(
 		start, end, time.Minute.Milliseconds(), expr,
@@ -1108,7 +1132,11 @@ func (s *Service) metricRangeUsable(start, end, needleTs time.Time, expr syntax.
 	if qb.ReadStart.Before(s.indexStore.MinDate()) || qb.ReadStart.Before(s.earliestQueryable()) {
 		return false
 	}
-	if s.cfg.AlignQueriesWithStep && needleTs.After(end.Truncate(time.Minute)) {
+	if needleTs.After(qb.ReadEnd) {
+		return false
+	}
+	ingesterCutoff := s.nowFn().UTC().Add(-s.cfg.QueryIngestersWithin)
+	if qb.ReadEnd.After(ingesterCutoff) {
 		return false
 	}
 	return true

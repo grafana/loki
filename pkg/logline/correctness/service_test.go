@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -482,10 +483,13 @@ func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
 }
 
 // usableMetricPickRange is a window whose 5m lookback stays after startedAt
-// and the test store's min date.
+// and the test store's min date. It moves svc's clock an hour past the window,
+// so the read also ends before the ingester window.
 func usableMetricPickRange(svc *Service) (time.Time, time.Time) {
 	start := svc.startedAt.Add(time.Hour)
-	return start, start.Add(15 * time.Minute)
+	end := start.Add(15 * time.Minute)
+	svc.nowFn = func() time.Time { return end.Add(time.Hour) }
+	return start, end
 }
 
 // seedMetricPick fixes the RNG so the next pickHintQuery chooses the metric arm.
@@ -530,7 +534,7 @@ func TestPickHintQuery_MetricWindow(t *testing.T) {
 			name:       "lookback before earliest",
 			minDate:    "0001-01-01",
 			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
-			now:        time.Date(2026, 2, 26, 10, 3, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
 			start:      time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
 			end:        time.Date(2026, 2, 26, 10, 15, 0, 0, time.UTC),
 			needleTs:   time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC),
@@ -540,7 +544,7 @@ func TestPickHintQuery_MetricWindow(t *testing.T) {
 			name:       "aligned query drops the final partial minute",
 			minDate:    "0001-01-01",
 			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
-			now:        time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 30, 0, 0, time.UTC),
 			start:      time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC),
 			end:        time.Date(2026, 2, 26, 12, 5, 30, 0, time.UTC),
 			needleTs:   time.Date(2026, 2, 26, 12, 5, 10, 0, time.UTC),
@@ -551,10 +555,33 @@ func TestPickHintQuery_MetricWindow(t *testing.T) {
 			name:       "unaligned query keeps the final partial minute",
 			minDate:    "0001-01-01",
 			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
-			now:        time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 30, 0, 0, time.UTC),
 			start:      time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC),
 			end:        time.Date(2026, 2, 26, 12, 5, 30, 0, time.UTC),
 			needleTs:   time.Date(2026, 2, 26, 12, 5, 10, 0, time.UTC),
+			wantMetric: true,
+		},
+		{
+			// newTestService sets query_ingesters_within to 1m. The end
+			// 11:59:10 is before now-1m (11:59:30), but rounding it up to
+			// 12:00:00 is not.
+			name:       "unaligned end rounds up into the ingester window",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 0, 30, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 11, 44, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 11, 59, 10, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 11, 50, 0, 0, time.UTC),
+			wantMetric: false,
+		},
+		{
+			name:       "unaligned end rounds up to the ingester window start",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 1, 0, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 11, 44, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 11, 59, 10, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 11, 50, 0, 0, time.UTC),
 			wantMetric: true,
 		},
 	}
@@ -656,6 +683,79 @@ func TestRunVerificationCycle_MetricMatricesMismatch(t *testing.T) {
 	})
 	require.False(t, report.Correct)
 	requireMetricIdentity(t, report, needle)
+}
+
+func TestRunVerificationCycle_MetricScoresWhenNotNarrowed(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	same := metricMatrix([]any{1_760_000_000.0, "1"})
+
+	tests := []struct {
+		name string
+		// logline is the live response's stats.logline block. Nil leaves it out.
+		logline map[string]any
+	}{
+		{name: "no logline stats"},
+		{name: "size gate", logline: map[string]any{"outcome": "query_too_small"}},
+		{name: "unsupported query", logline: map[string]any{"outcome": "unsupported_query", "hintStatus": "unsupported"}},
+		{name: "ingester window only", logline: map[string]any{"outcome": "recent_data_only", "hintStatus": "ingester_window"}},
+		{name: "nothing narrowed", logline: map[string]any{"outcome": "time_range_not_indexed", "hintStatus": "ok"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// runUntilMetricCycle requires the cycle not to error.
+			report, _ := runUntilMetricCycle(t, newTestStore(t), base, needle, func(logline string) any {
+				if logline == "live" && tt.logline != nil {
+					return withLogline(same, tt.logline)
+				}
+				return same
+			})
+			// Not narrowed is scored like any other cycle, so equal matrices
+			// with a positive sample are correct.
+			require.Empty(t, report.SkippedReason)
+			require.True(t, report.Correct)
+			requireMetricIdentity(t, report, needle)
+		})
+	}
+}
+
+func TestRunVerificationCycle_MetricErrorsWhenLookupFailed(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	same := metricMatrix([]any{1_760_000_000.0, "1"})
+
+	tests := []struct {
+		name       string
+		hintStatus string
+		outcome    string
+	}{
+		{name: "lookup failed", hintStatus: "error", outcome: "lookup_failed"},
+		{name: "lookup timed out", hintStatus: "incomplete", outcome: "lookup_timeout"},
+		{name: "lookup canceled", hintStatus: "canceled", outcome: "canceled"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Find a seed that picks the metric arm while the lookup succeeds,
+			// then rerun that seed with the failed lookup.
+			var failed atomic.Bool
+			report, svc, seed := runUntilMetricCycleSvc(t, newTestStore(t), base, needle, func(logline string) any {
+				if logline == "live" && failed.Load() {
+					// Some sub-requests can still be narrowed before the lookup fails.
+					return withLogline(same, map[string]any{"outcome": tt.outcome, "hintStatus": tt.hintStatus, "narrowedRequests": 1})
+				}
+				return same
+			})
+			require.True(t, report.Correct)
+
+			failed.Store(true)
+			svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+			_, err := svc.runVerificationCycle(context.Background())
+			require.ErrorContains(t, err, tt.hintStatus)
+			require.ErrorContains(t, err, tt.outcome)
+		})
+	}
 }
 
 type recordedMetricQuery struct {
@@ -762,6 +862,17 @@ func metricMatrix(values ...[]any) map[string]any {
 			"values": values,
 		}},
 	}
+}
+
+// withLogline returns a copy of a metric response's data with a stats.logline
+// block, the way the query frontend reports its logline handling.
+func withLogline(data map[string]any, logline map[string]any) map[string]any {
+	out := make(map[string]any, len(data)+1)
+	for k, v := range data {
+		out[k] = v
+	}
+	out["stats"] = map[string]any{"logline": logline}
+	return out
 }
 
 func requireMetricIdentity(t *testing.T, report CycleReport, needle string) {

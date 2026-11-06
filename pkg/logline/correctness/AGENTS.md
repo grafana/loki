@@ -30,8 +30,8 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
      1-minute step). The chosen path is tried first; on failure the cycle
      falls back to a line-filter needle. The metric arm also falls back when
      the widened `ReadStart` is before `store.MinDate()` or
-     `max(startedAt, now-maxLookback)`, or when `AlignQueriesWithStep` is set
-     and the sampled line is after `end` truncated to the minute.
+     `max(startedAt, now-maxLookback)`, when the sampled line is after
+     `ReadEnd`, or when `ReadEnd` is after `now - query_ingesters_within`.
      JSON fields must be LogQL identifiers, long enough for n-grams,
      `IsVerbatimLineLiteral`, and a substring of the raw line. Keys that
      already exist as stream or SM labels are skipped (`| json` extracts
@@ -48,6 +48,11 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
      `Cache-Control: no-cache`. `Correct` means the two matrices are equal and
      the live matrix has a sample greater than zero. Both empty, or a match of
      only zeros, is incorrect. Overlapping indexes use the widened read bounds.
+     A live `stats.logline.hintStatus` of `error`, `incomplete` or `canceled`
+     is a cycle error, like a failed `ProvideHints` on the log path. A live
+     request the frontend passed through for another reason (size gate,
+     unsupported query, logline off, nothing narrowed) is scored like any
+     other. It runs the same plan as the off request, so it matches.
 
 4. **Operator visibility**
    - Every non-skipped cycle emits a `msg="correctness cycle step"` log at each major step: `picked_range`, `picked_label_value`, `fetched_sample_logs`, `picked_needle`, `fetched_verification_results`.
