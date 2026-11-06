@@ -20,6 +20,11 @@
     per_namespace_label: 'namespace',
     per_job_label: 'job',
 
+    // Regex prefix of the job label value, ahead of the component name. The default matches
+    // jobs named <namespace>/<component>. The Loki Helm chart's ServiceMonitor names jobs
+    // <namespace>/<release>-<component>, which '($namespace)/loki-' matches for release loki.
+    job_prefix: '($namespace)/',
+
     // The Log Formater that is used within the Dashboards (logfmt,json)
     log_format: 'logfmt',
 
