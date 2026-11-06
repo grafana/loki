@@ -1138,10 +1138,7 @@ func (s *Service) metricRangeUsable(start, end, needleTs time.Time, expr syntax.
 		return false
 	}
 	ingesterCutoff := s.nowFn().UTC().Add(-s.cfg.QueryIngestersWithin)
-	if qb.ReadEnd.After(ingesterCutoff) {
-		return false
-	}
-	return true
+	return !qb.ReadEnd.After(ingesterCutoff)
 }
 
 // earliestQueryable is the oldest timestamp a cycle may read:
