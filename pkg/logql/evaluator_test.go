@@ -16,6 +16,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -71,7 +72,7 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 		step:        time.Minute,
 		hintRanges:  hintRanges,
 	}
-	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams)
+	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams, RootContext(sampleExpr, 0))
 	require.NoError(t, err)
 	require.NoError(t, stepEvaluator.Close())
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
@@ -99,7 +100,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 			options := &logproto.DataObjOptions{Eligible: true}
 			params := newParams(t, query).WithDataObjOptions(options)
 
-			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params)
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr), 0))
 			require.NoError(t, err)
 			require.NoError(t, stepEvaluator.Close())
 
@@ -112,7 +113,7 @@ func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
 		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
 		params := newParams(t, queries["a sum of a range aggregation"])
 
-		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params)
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, RootContext(params.GetExpression().(syntax.SampleExpr), 0))
 		require.NoError(t, err)
 		require.NoError(t, stepEvaluator.Close())
 
@@ -648,7 +649,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: "not-a-real-operation",
 		}
 
-		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false)
+		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, iteratorLimits{})
 		require.Error(t, err)
 		require.True(t, *closed)
 	})
@@ -660,7 +661,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: syntax.OpRangeTypeCount,
 		}
 
-		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false)
+		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, iteratorLimits{})
 		require.NoError(t, err)
 		require.False(t, *closed)
 
@@ -681,13 +682,41 @@ func TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace(t *testing.T) {
 		Grouping:  &syntax.Grouping{Groups: []string{"b", "a"}},
 	}
 
-	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ NodeContext) (StepEvaluator, error) {
 		return &emptyEvaluator{}, nil
 	})
 
-	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0)
+	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0, NodeContext{})
 	require.NoError(t, err)
 	require.Equal(t, []string{"b", "a"}, expr.Grouping.Groups)
+}
+
+// TestNewVectorAggEvaluator_SumOfRangeAggregation checks the context handed to the operand of
+// sum(rate(X)). DefaultEvaluator swaps the factory for that shape, so the operand's context is
+// only visible where newVectorAggEvaluator derives it.
+func TestNewVectorAggEvaluator_SumOfRangeAggregation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{"sum", `sum(rate({app="a"}[1m]))`},
+		{"sum by", `sum by (app) (rate({app="a"}[1m]))`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+
+			var got NodeContext
+			nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, nc NodeContext) (StepEvaluator, error) {
+				got = nc
+				return &emptyEvaluator{}, nil
+			})
+
+			_, err = newVectorAggEvaluator(context.Background(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, 0))
+			require.NoError(t, err)
+			require.False(t, got.OutputPreserving())
+		})
+	}
 }
 
 type emptyEvaluator struct{}
@@ -761,7 +790,7 @@ func (l tenantStreamFirstLimits) StreamFirstExecutionEnabled(userID string) bool
 type seriesQuerier struct {
 	series       []logproto.Series
 	sampleParams SelectSampleParams
-	samplesRead  int
+	samplesRead  atomic.Int64
 }
 
 func (q *seriesQuerier) SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error) {
@@ -780,14 +809,14 @@ func (q *seriesQuerier) SelectSamples(_ context.Context, params SelectSamplePara
 // countingSampleIterator counts the samples its caller reads.
 type countingSampleIterator struct {
 	iter.SampleIterator
-	count *int
+	count *atomic.Int64
 }
 
 func (it *countingSampleIterator) Next() bool {
 	if !it.SampleIterator.Next() {
 		return false
 	}
-	*it.count++
+	it.count.Add(1)
 	return true
 }
 
@@ -1059,11 +1088,20 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
-	t.Run("fails with the series limit when a sum nested under a reducing aggregation emits more series than the limit", func(t *testing.T) {
+	t.Run("does not fail with the series limit when a sum nested under a reducing aggregation emits more series than the limit", func(t *testing.T) {
 		const maxSeries = 1
 		querier := &seriesQuerier{series: streamFirstSeries("foo", "bar")}
 
 		_, err := execute(t, limitsWithMaxSeries(maxSeries), querier, `max(sum by (app) (count_over_time({app=~"foo|bar"}[1m])))`, time.Minute)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("fails with the series limit when a sum nested under a series-preserving operator emits more series than the limit", func(t *testing.T) {
+		const maxSeries = 1
+		querier := &seriesQuerier{series: streamFirstSeries("foo", "bar")}
+
+		_, err := execute(t, limitsWithMaxSeries(maxSeries), querier, `sort(sum by (app) (count_over_time({app=~"foo|bar"}[1m])))`, time.Minute)
 
 		require.EqualError(t, err, logqlerr.NewSeriesLimitError(maxSeries).Error())
 	})
@@ -1120,7 +1158,7 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		for _, s := range querier.series {
 			totalSamples += len(s.Samples)
 		}
-		require.Less(t, querier.samplesRead, totalSamples)
+		require.Less(t, int(querier.samplesRead.Load()), totalSamples)
 	})
 
 	t.Run("fails with the pipeline error at the first series that carries an error label without reading the remaining samples", func(t *testing.T) {
@@ -1135,7 +1173,7 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		for _, s := range querier.series {
 			totalSamples += len(s.Samples)
 		}
-		require.Less(t, querier.samplesRead, totalSamples)
+		require.Less(t, int(querier.samplesRead.Load()), totalSamples)
 	})
 
 	t.Run("returns the series that carry an error label when the query keeps errored lines", func(t *testing.T) {
@@ -1164,9 +1202,144 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 	})
 }
 
+func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
+	const (
+		a = `rate({app="a"}[1m])`
+		b = `rate({app="b"}[1m])`
+	)
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  map[string]bool
+	}{
+		{"root", a, map[string]bool{`{app="a"}`: true}},
+		{"sort", `sort(` + a + `)`, map[string]bool{`{app="a"}`: true}},
+		{"sort_desc", `sort_desc(` + a + `)`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal on the right", a + ` * 2`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal on the left", `2 - ` + a, map[string]bool{`{app="a"}`: true}},
+		{"bool comparison with a literal on the right", a + ` > bool 1`, map[string]bool{`{app="a"}`: true}},
+		{"bool comparison with a literal on the left", `1 < bool ` + a, map[string]bool{`{app="a"}`: true}},
+		{"filtering comparison with a literal on the right", a + ` > 1`, map[string]bool{`{app="a"}`: false}},
+		{"filtering comparison with a literal on the left", `1 == ` + a, map[string]bool{`{app="a"}`: false}},
+		{"or", a + ` or ` + b, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+		{"or ignoring no labels", a + ` or ignoring() ` + b, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+		{"or on labels", a + ` or on(app) ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or on no labels", a + ` or on() ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or ignoring labels", a + ` or ignoring(app) ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"and", a + ` and ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"unless", a + ` unless ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"arithmetic between vectors", a + ` + ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"bool comparison between vectors", a + ` > bool ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"group_left", a + ` * on(app) group_left ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"group_right", a + ` * on(app) group_right ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or ignoring no labels with group_left", a + ` or ignoring() group_left ` + b, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"arithmetic with a literal and group_right", a + ` * ignoring() group_right 2`, map[string]bool{`{app="a"}`: false}},
+		{"arithmetic with a literal and group_left", a + ` * on(app) group_left 2`, map[string]bool{`{app="a"}`: false}},
+		{"label_replace", `label_replace(` + a + `, "dst", "$1", "app", "(.*)")`, map[string]bool{`{app="a"}`: false}},
+		{"sum", `sum(` + a + ` * 2)`, map[string]bool{`{app="a"}`: false}},
+		{"avg by", `avg by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"count", `count(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"max without", `max without (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"max", `max(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"min by", `min by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"stddev", `stddev(` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"stdvar by", `stdvar by (app) (` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"topk", `topk(1, ` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"bottomk", `bottomk(1, ` + a + `)`, map[string]bool{`{app="a"}`: false}},
+		{"sort of arithmetic with a literal", `sort(` + a + ` * 2)`, map[string]bool{`{app="a"}`: true}},
+		{"arithmetic with a literal of sort", `sort(` + a + `) * 2`, map[string]bool{`{app="a"}`: true}},
+		{"sort of label_replace", `sort(label_replace(` + a + `, "dst", "$1", "app", "(.*)"))`, map[string]bool{`{app="a"}`: false}},
+		{"sort of a filtering comparison", `sort(` + a + ` > 1)`, map[string]bool{`{app="a"}`: false}},
+		{"sort of topk", `sort(topk(1, ` + a + `))`, map[string]bool{`{app="a"}`: false}},
+		{"or of a filtering comparison", a + ` or (` + b + ` > 1)`, map[string]bool{`{app="a"}`: true, `{app="b"}`: false}},
+		{"or under a filtering comparison", `(` + a + ` or ` + b + `) > 1`, map[string]bool{`{app="a"}`: false, `{app="b"}`: false}},
+		{"or under and", `(` + a + ` or ` + b + `) and rate({app="c"}[1m])`, map[string]bool{`{app="a"}`: false, `{app="b"}`: false, `{app="c"}`: false}},
+		{"arithmetic with a literal of or", `(` + a + ` or ` + b + `) / 2`, map[string]bool{`{app="a"}`: true, `{app="b"}`: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			params, err := NewLiteralParams(tc.query, time.Unix(0, 0), time.Unix(60, 0), time.Minute, 0, logproto.FORWARD, 0, nil, nil)
+			require.NoError(t, err)
+
+			var mu sync.Mutex
+			got := map[string]bool{}
+			ev := NewDefaultEvaluator(nil, 0, 0, NoLimits)
+			var factory SampleEvaluatorFunc
+			factory = func(ctx context.Context, _ SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, nc NodeContext) (StepEvaluator, error) {
+				if e, ok := expr.(*syntax.RangeAggregationExpr); ok {
+					mu.Lock()
+					defer mu.Unlock()
+					got[e.Left.Left.String()] = nc.OutputPreserving()
+					return newReturnVectorEvaluator(nil), nil
+				}
+				return ev.NewStepEvaluator(ctx, factory, expr, p, nc)
+			}
+
+			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, RootContext(expr, 0))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // TestVectorAggEvaluator_Precision checks that the sum() and avg()
 // aggregations of VectorAggEvaluator use Kahan summation, and that avg()
 // switches to an incremental mean when the sum overflows float64.
+func TestVectorAggEvaluator_ShouldFailOnGroupsPastSeriesLimit(t *testing.T) {
+	const maxSeries = 3
+	vec := make(promql.Vector, 0, 10)
+	for i := range 10 {
+		vec = append(vec, promql.Sample{F: 1, Metric: labels.FromStrings("app", "a", "id", fmt.Sprint(i))})
+	}
+
+	for name, tc := range map[string]struct {
+		query   string
+		groups  int
+		wantErr bool
+	}{
+		"groups past the limit":           {query: `sum by (id) (rate({app="a"}[1m]))`, groups: 10, wantErr: true},
+		"groups past the limit with topk": {query: `topk by (id) (1, rate({app="a"}[1m]))`, groups: 10, wantErr: true},
+		"groups at the limit":             {query: `sum by (id) (rate({app="a"}[1m]))`, groups: maxSeries},
+		"one group":                       {query: `sum by (app) (rate({app="a"}[1m]))`, groups: 10},
+	} {
+		t.Run(name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
+				return &returnVectorEvaluator{vec: vec[:tc.groups]}, nil
+			})
+			ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, maxSeries))
+			require.NoError(t, err)
+
+			ok, _, _ := ev.Next()
+			if !tc.wantErr {
+				require.True(t, ok)
+				require.NoError(t, ev.Error())
+				return
+			}
+			require.False(t, ok)
+			require.Equal(t, logqlerr.NewSeriesLimitError(maxSeries), ev.Error())
+			ok, _, _ = ev.Next()
+			require.False(t, ok)
+		})
+	}
+
+	t.Run("not preserving", func(t *testing.T) {
+		expr, err := syntax.ParseSampleExpr(`sum by (id) (rate({app="a"}[1m]))`)
+		require.NoError(t, err)
+		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
+			return &returnVectorEvaluator{vec: vec}, nil
+		})
+		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, maxSeries).child(false))
+		require.NoError(t, err)
+
+		ok, _, _ := ev.Next()
+		require.True(t, ok)
+		require.NoError(t, ev.Error())
+	})
+}
+
 func TestVectorAggEvaluator_Precision(t *testing.T) {
 	// newAggEvaluator builds the evaluator with newVectorAggEvaluator and
 	// returns next as the wrapped evaluator. A VectorAggEvaluator built by
@@ -1177,10 +1350,10 @@ func TestVectorAggEvaluator_Precision(t *testing.T) {
 			Operation: op,
 			Grouping:  grouping,
 		}
-		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
+		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
 			return next, nil
 		})
-		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0)
+		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr, nil, 0, NodeContext{})
 		require.NoError(t, err)
 		return ev
 	}
@@ -1308,3 +1481,180 @@ func contextForTenant(t *testing.T, tenantID string) context.Context {
 	t.Helper()
 	return user.InjectOrgID(t.Context(), tenantID)
 }
+
+func TestIteratorLimits(t *testing.T) {
+	require.NoError(t, iteratorLimits{}.validateMaxSeries(1_000_000))
+	require.NoError(t, iteratorLimits{maxSeries: 2}.validateMaxSeries(2))
+	require.Equal(t, logqlerr.NewSeriesLimitError(2), iteratorLimits{maxSeries: 2}.validateMaxSeries(3))
+}
+
+func TestRangeAggPreservesSeries(t *testing.T) {
+	for op, want := range map[string]bool{
+		syntax.OpRangeTypeCount:              true,
+		syntax.OpRangeTypeRate:               true,
+		syntax.OpRangeTypeRateCounter:        true,
+		syntax.OpRangeTypeBytes:              true,
+		syntax.OpRangeTypeBytesRate:          true,
+		syntax.OpRangeTypeAvg:                true,
+		syntax.OpRangeTypeSum:                true,
+		syntax.OpRangeTypeMin:                true,
+		syntax.OpRangeTypeMax:                true,
+		syntax.OpRangeTypeStdvar:             true,
+		syntax.OpRangeTypeStddev:             true,
+		syntax.OpRangeTypeQuantile:           true,
+		syntax.OpRangeTypeFirst:              true,
+		syntax.OpRangeTypeLast:               true,
+		syntax.OpRangeTypeQuantileSketch:     true,
+		syntax.OpRangeTypeFirstWithTimestamp: true,
+		syntax.OpRangeTypeLastWithTimestamp:  true,
+		syntax.OpRangeTypeAbsent:             false,
+	} {
+		t.Run(op, func(t *testing.T) {
+			require.Equal(t, want, rangeAggPreservesSeries(op))
+		})
+	}
+}
+
+func TestNodeContext(t *testing.T) {
+	parse := func(t *testing.T, query string) syntax.SampleExpr {
+		t.Helper()
+		expr, err := syntax.ParseSampleExpr(query)
+		require.NoError(t, err)
+		return expr
+	}
+	const rate = `rate({app="a"}[1m])`
+
+	t.Run("zero value is not preserving", func(t *testing.T) {
+		var nc NodeContext
+		require.False(t, nc.OutputPreserving())
+		require.Equal(t, NodeContext{}, nc.child(true))
+	})
+
+	t.Run("root of a query that returns series is preserving", func(t *testing.T) {
+		nc := RootContext(parse(t, `sum by (app) (`+rate+`)`), 0)
+		require.True(t, nc.OutputPreserving())
+	})
+
+	t.Run("child preserves only while every operator above it does", func(t *testing.T) {
+		nc := RootContext(parse(t, rate), 0)
+
+		preserving := nc.child(true)
+		require.True(t, preserving.OutputPreserving())
+		require.True(t, preserving.child(true).OutputPreserving())
+
+		require.Equal(t, NodeContext{}, nc.child(false))
+		require.Equal(t, NodeContext{}, preserving.child(false))
+		require.Equal(t, NodeContext{}, nc.child(false).child(true))
+	})
+
+	t.Run("series limit follows preserving children only", func(t *testing.T) {
+		expr := parse(t, rate)
+		nc := RootContext(expr, 10)
+		require.Equal(t, iteratorLimits{maxSeries: 10}, nc.iteratorLimits(expr))
+		require.Equal(t, iteratorLimits{maxSeries: 10}, nc.child(true).child(true).iteratorLimits(expr))
+		require.Equal(t, iteratorLimits{}, nc.child(false).iteratorLimits(expr))
+		require.Equal(t, iteratorLimits{}, nc.child(false).child(true).iteratorLimits(expr))
+		require.Equal(t, iteratorLimits{}, nc.child(rangeAggPreservesSeries(syntax.OpRangeTypeAbsent)).iteratorLimits(expr))
+	})
+
+	t.Run("zero series limit turns the cut-off off", func(t *testing.T) {
+		expr := parse(t, rate)
+		nc := RootContext(expr, 0)
+		require.True(t, nc.OutputPreserving())
+		require.Equal(t, iteratorLimits{}, nc.iteratorLimits(expr))
+	})
+
+	sketches := map[string]func(t *testing.T) syntax.SampleExpr{
+		"count min sketch": func(t *testing.T) syntax.SampleExpr {
+			expr := parse(t, `sum by (app) (`+rate+`)`).(*syntax.VectorAggregationExpr)
+			expr.Operation = syntax.OpTypeCountMinSketch
+			return expr
+		},
+		"quantile sketch": func(t *testing.T) syntax.SampleExpr {
+			expr := parse(t, `quantile_over_time(0.5, {app="a"} | unwrap x [1m])`).(*syntax.RangeAggregationExpr)
+			expr.Operation = syntax.OpRangeTypeQuantileSketch
+			return expr
+		},
+		"count distinct sketch": func(t *testing.T) syntax.SampleExpr {
+			rangeExpr := parse(t, rate).(*syntax.RangeAggregationExpr)
+			return syntax.NewCountDistinctSketchExpr("x", rangeExpr.Left, nil)
+		},
+		"count min sketch eval": func(t *testing.T) syntax.SampleExpr {
+			return &CountMinSketchEvalExpr{SampleExpr: parse(t, rate)}
+		},
+		"quantile sketch eval": func(t *testing.T) syntax.SampleExpr {
+			return &QuantileSketchEvalExpr{SampleExpr: parse(t, rate)}
+		},
+		"count distinct sketch eval": func(_ *testing.T) syntax.SampleExpr {
+			return &CountDistinctSketchEvalExpr{}
+		},
+	}
+	for name, build := range sketches {
+		t.Run("root of a sketch is not preserving: "+name, func(t *testing.T) {
+			nc := RootContext(build(t), 10)
+			require.False(t, nc.OutputPreserving())
+			require.False(t, nc.child(true).OutputPreserving())
+			require.Equal(t, iteratorLimits{}, nc.iteratorLimits(build(t)))
+		})
+	}
+}
+
+// TestSketchScoping_ShouldOnlyAffectTheSketchPath checks that a sketch in one leg of an or leaves
+// the other leg preserving, so its series limit cutoff stays on.
+func TestSketchScoping_ShouldOnlyAffectTheSketchPath(t *testing.T) {
+	const preservingLeg = `sum(count_over_time({app="a"}[1h]))`
+	left := mustParseSampleExpr(preservingLeg)
+	sketch := &CountMinSketchEvalExpr{SampleExpr: mustParseSampleExpr(`sum by (app) (rate({app="b"}[1m]))`)}
+	root := &syntax.BinOpExpr{SampleExpr: left, RHS: sketch, Op: syntax.OpTypeOr}
+
+	require.True(t, RootContext(root, 5).OutputPreserving())
+
+	ev := NewDefaultEvaluator(nil, 0, 0, fakeLimits{maxSeries: 7})
+	nc := RootContext(root, 5).child(binOpPreservesSeries(root))
+	require.Equal(t, 7, ev.seriesCutoff(contextForTenant(t, "a"), nc))
+
+	require.Equal(t, iteratorLimits{maxSeries: 5}, nc.iteratorLimits(left))
+	require.Equal(t, iteratorLimits{}, nc.iteratorLimits(sketch))
+}
+
+func TestSeriesCutoff_ShouldApplyOnlyWhenEveryParentPreserves(t *testing.T) {
+	ev := NewDefaultEvaluator(nil, 0, 0, fakeLimits{maxSeries: 7})
+	ctx := contextForTenant(t, "a")
+	root := RootContext(mustParseSampleExpr(`sum(rate({app="a"}[1m]))`), 0)
+
+	require.Equal(t, 7, ev.seriesCutoff(ctx, root))
+	require.Equal(t, 7, ev.seriesCutoff(ctx, root.child(true)))
+	require.Zero(t, ev.seriesCutoff(ctx, root.child(false)))
+	require.Zero(t, ev.seriesCutoff(ctx, root.child(true).child(false)))
+	require.Zero(t, ev.seriesCutoff(ctx, NodeContext{}))
+}
+
+func TestSeriesCutoff_ShouldBeZeroWithoutATenant(t *testing.T) {
+	ev := NewDefaultEvaluator(nil, 0, 0, fakeLimits{maxSeries: 7})
+
+	require.Zero(t, ev.seriesCutoff(t.Context(), RootContext(mustParseSampleExpr(`sum(rate({app="a"}[1m]))`), 0)))
+}
+
+func TestSeriesLimitFor_ShouldReturnTheSmallestLimitOfTheTenants(t *testing.T) {
+	limits := perTenantSeriesLimits{limits: map[string]int{"a": 10, "b": 3}}
+
+	for name, tc := range map[string]struct {
+		tenants []string
+		want    int
+	}{
+		"single tenant":               {[]string{"a"}, 10},
+		"smallest of several tenants": {[]string{"a", "b"}, 3},
+		"no tenant means no limit":    {nil, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.want, seriesLimitFor(tc.tenants, limits))
+		})
+	}
+}
+
+type perTenantSeriesLimits struct {
+	fakeLimits
+	limits map[string]int
+}
+
+func (l perTenantSeriesLimits) MaxQuerySeries(userID string) int { return l.limits[userID] }

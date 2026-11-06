@@ -40,6 +40,9 @@ const (
 	runHeaderSize   = 8 // magic(4) + version(1) + reserved(1) + shardCount(2)
 	runDirEntrySize = 16
 	runBufferSize   = 1 << 20
+	// runChunkRecords is how many records writeRun stages before each s2
+	// write. 4096 records is 48 KiB.
+	runChunkRecords = 4096
 )
 
 // writeRun writes shard-contiguous keys/docs (counts[s] records for shard s,
@@ -81,7 +84,7 @@ func writeRun(path string, keys [][8]byte, docs []uint32, counts []int32, swp **
 		*swp = s2.NewWriter(bw)
 	}
 	pos := 0
-	var rec [runRecordSize]byte
+	chunk := make([]byte, 0, runChunkRecords*runRecordSize)
 	for s := range shardCount {
 		c := int(counts[s])
 		if c == 0 {
@@ -101,10 +104,23 @@ func writeRun(path string, keys [][8]byte, docs []uint32, counts []int32, swp **
 
 		(*swp).Reset(bw)
 		sw := *swp
+		// Records are staged into a chunk and handed to s2 in large writes.
+		// Every s2.Writer.Write takes the writer's error mutex, so writing one
+		// 12-byte record per call costs more than encoding it once a run is
+		// dominated by unique pairs.
+		chunk = chunk[:0]
 		for i := pos; i < pos+c; i++ {
-			copy(rec[:8], keys[i][:])
-			binary.LittleEndian.PutUint32(rec[8:], docs[i])
-			if _, err := sw.Write(rec[:]); err != nil {
+			chunk = append(chunk, keys[i][:]...)
+			chunk = binary.LittleEndian.AppendUint32(chunk, docs[i])
+			if len(chunk) == cap(chunk) {
+				if _, err := sw.Write(chunk); err != nil {
+					return 0, err
+				}
+				chunk = chunk[:0]
+			}
+		}
+		if len(chunk) > 0 {
+			if _, err := sw.Write(chunk); err != nil {
 				return 0, err
 			}
 		}

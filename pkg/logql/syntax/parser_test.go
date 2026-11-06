@@ -3744,7 +3744,7 @@ func TestNoOpLabelToString(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, `{container_name="app"} | foo=~".*"`, l.String())
 
-	stages, err := l.(*PipelineExpr).MultiStages.stages()
+	stages, err := l.(*PipelineExpr).MultiStages.Stages()
 	require.NoError(t, err)
 	require.Len(t, stages, 0)
 }

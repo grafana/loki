@@ -237,7 +237,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		_, _ = chk.Append(&e)
 	}
 	chk.Close()
-	c := chunk.NewChunk(tenantName, client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through)
+	c := chunk.NewChunk(tenantName, client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through, 0)
 	// force the checksum creation
 	if err := c.Encode(); err != nil {
 		panic(err)

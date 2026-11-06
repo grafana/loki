@@ -3030,7 +3030,7 @@ func Test_codec_EncodeResponse_LoglineStats(t *testing.T) {
 		require.NoError(t, json.Unmarshal(got["logline"], &logline))
 		require.ElementsMatch(t, []string{
 			"outcome", "hintStatus", "hintLookupTime", "hintRanges", "hintRangesDuration",
-			"skippedRequests", "narrowedRequests", "plannedChunks", "scannedChunks",
+			"skippedRequests", "narrowedRequests", "passthroughRequests", "plannedChunks", "scannedChunks",
 			"chunkFilterRatio", "objectRequests", "ioBytes", "ioWait", "hintWaitTime",
 		}, slices.Collect(maps.Keys(logline)), "every field is written, including zeros")
 		require.Equal(t, "tiny_data_skipped", logline["outcome"])
@@ -3179,12 +3179,13 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 
 func Benchmark_MergeResponses(b *testing.B) {
 	responses := make([]queryrangebase.Response, 100)
+	seriesData := generateSeries()
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",
 			Version:    1,
 			Statistics: stats.Result{},
-			Data:       generateSeries(),
+			Data:       seriesData,
 		}
 	}
 

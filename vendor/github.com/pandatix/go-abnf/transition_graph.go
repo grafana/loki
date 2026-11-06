@@ -1,13 +1,13 @@
 package goabnf
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
-
-	uuid "github.com/hashicorp/go-uuid"
 )
 
 // TransitionGraph represent a grammar transition graph.
@@ -1235,7 +1235,7 @@ type cnode struct {
 }
 
 func cloneTG(originToNewNodes map[string]cnode, origin *Node) {
-	id, _ := uuid.GenerateUUID()
+	id := newID()
 
 	originToNewNodes[origin.ID] = cnode{
 		origin: origin,
@@ -1448,8 +1448,18 @@ func (m *tgmachine) elemGraph(elem ElemItf) (entrypoints []*Node, endpoints []*N
 	panic("unsupported element")
 }
 
+// newID returns a random identifier for a graph node, the way containerd and
+// containers/storage build container IDs: random bytes from crypto/rand, hex
+// encoded. Node IDs only have to be unique within one graph, so 16 bytes are
+// plenty. crypto/rand.Read never returns an error since Go 1.24.
+func newID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 func newNode(elem ElemItf) *Node {
-	id, _ := uuid.GenerateUUID()
+	id := newID()
 	return &Node{
 		ID:   id,
 		Elem: elem,

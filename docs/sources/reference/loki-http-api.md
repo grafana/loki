@@ -250,7 +250,7 @@ POST /loki/api/v1/push
 behavior is for the POST body to be a [Snappy](https://github.com/google/snappy)-compressed [Protocol Buffer](https://github.com/protocolbuffers/protobuf) message:
 
 - [Protocol Buffer definition](https://github.com/grafana/loki/blob/main/pkg/push/push.proto)
-- [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/promtail/client/client.go)
+- [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/util/client.go)
 
 These POST requests require the `Content-Type` HTTP header to be `application/x-protobuf`.
 
@@ -1504,7 +1504,7 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 - `flush=<bool>`:
   Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
 - `delete_ring_tokens=<bool>`:
-  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified. Defaults to `false`.
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.tokens-file-path` is specified. Defaults to `false`.
 - `terminate=<bool>`:
   Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"math"
 	"math/rand"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -164,48 +167,310 @@ func TestBuilder_Append(t *testing.T) {
 	}
 }
 
-// TestBuilder_AppendRecord ensures that appending to the buffer eventually reports
-// that the buffer is full via the AppendRecord call.
 func TestBuilder_AppendRecord(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
+	t.Run("reports full and sets the tenant on every logs section", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
-	require.NoError(t, err)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
 
-	tenant := "test"
+		tenant := "test"
 
-	lbs, err := syntax.ParseLabels(`{cluster="test",app="foo"}`)
-	require.NoError(t, err)
+		lbs, err := syntax.ParseLabels(`{cluster="test",app="foo"}`)
+		require.NoError(t, err)
 
-	for {
-		require.NoError(t, ctx.Err())
+		for {
+			require.NoError(t, ctx.Err())
 
-		// Append until the builder reports that it is full.
-		if builder.IsFull() {
-			break
+			// Append until the builder reports that it is full.
+			if builder.IsFull() {
+				break
+			}
+
+			require.NoError(t, builder.AppendRecord(tenant, lbs, logs.Record{
+				Timestamp: time.Now().UTC(),
+				Line:      bytes.Repeat([]byte("a"), 1024),
+			}, time.Now()))
 		}
 
-		require.NoError(t, builder.AppendRecord(tenant, lbs, logs.Record{
-			Timestamp: time.Now().UTC(),
-			Line:      bytes.Repeat([]byte("a"), 1024),
-		}, time.Now()))
+		obj, closer, err := builder.flushWithoutLayout()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		// When a section builder is reset, which happens on flush, the
+		// tenant is reset too. We must check that the tenant is added back
+		// to the section builder otherwise tenant will be absent from successive
+		// sections.
+		secs := obj.Sections()
+		require.Equal(t, 1, secs.Count(streams.CheckSection))
+		require.Greater(t, secs.Count(logs.CheckSection), 1)
+		for _, section := range secs.Filter(logs.CheckSection) {
+			require.Equal(t, tenant, section.Tenant)
+		}
+	})
+
+	t.Run("records the rows, size and time range of each stream", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
+
+		base := time.Unix(100, 0).UTC()
+		x := labels.FromStrings("app", "x")
+		y := labels.FromStrings("app", "y")
+		type stats struct {
+			rows     int
+			size     int64
+			min, max time.Time
+		}
+		want := make(map[string]stats)
+		for _, step := range []struct {
+			ls   labels.Labels
+			ts   time.Time
+			line string
+		}{
+			{x, base.Add(2 * time.Second), "x-middle"},
+			{x, base, "x-first"},
+			{y, base.Add(time.Second), "y-only"},
+			{x, base.Add(5 * time.Second), "x-last"},
+		} {
+			rec := logs.Record{Timestamp: step.ts, Line: []byte(step.line)}
+			require.NoError(t, builder.AppendRecord("t1", step.ls, rec, step.ts))
+
+			app := step.ls.Get("app")
+			s := want[app]
+			if s.rows == 0 || step.ts.Before(s.min) {
+				s.min = step.ts
+			}
+			if s.rows == 0 || step.ts.After(s.max) {
+				s.max = step.ts
+			}
+			s.rows++
+			s.size += rec.UncompressedSize()
+			want[app] = s
+		}
+
+		obj, closer, err := builder.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		got := make(map[string]stats)
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			streamSec, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamSec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				got[val.Labels.Get("app")] = stats{
+					rows: val.Rows,
+					size: val.UncompressedSize,
+					min:  val.MinTimestamp.UTC(),
+					max:  val.MaxTimestamp.UTC(),
+				}
+			}
+		}
+		require.Equal(t, want, got)
+	})
+}
+
+func TestBuilder_DropDuplicates(t *testing.T) {
+	const tenant = "t1"
+	ts := time.Unix(100, 0).UTC()
+
+	// The sort assigns stream IDs in sort key order. appendedFirst sorts after
+	// appendedSecond, so the sort swaps their IDs.
+	sortKey := func(ls labels.Labels) streams.SortKey {
+		key, err := emptyRankedSortKey(ls, nil, streams.DefaultShardLayout())
+		require.NoError(t, err)
+		return key.SortKey
+	}
+	appendedFirst, appendedSecond := labels.FromStrings("app", "x"), labels.FromStrings("app", "y")
+	if streams.CompareSortKey(sortKey(appendedFirst), sortKey(appendedSecond)) < 0 {
+		appendedFirst, appendedSecond = appendedSecond, appendedFirst
 	}
 
-	obj, closer, err := builder.flushWithoutLayout()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	// When a section builder is reset, which happens on flush, the
-	// tenant is reset too. We must check that the tenant is added back
-	// to the section builder otherwise tenant will be absent from successive
-	// sections.
-	secs := obj.Sections()
-	require.Equal(t, 1, secs.Count(streams.CheckSection))
-	require.Greater(t, secs.Count(logs.CheckSection), 1)
-	for _, section := range secs.Filter(logs.CheckSection) {
-		require.Equal(t, tenant, section.Tenant)
+	firstDuplicate := logs.Record{
+		Timestamp: ts,
+		Metadata:  labels.FromStrings("trace_id", "123"),
+		Line:      []byte("first stream duplicate"),
 	}
+	secondDuplicate := logs.Record{
+		Timestamp: ts,
+		Line:      []byte("second stream duplicate, with a longer line"),
+	}
+	secondUnique := logs.Record{
+		Timestamp: ts.Add(time.Second),
+		Line:      []byte("second stream unique"),
+	}
+
+	type stats struct {
+		rows int
+		size int64
+	}
+	statsOf := func(recs ...logs.Record) stats {
+		s := stats{rows: len(recs)}
+		for _, rec := range recs {
+			s.size += rec.UncompressedSize()
+		}
+		return s
+	}
+
+	newBuilder := func(t *testing.T, dropDuplicates bool) *Builder {
+		cfg := testBuilderConfig
+		cfg.DropDuplicates = dropDuplicates
+		builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
+		return builder
+	}
+
+	appendRecords := func(t *testing.T, builder *Builder, ls labels.Labels, recs ...logs.Record) {
+		for _, rec := range recs {
+			require.NoError(t, builder.AppendRecord(tenant, ls, rec.Copy(), rec.Timestamp))
+		}
+	}
+
+	// appendDuplicates appends firstDuplicate twice to appendedFirst, and
+	// secondDuplicate three times plus secondUnique to appendedSecond. The
+	// streams alternate, so each stream is appended to more than once.
+	appendDuplicates := func(t *testing.T, builder *Builder) {
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
+		appendRecords(t, builder, appendedSecond, secondDuplicate, secondUnique)
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
+		appendRecords(t, builder, appendedSecond, secondDuplicate, secondDuplicate)
+	}
+
+	// appendSplitDuplicates appends firstDuplicate, then enough unique records
+	// to exceed TargetSectionSize, then firstDuplicate again, all to
+	// appendedFirst. It returns the records that a drop of duplicates keeps.
+	appendSplitDuplicates := func(t *testing.T, builder *Builder) []logs.Record {
+		kept := []logs.Record{firstDuplicate}
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
+		for i := range int(testBuilderConfig.TargetSectionSize)/1024 + 1 {
+			rec := logs.Record{Timestamp: ts.Add(time.Duration(i+1) * time.Second), Line: bytes.Repeat([]byte("a"), 1024)}
+			appendRecords(t, builder, appendedFirst, rec)
+			kept = append(kept, rec)
+		}
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
+		return kept
+	}
+
+	flushAndSort := func(t *testing.T, builder *Builder) *dataobj.Object {
+		obj, closer, err := builder.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj
+	}
+
+	readStreams := func(t *testing.T, obj *dataobj.Object) map[string]streams.Stream {
+		got := make(map[string]streams.Stream)
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			streamSec, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamSec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				got[val.Labels.String()] = val
+			}
+		}
+		return got
+	}
+
+	readStats := func(t *testing.T, obj *dataobj.Object) map[string]stats {
+		got := make(map[string]stats)
+		for key, stream := range readStreams(t, obj) {
+			got[key] = stats{rows: stream.Rows, size: stream.UncompressedSize}
+		}
+		return got
+	}
+
+	t.Run("FlushAndSort excludes dropped duplicates from the stats of each stream", func(t *testing.T) {
+		builder := newBuilder(t, true)
+		appendDuplicates(t, builder)
+
+		obj := flushAndSort(t, builder)
+
+		require.ElementsMatch(t, []string{
+			string(firstDuplicate.Line),
+			string(secondDuplicate.Line),
+			string(secondUnique.Line),
+		}, recordLines(t, obj, tenant))
+
+		got := readStreams(t, obj)
+		require.Equal(t, int64(2), got[appendedFirst.String()].ID, "the sort must swap the stream IDs")
+		require.Equal(t, map[string]stats{
+			appendedFirst.String():  statsOf(firstDuplicate),
+			appendedSecond.String(): statsOf(secondDuplicate, secondUnique),
+		}, readStats(t, obj))
+		require.Equal(t, ts, got[appendedFirst.String()].MinTimestamp.UTC())
+		require.Equal(t, ts, got[appendedFirst.String()].MaxTimestamp.UTC())
+		require.Equal(t, ts, got[appendedSecond.String()].MinTimestamp.UTC())
+		require.Equal(t, secondUnique.Timestamp, got[appendedSecond.String()].MaxTimestamp.UTC())
+	})
+
+	t.Run("FlushAndSort excludes a duplicate split across logs sections from the stream stats", func(t *testing.T) {
+		unsorted := newBuilder(t, true)
+		appendSplitDuplicates(t, unsorted)
+		unsortedObj, closer, err := unsorted.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		var sectionsWithDuplicate int
+		for _, sec := range unsortedObj.Sections().Filter(logs.CheckSection) {
+			for res := range iterLogsSection(t, sec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				if bytes.Equal(val.Line, firstDuplicate.Line) {
+					sectionsWithDuplicate++
+				}
+			}
+		}
+		require.Equal(t, 2, sectionsWithDuplicate, "each copy of the duplicate must start in its own logs section")
+
+		builder := newBuilder(t, true)
+		kept := appendSplitDuplicates(t, builder)
+		appendRecords(t, builder, appendedSecond, secondDuplicate, secondDuplicate)
+
+		obj := flushAndSort(t, builder)
+
+		require.Len(t, recordLines(t, obj, tenant), len(kept)+1)
+		require.Equal(t, map[string]stats{
+			appendedFirst.String():  statsOf(kept...),
+			appendedSecond.String(): statsOf(secondDuplicate),
+		}, readStats(t, obj))
+	})
+
+	t.Run("FlushAndSort keeps and counts duplicates when DropDuplicates is unset", func(t *testing.T) {
+		builder := newBuilder(t, false)
+		appendDuplicates(t, builder)
+
+		obj := flushAndSort(t, builder)
+
+		require.Len(t, recordLines(t, obj, tenant), 6)
+		require.Equal(t, map[string]stats{
+			appendedFirst.String():  statsOf(firstDuplicate, firstDuplicate),
+			appendedSecond.String(): statsOf(secondDuplicate, secondDuplicate, secondDuplicate, secondUnique),
+		}, readStats(t, obj))
+	})
+
+	t.Run("Flush returns an error, counts a failure and resets the builder when DropDuplicates is set", func(t *testing.T) {
+		builder := newBuilder(t, true)
+		appendRecords(t, builder, appendedFirst, firstDuplicate)
+
+		obj, closer, err := builder.Flush()
+		require.ErrorIs(t, err, ErrFlushDropDuplicates)
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.Equal(t, 1.0, testutil.ToFloat64(builder.metrics.flushFailures))
+
+		_, _, err = builder.FlushAndSort(t.Context())
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+	})
+
+	t.Run("Flush returns ErrBuilderEmpty on an empty builder when DropDuplicates is set", func(t *testing.T) {
+		builder := newBuilder(t, true)
+
+		_, _, err := builder.Flush()
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+		require.Zero(t, testutil.ToFloat64(builder.metrics.flushFailures))
+	})
 }
 
 // TestBuilder_EarliestRecordTime ensures the builder tracks the earliest
@@ -586,6 +851,34 @@ func (m tenantOverrides) DataObjShardLayout(string) streams.ShardLayout {
 	return streams.DefaultShardLayout()
 }
 
+// oneShardOverrides maps tenant IDs to their schema labels. Every tenant has
+// one shard bucket, so logs sections order records by schema key, then by
+// stream hash and stream ID, then by timestamp descending.
+type oneShardOverrides map[string][]string
+
+func (m oneShardOverrides) SortSchemaLabels(tenant string) []string { return m[tenant] }
+
+func (m oneShardOverrides) DataObjShardLayout(string) streams.ShardLayout {
+	return streams.MustShardLayoutFromBuckets(1)
+}
+
+// recordLines returns the lines of the records of tenant in obj, in the order
+// of the logs sections.
+func recordLines(t *testing.T, obj *dataobj.Object, tenant string) []string {
+	t.Helper()
+	var lines []string
+	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+		return logs.CheckSection(s) && s.Tenant == tenant
+	}) {
+		for res := range iterLogsSection(t, sec) {
+			val, err := res.Value()
+			require.NoError(t, err)
+			lines = append(lines, string(val.Line))
+		}
+	}
+	return lines
+}
+
 // limitsByTenant implements validation.TenantLimits for builder tests that
 // need the real Overrides defaulting path.
 type limitsByTenant map[string]*validation.Limits
@@ -832,6 +1125,79 @@ func testFlushAndSortSchema(t *testing.T) {
 				firstRecord = false
 			}
 		}
+	})
+
+	t.Run("sorts each tenant by its own schema when two tenants append the same stream in turn", func(t *testing.T) {
+		b, err := NewBuilder(makeCfg(), nil, NewBuilderMetrics(), log.NewNopLogger(), oneShardOverrides{
+			"a": {"label:app"},
+			"b": {"label:cluster"},
+		})
+		require.NoError(t, err)
+
+		x := labels.FromStrings("app", "a", "cluster", "z")
+		y := labels.FromStrings("app", "z", "cluster", "a")
+		for _, step := range []struct {
+			tenant string
+			ls     labels.Labels
+			line   string
+		}{
+			{"a", x, "a-x"},
+			{"b", x, "b-x"},
+			{"a", y, "a-y"},
+			{"b", y, "b-y"},
+		} {
+			require.NoError(t, b.AppendRecord(step.tenant, step.ls, logs.Record{Timestamp: now, Line: []byte(step.line)}, now))
+		}
+
+		obj, closer, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, []string{"a-x", "a-y"}, recordLines(t, obj, "a"))
+		require.Equal(t, []string{"b-y", "b-x"}, recordLines(t, obj, "b"))
+	})
+
+	t.Run("AppendRecord writes logs sections in schema order", func(t *testing.T) {
+		b, err := NewBuilder(makeCfg(), nil, NewBuilderMetrics(), log.NewNopLogger(), oneShardOverrides{"t1": {"label:app"}})
+		require.NoError(t, err)
+
+		for _, app := range []string{"zoo", "alpha", "middle"} {
+			ls := labels.FromStrings("app", app)
+			for i := range 2 {
+				ts := now.Add(time.Duration(i) * time.Second)
+				require.NoError(t, b.AppendRecord("t1", ls, logs.Record{Timestamp: ts, Line: fmt.Appendf(nil, "%s-%d", app, i)}, ts))
+			}
+		}
+
+		obj, closer, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, []string{"alpha-1", "alpha-0", "middle-1", "middle-0", "zoo-1", "zoo-0"}, recordLines(t, obj, "t1"))
+	})
+
+	t.Run("orders streams with the same schema key by stream hash", func(t *testing.T) {
+		b, err := NewBuilder(makeCfg(), nil, NewBuilderMetrics(), log.NewNopLogger(), oneShardOverrides{"t1": {"label:app"}})
+		require.NoError(t, err)
+
+		streamLabels := make([]labels.Labels, 0, 8)
+		for i := range 8 {
+			streamLabels = append(streamLabels, labels.FromStrings("app", "same", "id", strconv.Itoa(i)))
+		}
+		slices.SortFunc(streamLabels, func(a, b labels.Labels) int {
+			return cmp.Compare(labels.StableHash(b), labels.StableHash(a))
+		})
+		for _, ls := range streamLabels {
+			require.NoError(t, b.AppendRecord("t1", ls, logs.Record{Timestamp: now, Line: []byte(ls.Get("id"))}, now))
+		}
+
+		want := make([]string, 0, len(streamLabels))
+		for _, ls := range slices.Backward(streamLabels) {
+			want = append(want, ls.Get("id"))
+		}
+
+		obj, closer, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, want, recordLines(t, obj, "t1"))
 	})
 
 	t.Run("orders streams by every label of a compound schema in order", func(t *testing.T) {
@@ -1372,6 +1738,33 @@ func testFlushAndSortLayoutPerObject(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, secondCloser.Close()) })
 		requireStreamsLayout(t, secondObj, "t1", streams.NewLayout(second, []string{"label:app"}))
 	})
+
+	t.Run("applies a schema change to a stream that continues across the flush", func(t *testing.T) {
+		oneShard := streams.MustShardLayoutFromBuckets(1)
+		overrides := &mutableOverrides{schema: []string{"label:app"}, shardLayout: &oneShard}
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+		require.NoError(t, err)
+
+		x := labels.FromStrings("app", "a", "cluster", "z")
+		y := labels.FromStrings("app", "m", "cluster", "m")
+		appendLine := func(ls labels.Labels, ts time.Time, line string) {
+			require.NoError(t, b.AppendRecord("t1", ls, logs.Record{Timestamp: ts, Line: []byte(line)}, ts))
+		}
+
+		appendLine(x, now, "first-object")
+		_, firstCloser, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, firstCloser.Close()) })
+
+		overrides.schema = []string{"label:cluster"}
+		appendLine(x, now, "x-0")
+		appendLine(y, now, "y")
+		appendLine(x, now.Add(time.Second), "x-1")
+		obj, closer, err := b.flushWithoutLayout()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, []string{"y", "x-1", "x-0"}, recordLines(t, obj, "t1"))
+	})
 }
 
 func testFlushAndSortErrors(t *testing.T) {
@@ -1571,6 +1964,140 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		require.True(t, slices.IsSorted(streamIDs), "rows must follow stream ID order: %v", streamIDs)
 	})
 }
+
+func TestBuilder_SectionOrder(t *testing.T) {
+	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+
+	// fill appends enough records of one stream per tenant to b to fill
+	// several logs sections per tenant.
+	fill := func(t *testing.T, b *Builder, tenants ...string) {
+		t.Helper()
+
+		streamLabels := labels.FromStrings("app", "a", "cluster", "c")
+		for _, tenant := range tenants {
+			for i := range 2000 {
+				line := fmt.Sprintf("line %d %s", i, strings.Repeat("x", 64))
+				require.NoError(t, b.AppendRecord(tenant, streamLabels, logs.Record{Timestamp: now.Add(time.Duration(i) * time.Second), Line: []byte(line)}, now))
+			}
+		}
+	}
+
+	newFilledBuilder := func(t *testing.T, tenants ...string) *Builder {
+		t.Helper()
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
+		fill(t, b, tenants...)
+		return b
+	}
+
+	// sectionTag is the kind and tenant of a section, for comparing orders.
+	type sectionTag struct{ kind, tenant string }
+
+	// requireSectionOrder checks that obj lists the streams sections of the
+	// tenants first, then the logs sections, each group in tenant order.
+	requireSectionOrder := func(t *testing.T, obj *dataobj.Object, tenants ...string) {
+		t.Helper()
+
+		var want []sectionTag
+		for _, tenant := range tenants {
+			want = append(want, sectionTag{"streams", tenant})
+		}
+		for _, tenant := range tenants {
+			count := obj.Sections().Count(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant })
+			require.Greater(t, count, 1, "tenant %s must have several logs sections", tenant)
+			for range count {
+				want = append(want, sectionTag{"logs", tenant})
+			}
+		}
+
+		var got []sectionTag
+		for _, sec := range obj.Sections() {
+			got = append(got, sectionTag{sec.Type.Kind, sec.Tenant})
+		}
+		require.Equal(t, want, got)
+	}
+
+	// requireCachedPrefixEndsAfterStreamsMetadata checks that the metadata
+	// cache stores only the header, the file metadata, and the streams
+	// metadata. This is true only when the streams metadata comes before all
+	// logs metadata.
+	requireCachedPrefixEndsAfterStreamsMetadata := func(t *testing.T, obj *dataobj.Object) {
+		t.Helper()
+
+		rc, err := obj.Reader(t.Context())
+		require.NoError(t, err)
+		raw, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.NoError(t, rc.Close())
+
+		bucket := objstore.NewInMemBucket()
+		require.NoError(t, bucket.Upload(t.Context(), "obj", bytes.NewReader(raw)))
+
+		cache := &recordingMetadataCache{}
+		opened, err := dataobj.FromBucket(t.Context(), bucket, "obj", 0, dataobj.WithMetadataCache(cache))
+		require.NoError(t, err)
+
+		var streamsMetadataSize int64
+		for _, sec := range opened.Sections().Filter(streams.CheckSection) {
+			streamsMetadataSize += sec.Reader.MetadataSize()
+		}
+
+		// The header is the magic and a 32-bit size. The size covers the
+		// version and the file metadata that follow the header.
+		fileMetadataEnd := 8 + int64(binary.LittleEndian.Uint32(raw[4:8]))
+		require.Equal(t, fileMetadataEnd+streamsMetadataSize, int64(len(cache.region)))
+	}
+
+	t.Run("Flush puts the streams section before the logs sections appended earlier", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t, "tenant").Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireSectionOrder(t, obj, "tenant")
+		requireCachedPrefixEndsAfterStreamsMetadata(t, obj)
+	})
+
+	t.Run("FlushAndSort puts the streams sections of all tenants before all logs sections", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t, "tenant-2", "tenant-10").FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireSectionOrder(t, obj, "tenant-2", "tenant-10")
+		requireCachedPrefixEndsAfterStreamsMetadata(t, obj)
+	})
+
+	t.Run("Flush on a reused builder still puts the streams section first", func(t *testing.T) {
+		b := newFilledBuilder(t, "tenant")
+		_, closer, err := b.Flush()
+		require.NoError(t, err)
+		require.NoError(t, closer.Close())
+
+		fill(t, b, "tenant")
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		requireSectionOrder(t, obj, "tenant")
+		requireCachedPrefixEndsAfterStreamsMetadata(t, obj)
+	})
+}
+
+// recordingMetadataCache stores no entries. It records the last metadata
+// region that it loaded.
+type recordingMetadataCache struct {
+	region []byte
+}
+
+func (c *recordingMetadataCache) GetOrLoadMetadataRegion(ctx context.Context, _ string, load func(context.Context) ([]byte, error)) ([]byte, error) {
+	region, err := load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.region = region
+	return region, nil
+}
+
+func (c *recordingMetadataCache) MaxItemBytes() int64 { return 64 << 20 }
 
 // tenantLayouts maps tenant IDs to their layout. A tenant that is not in the map has the default
 // shard layout and no schema labels.

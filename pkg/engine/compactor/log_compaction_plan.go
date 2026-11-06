@@ -18,6 +18,11 @@ type logCompactionPlan struct {
 	window      time.Time
 	sourceIndex indexEntry
 	tasks       []logCompactionTask
+
+	// singleObjectRuns is the number of log runs in the source index that
+	// hold exactly one object. Plans with no work also set it, so the gauge
+	// counts indexes that need no compaction.
+	singleObjectRuns int
 }
 
 // hasWork reports whether p dispatches any task.
@@ -52,9 +57,6 @@ type logTaskStats struct {
 }
 
 // physicalPlans returns one physical plan per task, in task order.
-//
-// Each call builds new plans with new node IDs. The scheduler requires unique
-// node IDs, so every execution of p must call physicalPlans again.
 func (p logCompactionPlan) physicalPlans(tenant string) []*physical.Plan {
 	plans := make([]*physical.Plan, len(p.tasks))
 	for i, task := range p.tasks {
@@ -82,7 +84,7 @@ type logCompactionTask interface {
 	// path.
 	tocEntry() metastore.TableOfContentsEntry
 
-	// logTaskStats returns the log data that the task reads. Its bytes are zero
+	// logStats returns the log data that the task reads. Its bytes are zero
 	// if the task reads no log data.
 	logStats() logTaskStats
 }
@@ -135,6 +137,6 @@ func (t indexFilterTask) physicalPlan(tenant string, _ time.Time) *physical.Plan
 
 func (t indexFilterTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
-// logTaskStats returns zero bytes, because the filter reads only the source
+// logStats returns zero bytes, because the filter reads only the source
 // index.
 func (t indexFilterTask) logStats() logTaskStats { return logTaskStats{} }

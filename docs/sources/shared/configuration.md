@@ -973,6 +973,12 @@ kafka_config:
   # CLI flag: -kafka.tracing-enabled
   [tracing_enabled: <boolean> | default = false]
 
+  # The highest ApiVersions request version the Kafka client sends. The default
+  # keeps franz-go >= 1.22 compatible with backends that close the connection on
+  # ApiVersions v5 (WarpStream). 0 to use the franz-go default.
+  # CLI flag: -kafka.api-versions-max-version
+  [api_versions_max_version: <int> | default = 4]
+
 dataobj:
   builder:
     logsobj_builder:
@@ -1092,15 +1098,44 @@ dataobj:
     [sha_prefix_size: <int> | default = 2]
 
   metastore:
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # for testing only.
-    # CLI flag: -dataobj-metastore.index-storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0"]
+    toc_resolver:
+      # Experimental: Keep the table of contents (ToC) that queries requested
+      # recently in memory. Refresh them in the background, so a query rarely
+      # reads them from object storage. It has no effect unless -dataobj.enabled
+      # is set. Only the querier module uses it.
+      # CLI flag: -dataobj-metastore.toc-resolver.enabled
+      [enabled: <boolean> | default = true]
 
-  # Caches the metadata of the data objects the querier reads. The cache is
-  # enabled when a backend is configured. Entries are keyed by object path, so
-  # the cache cannot differentiate entries between different buckets and
-  # clusters. Multiple installations must not share the same cache backend.
+      # How often the resolver refreshes the ToCs in memory. A query reads a ToC
+      # that is older than twice this interval from object storage. A refresh
+      # reads through the data object metadata cache when one is configured
+      # (-dataobj.metadata-cache.*). The refresh accepts a cached ToC that is at
+      # most half this interval old. The interval must be at least one second,
+      # and twice the interval must not exceed a tenth of -dataobj.storage-lag.
+      # CLI flag: -dataobj-metastore.toc-resolver.refresh-interval
+      [refresh_interval: <duration> | default = 1m]
+
+      # A ToC is refreshed while a query requested it within this time. The
+      # resolver drops a ToC that no query requested for longer. It must not be
+      # shorter than the refresh interval.
+      # CLI flag: -dataobj-metastore.toc-resolver.active-window
+      [active_window: <duration> | default = 5m]
+
+      # Size limit of the ToCs kept in memory. It must be positive. The resolver
+      # does not store a ToC that would take the size over the limit. When the
+      # size is over nine tenths of the limit, a refresh drops the least
+      # recently requested ToCs. It stops once the size is at most nine tenths
+      # of the limit.
+      # CLI flag: -dataobj-metastore.toc-resolver.max-memory-cache-bytes
+      [max_memory_cache_bytes: <int> | default = 64MB]
+
+  # Caches the metadata region of the log objects and index objects the querier
+  # reads, or the entire object if it is tiny. When the ToC resolver is enabled
+  # (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables
+  # of contents (ToCs) that the resolver refreshes. The cache is enabled when a
+  # backend is configured. Entries are keyed by object path, so the cache cannot
+  # differentiate entries between different buckets and clusters. Multiple
+  # installations must not share the same cache backend.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
@@ -1120,6 +1155,21 @@ dataobj:
     # by the coordinator. 0 means unlimited.
     # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
     [logs_max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Number of times the coordinator runs a failed compaction
+    # task again. 0 disables retries.
+    # CLI flag: -dataobj.compaction.task-max-retries
+    [task_max_retries: <int> | default = 3]
+
+    # Experimental: Shortest wait before the first retry of a failed compaction
+    # task. The wait grows exponentially with each retry, with jitter, up to
+    # task-retry-max-backoff.
+    # CLI flag: -dataobj.compaction.task-retry-min-backoff
+    [task_retry_min_backoff: <duration> | default = 10s]
+
+    # Experimental: Longest wait before a retry of a failed compaction task.
+    # CLI flag: -dataobj.compaction.task-retry-max-backoff
+    [task_retry_max_backoff: <duration> | default = 1m]
 
     # Experimental: Coordinator main-loop cadence.
     # CLI flag: -dataobj.compaction.polling-interval
@@ -1148,10 +1198,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
-    # Experimental: Maximum runs per LogMerge task (K for log compaction). Log
-    # compaction starts only when a size level holds K runs, so a larger K
-    # leaves more overlapping runs per window. Separate from max-runs-per-task
-    # to scale independently. Must be at least 2.
+    # Experimental: Runs per planned log merge (K for log compaction), before
+    # logs.max-task-size splits it into tasks. Log compaction merges only groups
+    # of K runs from one size level, so a larger K leaves more overlapping runs
+    # per window. Separate from max-runs-per-task to scale independently. Must
+    # be at least 2.
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
     [logs_max_runs_per_task: <int> | default = 8]
 
@@ -1168,6 +1219,14 @@ dataobj:
     # take in a leftover of up to 10% of it. 0 disables the split.
     # CLI flag: -dataobj.compaction.logs.max-task-size
     [logs_max_task_size: <int> | default = 0B]
+
+    # Experimental: Maximum uncompressed input of one stream sort prefix in a
+    # planned log merge. A merge writes all records of one sort prefix into one
+    # object, so this limits the size of the objects and the memory of a task.
+    # The planner skips a merge with a larger sort prefix and keeps its runs
+    # unmerged. 0 disables the check.
+    # CLI flag: -dataobj.compaction.logs.max-key-size
+    [logs_max_key_size: <int> | default = 100GiB]
 
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
@@ -3861,6 +3920,12 @@ wal:
   # CLI flag: -ingester.wal-disk-full-threshold
   [disk_full_threshold: <float> | default = 0.9]
 
+  # Write WAL records as V4, which store the Kafka record timestamp. Older
+  # versions can't replay them. When disabled, records are written as V3 and V4
+  # timestamps are ignored on replay.
+  # CLI flag: -ingester.wal-record-v4-enabled
+  [record_v4_enabled: <boolean> | default = false]
+
 # Shard factor used in the ingesters for the in process reverse index. This MUST
 # be evenly divisible by ALL schema shard factors or Loki will not start.
 # CLI flag: -ingester.index-shards
@@ -5162,6 +5227,12 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Experimental: Fail a query on max_query_series as soon as a range iterator
+  # or vector aggregation holds more series than the limit, where the query's
+  # output cannot be smaller. Logs Drilldown requests are exempt.
+  # CLI flag: -querier.engine.max-query-series-cutoff
+  [max_query_series_cutoff: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

@@ -67,8 +67,15 @@ func TestChunkFlushingIdle(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	testData := pushTestSamples(t, ing)
 
-	// wait beyond idle time so samples flush
-	time.Sleep(cfg.MaxChunkIdle * 2)
+	// wait until all idle chunks are flushed
+	require.Eventually(t, func() bool {
+		for userID, streams := range testData {
+			if len(store.getChunksForUser(userID)) < len(streams) {
+				return false
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
 	store.checkData(t, testData)
 }
 
@@ -139,6 +146,7 @@ func Benchmark_EncodeChunk(b *testing.B) {
 			chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
+			0,
 		)
 		require.NoError(b, ing.encodeChunk(ctx, &ch, desc))
 	}
@@ -208,6 +216,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 				chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
 				firstTime,
 				lastTime,
+				0,
 			)
 
 			if lockDuringEncode {
@@ -236,7 +245,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki")
+		_, err := lockThenPush(pushCtx, s, e, rec, false, nil, "loki", time.Time{})
 		recordPool.PutRecord(rec)
 		if err != nil {
 			b.Fatal(err)
@@ -353,53 +362,35 @@ func buildChunkDesc(t testing.TB) *chunkDesc {
 	return desc
 }
 
-func TestMaybeSetIngestedAt(t *testing.T) {
+func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
+	// Only schema v14 persists IngestedAt in the index.
 	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
 	v13 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v13"}}
 
 	backfill := labels.FromStrings("app", "foo", constants.BackfillLabel, "true")
-	live := labels.FromStrings("app", "foo")
+	nonBackfill := labels.FromStrings("app", "foo")
+
+	recordTime := time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	for _, tc := range []struct {
-		name    string
-		periods []config.PeriodConfig
-		metric  labels.Labels
-		wantSet bool
+		name       string
+		periods    []config.PeriodConfig
+		labels     labels.Labels
+		recordTime time.Time
+		want       model.Time
 	}{
-		{"backfill stream under v14 records ingestion time", v14, backfill, true},
-		{"live stream under v14 stays zero", v14, live, false},
-		{"backfill stream under v13 stays zero", v13, backfill, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			i := &Ingester{periodicConfigs: tc.periods}
-			ch := chunk.Chunk{Metric: tc.metric}
-
-			before := model.Now()
-			i.maybeSetIngestedAt(&ch, model.Now())
-
-			if tc.wantSet {
-				require.NotEqual(t, model.Time(0), ch.IngestedAt)
-				require.GreaterOrEqual(t, int64(ch.IngestedAt), int64(before))
-			} else {
-				require.Equal(t, model.Time(0), ch.IngestedAt)
-			}
-		})
-	}
-}
-
-func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		labels  labels.Labels
-		wantSet bool
-	}{
-		{"backfill stream", labels.FromStrings("app", "foo", constants.BackfillLabel, "true"), true},
-		{"live stream", labels.FromStrings("app", "foo"), false},
+		{"backfill stream on v14 without a record timestamp stays unset", v14, backfill, time.Time{}, 0},
+		{"non-backfill stream on v14 stays unset", v14, nonBackfill, time.Time{}, 0},
+		{"backfill stream on v13 stays unset", v13, backfill, time.Time{}, 0},
+		{"non-backfill stream with a record timestamp stays unset", v14, nonBackfill, recordTime, 0},
+		{"backfill stream on v13 with a record timestamp stays unset", v13, backfill, recordTime, 0},
+		{"backfill stream on v14 uses the record timestamp", v14, backfill, recordTime, model.Time(recordTime.UnixMilli())},
+		{"epoch record timestamp is not used", v14, backfill, time.UnixMilli(0), 0},
+		{"Kafka NoTimestamp is not used", v14, backfill, time.UnixMilli(-1), 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
-			// Use a v14 period so the chunk's index would persist IngestedAt.
-			ing.periodicConfigs = []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
+			ing.periodicConfigs = tc.periods
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			var captured []chunk.Chunk
@@ -408,17 +399,16 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 				return nil
 			}
 
-			before := model.Now()
-			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, buildChunkDecs(t), &sync.RWMutex{}))
+			descs := buildChunkDecs(t)
+			for _, d := range descs {
+				d.ingestedAt = tc.recordTime
+			}
+
+			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, descs, &sync.RWMutex{}))
 
 			require.NotEmpty(t, captured)
 			for _, c := range captured {
-				if tc.wantSet {
-					require.NotEqual(t, model.Time(0), c.IngestedAt)
-					require.GreaterOrEqual(t, int64(c.IngestedAt), int64(before))
-				} else {
-					require.Equal(t, model.Time(0), c.IngestedAt)
-				}
+				require.Equal(t, tc.want, c.IngestedAt)
 			}
 		})
 	}

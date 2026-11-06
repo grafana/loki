@@ -606,11 +606,8 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
+			i.chunkIngestedAt(metric, firstTime, c.ingestedAt),
 		)
-
-		// For backfilled chunks, stamp the flush time as IngestedAt so retention
-		// can be measured from ingestion rather than from the log timestamps.
-		i.maybeSetIngestedAt(&ch, firstTime)
 
 		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
 		// for the duration of encode. Store Put remains unlocked.
@@ -647,31 +644,30 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	desc.flushed = time.Now()
 }
 
-// maybeSetIngestedAt stamps the flush time as the chunk's IngestedAt for chunks
-// belonging to backfilled streams (those carrying the __backfill__ label), so that
-// under TSDB FormatV4 (schema v14) retention can be measured from ingestion rather
-// than from the log timestamps. Live chunks, and chunks whose period does not
-// support FormatV4, keep the zero value and fall back to Through-based retention.
-func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time) {
-	if ch.Metric.Get(constants.BackfillLabel) != "true" {
-		return
+// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested Kafka record.
+// Records without one come with a zero time or Kafka's NoTimestamp (-1).
+func validRecordTimestamp(ts time.Time) bool {
+	return ts.UnixMilli() > 0
+}
+
+func (i *Ingester) chunkIngestedAt(metric labels.Labels, from model.Time, recordTime time.Time) model.Time {
+	if metric.Get(constants.BackfillLabel) != "true" {
+		return 0
 	}
 
-	// Resolve the schema from the chunk's own time (its From). That's deliberate:
-	// the index format is selected per chunk time bounds (see tsdb.IndexBuckets),
-	// so the gate must match the period the chunk is actually written under.
-	// Resolving from the chunk's (old) backfill time is safe because replay is only
-	// enabled once the schema is v14, so a backfilled chunk's time always resolves
-	// to a v14+ period and this passes; the check still guards against ever
-	// stamping IngestedAt onto a non-FormatV4 index.
+	// Only set for chunks that fall within >= v14
 	schemaCfg := config.SchemaConfig{Configs: i.periodicConfigs}
-	if !schemaCfg.SupportsIngestedAtForTime(chunkTime) {
-		return
+	if !schemaCfg.SupportsIngestedAtForTime(from) {
+		return 0
 	}
 
-	// Stamp the flush time. Backfilled chunks are flushed shortly after they are
-	// ingested, so at the day precision used by the index this matches ingestion.
-	ch.IngestedAt = model.Now()
+	if !validRecordTimestamp(recordTime) {
+		return 0
+	}
+
+	// Replicas of a partition consume the same records in the same order, so the record timestamp is the same on
+	// all of them and chunks will be able to deduplicate.
+	return model.Time(recordTime.UnixMilli())
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
