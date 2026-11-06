@@ -285,12 +285,9 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 	discoverServiceName := limits.DiscoverServiceName(userID)
 
-	logServiceNameDiscovery := false
+	logServiceNameDiscovery, logPushRequestStreams := false, false
 	if tenantConfigs != nil {
 		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
-	}
-	logPushRequestStreams := false
-	if tenantConfigs != nil {
 		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
 	}
 
