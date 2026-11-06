@@ -205,6 +205,46 @@ eval instant at 60s count_over_time({app=~"foo|bar"}[1m])
 `)
 }
 
+func TestRunScript_ShouldRefreshLoglineStoresAfterLoadAndClear(t *testing.T) {
+	stack, err := newQueryFrontendTimestampFirstStack(t, queryFrontendShardLoglineTimestampFirstStackName, withQuerySharding(), withLogline())
+	require.NoError(t, err)
+	stacks := []executionStack{stack}
+
+	// Keep the chunk bounds fixed and the matches in distinct 16s documents so stale indexes miss new data.
+	const script = `
+load
+  {app="logline"} "background" @ 0s
+  {app="logline"} "needle initial" @ 20s
+  {app="logline"} "background" @ 120s
+
+eval select from 0s to 121s forward {app="logline"} |= "needle"
+  {app="logline"} "needle initial" @ 20s
+
+load
+  {app="logline"} "needle added" @ 60s
+
+eval select from 0s to 121s forward {app="logline"} |= "needle"
+  {app="logline"} "needle initial" @ 20s
+  {app="logline"} "needle added" @ 60s
+
+clear
+
+eval select from 0s to 121s forward {app="logline"} |= "needle"
+  expect empty
+
+load
+  {app="logline"} "background" @ 0s
+  {app="logline"} "needle reloaded" @ 100s
+  {app="logline"} "background" @ 120s
+
+eval select from 0s to 121s forward {app="logline"} |= "needle"
+  {app="logline"} "needle reloaded" @ 100s
+`
+	runScriptWith(t, "logline refresh", script, stacks, func(cmd evalCmd, exp expectations) {
+		runEval(t, "logline refresh", stacks, cmd, exp)
+	})
+}
+
 func TestParseLoadBlock(t *testing.T) {
 	// A load block with at least one data line loads it and advances past the block.
 	p := newStreamsParser()
