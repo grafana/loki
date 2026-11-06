@@ -515,32 +515,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	return d.pushWithResolver(ctx, internal, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
-// pushWithResolver validates req, enforces the ingestion limits on what is left, and writes the
-// accepted streams. Each stage takes what the previous one produced and returns what the next one
-// needs:
+// pushWithResolver validates req, applies the ingestion limits, and writes the streams that are
+// left. Validation edits the entries of req in place, and time sharding sorts them.
 //
-//	validateStreams → shardStreams → enforceIngestionRateLimits → enforceStreamLimits → writeStreams
-//
-// Validation edits the entries of req in place.
-//
-// Rejections and the errors they return, in order of precedence:
-//   - An error normalizing structured metadata aborts the whole push.
-//   - The ingestion rate limit is all-or-nothing: an exceeded bucket rejects the whole push with a
-//     429, and any validation error is dropped.
-//   - Streams over the limits service's stream limit are dropped with a 429.
+// Rejections, in order of precedence for the returned error:
+//   - A structured metadata name that cannot be normalized aborts the whole push.
+//   - The ingestion rate limit rejects the whole push with a 429, dropping any validation error.
+//   - Streams over the stream limit are dropped with a 429.
 //   - Streams that fail validation are dropped with a 400.
 //   - Streams of a blocked tenant or policy are dropped with the block status code, or with no
 //     error for 200.
 //
-// For the other rejections, the rest of the push is still written and the error is returned with
-// the response. The push is rejected with the error instead when nothing is left to write, or
-// when a stream of the push resolves to a policy with reject_partial_writes and the error is a
-// 429.
-//
-// A push rejected before the write returns a nil response with its error, and so does a failed
-// write, which may have been partly written by then. A response with an error means a partial
-// write. A push left with nothing to write and no error, such as one whose streams were all
-// blocked with status code 200, succeeds with a response.
+// After the last three, the remaining streams are still written and the error is returned with the
+// response. The push is rejected instead when there is an error and nothing is left to write, or
+// when the error is a 429 and a stream of the push resolves to a policy with reject_partial_writes.
+// A rejected push returns a nil response, and so does a failed write, which may have been partly
+// written by then.
 func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -564,14 +554,16 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	}
 	if len(validated.streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "post-validation").Inc()
-		// Nothing was left to write. Without an error, for example when every
-		// stream was empty or blocked with status code 200, that is a success.
+		// Without an error, every stream was empty or blocked with status
+		// code 200: a success with nothing to write.
 		if validated.err != nil {
 			return nil, validated.err
 		}
 		return &logproto.PushResponse{}, nil
 	}
 
+	// Sharding runs before the rate limit, so a push the rate limit rejects
+	// may still have advanced shard rotations and been counted as sharded.
 	sharded := d.shardStreams(tenantID, now, validated.streams)
 
 	// An admitted push keeps its tokens even if a later stage rejects it.
@@ -586,19 +578,15 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		limitsErr = httpgrpc.Error(http.StatusTooManyRequests, limitsErr.Error())
 	}
 
-	// A stream-limit 429 takes precedence over validation and blocked errors.
+	// The argument order is the precedence: a stream-limit 429 wins.
 	finalErr := cmp.Or(limitsErr, validated.err)
 	if finalErr != nil {
-		// Nothing is left to write: the limits service rejected every
-		// stream that passed validation.
+		// Only the stream limit can leave nothing to write here.
 		if len(streams) == 0 {
 			return nil, finalErr
 		}
 
-		// Reject the whole push with a 429 when a policy asks for it,
-		// instead of partially writing and sending a 429. The rejected push
-		// still consumes its rate-limit tokens and the limits service's
-		// stream slots.
+		// The limits service has still counted the streams it accepted.
 		if validated.rejectPartialWrites && (limitsErr != nil || isTooManyRequests(validated.err)) {
 			d.m.rejectedPartialWrites.WithLabelValues(tenantID, validated.rejectPartialWritesPolicy).Inc()
 			return nil, finalErr
@@ -611,8 +599,9 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	return &logproto.PushResponse{}, finalErr
 }
 
-// writeStreams writes streams to the tee, Kafka and the ingesters, as configured, and waits until
-// every write succeeded, one failed, or ctx is done.
+// writeStreams writes streams to the tee, Kafka and the ingesters, as configured. It returns once
+// the tee's registered writes, Kafka and a quorum of each stream's ingesters have succeeded, on the
+// first failure, or when ctx is done. The ingester writes carry on after it returns.
 func (d *Distributor) writeStreams(ctx context.Context, tenantID string, streams []KeyedStream) error {
 	tracker := PushTracker{
 		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - doneWithResult only sends once on each
@@ -634,7 +623,6 @@ func (d *Distributor) writeStreams(ctx context.Context, tenantID string, streams
 
 	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
 	if d.tee != nil {
-		// Call register for the tee to allow them to register their pending streams.
 		d.tee.Register(ctx, tenantID, streams, &tracker)
 	}
 	tracker.streamsPending.Add(int32(streamsToWrite))
@@ -729,10 +717,10 @@ func (d *Distributor) writeStreams(ctx context.Context, tenantID string, streams
 	}
 }
 
-// acceptedStream is a stream that passed validation, with what validation resolved about it, so
-// that later stages do not need to work it out again.
+// acceptedStream is a stream that passed validation, with the labels, retention and policy
+// validation resolved for it, so later stages reuse them instead of resolving them again.
 type acceptedStream struct {
-	// stream has its validated entries and its labels in canonical form.
+	// stream holds only the entries that passed validation, and its labels in canonical form.
 	stream         logproto.InternalStreamAdapter
 	lbs            labels.Labels
 	retentionHours string
@@ -740,27 +728,26 @@ type acceptedStream struct {
 	stats          streamStats
 }
 
-// validatedPush is the result of validating a push.
+// validatedPush is the result of validateStreams.
 type validatedPush struct {
 	// streams are the streams that passed validation, in push order.
 	streams []acceptedStream
 
-	// err is the error for the client from validation: a 400 naming the streams and entries that
-	// failed validation or, failing that, the status code of a blocked stream. It is nil if neither
-	// happened, which includes every blocked stream having status code 200.
+	// err is the client error from validation: a 400 for the streams and entries that failed it
+	// or, if none did, the status code of a blocked stream. It is nil if every blocked stream had
+	// status code 200.
 	err error
 
-	// rejectPartialWrites is whether any stream of the push with entries resolved to a policy
-	// configured with reject_partial_writes, accepted or not. rejectPartialWritesPolicy is the first
-	// such policy. Such pushes are rejected as a whole on a 429 instead of being partially written.
+	// rejectPartialWrites is whether any stream with entries resolved to a policy with
+	// reject_partial_writes, even one that was then rejected. rejectPartialWritesPolicy is the
+	// first such policy.
 	rejectPartialWrites       bool
 	rejectPartialWritesPolicy string
 }
 
-// validateStreams validates the streams of req and returns the ones that pass. A stream is dropped
-// if it has no entries, fails label validation, misses enforced labels, is blocked, or has no
-// entries left once they are validated. Each drop is reported as discarded. It edits the entries of
-// req in place.
+// validateStreams validates the streams of req and returns the ones that pass. Side effects: it
+// edits the entries of req in place, reports every stream and entry it drops as discarded and to
+// the insight logs, and adds labels that pass validation to the label cache.
 //
 // The returned error aborts the push. Validation failures are in validatedPush.err instead.
 func (d *Distributor) validateStreams(
@@ -798,8 +785,6 @@ func (d *Distributor) validateStreams(
 			result.rejectPartialWritesPolicy = parsed.policy
 		}
 
-		// discard logs err to the insight logs and reports the whole stream
-		// as discarded for reason.
 		discard := func(reason string, err error) {
 			d.writeFailuresManager.Log(tenantID, err)
 			d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
@@ -822,15 +807,11 @@ func (d *Distributor) validateStreams(
 
 		if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(vCtx, now, parsed.policy); block {
 			discard(reason, err)
-
-			// If the status code is 200, return no error.
-			// Note that we still log the error and increment the metrics.
 			if statusCode == http.StatusOK {
 				continue
 			}
-
-			// return an error but do not add it to validationErrors
-			// otherwise client will get a 400 and will log it.
+			// Kept out of validationErrors, so the client gets the block's
+			// status code rather than a 400.
 			ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
 			continue
 		}
@@ -857,21 +838,22 @@ func (d *Distributor) validateStreams(
 	if validationErrors.Err() != nil {
 		result.err = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
 	} else if ingestionBlockedError != nil {
-		// Any validation error takes precedence over the status code and error message for blocked ingestion.
+		// A 400 takes precedence over a blocked stream's status code.
 		result.err = ingestionBlockedError
 	}
 	return result, nil
 }
 
-// enforceStreamLimits enforces the limits service's stream limits on the sharded streams and returns
-// the streams to write. Live-mode candidates are sharded with the count the service returns, and
-// shadow-mode candidates are compared against its answer, see shardedStreams. Nothing is enforced
-// while the ingest limits are disabled.
+// enforceStreamLimits applies the stream limit to the sharded streams and returns the streams to
+// write. Nothing is checked while the ingest limits are disabled. Rejected streams are reported as
+// discarded, and the returned error names one of them, preferring a live-mode rejection over an
+// EnforceLimits one. It is the only error returned: when the limits service fails, the limits fail
+// open.
 //
-// Streams over the stream limit are dropped and reported as discarded, and the returned error names
-// one of them. It is the only error returned: when the limits service fails, the limits fail open.
-// A live-mode rejection takes precedence over one from EnforceLimits, so that its stream is the one
-// named in the error.
+// CheckLimitsAndShard checks the live-mode streams and decides their shard count, and they are
+// sharded here. Every other stream was sharded by shardStreams, before the rate limit, and is
+// checked by EnforceLimits. Streams are sharded in two places only while EnforceLimits
+// (ExceedsLimits) and CheckLimitsAndShard are both in use.
 func (d *Distributor) enforceStreamLimits(
 	ctx context.Context,
 	tenantID string,
@@ -887,10 +869,6 @@ func (d *Distributor) enforceStreamLimits(
 		return streams, nil
 	}
 
-	// Live-mode streams are sharded with the count the limits service returns,
-	// which also decides whether they are written at all. They join streams
-	// only after EnforceLimits has checked the remaining streams, as
-	// CheckLimitsAndShard has already checked them.
 	var (
 		liveStreams  []KeyedStream
 		liveRejected []logproto.InternalStreamAdapter
@@ -900,11 +878,9 @@ func (d *Distributor) enforceStreamLimits(
 		for i, c := range sharded.liveCandidates {
 			count := shardCounts[i]
 			if count == 0 {
-				// The limits service has no stream budget left for this
-				// stream, so it is dropped. The rest of the push is still
-				// written, unless reject_partial_writes rejects all of it. In
-				// dry-run mode the rejection is recorded by the limits service
-				// but not acted on here.
+				// No stream budget left. In dry-run mode the limits service
+				// has recorded the rejection, and the stream is written
+				// unsharded.
 				if !d.cfg.IngestLimitsDryRunEnabled {
 					liveRejected = append(liveRejected, c.stream)
 					continue
@@ -916,15 +892,13 @@ func (d *Distributor) enforceStreamLimits(
 	}
 
 	if len(sharded.shadowCandidates) > 0 {
-		// The returned counts are discarded: these streams were already
-		// sharded with the local rate store's count.
+		// Only compared: the local rate store already sharded these streams.
 		d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeShadow, sharded.shadowCandidates)
 	}
 
 	var limitsErr error
-	// streams holds every stream but the live-mode ones, so shadow-mode
-	// streams are enforced as before. It is empty when the push consists of
-	// live-mode streams only.
+	// streams excludes the live-mode streams, and is empty when the push has
+	// only live-mode streams.
 	if len(streams) > 0 {
 		enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
 		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
@@ -951,9 +925,8 @@ func (d *Distributor) enforceStreamLimits(
 	return streams, limitsErr
 }
 
-// rejectOverStreamLimit reports streams the limits service rejected for the stream limit as
-// discarded, see reportDiscardedStreams, and returns an error naming the first of them. rejected
-// must not be empty.
+// rejectOverStreamLimit reports streams rejected for the stream limit as discarded and returns an
+// error naming the first of them. rejected must not be empty.
 func (d *Distributor) rejectOverStreamLimit(
 	ctx context.Context,
 	tenantID string,
@@ -1224,16 +1197,15 @@ func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []
 	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, tenantID, strings.Join(clauses, "; "))
 }
 
-// enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
-// decision. A bucket with a per-policy override is metered independently from the tenant-wide
-// bucket. We tentatively reserve each bucket's bytes and, if any bucket can't accept them
-// immediately, cancel every reservation (returning the tokens) and reject the whole request.
-// Using reservations rather than AllowN keeps the buckets independent: a request rejected
-// because one bucket is over its limit does not consume tokens from the others, so an
-// over-limit policy can't drain the budgets of unrelated policies across client retries.
+// enforceIngestionRateLimits applies the ingestion rate limit to the accepted streams, all or
+// nothing. A stream of a policy with its own ingestion rate is metered in that policy's bucket,
+// which replaces the tenant's limit for it, and every other stream in the tenant's bucket.
 //
-// It returns a non-nil 429 error if any bucket is over its limit (all reservations are rolled
-// back); nil means the request was admitted (the reservations are kept and the tokens consumed).
+// Each bucket's bytes are reserved. If any bucket cannot take them now, every reservation is
+// cancelled, every stream is reported as discarded, and the returned 429 rejects the whole push.
+// Reserving rather than AllowN means a push rejected for one bucket takes no tokens from the
+// others, so an over-limit policy cannot drain the budgets of other policies across retries. An
+// admitted push keeps its tokens.
 func (d *Distributor) enforceIngestionRateLimits(
 	ctx context.Context,
 	now time.Time,
@@ -1243,10 +1215,8 @@ func (d *Distributor) enforceIngestionRateLimits(
 ) error {
 	tenantID := vCtx.userID
 
-	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
-	// resolved policy has a per-policy ingestion rate override are metered against their own
-	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
-	// tenant-wide bucket (keyed by "").
+	// Keyed by policy for the buckets of policies with their own rate, and by "" for the
+	// tenant's bucket.
 	rlBuckets := map[string]*rateLimitBucket{}
 	for _, a := range accepted {
 		_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, a.policy)
@@ -1276,10 +1246,8 @@ func (d *Distributor) enforceIngestionRateLimits(
 		}
 		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
 		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
-		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
-		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
-		// bucket (rather than stopping at the first failure) so the rejection error can
-		// deterministically report all exceeded buckets.
+		// Not OK (more bytes than the burst) or needing a wait is what AllowN would refuse.
+		// Every bucket is checked, so that the error names all the exceeded ones.
 		if !r.OK() || r.DelayFrom(now) > 0 {
 			exceeded = append(exceeded, b)
 		}
@@ -1289,20 +1257,16 @@ func (d *Distributor) enforceIngestionRateLimits(
 		return nil
 	}
 
-	// Roll back every reservation so no tokens are consumed for a rejected request.
 	for _, br := range reservations {
 		br.reservation.CancelAt(now)
 	}
 
-	// The whole request is dropped, so report every stream as discarded, each under its own
-	// policy, with the labels and retention validation resolved for it.
 	for _, a := range accepted {
 		d.validator.reportDiscardedData(ctx, validation.RateLimited, vCtx, a.lbs, a.retentionHours, a.policy, nestedStreamSize(a.stream), a.stream.EntryCount(), format)
 	}
 
-	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
-	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
-	// map iteration order.
+	// The tenant's bucket first, then policies by name, so the error does not depend on map
+	// iteration order.
 	slices.SortFunc(exceeded, func(a, b *rateLimitBucket) int {
 		if a.hasOverride != b.hasOverride {
 			if !a.hasOverride {
@@ -1319,9 +1283,9 @@ func (d *Distributor) enforceIngestionRateLimits(
 }
 
 // reportDiscardedStreams reports whole streams that passed validation as discarded for reason. The
-// streams the stream limit rejects are shards, whose labels are not the ones validation resolved,
-// so it resolves each stream's labels, retention and policy for the report. It does not validate
-// them again: a shard's labels carry an extra shard label.
+// stream limit rejects shards, whose labels are not the ones validation resolved, so it resolves
+// each stream's labels, retention and policy again. It must not validate them: a shard's extra
+// shard label can push a valid stream over max_label_names_per_series.
 func (d *Distributor) reportDiscardedStreams(
 	ctx context.Context,
 	streams []logproto.InternalStreamAdapter,
@@ -1751,10 +1715,10 @@ type labelData struct {
 	hash uint64
 }
 
-// parsedStreamLabels is a stream's labels as resolveStreamLabels resolved them.
+// parsedStreamLabels is what resolveStreamLabels resolved for a stream.
 type parsedStreamLabels struct {
 	lbs labels.Labels
-	// labelsString is lbs as a string, which replaces the labels the stream was pushed with.
+	// labelsString is lbs in canonical form. validateStreams replaces the stream's labels with it.
 	labelsString   string
 	hash           uint64
 	retentionHours string
@@ -1762,9 +1726,9 @@ type parsedStreamLabels struct {
 }
 
 // resolveStreamLabels takes the labels for key from the label cache, or parses them, and resolves
-// the stream's retention and policy using a request-scoped policy resolver. cached reports a cache
-// hit. It neither validates the labels nor adds them to the cache, which only holds labels
-// parseStreamLabels has validated. If key does not parse, only retentionHours is set.
+// the stream's retention and policy. cached reports a cache hit. It neither validates the labels
+// nor adds them to the cache, which only holds labels parseStreamLabels has validated. If key does
+// not parse, only retentionHours is set.
 func (d *Distributor) resolveStreamLabels(ctx context.Context, tenantID, key string, streamResolver push.StreamResolver) (parsed parsedStreamLabels, cached bool, err error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
@@ -1785,9 +1749,8 @@ func (d *Distributor) resolveStreamLabels(ctx context.Context, tenantID, key str
 }
 
 // parseStreamLabels resolves stream labels (see resolveStreamLabels) and validates them, adding
-// them to the label cache once valid. If they are invalid, it returns the reason to discard the
-// stream's data for with the error, and only lbs (empty), retentionHours and policy are set, as
-// far as they could be resolved, for discard reporting.
+// them to the label cache once valid. For invalid labels it returns the discard reason with the
+// error, and sets only lbs (empty), retentionHours and policy, as far as they resolved.
 func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.InternalStreamAdapter, streamResolver push.StreamResolver) (parsedStreamLabels, string, error) {
 	parsed, cached, err := d.resolveStreamLabels(ctx, vContext.userID, key, streamResolver)
 	if err != nil {
