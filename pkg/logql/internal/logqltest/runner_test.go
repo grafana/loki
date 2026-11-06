@@ -69,6 +69,72 @@ func TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFr
 	}
 }
 
+// TestLogQLScripts_ShouldNotChangeAnyOutcomeWithTheMaxQuerySeriesCutoff runs every script
+// with a low series limit and compares eval outcomes with the cutoff disabled and enabled.
+// Each eval must have the same success/failure and series-limit status, except that a
+// series-limit failure with the cutoff enabled may replace a pipeline error with it disabled.
+func TestLogQLScripts_ShouldNotChangeAnyOutcomeWithTheMaxQuerySeriesCutoff(t *testing.T) {
+	const maxQuerySeries = 2
+
+	files, err := filepath.Glob("testdata/*.logqltest")
+	require.NoError(t, err)
+	require.NotEmpty(t, files, "no .logqltest scripts found under testdata/")
+
+	for name, newStack := range map[string]func(t *testing.T, stackName string, opts ...stackOption) executionStack{
+		"direct": func(t *testing.T, stackName string, opts ...stackOption) executionStack {
+			return newDirectTimestampFirstStack(t, stackName, opts...)
+		},
+		"query-frontend without sharding": func(t *testing.T, stackName string, opts ...stackOption) executionStack {
+			stack, err := newQueryFrontendTimestampFirstStack(t, stackName, opts...)
+			require.NoError(t, err)
+			return stack
+		},
+		"query-frontend with sharding": func(t *testing.T, stackName string, opts ...stackOption) executionStack {
+			stack, err := newQueryFrontendTimestampFirstStack(t, stackName, append([]stackOption{withQuerySharding()}, opts...)...)
+			require.NoError(t, err)
+			return stack
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, f := range files {
+				t.Run(filepath.Base(f), func(t *testing.T) {
+					t.Parallel()
+
+					b, err := os.ReadFile(f)
+					require.NoError(t, err)
+
+					disabled := newStack(t, "max query series cutoff disabled", withMaxQuerySeries(maxQuerySeries))
+					enabled := newStack(t, "max query series cutoff enabled", withMaxQuerySeries(maxQuerySeries), withMaxQuerySeriesCutoff())
+
+					outcomes := runScript(t, filepath.Base(f), string(b), []executionStack{disabled, enabled})
+					requireSameOutcomesWithMaxQuerySeriesCutoff(t, outcomes[disabled.name()], outcomes[enabled.name()])
+				})
+			}
+		})
+	}
+}
+
+// requireSameOutcomesWithMaxQuerySeriesCutoff checks that every eval that neither skipped ends the
+// same way without max query series cutoff (disabled) and with it (enabled), as requireSameOutcomes does,
+// except that enabled may fail on the series limit where disabled fails on a pipeline error.
+func requireSameOutcomesWithMaxQuerySeriesCutoff(t *testing.T, disabled, enabled []evalOutcome) {
+	t.Helper()
+
+	require.Len(t, enabled, len(disabled))
+	for i := range disabled {
+		require.Equal(t, disabled[i].eval, enabled[i].eval)
+		if disabled[i].skipped || enabled[i].skipped {
+			continue
+		}
+		require.Equalf(t, disabled[i].err == nil, enabled[i].err == nil, "%s: without the cut-off error %v, with it %v", disabled[i].eval, disabled[i].err, enabled[i].err)
+		if enabled[i].isSeriesLimitFailure() && disabled[i].isPipelineFailure() {
+			t.Logf("%s: tie, the cut-off fails on the series limit where the query without it fails on %v", disabled[i].eval, disabled[i].err)
+			continue
+		}
+		require.Equalf(t, disabled[i].isSeriesLimitFailure(), enabled[i].isSeriesLimitFailure(), "%s: without the cut-off error %v, with it %v", disabled[i].eval, disabled[i].err, enabled[i].err)
+	}
+}
+
 func TestRunScriptOutcomes_ShouldReportTheSeriesLimitFailures(t *testing.T) {
 	const script = `
 load

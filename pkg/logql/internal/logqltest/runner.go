@@ -61,6 +61,12 @@ func (o evalOutcome) isSeriesLimitFailure() bool {
 	return o.err != nil && strings.Contains(o.err.Error(), "maximum number of series")
 }
 
+// isPipelineFailure reports whether the query failed on a pipeline error. It reads the error
+// message for the same reason as evalOutcome.isSeriesLimitFailure.
+func (o evalOutcome) isPipelineFailure() bool {
+	return o.err != nil && strings.Contains(o.err.Error(), "pipeline error:")
+}
+
 // runScript runs every eval of script on each of stacks and returns how each one ended,
 // by stack name, in script order. Every stack has an outcome for every eval, so the outcomes of two
 // stacks line up.
@@ -178,6 +184,9 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 		must(newQueryFrontendStreamFirstStack(t, queryFrontendShardStreamFirstStackName)),
 		must(newQueryFrontendDataObjStack(t, queryFrontendShardDataObjStackName)),
 		must(newQueryFrontendDataObjAndChunkStack(t, queryFrontendShardDataObjAndChunkStackName)),
+
+		// Every engine runs with max query series cutoff on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardMaxQuerySeriesCutoffStackName, withMaxQuerySeriesCutoff())),
 	}
 }
 
