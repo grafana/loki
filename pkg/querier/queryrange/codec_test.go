@@ -1069,6 +1069,38 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/query_range", decoded.Path)
 }
 
+func Test_codec_InstantRequestHintRangesRoundTrip(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	ts := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	toEncode := &LokiInstantRequest{
+		Query:     `sum(count_over_time({foo="bar"} |= "error" [5m]))`,
+		Limit:     100,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query",
+		TimeTs:    ts,
+		// Hint ranges for an instant request sit in the lookback before TimeTs.
+		HintRanges: []logproto.HintTimeRange{
+			{Start: ts.Add(-4 * time.Minute), End: ts.Add(-3 * time.Minute)},
+			{Start: ts.Add(-2 * time.Minute), End: ts.Add(-time.Minute)},
+		},
+	}
+
+	encoded, err := DefaultCodec.EncodeRequest(ctx, toEncode)
+	require.NoError(t, err)
+	require.Len(t, encoded.URL.Query()["hintRanges"], 1)
+
+	req, err := DefaultCodec.DecodeRequest(context.TODO(), encoded, nil)
+	require.NoError(t, err)
+	decoded := req.(*LokiInstantRequest)
+	require.Equal(t, toEncode.TimeTs, decoded.TimeTs)
+	require.Equal(t, toEncode.HintRanges, decoded.HintRanges)
+
+	// The querier reads the ranges through the params.
+	params, err := ParamsFromRequest(decoded)
+	require.NoError(t, err)
+	require.Equal(t, toEncode.HintRanges, params.GetHintRanges())
+}
+
 func TestLokiRequestWithStartEndClipsHintRangesWithoutMutation(t *testing.T) {
 	original := &LokiRequest{
 		StartTs: start,
