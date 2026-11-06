@@ -126,27 +126,50 @@ func TestQueryRequestWrapUnwrap_EncodingFlags(t *testing.T) {
 
 func TestQueryRequestWrapUnwrap_HintRanges(t *testing.T) {
 	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
-	req := &LokiRequest{
-		Query:   `{app="a"} |= "error"`,
-		StartTs: start,
-		EndTs:   start.Add(time.Hour),
-		HintRanges: []logproto.HintTimeRange{
-			{Start: start.Add(5 * time.Minute), End: start.Add(6 * time.Minute)},
-			{Start: start.Add(30 * time.Minute), End: start.Add(32 * time.Minute)},
-		},
+	hintRanges := []logproto.HintTimeRange{
+		{Start: start.Add(5 * time.Minute), End: start.Add(6 * time.Minute)},
+		{Start: start.Add(30 * time.Minute), End: start.Add(32 * time.Minute)},
 	}
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	wrapped, err := (Codec{}).QueryRequestWrap(ctx, req)
-	require.NoError(t, err)
-	data, err := wrapped.Marshal()
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name string
+		req  queryrangebase.Request
+	}{
+		{
+			name: "range",
+			req: &LokiRequest{
+				Query:      `{app="a"} |= "error"`,
+				StartTs:    start,
+				EndTs:      start.Add(time.Hour),
+				HintRanges: hintRanges,
+			},
+		},
+		{
+			name: "instant",
+			req: &LokiInstantRequest{
+				Query:      `sum(count_over_time({app="a"} |= "error" [1h]))`,
+				TimeTs:     start.Add(time.Hour),
+				HintRanges: hintRanges,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wrapped, err := (Codec{}).QueryRequestWrap(ctx, tc.req)
+			require.NoError(t, err)
+			data, err := wrapped.Marshal()
+			require.NoError(t, err)
 
-	var decoded QueryRequest
-	require.NoError(t, decoded.Unmarshal(data))
-	unwrapped, _, err := (Codec{}).QueryRequestUnwrap(context.Background(), &decoded)
-	require.NoError(t, err)
-	require.Equal(t, req.HintRanges, unwrapped.(*LokiRequest).HintRanges)
+			var decoded QueryRequest
+			require.NoError(t, decoded.Unmarshal(data))
+			unwrapped, _, err := (Codec{}).QueryRequestUnwrap(context.Background(), &decoded)
+			require.NoError(t, err)
+			require.IsType(t, tc.req, unwrapped)
+			require.Equal(t, hintRanges, unwrapped.(interface {
+				GetHintRanges() []logproto.HintTimeRange
+			}).GetHintRanges())
+		})
+	}
 }
 
 func TestQueryRequestWrapUnwrap_DataObjOptions(t *testing.T) {
