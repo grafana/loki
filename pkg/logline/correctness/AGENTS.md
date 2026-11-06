@@ -11,6 +11,7 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
 
 2. **Ingester window respected**
    - Test ranges must end at or before `now - query_ingesters_within`.
+   - `pickRandomRange` slides each range back so it ends on a minute, unless that would start it before `max(startedAt, now - max_lookback)`. The sample is fetched newest first, so its needle sits at the end of the range, and a metric request with `align_queries_with_step` drops the final partial minute. Sliding back keeps both bounds above.
    - Ingesters cover the most recent `query_ingesters_within` duration; correctness tests only verify object-storage-backed data.
    - Indexes whose `MinRecordTs` falls within the ingester window are filtered out — they contain data still covered by ingesters.
 

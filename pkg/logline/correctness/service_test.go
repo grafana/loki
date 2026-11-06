@@ -1242,3 +1242,56 @@ func TestPickRandomRange_RespectsRecentStartedAt(t *testing.T) {
 		require.Equal(t, rangeDur, end.Sub(start))
 	}
 }
+
+func TestPickRandomRange_EndsOnMinute(t *testing.T) {
+	// A step-aligned metric request drops the final partial minute, so a range
+	// ends on a minute whenever sliding it back keeps start after earliest.
+	t.Run("slides back when there is room", func(t *testing.T) {
+		now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+		startedAt := now.Add(-7*24*time.Hour + 17*time.Second) // not on a minute
+		svc := &Service{
+			cfg: Config{
+				QueryIngestersWithin: 3 * time.Hour,
+				QueryRangeMin:        5 * time.Minute,
+				QueryRangeMax:        30 * time.Minute,
+				MaxLookback:          30 * 24 * time.Hour,
+			},
+			startedAt: startedAt,
+			rand:      rand.New(rand.NewSource(1)), //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+		}
+		eligibleEnd := now.Add(-3 * time.Hour)
+
+		for i := 0; i < 200; i++ {
+			start, end, skip := svc.pickRandomRange(now)
+			require.Empty(t, skip)
+			require.Equal(t, end.Truncate(time.Minute), end, "end %v is not on a minute", end)
+			require.False(t, start.Before(startedAt), "start %v before started_at %v", start, startedAt)
+			require.False(t, end.After(eligibleEnd), "end %v after the ingester window starts at %v", end, eligibleEnd)
+			require.GreaterOrEqual(t, end.Sub(start), 5*time.Minute)
+			require.LessOrEqual(t, end.Sub(start), 30*time.Minute)
+		}
+	})
+
+	t.Run("stays put when sliding would pass earliest", func(t *testing.T) {
+		// eligibleEnd 08:59:45 minus the 10m15s range leaves start only one
+		// choice, startedAt 08:49:30. Ending on 08:59:00 would need start
+		// 08:48:45.
+		now := time.Date(2026, 8, 3, 11, 59, 45, 0, time.UTC)
+		startedAt := time.Date(2026, 8, 3, 8, 49, 30, 0, time.UTC)
+		svc := &Service{
+			cfg: Config{
+				QueryIngestersWithin: 3 * time.Hour,
+				QueryRangeMin:        10*time.Minute + 15*time.Second,
+				QueryRangeMax:        10*time.Minute + 15*time.Second,
+				MaxLookback:          30 * 24 * time.Hour,
+			},
+			startedAt: startedAt,
+			rand:      rand.New(rand.NewSource(1)), //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+		}
+
+		start, end, skip := svc.pickRandomRange(now)
+		require.Empty(t, skip)
+		require.Equal(t, startedAt, start)
+		require.Equal(t, time.Date(2026, 8, 3, 8, 59, 45, 0, time.UTC), end)
+	})
+}

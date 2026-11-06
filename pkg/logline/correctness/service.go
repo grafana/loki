@@ -622,6 +622,13 @@ func (s *Service) pickRandomRange(now time.Time) (time.Time, time.Time, string) 
 		start = earliest.Add(randomOffset)
 	}
 	end := start.Add(rangeDuration)
+	// Slide the range back so it ends on a minute. A metric request with
+	// align_queries_with_step drops the final partial minute, and the sampled
+	// needle comes from the end of the range. Moving back keeps end before the
+	// ingester window. The slide is skipped if start would pass earliest.
+	if shift := end.Sub(end.Truncate(time.Minute)); !start.Add(-shift).Before(earliest) {
+		start, end = start.Add(-shift), end.Add(-shift)
+	}
 	return start, end, ""
 }
 
