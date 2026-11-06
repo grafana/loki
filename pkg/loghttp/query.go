@@ -194,6 +194,17 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 		case 2: // structuredMetadata
 			var structuredMetadata []logproto.LabelAdapter
 			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
+				if dataType == jsonparser.Boolean {
+					// Boolean tokens are not quoted strings, so ParseString
+					// cannot decode them. The raw literal is already the
+					// metadata value, matching how parseLabels coerces
+					// boolean label values.
+					structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
+						Name:  string(key),
+						Value: string(val),
+					})
+					return nil
+				}
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
