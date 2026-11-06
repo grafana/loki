@@ -20,6 +20,14 @@ func TestValidateStorageClass(t *testing.T) {
 			string(s3types.StorageClassStandardIa),
 			nil,
 		},
+		"should not return error for REDUCED_REDUNDANCY": {
+			string(s3types.StorageClassReducedRedundancy),
+			nil,
+		},
+		"should return error for GLACIER": {
+			string(s3types.StorageClassGlacier),
+			ErrUnsupportedStorageClass(string(s3types.StorageClassGlacier)),
+		},
 	}
 
 	for name, test := range tests {

@@ -5976,7 +5976,8 @@ http_config:
 [signature_version: <string> | default = "v4"]
 
 # The S3 storage class which objects will use. Supported values are: STANDARD,
-# STANDARD_IA.
+# STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
+# with MinIO.
 # CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
@@ -6851,7 +6852,8 @@ s3:
 
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
-  # STANDARD_IA.
+  # STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
+  # with MinIO.
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 
