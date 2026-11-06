@@ -77,13 +77,17 @@ Roll out this new ingester group before you enable any Kafka writes in the next 
 
 ### 3. Enable dual-write
 
-On your distributors, set `kafka_writes_enabled: true` while keeping `ingester_writes_enabled: true` (the default).
+On your distributors, set `distributor.kafka_writes_enabled: true` while keeping `distributor.ingester_writes_enabled: true` (the default).
+Additionally, set `ingester.kafka_ingestion.enabled: true` while keeping it `false` on the existing ingester group. This means, that the old ingester group and the distributors cannot share the same config file. (Not setting this would cause the error `kafka enabled in distributor but not in ingester` on startup.)
 
 ```yaml
 # Distributor config
 distributor:
   kafka_writes_enabled: true
   ingester_writes_enabled: true
+ingester:
+  kafka_ingestion:
+    enabled: true
 ```
 
 With this configuration, the distributor writes every stream to both Kafka, which your new Kafka-consuming ingesters read from, and to your existing ingesters over gRPC, at the same time. The write path keeps working as expected even if something is misconfigured in the Kafka path, because your existing ingesters keep receiving every write directly.
