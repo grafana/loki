@@ -25,6 +25,7 @@ type Limits interface {
 	RejectOldSamplesMaxAge(userID string) time.Duration
 
 	IncrementDuplicateTimestamps(userID string) bool
+	TrustedLabelsHeaderEnabled(userID string) bool
 	DiscoverServiceName(userID string) []string
 	DiscoverGenericFields(userID string) map[string][]string
 	DiscoverLogLevels(userID string) bool

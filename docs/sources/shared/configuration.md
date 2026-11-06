@@ -4166,6 +4166,16 @@ discover_generic_fields:
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
+# Experimental: When enabled, Loki forces the labels sent in the X-Loki-Labels
+# HTTP header (e.g. '{username="userA"}') onto every stream of a push request,
+# overriding body labels of the same name. This lets a trusted reverse proxy or
+# gateway attach an authenticated identity to logs without rewriting the request
+# body. The gateway must overwrite any client-supplied X-Loki-Labels header.
+# Disabled by default; when disabled the header is ignored. Applies to the HTTP
+# push (JSON and protobuf) and OTLP endpoints only.
+# CLI flag: -validation.trusted-labels-header-enabled
+[trusted_labels_header_enabled: <boolean> | default = false]
+
 # Field name to use for log levels. If not set, log level would be detected
 # based on pre-defined labels as mentioned above.
 # CLI flag: -validation.log-level-fields

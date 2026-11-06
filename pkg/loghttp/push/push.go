@@ -294,6 +294,11 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	// backfill labels added below.
 	backfillShard := ExtractBackfillShardContext(r.Context())
 
+	// Trusted labels (X-Loki-Labels header) are forced onto every stream below, overriding any body
+	// label of the same name. They are empty unless a trusted gateway set the header for a tenant
+	// that has the feature enabled.
+	trustedLabels := ExtractTrustedLabelsContext(r.Context())
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 
@@ -334,6 +339,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			lb := labels.NewBuilder(lbs)
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
 		}
+
+		// Trusted labels are applied after service name discovery, so a service_name forced through
+		// the X-Loki-Labels header wins over a discovered one.
+		lbs = applyTrustedLabels(lbs, trustedLabels)
 
 		if backfillShard != "" {
 			lbs = labels.NewBuilder(lbs).

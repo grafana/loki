@@ -201,6 +201,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	// config cannot drop them.
 	backfillShard := ExtractBackfillShardContext(ctx)
 
+	// Trusted labels (X-Loki-Labels header) are forced onto every stream below, overriding any
+	// resource-derived label of the same name. Empty unless a trusted gateway set the header.
+	trustedLabels := ExtractTrustedLabelsContext(ctx)
+
 	mostRecentEntryTimestamp := time.Time{}
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
@@ -226,6 +230,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			streamLabels[constants.BackfillLabel] = "true"
 			streamLabels[constants.BackfillShardLabel] = model.LabelValue(backfillShard)
 		}
+
+		// Applied after resource-attribute promotion (which includes service name discovery) so a
+		// label forced through the X-Loki-Labels header always wins.
+		applyTrustedLabelsToSet(streamLabels, trustedLabels)
 
 		var pushedLabels model.LabelSet
 		if logServiceNameDiscovery {
