@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -475,7 +476,8 @@ type logObjectWriter struct {
 	node   *physical.LogMerge
 	layout streams.Layout
 	table  *logsobj.MultiSourceRankedStreams
-	calc   *dataobjindex.Calculator
+
+	indexer *objectIndexer
 
 	builderMetrics *logsobj.BuilderMetrics
 
@@ -483,6 +485,11 @@ type logObjectWriter struct {
 	lastSchemaKey string
 	lastShard     uint32
 	haveLast      bool
+
+	// objectStart is the ingestion time of every record of the current
+	// object. Compaction has no real ingestion time, and the builder keeps
+	// only the earliest one, so one clock read per object is enough.
+	objectStart time.Time
 
 	stats logMergeStats
 }
@@ -504,7 +511,7 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, layout streams.Lay
 		node:           node,
 		layout:         layout,
 		table:          table,
-		calc:           calc,
+		indexer:        &objectIndexer{c: c, calc: calc},
 		builderMetrics: c.builderMetrics,
 	}
 	err := w.startNewObject()
@@ -523,6 +530,7 @@ func (w *logObjectWriter) startNewObject() error {
 		return err
 	}
 	w.logsBuilder = builder
+	w.objectStart = time.Now()
 	return nil
 }
 
@@ -544,9 +552,7 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 	w.lastShard = gs.ShardBucket
 	w.haveLast = true
 
-	// There's no equivalent for ingestion time during compaction, so use the current time.
-	ingestionTime := time.Now()
-	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.Labels, rec, ingestionTime)
+	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.Labels, rec, w.objectStart)
 	if err != nil {
 		return err
 	}
@@ -562,17 +568,23 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 			return w.stats, err
 		}
 	}
+	if err := w.collectIndexed(); err != nil {
+		return w.stats, err
+	}
 	return w.stats, nil
 }
 
-// discard releases the sections of the in-progress object from the scratch
-// store. It does nothing after finish uploaded the last object.
+// discard waits for the object in the indexer and releases the sections of
+// the in-progress object from the scratch store. It does nothing else after
+// finish uploaded the last object.
 func (w *logObjectWriter) discard() {
+	w.indexer.close()
 	w.logsBuilder.Reset()
 }
 
-// finalizeAndUpload appends the pending sections, flushes them into one compacted
-// log object, computes its content-hash path, and uploads it to the data bucket.
+// finalizeAndUpload flushes the pending sections into one compacted log
+// object and computes its content-hash path. It then hands the object to the
+// indexer, which uploads and indexes it while the merge builds the next one.
 func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr error) {
 	// The merged records arrive in global stream key order, so the object
 	// records the source layout without a sort.
@@ -580,34 +592,110 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr erro
 	if err != nil {
 		return fmt.Errorf("flushing logs builder: %w", err)
 	}
-	defer util.CloseAndHandleError(closer, &returnErr)
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			util.CloseAndHandleError(closer, &returnErr)
+		}
+	}()
 
-	pathReader, err := obj.Reader(ctx)
+	path, err := compactedLogObjectPath(ctx, w.node.Tenant, obj)
 	if err != nil {
-		return fmt.Errorf("getting object reader: %w", err)
-	}
-	defer util.CloseAndHandleError(pathReader, &returnErr)
-
-	path, err := v2.CompactedLogObjectPath(w.node.Tenant, pathReader)
-	if err != nil {
-		return fmt.Errorf("calculating object path: %w", err)
-	}
-
-	size, err := w.c.uploadAndIndexObject(ctx, obj, path, w.calc)
-	if err != nil {
-		return fmt.Errorf("uploading index object: %w", err)
+		return err
 	}
 
+	// Wait for the previous object first, so at most one flushed object
+	// waits for its index.
+	if err := w.collectIndexed(); err != nil {
+		return err
+	}
+	handedOff = true
+	w.indexer.start(ctx, obj, closer, path)
+	return nil
+}
+
+// collectIndexed waits for the object in the indexer, if any, and records it
+// in the stats.
+func (w *logObjectWriter) collectIndexed() error {
+	res, ok := w.indexer.wait()
+	if !ok {
+		return nil
+	}
+	if res.err != nil {
+		return fmt.Errorf("uploading index object: %w", res.err)
+	}
 	level.Info(w.c.logger).Log(
 		"msg", "LogMerge: uploaded compacted log object",
 		"tenant", w.node.Tenant,
-		"path", path,
-		"bytes", size,
+		"path", res.path,
+		"bytes", res.size,
 		"object_index", w.stats.OutputObjects,
 	)
 	w.stats.OutputObjects++
-	w.stats.OutputBytesCompressed += size
+	w.stats.OutputBytesCompressed += res.size
 	return nil
+}
+
+func compactedLogObjectPath(ctx context.Context, tenant string, obj *dataobj.Object) (_ string, returnErr error) {
+	reader, err := obj.Reader(ctx)
+	if err != nil {
+		return "", fmt.Errorf("getting object reader: %w", err)
+	}
+	defer util.CloseAndHandleError(reader, &returnErr)
+
+	path, err := v2.CompactedLogObjectPath(tenant, reader)
+	if err != nil {
+		return "", fmt.Errorf("calculating object path: %w", err)
+	}
+	return path, nil
+}
+
+// objectIndexer uploads and indexes one flushed log object at a time on a
+// separate goroutine. The calculator sees the objects in the order of start
+// calls, because start requires the previous object to be collected by wait.
+type objectIndexer struct {
+	c    *Context
+	calc *dataobjindex.Calculator
+
+	// done is nil when no object is in flight.
+	done chan indexedObject
+}
+
+type indexedObject struct {
+	path string
+	size int64
+	err  error
+}
+
+// start uploads and indexes obj, then closes closer. The previous object must
+// be collected by wait first.
+func (ix *objectIndexer) start(ctx context.Context, obj *dataobj.Object, closer io.Closer, path string) {
+	if ix.done != nil {
+		panic("objectIndexer: start called before the previous object was collected")
+	}
+	done := make(chan indexedObject, 1)
+	ix.done = done
+	go func() {
+		size, err := ix.c.uploadAndIndexObject(ctx, obj, path, ix.calc)
+		done <- indexedObject{path: path, size: size, err: errors.Join(err, closer.Close())}
+	}()
+}
+
+// wait blocks until the object in flight is uploaded and indexed. It returns
+// false if no object is in flight.
+func (ix *objectIndexer) wait() (indexedObject, bool) {
+	if ix.done == nil {
+		return indexedObject{}, false
+	}
+	res := <-ix.done
+	ix.done = nil
+	return res, true
+}
+
+// close waits for the object in flight and drops its result. It stops the
+// goroutine from outliving a failed merge.
+func (ix *objectIndexer) close() {
+	_, _ = ix.wait()
 }
 
 // uploadObject streams a built object to the given bucket and returns its encoded
