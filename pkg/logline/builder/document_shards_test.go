@@ -59,7 +59,7 @@ func TestStreamIngester_DocumentShardIsStreamFingerprint(t *testing.T) {
 	const shardBits = 5
 	b, err := newIndexBuilder(documentShardsConfig(t, "v5", shardBits), "", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
+	defer b.Clear()
 
 	for _, s := range []string{
 		`{app="api"}`,
@@ -88,10 +88,10 @@ func TestBuilder_DocumentShardsOneMatchesTimeOnly(t *testing.T) {
 		cfg := documentShardsConfig(t, version, 0)
 		b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 		require.NoError(t, err)
-		defer b.clear()
+		defer b.Clear()
 
 		stream := &logproto.Stream{Labels: `{app="api"}`, Entries: retryTestEntries()}
-		require.NoError(t, b.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{}))
+		require.NoError(t, b.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{}))
 		files, err := b.prepareIndexes()
 		require.NoError(t, err)
 		require.Len(t, files, 1)
@@ -135,7 +135,7 @@ func TestBuilder_DocumentShardsSplitCells(t *testing.T) {
 	cfg := documentShardsConfig(t, "v5", shardBits)
 	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
+	defer b.Clear()
 
 	ts := time.Date(2026, 3, 22, 12, 0, 5, 0, time.UTC)
 	loLines := []string{"shared payment processed line", "alpha only lowshard message"}
@@ -145,7 +145,7 @@ func TestBuilder_DocumentShardsSplitCells(t *testing.T) {
 		for _, line := range lines {
 			entries = append(entries, logproto.Entry{Timestamp: ts, Line: line})
 		}
-		require.NoError(t, b.processStream(&logproto.Stream{Labels: ls.String(), Entries: entries}, &ls, time.Now(), recordRef{}))
+		require.NoError(t, b.ProcessStream(&logproto.Stream{Labels: ls.String(), Entries: entries}, &ls, time.Now(), RecordRef{}))
 	}
 	process(hi, hiLines)
 	process(lo, loLines)
@@ -206,7 +206,7 @@ func TestBuilder_DocumentShardsWindowBoundary(t *testing.T) {
 	cfg := documentShardsConfig(t, "v5", shardBits)
 	b, err := newIndexBuilder(cfg, "", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
+	defer b.Clear()
 
 	windowEnd := docIDWindowEnd(cfg.Index.DocumentInterval, shardBits)
 	require.Equal(t, time.Date(2094, 1, 19, 3, 14, 8, 0, time.UTC), windowEnd)
@@ -221,5 +221,5 @@ func TestBuilder_DocumentShardsWindowBoundary(t *testing.T) {
 		msg, _ := recover().(string)
 		require.Contains(t, msg, "16s document_interval × 2^5 document shards")
 	}()
-	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+	_ = b.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
 }

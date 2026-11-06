@@ -63,12 +63,12 @@ func waitForGoroutineBaseline(t *testing.T, baseline int, msg string) {
 // feedInChunks streams entries through processStream in small per-call chunks
 // so pipeline mode scatters items across the competing workers (a single call
 // is one queue item and would land on one worker).
-func feedInChunks(t *testing.T, b *indexBuilder, entries []logproto.Entry, chunk int) {
+func feedInChunks(t *testing.T, b *Builder, entries []logproto.Entry, chunk int) {
 	t.Helper()
 	for start := 0; start < len(entries); start += chunk {
 		end := min(start+chunk, len(entries))
 		s := logproto.Stream{Entries: entries[start:end]}
-		require.NoError(t, b.processStream(&s, nil, time.Now(), recordRef{}))
+		require.NoError(t, b.ProcessStream(&s, nil, time.Now(), RecordRef{}))
 	}
 }
 
@@ -99,7 +99,7 @@ func TestBuilder_RoundTrip_ExtractThreads(t *testing.T) {
 				cfg.ExtractThreads = workers
 				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 				require.NoError(t, err)
-				defer b.clear()
+				defer b.Clear()
 
 				feedInChunks(t, b, entries, 1)
 
@@ -146,7 +146,7 @@ func TestBuilder_RoundTrip_MergeThreads(t *testing.T) {
 				cfg.MergeThreads = n
 				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 				require.NoError(t, err)
-				defer b.clear()
+				defer b.Clear()
 
 				feedInChunks(t, b, entries, 1)
 
@@ -172,7 +172,7 @@ func TestBuilder_ExtractPipelineDrainBarrier(t *testing.T) {
 	// Serial reference over identical input.
 	ctl, err := newIndexBuilder(roundTripConfig(t, 4, 32), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer ctl.clear()
+	defer ctl.Clear()
 	feedInChunks(t, ctl, entries, 5)
 	ctlFiles, err := ctl.prepareIndexes()
 	require.NoError(t, err)
@@ -184,7 +184,7 @@ func TestBuilder_ExtractPipelineDrainBarrier(t *testing.T) {
 	cfg.ExtractThreads = 3
 	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
+	defer b.Clear()
 
 	// Enqueue everything and flush immediately: with 100 queued items and a
 	// 32-pair buffer the workers are guaranteed to still be mid-pipeline when
@@ -264,11 +264,11 @@ func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 	require.NoError(t, os.WriteFile(b.runDir, []byte("not a directory"), 0o644))
 
 	entries := pipelineTestEntries(10)
-	poison := recordRef{valid: true, partition: 7, offset: 99, tenantID: "t"}
+	poison := RecordRef{Valid: true, Partition: 7, Offset: 99, TenantID: "t"}
 	var streamErr error
 	require.Eventually(t, func() bool {
 		s := logproto.Stream{Entries: entries}
-		if err := b.processStream(&s, nil, time.Now(), poison); err != nil {
+		if err := b.ProcessStream(&s, nil, time.Now(), poison); err != nil {
 			streamErr = err
 			return true
 		}
@@ -284,7 +284,7 @@ func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 	require.Contains(t, err.Error(), "extract pipeline")
 	require.Contains(t, err.Error(), "partition=7 offset=99")
 
-	b.clear()
+	b.Clear()
 	waitForGoroutineBaseline(t, baseline, "no worker goroutine may outlive clear()")
 }
 

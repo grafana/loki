@@ -191,7 +191,7 @@ func (b *postingsBuffer) tick(absCell uint64) (uint32, bool) {
 }
 
 // appendPair is the hot-path append: a bare two-slice append, small enough to
-// inline into processStream's ngram loop. Spilling/integration is the caller's
+// inline into ProcessStream's ngram loop. Spilling/integration is the caller's
 // job (bufferFull + onFull) so this never grows the slices past capacity.
 func (b *postingsBuffer) appendPair(ngram [8]byte, docID uint32) {
 	b.keys = append(b.keys, ngram)

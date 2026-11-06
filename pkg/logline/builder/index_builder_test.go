@@ -77,7 +77,7 @@ func TestBuilder_ProcessStream_WithData(t *testing.T) {
 	}
 
 	// Process the stream
-	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+	_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
 
 	// One date observed → one (date, shard) index will be produced.
 	require.Equal(t, 1, len(builder.ing.dateRanges))
@@ -111,7 +111,7 @@ func TestBuilder_V3ExtractsLabelValues(t *testing.T) {
 			{Timestamp: time.Now().UTC(), Line: "abc"},
 		},
 	}
-	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now().UTC(), recordRef{})
+	_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now().UTC(), RecordRef{})
 
 	files, err := builder.prepareIndexes()
 	require.NoError(t, err)
@@ -172,7 +172,7 @@ func TestBuilder_FlushIntegration(t *testing.T) {
 			},
 		}
 
-		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+		_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
 	}
 
 	flushFiles, err := builder.prepareIndexes()
@@ -187,7 +187,7 @@ func TestBuilder_FlushIntegration(t *testing.T) {
 	require.Greater(t, reader.ReadHeader().TermCount, uint64(0))
 	require.Greater(t, reader.ReadHeader().DocumentCount, uint32(0))
 
-	builder.clear()
+	builder.Clear()
 }
 
 func TestBuilder_ProcessStream_MultipleEntries(t *testing.T) {
@@ -230,7 +230,7 @@ func TestBuilder_ProcessStream_MultipleEntries(t *testing.T) {
 	}
 
 	// Process the stream (single message with 3 log entries)
-	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+	_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
 
 	// All 3 entries share today's date → one index carrying their documents.
 	require.Equal(t, 1, len(builder.ing.dateRanges))
@@ -277,7 +277,7 @@ func TestProcessStream_FutureEntriesGetOwnBucket(t *testing.T) {
 		},
 	}
 
-	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{})
 
 	// The future entry must be tracked under its own date, not today's (no clamping).
 	_, hasFuture := builder.ing.dateRanges[expectedDate]
@@ -371,13 +371,13 @@ func BenchmarkProcessStream(b *testing.B) {
 
 			// Run benchmark
 			for i := 0; i < b.N; i++ {
-				_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+				_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
 
 				// Flush periodically to prevent memory exhaustion in long benchmarks
 				if i%1000 == 0 && i > 0 {
 					b.StopTimer()
 					if files, err := builder.prepareIndexes(); err == nil && files != nil {
-						builder.clear()
+						builder.Clear()
 					}
 					b.StartTimer()
 				}
@@ -433,7 +433,7 @@ func BenchmarkProcessStream_NoFlush(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+		_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
 	}
 
 	// Calculate approximate bytes
@@ -488,14 +488,14 @@ func BenchmarkProcessStream_ParallelConsumers(b *testing.B) {
 		i := 0
 
 		for pb.Next() {
-			_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+			_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
 			i++
 
 			// Periodic flush to prevent OOM
 			if i%500 == 0 {
 				if files, err := builder.prepareIndexes(); err == nil && files != nil {
 					_ = files
-					builder.clear()
+					builder.Clear()
 				}
 			}
 		}
@@ -594,7 +594,7 @@ func TestBuilder_TracksDateRanges(t *testing.T) {
 				},
 			},
 		}
-		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), now.Add(-time.Duration(i)*24*time.Hour), recordRef{})
+		_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now.Add(-time.Duration(i)*24*time.Hour), RecordRef{})
 	}
 
 	// Should have observed 3 distinct dates.
@@ -651,7 +651,7 @@ func TestBuilder_QueueTimestampInObjectKey(t *testing.T) {
 	}
 
 	// Process stream with recent queue timestamp
-	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), queueTime, recordRef{})
+	_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), queueTime, RecordRef{})
 
 	files, err := builder.prepareIndexes()
 	require.NoError(t, err)
@@ -696,27 +696,27 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 	// against minDate-bypass bugs — see CLAUDE.md invariant #7.
 	builder, err := newIndexBuilder(cfg, "", log.NewNopLogger(), metrics)
 	require.NoError(t, err)
-	defer builder.clear()
+	defer builder.Clear()
 
-	process := func(ts time.Time, ref recordRef) {
+	process := func(ts time.Time, ref RecordRef) {
 		stream := &logproto.Stream{
 			Labels:  `{job="test"}`,
 			Entries: []logproto.Entry{{Timestamp: ts, Line: "boundary probe line"}},
 		}
-		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), ref)
+		_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), ref)
 	}
 
 	windowEnd := docIDWindowEnd(cfg.Index.DocumentInterval, uint(cfg.Index.DocumentShardBits))
-	require.Panics(t, func() { process(docIDEpoch.Add(-time.Second), recordRef{}) },
+	require.Panics(t, func() { process(docIDEpoch.Add(-time.Second), RecordRef{}) },
 		"pre-epoch timestamp must panic")
-	require.Panics(t, func() { process(windowEnd, recordRef{}) },
+	require.Panics(t, func() { process(windowEnd, RecordRef{}) },
 		"timestamp at the exclusive window end must panic")
 
 	// The panic must attribute the poison Kafka record: the operator
 	// remediating the crash loop advances the committed offset past it, so
 	// partition/offset/tenant must appear in the message when the caller
 	// supplies them.
-	ref := recordRef{valid: true, partition: 3, offset: 42, tenantID: "tenant-a"}
+	ref := RecordRef{Valid: true, Partition: 3, Offset: 42, TenantID: "tenant-a"}
 	func() {
 		defer func() {
 			r := recover()
@@ -732,8 +732,8 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 
 	// The window boundaries themselves are representable: the epoch is tick 0
 	// and the last interval before the end is tick 2^32-1.
-	require.NotPanics(t, func() { process(docIDEpoch, recordRef{}) })
-	require.NotPanics(t, func() { process(windowEnd.Add(-cfg.Index.DocumentInterval), recordRef{}) })
+	require.NotPanics(t, func() { process(docIDEpoch, RecordRef{}) })
+	require.NotPanics(t, func() { process(windowEnd.Add(-cfg.Index.DocumentInterval), RecordRef{}) })
 }
 
 func TestBuilder_MinDate_DropsOldEntries(t *testing.T) {
@@ -765,7 +765,7 @@ func TestBuilder_MinDate_DropsOldEntries(t *testing.T) {
 		},
 	}
 
-	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{})
 
 	// Only dates on or after min_date should be observed.
 	require.Len(t, builder.ing.dateRanges, 2, "expected 2026-03-15 and 2026-03-16 only")
@@ -816,6 +816,6 @@ func TestNewIndexBuilder_RejectsPreEpochMinDate(t *testing.T) {
 	for _, minDate := range []string{"2026-01-01", "2026-07-04", ""} {
 		b, err := newIndexBuilder(cfg, minDate, logger, metrics)
 		require.NoError(t, err, "min_date %q must be accepted", minDate)
-		b.clear()
+		b.Clear()
 	}
 }

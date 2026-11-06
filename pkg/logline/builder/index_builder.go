@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,8 +40,8 @@ import (
 // across one buffer's runs. See extract_pipeline.go.
 
 // fileInfo represents a .lidx file written to disk and pending upload to object
-// storage. The read handle and path are owned by the producing indexBuilder;
-// callers pass file to the uploader but must not close it — builder.clear
+// storage. The read handle and path are owned by the producing Builder;
+// callers pass file to the uploader but must not close it — Builder.Clear
 // closes the handle and removes the file (and the scratch run files).
 type fileInfo struct {
 	file            *os.File
@@ -101,9 +102,15 @@ type streamIngester struct {
 	metrics *Metrics
 }
 
-// indexBuilder processes decoded log streams into sorted (ngram, docID) runs
-// and merges them into partial indexes at flush.
-type indexBuilder struct {
+// Builder accumulates decoded log streams into sorted (ngram, docID) runs
+// and merges them into partial indexes for one accumulation cycle.
+//
+// Call ProcessStream for each stream, then Prepare, upload the prepared indexes,
+// and Clear. ProcessStream, Prepare, prepared uploads, and Clear must be externally
+// serialized. After the first Prepare attempt, only retry Prepare or upload,
+// or Clear; construct a new Builder for the next cycle. The caller owns any
+// goroutine used for asynchronous preparation or upload.
+type Builder struct {
 	cfg Config
 
 	// Exactly one ingest path is active for the builder's lifetime:
@@ -115,15 +122,15 @@ type indexBuilder struct {
 	pipeline *extractPipeline
 
 	// runDir is this builder's private scratch subdirectory holding its run
-	// files and produced .lidx files; removed wholesale by clear.
+	// files and produced .lidx files; removed wholesale by Clear.
 	runDir string
 
-	// Produced .lidx handles + paths, cleaned up by clear.
+	// Produced .lidx handles + paths, cleaned up by Clear.
 	openFiles []*os.File
 	lidxPaths []string
 
 	// Global flush trigger timestamps (wall-clock, not log timestamps).
-	// Updated on the main path (processStream / enqueue) in both modes so the
+	// Updated on the main path (ProcessStream / enqueue) in both modes so the
 	// age/idle flush triggers keep wall-clock semantics regardless of how far
 	// behind the workers are.
 	firstAppend time.Time
@@ -133,9 +140,35 @@ type indexBuilder struct {
 	metrics *Metrics
 }
 
-// newIndexBuilder creates a new indexBuilder. Scratch directory creation and
-// cleanup are handled by Service.starting().
-func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Metrics) (*indexBuilder, error) {
+// NewBuilder validates and defaults cfg's build settings without requiring Kafka.
+// minDate must be a non-empty YYYY-MM-DD date at or after the docID epoch
+// (2026-01-01); entries before that date are dropped. Scratch files are created
+// lazily in a private subdirectory of cfg.ScratchDir, which Clear removes without
+// disturbing other builders or files. Metrics can be shared across accumulation
+// cycles, as in Service. Nil metrics use unregistered collectors.
+func NewBuilder(cfg Config, minDate string, logger log.Logger, metrics *Metrics) (*Builder, error) {
+	if err := cfg.validateBuild(); err != nil {
+		return nil, fmt.Errorf("invalid builder settings: %w", err)
+	}
+	date, err := time.Parse(time.DateOnly, minDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid min_date %q (expected YYYY-MM-DD): %w", minDate, err)
+	}
+	if date.Format(time.DateOnly) != minDate {
+		return nil, fmt.Errorf("min_date must be a canonical YYYY-MM-DD date, got %q", minDate)
+	}
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+	if metrics == nil {
+		metrics = NewMetrics(nil)
+	}
+	return newIndexBuilder(cfg, minDate, logger, metrics)
+}
+
+// newIndexBuilder creates a Builder from already-validated settings and shared
+// metrics. Its private scratch directory is created lazily on first spill.
+func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Metrics) (*Builder, error) {
 	extractFn, err := logline.ExtractorForVersion(cfg.Index.Version)
 	if err != nil {
 		return nil, fmt.Errorf("resolve extractor for index version %q: %w", cfg.Index.Version, err)
@@ -156,7 +189,7 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 	}
 
 	// A min_date at or after the docID epoch is what makes the PRE-epoch panic
-	// in processStream unreachable: the minDate drop runs before tick(), so
+	// in ProcessStream unreachable: the minDate drop runs before tick(), so
 	// every pre-epoch entry is dropped (and counted) before it can reach the
 	// window check. A pre-epoch min_date would instead let pre-epoch entries
 	// through to a guaranteed panic — the data cannot be indexed either way, so
@@ -219,7 +252,7 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 		}
 	}
 
-	b := &indexBuilder{
+	b := &Builder{
 		cfg:     cfg,
 		runDir:  runDir,
 		logger:  logger,
@@ -241,7 +274,7 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 // ingesters returns every ingest unit of this builder: the single serial one,
 // or the pipeline's workers. Flush-side code (prepare/clear/accounting) must
 // iterate this instead of assuming one buffer.
-func (s *indexBuilder) ingesters() []*streamIngester {
+func (s *Builder) ingesters() []*streamIngester {
 	if s.pipeline != nil {
 		return s.pipeline.workers
 	}
@@ -271,7 +304,7 @@ func (w *streamIngester) formatDate(t time.Time) string {
 	return w.cachedDate
 }
 
-// processStream stamps the wall-clock flush-trigger timestamps and routes the
+// ProcessStream stamps the wall-clock flush-trigger timestamps and routes the
 // decoded stream to the ingest path: inline in serial mode, enqueued to the
 // worker pipeline in catchup mode. Returns an error only if a run spill fails
 // (non-recoverable I/O; bubbles up so running() fails and the pod restarts
@@ -281,8 +314,14 @@ func (w *streamIngester) formatDate(t time.Time) string {
 // ref identifies the Kafka record the stream was decoded from; it is read only
 // on the out-of-window panic path (zero per-line cost) so the crash names the
 // poison record — in pipeline mode it rides the queue item to the worker.
-// Callers without Kafka context (tests, benches) pass the zero recordRef.
-func (s *indexBuilder) processStream(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
+// Callers without Kafka context pass RecordRef{}. parsedLabels supplies stream
+// label values for extraction and document sharding; this method does not parse
+// stream.Labels. enqueuedAt supplies record-time metadata, not flush-trigger age.
+//
+// In catchup mode, entry structs are shallow-copied into the worker queue. Keep
+// label and structured-metadata backing data immutable until Prepare or Clear
+// drains the workers. Do not call ProcessStream after the first Prepare attempt.
+func (s *Builder) ProcessStream(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref RecordRef) error {
 	if len(stream.Entries) == 0 {
 		return nil
 	}
@@ -302,7 +341,7 @@ func (s *indexBuilder) processStream(stream *logproto.Stream, parsedLabels *labe
 // ingest extracts n-grams from a decoded stream and appends them to this
 // ingester's postings buffer as (ngram, epoch-tick) pairs. This is the
 // critical path — see the performance rules in CLAUDE.md.
-func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref recordRef) error {
+func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref RecordRef) error {
 	w.scratchLabelValues = w.scratchLabelValues[:0]
 	if parsedLabels != nil {
 		parsedLabels.Range(func(l labels.Label) {
@@ -417,7 +456,7 @@ func (w *streamIngester) observeDate(date string, logTs, enqueuedAt time.Time) {
 // union of every worker's map on each call — callers must only use it after
 // the drain barrier (workers stopped), and rebuilding per prepare attempt
 // keeps retries idempotent without mutating worker state.
-func (s *indexBuilder) unionDateRanges() map[string]*dateRange {
+func (s *Builder) unionDateRanges() map[string]*dateRange {
 	if s.pipeline == nil {
 		return s.ing.dateRanges
 	}
@@ -471,6 +510,40 @@ func unionRefTicksInto(host *postingsBuffer, workers []*streamIngester) {
 	}
 }
 
+// Prepare finishes ingestion and merges the cycle's runs into indexes. It may
+// be retried after an error; runs remain available until Clear. Each attempt
+// invalidates any earlier PreparedIndexes, closing its files before rebuilding.
+func (s *Builder) Prepare() (PreparedIndexes, error) {
+	files, err := s.prepareIndexes()
+	if err != nil {
+		return PreparedIndexes{}, err
+	}
+	return PreparedIndexes{builder: s, files: files}, nil
+}
+
+// PreparedIndexes is an opaque view of one successful Prepare result. The
+// producing Builder owns its file handles and scratch files. Upload may be
+// retried until that builder is cleared or Prepare is called again; copying
+// this value does not extend the files' lifetime or permit concurrent uploads.
+type PreparedIndexes struct {
+	builder *Builder
+	files   []fileInfo
+}
+
+// Len returns the number of prepared index files.
+func (p PreparedIndexes) Len() int {
+	return len(p.files)
+}
+
+// Upload uploads every prepared index, reusing its StorageID on retries and
+// skipping already-completed uploads. It leaves all scratch files and handles
+// owned by the Builder until Clear or the next Prepare. It does not poll the
+// store or launch a background flush; the caller owns polling and any goroutine
+// used to run this operation asynchronously.
+func (p PreparedIndexes) Upload(ctx context.Context, indexStore *store.Store) error {
+	return uploadPartialIndexes(ctx, indexStore, p.builder.cfg.Index, p.files, p.builder.logger, p.builder.metrics)
+}
+
 // prepareIndexes finishes the buffer into a final run, k-way merges all runs
 // into per-(date,shard) .lidx files, and returns them for upload.
 //
@@ -480,11 +553,11 @@ func unionRefTicksInto(host *postingsBuffer, workers []*streamIngester) {
 // of all workers' runs merged (refTicks OR-unioned into the merge host).
 //
 // Retry safety: the scratch run files are NOT deleted here — they are removed
-// only by clear (after every upload in the cycle succeeds). If an upload fails
+// only by Clear (after every upload in the cycle succeeds). If an upload fails
 // and prepareIndexes is retried, finish is a no-op (buffer already drained) and
 // the merge re-reads the surviving runs. On merge failure any .lidx written
 // this attempt is discarded and the runs are preserved.
-func (s *indexBuilder) prepareIndexes() ([]fileInfo, error) {
+func (s *Builder) prepareIndexes() ([]fileInfo, error) {
 	if s.pipeline != nil {
 		// The barrier is once-guarded and returns the latched first worker
 		// error on every retry: a worker spill failure is permanent for this
@@ -603,7 +676,7 @@ func (s *indexBuilder) prepareIndexes() ([]fileInfo, error) {
 
 // discardIndexes closes and removes any .lidx produced this prepare attempt,
 // preserving the scratch runs so a retried prepareIndexes can rebuild.
-func (s *indexBuilder) discardIndexes() {
+func (s *Builder) discardIndexes() {
 	for _, fh := range s.openFiles {
 		fh.Close()
 	}
@@ -614,13 +687,13 @@ func (s *indexBuilder) discardIndexes() {
 	s.lidxPaths = nil
 }
 
-// clear removes every on-disk file produced by this cycle (.lidx + scratch
+// Clear removes every on-disk file produced by this cycle (.lidx + scratch
 // runs), closes open handles, and fully resets builder state — including the
 // postings buffers' run counters and referenced-tick bitsets. Builders are
 // nonetheless single-cycle (swapBuilder always constructs a fresh one); the
 // full reset exists so no stale state lies in wait for a future caller that
 // assumes clear means clear. Called from Service.executeFlush at cycle end.
-func (s *indexBuilder) clear() {
+func (s *Builder) Clear() {
 	if s.pipeline != nil {
 		// Normally the drain barrier already ran inside prepareIndexes; this
 		// covers flushes abandoned before/without a successful prepare (ctx
@@ -648,7 +721,7 @@ func (s *indexBuilder) clear() {
 // the flush trigger bounding scratch-disk footprint (invariant: scoped to this
 // builder only; a swapped-out builder's runs live on its retired buffers).
 // Summed across worker buffers in pipeline mode.
-func (s *indexBuilder) runDiskBytes() uint64 {
+func (s *Builder) runDiskBytes() uint64 {
 	var total int64
 	for _, w := range s.ingesters() {
 		total += w.postings.runBytes.Load()
@@ -663,7 +736,7 @@ func (s *indexBuilder) runDiskBytes() uint64 {
 // across worker buffers in pipeline mode. The buffer term is a fixed floor
 // (× extract_threads); refTicks grows with shardCount × active days, which is
 // what can push the total past the trigger.
-func (s *indexBuilder) estimatedMemoryBytes() uint64 {
+func (s *Builder) estimatedMemoryBytes() uint64 {
 	var total uint64
 	for _, w := range s.ingesters() {
 		total += w.postings.residentBytes()
@@ -675,7 +748,7 @@ func (s *indexBuilder) estimatedMemoryBytes() uint64 {
 // cycle can produce, for logging. In pipeline mode, while workers are still
 // running it returns the busiest worker's date count (reading the maps would
 // race); after the drain barrier it is the exact union.
-func (s *indexBuilder) bucketCount() int {
+func (s *Builder) bucketCount() int {
 	shards := max(s.cfg.Index.ShardCount, 1)
 	if s.pipeline != nil {
 		if s.pipeline.drained() {
