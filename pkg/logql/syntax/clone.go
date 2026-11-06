@@ -1,6 +1,8 @@
 package syntax
 
 import (
+	"slices"
+
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -79,7 +81,20 @@ func (v *cloneVisitor) VisitRangeAggregation(e *RangeAggregationExpr) {
 		copied.Params = &tmp
 	}
 
+	if e.Buckets != nil {
+		copied.Buckets = e.Buckets.clone()
+	}
+
 	v.cloned = copied
+}
+
+func (v *cloneVisitor) VisitHistogramFunc(e *HistogramFuncExpr) {
+	v.cloned = &HistogramFuncExpr{
+		Left:      MustClone[SampleExpr](e.Left),
+		Operation: e.Operation,
+		Params:    slices.Clone(e.Params),
+		Label:     e.Label,
+	}
 }
 
 func (v *cloneVisitor) VisitLabelAggregation(e *LabelAggregationExpr) {

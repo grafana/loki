@@ -120,6 +120,24 @@ func TestLex(t *testing.T) {
 		{`0x1A`, []int{NUMBER}},
 		{`0x1p3`, []int{NUMBER}},
 		{`0x1P3`, []int{NUMBER}},
+		{
+			`histogram_over_time(buckets(-1, 0.5, +Inf), {app="api"} | unwrap foo [5m]) by (path)`,
+			[]int{
+				HISTOGRAM_OVER_TIME, OPEN_PARENTHESIS, BUCKETS, OPEN_PARENTHESIS, SUB, NUMBER, COMMA, NUMBER, COMMA, ADD, IDENTIFIER, CLOSE_PARENTHESIS, COMMA,
+				OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, UNWRAP, IDENTIFIER, RANGE, CLOSE_PARENTHESIS, BY, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS,
+			},
+		},
+		{
+			`histogram_fraction(-Inf, 0.005, histogram_count(x))`,
+			[]int{HISTOGRAM_FRACTION, OPEN_PARENTHESIS, SUB, IDENTIFIER, COMMA, NUMBER, COMMA, HISTOGRAM_COUNT, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS},
+		},
+		{`histogram_quantile(0.9, x)`, []int{HISTOGRAM_QUANTILE, OPEN_PARENTHESIS, NUMBER, COMMA, IDENTIFIER, CLOSE_PARENTHESIS}},
+		{`histogram_quantiles(x, "q", 0.5)`, []int{HISTOGRAM_QUANTILES, OPEN_PARENTHESIS, IDENTIFIER, COMMA, STRING, COMMA, NUMBER, CLOSE_PARENTHESIS}},
+		{`histogram_sum(x)`, []int{HISTOGRAM_SUM, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS}},
+		{`histogram_avg(x)`, []int{HISTOGRAM_AVG, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS}},
+		// The histogram function names are only keywords when a parenthesis follows.
+		{`{buckets="a"} | histogram_sum="b"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, IDENTIFIER, EQ, STRING}},
+		{`sum by (histogram_quantile, buckets) (x)`, []int{SUM, BY, OPEN_PARENTHESIS, IDENTIFIER, COMMA, IDENTIFIER, CLOSE_PARENTHESIS, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
