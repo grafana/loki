@@ -78,7 +78,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 		Start:        0,
 		End:          math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{},
-	})
+	}, false)
 
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
@@ -145,7 +145,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		Start:        0,
 		End:          math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{},
-	})
+	}, false)
 
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
@@ -274,7 +274,7 @@ func TestIndexClient_Volume(t *testing.T) {
 		Start:        0,
 		End:          math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{},
-	})
+	}, false)
 
 	limits := &fakeLimits{volumeMaxSeries: 5}
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, limits)
@@ -346,7 +346,7 @@ func TestIndexShipperQuerier_ConcurrentChunkFilterer(t *testing.T) {
 			}),
 		},
 	}
-	q := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, tableRange)
+	q := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, tableRange, false)
 	idx := NewMultiIndex(IndexSlice{q, q})
 	matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
 

@@ -471,6 +471,9 @@ func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through mod
 		casted = append(casted, resp.response.(*index_stats.Stats))
 	}
 
+	// Replicas hold copies of the same streams and responses are summed, so
+	// recent data is over-counted by up to the replication factor. This is
+	// accepted since stats are estimates used to plan queries.
 	merged := index_stats.MergeStats(casted...)
 	return &merged, nil
 }
@@ -504,6 +507,8 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 		casted = append(casted, resp.response.(*logproto.VolumeResponse))
 	}
 
+	// As in Stats, replicas are summed, so recent data is over-counted by up to
+	// the replication factor.
 	merged := seriesvolume.Merge(casted, limit)
 	return merged, nil
 }
