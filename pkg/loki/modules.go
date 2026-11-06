@@ -1265,8 +1265,9 @@ func (t *Loki) supportIndexDeleteRequest() bool {
 // compactorAddress returns the configured address of the compactor.
 // It prefers grpc address over http. If the address is grpc then the bool would be true otherwise false
 func (t *Loki) compactorAddress() (string, bool, error) {
-	if t.Cfg.isTarget(All) {
-		// In single binary or read modes, this module depends on Server
+	// With -target=all the compactor runs in this process and serves the delete requests API on the local gRPC server.
+	// A compactor worker does not hold the delete requests store, so it has to ask the main compactor.
+	if t.Cfg.isTarget(All) && t.Cfg.CompactorConfig.HorizontalScalingMode != compactor.HorizontalScalingModeWorker {
 		return net.JoinHostPort(t.Cfg.Server.GRPCListenAddress, strconv.Itoa(t.Cfg.Server.GRPCListenPort)), true, nil
 	}
 

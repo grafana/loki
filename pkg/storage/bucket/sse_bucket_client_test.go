@@ -14,7 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	objstores3 "github.com/thanos-io/objstore/providers/s3"
+
+	buckets3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
 
 func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
@@ -47,7 +49,7 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			s3Cfg := s3.Config{
+			s3Cfg := buckets3.Config{
 				Endpoint:        srv.Listener.Addr().String(),
 				Region:          "test",
 				BucketName:      "test-bucket",
@@ -56,7 +58,7 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 				Insecure:        true,
 			}
 
-			s3Client, err := s3.NewBucketClient(s3Cfg, "test", log.NewNopLogger(), nil)
+			s3Client, err := buckets3.NewBucketClient(s3Cfg, "test", log.NewNopLogger(), nil)
 			require.NoError(t, err)
 
 			// Configure the config provider with NO KMS key ID.
@@ -78,7 +80,7 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 			assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-context"))
 
 			// Configure the config provider with a KMS key ID and without encryption context.
-			cfgProvider.s3SseType = s3.SSEKMS
+			cfgProvider.s3SseType = objstores3.SSEKMS
 			cfgProvider.s3KmsKeyID = kmsKeyID
 
 			err = sseBkt.Upload(context.Background(), "test", strings.NewReader("test"))
@@ -90,7 +92,7 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 			assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-context"))
 
 			// Configure the config provider with a KMS key ID and encryption context.
-			cfgProvider.s3SseType = s3.SSEKMS
+			cfgProvider.s3SseType = objstores3.SSEKMS
 			cfgProvider.s3KmsKeyID = kmsKeyID
 			cfgProvider.s3KmsEncryptionContext = kmsEncryptionContext
 
