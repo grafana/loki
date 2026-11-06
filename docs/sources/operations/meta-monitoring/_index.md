@@ -11,6 +11,18 @@ As part of your Loki implementation, you will also want to monitor your Loki clu
 
 As a best practice, you should collect data about Loki in a separate instance of Loki, Prometheus, and Grafana. For example, send your Loki cluster data to a [Grafana Cloud account](https://grafana.com/products/cloud/). This will let you troubleshoot a broken Loki cluster from a working one.
 
+The following diagram shows this recommended setup. Your production Loki cluster sends its own metrics and logs to a separate monitoring stack, so that stack stays available even if the production cluster has a problem:
+
+{{< mermaid >}}
+flowchart LR
+    LokiCluster["Your Loki cluster"]
+    MonitoringStack["Separate Prometheus/Mimir and Loki instance, or Grafana Cloud"]
+    Grafana["Grafana with mixin dashboards and alerts"]
+
+    LokiCluster -->|"scraped metrics + shipped logs"| MonitoringStack
+    MonitoringStack --> Grafana
+{{< /mermaid >}}
+
 Loki exposes the following observability data about itself:
 
 - **Metrics**: Loki provides a `/metrics` endpoint that sends information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc. Each Loki component sends its own metrics, allowing for fine-grained monitoring of the health of your Loki cluster. For more information about the metrics Loki exposes, refer to [metrics](#loki-metrics). It is important to keep [metrics cardinality](#metrics-cardinality) in mind when running a large distributed Loki cluster.
@@ -32,7 +44,7 @@ If you run Loki in monolithic mode without the Kubernetes Monitoring Helm chart,
 You should also plan separately for infrastructure-level monitoring, to monitor the capacity or throughput of your storage provider, for example, or your networking layer.
 
 - [MinIO](https://min.io/docs/minio/linux/operations/monitoring/collect-minio-metrics-using-prometheus.html)
-- [Kubernetes](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/)
+- [Kubernetes](https://grafana.com/docs/grafana-cloud/observe-and-act/monitor-infrastructure/kubernetes-monitoring/)
 
 The Kubernetes Monitoring Helm chart Grafana Labs uses to monitor Loki also provides these features out of the box with Kubernetes monitoring enabled by default. You can choose which of these features to enable or disable based on how much data you want to collect and your meta-monitoring budget.
 
@@ -75,7 +87,7 @@ exposed by Alloy at its `/metrics` endpoint.
 
 Some metrics carry labels that increase cardinality in large environments:
 
-- **Client-side:** Alloy and Promtail emit per-file metrics using a `filename` label. In environments with many tracked files, this can produce a large number of unique time series.
+- **Client-side:** Alloy emits per-file metrics using a `filename` label. In environments with many tracked files, this can produce a large number of unique time series.
 - **Server-side:** Loki metrics such as `loki_discarded_samples_total` and `loki_ingester_chunks_stored_total` include a `tenant` label. Multi-tenant deployments with many tenants see proportional cardinality growth.
 
 The Kubernetes Monitoring Helm chart includes metric relabeling rules to manage cardinality. If you auto-scale Loki components, be aware that each new pod adds its own set of per-instance time series.
