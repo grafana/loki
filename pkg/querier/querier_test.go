@@ -1887,6 +1887,55 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		_, err = querier.DetectedLabels(ctx, &request)
 		require.NoError(t, err)
 	})
+
+	t.Run("boolean values from multiple ingesters are deduplicated before the relevance check", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"boolean-ints": {Values: []string{"0", "1"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			newReadRingMock([]ring.InstanceDesc{
+				mockInstanceDescWithZone("ingester-1", ring.ACTIVE, ""),
+				mockInstanceDescWithZone("ingester-2", ring.ACTIVE, ""),
+			}, 0),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		// Both ingesters were queried through the same mock client.
+		calls := ingesterClient.GetMockedCallsByMethod("GetDetectedLabels")
+		require.Equal(t, 2, len(calls))
+
+		detectedLabels := resp.DetectedLabels
+		foundLabels := make([]string, 0, len(detectedLabels))
+		for _, d := range detectedLabels {
+			foundLabels = append(foundLabels, d.Label)
+		}
+
+		// The merged values from both ingesters are deduplicated to {0,1}
+		// before shouldRejectLabel applies the boolean carve-out, so the
+		// label is kept.
+		assert.Contains(t, foundLabels, "boolean-ints")
+		for _, d := range detectedLabels {
+			if d.Label == "boolean-ints" {
+				assert.Equal(t, uint64(2), d.Cardinality)
+			}
+		}
+	})
 }
 
 func BenchmarkQuerierDetectedLabels(b *testing.B) {
