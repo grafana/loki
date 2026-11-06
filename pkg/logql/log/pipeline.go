@@ -309,6 +309,9 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 
 func (p *pipeline) Reset() {
 	p.baseBuilder.Reset()
+	// The result cache is keyed by full label set, including structured metadata, so it can grow
+	// without bound on long-lived pipelines such as tailers. It is only a cache, so clearing it is safe.
+	clear(p.baseBuilder.resultCache)
 	clear(p.streamPipelines)
 }
 
