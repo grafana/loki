@@ -103,7 +103,7 @@ Monitor the following metrics to confirm that Kafka writes and reads are healthy
 - `loki_kafka_client_partition_reader_consumption_lag_seconds` should stay near zero after an initial catch-up period.
 - `loki_ingester_partition_current_offset` on your new Kafka-consuming ingesters should keep advancing.
 
-Beyond checking that lag is low, you also need your Kafka-consuming ingesters to have been running long enough to hold a full window of recent data. The querier only queries ingesters for data within the last `querier.query_ingesters_within` (default: 3 hours). If you move queries to the partition ring (the next step) before your Kafka-consuming ingesters have accumulated at least this much data, recent queries can return incomplete results until that window fills in.
+Beyond checking that lag is low, you also need your dual-write to have been running long enough to hold a full window of recent data. The querier only queries ingesters for data within the last `querier.query_ingesters_within` (default: 3 hours). If you move queries to the partition ring (the next step) before your Kafka-consuming ingesters have accumulated at least this much data, recent queries can return incomplete results until that window fills in.
 
 {{< admonition type="note" >}}
 Keep both ingester groups running for this entire step. Budget at least `querier.query_ingesters_within` (default: 3 hours) for this wait, and often longer, since you want a representative period of healthy metrics in addition to the minimum data-retention window.
