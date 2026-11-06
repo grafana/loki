@@ -214,19 +214,7 @@ type objectSections struct {
 // mergePostingsIntoBuilder merges the postings sections of all source objects
 // with a K-way loser-tree merge and feeds the result into the builder.
 func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
-	readers := make([]sequence[postings.Row], 0, len(objects))
-	for _, obj := range objects {
-		if len(obj.postings) == 0 {
-			continue
-		}
-		readers = append(readers, &sectionConcatSeq[postings.Row]{
-			ctx:        ctx,
-			objectPath: obj.path,
-			sections:   obj.postings,
-			seqIdx:     len(readers),
-			open:       openPostingsReader,
-		})
-	}
+	readers := postingsSequences(ctx, objects)
 	if len(readers) == 0 {
 		return nil
 	}
@@ -279,6 +267,25 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 	}
 
 	return nil
+}
+
+// postingsSequences returns one sequence over the postings rows of each object
+// that has postings sections, for the K-way merge.
+func postingsSequences(ctx context.Context, objects []objectSections) []sequence[postings.Row] {
+	readers := make([]sequence[postings.Row], 0, len(objects))
+	for _, obj := range objects {
+		if len(obj.postings) == 0 {
+			continue
+		}
+		readers = append(readers, &sectionConcatSeq[postings.Row]{
+			ctx:        ctx,
+			objectPath: obj.path,
+			sections:   obj.postings,
+			seqIdx:     len(readers),
+			open:       openPostingsReader,
+		})
+	}
+	return readers
 }
 
 func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string, row postings.Row) error {
