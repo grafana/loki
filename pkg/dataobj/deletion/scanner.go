@@ -10,12 +10,12 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -28,32 +28,32 @@ import (
 // yet. A later step could then select such an object for deletion by mistake.
 const MinObjectAge = time.Hour
 
-// Scanner lists the objects of a tenant in a data object bucket.
+// FileListScanner lists the objects of a tenant in a data object bucket.
 //
-// Scanner is safe for concurrent use.
-type Scanner struct {
+// FileListScanner is safe for concurrent use.
+type FileListScanner struct {
 	bucket       objstore.BucketReader
 	indexPrefix  string
 	maxOpenFiles int
 	logger       log.Logger
 }
 
-// NewScanner returns a Scanner for bucket. bucket is the root of the data
+// NewFileListScanner returns a FileListScanner for bucket. bucket is the root of the data
 // object storage, which holds the objects/ directory. indexPrefix is the path
 // of the index storage relative to bucket, for example "index/v0".
 //
 // maxOpenFiles limits the number of objects that List opens at the same time.
 //
-// NewScanner returns an error if maxOpenFiles is less than 1, or if bucket
+// NewFileListScanner returns an error if maxOpenFiles is less than 1, or if bucket
 // does not report modification times with [objstore.WithUpdatedAt].
-func NewScanner(bucket objstore.BucketReader, indexPrefix string, maxOpenFiles int, logger log.Logger) (*Scanner, error) {
+func NewFileListScanner(bucket objstore.BucketReader, indexPrefix string, maxOpenFiles int, logger log.Logger) (*FileListScanner, error) {
 	if maxOpenFiles < 1 {
 		return nil, fmt.Errorf("max open files must be at least 1, got %d", maxOpenFiles)
 	}
 	if !slices.Contains(bucket.SupportedIterOptions(), objstore.UpdatedAt) {
 		return nil, errors.New("bucket does not report modification times")
 	}
-	return &Scanner{
+	return &FileListScanner{
 		bucket:       bucket,
 		indexPrefix:  strings.Trim(indexPrefix, objstore.DirDelim),
 		maxOpenFiles: maxOpenFiles,
@@ -64,7 +64,7 @@ func NewScanner(bucket objstore.BucketReader, indexPrefix string, maxOpenFiles i
 // List returns the file list of tenant at now. The list holds the sorted
 // paths of the log objects and index objects of tenant. It includes only
 // objects last modified at least [MinObjectAge] before now. The paths are
-// relative to the bucket of the Scanner. List does not include ToCs.
+// relative to the bucket of the FileListScanner. List does not include ToCs.
 //
 // List finds two kinds of objects:
 //
@@ -81,7 +81,7 @@ func NewScanner(bucket objstore.BucketReader, indexPrefix string, maxOpenFiles i
 //
 // List returns an error if it cannot open an ingest object, or if the bucket
 // does not report the modification time of an object.
-func (s *Scanner) List(ctx context.Context, tenant string, now time.Time) (FileList, error) {
+func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time) (FileList, error) {
 	if err := validateTenant(tenant); err != nil {
 		return FileList{}, err
 	}
@@ -125,15 +125,15 @@ const metadataPrefetchBytes = 64 << 10
 
 // scan holds the state of one List call.
 type scan struct {
-	scanner *Scanner
+	scanner *FileListScanner
 	tenant  string
 	// cutoff is the latest modification time of an object that the scan
 	// includes.
 	cutoff time.Time
 
-	// The walk and the open goroutines add paths, so mu guards paths.
-	mu    sync.Mutex
-	paths []string
+	// The walk and the open goroutines add paths, so pathsMu guards paths.
+	pathsMu sync.Mutex
+	paths   []string
 
 	listed      atomic.Int64
 	tooYoung    atomic.Int64
@@ -246,17 +246,17 @@ func (sc *scan) checkIngestObject(ctx context.Context, p string) error {
 }
 
 func (sc *scan) add(p string) {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
+	sc.pathsMu.Lock()
+	defer sc.pathsMu.Unlock()
 	sc.paths = append(sc.paths, p)
 }
 
 // logSummary logs the counters of the scan. A list with no objects can mean a
 // wrong bucket root or index prefix, and the listed count shows that.
 func (sc *scan) logSummary() {
-	sc.mu.Lock()
+	sc.pathsMu.Lock()
 	included := len(sc.paths)
-	sc.mu.Unlock()
+	sc.pathsMu.Unlock()
 	level.Info(sc.scanner.logger).Log(
 		"msg", "listed objects of tenant",
 		"tenant", sc.tenant,

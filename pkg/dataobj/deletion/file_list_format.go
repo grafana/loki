@@ -113,7 +113,7 @@ func newFileListDecoder(r io.Reader, tenant string) (*fileListDecoder, error) {
 	buf := bufio.NewReader(src)
 	gz, err := gzip.NewReader(buf)
 	if err != nil {
-		return nil, src.wrap("opening gzip stream", err)
+		return nil, src.wrapErr("opening gzip stream", err)
 	}
 	// A second gzip stream is not part of the format. Without this, gzip
 	// reads it as more of the list.
@@ -123,7 +123,7 @@ func newFileListDecoder(r io.Reader, tenant string) (*fileListDecoder, error) {
 
 	var header fileListHeader
 	if err := dec.Decode(&header); err != nil {
-		return nil, src.wrap("decoding header", err)
+		return nil, src.wrapErr("decoding header", err)
 	}
 	if err := header.validate(); err != nil {
 		return nil, fmt.Errorf("%w: invalid header: %w", ErrMalformedFileList, err)
@@ -154,7 +154,7 @@ func (d *fileListDecoder) decodePath() (string, error) {
 		return "", d.checkEnd()
 	}
 	if err != nil {
-		return "", d.src.wrap("decoding path", err)
+		return "", d.src.wrapErr("decoding path", err)
 	}
 	if rec.Path == "" {
 		return "", fmt.Errorf("%w: empty path after %q", ErrMalformedFileList, d.last)
@@ -173,7 +173,7 @@ func (d *fileListDecoder) checkEnd() error {
 	case err == io.EOF:
 		return io.EOF
 	case err != nil:
-		return d.src.wrap("checking the end of the stream", err)
+		return d.src.wrapErr("checking the end of the stream", err)
 	default:
 		return fmt.Errorf("%w: data after the end of the gzip stream", ErrMalformedFileList)
 	}
@@ -193,9 +193,9 @@ func (r *readErrRecorder) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// wrap returns err with context. The result wraps ErrMalformedFileList unless
+// wrapErr returns err with context. The result wraps ErrMalformedFileList unless
 // a read of r failed.
-func (r *readErrRecorder) wrap(step string, err error) error {
+func (r *readErrRecorder) wrapErr(step string, err error) error {
 	if r.err != nil {
 		return fmt.Errorf("reading stored file list: %s: %w", step, err)
 	}

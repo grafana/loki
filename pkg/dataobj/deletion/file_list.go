@@ -59,12 +59,12 @@ func (l FileList) validate() error {
 	return nil
 }
 
-// checkReplaces returns nil if l may replace the stored list with the header
-// stored. It returns an error that wraps ErrSuperseded if the stored list is
-// not older than l. The caller checks that stored holds the tenant of l.
-func (l FileList) checkReplaces(stored fileListHeader) error {
-	if !l.CreatedAt.After(stored.CreatedAt) {
-		return fmt.Errorf("%w: stored file list created at %s", ErrSuperseded, stored.CreatedAt.Format(time.RFC3339Nano))
+// canBeReplacedBy returns nil if list may replace the stored list with the
+// header h. It returns an error that wraps ErrSuperseded if the stored list
+// is not older than list. The caller checks that h holds the tenant of list.
+func (h fileListHeader) canBeReplacedBy(list FileList) error {
+	if !list.CreatedAt.After(h.CreatedAt) {
+		return fmt.Errorf("%w: stored file list created at %s", ErrSuperseded, h.CreatedAt.Format(time.RFC3339Nano))
 	}
 	return nil
 }
@@ -137,7 +137,11 @@ func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 		err = w.bucket.GetAndReplace(ctx, list.Path(), func(existing io.ReadCloser) (io.ReadCloser, error) {
 			if existing != nil {
 				defer existing.Close()
-				if err := checkStored(existing, list); err != nil {
+				dec, err := newFileListDecoder(existing, list.Tenant)
+				if err != nil {
+					return nil, err
+				}
+				if err := dec.header.canBeReplacedBy(list); err != nil {
 					return nil, err
 				}
 			}
@@ -170,14 +174,4 @@ func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 	err = fmt.Errorf("writing file list %s: gave up after %d attempts: %w", list.Path(), b.NumRetries(), err)
 	level.Error(logger).Log("msg", "file list write failed, gave up", "err", err)
 	return err
-}
-
-// checkStored returns nil if list may replace the stored file list read from
-// r.
-func checkStored(r io.Reader, list FileList) error {
-	dec, err := newFileListDecoder(r, list.Tenant)
-	if err != nil {
-		return err
-	}
-	return list.checkReplaces(dec.header)
 }
