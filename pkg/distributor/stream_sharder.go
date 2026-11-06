@@ -20,11 +20,16 @@ import (
 // written.
 //
 // Tenants can ask the limits service for a shard count, see
-// shardstreams.Config.LimitsServiceStreamShardingMode. Their streams are collected as candidates
-// and handled in one call after validation. Shadow-mode streams are already sharded by the local
-// rate store and are only compared against the service's answer. Live-mode streams are left
-// unsharded here: enforceStreamLimits shards them with the count the service returns, so they are
-// not in streams. The mode is per tenant, so at most one of the two is used per request.
+// shardstreams.Config.LimitsServiceStreamShardingMode. Their streams are collected as candidates,
+// which enforceStreamLimits sends in one call after the rate limit. Shadow-mode streams are
+// already sharded by the local rate store and are only compared against the service's answer.
+// Live-mode streams are only time-sharded here: enforceStreamLimits shards them by rate with the
+// count the service returns, so they are not in streams. The mode is per tenant, so at most one of
+// the two is used per request.
+//
+// Side effects: rate sharding a stream into more than one shard advances its shard rotation, and
+// time sharding sorts each scope's entries by timestamp in place, even when it then does not
+// time-shard.
 type streamSharder struct {
 	d        *Distributor
 	tenantID string
@@ -33,13 +38,11 @@ type streamSharder struct {
 	streams                          []KeyedStream
 	shadowCandidates, liveCandidates []limitsServiceShardCandidate
 
-	// shardStreamsEnabledSeen/shardStreamsDisabledSeen track whether this
-	// push mixes streams whose resolved shardStreamsCfg.Enabled differs for
-	// this tenant. A tenant's policies are expected to agree on whether
-	// stream sharding is enabled; a stream with it disabled skips the limits
-	// service and is enforced by EnforceLimits instead, splitting
-	// max_global_streams_per_user enforcement between two independent
-	// trackers. This is only a concern while the limits service is enabled.
+	// The policies seen with sharding enabled and disabled, the first of each, for
+	// warnMixedShardStreams. A tenant's policies are expected to agree: in live mode, a stream with
+	// sharding disabled is limited by EnforceLimits instead of CheckLimitsAndShard, splitting
+	// max_global_streams_per_user between two trackers. The warning is logged whenever the ingest
+	// limits are enabled, in every mode.
 	shardStreamsEnabledSeen, shardStreamsDisabledSeen     bool
 	shardStreamsEnabledPolicy, shardStreamsDisabledPolicy string
 }
@@ -71,8 +74,8 @@ func (s *streamSharder) shard(stream logproto.InternalStreamAdapter, lbls labels
 	}
 }
 
-// shardByRate shards stream by rate and adds the result to streams, unless the limits service
-// decides the shard count. It then becomes a candidate, see streamSharder.
+// shardByRate shards stream with the local rate store's count, or collects it as a candidate for
+// the limits service, or both in shadow mode. See streamSharder.
 func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 	d, tenantID := s.d, s.tenantID
 
@@ -88,7 +91,6 @@ func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls 
 		}
 	}
 
-	// Shortcut when stream sharding is not enabled
 	if !shardStreamsCfg.Enabled {
 		s.streams = append(s.streams, KeyedStream{
 			HashKey:        lokiring.TokenFor(tenantID, stream.Labels),
@@ -99,8 +101,8 @@ func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls 
 		return
 	}
 
-	// Limits-service stream sharding requires the ingest limits to be enabled.
-	// Shortcut when limits-service sharding is disabled. Treat unset mode also as "disabled".
+	// The limits service only decides shard counts while the ingest limits
+	// are enabled. An unset mode means disabled.
 	mode := shardStreamsCfg.LimitsServiceStreamShardingMode
 	if !d.cfg.IngestLimitsEnabled || mode == shardstreams.LimitsServiceStreamShardingModeDisabled || mode == "" {
 		sharded, _ := d.shardStream(stream, lbls, pushSize, tenantID, policy, shardStreamsCfg)
@@ -125,6 +127,8 @@ func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls 
 		totalSize:       uint64(pushSize),
 	}
 
+	// No default: shardstreams.Config.Validate only allows the modes handled
+	// here and above.
 	switch mode {
 	case shardstreams.LimitsServiceStreamShardingModeLive:
 		s.liveCandidates = append(s.liveCandidates, candidate)

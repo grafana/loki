@@ -4372,8 +4372,8 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		// Note: When some streams are rejected, validationErr is set and returned.
-		// The request will succeed (streams are written) but validationErr is returned.
+		// The stream-limit 429 is returned with the response, as the other
+		// streams are still written.
 		expectedErr:              fmt.Sprintf("rpc error: code = Code(429) desc = %s", fmt.Sprintf(validation.StreamLimitErrorMsg, "{foo=\"bar\"}", "test")),
 		expectedResponse:         success, // Response is returned even when some streams are rejected
 		expectedDiscardedSamples: 1,       // 1 entry from "{foo=\"bar\"}" stream is discarded
@@ -4918,7 +4918,7 @@ func TestDistributor_LimitsServiceShardObservations(t *testing.T) {
 		name string
 		// shardStreamsEnabled controls the local rate store's sharding. It has
 		// to be true for candidates to be collected at all, see
-		// maybeShardByRate: there is nothing to compare against otherwise.
+		// streamSharder.shardByRate: there is nothing to compare against otherwise.
 		shardStreamsEnabled            bool
 		checkLimitsAndShardResponse    *limitsproto.CheckLimitsAndShardResponse
 		checkLimitsAndShardResponseErr error
