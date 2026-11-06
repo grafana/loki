@@ -23,12 +23,12 @@ This guide documents running **two distinct sets of ingesters** side by side dur
 ## Before you begin
 
 - You need a running Kafka cluster, or a Kafka-protocol-compatible system such as [WarpStream](https://www.warpstream.com/), reachable from both your distributors and your new Kafka-consuming ingesters.
-- Create the Kafka topic you plan to use, or set `kafka_config.auto_create_topic_enabled: true` to let Loki create it automatically.
+- Create the Kafka topic you plan to use. `kafka_config.auto_create_topic_enabled` defaults to `true`, which allows the broker to create a missing topic when Loki first uses it, if the broker permits topic auto-creation. Loki also sets the broker-wide `num.partitions` default to `kafka_config.auto_create_topic_default_partitions` (default: 1000), which affects every auto-created topic on the cluster. Set `auto_create_topic_enabled: false` if you create the topic yourself or share the cluster with other applications.
 - Read [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/) to understand the architecture, partition sizing, and authentication limitations before you begin.
 - Note your current `querier.query_ingesters_within` setting (default: 3 hours). You'll need it in [step 4](#4-wait-for-the-kafka-path-to-catch-up).
 - Plan for enough compute and storage capacity to run a second, full-sized ingester group alongside your existing ingesters for the duration of the migration.
-- Make sure your Kafka topic has at least as many partitions as the number of Kafka-consuming ingester replicas you plan to run. Each ingester owns exactly one partition; replicas beyond the partition count stay idle. Refer to [Partition sizing guidance](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#partition-sizing-guidance).
-- Plan to give each new Kafka-consuming ingester an instance ID that ends in a sequential numeric index, for example `kafka-ingester-0`, `kafka-ingester-1`. Loki derives each ingester's partition ID from this suffix at startup, and fails to start if it can't parse one. Kubernetes StatefulSet ordinals satisfy this automatically.
+- Make sure your Kafka topic has at least as many partitions as the number of Kafka-consuming ingester replicas you plan to run. Each ingester owns exactly one partition. Loki doesn't check the topic's partition count. An ingester whose partition doesn't exist keeps retrying the Kafka offset lookup for it, so it never becomes ready and never joins the partition ring. Refer to [Partition sizing guidance](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#partition-sizing-guidance).
+- Plan to give each new Kafka-consuming ingester an instance ID that ends in a hyphen followed by a sequential numeric index, for example `kafka-ingester-0`, `kafka-ingester-1`. Loki derives each ingester's partition ID from this suffix at startup, and fails to start if it can't parse one. Kubernetes StatefulSet ordinals satisfy this automatically. Don't use instance IDs that contain `local` or end in `.lan`: Loki always maps these to partition 0, regardless of any numeric suffix.
 
 ## Migration steps
 
@@ -70,7 +70,11 @@ ingester:
 Leave your existing ingesters' configuration unchanged at this point: `kafka_ingestion.enabled` stays `false` (the default), and they keep the default `ingester.lifecycler.ring.kvstore.prefix`.
 
 {{< admonition type="note" >}}
-Don't change `ingester.kafka_ingestion.partition_ring` settings from their defaults on either ingester group. Every component that participates in the partition ring, the distributor, both ingester groups, and the querier, must agree on the same partition ring key-value store configuration. Only the classic ring prefix above is meant to differ.
+Every component that participates in the partition ring, the distributor, the Kafka-consuming ingesters, and the querier, must use the same `ingester.kafka_ingestion.partition_ring.kvstore` configuration. Only the classic ring prefix above is meant to differ. Don't change the other `partition_ring` settings from their defaults.
+
+The partition ring key-value store defaults to `memberlist`. If you don't already run memberlist, configure `memberlist.join_members` on these components or set the same `partition_ring.kvstore` store on all of them. If you set `common.ring`, the partition ring uses the key-value store from there.
+
+The existing ingesters don't join the partition ring, so they don't need this configuration.
 {{< /admonition >}}
 
 Roll out this new ingester group before you enable any Kafka writes in the next step, so you can confirm the new ingesters start cleanly and join the partition ring while receiving no traffic yet.
@@ -90,9 +94,9 @@ ingester:
     enabled: true
 ```
 
-With this configuration, the distributor writes every stream to both Kafka, which your new Kafka-consuming ingesters read from, and to your existing ingesters over gRPC, at the same time. The write path keeps working as expected even if something is misconfigured in the Kafka path, because your existing ingesters keep receiving every write directly.
+With this configuration, the distributor writes every stream to both Kafka, which your new Kafka-consuming ingesters read from, and to your existing ingesters over gRPC, at the same time. A push request succeeds only if both writes succeed. If the Kafka write fails, for example because Kafka is unreachable or the partition ring has no `ACTIVE` partition, the distributor returns an HTTP 500 error to the client, even though your existing ingesters still received the data.
 
-Roll out this change to your distributors. Because both write paths remain active, this step does not interrupt ingestion.
+Before you roll out this change, confirm on the `/partition-ring` page of a distributor or ingester that all new partitions are `ACTIVE`. Roll the change out to your distributors gradually, and watch `loki_distributor_kafka_appends_total` with label `status="fail"` and your push error rate. To undo this step, set `kafka_writes_enabled: false` again.
 
 ### 4. Wait for the Kafka path to catch up
 
@@ -132,7 +136,7 @@ ingester:
 The querier also needs the same `ingester.kafka_ingestion.partition_ring` key-value store configuration as your Kafka-consuming ingesters, so it can watch the partition ring and discover them. If your querier already shares a base configuration file with your ingesters, this is already in place; otherwise, add it explicitly.
 
 {{< admonition type="note" >}}
-The partition ring routes each read to the single ingester that owns the partition, with no replication. The classic hash ring instead fans a read out to multiple replicas and uses quorum. If a partition's owning ingester is temporarily unavailable, recent reads for that partition's tenants can fail until the ingester recovers. During dual-write, you can safely revert this setting to `false` if you need to roll back.
+The partition ring routes each read to the single ingester that owns the partition, with no replication. The classic hash ring instead fans a read out to multiple replicas and uses quorum. If a partition's owning ingester is temporarily unavailable, recent reads can fail until the ingester recovers. With the default `limits_config.ingestion_partitions_tenant_shard_size: 0`, every query covers all partitions, so this affects all tenants. With a non-zero shard size, it affects only the tenants whose shard includes that partition. During dual-write, you can safely revert this setting and the ring prefix to their original values if you need to roll back.
 {{< /admonition >}}
 
 Before continuing, confirm that queries covering recent time ranges, for example the last few minutes, still return the data you expect.
@@ -164,11 +168,12 @@ Continue monitoring your Kafka-based ingestion using the metrics documented in [
 
 To revert to the direct gRPC write path:
 
-1. If you completed [step 6](#6-cut-over-to-kafka-only-writes), set `distributor.ingester_writes_enabled` back to `true`. And then wait `query_ingesters_within` (default 3 hours) before switching back to reading from grpc ingesters. This is the point where rollback becomes slow if you want to do it without making some recent data unreadable.
-1. If you completed [step 5](#5-switch-the-query-path-to-the-partition-ring), set `querier.query_partition_ingesters` back to `false` and change the `ingester.lifecycler.ring.kvstore.prefix` back to its original value. If you also completed step 6, make this change and step 1 in the **same configuration change** and roll out distributors and queriers together. Reverting the querier setting before gRPC writes are re-enabled can create a window where recent queries find no new data.
-1. Set `distributor.kafka_writes_enabled` to `false`.
-1. Roll out the configuration change.
-1. Once you've confirmed your existing ingesters are serving all reads and writes correctly again, scale down your Kafka-consuming ingesters. Because they're isolated from the classic hash ring, you can leave them running at reduced capacity for a while in case you want to retry the migration, without affecting your existing ingesters.
+1. If you completed [step 6](#6-cut-over-to-kafka-only-writes), set `distributor.ingester_writes_enabled` back to `true` and roll out your distributors. Leave `distributor.kafka_writes_enabled` and the querier settings unchanged for now. Then wait at least `querier.query_ingesters_within` (default: 3 hours). During this wait, your existing ingesters build up a full window of recent data while queries still read from the Kafka-consuming ingesters. If you switch queries back earlier, recent queries miss the data that was written only to Kafka. This wait is the slow part of a rollback. If you didn't complete step 6, skip this item, because your existing ingesters received every write.
+1. If you completed [step 5](#5-switch-the-query-path-to-the-partition-ring), set `querier.query_partition_ingesters` back to `false` and change `ingester.lifecycler.ring.kvstore.prefix` back to its original value on your queriers (and rulers). Roll out these changes.
+1. Set `distributor.kafka_writes_enabled` to `false` and roll out your distributors. Do this after the queriers no longer read from the partition ring, because the Kafka-consuming ingesters receive no new data after this change.
+1. Once you've confirmed your existing ingesters are serving all reads and writes correctly again, scale down your Kafka-consuming ingesters. Because they're isolated from the classic hash ring, you can leave some of them running for a while in case you want to retry the migration, without affecting your existing ingesters. Before you stop each Kafka-consuming ingester that you remove:
+   1. Send `POST /ingester/prepare_partition_downscale` to it. This switches its partition to `INACTIVE`, so distributors stop writing to it. If you stop an ingester without this call, its partition stays `ACTIVE` with no consumer, and queries on the partition ring fail if you retry the migration later.
+   1. Send `POST /ingester/prepare_shutdown` to it, then stop it. This removes the ingester as partition owner. The remaining Kafka-consuming ingesters delete an `INACTIVE` partition that has no owners from the partition ring after `ingester.kafka_ingestion.partition_ring.delete_inactive_partition_after` (default: 13 hours). The ingester writes a shutdown marker file (see `ingester.shutdown_marker_path`). Before you reuse the ingester, remove the marker with `DELETE /ingester/prepare_shutdown`. Refer to [Prepare ingester shutdown](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#prepare-ingester-shutdown).
 
 Because your existing ingesters never stopped processing gRPC writes during dual-write, rolling back doesn't cause data loss as long as you haven't completed [step 6](#6-cut-over-to-kafka-only-writes). If you had already cut over to Kafka-only writes before deciding to roll back, any data already buffered in Kafka but not yet consumed is read with the normal Kafka consumer catch-up process described in [Offset management and restart behavior](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#offset-management-and-restart-behavior), so make sure your Kafka-consuming ingesters have caught up on Kafka lag before you disable Kafka consumption on them.
 
