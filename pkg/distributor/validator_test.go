@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -149,11 +148,12 @@ func TestValidator_ValidateEntry(t *testing.T) {
 
 func TestValidator_ValidateLabels(t *testing.T) {
 	tests := []struct {
-		name      string
-		userID    string
-		overrides validation.TenantLimits
-		labels    string
-		expected  error
+		name           string
+		userID         string
+		overrides      validation.TenantLimits
+		labels         string
+		expected       error
+		expectedReason string
 	}{
 		{
 			"test valid",
@@ -161,6 +161,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			nil,
 			"{foo=\"bar\"}",
 			nil,
+			"",
 		},
 		{
 			"empty",
@@ -168,6 +169,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			nil,
 			"{}",
 			fmt.Errorf(validation.MissingLabelsErrorMsg),
+			validation.MissingLabels,
 		},
 		{
 			"test too many labels",
@@ -177,6 +179,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			},
 			"{foo=\"bar\",food=\"bars\",fed=\"bears\"}",
 			fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, "{foo=\"bar\",food=\"bars\",fed=\"bears\"}", 3, 2),
+			validation.MaxLabelNamesPerSeries,
 		},
 		{
 			"label name too long",
@@ -189,6 +192,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			},
 			"{fooooo=\"bar\"}",
 			fmt.Errorf(validation.LabelNameTooLongErrorMsg, "{fooooo=\"bar\"}", "fooooo"),
+			validation.LabelNameTooLong,
 		},
 		{
 			"label value too long",
@@ -202,6 +206,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			},
 			"{foo=\"barrrrrr\"}",
 			fmt.Errorf(validation.LabelValueTooLongErrorMsg, "{foo=\"barrrrrr\"}", "barrrrrr"),
+			validation.LabelValueTooLong,
 		},
 		{
 			"duplicate label",
@@ -215,6 +220,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			},
 			"{foo=\"bar\", foo=\"barf\"}",
 			fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, "{foo=\"bar\", foo=\"barf\"}", "foo"),
+			validation.DuplicateLabelNames,
 		},
 		{
 			"label value contains %",
@@ -228,20 +234,21 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			},
 			"{foo=\"bar\", foo=\"barf%s\"}",
 			errors.New("stream '{foo=\"bar\", foo=\"barf%s\"}' has label value too long: 'barf%s'"), // Intentionally construct the string to make sure %s isn't substituted as (MISSING)
+			validation.LabelValueTooLong,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := &validation.Limits{}
 			flagext.DefaultValues(l)
-			retentionHours := util.RetentionHours(time.Duration(l.RetentionPeriod))
 			o, err := validation.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), *logproto.FromStream(logproto.Stream{Labels: tt.labels}), retentionHours, "", "loki")
-			assert.Equal(t, tt.expected, err)
+			reason, err := v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), *logproto.FromStream(logproto.Stream{Labels: tt.labels}))
+			require.Equal(t, tt.expected, err)
+			require.Equal(t, tt.expectedReason, reason)
 		})
 	}
 }

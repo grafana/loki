@@ -135,17 +135,16 @@ func (v Validator) ValidateEntry(vCtx validationContext, labels labels.Labels, e
 	return "", nil
 }
 
-// Validate labels returns an error if the labels are invalid and if the stream is an aggregated metric stream
-func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.InternalStreamAdapter, retentionHours, policy, format string) error {
+// ValidateLabels returns an error and the reason to discard the stream's data for if its labels
+// are invalid. Aggregated metric and pattern streams are not validated, as Loki creates those for
+// internal use. Like ValidateEntry, it does not report the discarded data itself; the caller does.
+func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.InternalStreamAdapter) (string, error) {
 	if ls.IsEmpty() {
-		// TODO: is this one correct?
-		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, vCtx.userID, retentionHours, policy, format).Inc()
-		return fmt.Errorf(validation.MissingLabelsErrorMsg)
+		return validation.MissingLabels, fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
 
-	// Skip validation for aggregated metric and pattern streams, as we create those for internal use
 	if constants.IsInternalStream(ls.Has) {
-		return nil
+		return "", nil
 	}
 
 	numLabelNames := ls.Len()
@@ -155,30 +154,27 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 		numLabelNames--
 	}
 
-	entriesSize := nestedStreamSize(stream)
-	entryCount := stream.EntryCount()
-
 	if numLabelNames > vCtx.maxLabelNamesPerSeries {
-		v.reportDiscardedData(validation.MaxLabelNamesPerSeries, vCtx, retentionHours, policy, entriesSize, entryCount, format)
-		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, vCtx.maxLabelNamesPerSeries)
+		return validation.MaxLabelNamesPerSeries, fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, vCtx.maxLabelNamesPerSeries)
 	}
 
+	var reason string
 	lastLabelName := ""
-
-	return ls.Validate(func(l labels.Label) error {
+	err := ls.Validate(func(l labels.Label) error {
 		if len(l.Name) > vCtx.maxLabelNameLength {
-			v.reportDiscardedData(validation.LabelNameTooLong, vCtx, retentionHours, policy, entriesSize, entryCount, format)
+			reason = validation.LabelNameTooLong
 			return fmt.Errorf(validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
 		} else if len(l.Value) > vCtx.maxLabelValueLength {
-			v.reportDiscardedData(validation.LabelValueTooLong, vCtx, retentionHours, policy, entriesSize, entryCount, format)
+			reason = validation.LabelValueTooLong
 			return fmt.Errorf(validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp == 0 {
-			v.reportDiscardedData(validation.DuplicateLabelNames, vCtx, retentionHours, policy, entriesSize, entryCount, format)
+			reason = validation.DuplicateLabelNames
 			return fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
 		}
 		lastLabelName = l.Name
 		return nil
 	})
+	return reason, err
 }
 
 func (v Validator) reportDiscardedData(reason string, vCtx validationContext, retentionHours string, policy string, entrySize, entryCount int, format string) {
