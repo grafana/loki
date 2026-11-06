@@ -148,11 +148,11 @@ func TestBuilder_RoundTrip(t *testing.T) {
 				reg := prometheus.NewRegistry()
 				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(reg))
 				require.NoError(t, err)
-				require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+				require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 
 				files, err := b.prepareIndexes()
 				require.NoError(t, err)
-				defer b.clear()
+				defer b.Clear()
 
 				got := map[string]map[string]map[docRange]bool{}
 				for _, f := range files {
@@ -291,7 +291,7 @@ func TestBuilder_PrepareIndexesRetryable(t *testing.T) {
 			Line:      fmt.Sprintf("request %d failed with status 500 at endpoint alpha", i%7),
 		})
 	}
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, now, recordRef{}))
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: entries}, nil, now, RecordRef{}))
 
 	first, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -304,7 +304,7 @@ func TestBuilder_PrepareIndexesRetryable(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fileKeys(first), fileKeys(second), "retry must reproduce the same (date,shard) files")
 
-	b.clear()
+	b.Clear()
 	require.Empty(t, b.ing.postings.runPaths, "clear must drop runs")
 }
 
@@ -356,8 +356,8 @@ func TestBuilder_PrepareIndexesRetryAfterFailure(t *testing.T) {
 	// Control: identical input, never failed.
 	ctl, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer ctl.clear()
-	require.NoError(t, ctl.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+	defer ctl.Clear()
+	require.NoError(t, ctl.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 	ctlFiles, err := ctl.prepareIndexes()
 	require.NoError(t, err)
 	require.NotEmpty(t, ctlFiles)
@@ -365,8 +365,8 @@ func TestBuilder_PrepareIndexesRetryAfterFailure(t *testing.T) {
 
 	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+	defer b.Clear()
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 	require.NotEmpty(t, b.ing.postings.runPaths, "test requires spilled runs before prepareIndexes")
 
 	// Corrupt one run's magic so the merge fails after finish().
@@ -461,8 +461,8 @@ func TestBuilder_PrepareIndexesRetryAfterMidMergeFailure(t *testing.T) {
 			ctlCfg.MergeThreads = threads
 			ctl, err := newIndexBuilder(ctlCfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 			require.NoError(t, err)
-			defer ctl.clear()
-			require.NoError(t, ctl.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+			defer ctl.Clear()
+			require.NoError(t, ctl.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 			ctlFiles, err := ctl.prepareIndexes()
 			require.NoError(t, err)
 			// At least one non-victim shard must produce files, or "completed
@@ -474,8 +474,8 @@ func TestBuilder_PrepareIndexesRetryAfterMidMergeFailure(t *testing.T) {
 			cfg.MergeThreads = threads
 			b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 			require.NoError(t, err)
-			defer b.clear()
-			require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+			defer b.Clear()
+			require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 
 			// Spill the remaining head now so the run set is final before corrupting
 			// (finish is idempotent — prepareIndexes below won't create new runs).
@@ -524,8 +524,8 @@ func TestMergeRuns_StopsSchedulingAfterShardFailure(t *testing.T) {
 	cfg.MergeThreads = 1
 	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), recordRef{}))
+	defer b.Clear()
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), RecordRef{}))
 	require.NoError(t, b.ing.postings.finish())
 	require.NotEmpty(t, b.ing.postings.runPaths)
 	corruptShardPayload(t, b.ing.postings.runPaths, 0)
@@ -549,8 +549,8 @@ func TestBuilder_SpillAndMergeMetrics(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(reg))
 	require.NoError(t, err)
-	defer b.clear()
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), recordRef{}))
+	defer b.Clear()
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), RecordRef{}))
 
 	_, err = b.prepareIndexes()
 	require.NoError(t, err)
@@ -575,7 +575,7 @@ func TestBuilder_SpillAndMergeMetrics(t *testing.T) {
 func TestBuilder_Clear_FullReset(t *testing.T) {
 	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), recordRef{}))
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), RecordRef{}))
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -585,7 +585,7 @@ func TestBuilder_Clear_FullReset(t *testing.T) {
 	require.NotEmpty(t, handles)
 	runDir := b.runDir
 
-	b.clear()
+	b.Clear()
 
 	// Handles were closed by clear — a second Close reports ErrClosed.
 	for _, fh := range handles {

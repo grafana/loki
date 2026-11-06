@@ -81,14 +81,14 @@ func uploadAndReadMetas(t *testing.T, cfg Config) []store.Meta {
 			{Timestamp: now, Line: "error: connection failed to primary database server"},
 		},
 	}
-	_ = svc.activeBuilder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	require.NoError(t, svc.activeBuilder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{}))
 
-	files, err := svc.activeBuilder.prepareIndexes()
+	prepared, err := svc.activeBuilder.Prepare()
 	require.NoError(t, err)
-	require.NotEmpty(t, files)
+	require.NotZero(t, prepared.Len())
 
 	ctx := context.Background()
-	require.NoError(t, svc.uploadPartialIndexes(ctx, files))
+	require.NoError(t, prepared.Upload(ctx, indexStore))
 
 	var metas []store.Meta
 	require.NoError(t, bucket.Iter(ctx, "", func(name string) error {

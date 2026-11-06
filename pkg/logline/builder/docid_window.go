@@ -30,7 +30,7 @@ import (
 // document_interval of time: at 100ms time-only it runs to 2039-08-12 UTC,
 // and at the v5 default of 16s × 5 shard bits to about 2094 — asserted by
 // TestDocIDWindowEnd. Timestamps outside the window PANIC at ingest
-// (processStream); Validate rejects settings whose window ends less than
+// (ProcessStream); Validate rejects settings whose window ends less than
 // minDocIDFutureRunway from now, so the panic is reserved for genuinely
 // anomalous timestamps, not window exhaustion.
 //
@@ -74,24 +74,28 @@ func docIDWindowEnd(interval time.Duration, documentShardBits uint) time.Time {
 	return docIDEpoch.Add(docIDWindowLength(interval, documentShardBits))
 }
 
-// recordRef identifies the Kafka record a stream was decoded from. It exists
+// RecordRef identifies the Kafka record a stream was decoded from. It exists
 // solely so the out-of-window panic can name the poison record — the operator
 // remediating a crash loop needs the partition and offset to advance past it.
-// Threaded through processStream by value and read only on the panic path, so
+// Threaded through ProcessStream by value and read only on the panic path, so
 // it adds zero per-line cost. The zero value (tests, benches, callers with no
 // Kafka context) formats as "partition=? offset=? tenant=?".
-type recordRef struct {
-	valid     bool
-	partition kafka.PartitionID
-	offset    kafka.Offset
-	tenantID  string
+type RecordRef struct {
+	// Valid distinguishes a known record from the zero value.
+	Valid bool
+	// Partition and Offset locate the source Kafka record.
+	Partition kafka.PartitionID
+	Offset    kafka.Offset
+	// TenantID identifies the tenant in the source record.
+	TenantID string
 }
 
-func (r recordRef) String() string {
-	if !r.valid {
+// String formats the source record for diagnostics.
+func (r RecordRef) String() string {
+	if !r.Valid {
 		return "partition=? offset=? tenant=?"
 	}
-	return fmt.Sprintf("partition=%d offset=%d tenant=%q", r.partition, r.offset, r.tenantID)
+	return fmt.Sprintf("partition=%d offset=%d tenant=%q", r.Partition, r.Offset, r.TenantID)
 }
 
 // panicOutOfWindow fails the process on a timestamp outside the docID
@@ -104,7 +108,7 @@ func (r recordRef) String() string {
 // the crash to the Kafka record that carried the timestamp, making the panic
 // actionable: remediation is advancing the offset past that record (or fixing
 // the interval/epoch config).
-func panicOutOfWindow(ts time.Time, interval time.Duration, documentShardBits uint, ref recordRef) {
+func panicOutOfWindow(ts time.Time, interval time.Duration, documentShardBits uint, ref RecordRef) {
 	panic(fmt.Sprintf(
 		"logline builder: log timestamp %s (record %s) is outside the docID window [%s, %s) (fixed epoch 2026-01-01 + 2^32 cells of %v document_interval × 2^%d document shards); "+
 			"out-of-window data must fail loudly rather than be silently unindexed (Adaptive Logs Archive/Replay can replay pre-window logs)",
