@@ -27,6 +27,7 @@
   prHourlyLimit: 4,
   baseBranchPatterns: [
     'main',
+    'release-4.0.0', // in-flight release
     'release-3.7.x', // Update when a new release is out, 2 minors, 1 major.
     'release-3.6.x', // Also ensure to update the 'packageRules' section to match
   ],
