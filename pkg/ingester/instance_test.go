@@ -2092,3 +2092,57 @@ func TestInstance_PolicyStreamLimitBuckets(t *testing.T) {
 		})
 	}
 }
+
+func TestInstance_Push_ReleasesChunkMtxOnPanic(t *testing.T) {
+	cfg := defaultLimitsTestConfig()
+	limits, err := validation.NewOverrides(cfg, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, retention.NewTenantsRetention(limits))
+	require.NoError(t, err)
+
+	streamLabels := `{app="test_panic"}`
+
+	// 1. Initial push to create the stream
+	reqNormal := &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels:  streamLabels,
+				Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "initial entry"}},
+			},
+		},
+	}
+	require.NoError(t, inst.Push(context.Background(), reqNormal))
+
+	s, ok := inst.streams.Load(streamLabels)
+	require.True(t, ok)
+
+	// 2. Corrupt chunk slice to trigger runtime panic in stream.Push, simulating recovered panic in gRPC interceptor
+	s.chunkMtx.Lock()
+	s.chunks = []chunkDesc{{chunk: nil}} // nil chunk dereference causes panic inside s.Push
+	s.chunkMtx.Unlock()
+
+	reqPanic := &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels:  streamLabels,
+				Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "panicking entry"}},
+			},
+		},
+	}
+
+	func() {
+		defer func() {
+			_ = recover()
+		}()
+		_ = inst.Push(context.Background(), reqPanic)
+	}()
+
+	// 3. Verify chunkMtx was released by defer despite the recovered panic.
+	// If chunkMtx remained locked, TryLock fails or blocks.
+	lockAcquired := s.chunkMtx.TryLock()
+	require.True(t, lockAcquired, "chunkMtx must be unlocked after recovered panic")
+	if lockAcquired {
+		s.chunkMtx.Unlock()
+	}
+}
