@@ -2,7 +2,9 @@ package pattern
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -10,7 +12,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -462,4 +467,109 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		require.Contains(t, tenantBuf, buffered(s4))
 	})
 
+}
+
+func TestPatternTee_MetricsFallback(t *testing.T) {
+	stream := push.Stream{Labels: `{foo="bar"}`, Entries: []push.Entry{{Timestamp: time.Now(), Line: "line"}}}
+	errPush := errors.New("push failed")
+	errClient := errors.New("no client")
+
+	type fallback struct {
+		clientErr error
+		pushErr   error
+	}
+	for _, tc := range []struct {
+		name string
+		// ownerTimesOut makes the owner fail by using up its whole timeout.
+		ownerTimesOut bool
+		fallbacks     []fallback
+		wantSentTo    []string
+		wantSuccess   bool
+	}{
+		{
+			name:        "sends to the first fallback that accepts",
+			fallbacks:   []fallback{{pushErr: errPush}, {}, {}},
+			wantSentTo:  []string{"fallback0", "fallback1"},
+			wantSuccess: true,
+		},
+		{
+			name:        "skips instances without a client",
+			fallbacks:   []fallback{{clientErr: errClient}, {}},
+			wantSentTo:  []string{"fallback1"},
+			wantSuccess: true,
+		},
+		{
+			name:       "fails when every fallback fails",
+			fallbacks:  []fallback{{clientErr: errClient}, {pushErr: errPush}},
+			wantSentTo: []string{"fallback1"},
+		},
+		{
+			name:          "a timed out owner leaves the fallback its own timeout",
+			ownerTimesOut: true,
+			fallbacks:     []fallback{{}},
+			wantSentTo:    []string{"fallback0"},
+			wantSuccess:   true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tee, owner := getTestTee(t)
+			tee.cfg.ClientConfig.RemoteTimeout = 50 * time.Millisecond
+			owner.ExpectedCalls = nil
+			ownerCall := owner.On("Push", mock.Anything, mock.Anything).Return(&logproto.PushResponse{}, errPush)
+			if tc.ownerTimesOut {
+				ownerCall.Run(func(args mock.Arguments) { <-args.Get(0).(context.Context).Done() })
+			}
+
+			replicationSet := ring.ReplicationSet{}
+			clients := map[string]ring_client.PoolClient{"ingester0": owner}
+			clientErrs := map[string]error{}
+			fallbackClients := map[string]*mockPoolClient{}
+			for i, fb := range tc.fallbacks {
+				addr := fmt.Sprintf("fallback%d", i)
+				replicationSet.Instances = append(replicationSet.Instances, ring.InstanceDesc{Addr: addr})
+				if fb.clientErr != nil {
+					clientErrs[addr] = fb.clientErr
+					continue
+				}
+				client := &mockPoolClient{}
+				client.On("Push", mock.Anything, mock.Anything).
+					Run(func(args mock.Arguments) {
+						// The fallback must not inherit the owner's expired deadline.
+						require.NoError(t, args.Get(0).(context.Context).Err())
+					}).
+					Return(&logproto.PushResponse{}, fb.pushErr)
+				clients[addr] = client
+				fallbackClients[addr] = client
+			}
+			ringClient := tee.ringClient.(*fakeRingClient)
+			ringClient.ring.(*fakeRing).On("GetReplicationSetForOperation", mock.Anything).Return(replicationSet, nil)
+			ringClient.clientFor = func(addr string) (ring_client.PoolClient, error) {
+				if err := clientErrs[addr]; err != nil {
+					return nil, err
+				}
+				return clients[addr], nil
+			}
+
+			tee.Duplicate(t.Context(), "test", []distributor.KeyedStream{{HashKey: 123, Stream: *logproto.FromStream(stream)}}, nil)
+			tee.flush()
+			tee.sendBatch(t.Context(), <-tee.flushQueue)
+
+			var sentTo []string
+			for addr, client := range fallbackClients {
+				if client.req != nil {
+					sentTo = append(sentTo, addr)
+				}
+			}
+			require.ElementsMatch(t, tc.wantSentTo, sentTo)
+
+			wantStatus, otherStatus := "fail", "success"
+			if tc.wantSuccess {
+				wantStatus, otherStatus = otherStatus, wantStatus
+			}
+			for _, counter := range []*prometheus.CounterVec{tee.metrics.ingesterMetricAppends, tee.metrics.fallbackAppends} {
+				require.Equal(t, 1.0, testutil.ToFloat64(counter.WithLabelValues(wantStatus)))
+				require.Zero(t, testutil.ToFloat64(counter.WithLabelValues(otherStatus)))
+			}
+		})
+	}
 }
