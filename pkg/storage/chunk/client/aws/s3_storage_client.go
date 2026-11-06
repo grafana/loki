@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -281,7 +282,8 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 		return nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
-	awsCfg, err := v2config.LoadDefaultConfig(context.Background())
+	// Route SDK logs through Loki's logger so -log.level applies to them.
+	awsCfg, err := v2config.LoadDefaultConfig(context.Background(), v2config.WithLogger(storageawscommon.NewSDKLogger(util_log.Logger)))
 	if err != nil {
 		return nil, err
 	}
