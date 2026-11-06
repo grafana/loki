@@ -200,6 +200,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	// backfill labels added below. Done here (not via OTLP attribute promotion) so a tenant's OTLP
 	// config cannot drop them.
 	backfillShard := ExtractBackfillShardContext(ctx)
+	trustedLabels := ExtractTrustedLabelsContext(ctx)
 
 	mostRecentEntryTimestamp := time.Time{}
 	for i := 0; i < rls.Len(); i++ {
@@ -208,7 +209,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		resAttrs := res.Attributes()
 
 		resourceRecords := 0
-		resResult, err := otlplabels.ResourceAttrsToStreamLabels(resAttrs, otlpConfig, discoverServiceName)
+		resResult, err := otlplabels.ResourceAttrsToStreamLabels(resAttrs, otlpConfig, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -220,6 +221,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		// X-Loki-Backfill-Shard header, so clients cannot spoof them to bypass validation.
 		if hasReservedBackfillLabels(streamLabels) {
 			return nil, errReservedBackfillLabels()
+		}
+
+		streamLabels = mergeTrustedModelLabels(streamLabels, trustedLabels)
+		if !trustedLabels.Has(LabelServiceName) {
+			otlplabels.DiscoverServiceName(resAttrs, streamLabels, discoverServiceName)
 		}
 
 		if backfillShard != "" {
@@ -337,6 +343,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					for k, v := range logLabels {
 						combinedLabels[k] = v
 					}
+					combinedLabels = mergeTrustedModelLabels(combinedLabels, trustedLabels)
 
 					if err := combinedLabels.Validate(); err != nil {
 						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))
@@ -533,4 +540,15 @@ func modelLabelsSetToLabelsList(m model.LabelSet) labels.Labels {
 	}
 	builder.Sort()
 	return builder.Labels()
+}
+
+func mergeTrustedModelLabels(body model.LabelSet, forced labels.Labels) model.LabelSet {
+	if forced.IsEmpty() {
+		return body
+	}
+
+	applyTrustedLabels(forced, func(name, value string) {
+		body[model.LabelName(name)] = model.LabelValue(value)
+	})
+	return body
 }

@@ -234,6 +234,270 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 	}
 }
 
+func TestPushHandlerIgnoresTrustedLabelsHeaderWhenDisabled(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	body := fmt.Sprintf(`{"streams":[{"stream":{"app":"test"},"values":[["%d","line"]]}]}`, time.Now().UnixNano())
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(push.HTTPHeaderTrustedLabelsKey, `{app="gateway", team="payments"}`)
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	var pushed *logproto.PushRequest
+	for i := range ingesters {
+		if request := ingesters[i].Peek(); request != nil {
+			pushed = request
+			break
+		}
+	}
+	require.NotNil(t, pushed)
+	require.Len(t, pushed.Streams, 1)
+	require.Contains(t, pushed.Streams[0].Labels, `app="test"`)
+	require.NotContains(t, pushed.Streams[0].Labels, `app="gateway"`)
+	require.NotContains(t, pushed.Streams[0].Labels, `team="payments"`)
+}
+
+func TestPushHandlerTrustedLabelsHeader(t *testing.T) {
+	t.Run("injects trusted labels before forwarding", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.RejectOldSamples = false
+		limits.TrustedLabelsHeaderEnabled = true
+		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+		body := fmt.Sprintf(`{"streams":[{"stream":{"app":"body","keep":"value"},"values":[["%d","line"]]}]}`, time.Now().UnixNano())
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+		req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(push.HTTPHeaderTrustedLabelsKey, `{app="gateway", team="payments"}`)
+
+		rec := httptest.NewRecorder()
+		distributors[0].PushHandler(rec, req)
+
+		require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+		var pushed *logproto.PushRequest
+		for i := range ingesters {
+			if request := ingesters[i].Peek(); request != nil {
+				pushed = request
+				break
+			}
+		}
+		require.NotNil(t, pushed)
+		require.Len(t, pushed.Streams, 1)
+		require.Contains(t, pushed.Streams[0].Labels, `app="gateway"`)
+		require.Contains(t, pushed.Streams[0].Labels, `team="payments"`)
+		require.Contains(t, pushed.Streams[0].Labels, `keep="value"`)
+		require.NotContains(t, pushed.Streams[0].Labels, `app="body"`)
+	})
+
+	t.Run("rejects malformed header with bad request", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.RejectOldSamples = false
+		limits.TrustedLabelsHeaderEnabled = true
+		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+		body := fmt.Sprintf(`{"streams":[{"stream":{"app":"body"},"values":[["%d","line"]]}]}`, time.Now().UnixNano())
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+		req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(push.HTTPHeaderTrustedLabelsKey, "not a label set")
+
+		rec := httptest.NewRecorder()
+		distributors[0].PushHandler(rec, req)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Contains(t, rec.Body.String(), push.HTTPHeaderTrustedLabelsKey)
+		for i := range ingesters {
+			require.Nil(t, ingesters[i].Peek())
+		}
+	})
+}
+
+func TestOTLPPushHandlerTrustedLabelsHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		enabled        bool
+		header         string
+		status         int
+		expectedLabels string
+	}{
+		{
+			name:           "enabled header overrides resource service name",
+			enabled:        true,
+			header:         `{service_name="gateway", team="payments"}`,
+			status:         http.StatusNoContent,
+			expectedLabels: `{service_name="gateway", team="payments"}`,
+		},
+		{
+			name:           "disabled header is ignored",
+			header:         "not a label set",
+			status:         http.StatusNoContent,
+			expectedLabels: `{service_name="body"}`,
+		},
+		{
+			name:    "enabled malformed header is rejected",
+			enabled: true,
+			header:  "not a label set",
+			status:  http.StatusBadRequest,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.RejectOldSamples = false
+			limits.TrustedLabelsHeaderEnabled = tc.enabled
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+			limits.SetGlobalOTLPConfig(cfg.OTLPConfig)
+			distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+			logs := plog.NewLogs()
+			resource := logs.ResourceLogs().AppendEmpty()
+			resource.Resource().Attributes().PutStr("service.name", "body")
+			record := resource.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+			record.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+			record.Body().SetStr("line")
+			body, err := plogotlp.NewExportRequestFromLogs(logs).MarshalProto()
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", "application/x-protobuf")
+			req.Header.Set(push.HTTPHeaderTrustedLabelsKey, tc.header)
+
+			rec := httptest.NewRecorder()
+			distributors[0].OTLPPushHandler(rec, req)
+
+			require.Equal(t, tc.status, rec.Code, rec.Body.String())
+			if tc.status != http.StatusNoContent {
+				for i := range ingesters {
+					require.Nil(t, ingesters[i].Peek())
+				}
+				return
+			}
+
+			var pushed *logproto.PushRequest
+			for i := range ingesters {
+				if request := ingesters[i].Peek(); request != nil {
+					pushed = request
+					break
+				}
+			}
+			require.NotNil(t, pushed)
+			require.Len(t, pushed.Streams, 1)
+			require.Equal(t, tc.expectedLabels, pushed.Streams[0].Labels)
+		})
+	}
+}
+
+func TestPushHandlerTrustedLabelsWithBackfillHeader(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	limits.TrustedLabelsHeaderEnabled = true
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	body := fmt.Sprintf(`{"streams":[{"stream":{"app":"body"},"values":[["%d","line"]]}]}`, time.Now().UnixNano())
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(push.HTTPHeaderTrustedLabelsKey, `{team="payments"}`)
+	req.Header.Set(push.HTTPHeaderBackfillShardKey, "test-shard")
+
+	rec := httptest.NewRecorder()
+	distributors[0].PushHandler(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	var pushed *logproto.PushRequest
+	for i := range ingesters {
+		if request := ingesters[i].Peek(); request != nil {
+			pushed = request
+			break
+		}
+	}
+	require.NotNil(t, pushed)
+	require.Len(t, pushed.Streams, 1)
+	require.Contains(t, pushed.Streams[0].Labels, `team="payments"`)
+	require.Contains(t, pushed.Streams[0].Labels, `__backfill__="true"`)
+	require.Contains(t, pushed.Streams[0].Labels, `__backfill_shard__="test-shard"`)
+}
+
+func TestPushHandlerTrustedLabelsCountTowardLabelLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		maxLabelNames       int
+		maxLabelNameLength  int
+		maxLabelValueLength int
+		bodyLabels          string
+		forcedLabels        string
+		wantErr             string
+	}{
+		{
+			name:          "label count",
+			maxLabelNames: 1,
+			bodyLabels:    `"app":"body"`,
+			forcedLabels:  `{team="payments"}`,
+			wantErr:       "label names; limit",
+		},
+		{
+			name:               "label name length",
+			maxLabelNameLength: 3,
+			bodyLabels:         `"app":"body"`,
+			forcedLabels:       `{longname="value"}`,
+			wantErr:            "label name too long",
+		},
+		{
+			name:                "label value length",
+			maxLabelValueLength: 3,
+			bodyLabels:          `"app":"body"`,
+			forcedLabels:        `{team="payments"}`,
+			wantErr:             "label value too long",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.RejectOldSamples = false
+			limits.TrustedLabelsHeaderEnabled = true
+			limits.DiscoverServiceName = []string{}
+			if tc.maxLabelNames > 0 {
+				limits.MaxLabelNamesPerSeries = tc.maxLabelNames
+			}
+			if tc.maxLabelNameLength > 0 {
+				limits.MaxLabelNameLength = tc.maxLabelNameLength
+			}
+			if tc.maxLabelValueLength > 0 {
+				limits.MaxLabelValueLength = tc.maxLabelValueLength
+			}
+			distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+			body := fmt.Sprintf(`{"streams":[{"stream":{%s},"values":[["%d","line"]]}]}`, tc.bodyLabels, time.Now().UnixNano())
+			req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(push.HTTPHeaderTrustedLabelsKey, tc.forcedLabels)
+
+			rec := httptest.NewRecorder()
+			distributors[0].PushHandler(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			require.Contains(t, rec.Body.String(), tc.wantErr)
+			for i := range ingesters {
+				require.Nil(t, ingesters[i].Peek())
+			}
+		})
+	}
+}
+
 func TestPushHandlerNegativeSizeHandling(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)

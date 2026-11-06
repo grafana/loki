@@ -36,6 +36,7 @@ type Limits interface {
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int
 	AllowStructuredMetadata(userID string) bool
+	TrustedLabelsHeaderEnabled(userID string) bool
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
 	OTLPConfig(userID string) push.OTLPConfig

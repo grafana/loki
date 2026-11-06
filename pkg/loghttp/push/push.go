@@ -312,6 +312,8 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			return nil, nil, errReservedBackfillLabels()
 		}
 
+		lbs = MergeTrustedLabels(lbs, ExtractTrustedLabelsContext(r.Context()))
+
 		isInternalStream := constants.IsInternalStream(lbs.Has)
 		if isInternalStream {
 			pushStats.HasInternalStreams = true

@@ -1390,6 +1390,25 @@ func TestSortSchema_RegisterFlags(t *testing.T) {
 	})
 }
 
+func TestTrustedLabelsHeaderEnabled(t *testing.T) {
+	var limits Limits
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	limits.RegisterFlags(fs)
+
+	require.False(t, limits.TrustedLabelsHeaderEnabled, "the flag is disabled by default")
+	require.NoError(t, fs.Parse([]string{"-validation.trusted-labels-header-enabled"}))
+	require.True(t, limits.TrustedLabelsHeaderEnabled, "the flag enables the feature")
+
+	defaults := Limits{}
+	tenantLimits := &Limits{TrustedLabelsHeaderEnabled: true}
+	overrides, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{
+		"enabled-tenant": tenantLimits,
+	}))
+	require.NoError(t, err)
+	require.False(t, overrides.TrustedLabelsHeaderEnabled("default-tenant"))
+	require.True(t, overrides.TrustedLabelsHeaderEnabled("enabled-tenant"))
+}
+
 func Test_LoglineQueryLimits(t *testing.T) {
 	var defaults Limits
 	dskit_flagext.DefaultValues(&defaults)

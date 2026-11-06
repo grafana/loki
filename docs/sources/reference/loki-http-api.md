@@ -288,6 +288,20 @@ The JSON object must be set immediately after the log line. Here is an example o
 ]
 ```
 
+### Trusted labels with `X-Loki-Labels`
+
+An authenticating gateway can attach the `X-Loki-Labels` header to an HTTP push request:
+
+```text
+X-Loki-Labels: {username="userA", team="payments"}
+```
+
+The header value uses label-set syntax. When the tenant's `trusted_labels_header_enabled` limit is enabled, Loki applies these labels to every stream in the request. A header label replaces a body label with the same name or is added if the body does not contain that label. The resulting labels are subject to Loki's normal label validation and limits, and are applied before `service_name` discovery.
+
+The limit is disabled by default. When it is disabled, Loki ignores this header. When enabled, Loki returns HTTP 400 if the header contains an empty or malformed label set, an invalid label name or value, a reserved label name, multiple values, or a value larger than 4 KiB.
+
+This header is honored only by HTTP push endpoints, including `/loki/api/v1/push`, `/api/prom/push`, and `/otlp/v1/logs`. The gRPC push endpoint does not receive this HTTP header. Do not expose gRPC ingestion to untrusted clients when relying on trusted HTTP label injection.
+
 In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 
 If [`block_ingestion_until`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) is configured and push requests are blocked, the endpoint will return the status code configured in `block_ingestion_status_code` (`260` by default)

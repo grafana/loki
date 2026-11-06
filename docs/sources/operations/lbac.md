@@ -24,13 +24,15 @@ LBAC lets you share a single Loki tenant across multiple teams or users while st
 
 ## Security model
 
-Loki does not include its own authentication layer. Both the tenant (`X-Scope-OrgID`) and the label policy (`X-Prom-Label-Policy`) are read from trusted HTTP headers on incoming requests.
+Loki does not include its own authentication layer. The tenant (`X-Scope-OrgID`) and label policy (`X-Prom-Label-Policy`) are read from trusted HTTP headers on incoming requests. HTTP push requests can also use `X-Loki-Labels` for trusted label injection when the tenant's `trusted_labels_header_enabled` limit is enabled.
 
 {{< admonition type="warning" >}}
 Never expose the Loki API directly to clients. A client that can reach Loki can set the `X-Scope-OrgID` and `X-Prom-Label-Policy` headers itself and bypass label-based access control entirely. You must run an authentication gateway in front of Loki that authenticates the request, sets the tenant, and attaches the correct label policy.
 {{< /admonition >}}
 
-The gateway is responsible for stripping any user supplied `X-Scope-OrgID` and `X-Prom-Label-Policy` and replacing them with values it derives from the authenticated identity. One open-source gateway that sets these headers is [db-auth-gateway](https://github.com/grafana/db-auth-gateway/). For general guidance on putting an authenticating reverse proxy in front of Loki, refer to the [authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) documentation.
+The gateway is responsible for stripping any user supplied `X-Scope-OrgID`, `X-Prom-Label-Policy`, and `X-Loki-Labels` headers and replacing them with values it derives from the authenticated identity. One open-source gateway that sets these headers is [db-auth-gateway](https://github.com/grafana/db-auth-gateway/). For general guidance on putting an authenticating reverse proxy in front of Loki, refer to the [authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) documentation.
+
+`X-Loki-Labels` is honored only on HTTP push endpoints and only when `trusted_labels_header_enabled` is enabled for the tenant. The gRPC push endpoint does not receive this HTTP header; do not expose gRPC ingestion to untrusted clients when relying on trusted label injection.
 
 ## How LBAC works
 
@@ -66,6 +68,8 @@ sequenceDiagram
 ### LBAC and ingestion
 
 Label-based access control is not enforced on write (push) requests. It only restricts what a tenant can read. A tenant that is allowed to write can push log lines with any labels, regardless of the label policy that applies to its queries.
+
+If you need a gateway to attach trusted labels during ingestion, enable `trusted_labels_header_enabled` for the tenant and configure the gateway to strip any client-supplied `X-Loki-Labels` header before setting its own value. Loki then forces those labels onto each HTTP-pushed stream, replacing same-named body labels. This does not enforce the LBAC policy on writes; it is a separate, optional label-injection feature.
 
 ### LBAC and alertmanager and ruler
 
