@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### `max_query_bytes_read` counts the data that split metric queries read again
+
+The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
+
 ### Ingester WAL entries records have a new version
 
 Ingesters now write WAL entries records as `WALRecordEntriesV4`, which adds the timestamp of the
