@@ -560,14 +560,12 @@ func BenchmarkParseLokiRequest(b *testing.B) {
 			b.Run(fmt.Sprintf("%s/streams=%d/entries=%d", tc.name, numStreams, entriesPerStream), func(b *testing.B) {
 				limits := &fakeLimits{enabled: true}
 				streamResolver := newMockStreamResolver("fake", limits)
+				body := bytes.NewReader(tc.body)
+				request := httptest.NewRequest("POST", "/loki/api/v1/push", body)
+				request.Header.Add("Content-Type", tc.contentType)
 
-				b.ResetTimer()
 				for b.Loop() {
-					b.StopTimer()
-					request := httptest.NewRequest("POST", "/loki/api/v1/push", bytes.NewReader(tc.body))
-					request.Header.Add("Content-Type", tc.contentType)
-					b.StartTimer()
-
+					body.Reset(tc.body)
 					_, _, err := ParseLokiRequest("fake", request, limits, nil, 100<<20, 100<<20, nil, streamResolver, util_log.Logger)
 					if err != nil {
 						b.Fatal(err)
