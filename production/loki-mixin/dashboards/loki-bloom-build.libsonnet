@@ -41,11 +41,35 @@ local template = import 'grafonnet/template.libsonnet';
             $._config.per_cluster_label + '_job'
           ),
 
+        // Log queries select streams on namespace and per_component_label instead of job,
+        // because log pipelines don't always index job.
+        local replaceLogMatchers(expr) =
+          std.foldl(
+            function(e, component)
+              std.strReplace(
+                std.strReplace(
+                  e,
+                  'job="$namespace/%s"' % component,
+                  '%s="$namespace", %s' % [$._config.per_namespace_label, $.componentMatcher(component)]
+                ),
+                'job=~"$namespace/%s"' % component,
+                '%s=~"$namespace", %s' % [$._config.per_namespace_label, $.componentMatcher(component)]
+              ),
+            ['bloom-planner', 'bloom-builder'],
+            expr
+          ),
+
+        local isLogTarget(target) =
+          std.objectHas(target, 'datasource') && std.isObject(target.datasource) && target.datasource.type == 'loki',
+
+        local replaceTargetMatchers(target) =
+          replaceClusterMatchers(if isLogTarget(target) then replaceLogMatchers(target.expr) else target.expr),
+
         panels: [
           p {
             targets: if std.objectHas(p, 'targets') then [
               e {
-                expr: replaceClusterMatchers(e.expr),
+                expr: replaceTargetMatchers(e),
               }
               for e in p.targets
             ] else [],
@@ -53,7 +77,7 @@ local template = import 'grafonnet/template.libsonnet';
               sp {
                 targets: if std.objectHas(sp, 'targets') then [
                   spe {
-                    expr: replaceClusterMatchers(spe.expr),
+                    expr: replaceTargetMatchers(spe),
                   }
                   for spe in sp.targets
                 ] else [],
@@ -61,7 +85,7 @@ local template = import 'grafonnet/template.libsonnet';
                   ssp {
                     targets: if std.objectHas(ssp, 'targets') then [
                       sspe {
-                        expr: replaceClusterMatchers(sspe.expr),
+                        expr: replaceTargetMatchers(sspe),
                       }
                       for sspe in ssp.targets
                     ] else [],

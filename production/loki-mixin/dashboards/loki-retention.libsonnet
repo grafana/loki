@@ -5,6 +5,9 @@
   local compactor_job_matcher = if $._config.meta_monitoring.enabled
   then '(.*compactor|loki-single-binary)'
   else 'compactor',
+  local compactor_log_matcher = $.componentMatcher(
+    if $._config.meta_monitoring.enabled then '(compactor|loki)' else 'compactor'
+  ),
   // The compactor/retention histogram metrics were renamed from loki_boltdb_shipper_* to loki_tsdb_shipper_*.
   // Combine both names with `or` within each bucket/sum/count query so the panel works in mixed
   // environments where some namespaces still run the old metric name and some run the new one.
@@ -247,7 +250,7 @@
         .addRow(
           $.row('Logs')
           .addPanel(
-            $.logPanel('Compactor Logs', '{%s}' % $.jobMatcher(compactor_job_matcher)),
+            $.logPanel('Compactor Logs', '{%s, %s}' % [$.namespaceMatcher(), compactor_log_matcher]),
           )
         ),
     },

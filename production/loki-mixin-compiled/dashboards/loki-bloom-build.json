@@ -316,7 +316,7 @@
                      "uid": "${loki_datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "{cluster=\"$cluster\", job=\"$namespace/bloom-planner\"} |= \"level=error\" |= \"component=bloom-planner\"",
+                  "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"bloom-planner\"} |= \"level=error\" |= \"component=bloom-planner\"",
                   "queryType": "range",
                   "refId": "B"
                }
@@ -414,7 +414,7 @@
                      "uid": "${loki_datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "sum(count_over_time({cluster=\"$cluster\", job=\"$namespace/bloom-planner\"} |= \"level=error\" |= \"component=bloom-planner\" [$__auto]))",
+                  "expr": "sum(count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=~\"bloom-planner\"} |= \"level=error\" |= \"component=bloom-planner\" [$__auto]))",
                   "legendFormat": "Error rate",
                   "queryType": "range",
                   "refId": "A"
@@ -459,7 +459,7 @@
                      "uid": "${loki_datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "{cluster=\"$cluster\", job=\"$namespace/bloom-builder\"} |= \"level=error\" |= \"component=bloom-builder\"",
+                  "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"bloom-builder\"} |= \"level=error\" |= \"component=bloom-builder\"",
                   "queryType": "range",
                   "refId": "B"
                }
@@ -557,7 +557,7 @@
                      "uid": "${loki_datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "sum(count_over_time({cluster=\"$cluster\", job=\"$namespace/bloom-builder\"} |= \"level=error\" |= \"component=bloom-builder\" [$__auto]))",
+                  "expr": "sum(count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=~\"bloom-builder\"} |= \"level=error\" |= \"component=bloom-builder\" [$__auto]))",
                   "legendFormat": "Error rate",
                   "queryType": "range",
                   "refId": "A"
@@ -1588,7 +1588,7 @@
                            "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "{cluster=~\"$cluster\", job=~\"$namespace/bloom-planner\"}\n|= \"level=error\"\n|= \"tenant=$tenant\"",
+                        "expr": "{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"bloom-planner\"}\n|= \"level=error\"\n|= \"tenant=$tenant\"",
                         "queryType": "range",
                         "refId": "B"
                      }

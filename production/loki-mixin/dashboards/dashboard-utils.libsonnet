@@ -87,6 +87,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
   namespaceMatcher()::
     $._config.per_cluster_label + '=~"$cluster", ' + $._config.per_namespace_label + '=~"$namespace"',
 
+  // Matches a component's log streams on per_component_label, since log pipelines
+  // don't always index job or pod.
+  componentMatcher(component)::
+    '%s=~"%s"' % [$._config.per_component_label, component],
+
   logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,
     type: 'logs',
