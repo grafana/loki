@@ -156,9 +156,16 @@
         ports,
       ) + service.mixin.spec.withClusterIp('None'),  // headless service
 
-  // Disable the consul deployment if not migrating and using memberlist
-  consul_deployment: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_deployment,
-  consul_service: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_service,
-  consul_config_map: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_config_map,
-  consul_sidekick_rbac: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_sidekick_rbac,
+  // Disable the consul deployment if not migrating and either using memberlist or an explicitly supported non-consul kv store.
+  // The discriminator mirrors config.libsonnet (positive match on 'etcd') so an unsupported/typo value cannot suppress
+  // the consul resources while config.libsonnet's else-branch still renders consul config.
+  local disableConsulResources =
+    ($._config.memberlist_ring_enabled || $._config.ring_kvstore_store == 'etcd')
+    && !$._config.multikv_migration_enabled
+    && !$._config.multikv_migration_teardown,
+
+  consul_deployment: if disableConsulResources then {} else super.consul_deployment,
+  consul_service: if disableConsulResources then {} else super.consul_service,
+  consul_config_map: if disableConsulResources then {} else super.consul_config_map,
+  consul_sidekick_rbac: if disableConsulResources then {} else super.consul_sidekick_rbac,
 }
