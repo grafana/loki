@@ -812,20 +812,22 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 	), nil
 }
 
-// initDataObjCache builds the caches of the data objects: the metadata caches, which share one backend, and the backend
-// of the bucket cache. It returns no service when data objects are disabled or no cache is configured.
+// initDataObjCache builds the caches of the data objects: the metadata caches, which share one backend, and the bucket
+// caches of the log objects and the index objects, which have one backend each. It returns no service when data objects
+// are disabled or no cache is configured.
 func (t *Loki) initDataObjCache() (services.Service, error) {
 	cfg := t.Cfg.DataObj
 	metadataCacheEnabled := cache.IsCacheConfigured(cfg.MetadataCache)
-	bucketCacheEnabled := cache.IsCacheConfigured(cfg.BucketCache.Config)
-	if !cfg.Enabled || (!metadataCacheEnabled && !bucketCacheEnabled) {
+	logsBucketCacheEnabled := cache.IsCacheConfigured(cfg.LogsBucketCache.Config)
+	indexBucketCacheEnabled := cache.IsCacheConfigured(cfg.IndexBucketCache.Config)
+	if !cfg.Enabled || (!metadataCacheEnabled && !logsBucketCacheEnabled && !indexBucketCacheEnabled) {
 		return nil, nil
 	}
 
 	logger := log.With(util_log.Logger, "component", "querier")
 	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
 
-	// The bucket cache keeps the object attributes in the metadata backend, or in its own backend without one.
+	// A bucket cache keeps the object attributes in the metadata backend, or in its own backend without one.
 	var bucketMetadataBackend cache.Cache
 	if metadataCacheEnabled {
 		backend, maxItemBytes, err := metadatacache.NewBackend(cfg.MetadataCache, prometheus.DefaultRegisterer, logger)
@@ -839,17 +841,31 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 		bucketMetadataBackend = backend
 	}
 
-	if bucketCacheEnabled {
-		backend, err := cache.New(cfg.BucketCache.Config, prometheus.DefaultRegisterer, logger, stats.DataObjBucketCache, constants.Loki)
-		if err != nil {
-			return nil, fmt.Errorf("creating data object bucket cache: %w", err)
+	newBucketCacheBackend := func(cfg bucketcache.Config) (*bucketcache.Backend, error) {
+		if !cache.IsCacheConfigured(cfg.Config) {
+			return nil, nil
 		}
 
-		t.dataObjBucketDataCache = cache.StopOnce(backend)
-		if bucketMetadataBackend == nil {
-			bucketMetadataBackend = t.dataObjBucketDataCache
+		subranges, err := cache.New(cfg.Config, prometheus.DefaultRegisterer, logger, stats.DataObjBucketCache, constants.Loki)
+		if err != nil {
+			return nil, err
 		}
-		t.dataObjBucketMetadataCache = metadatacache.NewCache(bucketMetadataBackend, 0, metadatacache.KindObjectAttributes, cacheMetrics, logger)
+		subranges = cache.StopOnce(subranges)
+
+		attributesBackend := bucketMetadataBackend
+		if attributesBackend == nil {
+			attributesBackend = subranges
+		}
+		attributes := metadatacache.NewCache(attributesBackend, 0, metadatacache.KindObjectAttributes, cacheMetrics, logger)
+		return &bucketcache.Backend{Config: cfg, Subranges: subranges, Attributes: attributes}, nil
+	}
+
+	var err error
+	if t.dataObjLogsBucketCache, err = newBucketCacheBackend(cfg.LogsBucketCache); err != nil {
+		return nil, fmt.Errorf("creating data object logs bucket cache: %w", err)
+	}
+	if t.dataObjIndexBucketCache, err = newBucketCacheBackend(cfg.IndexBucketCache); err != nil {
+		return nil, fmt.Errorf("creating data object index bucket cache: %w", err)
 	}
 
 	// The modules that use the caches depend on this one, so they stop before it. Every backend ignores a repeated Stop.
@@ -859,9 +875,10 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 			t.dataObjIndexCache.Stop()
 			t.dataObjTOCCache.Stop()
 		}
-		if bucketCacheEnabled {
-			t.dataObjBucketMetadataCache.Stop()
-			t.dataObjBucketDataCache.Stop()
+		for _, backend := range []*bucketcache.Backend{t.dataObjLogsBucketCache, t.dataObjIndexBucketCache} {
+			if backend != nil {
+				backend.Subranges.Stop()
+			}
 		}
 		return nil
 	}), nil
@@ -879,11 +896,11 @@ func (t *Loki) initDataObjMetastore() (services.Service, error) {
 		return nil, err
 	}
 
-	// The cache wraps the bucket once, for the data objects and the metastore. The object store metrics and traces sit
-	// below it, so they count the requests that reach object storage.
-	if t.dataObjBucketDataCache != nil {
+	// The bucket caches wrap the bucket once, for the data objects and the metastore. The object store metrics and traces
+	// sit below them, so they count the requests that reach object storage.
+	if t.dataObjLogsBucketCache != nil || t.dataObjIndexBucketCache != nil {
 		bucketID := bucketcache.BucketID(bucket.Name(), t.Cfg.DataObj.StorageBucketPrefix)
-		bucket, err = bucketcache.New(bucket, t.dataObjBucketDataCache, t.dataObjBucketMetadataCache, t.Cfg.DataObj.BucketCache, bucketID, prometheus.DefaultRegisterer)
+		bucket, err = bucketcache.New(bucket, t.dataObjLogsBucketCache, t.dataObjIndexBucketCache, bucketID, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, fmt.Errorf("creating data object bucket cache: %w", err)
 		}

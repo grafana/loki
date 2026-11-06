@@ -1132,38 +1132,65 @@ dataobj:
   # Caches the metadata region of the log objects and index objects the querier
   # reads, or the entire object if it is tiny. When the ToC resolver is enabled
   # (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables
-  # of contents (ToCs) that the resolver refreshes. The cache is enabled when a
-  # backend is configured. Entries are keyed by object path, so the cache cannot
-  # differentiate entries between different buckets and clusters. Multiple
-  # installations must not share the same cache backend.
+  # of contents (ToCs) that the resolver refreshes. When a bucket cache is
+  # enabled, the cache also holds the attributes of the objects that the bucket
+  # cache serves. The cache is enabled when a backend is configured. Entries are
+  # keyed by object path, so the cache cannot differentiate entries between
+  # different buckets and clusters. Multiple installations must not share the
+  # same cache backend.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
-  # Caches the byte ranges that the querier reads from log objects and index
-  # objects, in aligned blocks. The cache is enabled when a backend is
-  # configured. It stores the object attributes in the metadata cache when that
-  # is enabled, and in its own backend otherwise.
-  bucket_cache:
+  # Caches the byte ranges that the querier reads from log objects, in aligned
+  # blocks. The cache is enabled when a backend is configured.
+  logs_bucket_cache:
     # The cache_config block configures the cache backend for a specific Loki
     # component.
-    # The CLI flags prefix for this block configuration is: dataobj.bucket-cache
+    # The CLI flags prefix for this block configuration is:
+    # dataobj.logs-bucket-cache
     [<cache_config>]
 
     # Size in bytes of the aligned blocks that the cache stores. Reads are split
     # into blocks of this size. The maximum is 524288.
-    # CLI flag: -dataobj.bucket-cache.subrange-size
+    # CLI flag: -dataobj.logs-bucket-cache.subrange-size
     [subrange_size: <int> | default = 16000]
 
     # Maximum number of object attributes to keep in memory. A lookup that
     # misses goes to the cache backend. 0 disables the in-memory cache.
-    # CLI flag: -dataobj.bucket-cache.attributes-in-memory-max-items
+    # CLI flag: -dataobj.logs-bucket-cache.attributes-in-memory-max-items
     [attributes_in_memory_max_items: <int> | default = 50000]
 
     # Maximum number of requests that one read sends to object storage to fetch
     # the blocks that the cache does not hold. When the missing blocks need more
     # requests, the cache merges them and reads the cached blocks between them
     # again. 0 means no limit.
-    # CLI flag: -dataobj.bucket-cache.max-get-range-subrequests
+    # CLI flag: -dataobj.logs-bucket-cache.max-get-range-subrequests
+    [max_get_range_subrequests: <int> | default = 3]
+
+  # Caches the byte ranges that the querier reads from index objects, in aligned
+  # blocks. The cache is enabled when a backend is configured.
+  index_bucket_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # dataobj.index-bucket-cache
+    [<cache_config>]
+
+    # Size in bytes of the aligned blocks that the cache stores. Reads are split
+    # into blocks of this size. The maximum is 524288.
+    # CLI flag: -dataobj.index-bucket-cache.subrange-size
+    [subrange_size: <int> | default = 16000]
+
+    # Maximum number of object attributes to keep in memory. A lookup that
+    # misses goes to the cache backend. 0 disables the in-memory cache.
+    # CLI flag: -dataobj.index-bucket-cache.attributes-in-memory-max-items
+    [attributes_in_memory_max_items: <int> | default = 50000]
+
+    # Maximum number of requests that one read sends to object storage to fetch
+    # the blocks that the cache does not hold. When the missing blocks need more
+    # requests, the cache merges them and reads the cached blocks between them
+    # again. 0 means no limit.
+    # CLI flag: -dataobj.index-bucket-cache.max-get-range-subrequests
     [max_get_range_subrequests: <int> | default = 3]
 
   compaction:
@@ -2220,7 +2247,8 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom.metas-cache`
-- `dataobj.bucket-cache`
+- `dataobj.index-bucket-cache`
+- `dataobj.logs-bucket-cache`
 - `dataobj.metadata-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
@@ -7322,7 +7350,8 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
-- `dataobj.bucket-cache.memcached`
+- `dataobj.index-bucket-cache.memcached`
+- `dataobj.logs-bucket-cache.memcached`
 - `dataobj.metadata-cache.memcached`
 - `distributor.ring.etcd`
 - `etcd`

@@ -35,7 +35,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		}),
 		fetchedBytes: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_bucket_cache_fetched_bytes_total",
-			Help: "Bytes of aligned blocks that the cache fetched for those reads, by origin: the cache, or object storage (and then stored in the cache).",
+			Help: "Bytes of aligned blocks that the cache fetched for reads of cached objects, by origin: the cache, or object storage (and then stored in the cache).",
 		}, []string{"origin"}),
 		overreadBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_bucket_cache_overread_bytes_total",
@@ -55,7 +55,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		}),
 		errors: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_bucket_cache_errors_total",
-			Help: "Bucket cache errors by operation (fetch, store). An error counts as a miss and never fails a read.",
+			Help: "Bucket cache errors by operation (fetch, store). A failed fetch counts as a miss for the blocks it did not return. A failed store leaves some or all of the blocks uncached. Neither fails a read.",
 		}, []string{"operation"}),
 	}
 

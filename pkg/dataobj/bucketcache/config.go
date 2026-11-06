@@ -9,23 +9,25 @@ import (
 )
 
 const (
-	// DefaultSubrangeSize is the size of the aligned blocks the cache stores. It is the size that
-	// Mimir uses.
+	// DefaultSubrangeSize is the size of the aligned blocks the cache stores. A read fetches whole
+	// blocks, so up to two blocks at its edges hold bytes it did not ask for. Small blocks keep that
+	// waste low.
 	DefaultSubrangeSize = 16000
 
 	// MaxSubrangeSize is the largest subrange size that Validate accepts. A memcached server with
 	// the default 1 MiB item limit stores a block of this size, with room for its header and key.
 	MaxSubrangeSize = 512 << 10
 
-	// DefaultAttributesInMemoryMaxItems is how many object attributes each querier keeps in memory.
+	// DefaultAttributesInMemoryMaxItems is how many object attributes each cache keeps in memory.
 	DefaultAttributesInMemoryMaxItems = 50000
 
-	// DefaultMaxGetRangeSubrequests is the number of requests that Mimir allows for the missing blocks
-	// of one read.
+	// DefaultMaxGetRangeSubrequests is the most requests that one read sends for the blocks that the
+	// cache does not hold.
 	DefaultMaxGetRangeSubrequests = 3
 )
 
-// Config configures the bucket cache. The cache is on when a backend is configured.
+// Config configures the bucket cache of one kind of object. The cache is on when a backend is
+// configured.
 type Config struct {
 	cache.Config `yaml:",inline"`
 

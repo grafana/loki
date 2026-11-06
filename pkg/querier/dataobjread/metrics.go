@@ -72,7 +72,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, []string{"component", "operation"}),
 		objectStoreRequestsFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_object_store_requests_failed_total",
-			Help: "Object-store requests that failed for data-object queries, by read-path component and operation (attributes, get, get_range). A request for an object that does not exist (not found) or a canceled request is not a failure. Every failed request is also counted in loki_querier_dataobj_object_store_requests_total.",
+			Help: "Requests that data-object queries issue through the bucket (optionally via cache) and that failed, by read-path component and operation (attributes, get, get_range). A request for an object that does not exist (not found) or a canceled request is not a failure. Every failed request is also counted in loki_querier_dataobj_object_store_requests_total.",
 		}, []string{"component", "operation"}),
 	}
 
@@ -88,7 +88,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	return m
 }
 
-// Record adds the object-store requests and downloaded bytes of a finished query to the
+// Record adds the bucket requests and fetched bytes of a finished query to the
 // per-component counters. The request counter includes the failed requests, and the failed counter
 // holds those alone.
 //

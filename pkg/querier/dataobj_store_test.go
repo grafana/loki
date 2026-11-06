@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/metrics"
 	"github.com/grafana/dskit/user"
@@ -157,20 +158,24 @@ func TestDataObjStore_SelectSamples_WithBucketCache(t *testing.T) {
 	randomStream := logproto.Stream{Labels: `{app="a", env="prod"}`, Entries: randomLineEntries(t, 4000, 300)}
 	const query = `sum by (app) (count_over_time({env="prod"} |= "zz" [1m]))`
 
-	newCachedStore := func(t *testing.T) (*testDataObjStore, *getRangeCounter) {
-		counter := &getRangeCounter{}
-		store := newTestDataObjStore(t, []logproto.Stream{randomStream}, withBucketWrapper(func(bucket objstore.Bucket) objstore.Bucket {
-			counter.Bucket = bucket
+	newCachedStore := func(t *testing.T) (store *testDataObjStore, counter *getRangeCounter, logsBlocks, indexBlocks cache.MockCache) {
+		counter = &getRangeCounter{}
+		logsBlocks, indexBlocks = cache.NewMockCache(), cache.NewMockCache()
+		newBackend := func(blocks cache.Cache) *bucketcache.Backend {
 			attributes := metadatacache.NewCache(cache.NewMockCache(), 0, metadatacache.KindObjectAttributes, metadatacache.NewMetrics(prometheus.NewRegistry()), nil)
-			cached, err := bucketcache.New(counter, cache.NewMockCache(), attributes, bucketcache.Config{SubrangeSize: bucketcache.DefaultSubrangeSize}, "test", prometheus.NewRegistry())
+			return &bucketcache.Backend{Config: bucketcache.Config{SubrangeSize: bucketcache.DefaultSubrangeSize}, Subranges: blocks, Attributes: attributes}
+		}
+		store = newTestDataObjStore(t, []logproto.Stream{randomStream}, withBucketWrapper(func(bucket objstore.Bucket) objstore.Bucket {
+			counter.Bucket = bucket
+			cached, err := bucketcache.New(counter, newBackend(logsBlocks), newBackend(indexBlocks), "test", prometheus.NewRegistry())
 			require.NoError(t, err)
 			return cached
 		}))
-		return store, counter
+		return store, counter, logsBlocks, indexBlocks
 	}
 
 	t.Run("a second query reads no object ranges from the bucket and returns the same samples", func(t *testing.T) {
-		store, counter := newCachedStore(t)
+		store, counter, _, _ := newCachedStore(t)
 
 		fromBucket := store.selectSamples(testCtx(t), query, at(0), at(10))
 		afterFirst := counter.calls.Load()
@@ -180,6 +185,15 @@ func TestDataObjStore_SelectSamples_WithBucketCache(t *testing.T) {
 		require.NotZero(t, afterFirst, "the first query reads the objects from the bucket")
 		require.Equal(t, afterFirst, counter.calls.Load())
 		require.Equal(t, fromBucket, fromCache)
+	})
+
+	t.Run("a query stores the blocks of log objects and of index objects in separate caches", func(t *testing.T) {
+		store, _, logsBlocks, indexBlocks := newCachedStore(t)
+
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.NotEmpty(t, logsBlocks.GetKeys())
+		require.NotEmpty(t, indexBlocks.GetKeys())
 	})
 }
 
@@ -1067,8 +1081,7 @@ func withMetadataCache(metadataCache dataobj.MetadataCache) testStoreOption {
 	return func(o *testStoreOptions) { o.metadataCache = metadataCache }
 }
 
-// withBucketWrapper gives the store a bucket that wraps the one that holds the objects. The metastore
-// keeps the original bucket.
+// withBucketWrapper gives the store and its metastore a bucket that wraps the one that holds the objects.
 func withBucketWrapper(wrap func(objstore.Bucket) objstore.Bucket) testStoreOption {
 	return func(o *testStoreOptions) { o.wrapBucket = wrap }
 }
@@ -1115,11 +1128,13 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 
 	location := builder.Location()
 	bucket := location.Bucket
+	objectMetastore := builder.Metastore()
 	if options.wrapBucket != nil {
 		bucket = options.wrapBucket(bucket)
+		objectMetastore = metastore.NewObjectMetastore(bucket, metastore.Config{}, log.NewNopLogger(), nil)
 	}
 	chunkStore := &chunkStoreSpy{}
-	store, err := NewDataObjStore(chunkStore, bucket, builder.Metastore(), options.registerer, storeOpts...)
+	store, err := NewDataObjStore(chunkStore, bucket, objectMetastore, options.registerer, storeOpts...)
 	require.NoError(t, err)
 
 	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}

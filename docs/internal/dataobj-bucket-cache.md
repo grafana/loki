@@ -12,23 +12,28 @@ those ranges in a cache backend, such as memcached, so a repeated read does not 
 ## Overview
 
 The cache sits between the data object readers and the object store client. It sees every byte-range
-read, and it knows nothing about the data object format.
+read, and it knows nothing about the data object format. A router picks one of two caches from the
+object name: one for log objects, and one for index objects.
 
 ```
 logs reader / streams reader / metastore
                 |      per-query data object statistics count here
                 v
-          bucket cache  <--->  cache backend (blocks, object attributes)
-                |      only the misses go down
-                v
+              router
+         |             |
+         v             v
+    logs cache     index cache  <--->  cache backends (blocks, object attributes)
+         |             |      only the misses go down
+         v             v
    object store metrics and tracing
                 |
                 v
          object storage
 ```
 
-The cache splits each read into fixed-size, aligned blocks. It serves the blocks that the backend
-holds and reads the others from object storage. It then stores the new blocks.
+Each cache splits the reads it gets into fixed-size, aligned blocks. The code, the flags, and the
+metrics call them subranges. It serves the blocks that its backend holds and reads the others from
+object storage. It then stores the new blocks.
 
 ## What the cache holds
 
@@ -36,8 +41,10 @@ The cache holds log objects and index objects. Their names come from their conte
 object never changes and the cache never has to invalidate an entry.
 
 The cache never holds the Table of Contents (ToC) of the metastore. The ToC is the only mutable object, and
-the ToC resolver already refreshes and caches it. A rule decides which objects the cache accepts, and
-that rule must accept only objects that never change, because the cache keys carry no object version.
+the ToC resolver already refreshes and caches it. The router decides which objects a cache gets, from
+the prefix of the object name. Log objects live under `objects/`, and index objects under
+`index/v0/indexes/`. The router must send only objects that never change, because the cache keys carry
+no object version. It sends every other name, the ToC included, to the object store.
 
 The cache serves reads of a byte range and requests for the attributes of an object. Every other call
 goes straight to the object store. A read that the cache cannot split also goes straight through. This
@@ -45,11 +52,13 @@ includes a read of the whole object from an offset to its end.
 
 ## How a read works
 
-1. The cache checks the object name. A name that does not match goes straight to the object store.
+1. The router checks the object name and picks the logs cache or the index cache. A name that no cache
+   serves goes straight to the object store. So does a name of a kind that has no cache.
 2. The cache finds the size of the object. It needs the size to align blocks and to cut a range that
    ends past the end of the object. A range that starts at or past the end goes to the object store,
    so it fails as it does without the cache.
-3. The cache lists the blocks that cover the range and asks the backend for all of them in one request.
+3. The cache lists the blocks that cover the range and asks the backend for all of them in one call.
+   A memcached backend splits the call into batches of its configured batch size.
 4. A block counts as a hit only if it has the length and the full key that the cache expects. The cache
    treats every other block as a miss.
 5. The cache reads the missing blocks from object storage and stores them in the backend.
@@ -74,7 +83,7 @@ The default size is 16,000 bytes. Reads of different sizes and offsets then shar
 overlaps an earlier one hits on the overlap.
 
 The cost is at the edges. A read fetches up to two partial blocks more than it needs. Small blocks keep
-this cost small, and the backend returns all the blocks of a read in one multi-get request.
+this cost small, and the cache asks the backend for all the blocks of a read in one call.
 
 ### Every value starts with its full key
 
@@ -93,9 +102,10 @@ not hold.
 
 Blocks that are next to each other share one request. A read with scattered misses could need many
 requests, so the cache limits them, as Mimir does. The default limit is three requests for the missing
-blocks of one read. When the misses need more, the cache merges the runs that the fewest cached blocks
-separate, until the limit holds. The cache sends the requests in parallel. Each request streams its
-blocks straight into their buffers, so the cache holds no second copy of the data.
+blocks of one read. When the misses need more, the cache merges the runs in rounds, first the runs that
+at most one cached block separates, then two, four, and so on, until the limit holds. The cache sends
+the requests in parallel. Each request streams its blocks straight into their buffers, so the cache
+holds no second copy of the data.
 
 A merged request reads the cached blocks between its parts again and discards them. The cache counts
 these bytes as overread. The limit trades overread bytes for requests, and the overread metric shows
@@ -109,20 +119,35 @@ The cache keeps the attributes of an object: its size and its modification time.
 three places: a small in-memory table in each querier, then the metadata cache, then the object store.
 The metadata cache stores them under their own kind of entry and makes concurrent readers share one
 load. An object then costs one attributes request for the whole cluster. If the deployment has no
-metadata cache, the attributes go to the backend of the bucket cache.
+metadata cache, the attributes go to the backend of their own cache. Each of the two caches has its own
+in-memory table, so log objects cannot evict the entries of index objects.
 
 The same entries answer a direct request for the attributes of an object. The modification time keeps
 millisecond precision.
 
 ### A separate backend
 
-The bucket cache has its own backend, apart from the metadata cache. The two caches store very
-different entries. The metadata cache holds a few large entries of known shape. The bucket cache holds
-many small blocks. They need different sizing, and a flood of blocks must not evict metadata.
+Each bucket cache has its own backend, apart from the metadata cache. The metadata cache and the bucket
+caches store very different entries. The metadata cache holds a few large entries of known shape. The
+bucket caches hold many small blocks. They need different sizing, and a flood of blocks must not evict
+metadata.
 
-The cache is on when a backend is configured, and off otherwise. The cache keys carry an ID of the bucket
-and its prefix, so two buckets cannot collide. They also carry the kind of data, and a new kind lets us
+A cache is on when its backend is configured, and off otherwise. The cache keys carry an ID of the bucket
+and its prefix, so two buckets cannot collide. They also carry the type of data, and a new type lets us
 change the layout of a value later.
+
+### One cache for each kind of object
+
+Log reads move most of the bytes that a querier reads from object storage, but queries reuse index
+objects much more. With one backend, a burst of log blocks evicts index blocks. The logs cache and the
+index cache therefore have their own backends and their own settings: the block size, the size of the
+in-memory table of attributes, and the limit on requests. Either cache can be on while the other is
+off.
+
+The two caches isolate eviction only when their backends are separate servers. Memcached evicts the least
+recently used item inside a size class, and both kinds store blocks of about the same size. Two caches
+that point to one memcached server share their evictions. The keys of the two kinds cannot collide, so
+sharing a server is safe.
 
 ### Memory for hits
 
@@ -167,14 +192,7 @@ The cache has its own metrics, with the prefix `loki_dataobj_bucket_cache_`:
 
 ## Relation to the metadata cache
 
-The two caches work at different layers and can run together. The metadata cache sits in the data
-object reader. It keeps the metadata region of an object and answers before a read leaves the reader. The
-bucket cache sits below the reader and caches whatever range is left, including the metadata ranges
-that the metadata cache did not hold.
-
-## Configuration
-
-The settings are under `dataobj.bucket_cache`, with the flag prefix `-dataobj.bucket-cache.`. They are
-the usual cache backend settings plus the block size, the size of the in-memory table of object
-attributes, and the limit on requests for the missing blocks of a read. The querier uses the cache. The
-compactor, the builder, and the explorer read the object store directly.
+The metadata cache and the bucket caches work at different layers and can run together. The metadata
+cache sits in the data object reader. It keeps the metadata region of an object and answers before a
+read leaves the reader. The bucket caches sit below the reader and cache whatever range is left,
+including the metadata ranges that the metadata cache did not hold.

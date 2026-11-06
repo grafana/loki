@@ -356,7 +356,7 @@ func (r *LogReader) Close() error {
 //   - the counts of logs objects and of index objects opened
 //   - the downloaded bytes of logs objects and of index objects
 //
-// The metrics get the object-store requests and the downloaded bytes. Only the metrics count the
+// The metrics get the bucket requests and the fetched bytes. Only the metrics count the
 // table-of-contents read.
 func (r *LogReader) recordStats() {
 	if r.capture == nil {

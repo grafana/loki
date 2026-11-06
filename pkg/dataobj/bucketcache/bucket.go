@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,16 +19,15 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/pool"
 )
 
 const (
-	// The kind of cached data in a key. They are short to keep the keys short. A change to the layout
-	// of a value needs a new kind, so the cache does not read the old entries.
-	kindSubrange   = "r"
-	kindAttributes = "a"
+	// The data type in a key. They are short to keep the keys short. A change to the layout
+	// of a value needs a new data type, so the cache does not read the old entries.
+	dataTypeSubrange   = "r"
+	dataTypeAttributes = "a"
 
 	// slabSubranges is how many subranges fit in one slab of the hit memory pool.
 	slabSubranges = 10
@@ -53,13 +51,13 @@ type AttributesCache interface {
 	GetOrLoad(ctx context.Context, key string, accept func([]byte) bool, load func(context.Context) ([]byte, error)) ([]byte, error)
 }
 
-// Bucket serves GetRange and Attributes from a cache for the objects that [IsCacheable] accepts. It
-// passes every other call to the bucket it wraps.
+// cachedBucket serves GetRange and Attributes from the cache. It passes every other call
+// to the bucket it wraps.
 //
 // A cache key holds a hash of the object name. Every cached value therefore starts with its full
 // key, the key built from the full name. A read rejects a value with another full key, so two names
 // that share a hash never serve each other's data.
-type Bucket struct {
+type cachedBucket struct {
 	objstore.Bucket
 
 	bucketID        string
@@ -72,25 +70,26 @@ type Bucket struct {
 	metrics         *metrics
 }
 
-// New returns a Bucket that caches the reads of the objects that [IsCacheable] accepts. id scopes
-// the keys to one bucket. The Bucket does not stop the caches.
-func New(bucket objstore.Bucket, subrangesCache cache.Cache, attributesCache AttributesCache, cfg Config, bucketID string, reg prometheus.Registerer) (*Bucket, error) {
-	if bucket == nil || subrangesCache == nil || attributesCache == nil {
+// newCachedBucket returns a cachedBucket that caches the reads of one kind of object in backend. bucketID
+// scopes the keys to one bucket. The cachedBucket does not stop the caches.
+func newCachedBucket(bucket objstore.Bucket, backend *Backend, kind, bucketID string, reg prometheus.Registerer) (*cachedBucket, error) {
+	if bucket == nil || backend == nil || backend.Subranges == nil || backend.Attributes == nil {
 		return nil, errors.New("the bucket cache needs a bucket, a subrange cache and an attributes cache")
 	}
+	cfg := backend.Config
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	b := &Bucket{
+	b := &cachedBucket{
 		Bucket:          bucket,
 		bucketID:        bucketID,
-		subrangesCache:  subrangesCache,
-		attributesCache: attributesCache,
+		subrangesCache:  backend.Subranges,
+		attributesCache: backend.Attributes,
 		subrangeSize:    int64(cfg.SubrangeSize),
 		maxSubrequests:  cfg.MaxGetRangeSubrequests,
 		slabs:           &sync.Pool{},
-		metrics:         newMetrics(reg),
+		metrics:         newMetrics(prometheus.WrapRegistererWith(prometheus.Labels{"kind": kind}, reg)),
 	}
 	if cfg.AttributesInMemoryMaxItems > 0 {
 		var err error
@@ -103,15 +102,15 @@ func New(bucket objstore.Bucket, subrangesCache cache.Cache, attributesCache Att
 
 // GetRange returns the range from the cache and the bucket. The reader holds memory from a pool
 // until the caller closes it.
-func (b *Bucket) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
+func (b *cachedBucket) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
 	// A length of -1 reads to the end of the object. The cache cannot split it, so the bucket serves it.
-	if offset < 0 || length <= 0 || !IsCacheable(name) {
+	if offset < 0 || length <= 0 {
 		return b.Bucket.GetRange(ctx, name, offset, length)
 	}
 
 	attrs, err := b.objectAttributes(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, asUnexpectedEOF(err, fmt.Sprintf("reading attributes of %q", name))
 	}
 
 	size := attrs.Size
@@ -155,7 +154,7 @@ func (b *Bucket) GetRange(ctx context.Context, name string, offset, length int64
 
 // fetchSubrangesFromCache returns the cached data of each subrange. An entry is nil for a miss. A fetch error
 // counts as a miss for the subranges that the fetch did not return.
-func (b *Bucket) fetchSubrangesFromCache(ctx context.Context, slabs *pool.SlabPool, name string, keys []string, subranges []subrange) [][]byte {
+func (b *cachedBucket) fetchSubrangesFromCache(ctx context.Context, slabs *pool.SlabPool, name string, keys []string, subranges []subrange) [][]byte {
 	var (
 		data     = make([][]byte, len(keys))
 		hits     int
@@ -202,7 +201,7 @@ func (b *Bucket) fetchSubrangesFromCache(ctx context.Context, slabs *pool.SlabPo
 }
 
 // fetchMissingSubrangesFromBucket reads the missing subranges from the bucket into data, and stores them in the cache.
-func (b *Bucket) fetchMissingSubrangesFromBucket(ctx context.Context, name string, keys []string, subranges []subrange, data [][]byte) error {
+func (b *cachedBucket) fetchMissingSubrangesFromBucket(ctx context.Context, name string, keys []string, subranges []subrange, data [][]byte) error {
 	runs := planSubrangeRuns(data, b.maxSubrequests)
 	if len(runs) == 0 {
 		return nil
@@ -242,11 +241,7 @@ func (b *Bucket) fetchMissingSubrangesFromBucket(ctx context.Context, name strin
 		})
 	}
 	if err := g.Wait(); err != nil {
-		// A column reader takes a bare io.EOF as the end of the column and returns fewer rows.
-		if errors.Is(err, io.EOF) {
-			err = fmt.Errorf("reading subranges of %q: %w", name, io.ErrUnexpectedEOF)
-		}
-		return err
+		return asUnexpectedEOF(err, fmt.Sprintf("reading subranges of %q", name))
 	}
 
 	for i, fill := range fills {
@@ -268,7 +263,7 @@ func (b *Bucket) fetchMissingSubrangesFromBucket(ctx context.Context, name strin
 
 // readSubrangeRun reads the subranges of a run with one request. It reads each subrange that has a fill buffer
 // into it, and skips the others, which the cache already holds. It returns the number of bytes it skipped.
-func (b *Bucket) readSubrangeRun(ctx context.Context, name string, subranges []subrange, fills [][]byte, run subrangeRun) (int64, error) {
+func (b *cachedBucket) readSubrangeRun(ctx context.Context, name string, subranges []subrange, fills [][]byte, run subrangeRun) (int64, error) {
 	var (
 		offset = subranges[run.first].start
 		length = subranges[run.last].end - offset
@@ -300,18 +295,15 @@ func (b *Bucket) readSubrangeRun(ctx context.Context, name string, subranges []s
 	return skipped, nil
 }
 
-// Attributes returns the attributes of a cacheable object from the cache. The modification time
-// keeps millisecond precision. Any other object goes to the bucket.
-func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	if !IsCacheable(name) {
-		return b.Bucket.Attributes(ctx, name)
-	}
+// Attributes returns the attributes of an object from the cache. The modification time keeps
+// millisecond precision.
+func (b *cachedBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
 	return b.objectAttributes(ctx, name)
 }
 
 // objectAttributes returns the attributes of an object from memory, then the attributes cache, then
 // the bucket.
-func (b *Bucket) objectAttributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+func (b *cachedBucket) objectAttributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
 	if b.attributesLRU != nil {
 		if attrs, ok := b.attributesLRU.Get(name); ok {
 			return attrs, nil
@@ -348,13 +340,6 @@ func (b *Bucket) objectAttributes(ctx context.Context, name string) (objstore.Ob
 	return attrs, nil
 }
 
-// IsCacheable reports whether the bucket cache serves the object name: a log object or an index object.
-// Their content never changes, and the cache keys carry no version of an object. The table of
-// contents does change, so the cache must never serve it.
-func IsCacheable(name string) bool {
-	return strings.HasPrefix(name, "objects/") || strings.HasPrefix(name, metastore.IndexStoragePrefix+"/indexes/")
-}
-
 // BucketID returns an ID for the keys of the cache, from the name of the bucket and the prefix
 // of the data objects in it.
 func BucketID(bucketName, prefix string) string {
@@ -377,14 +362,14 @@ func decodeAttributes(fullKey string, raw []byte) (objstore.ObjectAttributes, bo
 
 // subrangeKey returns the cache key of a subrange. Pass hashName(name) for the key of the cache, and
 // name for the full key.
-func (b *Bucket) subrangeKey(name string, s subrange) string {
-	return b.bucketID + ":" + kindSubrange + ":" + name + ":" + strconv.FormatInt(s.start, 10) + ":" + strconv.FormatInt(s.end, 10)
+func (b *cachedBucket) subrangeKey(name string, s subrange) string {
+	return b.bucketID + ":" + dataTypeSubrange + ":" + name + ":" + strconv.FormatInt(s.start, 10) + ":" + strconv.FormatInt(s.end, 10)
 }
 
 // attributesKey returns the cache key of the attributes of an object. Pass hashName(name) for the key of
 // the cache, and name for the full key.
-func (b *Bucket) attributesKey(name string) string {
-	return b.bucketID + ":" + kindAttributes + ":" + name
+func (b *cachedBucket) attributesKey(name string) string {
+	return b.bucketID + ":" + dataTypeAttributes + ":" + name
 }
 
 // hashName returns a hash of the object name. It is shorter than most names, and keeps the key below
@@ -392,6 +377,15 @@ func (b *Bucket) attributesKey(name string) string {
 func hashName(name string) string {
 	sum := sha256.Sum256([]byte(name))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// asUnexpectedEOF returns an io.ErrUnexpectedEOF error with err as its cause when err wraps io.EOF, and
+// err otherwise.
+func asUnexpectedEOF(err error, action string) error {
+	if !errors.Is(err, io.EOF) {
+		return err
+	}
+	return fmt.Errorf("%s: %w (cause: %v)", action, io.ErrUnexpectedEOF, err)
 }
 
 // subrangeRun is the span of subranges first to last, both included, that one request reads.
