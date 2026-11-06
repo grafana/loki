@@ -6,6 +6,8 @@ package exported
 import (
 	"errors"
 	"net/http"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/sanitizer"
 )
 
 // Policy represents an extensibility point for the Pipeline that can mutate the specified
@@ -22,7 +24,13 @@ type Policy interface {
 // Its behavior can be extended by specifying policies during construction.
 // Exported as runtime.Pipeline.
 type Pipeline struct {
-	policies []Policy
+	policies  []Policy
+	sanitizer *sanitizer.Sanitizer
+}
+
+// PipelineSanitizer returns the sanitizer associated with the pipeline.
+func PipelineSanitizer(p Pipeline) *sanitizer.Sanitizer {
+	return p.sanitizer
 }
 
 // Transporter represents an HTTP pipeline transport used to send HTTP requests and receive responses.
@@ -53,12 +61,17 @@ func (tp transportPolicy) Do(req *Request) (*http.Response, error) {
 }
 
 // NewPipeline creates a new Pipeline object from the specified Policies.
+// A nil sanitizer uses the default allow lists.
 // Not directly exported, but used as part of runtime.NewPipeline().
-func NewPipeline(transport Transporter, policies ...Policy) Pipeline {
+func NewPipeline(s *sanitizer.Sanitizer, transport Transporter, policies ...Policy) Pipeline {
+	if s == nil {
+		s = sanitizer.New(sanitizer.Options{})
+	}
 	// transport policy must always be the last in the slice
 	policies = append(policies, transportPolicy{trans: transport})
 	return Pipeline{
-		policies: policies,
+		policies:  policies,
+		sanitizer: s,
 	}
 }
 
