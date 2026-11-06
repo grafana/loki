@@ -59,6 +59,11 @@ message TaskSpec {
   // across the sections of runs, from the index stats. It is 0 if the size is
   // unknown.
   int64 input_bytes = 5 [(gogoproto.jsontag) = "input_bytes"];
+
+  // output_level is the compaction level of the run that the merge writes.
+  // Tasks split from one merge share the output level of that merge. Only log
+  // merge tasks use output_level. Index tasks leave it at 0.
+  uint32 output_level = 6 [(gogoproto.jsontag) = "output_level"];
 }
 
 // KeyRange is the half-open range [start, end) of stream sort prefixes. Both

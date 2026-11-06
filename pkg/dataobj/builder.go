@@ -34,7 +34,7 @@ func NewBuilder(scratchStore scratch.Store, opts ...BuilderOption) *Builder {
 	}
 
 	return &Builder{
-		encoder: newEncoder(scratchStore, cfg.prioritySections),
+		encoder: newEncoder(scratchStore, cfg.prioritySections, cfg.compaction),
 	}
 }
 
@@ -43,6 +43,7 @@ type BuilderOption func(*builderConfig)
 
 type builderConfig struct {
 	prioritySections []SectionType
+	compaction       *CompactionInfo
 }
 
 // WithPrioritySections places sections with the given types before all other
@@ -59,6 +60,22 @@ func WithPrioritySections(types ...SectionType) BuilderOption {
 	return func(cfg *builderConfig) {
 		cfg.prioritySections = append(cfg.prioritySections, types...)
 	}
+}
+
+// CompactionInfo describes where the compactor placed a data object in the
+// compaction levels.
+type CompactionInfo struct {
+	// Level is the compaction level of the run that holds the object, as the
+	// planner computed it when it planned the merge. The level depends on the
+	// planner configuration at that time, so it can differ from the level that
+	// a later planner computes for the same run.
+	Level uint32
+}
+
+// WithCompactionInfo writes info into the file metadata of every object that
+// the builder flushes. The info stays in effect after [Builder.Reset].
+func WithCompactionInfo(info CompactionInfo) BuilderOption {
+	return func(cfg *builderConfig) { cfg.compaction = &info }
 }
 
 // Append flushes a [SectionBuilder], buffering its data and metadata into b.

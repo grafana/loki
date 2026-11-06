@@ -72,6 +72,44 @@ func TestBuilder_preserve_tenant(t *testing.T) {
 	require.Equal(t, "my-test-tenant", obj.Sections()[0].Tenant)
 }
 
+func TestBuilder_CompactionInfo(t *testing.T) {
+	flush := func(t *testing.T, builder *dataobj.Builder) *dataobj.Object {
+		t.Helper()
+		require.NoError(t, builder.Append(fakeSectionBuilder{
+			SectionType: dataobj.SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"},
+		}))
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj
+	}
+
+	t.Run("object reports no compaction info when the builder has none", func(t *testing.T) {
+		obj := flush(t, dataobj.NewBuilder(nil))
+
+		_, ok := obj.CompactionInfo()
+		require.False(t, ok)
+	})
+
+	t.Run("object reports level 0 when the builder sets level 0", func(t *testing.T) {
+		obj := flush(t, dataobj.NewBuilder(nil, dataobj.WithCompactionInfo(dataobj.CompactionInfo{Level: 0})))
+
+		info, ok := obj.CompactionInfo()
+		require.True(t, ok)
+		require.Equal(t, dataobj.CompactionInfo{Level: 0}, info)
+	})
+
+	t.Run("every flushed object keeps the compaction info of the builder", func(t *testing.T) {
+		builder := dataobj.NewBuilder(nil, dataobj.WithCompactionInfo(dataobj.CompactionInfo{Level: 3}))
+
+		for range 2 {
+			info, ok := flush(t, builder).CompactionInfo()
+			require.True(t, ok)
+			require.Equal(t, dataobj.CompactionInfo{Level: 3}, info)
+		}
+	})
+}
+
 // Buffered sections are released by whoever owns them when the builder is done
 // with them: the returned closer after a successful flush, the builder itself
 // on every other path.

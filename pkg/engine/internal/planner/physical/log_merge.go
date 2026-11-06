@@ -32,6 +32,10 @@ type LogMerge struct {
 	// it reads a different size. 0 means the size is unknown and skips the
 	// check.
 	InputBytes int64
+
+	// OutputLevel is the compaction level that the merge writes into the
+	// file metadata of each output object.
+	OutputLevel uint32
 }
 
 // ID implements the Node interface.

@@ -274,6 +274,18 @@ func (o *Object) Tenant() (string, error) {
 	return tenants[0], nil
 }
 
+// CompactionInfo returns the compaction info in the file metadata of the
+// object. The bool is false if the file metadata has no compaction info.
+//
+// Only log objects that the compactor wrote have compaction info. Index
+// objects and log objects from an older compactor have none.
+func (o *Object) CompactionInfo() (CompactionInfo, bool) {
+	if o.metadata.Compaction == nil {
+		return CompactionInfo{}, false
+	}
+	return CompactionInfo{Level: o.metadata.Compaction.Level}, true
+}
+
 // Reader returns a reader for the entire raw data object.
 func (o *Object) Reader(ctx context.Context) (io.ReadCloser, error) {
 	return o.rr.Read(ctx)
