@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"strings"
 	"text/scanner"
 	"time"
@@ -248,6 +249,14 @@ func (l *lexer) Lex(lval *syntaxSymType) int {
 
 	if tok, ok := tokens[tokenTextLower]; ok {
 		return tok
+	}
+
+	// Only an identifier is an identifier. A character that starts no token used to be returned as
+	// one, which accepted label names that cannot be written back: `json ! = "x"` printed as
+	// `json !="x"`, which is a line filter.
+	if r != scanner.Ident {
+		l.Error(fmt.Sprintf("unexpected character %q", tokenText))
+		return 0
 	}
 
 	lval.str = tokenText

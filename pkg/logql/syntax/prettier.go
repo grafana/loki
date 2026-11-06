@@ -219,9 +219,7 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 
 	s += "\n" + Indent(level) + ")"
 
-	if e.Grouping != nil {
-		s += e.Grouping.Pretty(level)
-	}
+	s += prettyExplicitGrouping(e.Grouping, level)
 
 	return s
 }
@@ -237,7 +235,7 @@ func (e *LabelAggregationExpr) Pretty(level int) string {
 	s += Indent(level+1) + e.Label + ",\n"
 	s += e.Left.Pretty(level+1) + "\n"
 	s += Indent(level) + ")"
-	s += prettyLabelAggregationGrouping(e.Grouping, level)
+	s += prettyExplicitGrouping(e.Grouping, level)
 	return s
 }
 
@@ -252,15 +250,16 @@ func (e *CountDistinctSketchExpr) Pretty(level int) string {
 	s += Indent(level+1) + e.Label + ",\n"
 	s += e.Left.Pretty(level+1) + "\n"
 	s += Indent(level) + ")"
-	s += prettyLabelAggregationGrouping(e.Grouping, level)
+	s += prettyExplicitGrouping(e.Grouping, level)
 	return s
 }
 
-// prettyLabelAggregationGrouping keeps `by ()` visible. Grouping.Pretty omits
+// prettyExplicitGrouping keeps `by ()` visible. Grouping.Pretty omits
 // empty by-clauses because vector aggregations always have a Grouping and
-// `sum(x)` must not pretty-print as `sum by ()(x)`. Label aggregations treat
-// omitted by and `by ()` as different grouping modes.
-func prettyLabelAggregationGrouping(g *Grouping, level int) string {
+// `sum(x)` must not pretty-print as `sum by ()(x)`. Range aggregations and label
+// aggregations treat omitted by and `by ()` as different grouping modes: without a
+// grouping they keep every label, and with `by ()` they reduce to a single series.
+func prettyExplicitGrouping(g *Grouping, level int) string {
 	if g == nil {
 		return ""
 	}
@@ -402,7 +401,9 @@ func (g *Grouping) Pretty(_ int) string {
 		s += " by"
 	}
 
-	if len(g.Groups) > 0 {
+	// Without a label list, by is left out because it is the same as no grouping on a vector
+	// aggregation. without is not: it keeps every label, and it does not parse without its list.
+	if g.Without || len(g.Groups) > 0 {
 		s += " ("
 		s += strings.Join(g.Groups, ", ")
 		s += ")"
