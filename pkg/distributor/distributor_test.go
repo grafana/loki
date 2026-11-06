@@ -1001,6 +1001,63 @@ func Test_DiscardAccounting(t *testing.T) {
 	}
 }
 
+// rejectAllStreamsLimitsClient is an ingest-limits frontend that rejects every stream for the stream
+// limit.
+type rejectAllStreamsLimitsClient struct{}
+
+func (rejectAllStreamsLimitsClient) ExceedsLimits(_ context.Context, r *limitsproto.ExceedsLimitsRequest) (*limitsproto.ExceedsLimitsResponse, error) {
+	resp := &limitsproto.ExceedsLimitsResponse{}
+	for _, s := range r.Streams {
+		resp.Results = append(resp.Results, &limitsproto.ExceedsLimitsResult{StreamHash: s.StreamHash, Reason: uint32(limits.ReasonMaxStreams)})
+	}
+	return resp, nil
+}
+
+func (rejectAllStreamsLimitsClient) CheckLimitsAndShard(context.Context, *limitsproto.CheckLimitsAndShardRequest) (*limitsproto.CheckLimitsAndShardResponse, error) {
+	return &limitsproto.CheckLimitsAndShardResponse{}, nil
+}
+
+// A shard's labels carry one label more than its stream. When the stream limit rejects the shards of
+// a stream at max_label_names_per_series, they must still be reported as discarded for the stream
+// limit, rather than failing validation again, and their labels must stay out of the label cache.
+func TestDistributor_StreamLimitDiscardsShardsAtLabelLimit(t *testing.T) {
+	validation.DiscardedBytes.Reset()
+	validation.DiscardedSamples.Reset()
+	t.Cleanup(validation.DiscardedBytes.Reset)
+	t.Cleanup(validation.DiscardedSamples.Reset)
+
+	lim := &validation.Limits{}
+	flagext.DefaultValues(lim)
+	lim.MaxLabelNamesPerSeries = 2
+	lim.RejectOldSamples = false
+	lim.ShardStreams.Enabled = true
+	lim.ShardStreams.TimeShardingEnabled = true
+	distributors, ingesters := prepare(t, 1, 3, lim, nil)
+	d := distributors[0]
+	d.cfg.IngestLimitsEnabled = true
+	d.ingestLimits = newIngestLimits(rejectAllStreamsLimitsClient{}, prometheus.NewRegistry())
+
+	// Older than time_sharding_ignore_recent, so the stream is time-sharded.
+	ts := time.Now().Add(-2 * time.Hour)
+	_, err := d.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{{
+		Labels:  `{app="a", env="b"}`,
+		Entries: []logproto.Entry{{Timestamp: ts, Line: "one"}, {Timestamp: ts.Add(time.Second), Line: "two"}},
+	}}})
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	require.True(t, ok)
+	require.Equal(t, int32(http.StatusTooManyRequests), resp.Code)
+
+	require.Equal(t, float64(2), testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, "test", "0", "", constants.Loki)))
+	require.Equal(t, float64(len("one")+len("two")), testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, "test", "0", "", constants.Loki)))
+	require.Zero(t, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(validation.MaxLabelNamesPerSeries, "test", "0", "", constants.Loki)))
+	for _, key := range d.labelCache.Keys() {
+		require.NotContains(t, key, constants.TimeShardLabel)
+	}
+	for i := range ingesters {
+		require.Nil(t, ingesters[i].Peek())
+	}
+}
+
 func TestDistributor_PushRateLimitsOnlyValidatedStreams(t *testing.T) {
 	const validLine, rejectedLine = "valid", "rejected"
 	for _, tc := range []struct {
@@ -2109,14 +2166,14 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver)
+		_, _, err := d.parseAndValidateStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver)
 		if err != nil {
-			panic("parseStreamLabels fail,err:" + err.Error())
+			panic("parseAndValidateStreamLabels fail,err:" + err.Error())
 		}
 	}
 }
 
-func TestParseStreamLabels(t *testing.T) {
+func TestParseAndValidateStreamLabels(t *testing.T) {
 	defaultLimit := &validation.Limits{}
 	flagext.DefaultValues(defaultLimit)
 
@@ -2149,7 +2206,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			parsed, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
+			parsed, _, err := d.parseAndValidateStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
 				Labels: tc.origLabels,
 			}), streamResolver)
 			if tc.expectedErr != nil {

@@ -777,7 +777,7 @@ func (d *Distributor) validateStreams(
 		// Truncate first so subsequent steps have consistent line lengths
 		d.truncateLines(vCtx, stream)
 
-		parsed, labelsReason, err := d.parseStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver)
+		parsed, labelsReason, err := d.parseAndValidateStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver)
 		stream.Labels, stream.Hash = parsed.labelsString, parsed.hash
 		if !result.rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, parsed.policy) {
 			result.rejectPartialWrites = true
@@ -1298,8 +1298,8 @@ func (d *Distributor) enforceIngestionRateLimits(
 }
 
 // reportDiscardedStreams reports whole streams that passed validation as discarded for reason,
-// resolving each stream's labels, retention and policy for the report. It skips a stream whose
-// labels fail validation, as a shard of a stream at max_label_names_per_series does.
+// resolving each stream's labels, retention and policy for the report. It does not validate the
+// labels again: they may be the labels of a shard, which carry an extra shard label.
 func (d *Distributor) reportDiscardedStreams(
 	ctx context.Context,
 	streams []logproto.InternalStreamAdapter,
@@ -1309,7 +1309,7 @@ func (d *Distributor) reportDiscardedStreams(
 	format string,
 ) {
 	for _, stream := range streams {
-		parsed, _, err := d.parseStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver)
+		parsed, _, err := d.parseStreamLabels(ctx, vCtx.userID, stream.Labels, streamResolver)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
 			continue
@@ -1739,35 +1739,48 @@ type parsedStreamLabels struct {
 	policy         string
 }
 
-// parseStreamLabels parses and validates stream labels using a request-scoped policy resolver. If
-// they are invalid, it returns the reason to discard the stream's data for with the error, and
-// only lbs (empty), retentionHours and policy are set, as far as they could be resolved, for
-// discard reporting.
-func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.InternalStreamAdapter, streamResolver push.StreamResolver) (parsedStreamLabels, string, error) {
+// parseStreamLabels takes the labels for key from the label cache, or parses them, and resolves the
+// stream's retention and policy using a request-scoped policy resolver. cached reports a cache hit.
+// It neither validates the labels nor adds them to the cache, which only holds labels
+// parseAndValidateStreamLabels has validated. If key does not parse, only retentionHours is set.
+func (d *Distributor) parseStreamLabels(ctx context.Context, tenantID, key string, streamResolver push.StreamResolver) (parsed parsedStreamLabels, cached bool, err error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
 		policy := streamResolver.PolicyFor(ctx, val.ls)
-		return parsedStreamLabels{lbs: val.ls, labelsString: val.ls.String(), hash: val.hash, retentionHours: retentionHours, policy: policy}, "", nil
+		return parsedStreamLabels{lbs: val.ls, labelsString: val.ls.String(), hash: val.hash, retentionHours: retentionHours, policy: policy}, true, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, labels.EmptyLabels())
+		retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, labels.EmptyLabels())
 		// TODO: check for global policy.
-		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: retentionHours}, validation.InvalidLabels, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: retentionHours}, false, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	policy := streamResolver.PolicyFor(ctx, ls)
-	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
+	retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, ls)
+	return parsedStreamLabels{lbs: ls, labelsString: ls.String(), hash: labels.StableHash(ls), retentionHours: retentionHours, policy: policy}, false, nil
+}
 
-	if reason, err := d.validator.ValidateLabels(vContext, ls, stream); err != nil {
-		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: retentionHours, policy: policy}, reason, err
+// parseAndValidateStreamLabels parses stream labels (see parseStreamLabels) and validates them,
+// adding them to the label cache once valid. If they are invalid, it returns the reason to discard
+// the stream's data for with the error, and only lbs (empty), retentionHours and policy are set, as
+// far as they could be resolved, for discard reporting.
+func (d *Distributor) parseAndValidateStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.InternalStreamAdapter, streamResolver push.StreamResolver) (parsedStreamLabels, string, error) {
+	parsed, cached, err := d.parseStreamLabels(ctx, vContext.userID, key, streamResolver)
+	if err != nil {
+		return parsed, validation.InvalidLabels, err
+	}
+	if cached {
+		return parsed, "", nil
 	}
 
-	lsHash := labels.StableHash(ls)
+	if reason, err := d.validator.ValidateLabels(vContext, parsed.lbs, stream); err != nil {
+		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: parsed.retentionHours, policy: parsed.policy}, reason, err
+	}
 
-	d.labelCache.Add(key, labelData{ls, lsHash})
-	return parsedStreamLabels{lbs: ls, labelsString: ls.String(), hash: lsHash, retentionHours: retentionHours, policy: policy}, "", nil
+	d.labelCache.Add(key, labelData{parsed.lbs, parsed.hash})
+	return parsed, "", nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
