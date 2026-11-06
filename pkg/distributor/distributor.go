@@ -515,9 +515,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	return d.pushWithResolver(ctx, internal, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
-// pushWithResolver validates req, enforces the ingestion limits on what is left, and forwards the
-// accepted streams. It modifies req in place: validation drops the rejected streams from
-// req.Streams and edits the entries of the rest, and time sharding sorts them.
+// pushWithResolver validates req, enforces the ingestion limits on what is left, and writes the
+// accepted streams. Each stage takes what the previous one produced and returns what the next one
+// needs:
+//
+//	validateStreams → shardStreams → enforceIngestionRateLimits → enforceStreamLimits → writeStreams
+//
+// Validation edits the entries of req in place.
 //
 // Rejections and the errors they return, in order of precedence:
 //   - An error normalizing structured metadata aborts the whole push.
@@ -552,24 +556,13 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	}
 
 	now := time.Now()
-	validationContext := d.validator.getValidationContextForTime(now, tenantID)
+	vCtx := d.validator.getValidationContextForTime(now, tenantID)
 
-	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
-	// resolved policy has a per-policy ingestion rate override are metered against their own
-	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
-	// tenant-wide bucket (keyed by "").
-	rlBuckets := map[string]*rateLimitBucket{}
-
-	sharder := newStreamSharder(d, tenantID, now, len(req.Streams))
-	validated, err := d.validateStreams(ctx, req, validationContext, now, streamResolver, format, &sharder, rlBuckets)
+	validated, err := d.validateStreams(ctx, req, vCtx, now, streamResolver, format)
 	if err != nil {
 		return nil, err
 	}
-	sharder.warnMixedShardStreams()
-
-	// Every stream was empty, rejected or blocked. Live-mode candidates are
-	// still to be written: they only lack their shard count.
-	if len(sharder.streams) == 0 && len(sharder.liveCandidates) == 0 {
+	if len(validated.streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "post-validation").Inc()
 		// Nothing was left to write. Without an error, for example when every
 		// stream was empty or blocked with status code 200, that is a success.
@@ -579,14 +572,16 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		return &logproto.PushResponse{}, nil
 	}
 
+	sharded := d.shardStreams(tenantID, now, validated.streams)
+
 	// An admitted push keeps its tokens even if a later stage rejects it.
-	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format); err != nil {
+	if err := d.enforceIngestionRateLimits(ctx, now, vCtx, validated.streams, format); err != nil {
 		return nil, err
 	}
 
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
-	streams, limitsErr := d.enforceStreamLimits(ctx, tenantID, sharder.result(), validationContext, streamResolver, format)
+	streams, limitsErr := d.enforceStreamLimits(ctx, tenantID, sharded, vCtx, streamResolver, format)
 	if limitsErr != nil {
 		limitsErr = httpgrpc.Error(http.StatusTooManyRequests, limitsErr.Error())
 	}
@@ -734,9 +729,22 @@ func (d *Distributor) writeStreams(ctx context.Context, tenantID string, streams
 	}
 }
 
-// validatedPush is what validateStreams leaves for the rest of the push, besides the streams it
-// handed to the sharder and the rate-limit buckets it filled.
+// acceptedStream is a stream that passed validation, with what validation resolved about it, so
+// that later stages do not need to work it out again.
+type acceptedStream struct {
+	// stream has its validated entries and its labels in canonical form.
+	stream         logproto.InternalStreamAdapter
+	lbs            labels.Labels
+	retentionHours string
+	policy         string
+	stats          streamStats
+}
+
+// validatedPush is the result of validating a push.
 type validatedPush struct {
+	// streams are the streams that passed validation, in push order.
+	streams []acceptedStream
+
 	// err is the error for the client from validation: a 400 naming the streams and entries that
 	// failed validation or, failing that, the status code of a blocked stream. It is nil if neither
 	// happened, which includes every blocked stream having status code 200.
@@ -749,15 +757,12 @@ type validatedPush struct {
 	rejectPartialWritesPolicy string
 }
 
-// validateStreams validates the streams of req, hands the accepted ones to sharder, and adds their
-// bytes and lines to their bucket in rlBuckets. A stream is dropped if it has no entries, fails
-// label validation, misses enforced labels, is blocked, or has no entries left once they are
-// validated. req.Streams is left with the accepted streams, so that rate-limit discards exclude the
-// streams rejected here.
+// validateStreams validates the streams of req and returns the ones that pass. A stream is dropped
+// if it has no entries, fails label validation, misses enforced labels, is blocked, or has no
+// entries left once they are validated. Each drop is reported as discarded. It edits the entries of
+// req in place.
 //
-// The returned error aborts the push. Validation failures are in validatedPush.err instead. The
-// streams accepted before an aborting error have already been sharded, with the side effects
-// described on streamSharder.
+// The returned error aborts the push. Validation failures are in validatedPush.err instead.
 func (d *Distributor) validateStreams(
 	ctx context.Context,
 	req *logproto.InternalPushRequest,
@@ -765,8 +770,6 @@ func (d *Distributor) validateStreams(
 	now time.Time,
 	streamResolver push.StreamResolver,
 	format string,
-	sharder *streamSharder,
-	rlBuckets map[string]*rateLimitBucket,
 ) (validatedPush, error) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("start to validate request")
@@ -774,13 +777,12 @@ func (d *Distributor) validateStreams(
 
 	tenantID := vCtx.userID
 	fieldDetector := newFieldDetector(vCtx)
+	result := validatedPush{streams: make([]acceptedStream, 0, len(req.Streams))}
 	var (
-		result                validatedPush
 		validationErrors      util.GroupedErrors
 		ingestionBlockedError error
 	)
 
-	validatedStreams := req.Streams[:0]
 	for _, stream := range req.Streams {
 		if stream.EntryCount() == 0 {
 			continue
@@ -843,28 +845,14 @@ func (d *Distributor) validateStreams(
 		if stats.entriesKept == 0 {
 			continue
 		}
-		validatedStreams = append(validatedStreams, stream)
-
-		// Attribute this stream's bytes/lines to its rate-limit bucket.
-		_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, parsed.policy)
-		bucketKey := ""
-		if hasRateOverride {
-			bucketKey = parsed.policy
-		}
-		b := rlBuckets[bucketKey]
-		if b == nil {
-			b = &rateLimitBucket{policy: parsed.policy, hasOverride: hasRateOverride}
-			rlBuckets[bucketKey] = b
-		}
-		b.bytes += stats.unexpandedSize
-		b.lines += stats.entriesKept
-
-		shardCfg, _ := d.validator.PolicyShardStreams(tenantID, parsed.policy)
-		sharder.shard(stream, parsed.lbs, stats.expandedSize, parsed.policy, shardCfg)
+		result.streams = append(result.streams, acceptedStream{
+			stream:         stream,
+			lbs:            parsed.lbs,
+			retentionHours: parsed.retentionHours,
+			policy:         parsed.policy,
+			stats:          stats,
+		})
 	}
-	// Rate-limit discards must exclude streams already rejected by validation.
-	clear(req.Streams[len(validatedStreams):])
-	req.Streams = validatedStreams
 
 	if validationErrors.Err() != nil {
 		result.err = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
@@ -1249,13 +1237,32 @@ func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []
 func (d *Distributor) enforceIngestionRateLimits(
 	ctx context.Context,
 	now time.Time,
-	tenantID string,
-	rlBuckets map[string]*rateLimitBucket,
-	streams []logproto.InternalStreamAdapter,
-	validationContext validationContext,
-	streamResolver push.StreamResolver,
+	vCtx validationContext,
+	accepted []acceptedStream,
 	format string,
 ) error {
+	tenantID := vCtx.userID
+
+	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
+	// resolved policy has a per-policy ingestion rate override are metered against their own
+	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
+	// tenant-wide bucket (keyed by "").
+	rlBuckets := map[string]*rateLimitBucket{}
+	for _, a := range accepted {
+		_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, a.policy)
+		bucketKey := ""
+		if hasRateOverride {
+			bucketKey = a.policy
+		}
+		b := rlBuckets[bucketKey]
+		if b == nil {
+			b = &rateLimitBucket{policy: a.policy, hasOverride: hasRateOverride}
+			rlBuckets[bucketKey] = b
+		}
+		b.bytes += a.stats.unexpandedSize
+		b.lines += a.stats.entriesKept
+	}
+
 	type bucketReservation struct {
 		bucket      *rateLimitBucket
 		reservation *rate.Reservation
@@ -1287,9 +1294,11 @@ func (d *Distributor) enforceIngestionRateLimits(
 		br.reservation.CancelAt(now)
 	}
 
-	// The whole request is dropped, so attribute every stream as discarded (each under its
-	// own policy label, handled by reportDiscardedStreams).
-	d.reportDiscardedStreams(ctx, streams, validationContext, validation.RateLimited, streamResolver, format)
+	// The whole request is dropped, so report every stream as discarded, each under its own
+	// policy, with the labels and retention validation resolved for it.
+	for _, a := range accepted {
+		d.validator.reportDiscardedData(ctx, validation.RateLimited, vCtx, a.lbs, a.retentionHours, a.policy, nestedStreamSize(a.stream), a.stream.EntryCount(), format)
+	}
 
 	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
 	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
@@ -1309,9 +1318,10 @@ func (d *Distributor) enforceIngestionRateLimits(
 	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 }
 
-// reportDiscardedStreams reports whole streams that passed validation as discarded for reason,
-// resolving each stream's labels, retention and policy for the report. It does not validate the
-// labels again: they may be the labels of a shard, which carry an extra shard label.
+// reportDiscardedStreams reports whole streams that passed validation as discarded for reason. The
+// streams the stream limit rejects are shards, whose labels are not the ones validation resolved,
+// so it resolves each stream's labels, retention and policy for the report. It does not validate
+// them again: a shard's labels carry an extra shard label.
 func (d *Distributor) reportDiscardedStreams(
 	ctx context.Context,
 	streams []logproto.InternalStreamAdapter,
