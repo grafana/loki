@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -330,7 +331,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					}
 
 					// Combine resource labels with log attributes; log attributes win on collision.
-					combinedLabels := streamLabels.Merge(logLabels)
+					combinedLabels := make(model.LabelSet, len(streamLabels)+len(logLabels))
+					maps.Copy(combinedLabels, streamLabels)
+					maps.Copy(combinedLabels, logLabels)
 					if err := combinedLabels.Validate(); err != nil {
 						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))
 						continue
