@@ -13,6 +13,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v4/pkg/compactor"
 	"github.com/grafana/loki/v4/pkg/indexgateway"
 	loglinestore "github.com/grafana/loki/v4/pkg/logline/store"
 	"github.com/grafana/loki/v4/pkg/storage"
@@ -328,6 +329,96 @@ func TestLoglineStoreConfigBorrowsIngesterWindow(t *testing.T) {
 			require.Equal(t, "2026-01-01", cfg.MinDate)
 			// The shared section stays untouched.
 			require.Zero(t, l.Cfg.Logline.Store.QueryIngestersWithin)
+		})
+	}
+}
+
+func TestCompactorAddress(t *testing.T) {
+	const (
+		ownGRPCAddress = "10.0.0.1:9095"
+		mainGRPC       = "loki-main:9095"
+		compactorHTTP  = "http://compactor:3100"
+	)
+
+	for _, tc := range []struct {
+		name        string
+		target      []string
+		mode        string
+		grpcAddress string
+		httpAddress string
+		want        string
+		wantGRPC    bool
+		wantErr     bool
+	}{
+		{
+			name:     "all targets with the compactor disabled uses the own address",
+			target:   []string{All},
+			mode:     compactor.HorizontalScalingModeDisabled,
+			want:     ownGRPCAddress,
+			wantGRPC: true,
+		},
+		{
+			name:        "all targets with the main compactor uses the own address",
+			target:      []string{All},
+			mode:        compactor.HorizontalScalingModeMain,
+			grpcAddress: mainGRPC,
+			want:        ownGRPCAddress,
+			wantGRPC:    true,
+		},
+		{
+			name:        "all targets with a worker compactor uses the configured address",
+			target:      []string{All},
+			mode:        compactor.HorizontalScalingModeWorker,
+			grpcAddress: mainGRPC,
+			want:        mainGRPC,
+			wantGRPC:    true,
+		},
+		{
+			name:    "all targets with a worker compactor requires a configured address",
+			target:  []string{All},
+			mode:    compactor.HorizontalScalingModeWorker,
+			wantErr: true,
+		},
+		{
+			name:        "querier prefers the configured gRPC address",
+			target:      []string{Querier},
+			mode:        compactor.HorizontalScalingModeDisabled,
+			grpcAddress: mainGRPC,
+			httpAddress: compactorHTTP,
+			want:        mainGRPC,
+			wantGRPC:    true,
+		},
+		{
+			name:        "querier falls back to the configured HTTP address",
+			target:      []string{Querier},
+			mode:        compactor.HorizontalScalingModeDisabled,
+			httpAddress: compactorHTTP,
+			want:        compactorHTTP,
+		},
+		{
+			name:    "querier requires a configured address",
+			target:  []string{Querier},
+			mode:    compactor.HorizontalScalingModeDisabled,
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var loki Loki
+			loki.Cfg.Target = tc.target
+			loki.Cfg.Server.GRPCListenAddress = "10.0.0.1"
+			loki.Cfg.Server.GRPCListenPort = 9095
+			loki.Cfg.CompactorConfig.HorizontalScalingMode = tc.mode
+			loki.Cfg.Common.CompactorGRPCAddress = tc.grpcAddress
+			loki.Cfg.Common.CompactorAddress = tc.httpAddress
+
+			got, isGRPC, err := loki.compactorAddress()
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.wantGRPC, isGRPC)
 		})
 	}
 }
