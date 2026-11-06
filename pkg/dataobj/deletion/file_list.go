@@ -102,8 +102,8 @@ func NewFileListWriter(bucket objstore.Bucket, backoffCfg backoff.Config, logger
 	return &FileListWriter{bucket: bucket, backoffCfg: backoffCfg, logger: logger}
 }
 
-// Write stores list at list.Path() if no file list is stored there, or if the
-// stored file list is older.
+// Write stores list at list.Path() if the bucket holds no file list there, or
+// holds an older one.
 //
 // Write uses a conditional write, so an older list never replaces a list from
 // a concurrent writer. One gap remains: the S3 bucket sends no condition when
@@ -112,9 +112,9 @@ func NewFileListWriter(bucket objstore.Bucket, backoffCfg backoff.Config, logger
 //
 // If the stored list is not older than list, Write leaves it unchanged and
 // returns an error that wraps ErrSuperseded. The stored list can be the list
-// that a previous attempt of the same call wrote before it lost the response.
-// The stored state is correct in that case too, so Write does not tell the
-// two cases apart.
+// that an earlier attempt of the same call wrote. That attempt lost its
+// response. The stored state is correct in that case too, so Write does not
+// tell the two cases apart.
 //
 // Write reads only the header of the stored list. It retries a failed write
 // with the backoff config of the writer. It does not retry if the stored

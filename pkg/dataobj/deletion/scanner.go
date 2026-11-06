@@ -23,6 +23,9 @@ import (
 
 // MinObjectAge is the minimum age of an object that List returns. Objects are
 // immutable, so the age is the time since the last modification.
+//
+// List excludes newly written objects because a ToC might not reference them
+// yet. A later step could then select such an object for deletion by mistake.
 const MinObjectAge = time.Hour
 
 // Scanner lists the objects of a tenant in a data object bucket.
@@ -59,9 +62,9 @@ func NewScanner(bucket objstore.BucketReader, indexPrefix string, maxOpenFiles i
 }
 
 // List returns the file list of tenant at now. The list holds the sorted
-// paths of all log objects and index objects of tenant that were last
-// modified at least [MinObjectAge] before now. The paths are relative to the
-// bucket of the Scanner. List does not include ToCs.
+// paths of the log objects and index objects of tenant. It includes only
+// objects last modified at least [MinObjectAge] before now. The paths are
+// relative to the bucket of the Scanner. List does not include ToCs.
 //
 // List finds two kinds of objects:
 //
@@ -69,7 +72,7 @@ func NewScanner(bucket objstore.BucketReader, indexPrefix string, maxOpenFiles i
 //     objects/tenants/<tenant>/ and <indexPrefix>/indexes/tenants/<tenant>/.
 //     List includes them without opening them.
 //   - Ingest objects. The uploader and the index builder write them to
-//     objects/<prefix>/ and <indexPrefix>/indexes/<prefix>/, where prefix is
+//     objects/<prefix>/ and <indexPrefix>/indexes/<prefix>/. The prefix is
 //     the first hex characters of a content hash. Their path holds no tenant,
 //     so List opens each of them to read its tenants. List includes an
 //     ingest object only if tenant is its only tenant. It logs an ingest
@@ -83,7 +86,7 @@ func (s *Scanner) List(ctx context.Context, tenant string, now time.Time) (FileL
 		return FileList{}, err
 	}
 
-	// A failed walk cancels ctx with the walk error as the cause, and a failed
+	// A failed walk cancels ctx with the walk error as the cause. A failed
 	// open cancels gctx with the open error as the cause. Either way,
 	// context.Cause(gctx) is the first error, not a context error that it
 	// caused.
@@ -171,8 +174,8 @@ func tenantsDir(root string) string {
 // It lists root recursively, so that each request returns up to a page of
 // objects from many hash directories. It stops at the first key in the
 // tenants directory, so that it does not list the compacted objects of every
-// tenant. It stops by cancelling the listing context and not by returning an
-// error, because the bucket metrics count an error as a failed operation.
+// tenant. It stops by cancelling the listing context, not by returning an
+// error. The bucket metrics count an error as a failed operation.
 func (sc *scan) iterIngestObjects(ctx context.Context, root string, f func(path string)) error {
 	listCtx, stop := context.WithCancel(ctx)
 	defer stop()
@@ -233,9 +236,9 @@ func (sc *scan) checkIngestObject(ctx context.Context, p string) error {
 	case len(tenants) == 1 && tenants[0] == sc.tenant:
 		sc.add(p)
 	case slices.Contains(tenants, sc.tenant) || slices.Contains(tenants, ""):
-		// Every object is expected to hold a single tenant. A section with the
-		// empty tenant holds data of more than one tenant. Logging the object
-		// lets an operator find data that the list does not cover.
+		// Objects should hold one tenant. A section with the empty tenant holds
+		// data of more than one tenant. Logging the object lets an operator
+		// find data that the list does not cover.
 		level.Warn(sc.scanner.logger).Log("msg", "skipped object with more than one tenant", "tenant", sc.tenant, "path", p, "tenants", strings.Join(tenants, ","))
 		sc.multiTenant.Add(1)
 	}

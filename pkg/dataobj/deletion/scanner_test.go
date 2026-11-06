@@ -346,9 +346,9 @@ func (b *listRecordingBucket) IterWithAttributes(ctx context.Context, dir string
 	}, options...)
 }
 
-// placeholderBucket gives an empty directory placeholder object to the
-// callback of a listing of each directory in placeholders, before the other
-// objects. The filesystem bucket cannot hold keys that end in a slash.
+// placeholderBucket adds an empty placeholder object to the listing of each
+// directory in placeholders. The callback gets it before the other objects.
+// The filesystem bucket cannot hold keys that end in a slash.
 type placeholderBucket struct {
 	fileBucket
 	placeholders map[string]string

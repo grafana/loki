@@ -99,8 +99,8 @@ type fileListDecoder struct {
 	header fileListHeader
 	last   string
 	// err is the first error of next, including io.EOF. The JSON decoder
-	// skips a record that fails validation, so a later call must not go on
-	// after an error.
+	// already consumed a record that fails validation. So a later call that
+	// went on would skip that record.
 	err error
 }
 
@@ -109,7 +109,7 @@ type fileListDecoder struct {
 func newFileListDecoder(r io.Reader, tenant string) (*fileListDecoder, error) {
 	src := &readErrRecorder{r: r}
 	// gzip reads directly from an io.ByteReader. This keeps the bytes after
-	// the gzip stream in buf, so that next can find them.
+	// the gzip stream in buf, so that checkEnd can find them.
 	buf := bufio.NewReader(src)
 	gz, err := gzip.NewReader(buf)
 	if err != nil {
