@@ -36,6 +36,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	lokigrpc "github.com/grafana/loki/v3/pkg/util/httpgrpc"
 	lokihttpreq "github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -132,11 +133,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	// Fixed for the scheduler ring, so a configured value never takes effect: warn and reset rather than fail.
 	if cfg.SchedulerRing.NumTokens != NumTokens {
-		return errors.New("Num tokens must not be changed as it will not take effect")
+		level.Warn(util_log.Logger).Log("msg", "ignoring configured query_scheduler.scheduler_ring.num_tokens; it is fixed for the scheduler ring", "configured", cfg.SchedulerRing.NumTokens, "fixed", NumTokens)
+		cfg.SchedulerRing.NumTokens = NumTokens
 	}
 	if cfg.SchedulerRing.ReplicationFactor != ReplicationFactor {
-		return errors.New("Replication factor must not be changed as it will not take effect")
+		level.Warn(util_log.Logger).Log("msg", "ignoring configured query_scheduler.scheduler_ring.replication_factor; it is fixed for the scheduler ring", "configured", cfg.SchedulerRing.ReplicationFactor, "fixed", ReplicationFactor)
+		cfg.SchedulerRing.ReplicationFactor = ReplicationFactor
 	}
 	return nil
 }
