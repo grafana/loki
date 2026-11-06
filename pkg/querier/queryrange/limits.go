@@ -248,6 +248,11 @@ type querySizeLimiter struct {
 	maxLookBackPeriod time.Duration
 	limitFunc         func(context.Context, string) int
 	spec              querySizeLimitSpec
+
+	// splitter makes the same splits as the split middleware after the limiter. The
+	// limiter uses it to count the data that the splits of a range aggregation read again.
+	// It is nil when the limiter does not count re-reads.
+	splitter splitter
 }
 
 func newQuerySizeLimiter(
@@ -298,6 +303,28 @@ func NewQuerySizeLimiterMiddleware(
 	})
 }
 
+// newSplitQuerySizeLimiterMiddleware creates a new Middleware that enforces
+// max_query_bytes_read on metric range queries that the split middleware then splits by
+// time.
+//
+// The estimate is the bytes that all splits read together. A split of a range aggregation
+// also reads the range vector interval before its start, so the splits read more than the
+// unsplit request. splitter must make the same splits as the split middleware after the
+// limiter. Otherwise the limiter counts reads that do not happen.
+func newSplitQuerySizeLimiterMiddleware(
+	engineOpts logql.EngineOpts,
+	logger log.Logger,
+	limits Limits,
+	splitter splitter,
+	statsHandler queryrangebase.Handler,
+) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		q := newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler)
+		q.splitter = splitter
+		return q
+	})
+}
+
 // getBytesReadForRequest returns the number of bytes that would be read for the query in r.
 // Since the query expression may contain multiple stream matchers, this function sums up the
 // bytes that will be read for each stream.
@@ -309,7 +336,10 @@ func NewQuerySizeLimiterMiddleware(
 // individual intervals and offsets
 //   - {job="foo"}
 //   - {job="bar"}
-func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
+//
+// When the limiter has a splitter, the bytes of r include the data that the splits of r
+// read again.
+func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs []string, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
 
@@ -317,13 +347,13 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	fullCtxBytes := uint64(0)
 	if queryLimitCtx != nil && queryLimitCtx.Expr != "" && !queryLimitCtx.From.IsZero() && !queryLimitCtx.To.IsZero() {
 		var err error
-		fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, queryLimitCtx.Expr, queryLimitCtx.From, queryLimitCtx.To)
+		fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, queryLimitCtx.Expr, queryLimitCtx.From, queryLimitCtx.To, nil)
 		if err != nil {
 			return 0, nil
 		}
 	}
 
-	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd())
+	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd(), q.split(tenantIDs, r))
 	if err != nil {
 		return 0, nil
 	}
@@ -335,7 +365,27 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	return queryBytes, nil
 }
 
-func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time) (uint64, error) {
+// split returns the splits that the splitter makes of r, or nil when r is not split.
+//
+// It does not split requests other than *LokiRequest, because metricQuerySplitter panics
+// on them.
+func (q *querySizeLimiter) split(tenantIDs []string, r queryrangebase.Request) []queryrangebase.Request {
+	if q.splitter == nil {
+		return nil
+	}
+	if _, ok := r.(*LokiRequest); !ok {
+		return nil
+	}
+	splits, enabled := q.splitter.split(time.Now().UTC(), tenantIDs, r)
+	if !enabled {
+		return nil
+	}
+	return splits
+}
+
+// getBytesForQueryAndRange estimates the bytes that query reads in [from, to]. When splits
+// is not empty, the estimate is the bytes that the splits read together.
+func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time, splits []queryrangebase.Request) (uint64, error) {
 	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return 0, err
@@ -364,6 +414,12 @@ func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query s
 	}
 
 	combinedStats := stats.MergeStats(matcherStats...)
+	combinedStats.Bytes = 0
+	for i, grp := range matcherGroups {
+		if matcherStats[i] != nil {
+			combinedStats.Bytes += splitBytesRead(matcherStats[i].Bytes, grp.Interval, from, to, splits)
+		}
+	}
 
 	level.Debug(q.logger).Log(
 		append(
@@ -390,7 +446,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 
 	limitFuncCapture := func(id string) int { return q.limitFunc(ctx, id) }
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, limitFuncCapture); maxBytesRead > 0 {
-		bytesRead, err := q.getBytesReadForRequest(ctx, r)
+		bytesRead, err := q.getBytesReadForRequest(ctx, tenantIDs, r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
@@ -405,6 +461,34 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	}
 
 	return q.next.Do(ctx, r)
+}
+
+// splitBytesRead scales bytes to the bytes that splits read together. bytes is the index
+// stats of one matcher group for the request range [from, to]. The stats include the range
+// vector interval before from.
+//
+// A split reads its own time range plus the range vector interval before it. The windows
+// of adjacent splits overlap by about the interval, so each split reads the overlap again.
+// The index stats cover the overlap only once.
+//
+// The scaling assumes that the matcher group stores data at a constant rate. It scales the
+// stats instead of sending one index request per split, so that the index load does not
+// grow with the number of splits.
+func splitBytesRead(bytes uint64, interval time.Duration, from, to time.Time, splits []queryrangebase.Request) uint64 {
+	if interval <= 0 || len(splits) < 2 {
+		return bytes
+	}
+
+	covered := to.Sub(from) + interval
+	var read time.Duration
+	for _, s := range splits {
+		read += s.GetEnd().Sub(s.GetStart()) + interval
+	}
+	if covered <= 0 || read <= covered {
+		return bytes
+	}
+
+	return uint64(float64(bytes) * float64(read) / float64(covered))
 }
 
 type seriesLimiter struct {
