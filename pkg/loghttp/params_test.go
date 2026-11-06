@@ -365,6 +365,12 @@ func Test_parseTimestamp(t *testing.T) {
 		{"RFC3339 format", "2002-10-02T15:00:00Z", now, time.Date(2002, 10, 02, 15, 0, 0, 0, time.UTC), false},
 		{"RFC3339nano format", "2009-11-10T23:00:00.000000001Z", now, time.Date(2009, 11, 10, 23, 0, 0, 1, time.UTC), false},
 		{"invalid", "we", now, time.Time{}, true},
+		// Scientific notation that parses as a float but lands far past
+		// year 2286 used to propagate and drive the query planner into
+		// OOM; reject it as out of range (#20293).
+		{"scientific notation out of range", "1.767610546875e+18", now, time.Time{}, true},
+		{"negative float", "-1.5", now, time.Time{}, true},
+		{"NaN", "NaN", now, time.Time{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
