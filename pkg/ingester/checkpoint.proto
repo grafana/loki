@@ -33,6 +33,9 @@ message Chunk {
   bytes data = 7;
   // data to be unmarshaled into a MemChunk's headBlock
   bytes head = 8;
+  // highest timestamp in milliseconds of the Kafka records that fed this chunk, or 0 if there is none.
+  // Used to stamp the same IngestedAt on every replica flushing the chunk.
+  int64 ingestedAtMs = 9;
 }
 
 // Series is a {de,}serializable intermediate type for Series.

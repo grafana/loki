@@ -50,6 +50,7 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Ch
 		c,
 		chunkStart,
 		now,
+		0,
 	)
 	// Force checksum calculation.
 	err := chunk.Encode()
@@ -121,6 +122,32 @@ func TestChunkCodec(t *testing.T) {
 			if c.err == nil {
 				require.Equal(t, have.encoded, c.chunk.encoded)
 			}
+		})
+	}
+}
+
+func TestChunkCodecIngestedAt(t *testing.T) {
+	decodeContext := NewDecodeContext()
+
+	for _, tc := range []struct {
+		name       string
+		ingestedAt model.Time
+	}{
+		{"zero (non-backfill chunk)", 0},
+		{"millisecond precision (written before day rounding)", 1792752435882},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := dummyChunkFor(model.Now(), labelsForDummyChunks)
+			c.IngestedAt = tc.ingestedAt
+			require.NoError(t, c.Encode())
+			encoded, err := c.Encoded()
+			require.NoError(t, err)
+
+			key := fmt.Sprintf("%s/%x:%x:%x:%x", c.UserID, c.Fingerprint, int64(c.From), int64(c.Through), c.Checksum)
+			have, err := ParseExternalKey(userID, key)
+			require.NoError(t, err)
+			require.NoError(t, have.Decode(decodeContext, encoded))
+			require.Equal(t, tc.ingestedAt, have.IngestedAt)
 		})
 	}
 }

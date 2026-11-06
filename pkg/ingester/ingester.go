@@ -774,7 +774,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) // #nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
@@ -1000,8 +1000,20 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 	return services.StopAndAwaitTerminated(context.Background(), i)
 }
 
+type TimestampedPush struct {
+	*logproto.PushRequest
+	// IngestedAt is the timestamp of the Kafka record the push was read from, or zero if there is none.
+	IngestedAt time.Time
+}
+
 // Push implements logproto.Pusher.
+// NOTE: gRPC pushes don't carry a record timestamp.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	return i.PushWithTimestamp(ctx, TimestampedPush{PushRequest: req})
+}
+
+// PushWithTimestamp pushes a request along with the timestamp of the Kafka record it was read from.
+func (i *Ingester) PushWithTimestamp(ctx context.Context, push TimestampedPush) (*logproto.PushResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1023,7 +1035,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	return &logproto.PushResponse{}, instance.Push(ctx, req)
+	return &logproto.PushResponse{}, instance.PushWithTimestamp(ctx, push)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
