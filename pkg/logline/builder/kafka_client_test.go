@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
@@ -49,4 +50,20 @@ func TestKafkaClientCapsAPIVersions(t *testing.T) {
 	for _, v := range versions {
 		require.Equal(t, int16(3), v)
 	}
+}
+
+// TestKafkaClientStartsAtEarliestOffset checks that a new consumer group
+// starts at the earliest record.
+func TestKafkaClientStartsAtEarliestOffset(t *testing.T) {
+	_, cfg := setupKafkaTest(t)
+
+	_, indexStore := newTestStore(t)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	client, err := svc.createKafkaClient()
+	require.NoError(t, err)
+	t.Cleanup(client.Close)
+
+	require.Equal(t, kgo.NewOffset().AtStart(), client.OptValue(kgo.ConsumeStartOffset))
 }
