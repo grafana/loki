@@ -35,7 +35,7 @@ import (
 	"github.com/grafana/loki/v4/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v4/pkg/storage/chunk/client/hedging"
 	clientutil "github.com/grafana/loki/v4/pkg/storage/chunk/client/util"
-	storageawscommon "github.com/grafana/loki/v4/pkg/storage/common/aws"
+	commonaws "github.com/grafana/loki/v4/pkg/storage/common/aws"
 	"github.com/grafana/loki/v4/pkg/util"
 	"github.com/grafana/loki/v4/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v4/pkg/util/instrument"
@@ -135,7 +135,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
 	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"s3.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the S3 endpoint.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
-	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", storageawscommon.StorageClassStandard, fmt.Sprintf("The S3 storage class which objects will use. Supported values are: %s.", strings.Join(storageawscommon.SupportedStorageClasses, ", ")))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", string(types.StorageClassStandard), "The S3 storage class which objects will use. "+commonaws.StorageClassUsage())
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
@@ -148,7 +148,7 @@ func (cfg *S3Config) Validate() error {
 		return errUnsupportedSignatureVersion
 	}
 
-	return storageawscommon.ValidateStorageClass(cfg.StorageClass)
+	return commonaws.ValidateStorageClass(cfg.StorageClass)
 }
 
 type s3Deleter interface {
