@@ -235,3 +235,32 @@ func TestResourceAttrsToStreamLabels_ServiceNameDiscovery(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamLabelsForRecord(t *testing.T) {
+	resource := model.LabelSet{"service_name": "api", "env": "prod"}
+
+	t.Run("no index labels returns the resource set itself", func(t *testing.T) {
+		got, err := StreamLabelsForRecord(resource, nil)
+		require.NoError(t, err)
+		require.Equal(t, resource, got)
+		got["env"] = "mutated"
+		require.Equal(t, model.LabelValue("mutated"), resource["env"], "the same map is returned, not a copy")
+		resource["env"] = "prod"
+
+		got, err = StreamLabelsForRecord(resource, model.LabelSet{})
+		require.NoError(t, err)
+		require.Equal(t, resource, got)
+	})
+
+	t.Run("index labels are added and win on collision", func(t *testing.T) {
+		got, err := StreamLabelsForRecord(resource, model.LabelSet{"env": "canary", "team": "blue"})
+		require.NoError(t, err)
+		require.Equal(t, model.LabelSet{"service_name": "api", "env": "canary", "team": "blue"}, got)
+		require.Equal(t, model.LabelSet{"service_name": "api", "env": "prod"}, resource, "resource set is not modified")
+	})
+
+	t.Run("invalid combined set is an error", func(t *testing.T) {
+		_, err := StreamLabelsForRecord(resource, model.LabelSet{"": "x"})
+		require.ErrorContains(t, err, "invalid labels with log attributes")
+	})
+}
