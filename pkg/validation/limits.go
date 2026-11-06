@@ -116,6 +116,7 @@ type Limits struct {
 	MaxLineSizeTruncateIdentifier string           `yaml:"max_line_size_truncate_identifier" json:"max_line_size_truncate_identifier"`
 	MaxPushSize                   flagext.ByteSize `yaml:"max_push_size" json:"max_push_size"`
 	IncrementDuplicateTimestamp   bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
+	ForcedLabelsHeaderEnabled     bool             `yaml:"forced_labels_header_enabled" json:"forced_labels_header_enabled" category:"experimental"`
 	SimulatedPushLatency          time.Duration    `yaml:"simulated_push_latency" json:"simulated_push_latency" doc:"description=Simulated latency to add to push requests. Used for testing. Set to 0s to disable."`
 
 	// Metadata field extraction
@@ -426,6 +427,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 15, "Maximum number of label names per series.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", true, "Whether or not old samples will be rejected.")
 	f.BoolVar(&l.IncrementDuplicateTimestamp, "validation.increment-duplicate-timestamps", false, "Alter the log line timestamp during ingestion when the timestamp is the same as the previous entry for the same stream. When enabled, if a log line in a push request has the same timestamp as the previous line for the same stream, one nanosecond is added to the log line. This will preserve the received order of log lines with the exact same timestamp when they are queried, by slightly altering their stored timestamp. NOTE: This is imperfect, because Loki accepts out of order writes, and another push request for the same stream could contain duplicate timestamps to existing entries and they will not be incremented.")
+	f.BoolVar(&l.ForcedLabelsHeaderEnabled, "distributor.forced-labels-header-enabled", false, "Experimental: Apply the labels of the X-Loki-Forced-Labels HTTP header, such as {user=\"alice\"}, to every stream of Loki and OTLP push requests, overwriting stream labels with the same name. Only enable this when an authenticating proxy in front of Loki sets the header and strips any value sent by clients; otherwise clients can set any label. When disabled, the header is ignored.")
 	l.DiscoverServiceName = []string{
 		"service",
 		"app",
@@ -1167,6 +1169,12 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 
 func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
+}
+
+// ForcedLabelsHeaderEnabled reports whether the distributor applies the labels of the
+// X-Loki-Forced-Labels header to the push requests of the tenant.
+func (o *Overrides) ForcedLabelsHeaderEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).ForcedLabelsHeaderEnabled
 }
 
 func (o *Overrides) DiscoverGenericFields(userID string) map[string][]string {

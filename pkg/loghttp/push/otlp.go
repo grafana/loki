@@ -201,6 +201,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	// config cannot drop them.
 	backfillShard := ExtractBackfillShardContext(ctx)
 
+	// If an authenticating proxy forces labels (X-Loki-Forced-Labels header), every stream gets
+	// them below, overwriting the labels with the same name that come from OTLP attributes.
+	forcedLabels := ExtractForcedLabelsContext(ctx)
+
 	mostRecentEntryTimestamp := time.Time{}
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
@@ -226,6 +230,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			streamLabels[constants.BackfillLabel] = "true"
 			streamLabels[constants.BackfillShardLabel] = model.LabelValue(backfillShard)
 		}
+
+		setForcedLabelsOnLabelSet(streamLabels, forcedLabels)
 
 		var pushedLabels model.LabelSet
 		if logServiceNameDiscovery {
@@ -337,6 +343,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					for k, v := range logLabels {
 						combinedLabels[k] = v
 					}
+					// Log attributes promoted to index labels must not overwrite forced labels.
+					setForcedLabelsOnLabelSet(combinedLabels, forcedLabels)
 
 					if err := combinedLabels.Validate(); err != nil {
 						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))

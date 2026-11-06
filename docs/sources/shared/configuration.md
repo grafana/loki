@@ -4137,6 +4137,14 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# Experimental: Apply the labels of the X-Loki-Forced-Labels HTTP header, such
+# as {user="alice"}, to every stream of Loki and OTLP push requests, overwriting
+# stream labels with the same name. Only enable this when an authenticating
+# proxy in front of Loki sets the header and strips any value sent by clients;
+# otherwise clients can set any label. When disabled, the header is ignored.
+# CLI flag: -distributor.forced-labels-header-enabled
+[forced_labels_header_enabled: <boolean> | default = false]
+
 # Simulated latency to add to push requests. Used for testing. Set to 0s to
 # disable.
 # CLI flag: -limits.simulated-push-latency
