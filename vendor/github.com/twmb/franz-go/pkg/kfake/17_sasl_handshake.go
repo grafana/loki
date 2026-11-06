@@ -25,8 +25,17 @@ func (c *Cluster) handleSASLHandshake(creq *clientReq) (kmsg.Response, error) {
 	}
 
 	if creq.cc.saslStage != saslStageBegin {
-		resp.ErrorCode = kerr.IllegalSaslState.Code
-		return resp, nil
+		// KIP-368: when the connection's session carries an expiration
+		// (its authenticate ran while connections.max.reauth.ms was
+		// positive), a new handshake on the authenticated connection
+		// begins re-authentication
+		// (KafkaChannel.maybeBeginServerReauthentication). Otherwise
+		// the handshake is processed normally, which fails here with
+		// an illegal state.
+		if creq.cc.saslStage != saslStageComplete || !creq.cc.hasSessionExpiry {
+			resp.ErrorCode = kerr.IllegalSaslState.Code
+			return resp, nil
+		}
 	}
 
 	switch req.Mechanism {

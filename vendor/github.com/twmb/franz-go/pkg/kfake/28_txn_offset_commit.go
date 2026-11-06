@@ -17,8 +17,9 @@ import (
 // * v2: ThrottleMillis
 // * v3: Flexible versions, GenerationID and MemberID for zombie fencing (KIP-447)
 // * v4-5: No field changes; v5 enables implicit group addition (KIP-890)
+// * v6: TopicID replaces Topic (KIP-1319)
 
-func init() { regKey(28, 0, 5) }
+func init() { regKey(28, 0, 6) }
 
 func (c *Cluster) handleTxnOffsetCommit(creq *clientReq) (kmsg.Response, error) {
 	req := creq.kreq.(*kmsg.TxnOffsetCommitRequest)
@@ -27,11 +28,39 @@ func (c *Cluster) handleTxnOffsetCommit(creq *clientReq) (kmsg.Response, error) 
 		return nil, err
 	}
 
+	// v6: resolve TopicIDs to topic names, mirroring OffsetCommit v10.
+	// Topics with unknown IDs get per-partition UNKNOWN_TOPIC_ID errors;
+	// valid topics pass through by name.
+	var errTopics []kmsg.TxnOffsetCommitResponseTopic
+	if req.Version >= 6 {
+		valid := req.Topics[:0]
+		for i := range req.Topics {
+			t := &req.Topics[i]
+			name, ok := c.data.id2t[t.TopicID]
+			if !ok {
+				st := kmsg.NewTxnOffsetCommitResponseTopic()
+				st.TopicID = t.TopicID
+				for _, p := range t.Partitions {
+					sp := kmsg.NewTxnOffsetCommitResponseTopicPartition()
+					sp.Partition = p.Partition
+					sp.ErrorCode = kerr.UnknownTopicID.Code
+					st.Partitions = append(st.Partitions, sp)
+				}
+				errTopics = append(errTopics, st)
+				continue
+			}
+			t.Topic = name
+			valid = append(valid, *t)
+		}
+		req.Topics = valid
+	}
+
 	errResp := func(errCode int16) kmsg.Response {
 		resp := req.ResponseKind().(*kmsg.TxnOffsetCommitResponse)
 		for _, rt := range req.Topics {
 			st := kmsg.NewTxnOffsetCommitResponseTopic()
 			st.Topic = rt.Topic
+			st.TopicID = rt.TopicID
 			for _, rp := range rt.Partitions {
 				sp := kmsg.NewTxnOffsetCommitResponseTopicPartition()
 				sp.Partition = rp.Partition
@@ -40,25 +69,59 @@ func (c *Cluster) handleTxnOffsetCommit(creq *clientReq) (kmsg.Response, error) 
 			}
 			resp.Topics = append(resp.Topics, st)
 		}
+		resp.Topics = append(resp.Topics, errTopics...)
 		return resp
 	}
 
+	// Faults fire only on the group's coordinator; elsewhere
+	// doTxnOffsetCommit answers NOT_COORDINATOR. A timed-out commit falls
+	// through to the per-partition checks.
+	misrouted := !c.isCoordinator(creq, req.Group)
+
 	// ACL check: WRITE on TxnID
-	if !c.allowedACL(creq, req.TransactionalID, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationWrite) {
-		return errResp(kerr.TransactionalIDAuthorizationFailed.Code), nil
+	if e := c.deny(creq, req.TransactionalID, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationWrite, faultKey{txnID: req.TransactionalID, misrouted: misrouted}); e != nil && creq.skipsWork(e) {
+		return errResp(e.Code), nil
 	}
 
 	// ACL check: READ on Group
-	if !c.allowedACL(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead) {
-		return errResp(kerr.GroupAuthorizationFailed.Code), nil
+	if e := c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{txnID: req.TransactionalID, group: req.Group, misrouted: misrouted}); e != nil && creq.skipsWork(e) {
+		return errResp(e.Code), nil
 	}
 
 	// ACL check: READ on each Topic
 	for _, rt := range req.Topics {
-		if !c.allowedACL(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationRead) {
-			return errResp(kerr.TopicAuthorizationFailed.Code), nil
+		if e := c.deny(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationRead, faultKey{txnID: req.TransactionalID, group: req.Group, topic: rt.Topic, misrouted: misrouted}); e != nil && creq.skipsWork(e) {
+			return errResp(e.Code), nil
 		}
 	}
 
-	return c.pids.doTxnOffsetCommit(creq), nil
+	// A topic ID we do not know has no name to authorize, but a fault can
+	// still fail it.
+	for i := range errTopics {
+		st := &errTopics[i]
+		for j := range st.Partitions {
+			if e := creq.faults.check(faultKey{txnID: req.TransactionalID, group: req.Group, topicID: st.TopicID, misrouted: misrouted}.part(st.Partitions[j].Partition)); e != nil {
+				st.Partitions[j].ErrorCode = e.Code
+			}
+		}
+	}
+	if len(req.Topics) == 0 && len(errTopics) > 0 {
+		return errResp(0), nil
+	}
+
+	resp := c.pids.doTxnOffsetCommit(creq).(*kmsg.TxnOffsetCommitResponse)
+
+	// v6: echo TopicIDs on the response (the name is not on the wire) and
+	// merge in any unknown-id error topics from the resolution above.
+	if req.Version >= 6 {
+		t2id := make(map[string][16]byte, len(req.Topics))
+		for i := range req.Topics {
+			t2id[req.Topics[i].Topic] = req.Topics[i].TopicID
+		}
+		for i := range resp.Topics {
+			resp.Topics[i].TopicID = t2id[resp.Topics[i].Topic]
+		}
+		resp.Topics = append(resp.Topics, errTopics...)
+	}
+	return resp, nil
 }

@@ -330,9 +330,11 @@ func (cl *Client) DescribeGroups(ctx context.Context, groups ...string) (Describ
 	var seList *ShardErrors
 	if len(groups) == 0 {
 		listed, err := cl.ListGroupsByType(ctx, []string{"classic"})
+		var isShardErr bool
+		seList, isShardErr = errors.AsType[*ShardErrors](err)
 		switch {
 		case err == nil:
-		case errors.As(err, &seList):
+		case isShardErr:
 		default:
 			return nil, err
 		}
@@ -415,11 +417,11 @@ func (cl *Client) DescribeGroups(ctx context.Context, groups ...string) (Describ
 		return nil
 	})
 
-	var seDesc *ShardErrors
+	seDesc, isShardErr := errors.AsType[*ShardErrors](err)
 	switch {
 	case err == nil:
 		return described, seList.into()
-	case errors.As(err, &seDesc):
+	case isShardErr:
 		if seList != nil {
 			seDesc.Errs = append(seList.Errs, seDesc.Errs...)
 		}
@@ -431,8 +433,9 @@ func (cl *Client) DescribeGroups(ctx context.Context, groups ...string) (Describ
 
 // DeleteGroupResponse contains the response for an individual deleted group.
 type DeleteGroupResponse struct {
-	Group string // Group is the group this response is for.
-	Err   error  // Err is non-nil if the group failed to be deleted.
+	Group      string // Group is the group this response is for.
+	Err        error  // Err is non-nil if the group failed to be deleted.
+	ErrMessage string // ErrMessage a potential extra message describing any error; requires Kafka 4.4+ (KIP-1331).
 }
 
 // DeleteGroupResponses contains per-group responses to deleted groups.
@@ -515,8 +518,9 @@ func (cl *Client) DeleteGroups(ctx context.Context, groups ...string) (DeleteGro
 		resp := kr.(*kmsg.DeleteGroupsResponse)
 		for _, g := range resp.Groups {
 			rs[g.Group] = DeleteGroupResponse{ // group is always on one broker, no need to exist-check
-				Group: g.Group,
-				Err:   kerr.ErrorForCode(g.ErrorCode),
+				Group:      g.Group,
+				Err:        kerr.ErrorForCode(g.ErrorCode),
+				ErrMessage: unptrStr(g.ErrorMessage),
 			}
 		}
 		return nil
@@ -1060,7 +1064,9 @@ func (cl *Client) FetchOffsetsForTopics(ctx context.Context, group string, topic
 	os := make(Offsets)
 
 	var all bool
-	keept := topics[:0]
+	// Filter into a fresh slice: topics is the caller's variadic slice and
+	// filtering into topics[:0] would rewrite the caller's backing array.
+	keept := make([]string, 0, len(topics))
 	for _, topic := range topics {
 		if topic == FetchAllGroupTopics {
 			all = true
@@ -1609,12 +1615,12 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 	// For shard errors, if we had some partial success, then we continue
 	// to the rest of the logic in this function.
 	// If every shard failed, or on all other errors, we return.
-	var ae *AuthError
-	var se *ShardErrors
+	_, isAuthErr := errors.AsType[*AuthError](err)
+	se, isShardErr := errors.AsType[*ShardErrors](err)
 	switch {
-	case errors.As(err, &ae):
+	case isAuthErr:
 		return nil, err
-	case errors.As(err, &se) && !se.AllFailed:
+	case isShardErr && !se.AllFailed:
 		for _, se := range se.Errs {
 			// can be ListGroupsRequest as well
 			req, ok := se.Req.(*kmsg.DescribeGroupsRequest)
@@ -1662,8 +1668,9 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 	// because we cannot calculate lag for it.
 	fetched := cl.FetchManyOffsets(ctx, rem()...)
 	for _, r := range fetched {
+		_, isAuthErr = errors.AsType[*AuthError](r.Err)
 		switch {
-		case errors.As(r.Err, &ae):
+		case isAuthErr:
 			return nil, r.Err
 		case r.Err != nil:
 			l := lags[r.Group]
@@ -1698,10 +1705,12 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 			// As above: return on auth error. If there are shard errors,
 			// the topics will be missing in the response and then
 			// CalculateGroupLag will return UnknownTopicOrPartition.
+			_, isAuthErr = errors.AsType[*AuthError](err)
+			_, isShardErr = errors.AsType[*ShardErrors](err)
 			switch {
-			case errors.As(err, &ae):
+			case isAuthErr:
 				return nil, err
-			case errors.As(err, &se):
+			case isShardErr:
 				// do nothing: these show up as errListMissing
 			case err != nil:
 				return nil, err
@@ -2211,9 +2220,11 @@ func (cl *Client) DescribeConsumerGroups(ctx context.Context, groups ...string) 
 	var seList *ShardErrors
 	if len(groups) == 0 {
 		listed, err := cl.ListGroupsByType(ctx, []string{"consumer"})
+		var isShardErr bool
+		seList, isShardErr = errors.AsType[*ShardErrors](err)
 		switch {
 		case err == nil:
-		case errors.As(err, &seList):
+		case isShardErr:
 		default:
 			return nil, err
 		}
@@ -2286,11 +2297,11 @@ func (cl *Client) DescribeConsumerGroups(ctx context.Context, groups ...string) 
 		return nil
 	})
 
-	var seDesc *ShardErrors
+	seDesc, isShardErr := errors.AsType[*ShardErrors](err)
 	switch {
 	case err == nil:
 		return described, seList.into()
-	case errors.As(err, &seDesc):
+	case isShardErr:
 		if seList != nil {
 			seDesc.Errs = append(seList.Errs, seDesc.Errs...)
 		}
@@ -2449,9 +2460,11 @@ func (cl *Client) DescribeShareGroups(ctx context.Context, groups ...string) (De
 	var seList *ShardErrors
 	if len(groups) == 0 {
 		listed, err := cl.ListGroupsByType(ctx, []string{"share"})
+		var isShardErr bool
+		seList, isShardErr = errors.AsType[*ShardErrors](err)
 		switch {
 		case err == nil:
-		case errors.As(err, &seList):
+		case isShardErr:
 		default:
 			return nil, err
 		}
@@ -2508,11 +2521,11 @@ func (cl *Client) DescribeShareGroups(ctx context.Context, groups ...string) (De
 		return nil
 	})
 
-	var seDesc *ShardErrors
+	seDesc, isShardErr := errors.AsType[*ShardErrors](err)
 	switch {
 	case err == nil:
 		return described, seList.into()
-	case errors.As(err, &seDesc):
+	case isShardErr:
 		if seList != nil {
 			seDesc.Errs = append(seList.Errs, seDesc.Errs...)
 		}
@@ -2619,8 +2632,16 @@ func (cl *Client) CommitOffsetsByID(ctx context.Context, group string, os Offset
 		if topic == "" {
 			topic = id2name[id]
 		}
-		rt := make(map[int32]OffsetResponse)
-		rs[id] = rt
+		// Merge rather than overwrite: if the broker returns a topic we
+		// cannot resolve to an ID (absent from our request mapping), id
+		// stays the zero value; two such topics previously collided on
+		// the zero key and only the last survived. Per-partition Offset
+		// values still carry their topic names.
+		rt := rs[id]
+		if rt == nil {
+			rt = make(map[int32]OffsetResponse)
+			rs[id] = rt
+		}
 		for _, p := range t.Partitions {
 			o, ok := Offset{}, false
 			if ops := os[id]; ops != nil {
@@ -2736,28 +2757,14 @@ func (cl *Client) FetchOffsetsByID(ctx context.Context, group string) (OffsetRes
 		return rs, nil
 	}
 
-	// v0-v7 fallback: resp.Topics only. Convert to group format
-	// for the shared buildPartitions helper.
-	rs := make(OffsetResponsesByID)
-	for _, t := range resp.Topics {
-		gp := make([]kmsg.OffsetFetchResponseGroupTopicPartition, len(t.Partitions))
-		for i, p := range t.Partitions {
-			gp[i] = kmsg.OffsetFetchResponseGroupTopicPartition{
-				Partition:   p.Partition,
-				Offset:      p.Offset,
-				LeaderEpoch: p.LeaderEpoch,
-				Metadata:    p.Metadata,
-				ErrorCode:   p.ErrorCode,
-			}
-		}
-		// v0-v7 has no TopicID; use zero value.
-		rt, err := buildPartitions(t.Topic, TopicID{}, gp)
-		if err != nil {
-			return nil, err
-		}
-		rs[TopicID{}] = rt
-	}
-	return rs, nil
+	// Unreachable defensively: kgo's OffsetFetch sharder synthesizes
+	// resp.Groups from the top-level Topics for v0-v7 responses, so the
+	// group loop above always runs. If we ever do land here, the response
+	// carries topic NAMES only -- there is no ID to key the by-ID result
+	// type with, and the prior code funneled every topic onto the zero
+	// TopicID key, keeping only the last. Fail loudly instead of
+	// returning silently collapsed data.
+	return nil, errors.New("offset fetch response contained no groups and cannot be keyed by topic ID; use FetchOffsets against brokers this old")
 }
 
 ///////////////////
@@ -2928,9 +2935,11 @@ func (cl *Client) DescribeShareGroupOffsets(ctx context.Context, groups ...strin
 	var seList *ShardErrors
 	if len(groups) == 0 {
 		listed, err := cl.ListGroupsByType(ctx, []string{"share"})
+		var isShardErr bool
+		seList, isShardErr = errors.AsType[*ShardErrors](err)
 		switch {
 		case err == nil:
-		case errors.As(err, &seList):
+		case isShardErr:
 		default:
 			return nil, err
 		}
@@ -2980,11 +2989,11 @@ func (cl *Client) DescribeShareGroupOffsets(ctx context.Context, groups ...strin
 		return nil
 	})
 
-	var seDesc *ShardErrors
+	seDesc, isShardErr := errors.AsType[*ShardErrors](err)
 	switch {
 	case err == nil:
 		return described, seList.into()
-	case errors.As(err, &seDesc):
+	case isShardErr:
 		if seList != nil {
 			seDesc.Errs = append(seList.Errs, seDesc.Errs...)
 		}
