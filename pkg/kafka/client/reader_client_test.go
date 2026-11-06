@@ -68,6 +68,7 @@ func TestNewReaderClient(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, err := NewReaderClient("test-client", tt.config, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
+			t.Cleanup(client.Close)
 
 			err = client.Ping(context.Background())
 			if tt.wantErr {
@@ -95,8 +96,10 @@ func TestSetDefaultNumberOfPartitionsForAutocreatedTopics(t *testing.T) {
 		AutoCreateTopicDefaultPartitions: 100,
 	}
 
-	cluster.ControlKey(kmsg.AlterConfigs.Int16(), func(request kmsg.Request) (kmsg.Response, error, bool) {
-		r := request.(*kmsg.AlterConfigsRequest)
+	fired := false
+	cluster.ControlKey(kmsg.IncrementalAlterConfigs.Int16(), func(request kmsg.Request) (kmsg.Response, error, bool) {
+		fired = true
+		r := request.(*kmsg.IncrementalAlterConfigsRequest)
 
 		require.Len(t, r.Resources, 1)
 		res := r.Resources[0]
@@ -107,11 +110,15 @@ func TestSetDefaultNumberOfPartitionsForAutocreatedTopics(t *testing.T) {
 		require.NotNil(t, *cfg.Value)
 		require.Equal(t, "100", *cfg.Value)
 
-		return &kmsg.AlterConfigsResponse{}, nil, true
+		return &kmsg.IncrementalAlterConfigsResponse{}, nil, true
 	})
 
-	client, err := kgo.NewClient(commonKafkaClientOptions(cfg, nil, log.NewNopLogger())...)
+	opts := append(commonKafkaClientOptions(cfg, nil, log.NewNopLogger()), kgo.SeedBrokers(cfg.ReaderConfig.Address))
+	client, err := kgo.NewClient(opts...)
 	require.NoError(t, err)
+	t.Cleanup(client.Close)
 
 	setDefaultNumberOfPartitionsForAutocreatedTopics(cfg, client, log.NewNopLogger())
+
+	require.True(t, fired, "setDefaultNumberOfPartitionsForAutocreatedTopics did not fire")
 }
