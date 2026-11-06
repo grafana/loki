@@ -586,7 +586,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
-	streams, limitsErr := d.enforceStreamLimits(ctx, tenantID, &sharder, validationContext, streamResolver, format)
+	streams, limitsErr := d.enforceStreamLimits(ctx, tenantID, sharder.result(), validationContext, streamResolver, format)
 	if limitsErr != nil {
 		limitsErr = httpgrpc.Error(http.StatusTooManyRequests, limitsErr.Error())
 	}
@@ -610,6 +610,15 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		}
 	}
 
+	if err := d.writeStreams(ctx, tenantID, streams); err != nil {
+		return nil, err
+	}
+	return &logproto.PushResponse{}, finalErr
+}
+
+// writeStreams writes streams to the tee, Kafka and the ingesters, as configured, and waits until
+// every write succeeded, one failed, or ctx is done.
+func (d *Distributor) writeStreams(ctx context.Context, tenantID string, streams []KeyedStream) error {
 	tracker := PushTracker{
 		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - doneWithResult only sends once on each
 		err:  make(chan error, 1),
@@ -648,9 +657,10 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		// creates a shuffle shard which contains the complete set of partitions,
 		// which is the same as not shuffle sharding at all.
 		if shardSize > 0 {
+			var err error
 			subring, err = subring.ShuffleShard(tenantID, shardSize)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 		// Unlike the ingester writes, this write uses ctx, so it stops when ctx is canceled,
@@ -686,7 +696,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			}
 			return nil
 		}(); err != nil {
-			return nil, err
+			return err
 		}
 
 		for ingester, streams := range streamsByIngester {
@@ -716,11 +726,11 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	select {
 	case err := <-tracker.err:
-		return nil, err
+		return err
 	case <-tracker.done:
-		return &logproto.PushResponse{}, finalErr
+		return nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	}
 }
 
@@ -865,10 +875,10 @@ func (d *Distributor) validateStreams(
 	return result, nil
 }
 
-// enforceStreamLimits enforces the limits service's stream limits on the streams sharder collected
-// and returns the streams to write. Live-mode candidates are sharded with the count the service
-// returns, and shadow-mode candidates are compared against its answer, see streamSharder. Nothing is
-// enforced while the ingest limits are disabled.
+// enforceStreamLimits enforces the limits service's stream limits on the sharded streams and returns
+// the streams to write. Live-mode candidates are sharded with the count the service returns, and
+// shadow-mode candidates are compared against its answer, see shardedStreams. Nothing is enforced
+// while the ingest limits are disabled.
 //
 // Streams over the stream limit are dropped and reported as discarded, and the returned error names
 // one of them. It is the only error returned: when the limits service fails, the limits fail open.
@@ -877,12 +887,12 @@ func (d *Distributor) validateStreams(
 func (d *Distributor) enforceStreamLimits(
 	ctx context.Context,
 	tenantID string,
-	sharder *streamSharder,
+	sharded shardedStreams,
 	vCtx validationContext,
 	streamResolver push.StreamResolver,
 	format string,
 ) ([]KeyedStream, error) {
-	streams := sharder.streams
+	streams := sharded.streams
 	// Candidates are only collected while the ingest limits are enabled, see
 	// streamSharder.shardByRate.
 	if !d.cfg.IngestLimitsEnabled {
@@ -897,9 +907,9 @@ func (d *Distributor) enforceStreamLimits(
 		liveStreams  []KeyedStream
 		liveRejected []logproto.InternalStreamAdapter
 	)
-	if len(sharder.liveCandidates) > 0 {
-		shardCounts := d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeLive, sharder.liveCandidates)
-		for i, c := range sharder.liveCandidates {
+	if len(sharded.liveCandidates) > 0 {
+		shardCounts := d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeLive, sharded.liveCandidates)
+		for i, c := range sharded.liveCandidates {
 			count := shardCounts[i]
 			if count == 0 {
 				// The limits service has no stream budget left for this
@@ -917,10 +927,10 @@ func (d *Distributor) enforceStreamLimits(
 		}
 	}
 
-	if len(sharder.shadowCandidates) > 0 {
+	if len(sharded.shadowCandidates) > 0 {
 		// The returned counts are discarded: these streams were already
 		// sharded with the local rate store's count.
-		d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeShadow, sharder.shadowCandidates)
+		d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeShadow, sharded.shadowCandidates)
 	}
 
 	var limitsErr error
