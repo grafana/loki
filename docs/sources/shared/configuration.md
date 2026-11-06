@@ -1395,6 +1395,12 @@ ingest_limits:
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
 
+  # How often to evict the streams of ingestion policies with a
+  # limits_service_streams_expiry that have been idle for longer than that
+  # expiry.
+  # CLI flag: -ingest-limits.policies-custom-eviction-interval
+  [policies_custom_eviction_interval: <duration> | default = 1m]
+
   # Enable durability for stream sharding. Rate buckets are written to the
   # stream metadata topic and restored from it, which removes the warm-up period
   # after a restart or a partition rebalance during which streams are not
@@ -3920,6 +3926,12 @@ wal:
   # CLI flag: -ingester.wal-disk-full-threshold
   [disk_full_threshold: <float> | default = 0.9]
 
+  # Write WAL records as V4, which store the Kafka record timestamp. Older
+  # versions can't replay them. When disabled, records are written as V3 and V4
+  # timestamps are ignored on replay.
+  # CLI flag: -ingester.wal-record-v4-enabled
+  [record_v4_enabled: <boolean> | default = false]
+
 # Shard factor used in the ingesters for the in process reverse index. This MUST
 # be evenly divisible by ALL schema shard factors or Loki will not start.
 # CLI flag: -ingester.index-shards
@@ -5969,9 +5981,9 @@ http_config:
 # CLI flag: -<prefix>.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
-# The S3 storage class which objects will use. Supported values are: GLACIER,
-# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
-# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# The S3 storage class which objects will use. Supported values are: STANDARD,
+# STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
+# with MinIO.
 # CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
@@ -6846,9 +6858,8 @@ s3:
 
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
-  # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
-  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS,
-  # FSX_ONTAP, AWS_BACKUP_WARM, AWS_BACKUP_LOW_COST_WARM
+  # STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
+  # with MinIO.
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 

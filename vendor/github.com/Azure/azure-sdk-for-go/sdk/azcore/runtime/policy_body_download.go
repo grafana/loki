@@ -18,18 +18,21 @@ func bodyDownloadPolicy(req *policy.Request) (*http.Response, error) {
 	if err != nil {
 		return resp, err
 	}
-	var opValues bodyDownloadPolicyOpValues
-	// don't skip downloading error response bodies
-	if req.OperationValue(&opValues); opValues.Skip && resp.StatusCode < 400 {
+	if shouldSkipBodyDownload(req, resp) {
 		return resp, err
 	}
-	// Either bodyDownloadPolicyOpValues was not specified (so skip is false)
-	// or it was specified and skip is false: don't skip downloading the body
 	_, err = Payload(resp)
 	if err != nil {
 		return resp, newBodyDownloadError(err, req)
 	}
 	return resp, err
+}
+
+func shouldSkipBodyDownload(req *policy.Request, resp *http.Response) bool {
+	var opValues bodyDownloadPolicyOpValues
+	req.OperationValue(&opValues)
+	// Error response bodies are downloaded even for streaming operations.
+	return opValues.Skip && resp.StatusCode < http.StatusBadRequest
 }
 
 // bodyDownloadPolicyOpValues is the struct containing the per-operation values
