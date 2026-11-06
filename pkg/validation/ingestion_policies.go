@@ -403,7 +403,7 @@ type PolicyOverridableLimits struct {
 
 	// ChunkIdlePeriod overrides -ingester.chunks-idle-period for the policy's streams.
 	// Unset or 0 keeps -ingester.chunks-idle-period.
-	// Note: a very short periods may flush too small chunks.
+	// Note: a very short period may flush too-small chunks.
 	// It is not affected by inherit_limits.
 	ChunkIdlePeriod *model.Duration `yaml:"chunk_idle_period" json:"chunk_idle_period" doc:"hidden"`
 
