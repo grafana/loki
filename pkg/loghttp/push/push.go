@@ -24,8 +24,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -380,7 +378,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 }
 
 // calculateStreamStats modifies pushStats with statistics about one stream s.
-func calculateStreamStats(ctx context.Context, s push.Stream, lbs labels.Labels, streamResolver StreamResolver, logPushRequestStreams bool, pushStats *Stats) {
+func calculateStreamStats(ctx context.Context, s logproto.Stream, lbs labels.Labels, streamResolver StreamResolver, logPushRequestStreams bool, pushStats *Stats) {
 	// Record the new size of labels
 	pushStats.StreamLabelsSize += int64(len(s.Labels))
 
