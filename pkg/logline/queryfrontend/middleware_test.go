@@ -1310,14 +1310,21 @@ func TestWrapMiddleware_Disabled(t *testing.T) {
 
 func TestPrefetchFilter_QueryBytesBelowThreshold_SkipsHintPrefetch(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
+	hintStart := now.Add(-45 * time.Minute)
+	hintEnd := now.Add(-30 * time.Minute)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
-	// These requests have no live header, so live mode from the logline.query
-	// settings and from the tenant limit both apply the size gate.
+	// Live mode from the logline.query settings and from the tenant limit applies
+	// the size gate. The live header is an explicit opt-in and skips it.
 	for _, tc := range []struct {
-		name   string
-		cfg    Config
-		limits mockLimits
+		name     string
+		cfg      Config
+		limits   mockLimits
+		headers  http.Header
+		statsErr error
+		// wantHints is set when the request looks up hints despite being below
+		// the byte threshold. The live header does; the other live modes do not.
+		wantHints bool
 	}{
 		{
 			name:   "logline.query default live",
@@ -1331,57 +1338,23 @@ func TestPrefetchFilter_QueryBytesBelowThreshold_SkipsHintPrefetch(t *testing.T)
 				defaultMinQueryBytes: 500,
 			},
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			hp := &mockHintProvider{
-				hints: &hintprovider.Hints{
-					TimeRanges: []hintprovider.HintTimeRange{
-						{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
-					},
-				},
-			}
-
-			var gotStart, gotEnd time.Time
-			queryCalls := 0
-			queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				queryCalls++
-				lokiReq := req.(*queryrange.LokiRequest)
-				gotStart = lokiReq.StartTs
-				gotEnd = lokiReq.EndTs
-				return emptyStreamResponse(), nil
-			})
-
-			statsCalls := 0
-			querier := buildStatsAwareQuerier(
-				&logproto.IndexStatsResponse{Bytes: 100},
-				nil,
-				&statsCalls,
-				queryHandler,
-			)
-
-			handler := buildStack(hp, tc.cfg, newTestMetrics(), querier, tc.limits)
-			_, err := handler.Do(testTenantContext(), req)
-			require.NoError(t, err)
-			require.Equal(t, 1, statsCalls, "live mode without the live header still estimates query size")
-			require.Equal(t, 0, hp.Calls(), "should skip hint prefetch when query bytes are below threshold")
-			require.Equal(t, 1, queryCalls, "should execute query via passthrough path")
-			require.Equal(t, req.StartTs, gotStart, "query should keep original start when hints are skipped")
-			require.Equal(t, req.EndTs, gotEnd, "query should keep original end when hints are skipped")
-		})
-	}
-}
-
-func TestPrefetchFilter_LiveHeaderBypassesMinQueryBytes(t *testing.T) {
-	now := time.Now().Truncate(time.Millisecond)
-	hintStart := now.Add(-45 * time.Minute)
-	hintEnd := now.Add(-30 * time.Minute)
-
-	for _, tc := range []struct {
-		name     string
-		statsErr error
-	}{
-		{name: "query below the threshold"},
-		{name: "stats call would fail", statsErr: errors.New("stats backend unavailable")},
+		{
+			name:   "live header",
+			limits: mockLimits{defaultMinQueryBytes: 500},
+			headers: http.Header{
+				LoglineIndexHeader: []string{string(LoglineIndexLive)},
+			},
+			wantHints: true,
+		},
+		{
+			name:   "live header ignores a failed size estimate",
+			limits: mockLimits{defaultMinQueryBytes: 500},
+			headers: http.Header{
+				LoglineIndexHeader: []string{string(LoglineIndexLive)},
+			},
+			statsErr:  errors.New("stats backend unavailable"),
+			wantHints: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			hp := &mockHintProvider{
@@ -1391,11 +1364,19 @@ func TestPrefetchFilter_LiveHeaderBypassesMinQueryBytes(t *testing.T) {
 					},
 				},
 			}
+
+			var gotStart, gotEnd time.Time
 			var gotHints []logproto.HintTimeRange
+			queryCalls := 0
 			queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				gotHints = req.(*queryrange.LokiRequest).HintRanges
+				queryCalls++
+				lokiReq := req.(*queryrange.LokiRequest)
+				gotStart = lokiReq.StartTs
+				gotEnd = lokiReq.EndTs
+				gotHints = lokiReq.HintRanges
 				return emptyStreamResponse(), nil
 			})
+
 			statsCalls := 0
 			querier := buildStatsAwareQuerier(
 				&logproto.IndexStatsResponse{Bytes: 100},
@@ -1403,13 +1384,22 @@ func TestPrefetchFilter_LiveHeaderBypassesMinQueryBytes(t *testing.T) {
 				&statsCalls,
 				queryHandler,
 			)
-			handler := buildStack(hp, Config{}, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
 
-			_, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now))
+			handler := buildStack(hp, tc.cfg, newTestMetrics(), querier, tc.limits)
+			_, err := handler.Do(httpreq.InjectAllHeaders(testTenantContext(), tc.headers), req)
 			require.NoError(t, err)
-			require.Equal(t, 0, statsCalls, "the live header skips the size estimate")
-			require.Equal(t, 1, hp.Calls(), "the live header looks up hints for a small query")
-			require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
+			require.Equal(t, 1, queryCalls, "should execute the query")
+			require.Equal(t, req.StartTs, gotStart, "query should keep original start")
+			require.Equal(t, req.EndTs, gotEnd, "query should keep original end")
+			if tc.wantHints {
+				require.Equal(t, 0, statsCalls, "the live header skips the size estimate")
+				require.Equal(t, 1, hp.Calls(), "the live header looks up hints for a small query")
+				require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
+				return
+			}
+			require.Equal(t, 1, statsCalls, "live mode without the live header still estimates query size")
+			require.Equal(t, 0, hp.Calls(), "should skip hint prefetch when query bytes are below threshold")
+			require.Empty(t, gotHints)
 		})
 	}
 }
