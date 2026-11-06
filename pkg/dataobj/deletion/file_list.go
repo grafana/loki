@@ -145,7 +145,9 @@ func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 					return nil, err
 				}
 			}
-			return io.NopCloser(bytes.NewReader(encoded)), nil
+			// The body must report its size. Without a size, minio uploads in
+			// parts and drops the If-Match condition of the write.
+			return objstore.NopCloserWithSize(bytes.NewReader(encoded)), nil
 		})
 
 		switch {

@@ -181,6 +181,14 @@ func TestFileListWriter_Write(t *testing.T) {
 		require.Equal(t, list, readFileList(t, bucket, "a"))
 	})
 
+	t.Run("gives the bucket a body that reports its size", func(t *testing.T) {
+		bucket := &sizeCheckingBucket{Bucket: objstore.NewInMemBucket()}
+
+		require.NoError(t, newTestWriter(bucket).Write(t.Context(), list))
+		require.NoError(t, bucket.sizeErr)
+		require.Positive(t, bucket.size)
+	})
+
 	t.Run("replaces a stored list with an earlier creation time", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		storeFileList(t, bucket, olderList)
@@ -461,6 +469,26 @@ func (b *conflictBucket) GetAndReplace(ctx context.Context, name string, fn func
 		b.concurrentWrite()
 	}
 	return errConditionalWriteConflict
+}
+
+// sizeCheckingBucket records the size that objstore.TryToGetSize reads from
+// the body of the last write. The S3 bucket needs that size to keep the
+// write condition.
+type sizeCheckingBucket struct {
+	objstore.Bucket
+	size    int64
+	sizeErr error
+}
+
+func (b *sizeCheckingBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+	return b.Bucket.GetAndReplace(ctx, name, func(existing io.ReadCloser) (io.ReadCloser, error) {
+		body, err := fn(existing)
+		if err != nil {
+			return nil, err
+		}
+		b.size, b.sizeErr = objstore.TryToGetSize(body)
+		return body, nil
+	})
 }
 
 // flakyBucket fails GetAndReplace calls in three ways, in this order:
