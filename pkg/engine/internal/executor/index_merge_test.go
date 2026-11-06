@@ -616,7 +616,6 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 // still holds a legacy streams section.
 func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
-	ctx := context.Background()
 	ts := time.Unix(0, 1_000_000)
 
 	streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 2048, 10000, streams.DefaultShardLayout())
@@ -650,16 +649,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		ShardBuckets:     16,
 	})
 
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(streamsBuilder))
-	require.NoError(t, objBuilder.Append(statsBuilder))
-	require.NoError(t, objBuilder.Append(postingsBuilder))
-
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err, "failed to flush builder")
-	defer closer.Close()
-
-	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+	uploadSections(t, bucket, path, streamsBuilder, statsBuilder, postingsBuilder)
 }
 
 // buildSourceIndexWithBothKinds builds a dataobj containing one postings section
@@ -667,7 +657,6 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 // then uploads it to the bucket at the given path.
 func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
-	ctx := context.Background()
 
 	// Build postings section with one label entry
 	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
@@ -698,17 +687,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant,
 		UncompressedSize: 1000,
 	})
 
-	// Build and flush the combined dataobj
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(postingsBuilder))
-	require.NoError(t, objBuilder.Append(statsBuilder))
-
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	// Upload to bucket
-	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+	uploadSections(t, bucket, path, postingsBuilder, statsBuilder)
 }
 
 // openObjectFromBucket downloads and opens a dataobj.Object from the bucket.
@@ -719,6 +698,22 @@ func openObjectFromBucket(ctx context.Context, t *testing.T, bucket objstore.Buc
 	require.NoError(t, err, "failed to open object from bucket at %s", path)
 
 	return obj
+}
+
+// uploadSections builds an object from the given section builders, in order,
+// and uploads it to the bucket at path.
+func uploadSections(t testing.TB, bucket objstore.Bucket, path string, sections ...dataobj.SectionBuilder) {
+	t.Helper()
+
+	objBuilder := dataobj.NewBuilder(nil)
+	for _, sec := range sections {
+		require.NoError(t, objBuilder.Append(sec))
+	}
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, obj))
 }
 
 // uploadObjectToBucket serializes a *dataobj.Object and uploads it to the bucket.
@@ -777,7 +772,6 @@ func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, tenant, pat
 // merge readers.
 func buildSourcePostingsObjectSized(t *testing.T, bucket objstore.Bucket, tenant, path string, targetSectionSize int, observations []postings.LabelObservation) {
 	t.Helper()
-	ctx := context.Background()
 
 	postingsBuilder := postings.NewBuilder(nil, 0, 0, targetSectionSize)
 	postingsBuilder.SetTenant(tenant)
@@ -785,14 +779,7 @@ func buildSourcePostingsObjectSized(t *testing.T, bucket objstore.Bucket, tenant
 		postingsBuilder.ObserveLabelPosting(obs)
 	}
 
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(postingsBuilder))
-
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+	uploadSections(t, bucket, path, postingsBuilder)
 }
 
 // buildSourceStatsObject builds a dataobj with a single stats section that
@@ -806,14 +793,7 @@ func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path s
 		statsBuilder.Append(row)
 	}
 
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(statsBuilder))
-
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, obj))
+	uploadSections(t, bucket, path, statsBuilder)
 }
 
 // readPostingsRowsFromBucket downloads an object from the bucket, finds its
