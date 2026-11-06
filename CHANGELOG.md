@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.0.0-rc.3](https://github.com/grafana/loki/compare/v4.0.0-rc.2...v4.0.0-rc.3) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **storage:** Limit supported S3 storage classes to STANDARD and STANDARD_IA ([#26273](https://github.com/grafana/loki/issues/26273)) [release-4.0.0] (#26310)
+
+### Bug Fixes
+
+* **compactor:** Use main compactor for deletes ([#26305](https://github.com/grafana/loki/issues/26305)) [release-4.0.0] ([#26311](https://github.com/grafana/loki/issues/26311)) ([1665c02](https://github.com/grafana/loki/commit/1665c0203b3c7b025608336809d18473d8262f00))
+* **storage:** Limit supported S3 storage classes to STANDARD and STANDARD_IA ([#26273](https://github.com/grafana/loki/issues/26273)) [release-4.0.0] ([#26310](https://github.com/grafana/loki/issues/26310)) ([cea7d12](https://github.com/grafana/loki/commit/cea7d12c3e839f5350952e11028021a8f3ca7fbe))
+
 ## [4.0.0-rc.2](https://github.com/grafana/loki/compare/v4.0.0-rc.1...v4.0.0-rc.2) (2026-11-04)
 
 ### Reverts
