@@ -61,7 +61,7 @@ ingester:
   lifecycler:
     ring:
       kvstore:
-      prefix: kafka-ingesters/ # any value different from the default, "collectors/"
+        prefix: kafka-ingesters/ # any value different from the default, "collectors/"
 ```
 
 - `ingester.kafka_ingestion.enabled: true` makes this group join the partition ring and start consuming from its assigned Kafka partitions.
@@ -119,9 +119,14 @@ Only move to the next step after both of these are true:
 Set `querier.query_partition_ingesters: true` and roll out your queriers (and rulers, if they evaluate rules locally). This tells the querier to look up ingesters using the partition ring instead of the classic hash ring, so it finds your new Kafka-consuming ingesters instead of your existing ones.
 
 ```yaml
-# Querier config
+# Querier and ruler config
 querier:
   query_partition_ingesters: true
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        prefix: kafka-ingesters/ # Same as in new ingester config
 ```
 
 The querier also needs the same `ingester.kafka_ingestion.partition_ring` key-value store configuration as your Kafka-consuming ingesters, so it can watch the partition ring and discover them. If your querier already shares a base configuration file with your ingesters, this is already in place; otherwise, add it explicitly.
@@ -160,7 +165,7 @@ Continue monitoring your Kafka-based ingestion using the metrics documented in [
 To revert to the direct gRPC write path:
 
 1. If you completed [step 6](#6-cut-over-to-kafka-only-writes), set `distributor.ingester_writes_enabled` back to `true`. And then wait `query_ingesters_within` (default 3 hours) before switching back to reading from grpc ingesters. This is the point where rollback becomes slow if you want to do it without making some recent data unreadable.
-1. If you completed [step 5](#5-switch-the-query-path-to-the-partition-ring), set `querier.query_partition_ingesters` back to `false`. If you also completed step 6, make this change and step 1 in the **same configuration change** and roll out distributors and queriers together. Reverting the querier setting before gRPC writes are re-enabled can create a window where recent queries find no new data.
+1. If you completed [step 5](#5-switch-the-query-path-to-the-partition-ring), set `querier.query_partition_ingesters` back to `false` and change the `ingester.lifecycler.ring.kvstore.prefix` back to its original value. If you also completed step 6, make this change and step 1 in the **same configuration change** and roll out distributors and queriers together. Reverting the querier setting before gRPC writes are re-enabled can create a window where recent queries find no new data.
 1. Set `distributor.kafka_writes_enabled` to `false`.
 1. Roll out the configuration change.
 1. Once you've confirmed your existing ingesters are serving all reads and writes correctly again, scale down your Kafka-consuming ingesters. Because they're isolated from the classic hash ring, you can leave them running at reduced capacity for a while in case you want to retry the migration, without affecting your existing ingesters.
