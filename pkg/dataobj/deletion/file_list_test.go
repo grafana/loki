@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/hex"
 	"errors"
 	"io"
+	"math/rand/v2"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -324,6 +327,22 @@ func TestFileListWriter_Write(t *testing.T) {
 		require.Equal(t, 1, bucket.calls)
 	})
 
+	t.Run("returns ErrFileListTooLarge without an attempt when the encoded list is larger than the limit", func(t *testing.T) {
+		bucket := &flakyBucket{Bucket: objstore.NewInMemBucket()}
+		large := FileList{Tenant: "a", CreatedAt: createdAt, Paths: incompressiblePaths(MaxEncodedFileListBytes)}
+
+		require.ErrorIs(t, newTestWriter(bucket).Write(t.Context(), large), ErrFileListTooLarge)
+		require.Equal(t, 0, bucket.calls)
+	})
+
+	t.Run("writes a list of more than 1 MiB that encodes to less than the size limit", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		belowLimit := FileList{Tenant: "a", CreatedAt: createdAt, Paths: incompressiblePaths(1 << 20)}
+
+		require.NoError(t, newTestWriter(bucket).Write(t.Context(), belowLimit))
+		require.Equal(t, belowLimit, readFileList(t, bucket, "a"))
+	})
+
 	t.Run("returns the context error without an attempt when the context is cancelled", func(t *testing.T) {
 		bucket := &flakyBucket{Bucket: objstore.NewInMemBucket()}
 		ctx, cancel := context.WithCancel(t.Context())
@@ -407,6 +426,22 @@ func readUntilError(r *FileListReader) ([]string, error) {
 		paths = append(paths, p)
 	}
 	return paths, nil
+}
+
+// incompressiblePaths returns sorted paths of random hex that hold at least
+// size bytes of random data. gzip cannot compress random data, so the encoded
+// list is at least size bytes.
+func incompressiblePaths(size int) []string {
+	const randomBytesPerPath = 4096
+	rng := rand.NewChaCha8([32]byte{})
+	paths := make([]string, 0, size/randomBytesPerPath+1)
+	buf := make([]byte, randomBytesPerPath)
+	for range size/randomBytesPerPath + 1 {
+		_, _ = rng.Read(buf)
+		paths = append(paths, "objects/"+hex.EncodeToString(buf))
+	}
+	slices.Sort(paths)
+	return paths
 }
 
 func readRaw(t *testing.T, bucket objstore.Bucket, path string) string {

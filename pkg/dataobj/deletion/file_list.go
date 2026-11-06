@@ -83,6 +83,19 @@ func validateTenant(id string) error {
 // a later creation time than the list to write.
 var ErrSuperseded = errors.New("stored file list is not older than the file list to write")
 
+// ErrFileListTooLarge means that the encoded file list is larger than
+// MaxEncodedFileListBytes.
+var ErrFileListTooLarge = errors.New("encoded file list is too large")
+
+// MaxEncodedFileListBytes is the largest encoded file list that Write
+// stores.
+//
+// The S3 bucket uploads a larger body in parts. A multipart upload drops the
+// write condition, so a write could replace a newer list. 16 MiB is the
+// smallest part size of the S3 client. An encoded path takes about 32 bytes,
+// so the limit allows about 500,000 paths.
+const MaxEncodedFileListBytes = 16 << 20
+
 // FileListWriter stores file lists in a data object bucket.
 //
 // FileListWriter is safe for concurrent use.
@@ -120,6 +133,9 @@ func NewFileListWriter(bucket objstore.Bucket, backoffCfg backoff.Config, logger
 // with the backoff config of the writer. It does not retry if the stored
 // header is malformed, holds another tenant, or has an unknown version. The
 // error then wraps ErrMalformedFileList.
+//
+// Write returns an error that wraps ErrFileListTooLarge, and does not write,
+// if the encoded list is larger than MaxEncodedFileListBytes.
 func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 	if err := list.validate(); err != nil {
 		return err
@@ -128,6 +144,9 @@ func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 	encoded, err := encodeFileList(list)
 	if err != nil {
 		return fmt.Errorf("encoding file list: %w", err)
+	}
+	if len(encoded) > MaxEncodedFileListBytes {
+		return fmt.Errorf("%w: %d paths encode to %d bytes, limit is %d", ErrFileListTooLarge, len(list.Paths), len(encoded), MaxEncodedFileListBytes)
 	}
 
 	logger := log.With(w.logger, "tenant", list.Tenant, "path", list.Path())
@@ -145,8 +164,8 @@ func (w *FileListWriter) Write(ctx context.Context, list FileList) error {
 					return nil, err
 				}
 			}
-			// The body must report its size. Without a size, minio uploads in
-			// parts and drops the If-Match condition of the write.
+			// The body must report its size. Without a size, the S3 bucket
+			// uploads the body in parts, and that drops the write condition.
 			return objstore.NopCloserWithSize(bytes.NewReader(encoded)), nil
 		})
 
