@@ -243,6 +243,7 @@
       // Release branches take security updates only. 'vulnerabilityAlerts' is merged after
       // packageRules, so disabling everything here still lets security PRs through.
       matchBaseBranches: [
+        'release-4.0.0',
         'release-3.7.x',
         'release-3.6.x',
       ],
