@@ -330,32 +330,3 @@ func LogAttrsToLabels(log plog.LogRecord, otlpConfig OTLPConfig) (*LogAttrsResul
 
 	return result, nil
 }
-
-// StreamLabelsForRecord returns the stream labels of one log record: the
-// stream labels of its resource with the record's index labels laid over
-// them. The record wins when both set the same name. When the record has no
-// index labels, resourceLabels is returned as is, so callers may compare the
-// result against it to see whether the record left the resource's stream.
-// An error means the combined set is not a valid label set and Loki rejects
-// the record.
-//
-// This is the single definition of how a log record's stream is derived from
-// its resource and its own attributes. Every component that must agree with
-// Loki about which stream a record lands in should use it rather than
-// combining the two sets itself.
-func StreamLabelsForRecord(resourceLabels, indexLabels model.LabelSet) (model.LabelSet, error) {
-	if len(indexLabels) == 0 {
-		return resourceLabels, nil
-	}
-	combined := make(model.LabelSet, len(resourceLabels)+len(indexLabels))
-	for k, v := range resourceLabels {
-		combined[k] = v
-	}
-	for k, v := range indexLabels {
-		combined[k] = v
-	}
-	if err := combined.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid labels with log attributes: %w", err)
-	}
-	return combined, nil
-}

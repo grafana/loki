@@ -329,9 +329,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 						return nil, errReservedBackfillLabels()
 					}
 
-					combinedLabels, err := otlplabels.StreamLabelsForRecord(streamLabels, logLabels)
-					if err != nil {
-						stats.Errs = append(stats.Errs, err)
+					// Combine resource labels with log attributes; log attributes win on collision.
+					combinedLabels := streamLabels.Merge(logLabels)
+					if err := combinedLabels.Validate(); err != nil {
+						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))
 						continue
 					}
 
