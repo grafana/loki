@@ -89,7 +89,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, []string{"status"}),
 		passthroughSubRequests: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "logline_query_frontend_passthrough_sub_requests_total",
-			Help: "Total sub-requests dispatched without hints for ingester-window or pre-min-date time ranges",
+			Help: "Total sub-requests dispatched without hints for ingester-window or pre-min-date time ranges, sketch shards that cannot be skipped, or queries that cannot be read",
 		}, []string{"reason"}),
 		hintSkippedSmallQuery: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "logline_query_frontend_hint_skipped_small_query_total",

@@ -697,6 +697,11 @@ func (t *testFilter) RequiredLabelNames() []string {
 	return []string{"log_stream"}
 }
 
+func (t *testFilter) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
 func Test_ChunkFilter(t *testing.T) {
 	instance := defaultInstance(t)
 	instance.chunkFilter = &testFilter{}

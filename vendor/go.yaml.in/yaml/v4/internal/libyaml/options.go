@@ -493,6 +493,10 @@ var DefaultOptions = &Options{
 	Unicode:         true,
 	UniqueKeys:      true,
 	QuotePreference: QuoteLegacy,
+
+	// Default safety limits
+	DepthCheck: DefaultDepthCheck,
+	AliasCheck: DefaultAliasCheck,
 }
 
 // SetLegacyAllowTrailingContent sets the internal allowLegacyTrailingContent flag to true.

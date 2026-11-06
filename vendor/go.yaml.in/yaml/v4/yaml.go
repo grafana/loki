@@ -962,6 +962,12 @@ func (e *Encoder) Encode(v any) error {
 }
 
 // SetIndent changes the used indentation used when encoding.
+//
+// It panics if spaces is negative. Non-negative values outside 2-9 may be
+// silently reset to 2 when encoding starts.
+//
+// This method should be considered deprecated because it cannot return an
+// error for invalid indentation. Use [NewDumper] with [WithIndent] instead.
 func (e *Encoder) SetIndent(spaces int) {
 	e.dumper.SetLegacyEncoderIndent(spaces)
 }
