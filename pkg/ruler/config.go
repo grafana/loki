@@ -3,9 +3,11 @@ package ruler
 import (
 	"flag"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/pkg/errors"
+	commonconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	promconfig "github.com/prometheus/prometheus/config"
 	"go.yaml.in/yaml/v4"
@@ -93,13 +95,73 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 		return nil, err
 	}
 
-	for id := range n.Clients {
-		if n.Clients[id].HTTPClientConfig.BasicAuth != nil {
-			n.Clients[id].HTTPClientConfig.BasicAuth.Password = c.Clients[id].HTTPClientConfig.BasicAuth.Password
-		}
+	for id, clt := range n.Clients {
+		src := c.Clients[id]
+		restoreRemoteWriteSecrets(&clt, &src)
+		n.Clients[id] = clt
 	}
 
 	return n, nil
+}
+
+// restoreRemoteWriteSecrets copies every Secret-typed field from src into dst; such fields are obfuscated to "<secret>" on marshal, so Clone must restore them after its YAML round-trip.
+func restoreRemoteWriteSecrets(dst, src *promconfig.RemoteWriteConfig) {
+	dst.HTTPClientConfig.TLSConfig.Key = src.HTTPClientConfig.TLSConfig.Key
+	// dst must not alias src's containers, or a later mergo.Merge of a per-tenant override (see
+	// getTenantRemoteWriteConfig) would mutate the shared base config.
+	dst.HTTPClientConfig.ProxyConnectHeader = cloneProxyHeader(src.HTTPClientConfig.ProxyConnectHeader)
+
+	if dst.HTTPClientConfig.HTTPHeaders != nil && src.HTTPClientConfig.HTTPHeaders != nil {
+		for name, header := range dst.HTTPClientConfig.HTTPHeaders.Headers {
+			if srcHeader, ok := src.HTTPClientConfig.HTTPHeaders.Headers[name]; ok {
+				header.Secrets = slices.Clone(srcHeader.Secrets)
+				dst.HTTPClientConfig.HTTPHeaders.Headers[name] = header
+			}
+		}
+	}
+
+	if dst.HTTPClientConfig.BasicAuth != nil {
+		dst.HTTPClientConfig.BasicAuth.Password = src.HTTPClientConfig.BasicAuth.Password
+	}
+	if dst.HTTPClientConfig.Authorization != nil {
+		switch {
+		case src.HTTPClientConfig.Authorization != nil:
+			dst.HTTPClientConfig.Authorization.Credentials = src.HTTPClientConfig.Authorization.Credentials
+		case src.HTTPClientConfig.BearerToken != "":
+			// HTTPClientConfig.Validate (run by the YAML round-trip above) migrates a bare bearer_token into authorization.credentials and clears bearer_token.
+			dst.HTTPClientConfig.Authorization.Credentials = src.HTTPClientConfig.BearerToken
+		}
+	}
+	if dst.HTTPClientConfig.OAuth2 != nil {
+		dst.HTTPClientConfig.OAuth2.ClientSecret = src.HTTPClientConfig.OAuth2.ClientSecret
+		dst.HTTPClientConfig.OAuth2.ClientCertificateKey = src.HTTPClientConfig.OAuth2.ClientCertificateKey
+		dst.HTTPClientConfig.OAuth2.TLSConfig.Key = src.HTTPClientConfig.OAuth2.TLSConfig.Key
+		dst.HTTPClientConfig.OAuth2.ProxyConnectHeader = cloneProxyHeader(src.HTTPClientConfig.OAuth2.ProxyConnectHeader)
+	}
+	if dst.SigV4Config != nil {
+		dst.SigV4Config.SecretKey = src.SigV4Config.SecretKey
+	}
+	if dst.AzureADConfig != nil {
+		if dst.AzureADConfig.OAuth != nil {
+			dst.AzureADConfig.OAuth.ClientSecret = src.AzureADConfig.OAuth.ClientSecret
+		}
+		if dst.AzureADConfig.Certificate != nil {
+			dst.AzureADConfig.Certificate.CertificatePassword = src.AzureADConfig.Certificate.CertificatePassword
+		}
+	}
+}
+
+// cloneProxyHeader deep-copies h so the result shares no backing array with h; maps.Clone alone
+// only copies the map structure, leaving each []Secret value aliased to the original.
+func cloneProxyHeader(h commonconfig.ProxyHeader) commonconfig.ProxyHeader {
+	if h == nil {
+		return nil
+	}
+	out := make(commonconfig.ProxyHeader, len(h))
+	for k, v := range h {
+		out[k] = slices.Clone(v)
+	}
+	return out
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
