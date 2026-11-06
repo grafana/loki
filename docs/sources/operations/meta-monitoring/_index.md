@@ -87,7 +87,7 @@ exposed by Alloy at its `/metrics` endpoint.
 
 Some metrics carry labels that increase cardinality in large environments:
 
-- **Client-side:** Alloy and the deprecated Promtail emit per-file metrics using a `filename` label. In environments with many tracked files, this can produce a large number of unique time series.
+- **Client-side:** Alloy emits per-file metrics using a `filename` label. In environments with many tracked files, this can produce a large number of unique time series.
 - **Server-side:** Loki metrics such as `loki_discarded_samples_total` and `loki_ingester_chunks_stored_total` include a `tenant` label. Multi-tenant deployments with many tenants see proportional cardinality growth.
 
 The Kubernetes Monitoring Helm chart includes metric relabeling rules to manage cardinality. If you auto-scale Loki components, be aware that each new pod adds its own set of per-instance time series.
