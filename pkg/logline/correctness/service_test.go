@@ -17,6 +17,7 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -510,16 +511,42 @@ func TestPickHintQuery_MetricWindow(t *testing.T) {
 	needle := "9fA81cD2Ef0077aa"
 
 	tests := []struct {
-		name       string
-		minDate    string
-		startedAt  time.Time
-		now        time.Time
-		start      time.Time
-		end        time.Time
-		needleTs   time.Time
-		align      bool
-		wantMetric bool
+		name      string
+		minDate   string
+		startedAt time.Time
+		// maxLookback overrides the default 30d when set.
+		maxLookback time.Duration
+		now         time.Time
+		start       time.Time
+		end         time.Time
+		needleTs    time.Time
+		align       bool
+		wantMetric  bool
 	}{
+		{
+			// now-maxLookback is 11:00, after startedAt. 11:03 floored minus
+			// 5m is 10:58.
+			name:        "lookback before now minus max_lookback",
+			minDate:     "0001-01-01",
+			startedAt:   time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			maxLookback: time.Hour,
+			now:         time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			start:       time.Date(2026, 2, 26, 11, 3, 0, 0, time.UTC),
+			end:         time.Date(2026, 2, 26, 11, 20, 0, 0, time.UTC),
+			needleTs:    time.Date(2026, 2, 26, 11, 10, 0, 0, time.UTC),
+			wantMetric:  false,
+		},
+		{
+			name:        "lookback after now minus max_lookback",
+			minDate:     "0001-01-01",
+			startedAt:   time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			maxLookback: time.Hour,
+			now:         time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			start:       time.Date(2026, 2, 26, 11, 6, 0, 0, time.UTC),
+			end:         time.Date(2026, 2, 26, 11, 20, 0, 0, time.UTC),
+			needleTs:    time.Date(2026, 2, 26, 11, 10, 0, 0, time.UTC),
+			wantMetric:  true,
+		},
 		{
 			name:       "lookback before min date",
 			minDate:    "2026-06-01",
@@ -591,6 +618,9 @@ func TestPickHintQuery_MetricWindow(t *testing.T) {
 			svc := newTestService(t, newTestStoreMinDate(t, tc.minDate), loki.URL, tc.startedAt)
 			svc.nowFn = func() time.Time { return tc.now }
 			svc.cfg.AlignQueriesWithStep = tc.align
+			if tc.maxLookback > 0 {
+				svc.cfg.MaxLookback = tc.maxLookback
+			}
 			seedMetricPick(t, svc)
 
 			logs := []queryEntry{{Entry: logproto.Entry{
@@ -641,6 +671,13 @@ func TestRunVerificationCycle_MetricQueriesBothWays(t *testing.T) {
 	require.Empty(t, metrics[1].skipCache)
 	require.Equal(t, "no-cache", metrics[1].cacheControl)
 
+	// Both requests send the sampled range. Loki widens it for the lookback,
+	// so neither sends the widened read bounds.
+	for _, q := range append(logs, metrics...) {
+		require.Equal(t, report.RangeStart.UnixNano(), q.start)
+		require.Equal(t, report.RangeEnd.UnixNano(), q.end)
+	}
+
 	require.False(t, report.Correct)
 	requireMetricIdentity(t, report, needle)
 }
@@ -663,10 +700,12 @@ func TestRunVerificationCycle_MetricMatricesEqual(t *testing.T) {
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, qb.ReadStart, report.RangeStart.Add(-time.Millisecond))
 	writeTestIndex(t, indexStore, "cccccccccccccccc", needle, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC))
 
+	before := readTestCounts(svc)
 	svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
 	again, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.True(t, again.Correct)
+	require.Equal(t, testCounts{total: before.total + 1, correct: before.correct + 1, incorrect: before.incorrect}, readTestCounts(svc))
 	require.True(t, again.RangeStart.Equal(report.RangeStart))
 	require.Equal(t, indexIDsForRange(indexStore, qb.ReadStart, qb.ReadEnd), again.OverlappingIndexIDs)
 	require.NotEqual(t, indexIDsForRange(indexStore, report.RangeStart, report.RangeEnd), again.OverlappingIndexIDs)
@@ -675,7 +714,7 @@ func TestRunVerificationCycle_MetricMatricesEqual(t *testing.T) {
 func TestRunVerificationCycle_MetricMatricesMismatch(t *testing.T) {
 	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 	needle := "9fA81cD2Ef0077aa"
-	report, _ := runUntilMetricCycle(t, newTestStore(t), base, needle, func(logline string) any {
+	report, svc, seed := runUntilMetricCycleSvc(t, newTestStore(t), base, needle, func(logline string) any {
 		if logline == "live" {
 			return metricMatrix([]any{1_760_000_000.0, "2"})
 		}
@@ -683,6 +722,28 @@ func TestRunVerificationCycle_MetricMatricesMismatch(t *testing.T) {
 	})
 	require.False(t, report.Correct)
 	requireMetricIdentity(t, report, needle)
+
+	// Earlier seeds can run log cycles, so compare one rerun of the metric seed.
+	before := readTestCounts(svc)
+	svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+	again, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.False(t, again.Correct)
+	require.Equal(t, testCounts{total: before.total + 1, correct: before.correct, incorrect: before.incorrect + 1}, readTestCounts(svc))
+}
+
+// testCounts holds the totalTests, totalCorrectTests and totalIncorrectTests
+// counters, so a test can check one cycle's effect on them.
+type testCounts struct {
+	total, correct, incorrect float64
+}
+
+func readTestCounts(svc *Service) testCounts {
+	return testCounts{
+		total:     testutil.ToFloat64(svc.metrics.totalTests),
+		correct:   testutil.ToFloat64(svc.metrics.totalCorrectTests),
+		incorrect: testutil.ToFloat64(svc.metrics.totalIncorrectTests),
+	}
 }
 
 func TestRunVerificationCycle_MetricScoresWhenNotNarrowed(t *testing.T) {
@@ -761,6 +822,7 @@ func TestRunVerificationCycle_MetricErrorsWhenLookupFailed(t *testing.T) {
 type recordedMetricQuery struct {
 	query        string
 	step         string
+	start, end   int64 // Unix nanoseconds
 	logline      string
 	skipCache    string
 	cacheControl string
@@ -798,9 +860,15 @@ func runMetricCycle(t *testing.T, indexStore *store.Store, base time.Time, needl
 		case "/loki/api/v1/label/job/values":
 			writeEnvelope(w, []string{"api"})
 		case "/loki/api/v1/query_range":
+			startNS, err := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
+			require.NoError(t, err)
+			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
+			require.NoError(t, err)
 			q := recordedMetricQuery{
 				query:        r.URL.Query().Get("query"),
 				step:         r.URL.Query().Get("step"),
+				start:        startNS,
+				end:          endNS,
 				logline:      r.Header.Get("X-Logline-Index"),
 				skipCache:    r.Header.Get("X-Logline-Skip-Cache"),
 				cacheControl: r.Header.Get("Cache-Control"),
@@ -812,10 +880,6 @@ func runMetricCycle(t *testing.T, indexStore *store.Store, base time.Time, needl
 				writeEnvelope(w, matrix(q.logline))
 				return
 			}
-			startNS, err := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
-			require.NoError(t, err)
-			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
-			require.NoError(t, err)
 			mid := startNS + (endNS-startNS)/2
 			writeEnvelope(w, map[string]any{
 				"resultType": "streams",
