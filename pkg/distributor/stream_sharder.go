@@ -38,7 +38,14 @@ func (d *Distributor) shardStreams(tenantID string, now time.Time, accepted []ac
 		shardCfg, _ := d.validator.PolicyShardStreams(tenantID, a.policy)
 		sharder.shard(a.stream, a.lbs, a.stats.expandedSize, a.policy, shardCfg)
 	}
-	sharder.warnMixedShardStreams()
+	if sharder.shardStreamsEnabledSeen && sharder.shardStreamsDisabledSeen {
+		level.Warn(d.logger).Log(
+			"msg", "tenant has shard_streams.enabled true for one policy and false for another in the same push; this is not expected and splits max_global_streams_per_user enforcement between the limits service and EnforceLimits",
+			"tenant", tenantID,
+			"enabled_policy", sharder.shardStreamsEnabledPolicy,
+			"disabled_policy", sharder.shardStreamsDisabledPolicy,
+		)
+	}
 	return shardedStreams{
 		streams:          sharder.streams,
 		shadowCandidates: sharder.shadowCandidates,
@@ -54,8 +61,8 @@ type streamSharder struct {
 	streams                          []KeyedStream
 	shadowCandidates, liveCandidates []limitsServiceShardCandidate
 
-	// The policies seen with sharding enabled and disabled, the first of each, for
-	// warnMixedShardStreams. A tenant's policies are expected to agree: in live mode, a stream with
+	// The policies seen with sharding enabled and disabled, the first of each, for the warning in
+	// shardStreams. A tenant's policies are expected to agree: in live mode, a stream with
 	// sharding disabled is limited by EnforceLimits instead of CheckLimitsAndShard, splitting
 	// max_global_streams_per_user between two trackers. The warning is logged whenever the ingest
 	// limits are enabled, in every mode.
@@ -151,18 +158,4 @@ func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls 
 		s.streams = append(s.streams, d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, candidate.rateStoreShards)...)
 		s.shadowCandidates = append(s.shadowCandidates, candidate)
 	}
-}
-
-// warnMixedShardStreams logs a warning when the push mixed policies with stream sharding enabled
-// and disabled, see streamSharder.shardStreamsEnabledSeen.
-func (s *streamSharder) warnMixedShardStreams() {
-	if !s.shardStreamsEnabledSeen || !s.shardStreamsDisabledSeen {
-		return
-	}
-	level.Warn(s.d.logger).Log(
-		"msg", "tenant has shard_streams.enabled true for one policy and false for another in the same push; this is not expected and splits max_global_streams_per_user enforcement between the limits service and EnforceLimits",
-		"tenant", s.tenantID,
-		"enabled_policy", s.shardStreamsEnabledPolicy,
-		"disabled_policy", s.shardStreamsDisabledPolicy,
-	)
 }
