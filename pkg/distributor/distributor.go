@@ -533,8 +533,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // when a stream of the push resolves to a policy with reject_partial_writes and the error is a
 // 429.
 //
-// A rejected push, with nothing written, always returns a nil response with its error. A non-nil
-// response means the push was written, in part if the error is non-nil.
+// A push rejected before the write returns a nil response with its error, and so does a failed
+// write, which may have been partly written by then. A response with an error means a partial
+// write. A push left with nothing to write and no error, such as one whose streams were all
+// blocked with status code 200, succeeds with a response.
 func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -952,8 +954,8 @@ func (d *Distributor) enforceStreamLimits(
 }
 
 // rejectOverStreamLimit reports streams the limits service rejected for the stream limit as
-// discarded, see trackDiscardedData, and returns an error naming the first of them. rejected must
-// not be empty.
+// discarded, see reportDiscardedStreams, and returns an error naming the first of them. rejected
+// must not be empty.
 func (d *Distributor) rejectOverStreamLimit(
 	ctx context.Context,
 	tenantID string,

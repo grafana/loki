@@ -179,7 +179,7 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 
 // reportDiscardedData reports entryCount samples totaling entrySize bytes, of a stream with the given
 // labels, as discarded for reason: in the discarded samples and bytes metrics and to the usage tracker.
-// Every discard the distributor makes is reported through here.
+// Every discard pushWithResolver makes is reported through here.
 func (v Validator) reportDiscardedData(ctx context.Context, reason string, vCtx validationContext, labels labels.Labels, retentionHours string, policy string, entrySize, entryCount int, format string) {
 	validation.DiscardedSamples.WithLabelValues(reason, vCtx.userID, retentionHours, policy, format).Add(float64(entryCount))
 	validation.DiscardedBytes.WithLabelValues(reason, vCtx.userID, retentionHours, policy, format).Add(float64(entrySize))
