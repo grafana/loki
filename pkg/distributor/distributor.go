@@ -788,7 +788,7 @@ func (d *Distributor) validateStreams(
 		// as discarded for reason.
 		discard := func(reason string, err error) {
 			d.writeFailuresManager.Log(tenantID, err)
-			d.validator.reportDiscardedDataWithTracker(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
+			d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
 		}
 
 		if err != nil {
@@ -962,7 +962,7 @@ func (d *Distributor) rejectOverStreamLimit(
 	streamResolver push.StreamResolver,
 	format string,
 ) error {
-	d.trackDiscardedData(ctx, rejected, vCtx, tenantID, validation.StreamLimit, streamResolver, format)
+	d.reportDiscardedStreams(ctx, rejected, vCtx, validation.StreamLimit, streamResolver, format)
 
 	// Only the first stream is named, in the insight log and the error. Any stream can hit the
 	// limit, so the name rarely points at the cause.
@@ -1016,7 +1016,7 @@ func (d *Distributor) processStreamEntries(
 			var scopeDiscardReason string
 			for _, entry := range scope.Entries {
 				if reason, err := d.validator.ValidateEntry(vContext, lbs, entry, sharedMetadataSize, sharedMetadataCount); err != nil {
-					d.validator.reportDiscardedDataWithTracker(ctx, reason, vContext, lbs, retentionHours, policy, util.EntryTotalSize(&entry), 1, format)
+					d.validator.reportDiscardedData(ctx, reason, vContext, lbs, retentionHours, policy, util.EntryTotalSize(&entry), 1, format)
 					scopeDiscardReason = reason
 					resourceDiscardReason = reason
 					d.writeFailuresManager.Log(tenantID, err)
@@ -1062,7 +1062,7 @@ func (d *Distributor) processStreamEntries(
 			if scopeEntriesKept == 0 {
 				// Charge shared bytes only when the group is emptied, using its last rejection reason.
 				if scopeDiscardReason != "" && scopeMetadata.originalSize > 0 {
-					d.validator.reportDiscardedDataWithTracker(ctx, scopeDiscardReason, vContext, lbs, retentionHours, policy, scopeMetadata.originalSize, 0, format)
+					d.validator.reportDiscardedData(ctx, scopeDiscardReason, vContext, lbs, retentionHours, policy, scopeMetadata.originalSize, 0, format)
 				}
 				continue
 			}
@@ -1075,7 +1075,7 @@ func (d *Distributor) processStreamEntries(
 		resource.ScopeLogs = resource.ScopeLogs[:scopesKept]
 		if scopesKept == 0 {
 			if resourceDiscardReason != "" && resourceMetadata.originalSize > 0 {
-				d.validator.reportDiscardedDataWithTracker(ctx, resourceDiscardReason, vContext, lbs, retentionHours, policy, resourceMetadata.originalSize, 0, format)
+				d.validator.reportDiscardedData(ctx, resourceDiscardReason, vContext, lbs, retentionHours, policy, resourceMetadata.originalSize, 0, format)
 			}
 			continue
 		}
@@ -1276,8 +1276,8 @@ func (d *Distributor) enforceIngestionRateLimits(
 	}
 
 	// The whole request is dropped, so attribute every stream as discarded (each under its
-	// own policy label, handled by trackDiscardedData).
-	d.trackDiscardedData(ctx, streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
+	// own policy label, handled by reportDiscardedStreams).
+	d.reportDiscardedStreams(ctx, streams, validationContext, validation.RateLimited, streamResolver, format)
 
 	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
 	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
@@ -1297,30 +1297,24 @@ func (d *Distributor) enforceIngestionRateLimits(
 	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 }
 
-// trackDiscardedData reports streams as discarded for reason. It resolves each stream's labels with
-// parseStreamLabels, and skips a stream whose labels fail validation, as a shard of a stream at
-// max_label_names_per_series does.
-func (d *Distributor) trackDiscardedData(
+// reportDiscardedStreams reports whole streams that passed validation as discarded for reason,
+// resolving each stream's labels, retention and policy for the report. It skips a stream whose
+// labels fail validation, as a shard of a stream at max_label_names_per_series does.
+func (d *Distributor) reportDiscardedStreams(
 	ctx context.Context,
 	streams []logproto.InternalStreamAdapter,
-	validationContext validationContext,
-	tenantID string,
+	vCtx validationContext,
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
 ) {
 	for _, stream := range streams {
-		parsed, _, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver)
+		parsed, _, err := d.parseStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
 			continue
 		}
-		discardedStreamBytes := nestedStreamSize(stream)
-		validation.DiscardedSamples.WithLabelValues(reason, tenantID, parsed.retentionHours, parsed.policy, format).Add(float64(stream.EntryCount()))
-		validation.DiscardedBytes.WithLabelValues(reason, tenantID, parsed.retentionHours, parsed.policy, format).Add(float64(discardedStreamBytes))
-		if d.usageTracker != nil {
-			d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, parsed.lbs, float64(discardedStreamBytes), format)
-		}
+		d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
 	}
 }
 
