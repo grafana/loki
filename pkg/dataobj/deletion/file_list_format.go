@@ -193,8 +193,8 @@ func (r *readErrRecorder) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// wrapErr returns err with context. The result wraps ErrMalformedFileList unless
-// a read of r failed.
+// wrapErr returns err with context. The result wraps ErrMalformedFileList
+// unless a read of r failed.
 func (r *readErrRecorder) wrapErr(step string, err error) error {
 	if r.err != nil {
 		return fmt.Errorf("reading stored file list: %s: %w", step, err)

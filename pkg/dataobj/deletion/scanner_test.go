@@ -3,9 +3,11 @@ package deletion
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -73,7 +75,7 @@ func TestFileListScanner_List(t *testing.T) {
 		}, list.Paths)
 	})
 
-	t.Run("logs skipped ingest objects that hold the tenant with other tenants and a summary of the scan", func(t *testing.T) {
+	t.Run("logs skipped uncompacted objects that hold the tenant with other tenants and a summary of the scan", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/01/single-a", objectBytes(t, "a"), old)
 		bucket.put(t, "objects/02/multi-a-b", objectBytes(t, "a", "b"), old)
@@ -97,7 +99,7 @@ func TestFileListScanner_List(t *testing.T) {
 	t.Run("returns the tenant and the scan time in the file list", func(t *testing.T) {
 		list, err := newTestFileListScanner(t, newFileBucket(t), "index/v0").List(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{}}, list)
+		require.Equal(t, FileList{Tenant: "a", CreatedAt: now}, list)
 	})
 
 	t.Run("excludes objects modified less than MinObjectAge before now and does not open them", func(t *testing.T) {
@@ -120,7 +122,7 @@ func TestFileListScanner_List(t *testing.T) {
 		}, list.Paths)
 	})
 
-	t.Run("includes an ingest object stored directly below the objects directory", func(t *testing.T) {
+	t.Run("includes an uncompacted object stored directly below the objects directory", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/stray", objectBytes(t, "a"), old)
 
@@ -159,7 +161,7 @@ func TestFileListScanner_List(t *testing.T) {
 		}, bucket.dirs)
 	})
 
-	t.Run("stops the ingest listing at the first key in the tenants directory", func(t *testing.T) {
+	t.Run("stops the listing of uncompacted objects at the first key in the tenants directory", func(t *testing.T) {
 		files := newFileBucket(t)
 		files.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
 		files.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
@@ -175,7 +177,7 @@ func TestFileListScanner_List(t *testing.T) {
 		require.Equal(t, []string{"index/v0/indexes/00/single-a", "index/v0/indexes/tenants/b/bb/compacted"}, bucket.names["index/v0/indexes/"])
 	})
 
-	t.Run("does not count the stop of the ingest listing as a failed bucket operation", func(t *testing.T) {
+	t.Run("does not count the stop of the listing of uncompacted objects as a failed bucket operation", func(t *testing.T) {
 		files := newFileBucket(t)
 		files.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
 		files.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
@@ -188,7 +190,7 @@ func TestFileListScanner_List(t *testing.T) {
 		require.Zero(t, iterFailures(t, reg))
 	})
 
-	t.Run("does not list ingest objects that sort after the tenants directory", func(t *testing.T) {
+	t.Run("does not list uncompacted objects that sort after the tenants directory", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
 		bucket.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
@@ -221,7 +223,7 @@ func TestFileListScanner_List(t *testing.T) {
 		require.ErrorContains(t, err, "invalid file list")
 	})
 
-	t.Run("returns an error naming the object when an ingest object cannot be opened", func(t *testing.T) {
+	t.Run("returns an error naming the object when an uncompacted object cannot be opened", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
 		bucket.put(t, "objects/01/corrupt", notADataObject, old)
@@ -230,7 +232,7 @@ func TestFileListScanner_List(t *testing.T) {
 		require.ErrorContains(t, err, "objects/01/corrupt")
 	})
 
-	t.Run("returns the open error and not a context error when an open fails during the walk", func(t *testing.T) {
+	t.Run("returns the open error and not a context error when an open fails during the listing", func(t *testing.T) {
 		files := newFileBucket(t)
 		files.put(t, "objects/01/corrupt", notADataObject, old)
 		bucket := &blockingBucket{fileBucket: files, blockAfter: "objects/01/corrupt"}
@@ -249,6 +251,58 @@ func TestFileListScanner_List(t *testing.T) {
 		_, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
 		require.ErrorContains(t, err, "modification time of objects/01/no-time")
 	})
+
+	t.Run("returns the listing error and not a context error when a listing fails while an open runs", func(t *testing.T) {
+		files := newFileBucket(t)
+		files.put(t, "objects/00/blocked", objectBytes(t, "a"), old)
+		files.put(t, "objects/01/fails", objectBytes(t, "a"), old)
+		bucket := &listFailsDuringOpenBucket{
+			fileBucket: files,
+			blockOpen:  "objects/00/blocked",
+			failAt:     "objects/01/fails",
+			opening:    make(chan struct{}),
+		}
+
+		_, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		require.ErrorIs(t, err, errListing)
+		require.ErrorContains(t, err, "listing uncompacted objects in objects")
+		require.NotErrorIs(t, err, context.Canceled)
+	})
+
+	for _, tc := range []struct {
+		name    string
+		noTime  string
+		wantErr string
+	}{
+		{
+			name:    "returns an error when the listing of the compacted log objects of the tenant fails",
+			noTime:  "objects/tenants/a/aa/compacted",
+			wantErr: "listing compacted objects in objects/tenants/a/",
+		},
+		{
+			name:    "returns an error when the listing of the compacted index objects of the tenant fails",
+			noTime:  "index/v0/indexes/tenants/a/bb/compacted",
+			wantErr: "listing compacted objects in index/v0/indexes/tenants/a/",
+		},
+		{
+			name:    "returns an error when the listing of the uncompacted index objects fails",
+			noTime:  "index/v0/indexes/00/single-a",
+			wantErr: "listing uncompacted objects in index/v0/indexes",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := newFileBucket(t)
+			files.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
+			files.put(t, "objects/tenants/a/aa/compacted", notADataObject, old)
+			files.put(t, "index/v0/indexes/tenants/a/bb/compacted", notADataObject, old)
+			files.put(t, "index/v0/indexes/00/single-a", objectBytes(t, "a"), old)
+			bucket := &noModTimeBucket{fileBucket: files, name: tc.noTime}
+
+			list, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+			require.ErrorContains(t, err, tc.wantErr)
+			require.Empty(t, list.Paths)
+		})
+	}
 
 	t.Run("returns the context error when the context is cancelled", func(t *testing.T) {
 		bucket := newFileBucket(t)
@@ -385,6 +439,49 @@ func iterFailures(t *testing.T, reg *prometheus.Registry) float64 {
 		}
 	}
 	return 0
+}
+
+var errListing = errors.New("listing failed")
+
+// listFailsDuringOpenBucket blocks the reads of the object blockOpen until
+// the context of the read ends. After the first such read starts, the listing
+// fails with errListing when it reaches the object failAt.
+type listFailsDuringOpenBucket struct {
+	fileBucket
+	blockOpen string
+	failAt    string
+	opening   chan struct{}
+	once      sync.Once
+}
+
+func (b *listFailsDuringOpenBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if name == b.blockOpen {
+		return nil, b.block(ctx)
+	}
+	return b.fileBucket.Get(ctx, name)
+}
+
+func (b *listFailsDuringOpenBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	if name == b.blockOpen {
+		return nil, b.block(ctx)
+	}
+	return b.fileBucket.GetRange(ctx, name, off, length)
+}
+
+func (b *listFailsDuringOpenBucket) block(ctx context.Context) error {
+	b.once.Do(func() { close(b.opening) })
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (b *listFailsDuringOpenBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	return b.fileBucket.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		if attrs.Name == b.failAt {
+			<-b.opening
+			return errListing
+		}
+		return f(attrs)
+	}, options...)
 }
 
 // noModTimeBucket reports no modification time for the object name.
