@@ -28,7 +28,17 @@ const (
 )
 
 var (
-	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName, directDataObjStackName, queryFrontendShardDataObjStackName, queryFrontendShardDataObjAndChunkStackName, queryFrontendNoShardMaxQuerySeriesCutoffStackName}
+	stackNames = []string{
+		directTimestampFirstStackName,
+		directStreamFirstStackName,
+		queryFrontendNoShardTimestampFirstStackName,
+		queryFrontendShardTimestampFirstStackName,
+		queryFrontendShardStreamFirstStackName,
+		directDataObjStackName,
+		queryFrontendShardDataObjStackName,
+		queryFrontendShardDataObjAndChunkStackName,
+		queryFrontendNoShardMaxQuerySeriesCutoffStackName,
+	}
 )
 
 // splitDataObjStart is the data-object start time of the stack that reads both data objects and

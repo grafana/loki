@@ -5,7 +5,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -71,9 +70,9 @@ func TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFr
 }
 
 // TestLogQLScripts_ShouldNotChangeAnyOutcomeWithTheMaxQuerySeriesCutoff runs every script
-// under a low series limit on each stack, with max query series cutoff disabled and enabled, and checks
-// that the cut-off does not change the eval outcome. The one allowed difference is a tie: the cut-off can
-// fail on the series limit in the step where the query without it fails on a pipeline error.
+// with a low series limit and compares eval outcomes with the cutoff disabled and enabled.
+// Each eval must have the same success/failure and series-limit status, except that a
+// series-limit failure with the cutoff enabled may replace a pipeline error with it disabled.
 func TestLogQLScripts_ShouldNotChangeAnyOutcomeWithTheMaxQuerySeriesCutoff(t *testing.T) {
 	const maxQuerySeries = 2
 
@@ -128,18 +127,12 @@ func requireSameOutcomesWithMaxQuerySeriesCutoff(t *testing.T, disabled, enabled
 			continue
 		}
 		require.Equalf(t, disabled[i].err == nil, enabled[i].err == nil, "%s: without the cut-off error %v, with it %v", disabled[i].eval, disabled[i].err, enabled[i].err)
-		if enabled[i].isSeriesLimitFailure() && isPipelineFailure(disabled[i]) {
+		if enabled[i].isSeriesLimitFailure() && disabled[i].isPipelineFailure() {
 			t.Logf("%s: tie, the cut-off fails on the series limit where the query without it fails on %v", disabled[i].eval, disabled[i].err)
 			continue
 		}
 		require.Equalf(t, disabled[i].isSeriesLimitFailure(), enabled[i].isSeriesLimitFailure(), "%s: without the cut-off error %v, with it %v", disabled[i].eval, disabled[i].err, enabled[i].err)
 	}
-}
-
-// isPipelineFailure reports whether the query failed on a pipeline error. It reads the error
-// message for the same reason as evalOutcome.isSeriesLimitFailure.
-func isPipelineFailure(o evalOutcome) bool {
-	return o.err != nil && strings.Contains(o.err.Error(), "pipeline error:")
 }
 
 func TestRunScriptOutcomes_ShouldReportTheSeriesLimitFailures(t *testing.T) {
