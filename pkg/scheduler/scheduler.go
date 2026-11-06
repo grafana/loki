@@ -669,24 +669,33 @@ func (s *Scheduler) setRunState(isInSet bool) {
 			// we need to send shutdown to all the connected frontends.
 			level.Info(s.log).Log("msg", "this scheduler is no longer in the ReplicationSet, disconnecting frontends, canceling queries and no longer accepting requests.")
 
-			// Send a shutdown message to the connected frontends, there is no way to break the blocking Recv() in the FrontendLoop()
-			// so we send a message to the frontend telling them we are shutting down so they will disconnect.
-			// When FrontendLoop() exits for the connected querier all the inflight queries and queued queries will be canceled.
-			s.connectedFrontendsMu.Lock()
-			defer s.connectedFrontendsMu.Unlock()
-			for _, f := range s.connectedFrontends {
-				// We ignore any errors here because there isn't really an action to take and because
-				// the frontends are also discovering the ring changes and may already be disconnected
-				// or have disconnected.
-				_ = f.frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN})
-			}
+			// There is no way to break the blocking Recv() in the FrontendLoop(), so tell the frontends we are
+			// shutting down and they will disconnect. When FrontendLoop() exits for a connected frontend all of its
+			// inflight and queued queries are canceled.
+			s.notifyFrontendsShuttingDown()
 			s.schedulerRunning.Set(0)
 		}
 	}
 }
 
+// notifyFrontendsShuttingDown sends SHUTTING_DOWN to every connected frontend so that it disconnects.
+func (s *Scheduler) notifyFrontendsShuttingDown() {
+	s.connectedFrontendsMu.Lock()
+	defer s.connectedFrontendsMu.Unlock()
+	for _, f := range s.connectedFrontends {
+		// We ignore any errors here because there isn't really an action to take and because
+		// the frontends are also discovering the ring changes and may already be disconnected
+		// or have disconnected.
+		_ = f.frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN})
+	}
+}
+
 // Close the Scheduler.
 func (s *Scheduler) stopping(_ error) error {
+	// An idle frontend sits in a blocking Recv() in FrontendLoop() and only learns that the scheduler stopped when it
+	// receives a message, which keeps the gRPC server from stopping gracefully. Tell the frontends first.
+	s.notifyFrontendsShuttingDown()
+
 	// This will also stop the requests queue, which stop accepting new requests and errors out any pending requests.
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
