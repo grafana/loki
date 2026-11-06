@@ -45,16 +45,6 @@ Migrating from a simple scalable deployment to a HA monolithic deployment withou
 | Operational complexity | 🟧 medium |
 | Scalability | 🟧 medium |
 
-{{< admonition type="warning" >}}
-**TO BE INVESTIGATED**
-
-In Loki 4.0.0-rc.2, queries don't reliably apply [delete requests](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) in an HA monolithic deployment.
-
-Each instance loads delete requests from its own gRPC server, not from `common.compactor_grpc_address`. Only the main compactor instance serves delete requests. Queries that run on a `worker` instance log `failed loading deletes for user` with `unknown service grpc.Compactor` and return log lines that a delete request matches.
-
-This affects the `filter-only` and `filter-and-delete` deletion modes. If your use case requires that delete requests apply to every query, use a [distributed deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-distributed/) instead.
-{{< /admonition >}}
-
 ## Stage 1: Preparing existing deployment
 
 Before beginning the actual migration you want to check your existing deployment. All changes in this stage are made to the configuration of the existing SSD instances and take effect after a restart.
