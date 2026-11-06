@@ -16,15 +16,17 @@ or attach hint ranges for time intervals that the logline index proves contain n
    Parses the query, kicks off an async logline index lookup, and stores the result
    (hint time ranges + ingester cutoff) in context. Opt-in via `X-Logline-Index` header.
 
-2. **Filter middleware** (`loglineFilterHandler`): Sits *below* `SplitByInterval` and
-   below the results cache. For each interval sub-request, it consults the prefetched
+2. **Filter middleware** (`loglineFilterHandler`): Sits *below* the split middleware
+   (`SplitByInterval`, or split-by-range for an instant metric query), the results cache,
+   and sharding. For each split and shard sub-request, it consults the prefetched
    hints to either:
    - **Skip** the interval entirely (return empty response) if no hint ranges overlap.
-     Quantile sketch shards (sharded `quantile_over_time`) are the exception: the sketch
-     merge rejects an empty matrix, so they pass through instead. `approx_topk` runs only
-     as an instant query, so its count-min shards never reach the filter.
+     Quantile sketch shards (sharded `quantile_over_time`) and count-min shards
+     (`approx_topk`) are the exception: each merge accepts only its sketch, so a
+     miss passes the shard through instead of returning an empty matrix or vector.
    - **Forward** one request with the clipped raw hint ranges attached. Request bounds
-     stay the split interval. Queriers use the ranges to skip storage work.
+     stay the sub-request's own (`TimeTs` for an instant request). Queriers use the ranges
+     to skip storage work.
    - **Pass through** if the interval is in the ingester window, is covered only by a
      pre-min-date sentinel, or on error/timeout. Ingester-window and pre-min-date
      intervals pass through before waiting for the lookup, so a limited query can
@@ -36,6 +38,15 @@ A request it cannot read passes through. A metric split reads before its start, 
 overlap and clipping use the window widened by the range interval and offset, with an
 exclusive end of end minus offset plus 1ns (the querier's read window). Log splits use no
 widening and no extra nanosecond.
+
+An instant metric request uses its evaluation time as both start and end, so its window
+is that time widened the same way. The filter keeps `TimeTs` and attaches the hint ranges
+in the lookback. Split-by-range gives each instant sub-request its own offset or
+evaluation time, so each gets its own window. A skipped instant request returns an empty
+vector. A skipped `first_over_time` or `last_over_time` shard returns an empty matrix
+instead: the querier returns a matrix for one, and its merge accepts only a matrix. The
+prefetch middleware skips the lookup for a log selector on the instant endpoint, because
+the querier rejects it.
 
 ## Key integration points
 
@@ -94,7 +105,8 @@ that request like any log query.
 Detected fields only look up hints in live mode. Dry-run verifies hints against the log
 lines or samples in the response, and a detected fields response has neither. Detected
 fields only accept a log query and get the same hints that query gets, so dry-run on log
-queries covers their correctness.
+queries covers their correctness. The detected fields handler rejects a metric query, so
+the prefetch middleware skips the lookup for one. No sub-request could use the hints.
 
 ### Hint timeout
 
@@ -157,8 +169,8 @@ why it didn't:
    reads only the ingester window skips the size estimate, so it never records the
    last two. Metric queries that `SupportedMetricQuery` rejects, and `absent_over_time`
    queries, return before these skips. They get no `Logline` stats, so outcome counts
-   leave them out. `absent_over_time` stays unhinted because a skipped split returns an
-   empty matrix, which drops the 1 that an empty window returns.
+   leave them out. `absent_over_time` stays unhinted because a skipped sub-request returns
+   an empty matrix or vector, which drops the 1 that an empty window returns.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
    `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
    A lookup still running when the query returns is `lookup_timeout` if a
