@@ -532,6 +532,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // the response. The push is rejected with the error instead when nothing is left to write, or
 // when a stream of the push resolves to a policy with reject_partial_writes and the error is a
 // 429.
+//
+// A rejected push, with nothing written, always returns a nil response with its error. A non-nil
+// response means the push was written, in part if the error is non-nil.
 func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -543,7 +546,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	if len(req.Streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "pre-validation").Inc()
-		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
 	now := time.Now()
@@ -566,7 +569,12 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// still to be written: they only lack their shard count.
 	if len(sharder.streams) == 0 && len(sharder.liveCandidates) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "post-validation").Inc()
-		return &logproto.PushResponse{}, validated.err
+		// Nothing was left to write. Without an error, for example when every
+		// stream was empty or blocked with status code 200, that is a success.
+		if validated.err != nil {
+			return nil, validated.err
+		}
+		return &logproto.PushResponse{}, nil
 	}
 
 	// An admitted push keeps its tokens even if a later stage rejects it.
