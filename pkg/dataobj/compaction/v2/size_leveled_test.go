@@ -229,4 +229,22 @@ func TestSizeLeveledStrategyPlan(t *testing.T) {
 			require.Equal(t, "tenant", task.Tenant)
 		}
 	})
+
+	t.Run("sets the output level to the input level when the merged run stays in that level", func(t *testing.T) {
+		runs := []Run{namedRun{"a", 1 * gib}, namedRun{"b", 1 * gib}}
+		merges, _ := newStrategy(t, 2).Plan(runs, "tenant")
+		require.Len(t, merges, 1)
+		require.Equal(t, uint32(0), merges[0].OutputLevel)
+	})
+
+	t.Run("sets the output level to the level of the merged run size", func(t *testing.T) {
+		runs := []Run{
+			namedRun{"l0-a", 10 * gib}, namedRun{"l0-b", 10 * gib},
+			namedRun{"l1-a", 64 * gib}, namedRun{"l1-b", 64 * gib},
+		}
+		merges, _ := newStrategy(t, 2).Plan(runs, "tenant")
+		require.Equal(t, [][]string{{"l0-a", "l0-b"}, {"l1-a", "l1-b"}}, taskPaths(merges))
+		require.Equal(t, uint32(1), merges[0].OutputLevel)
+		require.Equal(t, uint32(2), merges[1].OutputLevel)
+	})
 }

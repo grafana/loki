@@ -23,6 +23,21 @@ message Metadata {
   repeated SectionType types = 3;
 
   reserved 4; // Previously object_size (sfixed64)
+
+  // compaction holds the compaction info of this data object. Only the
+  // compactor sets it, and only on log objects. It is absent on all other
+  // objects, such as index objects.
+  CompactionInfo compaction = 5;
+}
+
+// CompactionInfo describes where the compactor placed a data object in the
+// compaction levels.
+message CompactionInfo {
+  // level is the compaction level of the run that holds this object, as the
+  // planner computed it when it planned the merge. The level depends on the
+  // planner configuration at that time, so it can differ from the level that a
+  // later planner computes for the same run.
+  uint32 level = 1;
 }
 
 // SectionType specifies a namespaced type of section within a data object.
