@@ -339,7 +339,9 @@ func (s *Store) ClearKnownMetas() {
 }
 
 // StartPolling runs an initial blocking poll, then polls in the background at cfg.PollInterval.
-// Tests should call Poll() directly for synchronous behavior.
+// The initial poll error is returned and no background loop is started. Tests should call Poll()
+// directly for synchronous behavior. Queriers use NewBackgroundPollingService instead, so a cold
+// catalog fetch does not block startup.
 func (s *Store) StartPolling(ctx context.Context) error {
 	if err := s.poll(ctx); err != nil {
 		s.metrics.pollErrors.Inc()
@@ -347,9 +349,21 @@ func (s *Store) StartPolling(ctx context.Context) error {
 		return err
 	}
 
+	s.startPollLoop(ctx, false)
+	return nil
+}
+
+// startPollLoop polls until ctx is canceled. When immediate is set, the first poll runs in this
+// goroutine's first iteration and a failure is logged rather than returned. Later polls behave
+// the same either way. The loop closes pollCh when it exits.
+func (s *Store) startPollLoop(ctx context.Context, immediate bool) {
 	level.Info(s.logger).Log("msg", "starting index store polling", "interval", s.cfg.PollInterval)
 	go func() {
 		defer close(s.pollCh)
+
+		if immediate {
+			s.pollOnce(ctx)
+		}
 
 		ticker := time.NewTicker(s.cfg.PollInterval)
 		defer ticker.Stop()
@@ -357,32 +371,54 @@ func (s *Store) StartPolling(ctx context.Context) error {
 		for {
 			select {
 			case <-ticker.C:
-				if err := s.poll(ctx); err != nil {
-					s.metrics.pollErrors.Inc()
-					level.Error(s.logger).Log("msg", "poll failed", "err", err)
-				} else {
-					select {
-					case s.pollCh <- s.snapshot.Load():
-					default: // consumer busy, they'll get the next one
-					}
-				}
+				s.pollOnce(ctx)
 			case <-ctx.Done():
 				return
 			}
 		}
 	}()
+}
 
-	return nil
+// pollOnce runs one poll. A failure is counted and logged. A success notifies PollNotify,
+// dropping the snapshot if the consumer is still on the previous one.
+func (s *Store) pollOnce(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	if err := s.poll(ctx); err != nil {
+		s.metrics.pollErrors.Inc()
+		level.Error(s.logger).Log("msg", "poll failed", "err", err)
+		return
+	}
+	select {
+	case s.pollCh <- s.snapshot.Load():
+	default: // consumer busy, they'll get the next one
+	}
 }
 
 // NewPollingService runs StartPolling for the lifetime of a dskit service.
 // starting does the initial poll; running waits until stop cancels the context
-// so background polls keep going. stopping is optional.
+// so background polls keep going. stopping is optional. The query-frontend uses
+// this so it does not serve hint plans from an empty snapshot.
 func NewPollingService(s *Store, name string, stopping services.StoppingFn) services.Service {
+	return pollingService(name, stopping, func(ctx context.Context) error {
+		return s.StartPolling(ctx)
+	})
+}
+
+// NewBackgroundPollingService starts catalog polling without waiting for the first poll.
+// Poll errors are logged and retried on the poll interval. The querier uses this so
+// worker startup and /ready do not wait on a cold catalog fetch.
+func NewBackgroundPollingService(s *Store, name string, stopping services.StoppingFn) services.Service {
+	return pollingService(name, stopping, func(ctx context.Context) error {
+		s.startPollLoop(ctx, true)
+		return nil
+	})
+}
+
+func pollingService(name string, stopping services.StoppingFn, starting services.StartingFn) services.Service {
 	svc := services.NewBasicService(
-		func(ctx context.Context) error {
-			return s.StartPolling(ctx)
-		},
+		starting,
 		func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
