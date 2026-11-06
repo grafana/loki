@@ -609,6 +609,10 @@ func Test_PushInternalRequest(t *testing.T) {
 			ing := &mockIngester{}
 			distributors, _ := prepare(t, 1, 3, limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
 			d := distributors[0]
+			// The tee sees the streams handed to the write path with their nested structure, which
+			// the ingesters' flat push requests do not keep.
+			tee := &mockTee{}
+			d.tee = tee
 
 			req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
 				Labels: `{job="internal"}`, ResourceLogs: tc.groups,
@@ -622,13 +626,16 @@ func Test_PushInternalRequest(t *testing.T) {
 
 			got := ing.Peek()
 			if len(tc.want) == 0 {
-				require.Empty(t, req.Streams)
+				require.Empty(t, tee.duplicated)
 				require.Nil(t, got)
 				return
 			}
-			require.Len(t, req.Streams, 1)
-			require.Len(t, req.Streams[0].ResourceLogs, len(tc.wantScopes))
-			for i, resource := range req.Streams[0].ResourceLogs {
+			// The written stream has its emptied scopes and resources removed.
+			require.Len(t, tee.duplicated, 1)
+			require.Len(t, tee.duplicated[0], 1)
+			written := tee.duplicated[0][0].Stream
+			require.Len(t, written.ResourceLogs, len(tc.wantScopes))
+			for i, resource := range written.ResourceLogs {
 				require.Len(t, resource.ScopeLogs, tc.wantScopes[i])
 				for _, scope := range resource.ScopeLogs {
 					require.NotEmpty(t, scope.Entries)
