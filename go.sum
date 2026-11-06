@@ -22,8 +22,8 @@ cloud.google.com/go/trace v1.16.0 h1:GmQovzFc5F0CNfl0VLgL64aoTtu7xsM0YajW2GlG9+E
 cloud.google.com/go/trace v1.16.0/go.mod h1:r+bdAn16dKLSV1G2D5v3e58IlQlizfxWrUfjx7kM7X0=
 dario.cat/mergo v1.0.2 h1:85+piFYR1tMbRrLcDwR18y4UKJ3aH1Tbzi24VRW1TK8=
 dario.cat/mergo v1.0.2/go.mod h1:E/hbnu0NxMFBjpMIE34DRGLWqDy0g5FuKDhCb31ngxA=
-github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.3 h1:qgnWTiWs1G7AqcKZegFvkJD1bmXJcaDU3uC0ELSgZ5U=
-github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.3/go.mod h1:XtxD48QPInqoj+GMlcRlXHEYsoOxFnP6w2JgIZ9rDS4=
+github.com/Azure/azure-sdk-for-go/sdk/azcore v1.24.0 h1:5H6YRLGMoC8z5aXpxqcD6FfswI8mwoVNHSecvIoazt4=
+github.com/Azure/azure-sdk-for-go/sdk/azcore v1.24.0/go.mod h1:Sk63W6X/TElfcE2BknMYg0Q9JuCpebgjnHcbs5md4NM=
 github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0 h1:w3gDUJlJ0BfBsHH02DCBDwbkmMSXJqBj6nBOCo9iocY=
 github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0/go.mod h1:7scl8mG/IFLVjJ9ef/ltdND2T1z0CkgVSaQoUxLvmeU=
 github.com/Azure/azure-sdk-for-go/sdk/azidentity/cache v0.4.0 h1:xFaZZ+IubdftrDHnGGwZ6QvQ3KHTtWl2MCK+GMt2vxs=

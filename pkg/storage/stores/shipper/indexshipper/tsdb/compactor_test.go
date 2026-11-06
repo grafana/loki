@@ -1055,7 +1055,7 @@ func TestFormatV4IndexReadThroughStoreAndCompactor(t *testing.T) {
 	require.NoError(t, memChunk.Close())
 
 	firstTime, lastTime := lokiutil.RoundToMilliseconds(memChunk.Bounds())
-	flushedChunk := chunk.NewChunk("user-0", model.Fingerprint(labels.StableHash(metric)), metric, chunkenc.NewFacade(memChunk, 256*1024, 1500*1024), firstTime, lastTime)
+	flushedChunk := chunk.NewChunk("user-0", model.Fingerprint(labels.StableHash(metric)), metric, chunkenc.NewFacade(memChunk, 256*1024, 1500*1024), firstTime, lastTime, 0)
 	flushedChunk.IngestedAt = model.TimeFromUnix(1234)
 
 	writer := &recordingIndexWriter{}

@@ -43,6 +43,7 @@ type queryFrontendExecutionStack struct {
 	stackName            string
 	queryShardingEnabled bool
 	limits               logql.Limits
+	engineOpts           logql.EngineOpts
 	newQuerier           newScriptQuerierFunc
 	handler              http.Handler
 
@@ -60,14 +61,14 @@ type queryFrontendExecutionStack struct {
 // changed by opts.
 func newQueryFrontendTimestampFirstStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
 	o := newStackOptions(opts...)
-	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{maxQuerySeries: o.maxQuerySeries}, newChunkQuerier, time.Time{})
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{maxQuerySeries: o.maxQuerySeries}, newEngineOpts(o), newChunkQuerier, time.Time{})
 }
 
 // newQueryFrontendStreamFirstStack returns the query-frontend stack with query sharding and
 // stream-first execution on, changed by opts.
 func newQueryFrontendStreamFirstStack(t *testing.T, stackName string, opts ...stackOption) (*queryFrontendExecutionStack, error) {
 	o := newStackOptions(append([]stackOption{withQuerySharding()}, opts...)...)
-	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newChunkQuerier, time.Time{})
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newEngineOpts(o), newChunkQuerier, time.Time{})
 }
 
 // newQueryFrontendDataObjStack returns the query-frontend stack with query sharding and
@@ -89,23 +90,23 @@ func newQueryFrontendDataObjAndChunkStack(t *testing.T, stackName string, opts .
 // from data objects from dataObjQueryStart on.
 func newQueryFrontendDataObjStackFrom(t *testing.T, stackName string, dataObjQueryStart time.Time, opts ...stackOption) (*queryFrontendExecutionStack, error) {
 	o := newStackOptions(append([]stackOption{withQuerySharding()}, opts...)...)
-	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newDataObjQuerierFunc(dataObjQueryStart), dataObjQueryStart)
+	return newQueryFrontendStack(t, stackName, o.queryShardingEnabled, execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newEngineOpts(o), newDataObjQuerierFunc(dataObjQueryStart), dataObjQueryStart)
 }
 
 // newQueryFrontendStack builds a self-contained query-frontend + query-scheduler +
 // querier-worker loop wired over gRPC. The querier runs queries with limits, over the querier
-// that newQuerier builds.
+// that newQuerier builds. Every engine of the stack runs with engineOpts.
 //
 // A non-zero dataObjQueryStart turns data objects on in the query-frontend from that time on. The
 // query-frontend then marks the queries that a querier may read from data objects.
-func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled bool, limits logql.Limits, newQuerier newScriptQuerierFunc, dataObjQueryStart time.Time) (*queryFrontendExecutionStack, error) {
+func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled bool, limits logql.Limits, engineOpts logql.EngineOpts, newQuerier newScriptQuerierFunc, dataObjQueryStart time.Time) (*queryFrontendExecutionStack, error) {
 	var (
 		logger       = log.NewNopLogger()
 		ctx          = context.Background()
 		schemaConfig = newQueryFrontendSchemaConfig()
 	)
 
-	s := &queryFrontendExecutionStack{t: t, queryShardingEnabled: queryShardingEnabled, stackName: stackName, limits: limits, newQuerier: newQuerier, dataObjQueryStart: dataObjQueryStart}
+	s := &queryFrontendExecutionStack{t: t, queryShardingEnabled: queryShardingEnabled, stackName: stackName, limits: limits, engineOpts: engineOpts, newQuerier: newQuerier, dataObjQueryStart: dataObjQueryStart}
 
 	var shutdown []func()
 	stop := func() {
@@ -203,7 +204,7 @@ func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled 
 
 	// Tripperware + serialize handler: decode an HTTP request, run it through the tripperware onto
 	// the frontend, encode the response back.
-	tripperware, stopper, err := newQueryFrontendTripperware(logger, overrides, schemaConfig, queryShardingEnabled, !dataObjQueryStart.IsZero())
+	tripperware, stopper, err := newQueryFrontendTripperware(logger, engineOpts, overrides, schemaConfig, queryShardingEnabled, !dataObjQueryStart.IsZero())
 	if err != nil {
 		return abort(err)
 	}
@@ -316,9 +317,7 @@ func (s *queryFrontendExecutionStack) queryHandler(logger log.Logger) queryrange
 			return nil, fmt.Errorf("querier not ready")
 		}
 
-		var opts logql.EngineOpts
-		flagext.DefaultValues(&opts)
-		engine := logql.NewEngine(opts, q, s.limits, logger)
+		engine := logql.NewEngine(s.engineOpts, q, s.limits, logger)
 
 		params, err := queryrange.ParamsFromRequest(req)
 		if err != nil {
@@ -391,7 +390,7 @@ func newQueryFrontendSchemaConfig() config.SchemaConfig {
 	return schema
 }
 
-func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overrides, schema config.SchemaConfig, sharded, dataObjEnabled bool) (queryrangebase.Middleware, queryrange.Stopper, error) {
+func newQueryFrontendTripperware(logger log.Logger, engineOpts logql.EngineOpts, overrides *validation.Overrides, schema config.SchemaConfig, sharded, dataObjEnabled bool) (queryrangebase.Middleware, queryrange.Stopper, error) {
 	var cfg queryrange.Config
 	flagext.DefaultValues(&cfg)
 	// The querier of the stack reads data objects up to now, with no storage lag.
@@ -412,9 +411,6 @@ func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overri
 	// count-min/quantile sketch path; first/last_over_time use the timestamp-carrying merge path;
 	// approx_count_distinct uses the HyperLogLog sketch path.
 	cfg.ShardAggregations = []string{"quantile_over_time", "first_over_time", "last_over_time", "approx_topk", "approx_count_distinct"}
-
-	var engineOpts logql.EngineOpts
-	flagext.DefaultValues(&engineOpts)
 
 	return queryrange.NewMiddleware(
 		cfg,

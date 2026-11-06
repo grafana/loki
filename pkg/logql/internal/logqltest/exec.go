@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -15,18 +16,29 @@ import (
 )
 
 const (
-	directTimestampFirstStackName               = "direct (timestamp-first)"
-	directStreamFirstStackName                  = "direct (stream-first)"
-	queryFrontendNoShardTimestampFirstStackName = "query-frontend + query-scheduler (no sharding, timestamp-first)"
-	queryFrontendShardTimestampFirstStackName   = "query-frontend + query-scheduler (sharding, timestamp-first)"
-	queryFrontendShardStreamFirstStackName      = "query-frontend + query-scheduler (sharding, stream-first)"
-	directDataObjStackName                      = "direct (dataobj)"
-	queryFrontendShardDataObjStackName          = "query-frontend + query-scheduler (sharding, dataobj)"
-	queryFrontendShardDataObjAndChunkStackName  = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+	directTimestampFirstStackName                     = "direct (timestamp-first)"
+	directStreamFirstStackName                        = "direct (stream-first)"
+	queryFrontendNoShardTimestampFirstStackName       = "query-frontend + query-scheduler (no sharding, timestamp-first)"
+	queryFrontendShardTimestampFirstStackName         = "query-frontend + query-scheduler (sharding, timestamp-first)"
+	queryFrontendShardStreamFirstStackName            = "query-frontend + query-scheduler (sharding, stream-first)"
+	directDataObjStackName                            = "direct (dataobj)"
+	queryFrontendShardDataObjStackName                = "query-frontend + query-scheduler (sharding, dataobj)"
+	queryFrontendShardDataObjAndChunkStackName        = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+	queryFrontendNoShardMaxQuerySeriesCutoffStackName = "query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)"
 )
 
 var (
-	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName, directDataObjStackName, queryFrontendShardDataObjStackName, queryFrontendShardDataObjAndChunkStackName}
+	stackNames = []string{
+		directTimestampFirstStackName,
+		directStreamFirstStackName,
+		queryFrontendNoShardTimestampFirstStackName,
+		queryFrontendShardTimestampFirstStackName,
+		queryFrontendShardStreamFirstStackName,
+		directDataObjStackName,
+		queryFrontendShardDataObjStackName,
+		queryFrontendShardDataObjAndChunkStackName,
+		queryFrontendNoShardMaxQuerySeriesCutoffStackName,
+	}
 )
 
 // splitDataObjStart is the data-object start time of the stack that reads both data objects and
@@ -92,6 +104,10 @@ type stackOptions struct {
 	// querier and in the query-frontend.
 	maxQuerySeries int
 
+	// maxQuerySeriesCutoff turns on MaxQuerySeriesCutoff in every engine the stack
+	// runs, in the querier and in the query-frontend.
+	maxQuerySeriesCutoff bool
+
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
 }
@@ -104,9 +120,23 @@ func withMaxQuerySeries(maxQuerySeries int) stackOption {
 	return func(o *stackOptions) { o.maxQuerySeries = maxQuerySeries }
 }
 
+// withMaxQuerySeriesCutoff returns the stackOption that turns on MaxQuerySeriesCutoff in every
+// engine of the stack.
+func withMaxQuerySeriesCutoff() stackOption {
+	return func(o *stackOptions) { o.maxQuerySeriesCutoff = true }
+}
+
 // withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
 func withQuerySharding() stackOption {
 	return func(o *stackOptions) { o.queryShardingEnabled = true }
+}
+
+// newEngineOpts returns the default engine options, changed by o.
+func newEngineOpts(o stackOptions) logql.EngineOpts {
+	var engineOpts logql.EngineOpts
+	flagext.DefaultValues(&engineOpts)
+	engineOpts.MaxQuerySeriesCutoff = o.maxQuerySeriesCutoff
+	return engineOpts
 }
 
 // newStackOptions returns the stackOptions that opts build on top of the defaults.
