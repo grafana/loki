@@ -138,6 +138,19 @@ func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls 
 	}
 }
 
+// shardedStreams is what the streamSharder made of the accepted streams. streams are ready to be
+// written, once enforceStreamLimits has checked them; the candidates are for the limits service,
+// see streamSharder.
+type shardedStreams struct {
+	streams                          []KeyedStream
+	shadowCandidates, liveCandidates []limitsServiceShardCandidate
+}
+
+// result returns what the sharder collected.
+func (s *streamSharder) result() shardedStreams {
+	return shardedStreams{streams: s.streams, shadowCandidates: s.shadowCandidates, liveCandidates: s.liveCandidates}
+}
+
 // warnMixedShardStreams logs a warning when the push mixed policies with stream sharding enabled
 // and disabled, see streamSharder.shardStreamsEnabledSeen.
 func (s *streamSharder) warnMixedShardStreams() {
