@@ -522,6 +522,8 @@ func TestPrefetchFilter_DetectedFieldsSkipsLookup(t *testing.T) {
 		// A metric query is rejected by the detected fields handler.
 		wantStatus     int32
 		wantStatsCalls int
+		// The live header skips the size gate and looks up hints.
+		wantLookup bool
 	}{
 		{name: "dry run header", ctx: testTenantContextWithDryRun(), cfg: optIn, query: supported},
 		{name: "dry run tenant mode", ctx: testTenantContext(), cfg: optIn, limits: mockLimits{modes: map[string]Mode{"test": ModeDryRun}}, query: supported},
@@ -535,7 +537,8 @@ func TestPrefetchFilter_DetectedFieldsSkipsLookup(t *testing.T) {
 		{name: "query without a line filter", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"}`},
 		{name: "search term shorter than the n-gram length", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"} |= "err"`},
 		{name: "pattern filter", ctx: testTenantContextWithLive(), cfg: optIn, query: `{job="test"} |> "<_> timeout <_>"`},
-		{name: "below the byte threshold", ctx: testTenantContextWithLive(), cfg: optIn, limits: mockLimits{defaultMinQueryBytes: 1}, query: supported, wantStatsCalls: 1},
+		{name: "tenant live below the byte threshold", ctx: testTenantContext(), cfg: optIn, limits: mockLimits{modes: map[string]Mode{"test": ModeLive}, defaultMinQueryBytes: 1}, query: supported, wantStatsCalls: 1},
+		{name: "live header below the byte threshold", ctx: testTenantContextWithLive(), cfg: optIn, limits: mockLimits{defaultMinQueryBytes: 1}, query: supported, wantLookup: true},
 		{name: "logline off header", ctx: testTenantContextWithForceDisable(), cfg: optIn, query: supported},
 		{name: "tenant not opted in", ctx: testTenantContext(), cfg: optIn, query: supported},
 	} {
@@ -549,8 +552,13 @@ func TestPrefetchFilter_DetectedFieldsSkipsLookup(t *testing.T) {
 			resp, err := handler.Do(tc.ctx, newTestDetectedFieldsRequest(tc.query, now.Add(-time.Hour), now, ""))
 			// Dry-run counts the lookup before it starts it in the background.
 			require.Zero(t, testutil.ToFloat64(metrics.dryRunTotal))
-			require.Equal(t, 0, hp.Calls())
 			require.Equal(t, tc.wantStatsCalls, statsCalls)
+			if tc.wantLookup {
+				require.Equal(t, 1, hp.Calls(), "the live header looks up hints for a small detected fields query")
+				require.NoError(t, err)
+				return
+			}
+			require.Equal(t, 0, hp.Calls())
 
 			if tc.wantStatus != 0 {
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
@@ -1310,44 +1318,98 @@ func TestWrapMiddleware_Disabled(t *testing.T) {
 
 func TestPrefetchFilter_QueryBytesBelowThreshold_SkipsHintPrefetch(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
-	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{
-			TimeRanges: []hintprovider.HintTimeRange{
-				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
-			},
-		},
-	}
-
-	var gotStart, gotEnd time.Time
-	queryCalls := 0
-	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		queryCalls++
-		lokiReq := req.(*queryrange.LokiRequest)
-		gotStart = lokiReq.StartTs
-		gotEnd = lokiReq.EndTs
-		return emptyStreamResponse(), nil
-	})
-
-	statsCalls := 0
-	querier := buildStatsAwareQuerier(
-		&logproto.IndexStatsResponse{Bytes: 100},
-		nil,
-		&statsCalls,
-		queryHandler,
-	)
-
-	cfg := Config{}
-	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
-	ctx := testTenantContextWithLive()
+	hintStart := now.Add(-45 * time.Minute)
+	hintEnd := now.Add(-30 * time.Minute)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
-	_, err := handler.Do(ctx, req)
-	require.NoError(t, err)
-	require.Equal(t, 1, statsCalls, "should call index stats once for gating")
-	require.Equal(t, 0, hp.Calls(), "should skip hint prefetch when query bytes are below threshold")
-	require.Equal(t, 1, queryCalls, "should execute query via passthrough path")
-	require.Equal(t, req.StartTs, gotStart, "query should keep original start when hints are skipped")
-	require.Equal(t, req.EndTs, gotEnd, "query should keep original end when hints are skipped")
+	// Live mode from the logline.query settings and from the tenant limit applies
+	// the size gate. The live header is an explicit opt-in and skips it.
+	for _, tc := range []struct {
+		name     string
+		cfg      Config
+		limits   mockLimits
+		headers  http.Header
+		statsErr error
+		// wantHints is set when the request looks up hints despite being below
+		// the byte threshold. The live header does; the other live modes do not.
+		wantHints bool
+	}{
+		{
+			name:   "logline.query default live",
+			limits: mockLimits{defaultMinQueryBytes: 500},
+		},
+		{
+			name: "tenant live mode",
+			cfg:  Config{RequireOptInHeader: true},
+			limits: mockLimits{
+				modes:                map[string]Mode{"test": ModeLive},
+				defaultMinQueryBytes: 500,
+			},
+		},
+		{
+			name:   "live header",
+			limits: mockLimits{defaultMinQueryBytes: 500},
+			headers: http.Header{
+				LoglineIndexHeader: []string{string(LoglineIndexLive)},
+			},
+			wantHints: true,
+		},
+		{
+			name:   "live header ignores a failed size estimate",
+			limits: mockLimits{defaultMinQueryBytes: 500},
+			headers: http.Header{
+				LoglineIndexHeader: []string{string(LoglineIndexLive)},
+			},
+			statsErr:  errors.New("stats backend unavailable"),
+			wantHints: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{
+				hints: &hintprovider.Hints{
+					TimeRanges: []hintprovider.HintTimeRange{
+						{Start: hintStart, End: hintEnd},
+					},
+				},
+			}
+
+			var gotStart, gotEnd time.Time
+			var gotHints []logproto.HintTimeRange
+			queryCalls := 0
+			queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				queryCalls++
+				lokiReq := req.(*queryrange.LokiRequest)
+				gotStart = lokiReq.StartTs
+				gotEnd = lokiReq.EndTs
+				gotHints = lokiReq.HintRanges
+				return emptyStreamResponse(), nil
+			})
+
+			statsCalls := 0
+			querier := buildStatsAwareQuerier(
+				&logproto.IndexStatsResponse{Bytes: 100},
+				tc.statsErr,
+				&statsCalls,
+				queryHandler,
+			)
+
+			handler := buildStack(hp, tc.cfg, newTestMetrics(), querier, tc.limits)
+			_, err := handler.Do(httpreq.InjectAllHeaders(testTenantContext(), tc.headers), req)
+			require.NoError(t, err)
+			require.Equal(t, 1, queryCalls, "should execute the query")
+			require.Equal(t, req.StartTs, gotStart, "query should keep original start")
+			require.Equal(t, req.EndTs, gotEnd, "query should keep original end")
+			if tc.wantHints {
+				require.Equal(t, 0, statsCalls, "the live header skips the size estimate")
+				require.Equal(t, 1, hp.Calls(), "the live header looks up hints for a small query")
+				require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
+				return
+			}
+			require.Equal(t, 1, statsCalls, "live mode without the live header still estimates query size")
+			require.Equal(t, 0, hp.Calls(), "should skip hint prefetch when query bytes are below threshold")
+			require.Empty(t, gotHints)
+		})
+	}
 }
 
 func TestPrefetchFilter_QueryBytesAboveThreshold_UsesHints(t *testing.T) {
@@ -1384,7 +1446,7 @@ func TestPrefetchFilter_QueryBytesAboveThreshold_UsesHints(t *testing.T) {
 
 	cfg := Config{}
 	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
-	ctx := testTenantContextWithLive()
+	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
 	_, err := handler.Do(ctx, req)
@@ -1433,7 +1495,7 @@ func TestPrefetchFilter_TenantMinQueryBytesOverridesGlobalThreshold(t *testing.T
 
 	cfg := Config{}
 	handler := buildStack(hp, cfg, newTestMetrics(), querier, settings)
-	ctx := testTenantContextWithLive()
+	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
 	_, err := handler.Do(ctx, req)
@@ -1475,7 +1537,7 @@ func TestPrefetchFilter_QueryStatsError_SkipsHintPrefetch(t *testing.T) {
 
 	cfg := Config{}
 	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
-	ctx := testTenantContextWithLive()
+	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
 	_, err := handler.Do(ctx, req)
@@ -1519,7 +1581,7 @@ func TestPrefetchFilter_MinQueryBytesZero_DisablesStatsGating(t *testing.T) {
 
 	cfg := Config{}
 	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 0})
-	ctx := testTenantContextWithLive()
+	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
 	_, err := handler.Do(ctx, req)
@@ -1567,7 +1629,7 @@ func TestPrefetchFilter_TenantMinQueryBytesZero_DisablesStatsGating(t *testing.T
 
 	cfg := Config{}
 	handler := buildStack(hp, cfg, newTestMetrics(), querier, settings)
-	ctx := testTenantContextWithLive()
+	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
 	_, err := handler.Do(ctx, req)
@@ -1589,15 +1651,29 @@ func TestPrefetchFilter_IngesterWindowSkipsQueryStats(t *testing.T) {
 	for _, tc := range []struct {
 		name                 string
 		ctx                  context.Context
+		modes                map[string]Mode
 		queryIngestersWithin time.Duration
 		req                  *queryrange.LokiRequest
-		// The stats call reports bytes above the threshold, so a query that
-		// gets the size estimate also starts a lookup.
+		// wantLookup is set when the lookup starts. A lookup that only reads the
+		// ingester window never starts, and the size estimate doesn't run either.
 		wantLookup bool
+		// wantStats is set when the size estimate runs. The live header skips it.
+		// The stats call reports bytes above the threshold, so a query that gets
+		// the estimate also starts a lookup.
+		wantStats bool
 	}{
 		{
 			name:                 "log query inside the window",
 			ctx:                  testTenantContextWithLive(),
+			queryIngestersWithin: 2 * time.Hour,
+			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
+		},
+		{
+			// The live header skips the size estimate on its own. Tenant live
+			// mode checks that the ingester window skips it too.
+			name:                 "tenant live log query inside the window",
+			ctx:                  testTenantContext(),
+			modes:                map[string]Mode{"test": ModeLive},
 			queryIngestersWithin: 2 * time.Hour,
 			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
 		},
@@ -1607,6 +1683,15 @@ func TestPrefetchFilter_IngesterWindowSkipsQueryStats(t *testing.T) {
 			queryIngestersWithin: 30 * time.Minute,
 			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
 			wantLookup:           true,
+		},
+		{
+			name:                 "tenant live log query starting before the window",
+			ctx:                  testTenantContext(),
+			modes:                map[string]Mode{"test": ModeLive},
+			queryIngestersWithin: 30 * time.Minute,
+			req:                  newTestLokiRequest(logQuery, now.Add(-time.Hour), now),
+			wantLookup:           true,
+			wantStats:            true,
 		},
 		{
 			name:       "log query without an ingester window",
@@ -1640,6 +1725,7 @@ func TestPrefetchFilter_IngesterWindowSkipsQueryStats(t *testing.T) {
 			queryIngestersWithin: time.Hour,
 			req:                  newTestLokiRequest(metricQuery, now.Add(-62*time.Minute), now),
 			wantLookup:           true,
+			wantStats:            true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1658,7 +1744,7 @@ func TestPrefetchFilter_IngesterWindowSkipsQueryStats(t *testing.T) {
 			querier := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: 1 << 30}, nil, &statsCalls, next)
 			metrics := newTestMetrics()
 			cfg := Config{RequireOptInHeader: true, NgramLength: 6, QueryIngestersWithin: tc.queryIngestersWithin}
-			handler := buildStack(hp, cfg, metrics, querier, mockLimits{defaultMinQueryBytes: 1})
+			handler := buildStack(hp, cfg, metrics, querier, mockLimits{defaultMinQueryBytes: 1, modes: tc.modes})
 
 			_, err := handler.Do(tc.ctx, tc.req)
 			require.NoError(t, err)
@@ -1671,7 +1757,11 @@ func TestPrefetchFilter_IngesterWindowSkipsQueryStats(t *testing.T) {
 				require.Zero(t, testutil.ToFloat64(metrics.dryRunTotal))
 				return
 			}
-			require.Equal(t, 1, statsCalls)
+			if tc.wantStats {
+				require.Equal(t, 1, statsCalls)
+			} else {
+				require.Equal(t, 0, statsCalls, "the live header skips the size estimate")
+			}
 			// The lookup runs in the background and may finish after the query.
 			require.Eventually(t, func() bool { return hp.Calls() == 1 }, time.Second, time.Millisecond)
 		})
@@ -1704,7 +1794,7 @@ func TestPrefetchFilter_HintPrefetchCompletedLogIncludesQueryBytes(t *testing.T)
 	logger := log.NewLogfmtLogger(&logs)
 	cfg := Config{}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, querier, mockLimits{defaultMinQueryBytes: 500})
-	ctx := testTenantContextWithLive()
+	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
 	_, err := handler.Do(ctx, req)
@@ -2718,6 +2808,7 @@ func TestPrefetchFilter_LoglineOutcome(t *testing.T) {
 		ctx                  context.Context
 		query                string
 		ngramLength          int
+		tenantMode           Mode
 		minQueryBytes        int64
 		indexStatsErr        error
 		hints                *hintprovider.Hints
@@ -2734,13 +2825,15 @@ func TestPrefetchFilter_LoglineOutcome(t *testing.T) {
 		{name: "no shard planning", wantOutcome: outcomeSkipRatioUnavailable},
 		{name: "every sub-request passed through", hints: preMinDateHints, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeTimeRangeNotIndexed},
 		{name: "whole query in ingester window", queryIngestersWithin: 2 * time.Hour, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeRecentDataOnly},
-		{name: "whole query in ingester window skips the size estimate", minQueryBytes: 500, indexStatsErr: errors.New("stats unavailable"), queryIngestersWithin: 2 * time.Hour, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeRecentDataOnly},
+		{name: "whole query in ingester window skips the size estimate", ctx: testTenantContext(), tenantMode: ModeLive, minQueryBytes: 500, indexStatsErr: errors.New("stats unavailable"), queryIngestersWithin: 2 * time.Hour, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeRecentDataOnly},
 		{name: "lookup reports unsupported query", hintErr: hintprovider.ErrUnsupported, wantOutcome: outcomeUnsupportedQuery},
 		{name: "lookup failed", hintErr: errors.New("index unavailable"), wantOutcome: outcomeLookupFailed},
 		{name: "lookup canceled", hintErr: context.Canceled, wantOutcome: outcomeCanceled},
 		{name: "search term shorter than the n-gram length", query: `{job="test"} |= "err"`, ngramLength: 6, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeUnsupportedQuery},
-		{name: "query below the byte threshold", minQueryBytes: 500, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeQueryTooSmall},
-		{name: "query size estimate failed", minQueryBytes: 500, indexStatsErr: errors.New("stats unavailable"), wantOutcome: outcomeSizeEstimateFailed},
+		{name: "query below the byte threshold", ctx: testTenantContext(), tenantMode: ModeLive, minQueryBytes: 500, plannedChunks: 40, scannedChunks: 40, wantOutcome: outcomeQueryTooSmall},
+		{name: "query size estimate failed", ctx: testTenantContext(), tenantMode: ModeLive, minQueryBytes: 500, indexStatsErr: errors.New("stats unavailable"), wantOutcome: outcomeSizeEstimateFailed},
+		{name: "live header below the byte threshold still looks up", minQueryBytes: 500, plannedChunks: 40, scannedChunks: 4, wantOutcome: outcomeDataSkipped, wantRatio: 0.9},
+		{name: "live header ignores a failed size estimate", minQueryBytes: 500, indexStatsErr: errors.New("stats unavailable"), plannedChunks: 40, scannedChunks: 4, wantOutcome: outcomeDataSkipped, wantRatio: 0.9},
 		{name: "dry run skip records nothing", ctx: testTenantContextWithDryRun(), minQueryBytes: 500},
 		{name: "logline not enabled", ctx: testTenantContext()},
 	} {
@@ -2758,7 +2851,11 @@ func TestPrefetchFilter_LoglineOutcome(t *testing.T) {
 			})
 			querier := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: 100}, tc.indexStatsErr, nil, next)
 			cfg := Config{RequireOptInHeader: true, NgramLength: tc.ngramLength, QueryIngestersWithin: tc.queryIngestersWithin}
-			handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: tc.minQueryBytes})
+			limits := mockLimits{defaultMinQueryBytes: tc.minQueryBytes}
+			if tc.tenantMode != ModeUnset {
+				limits.modes = map[string]Mode{"test": tc.tenantMode}
+			}
+			handler := buildStack(hp, cfg, newTestMetrics(), querier, limits)
 			ctx := tc.ctx
 			if ctx == nil {
 				ctx = testTenantContextWithLive()
@@ -3660,7 +3757,8 @@ func TestLive_MetricRange_AttachesLoglineStats(t *testing.T) {
 		querier := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: 100}, nil, nil, next)
 		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
 
-		resp, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(query, reqStart, now))
+		// Default live mode has no live header, so the size gate still applies.
+		resp, err := handler.Do(testTenantContext(), newTestLokiRequest(query, reqStart, now))
 		require.NoError(t, err)
 		require.Equal(t, 0, hp.Calls())
 
@@ -3989,7 +4087,8 @@ func TestLive_MetricInstant_AttachesLoglineStats(t *testing.T) {
 		querier := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: 100}, nil, nil, next)
 		handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
 
-		resp, err := handler.Do(testTenantContextWithLive(), newTestLokiInstantRequest(query, ts))
+		// Default live mode has no live header, so the size gate still applies.
+		resp, err := handler.Do(testTenantContext(), newTestLokiInstantRequest(query, ts))
 		require.NoError(t, err)
 		require.Equal(t, 0, hp.Calls())
 
