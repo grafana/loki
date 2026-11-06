@@ -763,7 +763,7 @@
                },
                {
                   "datasource": "$datasource",
-                  "description": "p99 latency of a single object storage operation as seen by the client, by operation, including any retries the client does internally.",
+                  "description": "p99, p90 and p50 latency of a single object storage operation as seen by the client, by operation, including any retries the client does internally.",
                   "fieldConfig": {
                      "defaults": {
                         "custom": {
@@ -802,16 +802,28 @@
                      {
                         "expr": "histogram_quantile(0.99, sum by (le, operation) (rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))) > 0",
                         "format": "time_series",
-                        "legendFormat": "{{operation}}",
+                        "legendFormat": "{{operation}} p99",
+                        "legendLink": null
+                     },
+                     {
+                        "expr": "histogram_quantile(0.90, sum by (le, operation) (rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))) > 0",
+                        "format": "time_series",
+                        "legendFormat": "{{operation}} p90",
+                        "legendLink": null
+                     },
+                     {
+                        "expr": "histogram_quantile(0.50, sum by (le, operation) (rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/querier\",}[$__rate_interval]))) > 0",
+                        "format": "time_series",
+                        "legendFormat": "{{operation}} p50",
                         "legendLink": null
                      }
                   ],
-                  "title": "Object storage latency (p99)",
+                  "title": "Object storage latency",
                   "type": "timeseries"
                },
                {
                   "datasource": "$datasource",
-                  "description": "Total time a (sub)query spent downloading chunks, across all of its chunk fetches. This is not the latency of a single GET: see \"Object storage latency (p99)\" for that.",
+                  "description": "Total time a (sub)query spent downloading chunks, across all of its chunk fetches. This is not the latency of a single GET: see \"Object storage latency\" for that.",
                   "fieldConfig": {
                      "defaults": {
                         "custom": {
@@ -1035,7 +1047,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Object storage retries",
+                  "title": "Object storage congestion control retries",
                   "type": "timeseries"
                },
                {

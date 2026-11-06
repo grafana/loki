@@ -82,10 +82,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
     },
 
-    // p99 of a histogram. "> 0" drops the NaN points of series that had no
-    // observations, so idle series don't show up at all.
-    local p99Query(metric, by) =
-      'histogram_quantile(0.99, sum by (%s) (rate(%s_bucket{%s}[$__rate_interval]))) > 0' % [std.join(', ', ['le'] + by), metric, querierSel],
+    // Quantile of a histogram. "> 0" drops the NaN points of series that had
+    // no observations, so idle series don't show up at all.
+    local quantileQuery(q, metric, by) =
+      'histogram_quantile(%s, sum by (%s) (rate(%s_bucket{%s}[$__rate_interval]))) > 0' % [q, std.join(', ', ['le'] + by), metric, querierSel],
 
     local congestionControlNoValue = 'Congestion control disabled',
 
@@ -101,21 +101,27 @@ local utils = import 'mixin-utils/utils.libsonnet';
       withTooltipSortDesc +
       withDescription('Object storage operations issued by queriers, by operation. Operations with no requests in the selected time range are hidden. Only available with the Thanos object storage client (use_thanos_objstore: true).'),
 
-      $.newQueryPanel('Object storage latency (p99)', 's') +
-      $.queryPanel(p99Query('loki_objstore_bucket_operation_duration_seconds', ['operation']), '{{operation}}') +
+      $.newQueryPanel('Object storage latency', 's') +
+      $.queryPanel(
+        [
+          quantileQuery(q, 'loki_objstore_bucket_operation_duration_seconds', ['operation'])
+          for q in ['0.99', '0.90', '0.50']
+        ],
+        ['{{operation}} p99', '{{operation}} p90', '{{operation}} p50']
+      ) +
       withTooltipSortDesc +
-      withDescription('p99 latency of a single object storage operation as seen by the client, by operation, including any retries the client does internally.'),
+      withDescription('p99, p90 and p50 latency of a single object storage operation as seen by the client, by operation, including any retries the client does internally.'),
 
       $.newQueryPanel('Chunk download latency (per query)', 's') +
       $.queryPanel(
         [
-          p99Query('loki_logql_querystats_chunk_download_latency_seconds', []),
-          'histogram_quantile(0.50, sum by (le) (rate(loki_logql_querystats_chunk_download_latency_seconds_bucket{%s}[$__rate_interval]))) > 0' % querierSel,
+          quantileQuery('0.99', 'loki_logql_querystats_chunk_download_latency_seconds', []),
+          quantileQuery('0.50', 'loki_logql_querystats_chunk_download_latency_seconds', []),
         ],
         ['p99', 'p50']
       ) +
       withTooltipSortDesc +
-      withDescription('Total time a (sub)query spent downloading chunks, across all of its chunk fetches. This is not the latency of a single GET: see "Object storage latency (p99)" for that.'),
+      withDescription('Total time a (sub)query spent downloading chunks, across all of its chunk fetches. This is not the latency of a single GET: see "Object storage latency" for that.'),
 
       $.newQueryPanel('Object storage HTTP errors', 'reqps') +
       $.queryPanel(
@@ -135,7 +141,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         },
       },
 
-      $.newQueryPanel('Object storage retries', 'reqps') +
+      $.newQueryPanel('Object storage congestion control retries', 'reqps') +
       $.queryPanel(
         [
           'sum(rate(loki_store_congestion_control_retries_total{%s}[$__rate_interval]))' % querierSel,
