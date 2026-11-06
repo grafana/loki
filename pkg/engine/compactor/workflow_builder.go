@@ -18,17 +18,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-// buildIndexMergePlan returns a single-root physical.Plan holding exactly one
-// IndexMerge node. Each coordinator cycle runs ⌈P/K⌉ such plans
-// concurrently — one per sorted pile of index sections.
+// buildIndexMergePlan returns a single-root physical.Plan with one IndexMerge
+// node for task.
 func buildIndexMergePlan(
 	tenant string,
 	window time.Time,
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
-		// Each call mints a fresh NodeID so racing builds don't collide on the
-		// scheduler's manifest registry.
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
@@ -45,7 +42,6 @@ func buildLogMergePlan(
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.LogMerge{
-		// Each call mints a fresh NodeID so racing builds don't collide
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
