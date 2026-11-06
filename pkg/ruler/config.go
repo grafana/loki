@@ -37,8 +37,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate overrides the embedded cortex variant which expects a cortex limits struct. Instead, copy the relevant bits over.
 func (c *Config) Validate() error {
-	if err := c.StoreConfig.Validate(); err != nil {
-		return fmt.Errorf("invalid ruler store config: %w", err)
+	if c.StoreConfig.Type != "" {
+		if err := c.StoreConfig.Validate(); err != nil {
+			return fmt.Errorf("invalid ruler store config: %w", err)
+		}
 	}
 
 	if err := c.RemoteWrite.Validate(); err != nil {
