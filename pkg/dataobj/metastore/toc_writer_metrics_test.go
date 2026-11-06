@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewTocWriterMetrics(t *testing.T) {
-	t.Run("creates a series for every operation and result before the first write, with conflict only for attempts and cancelled only for calls", func(t *testing.T) {
+	t.Run("creates a series for every operation and result before the first write, with conflict only for attempts, cancelled only for calls and watermark_mismatch only for write_entry", func(t *testing.T) {
 		reg := prometheus.NewPedanticRegistry()
 		NewTocWriterMetrics(reg)
 
@@ -36,7 +36,7 @@ func TestNewTocWriterMetrics(t *testing.T) {
 			"write_entry/superseded",
 			"write_entry/written",
 		}
-		require.ElementsMatch(t, append(want, "replace_index_pointers/conflict", "write_entry/conflict"), series["loki_metastore_toc_write_attempt_duration_seconds"])
-		require.ElementsMatch(t, append(want, "replace_index_pointers/cancelled", "write_entry/cancelled"), series["loki_metastore_toc_write_duration_seconds"])
+		require.ElementsMatch(t, append(want, "replace_index_pointers/conflict", "write_entry/conflict", "write_entry/watermark_mismatch"), series["loki_metastore_toc_write_attempt_duration_seconds"])
+		require.ElementsMatch(t, append(want, "replace_index_pointers/cancelled", "write_entry/cancelled", "write_entry/watermark_mismatch"), series["loki_metastore_toc_write_duration_seconds"])
 	})
 }
