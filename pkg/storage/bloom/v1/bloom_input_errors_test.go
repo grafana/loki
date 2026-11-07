@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type failingChunkInput struct {
@@ -79,4 +81,59 @@ func TestBloomTokenizerPropagatesInputErrors(t *testing.T) {
 			require.Nil(t, results[0].Bloom)
 		})
 	}
+}
+
+type errorAfterEntries struct {
+	iter.EntryIterator
+	err error
+}
+
+func (i errorAfterEntries) Err() error { return i.err }
+
+func TestBloomTokenizerRetryExtendsExistingBloom(t *testing.T) {
+	prior := NewBloom()
+	prior.Add([]byte("request_id=older-request"))
+	tokenizer := NewBloomTokenizer(128<<20, NewMetrics(nil), log.NewNopLogger())
+	sentinel := errors.New("interrupted after reading an entry")
+	for _, failure := range []error{sentinel, nil} {
+		entries := iter.NewStreamIterator(logproto.Stream{Entries: []logproto.Entry{{
+			Timestamp: time.Unix(1, 0), Line: "synthetic",
+			StructuredMetadata: []logproto.LabelAdapter{{Name: "request_id", Value: "new-request"}},
+		}}})
+		chunks := v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{From: 1, Through: 2, Checksum: 3}, Itr: errorAfterEntries{entries, failure}}})
+		out := make(chan *BloomCreation)
+		go tokenizer.Populate(v2.NewSliceIter([]*Bloom{prior}), chunks, out)
+		var results []*BloomCreation
+		for result := range out {
+			results = append(results, result)
+		}
+		require.Len(t, results, 1)
+		if failure != nil {
+			require.ErrorIs(t, results[0].Err, sentinel)
+			require.Nil(t, results[0].Bloom)
+			continue
+		}
+		require.NoError(t, results[0].Err)
+		require.True(t, results[0].Bloom.Test([]byte("request_id=older-request")))
+		require.True(t, results[0].Bloom.Test([]byte("request_id=new-request")))
+	}
+}
+
+func TestBloomTokenizerReportsFailureAfterEarlierOutput(t *testing.T) {
+	prior := NewBloom()
+	prior.Add([]byte("request_id=older-request"))
+	sentinel := errors.New("later chunk loading failed")
+	out := make(chan *BloomCreation)
+	go NewBloomTokenizer(128<<20, NewMetrics(nil), log.NewNopLogger()).Populate(
+		v2.NewSliceIter([]*Bloom{prior, NewBloom()}),
+		failingChunkInput{v2.NewEmptyIter[ChunkRefWithIter](), sentinel}, out)
+	var results []*BloomCreation
+	for result := range out {
+		results = append(results, result)
+	}
+	require.Len(t, results, 2)
+	require.NoError(t, results[0].Err)
+	require.True(t, results[0].Bloom.Test([]byte("request_id=older-request")))
+	require.ErrorIs(t, results[1].Err, sentinel)
+	require.Nil(t, results[1].Bloom)
 }
