@@ -244,6 +244,10 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 }
 
 // DropAllDBs closes reference to all the open index and removes the local files.
+// The common index set lives in the table directory, which also holds the directories of the
+// user index sets. For it, only its own files are removed, and the directory itself only once
+// it is empty, so that dropping a broken common index set does not delete the files of healthy
+// user index sets.
 func (t *indexSet) DropAllDBs() error {
 	err := t.indexMtx.lock(context.Background())
 	if err != nil {
@@ -257,7 +261,38 @@ func (t *indexSet) DropAllDBs() error {
 		}
 	}
 
-	return os.RemoveAll(t.cacheLocation)
+	if t.userID != "" {
+		return os.RemoveAll(t.cacheLocation)
+	}
+	return removeFilesAndEmptyDir(t.cacheLocation)
+}
+
+// removeFilesAndEmptyDir removes the files in dir, then dir itself if no subdirectory is left.
+// Subdirectories belong to user index sets and are kept.
+func removeFilesAndEmptyDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	hasSubDirs := false
+	for _, entry := range entries {
+		if entry.IsDir() {
+			hasSubDirs = true
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+
+	if hasSubDirs {
+		return nil
+	}
+	return os.Remove(dir)
 }
 
 // Err returns the err which is usually set when there was any issue in Init.
