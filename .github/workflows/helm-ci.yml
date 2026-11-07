@@ -65,7 +65,7 @@ jobs:
         timeout-minutes: 10
 
       - name: Create kind cluster
-        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
         if: steps.list-changed.outputs.changed == 'true'
 
       - name: Install prometheus operator
@@ -150,7 +150,7 @@ jobs:
         uses: fluxcd/flux2/action@3fa784edd773d56630bb9f62645e08f70c2cff0a  # v2.10.0
 
       - name: Install Kind CLI
-        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa  # v1.15.1
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376  # v1.15.2
         with:
           install_only: true
 
