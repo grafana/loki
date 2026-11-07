@@ -577,6 +577,9 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
 	streams, limitsErr := d.enforceStreamLimits(ctx, tenantID, &sharder, validationContext, streamResolver, format)
+	if limitsErr != nil {
+		limitsErr = httpgrpc.Error(http.StatusTooManyRequests, limitsErr.Error())
+	}
 
 	// A stream-limit 429 takes precedence over validation and blocked errors.
 	finalErr := cmp.Or(limitsErr, validated.err)
@@ -857,9 +860,10 @@ func (d *Distributor) validateStreams(
 // returns, and shadow-mode candidates are compared against its answer, see streamSharder. Nothing is
 // enforced while the ingest limits are disabled.
 //
-// Streams over the stream limit are dropped and reported as discarded, and the returned error is
-// the 429 for the client. A live-mode rejection takes precedence over one from EnforceLimits, so
-// that its stream is the one named in the error.
+// Streams over the stream limit are dropped and reported as discarded, and the returned error names
+// one of them. It is the only error returned: when the limits service fails, the limits fail open.
+// A live-mode rejection takes precedence over one from EnforceLimits, so that its stream is the one
+// named in the error.
 func (d *Distributor) enforceStreamLimits(
 	ctx context.Context,
 	tenantID string,
@@ -940,8 +944,8 @@ func (d *Distributor) enforceStreamLimits(
 }
 
 // rejectOverStreamLimit reports streams the limits service rejected for the stream limit as
-// discarded, see trackDiscardedData, and returns the 429 for the client. rejected must not be
-// empty.
+// discarded, see trackDiscardedData, and returns an error naming the first of them. rejected must
+// not be empty.
 func (d *Distributor) rejectOverStreamLimit(
 	ctx context.Context,
 	tenantID string,
@@ -956,7 +960,7 @@ func (d *Distributor) rejectOverStreamLimit(
 	// limit, so the name rarely points at the cause.
 	err := fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Labels, tenantID)
 	d.writeFailuresManager.Log(tenantID, err)
-	return httpgrpc.Error(http.StatusTooManyRequests, err.Error())
+	return err
 }
 
 // isTooManyRequests reports whether err carries an HTTP 429 status.
