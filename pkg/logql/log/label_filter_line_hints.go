@@ -18,8 +18,9 @@ const (
 	valuesUnknown parserValues = iota
 
 	// valuesDecoded is for json and logfmt. They take the label name from a key and the value from
-	// the line, and both can differ from the bytes of the line: the parsers unescape them, and they
-	// replace invalid UTF-8 and U+FFFD in a value with a space.
+	// the line, and both can differ from the bytes of the line: both parsers sanitize the key, json
+	// unescapes keys and values, logfmt unescapes quoted values, and both replace invalid UTF-8 and
+	// U+FFFD in a value with a space.
 	valuesDecoded
 
 	// valuesVerbatim is for regexp and pattern. They take the label name from the query and the
