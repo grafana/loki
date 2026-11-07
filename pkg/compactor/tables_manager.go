@@ -128,23 +128,41 @@ func (c *tablesManager) start(ctx context.Context) {
 			}
 		}()
 
-		for _, container := range c.storeContainers {
-			if container.sweeper == nil {
-				continue
-			}
+		// Markers stored in the object store are visible to every compactor instance, so
+		// only the instance running the compaction needs to sweep them. Markers kept on
+		// local disk are swept by the instance owning them, see Compactor.loop.
+		if !c.cfg.markersOnLocalDisk() {
 			wg.Add(1)
-			go func(sc storeContainer) {
-				// starts the chunk sweeper
-				defer func() {
-					sc.sweeper.Stop()
-					wg.Done()
-				}()
-				sc.sweeper.Start()
-				<-ctx.Done()
-			}(container)
+			go func() {
+				defer wg.Done()
+				c.startChunkSweepers(ctx)
+			}()
 		}
 	}
 	level.Info(util_log.Logger).Log("msg", "compactor started")
+
+	wg.Wait()
+}
+
+// startChunkSweepers starts the chunk sweeper of each store container and blocks until
+// ctx is cancelled, at which point the sweepers are stopped.
+func (c *tablesManager) startChunkSweepers(ctx context.Context) {
+	wg := sync.WaitGroup{}
+	for _, container := range c.storeContainers {
+		if container.sweeper == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(sc storeContainer) {
+			// starts the chunk sweeper
+			defer func() {
+				sc.sweeper.Stop()
+				wg.Done()
+			}()
+			sc.sweeper.Start()
+			<-ctx.Done()
+		}(container)
+	}
 
 	wg.Wait()
 }

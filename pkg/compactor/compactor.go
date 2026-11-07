@@ -464,6 +464,22 @@ func (c *Compactor) loop(ctx context.Context) error {
 	var runningCtx context.Context
 	var runningCancel context.CancelFunc
 	var wg sync.WaitGroup
+	var sweepersWG sync.WaitGroup
+
+	if c.cfg.RetentionEnabled && c.cfg.markersOnLocalDisk() {
+		// Chunk deletion markers are written to the local disk of whichever instance is
+		// running the compactor, and they are only processed after
+		// retention_delete_delay has elapsed. Since leadership can move to another
+		// instance within that window, and local markers are not visible to the other
+		// instances, every instance sweeps its own markers no matter whether it
+		// currently owns the compaction. Otherwise the chunks marked by a former leader
+		// would never be deleted from the object store.
+		sweepersWG.Add(1)
+		go func() {
+			defer sweepersWG.Done()
+			c.tablesManager.startChunkSweepers(ctx)
+		}()
+	}
 
 	for {
 		select {
@@ -472,6 +488,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 				runningCancel()
 			}
 			wg.Wait()
+			sweepersWG.Wait()
 			level.Info(util_log.Logger).Log("msg", "compactor exiting")
 			return nil
 		case <-syncTicker.C:
