@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"cmp"
 	"context"
 	"flag"
 	"fmt"
@@ -514,9 +515,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	return d.pushWithResolver(ctx, internal, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
-// pushWithResolver validates and shards req, then forwards accepted streams.
-// It modifies req in place.
-// The returned error is the last one seen.
+// pushWithResolver validates req, applies the ingestion limits, and writes the streams that are
+// left. Validation edits the entries of req in place, and time sharding sorts them.
+//
+// Rejections, in order of precedence for the returned error:
+//   - A structured metadata name that cannot be normalized aborts the whole push.
+//   - The ingestion rate limit rejects the whole push with a 429, dropping any validation error.
+//   - Streams over the stream limit are dropped with a 429.
+//   - Streams that fail validation are dropped with a 400.
+//   - Streams of a blocked tenant or policy are dropped with the block status code, or with no
+//     error for 200.
+//
+// After the last three, the remaining streams are still written and the error is returned with the
+// response. The push is rejected instead when there is an error and nothing is left to write, or
+// when the error is a 429 and a stream of the push resolves to a policy with reject_partial_writes.
+// A rejected push returns a nil response, and so does a failed write, which may have been partly
+// written by then.
 func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -526,365 +540,71 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	start := time.Now()
 	defer d.waitSimulatedLatency(ctx, tenantID, start)
 
-	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "pre-validation").Inc()
-		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
-
-	// First we flatten out the request into a list of samples.
-	// We use the heuristic of 1 sample per TS to size the array.
-	// We also work out the hash value at the same time.
-	streams := make([]KeyedStream, 0, len(req.Streams))
-
-	// Candidates for tenants that ask the limits service for a shard count,
-	// see shardstreams.Config.LimitsServiceStreamShardingMode. Collected by
-	// maybeShardByRate below and handled in one call after the validation
-	// loop. Shadow-mode streams are already sharded by the local rate store
-	// and are only compared against the service's answer; live-mode streams
-	// are sharded with the count the service returns, so they are not in
-	// streams yet. The mode is per tenant, so at most one of the two is used
-	// per request.
-	var shadowCandidates, liveCandidates []limitsServiceShardCandidate
-
-	// shardStreamsEnabledSeen/shardStreamsDisabledSeen track whether this
-	// push mixes streams whose resolved shardStreamsCfg.Enabled differs for
-	// this tenant. A tenant's policies are expected to agree on whether
-	// stream sharding is enabled; a stream with it disabled skips the limits
-	// service and is enforced by EnforceLimits instead, splitting
-	// max_global_streams_per_user enforcement between two independent
-	// trackers. This is only a concern while the limits service is enabled.
-	var (
-		shardStreamsEnabledSeen, shardStreamsDisabledSeen     bool
-		shardStreamsEnabledPolicy, shardStreamsDisabledPolicy string
-	)
-
-	var validationErrors util.GroupedErrors
 
 	now := time.Now()
-	validationContext := d.validator.getValidationContextForTime(now, tenantID)
-	fieldDetector := newFieldDetector(validationContext)
+	vCtx := d.validator.getValidationContextForTime(now, tenantID)
 
-	// The shard-streams config is resolved per stream from its policy (see PolicyShardStreams)
-	// and threaded into these closures, so a policy can override the tenant sharding behavior
-	// (e.g. toggle time sharding or use a different desired_rate).
-	maybeShardByRate := func(stream logproto.InternalStreamAdapter, lbls labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
-		if d.cfg.IngestLimitsEnabled {
-			if shardStreamsCfg.Enabled {
-				if !shardStreamsEnabledSeen {
-					shardStreamsEnabledSeen = true
-					shardStreamsEnabledPolicy = policy
-				}
-			} else if !shardStreamsDisabledSeen {
-				shardStreamsDisabledSeen = true
-				shardStreamsDisabledPolicy = policy
-			}
-		}
-
-		// Shortcut when stream sharding is not enabled
-		if !shardStreamsCfg.Enabled {
-			streams = append(streams, KeyedStream{
-				HashKey:        lokiring.TokenFor(tenantID, stream.Labels),
-				HashKeyNoShard: stream.Hash,
-				Stream:         stream,
-				Policy:         policy,
-			})
-			return
-		}
-
-		// Limits-service stream sharding requires the ingest limits to be enabled.
-		// Shortcut when limits-service sharding is disabled. Treat unset mode also as "disabled".
-		mode := shardStreamsCfg.LimitsServiceStreamShardingMode
-		if !d.cfg.IngestLimitsEnabled || mode == shardstreams.LimitsServiceStreamShardingModeDisabled || mode == "" {
-			sharded, _ := d.shardStream(stream, lbls, pushSize, tenantID, policy, shardStreamsCfg)
-			streams = append(streams, sharded...)
-			return
-		}
-
-		// rateStoreShards is shardCountFor's recommendation rather than the
-		// number of streams sharding produces, which shardNested limits to the
-		// number of entries and which would look like a difference of opinion
-		// for a small push on a hot stream. pushSize is passed on as it is, so
-		// that the limits service sees the same size the rate store used.
-		logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
-		rateStoreRate, _ := d.rateStore.RateFor(tenantID, stream.Hash)
-		candidate := limitsServiceShardCandidate{
-			stream:          stream,
-			labels:          lbls,
-			policy:          policy,
-			shardStreamsCfg: shardStreamsCfg,
-			rateStoreShards: d.shardCountFor(logger, stream, pushSize, tenantID, shardStreamsCfg),
-			rateStoreRate:   rateStoreRate,
-			totalSize:       uint64(pushSize),
-		}
-
-		switch mode {
-		case shardstreams.LimitsServiceStreamShardingModeLive:
-			liveCandidates = append(liveCandidates, candidate)
-		case shardstreams.LimitsServiceStreamShardingModeShadow:
-			streams = append(streams, d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, candidate.rateStoreShards)...)
-			shadowCandidates = append(shadowCandidates, candidate)
-		}
-	}
-
-	maybeShardStreams := func(stream logproto.InternalStreamAdapter, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
-		// Backfill streams implement time sharding on the client side (via the
-		// constants.BackfillShardLabel), so Loki's own time sharding is disabled for them to avoid
-		// exploding stream cardinality. Rate-based sharding still applies.
-		if !shardStreamsCfg.TimeShardingEnabled || labels.Has(constants.BackfillLabel) {
-			maybeShardByRate(stream, labels, pushSize, policy, shardStreamsCfg)
-			return
-		}
-
-		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
-		timeShards, sharded := timeShardNested(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
-		if !sharded {
-			maybeShardByRate(stream, labels, pushSize, policy, shardStreamsCfg)
-			return
-		}
-
-		for _, ts := range timeShards {
-			maybeShardByRate(ts.stream, ts.lbls, ts.expandedSize, policy, shardStreamsCfg)
-		}
-	}
-
-	var ingestionBlockedError error
-
-	// rejectPartialWritesPolicy is the first policy in the push configured with
-	// reject_partial_writes, if any. Such pushes are rejected as a whole on a 429 instead of being
-	// partially written, see the check before the streams are sent.
-	var (
-		rejectPartialWrites       bool
-		rejectPartialWritesPolicy string
-	)
-
-	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
-	// resolved policy has a per-policy ingestion rate override are metered against their own
-	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
-	// tenant-wide bucket (keyed by "").
-	rlBuckets := map[string]*rateLimitBucket{}
-
-	err = func() error {
-		sp := trace.SpanFromContext(ctx)
-		sp.AddEvent("start to validate request")
-		defer sp.AddEvent("finished to validate request")
-
-		validatedStreams := req.Streams[:0]
-		for _, stream := range req.Streams {
-			// Return early if stream does not contain any entries
-			if stream.EntryCount() == 0 {
-				continue
-			}
-
-			// Truncate first so subsequent steps have consistent line lengths
-			d.truncateLines(validationContext, stream)
-
-			var lbs labels.Labels
-			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
-			if !rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, policy) {
-				rejectPartialWrites = true
-				rejectPartialWritesPolicy = policy
-			}
-			if err != nil {
-				d.writeFailuresManager.Log(tenantID, err)
-				validationErrors.Add(err)
-				discardedBytes := nestedStreamSize(stream)
-				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, discardedBytes, stream.EntryCount(), format)
-				continue
-			}
-
-			if !constants.IsInternalStream(lbs.Has) {
-				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
-					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
-					d.writeFailuresManager.Log(tenantID, err)
-					validationErrors.Add(err)
-					discardedBytes := nestedStreamSize(stream)
-					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, stream.EntryCount(), format)
-					continue
-				}
-			}
-
-			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
-				d.writeFailuresManager.Log(tenantID, err)
-				discardedBytes := nestedStreamSize(stream)
-				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes, stream.EntryCount(), format)
-
-				// If the status code is 200, return no error.
-				// Note that we still log the error and increment the metrics.
-				if statusCode == http.StatusOK {
-					continue
-				}
-
-				// return an error but do not add it to validationErrors
-				// otherwise client will get a 400 and will log it.
-				ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
-				continue
-			}
-
-			stats, err := d.processStreamEntries(
-				ctx, validationContext, &stream, lbs, retentionHours, policy, format,
-				fieldDetector, &validationErrors,
-			)
-			if err != nil {
-				return err
-			}
-			if stats.entriesKept == 0 {
-				// Empty stream after validating all the entries
-				continue
-			}
-			validatedStreams = append(validatedStreams, stream)
-
-			// Attribute this stream's bytes/lines to its rate-limit bucket.
-			_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
-			bucketKey := ""
-			if hasRateOverride {
-				bucketKey = policy
-			}
-			b := rlBuckets[bucketKey]
-			if b == nil {
-				b = &rateLimitBucket{policy: policy, hasOverride: hasRateOverride}
-				rlBuckets[bucketKey] = b
-			}
-			b.bytes += stats.unexpandedSize
-			b.lines += stats.entriesKept
-
-			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
-			maybeShardStreams(stream, lbs, stats.expandedSize, policy, shardCfg)
-		}
-		// Rate-limit discards must exclude streams already rejected by validation.
-		clear(req.Streams[len(validatedStreams):])
-		req.Streams = validatedStreams
-		return nil
-	}()
+	validated, err := d.validateStreams(ctx, req, vCtx, now, streamResolver, format)
 	if err != nil {
 		return nil, err
 	}
-
-	if shardStreamsEnabledSeen && shardStreamsDisabledSeen {
-		level.Warn(d.logger).Log(
-			"msg", "tenant has shard_streams.enabled true for one policy and false for another in the same push; this is not expected and splits max_global_streams_per_user enforcement between the limits service and EnforceLimits",
-			"tenant", tenantID,
-			"enabled_policy", shardStreamsEnabledPolicy,
-			"disabled_policy", shardStreamsDisabledPolicy,
-		)
-	}
-
-	var validationErr error
-	if validationErrors.Err() != nil {
-		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
-	} else if ingestionBlockedError != nil {
-		// Any validation error takes precedence over the status code and error message for blocked ingestion.
-		validationErr = ingestionBlockedError
-	}
-
-	// Return early if none of the streams contained entries. Live-mode
-	// candidates count as streams: they are only missing their shard count.
-	if len(streams) == 0 && len(liveCandidates) == 0 {
+	if len(validated.streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "post-validation").Inc()
-		return &logproto.PushResponse{}, validationErr
-	}
-
-	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format); err != nil {
-		return nil, err
-	}
-
-	// Live-mode streams are sharded with the count the limits service returns,
-	// which also decides whether they are written at all. They join streams
-	// only after the limits have been enforced on the remaining streams, as
-	// CheckLimitsAndShard has already checked them. Candidates are only
-	// collected while the limits service is enabled, see maybeShardByRate.
-	var (
-		liveStreams  []KeyedStream
-		liveRejected []logproto.InternalStreamAdapter
-	)
-	if len(liveCandidates) > 0 {
-		shardCounts := d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeLive, liveCandidates)
-		for i, c := range liveCandidates {
-			count := shardCounts[i]
-			if count == 0 {
-				// The limits service has no stream budget left for this
-				// stream. Only this stream is rejected, the rest of the push
-				// is still written. In dry-run mode the rejection is recorded
-				// by the limits service but not acted on here.
-				if !d.cfg.IngestLimitsDryRunEnabled {
-					liveRejected = append(liveRejected, c.stream)
-					continue
-				}
-				count = 1
-			}
-			liveStreams = append(liveStreams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, count)...)
+		// Without an error, every stream was empty or blocked with status
+		// code 200: a success with nothing to write.
+		if validated.err != nil {
+			return nil, validated.err
 		}
+		return &logproto.PushResponse{}, nil
+	}
+
+	// Sharding runs before the rate limit, so a push the rate limit rejects
+	// may still have advanced shard rotations and been counted as sharded.
+	sharded := d.shardStreams(tenantID, now, validated.streams)
+
+	// An admitted push keeps its tokens even if a later stage rejects it.
+	if err := d.enforceIngestionRateLimits(ctx, now, vCtx, validated.streams, format); err != nil {
+		return nil, err
 	}
 
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
-	if d.cfg.IngestLimitsEnabled {
-		if len(shadowCandidates) > 0 {
-			// The returned counts are discarded: these streams were already
-			// sharded with the local rate store's count.
-			d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeShadow, shadowCandidates)
+	streams, limitsErr := d.enforceStreamLimits(ctx, tenantID, sharded, vCtx, streamResolver, format)
+	if limitsErr != nil {
+		limitsErr = httpgrpc.Error(http.StatusTooManyRequests, limitsErr.Error())
+	}
+
+	// The argument order is the precedence: a stream-limit 429 wins.
+	finalErr := cmp.Or(limitsErr, validated.err)
+	if finalErr != nil {
+		// Only the stream limit can leave nothing to write here.
+		if len(streams) == 0 {
+			return nil, finalErr
 		}
 
-		// streams holds every stream but the live-mode ones, so shadow-mode
-		// streams are enforced as before. It is empty when the push consists of
-		// live-mode streams only.
-		if len(streams) > 0 {
-			enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
-			accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
-			enforceTimer.ObserveDuration()
-			if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-				if len(rejected) > 0 {
-					discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
-					for _, stream := range rejected {
-						discardedStreams = append(discardedStreams, stream.Stream)
-					}
-					d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
-
-					// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
-					// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
-					// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
-					// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
-					err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
-					d.writeFailuresManager.Log(tenantID, err)
-					// Set the validation error to the stream limit error so it is returned to the client.
-					validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-					// Do not return early here even if nothing was accepted: the
-					// live-mode rejection below still needs to run so its discards
-					// are tracked too.
-				}
-				streams = accepted
-			}
+		// The limits service has still counted the streams it accepted.
+		if validated.rejectPartialWrites && (limitsErr != nil || isTooManyRequests(validated.err)) {
+			d.m.rejectedPartialWrites.WithLabelValues(tenantID, validated.rejectPartialWritesPolicy).Inc()
+			return nil, finalErr
 		}
 	}
 
-	streams = append(streams, liveStreams...)
-
-	if len(liveRejected) > 0 {
-		d.trackDiscardedData(ctx, liveRejected, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
-
-		// Only one of the rejected streams is named, for the same reason as
-		// above.
-		rejectErr := fmt.Errorf(validation.StreamLimitErrorMsg, liveRejected[0].Labels, tenantID)
-		d.writeFailuresManager.Log(tenantID, rejectErr)
-		validationErr = httpgrpc.Error(http.StatusTooManyRequests, rejectErr.Error())
+	if err := d.writeStreams(ctx, tenantID, streams); err != nil {
+		return nil, err
 	}
+	return &logproto.PushResponse{}, finalErr
+}
 
-	if len(streams) == 0 && validationErr != nil {
-		return nil, validationErr
-	}
-
-	// Reject the whole push with a 429 when a policy asks for it, instead of partially writing and sending a 429.
-	if rejectPartialWrites && validationErr != nil {
-		// Partially accepted data still consumes the ratelimit/stream tokens.
-		if resp, ok := httpgrpc.HTTPResponseFromError(validationErr); ok && resp.Code == http.StatusTooManyRequests {
-			d.m.rejectedPartialWrites.WithLabelValues(tenantID, rejectPartialWritesPolicy).Inc()
-			return nil, validationErr
-		}
-	}
-
+// writeStreams writes streams to the tee, Kafka and the ingesters, as configured. It returns once
+// the tee's registered writes, Kafka and a quorum of each stream's ingesters have succeeded, on the
+// first failure, or when ctx is done. The ingester writes carry on after it returns.
+func (d *Distributor) writeStreams(ctx context.Context, tenantID string, streams []KeyedStream) error {
 	tracker := PushTracker{
-		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - doneWithResult only sends once on each
 		err:  make(chan error, 1),
 	}
 
@@ -903,7 +623,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
 	if d.tee != nil {
-		// Call register for the tee to allow them to register their pending streams.
 		d.tee.Register(ctx, tenantID, streams, &tracker)
 	}
 	tracker.streamsPending.Add(int32(streamsToWrite))
@@ -921,12 +640,14 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		// creates a shuffle shard which contains the complete set of partitions,
 		// which is the same as not shuffle sharding at all.
 		if shardSize > 0 {
+			var err error
 			subring, err = subring.ShuffleShard(tenantID, shardSize)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
-		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
+		// Unlike the ingester writes, this write uses ctx, so it stops when ctx is canceled,
+		// including after the push returned early on another write's failure.
 		go d.sendStreamsToKafka(ctx, tenantID, streams, &tracker, subring)
 	}
 
@@ -958,7 +679,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			}
 			return nil
 		}(); err != nil {
-			return nil, err
+			return err
 		}
 
 		for ingester, streams := range streamsByIngester {
@@ -988,12 +709,245 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	select {
 	case err := <-tracker.err:
-		return nil, err
+		return err
 	case <-tracker.done:
-		return &logproto.PushResponse{}, validationErr
+		return nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	}
+}
+
+// acceptedStream is a stream that passed validation, with the labels, retention and policy
+// validation resolved for it, so later stages reuse them instead of resolving them again.
+type acceptedStream struct {
+	// stream holds only the entries that passed validation, and its labels in canonical form.
+	stream         logproto.InternalStreamAdapter
+	lbs            labels.Labels
+	retentionHours string
+	policy         string
+	stats          streamStats
+}
+
+// validatedPush is the result of validateStreams.
+type validatedPush struct {
+	// streams are the streams that passed validation, in push order.
+	streams []acceptedStream
+
+	// err is the client error from validation: a 400 for the streams and entries that failed it
+	// or, if none did, the status code of a blocked stream. It is nil if every blocked stream had
+	// status code 200.
+	err error
+
+	// rejectPartialWrites is whether any stream with entries resolved to a policy with
+	// reject_partial_writes, even one that was then rejected. rejectPartialWritesPolicy is the
+	// first such policy.
+	rejectPartialWrites       bool
+	rejectPartialWritesPolicy string
+}
+
+// validateStreams validates the streams of req and returns the ones that pass. Side effects: it
+// edits the entries of req in place, reports every stream and entry it drops as discarded and to
+// the insight logs, and adds labels that pass validation to the label cache.
+//
+// The returned error aborts the push. Validation failures are in validatedPush.err instead.
+func (d *Distributor) validateStreams(
+	ctx context.Context,
+	req *logproto.InternalPushRequest,
+	vCtx validationContext,
+	now time.Time,
+	streamResolver push.StreamResolver,
+	format string,
+) (validatedPush, error) {
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("start to validate request")
+	defer sp.AddEvent("finished to validate request")
+
+	tenantID := vCtx.userID
+	fieldDetector := newFieldDetector(vCtx)
+	result := validatedPush{streams: make([]acceptedStream, 0, len(req.Streams))}
+	var (
+		validationErrors      util.GroupedErrors
+		ingestionBlockedError error
+	)
+
+	for _, stream := range req.Streams {
+		if stream.EntryCount() == 0 {
+			continue
+		}
+
+		// Truncate first so subsequent steps have consistent line lengths
+		d.truncateLines(vCtx, stream)
+
+		parsed, labelsReason, err := d.parseStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver)
+		stream.Labels, stream.Hash = parsed.labelsString, parsed.hash
+		if !result.rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, parsed.policy) {
+			result.rejectPartialWrites = true
+			result.rejectPartialWritesPolicy = parsed.policy
+		}
+
+		discard := func(reason string, err error) {
+			d.writeFailuresManager.Log(tenantID, err)
+			d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
+		}
+
+		if err != nil {
+			validationErrors.Add(err)
+			discard(labelsReason, err)
+			continue
+		}
+
+		if !constants.IsInternalStream(parsed.lbs.Has) {
+			if missing, lbsMissing := d.missingEnforcedLabels(parsed.lbs, tenantID, parsed.policy); missing {
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, parsed.policy)
+				validationErrors.Add(err)
+				discard(validation.MissingEnforcedLabels, err)
+				continue
+			}
+		}
+
+		if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(vCtx, now, parsed.policy); block {
+			discard(reason, err)
+			if statusCode == http.StatusOK {
+				continue
+			}
+			// Kept out of validationErrors, so the client gets the block's
+			// status code rather than a 400.
+			ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
+			continue
+		}
+
+		stats, err := d.processStreamEntries(
+			ctx, vCtx, &stream, parsed.lbs, parsed.retentionHours, parsed.policy, format,
+			fieldDetector, &validationErrors,
+		)
+		if err != nil {
+			return validatedPush{}, err
+		}
+		if stats.entriesKept == 0 {
+			continue
+		}
+		result.streams = append(result.streams, acceptedStream{
+			stream:         stream,
+			lbs:            parsed.lbs,
+			retentionHours: parsed.retentionHours,
+			policy:         parsed.policy,
+			stats:          stats,
+		})
+	}
+
+	if validationErrors.Err() != nil {
+		result.err = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
+	} else if ingestionBlockedError != nil {
+		// A 400 takes precedence over a blocked stream's status code.
+		result.err = ingestionBlockedError
+	}
+	return result, nil
+}
+
+// enforceStreamLimits applies the stream limit to the sharded streams and returns the streams to
+// write. Nothing is checked while the ingest limits are disabled. Rejected streams are reported as
+// discarded, and the returned error names one of them, preferring a live-mode rejection over an
+// EnforceLimits one. It is the only error returned: when the limits service fails, the limits fail
+// open.
+//
+// CheckLimitsAndShard checks the live-mode streams and decides their shard count, and they are
+// sharded here. Every other stream was sharded by shardStreams, before the rate limit, and is
+// checked by EnforceLimits. Streams are sharded in two places only while EnforceLimits
+// (ExceedsLimits) and CheckLimitsAndShard are both in use.
+func (d *Distributor) enforceStreamLimits(
+	ctx context.Context,
+	tenantID string,
+	sharded shardedStreams,
+	vCtx validationContext,
+	streamResolver push.StreamResolver,
+	format string,
+) ([]KeyedStream, error) {
+	streams := sharded.streams
+	// Candidates are only collected while the ingest limits are enabled, see
+	// streamSharder.shardByRate.
+	if !d.cfg.IngestLimitsEnabled {
+		return streams, nil
+	}
+
+	var (
+		liveStreams  []KeyedStream
+		liveRejected []logproto.InternalStreamAdapter
+	)
+	if len(sharded.liveCandidates) > 0 {
+		shardCounts := d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeLive, sharded.liveCandidates)
+		for i, c := range sharded.liveCandidates {
+			count := shardCounts[i]
+			if count == 0 {
+				// No stream budget left. In dry-run mode the limits service
+				// has recorded the rejection, and the stream is written
+				// unsharded.
+				if !d.cfg.IngestLimitsDryRunEnabled {
+					liveRejected = append(liveRejected, c.stream)
+					continue
+				}
+				count = 1
+			}
+			liveStreams = append(liveStreams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, count)...)
+		}
+	}
+
+	if len(sharded.shadowCandidates) > 0 {
+		// Only compared: the local rate store already sharded these streams.
+		d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeShadow, sharded.shadowCandidates)
+	}
+
+	var limitsErr error
+	// streams excludes the live-mode streams, and is empty when the push has
+	// only live-mode streams.
+	if len(streams) > 0 {
+		enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
+		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		enforceTimer.ObserveDuration()
+		// When EnforceLimits fails, every stream is written: the limits fail
+		// open. Even when it rejects every stream, do not return yet, as the
+		// live-mode rejections below still need reporting.
+		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
+			if len(rejected) > 0 {
+				discarded := make([]logproto.InternalStreamAdapter, 0, len(rejected))
+				for _, stream := range rejected {
+					discarded = append(discarded, stream.Stream)
+				}
+				limitsErr = d.rejectOverStreamLimit(ctx, tenantID, discarded, vCtx, streamResolver, format)
+			}
+			streams = accepted
+		}
+	}
+
+	streams = append(streams, liveStreams...)
+	if len(liveRejected) > 0 {
+		limitsErr = d.rejectOverStreamLimit(ctx, tenantID, liveRejected, vCtx, streamResolver, format)
+	}
+	return streams, limitsErr
+}
+
+// rejectOverStreamLimit reports streams rejected for the stream limit as discarded and returns an
+// error naming the first of them. rejected must not be empty.
+func (d *Distributor) rejectOverStreamLimit(
+	ctx context.Context,
+	tenantID string,
+	rejected []logproto.InternalStreamAdapter,
+	vCtx validationContext,
+	streamResolver push.StreamResolver,
+	format string,
+) error {
+	d.reportDiscardedStreams(ctx, rejected, vCtx, validation.StreamLimit, streamResolver, format)
+
+	// Only the first stream is named, in the insight log and the error. Any stream can hit the
+	// limit, so the name rarely points at the cause.
+	err := fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Labels, tenantID)
+	d.writeFailuresManager.Log(tenantID, err)
+	return err
+}
+
+// isTooManyRequests reports whether err carries an HTTP 429 status.
+func isTooManyRequests(err error) bool {
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	return ok && resp.Code == http.StatusTooManyRequests
 }
 
 // processStreamEntries validates and enriches entries, then removes empty scopes and resources.
@@ -1035,7 +989,7 @@ func (d *Distributor) processStreamEntries(
 			var scopeDiscardReason string
 			for _, entry := range scope.Entries {
 				if reason, err := d.validator.ValidateEntry(vContext, lbs, entry, sharedMetadataSize, sharedMetadataCount); err != nil {
-					d.validator.reportDiscardedDataWithTracker(ctx, reason, vContext, lbs, retentionHours, policy, util.EntryTotalSize(&entry), 1, format)
+					d.validator.reportDiscardedData(ctx, reason, vContext, lbs, retentionHours, policy, util.EntryTotalSize(&entry), 1, format)
 					scopeDiscardReason = reason
 					resourceDiscardReason = reason
 					d.writeFailuresManager.Log(tenantID, err)
@@ -1081,7 +1035,7 @@ func (d *Distributor) processStreamEntries(
 			if scopeEntriesKept == 0 {
 				// Charge shared bytes only when the group is emptied, using its last rejection reason.
 				if scopeDiscardReason != "" && scopeMetadata.originalSize > 0 {
-					d.validator.reportDiscardedDataWithTracker(ctx, scopeDiscardReason, vContext, lbs, retentionHours, policy, scopeMetadata.originalSize, 0, format)
+					d.validator.reportDiscardedData(ctx, scopeDiscardReason, vContext, lbs, retentionHours, policy, scopeMetadata.originalSize, 0, format)
 				}
 				continue
 			}
@@ -1094,7 +1048,7 @@ func (d *Distributor) processStreamEntries(
 		resource.ScopeLogs = resource.ScopeLogs[:scopesKept]
 		if scopesKept == 0 {
 			if resourceDiscardReason != "" && resourceMetadata.originalSize > 0 {
-				d.validator.reportDiscardedDataWithTracker(ctx, resourceDiscardReason, vContext, lbs, retentionHours, policy, resourceMetadata.originalSize, 0, format)
+				d.validator.reportDiscardedData(ctx, resourceDiscardReason, vContext, lbs, retentionHours, policy, resourceMetadata.originalSize, 0, format)
 			}
 			continue
 		}
@@ -1243,26 +1197,42 @@ func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []
 	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, tenantID, strings.Join(clauses, "; "))
 }
 
-// enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
-// decision. A bucket with a per-policy override is metered independently from the tenant-wide
-// bucket. We tentatively reserve each bucket's bytes and, if any bucket can't accept them
-// immediately, cancel every reservation (returning the tokens) and reject the whole request.
-// Using reservations rather than AllowN keeps the buckets independent: a request rejected
-// because one bucket is over its limit does not consume tokens from the others, so an
-// over-limit policy can't drain the budgets of unrelated policies across client retries.
+// enforceIngestionRateLimits applies the ingestion rate limit to the accepted streams, all or
+// nothing. A stream of a policy with its own ingestion rate is metered in that policy's bucket,
+// which replaces the tenant's limit for it, and every other stream in the tenant's bucket.
 //
-// It returns a non-nil 429 error if any bucket is over its limit (all reservations are rolled
-// back); nil means the request was admitted (the reservations are kept and the tokens consumed).
+// Each bucket's bytes are reserved. If any bucket cannot take them now, every reservation is
+// cancelled, every stream is reported as discarded, and the returned 429 rejects the whole push.
+// Reserving rather than AllowN means a push rejected for one bucket takes no tokens from the
+// others, so an over-limit policy cannot drain the budgets of other policies across retries. An
+// admitted push keeps its tokens.
 func (d *Distributor) enforceIngestionRateLimits(
 	ctx context.Context,
 	now time.Time,
-	tenantID string,
-	rlBuckets map[string]*rateLimitBucket,
-	streams []logproto.InternalStreamAdapter,
-	validationContext validationContext,
-	streamResolver push.StreamResolver,
+	vCtx validationContext,
+	accepted []acceptedStream,
 	format string,
 ) error {
+	tenantID := vCtx.userID
+
+	// Keyed by policy for the buckets of policies with their own rate, and by "" for the
+	// tenant's bucket.
+	rlBuckets := map[string]*rateLimitBucket{}
+	for _, a := range accepted {
+		_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, a.policy)
+		bucketKey := ""
+		if hasRateOverride {
+			bucketKey = a.policy
+		}
+		b := rlBuckets[bucketKey]
+		if b == nil {
+			b = &rateLimitBucket{policy: a.policy, hasOverride: hasRateOverride}
+			rlBuckets[bucketKey] = b
+		}
+		b.bytes += a.stats.unexpandedSize
+		b.lines += a.stats.entriesKept
+	}
+
 	type bucketReservation struct {
 		bucket      *rateLimitBucket
 		reservation *rate.Reservation
@@ -1276,10 +1246,8 @@ func (d *Distributor) enforceIngestionRateLimits(
 		}
 		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
 		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
-		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
-		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
-		// bucket (rather than stopping at the first failure) so the rejection error can
-		// deterministically report all exceeded buckets.
+		// Not OK (more bytes than the burst) or needing a wait is what AllowN would refuse.
+		// Every bucket is checked, so that the error names all the exceeded ones.
 		if !r.OK() || r.DelayFrom(now) > 0 {
 			exceeded = append(exceeded, b)
 		}
@@ -1289,18 +1257,16 @@ func (d *Distributor) enforceIngestionRateLimits(
 		return nil
 	}
 
-	// Roll back every reservation so no tokens are consumed for a rejected request.
 	for _, br := range reservations {
 		br.reservation.CancelAt(now)
 	}
 
-	// The whole request is dropped, so attribute every stream as discarded (each under its
-	// own policy label, handled by trackDiscardedData).
-	d.trackDiscardedData(ctx, streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, nil)
+	for _, a := range accepted {
+		d.validator.reportDiscardedData(ctx, validation.RateLimited, vCtx, a.lbs, a.retentionHours, a.policy, nestedStreamSize(a.stream), a.stream.EntryCount(), format)
+	}
 
-	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
-	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
-	// map iteration order.
+	// The tenant's bucket first, then policies by name, so the error does not depend on map
+	// iteration order.
 	slices.SortFunc(exceeded, func(a, b *rateLimitBucket) int {
 		if a.hasOverride != b.hasOverride {
 			if !a.hasOverride {
@@ -1313,38 +1279,28 @@ func (d *Distributor) enforceIngestionRateLimits(
 
 	err := d.rateLimitError(now, tenantID, exceeded)
 	d.writeFailuresManager.Log(tenantID, err)
-	// Return a 429 to indicate to the client they are being rate limited
 	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 }
 
-// trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
-// streams whose resolved policy satisfies it are tracked (used to attribute discards to a
-// single ingestion rate-limit bucket); a nil policyMatch tracks all streams.
-func (d *Distributor) trackDiscardedData(
+// reportDiscardedStreams reports whole streams that passed validation as discarded for reason. The
+// stream limit rejects shards, whose labels are not the ones validation resolved, so it resolves
+// each stream's labels, retention and policy again. It must not validate them: a shard's extra
+// shard label can push a valid stream over max_label_names_per_series.
+func (d *Distributor) reportDiscardedStreams(
 	ctx context.Context,
 	streams []logproto.InternalStreamAdapter,
-	validationContext validationContext,
-	tenantID string,
+	vCtx validationContext,
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
-	policyMatch func(policy string) bool,
 ) {
 	for _, stream := range streams {
-		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+		parsed, _, err := d.resolveStreamLabels(ctx, vCtx.userID, stream.Labels, streamResolver)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
 			continue
 		}
-		if policyMatch != nil && !policyMatch(policy) {
-			continue
-		}
-		discardedStreamBytes := nestedStreamSize(stream)
-		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stream.EntryCount()))
-		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(discardedStreamBytes))
-		if d.usageTracker != nil {
-			d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
-		}
+		d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
 	}
 }
 
@@ -1759,32 +1715,57 @@ type labelData struct {
 	hash uint64
 }
 
-// parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.InternalStreamAdapter, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
+// parsedStreamLabels is what resolveStreamLabels resolved for a stream.
+type parsedStreamLabels struct {
+	lbs labels.Labels
+	// labelsString is lbs in canonical form. validateStreams replaces the stream's labels with it.
+	labelsString   string
+	hash           uint64
+	retentionHours string
+	policy         string
+}
+
+// resolveStreamLabels takes the labels for key from the label cache, or parses them, and resolves
+// the stream's retention and policy. cached reports a cache hit. It neither validates the labels
+// nor adds them to the cache, which only holds labels parseStreamLabels has validated. If key does
+// not parse, only retentionHours is set.
+func (d *Distributor) resolveStreamLabels(ctx context.Context, tenantID, key string, streamResolver push.StreamResolver) (parsed parsedStreamLabels, cached bool, err error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
 		policy := streamResolver.PolicyFor(ctx, val.ls)
-		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
+		return parsedStreamLabels{lbs: val.ls, labelsString: val.ls.String(), hash: val.hash, retentionHours: retentionHours, policy: policy}, true, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, labels.EmptyLabels())
+		retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, labels.EmptyLabels())
 		// TODO: check for global policy.
-		return labels.EmptyLabels(), "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: retentionHours}, false, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	policy := streamResolver.PolicyFor(ctx, ls)
-	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
+	retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, ls)
+	return parsedStreamLabels{lbs: ls, labelsString: ls.String(), hash: labels.StableHash(ls), retentionHours: retentionHours, policy: policy}, false, nil
+}
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy, format); err != nil {
-		return labels.EmptyLabels(), "", 0, retentionHours, policy, err
+// parseStreamLabels resolves stream labels (see resolveStreamLabels) and validates them, adding
+// them to the label cache once valid. For invalid labels it returns the discard reason with the
+// error, and sets only lbs (empty), retentionHours and policy, as far as they resolved.
+func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.InternalStreamAdapter, streamResolver push.StreamResolver) (parsedStreamLabels, string, error) {
+	parsed, cached, err := d.resolveStreamLabels(ctx, vContext.userID, key, streamResolver)
+	if err != nil {
+		return parsed, validation.InvalidLabels, err
+	}
+	if cached {
+		return parsed, "", nil
 	}
 
-	lsHash := labels.StableHash(ls)
+	if reason, err := d.validator.ValidateLabels(vContext, parsed.lbs, stream); err != nil {
+		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: parsed.retentionHours, policy: parsed.policy}, reason, err
+	}
 
-	d.labelCache.Add(key, labelData{ls, lsHash})
-	return ls, ls.String(), lsHash, retentionHours, policy, nil
+	d.labelCache.Add(key, labelData{parsed.lbs, parsed.hash})
+	return parsed, "", nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
