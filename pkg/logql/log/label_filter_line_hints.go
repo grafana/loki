@@ -236,8 +236,9 @@ func literalNeed(match []byte, caseInsensitive bool, values parserValues) lineNe
 		return lineLiteral{match: match, caseInsensitive: caseInsensitive}
 	}
 
-	// The line holds an escape instead of a quote, a backslash or a control character, so it
-	// cannot contain them as they are.
+	// The line can hold an escape such as `\"`, `\\` or `\t` instead of a quote, a backslash or a
+	// control character, and decodedLiteral does not allow for those escapes. So the value requires
+	// nothing.
 	for _, c := range match {
 		if c == '"' || c == '\\' || c <= 0x1F {
 			return nil
