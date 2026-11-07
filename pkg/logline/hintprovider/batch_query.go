@@ -21,6 +21,10 @@ type termJob struct {
 type readerResult struct {
 	reader logline.Reader
 	meta   store.Meta
+	// layout maps a v5 reader's document IDs to time; hasLayout is false for
+	// v3 and v4 readers, which map them through Documents.
+	layout    format.DocumentLayout
+	hasLayout bool
 
 	result               format.Bitmap
 	done                 bool
@@ -195,7 +199,11 @@ func (p *LoglineHintProvider) executeQuery(
 			if res.result.MatchesAll {
 				ranges = []HintTimeRange{hintTimeRangeForMeta(res.meta)}
 			} else if !res.result.IsEmpty() {
-				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
+				if res.hasLayout {
+					ranges = rangesForCells(res.meta, res.layout, res.result.Roaring.ToArray())
+				} else {
+					ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
+				}
 			}
 			if len(ranges) == 0 {
 				continue
@@ -301,11 +309,20 @@ func (p *LoglineHintProvider) openReadersForMetas(
 			if err != nil {
 				return fmt.Errorf("open index %s: %w", meta.ID(), err)
 			}
+			layout, hasLayout := logline.DocumentLayout(indexReader)
+			if hasLayout {
+				if err := checkDocumentLayout(meta, layout); err != nil {
+					_ = indexReader.Close()
+					return fmt.Errorf("index %s: %w", meta.ID(), err)
+				}
+			}
 			mu.Lock()
 			readersByID[readerID] = &readerResult{
-				reader: indexReader,
-				meta:   meta,
-				result: format.Bitmap{MatchesAll: true},
+				reader:    indexReader,
+				meta:      meta,
+				layout:    layout,
+				hasLayout: hasLayout,
+				result:    format.Bitmap{MatchesAll: true},
 			}
 			mu.Unlock()
 			return nil
@@ -385,5 +402,49 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 		})
 	}
 
+	return ranges
+}
+
+// checkDocumentLayout cross-checks a v5 footer's layout against meta.json: the
+// day must be the index's date, and the interval and shard bits must match
+// when meta records them. Metas rebuilt from the wire carry only the date.
+func checkDocumentLayout(meta store.Meta, layout format.DocumentLayout) error {
+	if got := layout.DayStart.UTC().Format(time.DateOnly); got != meta.Date {
+		return fmt.Errorf("footer day %s differs from meta date %s", got, meta.Date)
+	}
+	if meta.DocumentInterval == 0 {
+		return nil
+	}
+	if layout.Interval != meta.DocumentInterval {
+		return fmt.Errorf("footer document interval %v differs from meta document_interval %v", layout.Interval, meta.DocumentInterval)
+	}
+	if int(layout.ShardBits) != meta.DocumentShardBits {
+		return fmt.Errorf("footer document shard bits %d differ from meta document_shard_bits %d", layout.ShardBits, meta.DocumentShardBits)
+	}
+	return nil
+}
+
+// rangesForCells converts matching v5 cells to time ranges. Ranges are
+// time-only: the cells of one bucket in different document shards share a
+// range, and cells arrive sorted, so each bucket yields one range.
+func rangesForCells(meta store.Meta, layout format.DocumentLayout, cells []uint32) []HintTimeRange {
+	ranges := make([]HintTimeRange, 0, len(cells))
+	for i, cell := range cells {
+		if i > 0 && cell>>layout.ShardBits == cells[i-1]>>layout.ShardBits {
+			continue
+		}
+		start, end := layout.TimeRange(cell)
+		ranges = append(ranges, HintTimeRange{
+			Start: start,
+			End:   end,
+			Source: fmt.Sprintf(
+				"index=%s,doc=%d,min=%s,max=%s",
+				meta.ID(),
+				cell,
+				start.Format(time.RFC3339Nano),
+				end.Format(time.RFC3339Nano),
+			),
+		})
+	}
 	return ranges
 }

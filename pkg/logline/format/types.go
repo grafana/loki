@@ -173,6 +173,38 @@ type WriterConfig struct {
 	// DocumentShardBits is log2 of the number of stream shards per document
 	// interval; 0 is one shard. Only v5 reads it.
 	DocumentShardBits int
+
+	// DayStart is the UTC midnight of the day a v5 index covers. Its postings
+	// hold cells relative to this day. A v5 writer requires it, and a v5
+	// merge checks it against its inputs. v3 ignores it.
+	DayStart time.Time
+}
+
+// DocumentLayout describes how a v5 index numbers its documents. Document ID c
+// is a cell of the index's day: bucket c >> ShardBits covers
+// [DayStart + bucket×Interval, DayStart + (bucket+1)×Interval), and
+// c & (2^ShardBits - 1) is the stream's document shard.
+type DocumentLayout struct {
+	Interval  time.Duration
+	ShardBits uint8
+	DayStart  time.Time
+}
+
+// CellsPerDay returns the number of cells in a day: (24h / Interval) ×
+// 2^ShardBits. Document IDs are below it.
+func (l DocumentLayout) CellsPerDay() uint64 {
+	if l.Interval <= 0 {
+		return 0
+	}
+	return uint64(24*time.Hour/l.Interval) << l.ShardBits
+}
+
+// TimeRange returns the half-open time range [start, end) of cell's bucket.
+// Cells of one bucket in different document shards share it.
+func (l DocumentLayout) TimeRange(cell uint32) (start, end time.Time) {
+	bucket := cell >> l.ShardBits
+	start = l.DayStart.Add(time.Duration(bucket) * l.Interval)
+	return start, start.Add(l.Interval)
 }
 
 // HeaderInfo is the meta.json index_header schema: a summary of the on-disk

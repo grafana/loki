@@ -97,3 +97,13 @@ Query-shape support and hint lookup for logline index lookups.
       up to `maxSharedLookupAttempts` times, and the retry runs under its own
       context. Retries are counted in
       `logline_hint_cache_singleflight_retries_total`.
+15. **v5 ranges come from the footer's layout and stay time-only**
+    - v5 indexes have no document table. `rangesForCells` maps matching cells
+      to their bucket's range through `logline.DocumentLayout`. Cells of one
+      bucket in different document shards give one range; the shard is not
+      used yet.
+    - `checkDocumentLayout` requires the footer's day to be the meta's date,
+      and the interval and shard bits to match `meta.json` when the meta
+      carries them (metas rebuilt from the wire carry only the date). A
+      mismatch fails the lookup, so the query runs without hints instead of
+      getting ranges on the wrong day.

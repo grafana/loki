@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sort"
 	"sync"
@@ -20,8 +21,9 @@ import (
 const (
 	// IndexMagic identifies a unified index file.
 	IndexMagic uint32 = 0x4C4F474C // "LOGL"
-	// IndexVersion is the v3 on-disk format version.
-	IndexVersion uint32 = 4
+	// IndexVersion is the v5 footer version. v3 and v4 files are version 4,
+	// and so are v5 files written before day-relative cells.
+	IndexVersion uint32 = 5
 	// IndexFooterSize is the size of the 256-byte footer appended at end of file.
 	// v2 files have no header prefix; data starts at offset 0 and the footer is at EOF.
 	IndexFooterSize = 256
@@ -74,6 +76,7 @@ type IndexWriteConfig struct {
 	DensityThreshold  float32       // 0 = disabled; >0 = filter terms exceeding this fraction of a full day's docs
 	DocumentInterval  time.Duration // time per document; used with DensityThreshold to compute day-based sentinel cutoff
 	DocumentShardBits int           // log2 of stream shards per interval; 0 is one shard
+	DayStart          time.Time     // UTC midnight of the day the index covers; postings hold cells of this day
 }
 
 // sentinelCutoff returns the cardinality above which a term is stored as
@@ -88,56 +91,104 @@ func (c IndexWriteConfig) sentinelCutoff() (cutoff uint64, ok bool) {
 	return uint64(float32(docsPerDay) * c.DensityThreshold), true
 }
 
-// documentLayout is the document interval and document shard bits a v5
-// footer records in ReservedMid: bytes 0-8 hold the interval in nanoseconds
-// and byte 8 the shard bits. An interval of 0 means none was recorded, and 0
-// shard bits is one shard.
+// documentLayout is how a v5 index numbers its documents, recorded in the
+// footer's ReservedMid: bytes 0-8 hold the interval in nanoseconds, byte 8
+// the shard bits, and bytes 16-24 the day start in Unix nanoseconds. Bytes
+// 12-16 are reserved for the n-gram length. Document IDs are cells of the
+// day; see format.DocumentLayout.
 type documentLayout struct {
-	interval  time.Duration
-	shardBits uint8
+	interval         time.Duration
+	shardBits        uint8
+	dayStartUnixNano int64
 }
 
 func (h IndexFooter) documentLayout() documentLayout {
 	return documentLayout{
-		interval:  time.Duration(binary.LittleEndian.Uint64(h.ReservedMid[0:8])),
-		shardBits: h.ReservedMid[8],
+		interval:         time.Duration(binary.LittleEndian.Uint64(h.ReservedMid[0:8])),
+		shardBits:        h.ReservedMid[8],
+		dayStartUnixNano: int64(binary.LittleEndian.Uint64(h.ReservedMid[16:24])),
 	}
 }
 
 func (h *IndexFooter) setDocumentLayout(l documentLayout) {
 	binary.LittleEndian.PutUint64(h.ReservedMid[0:8], uint64(l.interval))
 	h.ReservedMid[8] = l.shardBits
+	binary.LittleEndian.PutUint64(h.ReservedMid[16:24], uint64(l.dayStartUnixNano))
+}
+
+func (l documentLayout) dayStart() time.Time {
+	return time.Unix(0, l.dayStartUnixNano).UTC()
+}
+
+func (l documentLayout) public() format.DocumentLayout {
+	return format.DocumentLayout{Interval: l.interval, ShardBits: l.shardBits, DayStart: l.dayStart()}
+}
+
+// validate checks that the interval divides a day, that every cell of the day
+// fits a uint32 document ID, and that the day starts at a UTC midnight.
+func (l documentLayout) validate() error {
+	if l.interval <= 0 || (24*time.Hour)%l.interval != 0 {
+		return fmt.Errorf("document interval %v must be positive and divide 24h", l.interval)
+	}
+	if l.shardBits > 32 {
+		return fmt.Errorf("document shard bits %d exceed 32", l.shardBits)
+	}
+	if n := l.public().CellsPerDay(); n > math.MaxUint32 {
+		return fmt.Errorf("document interval %v with %d shard bits has %d cells per day, more than uint32 document IDs hold", l.interval, l.shardBits, n)
+	}
+	if l.dayStartUnixNano%int64(24*time.Hour) != 0 {
+		return fmt.Errorf("day start %s is not a UTC midnight", l.dayStart().Format(time.RFC3339Nano))
+	}
+	return nil
+}
+
+// documentLayout returns the layout c writes, or an error if c does not set a
+// valid one.
+func (c IndexWriteConfig) documentLayout() (documentLayout, error) {
+	if c.DayStart.IsZero() {
+		return documentLayout{}, fmt.Errorf("v5 writer needs a day start")
+	}
+	if c.DocumentShardBits < 0 || c.DocumentShardBits > 32 {
+		return documentLayout{}, fmt.Errorf("document shard bits %d must be between 0 and 32", c.DocumentShardBits)
+	}
+	l := documentLayout{
+		interval:         c.DocumentInterval,
+		shardBits:        uint8(c.DocumentShardBits),
+		dayStartUnixNano: c.DayStart.UnixNano(),
+	}
+	if err := l.validate(); err != nil {
+		return documentLayout{}, err
+	}
+	return l, nil
 }
 
 // withLayout returns c with the document layout of merge inputs. Merged
-// postings keep the inputs' cells, so a configured interval or shard bits
-// that disagree with them are an error. Inputs that recorded no interval keep
-// c.
+// postings keep the inputs' cells, so a configured interval, shard bits, or
+// day start that disagree with them are an error.
 func (c IndexWriteConfig) withLayout(l documentLayout) (IndexWriteConfig, error) {
-	if l.interval == 0 {
-		return c, nil
-	}
 	if c.DocumentInterval != 0 && c.DocumentInterval != l.interval {
 		return c, fmt.Errorf("merge: configured document interval %v differs from the inputs' %v", c.DocumentInterval, l.interval)
 	}
 	if c.DocumentShardBits != 0 && c.DocumentShardBits != int(l.shardBits) {
 		return c, fmt.Errorf("merge: configured document shard bits %d differ from the inputs' %d", c.DocumentShardBits, l.shardBits)
 	}
+	if !c.DayStart.IsZero() && c.DayStart.UnixNano() != l.dayStartUnixNano {
+		return c, fmt.Errorf("merge: configured day start %s differs from the inputs' %s", c.DayStart.UTC().Format(time.RFC3339), l.dayStart().Format(time.RFC3339))
+	}
 	c.DocumentInterval = l.interval
 	c.DocumentShardBits = int(l.shardBits)
+	c.DayStart = l.dayStart()
 	return c, nil
 }
 
-// NewWriter creates a file-backed streaming writer with the given docs,
-// applying overrides from cfg on top of v2 defaults. cfg may be nil for
-// defaults.
+// NewWriter creates a file-backed streaming writer, applying overrides from
+// cfg on top of the defaults. v5 indexes have no document table, so docs must
+// be empty, and cfg must set DocumentInterval and DayStart.
 func NewWriter(path string, docs []format.DocumentMetadata, cfg *format.WriterConfig) (*StreamingIndexWriter, error) {
-	w, err := newStreamingIndexWriter(path, applyWriterConfig(cfg), uint32(len(docs)))
-	if err != nil {
-		return nil, err
+	if len(docs) > 0 {
+		return nil, fmt.Errorf("v5 indexes have no document table: got %d documents, want none", len(docs))
 	}
-	w.AddDocuments(docs)
-	return w, nil
+	return newStreamingIndexWriter(path, applyWriterConfig(cfg))
 }
 
 // Merge merges multiple indexes into out with v2 defaults, applying overrides
@@ -165,6 +216,9 @@ func applyWriterConfig(cfg *format.WriterConfig) IndexWriteConfig {
 	}
 	if cfg.DocumentShardBits != 0 {
 		icfg.DocumentShardBits = cfg.DocumentShardBits
+	}
+	if !cfg.DayStart.IsZero() {
+		icfg.DayStart = cfg.DayStart
 	}
 	return icfg
 }
@@ -198,23 +252,6 @@ func composeIndexFlags(encoding format.PostingsEncoding, packing uint8) uint32 {
 
 func parseIndexFlags(flags uint32) (format.PostingsEncoding, uint8) {
 	return format.ParseFlags(flags)
-}
-
-func encodeDocumentMetadata(docs []format.DocumentMetadata) []byte {
-	if len(docs) == 0 {
-		return nil
-	}
-	sort.Slice(docs, func(i, j int) bool {
-		return docs[i].ID < docs[j].ID
-	})
-
-	buf := bytes.NewBuffer(make([]byte, 0, len(docs)*20))
-	for _, doc := range docs {
-		_ = binary.Write(buf, binary.LittleEndian, doc.ID)
-		_ = binary.Write(buf, binary.LittleEndian, doc.MinTimeUnix)
-		_ = binary.Write(buf, binary.LittleEndian, doc.MaxTimeUnix)
-	}
-	return buf.Bytes()
 }
 
 func writeIndexHeader(w io.Writer, h IndexFooter) error {
@@ -277,7 +314,6 @@ type IndexReader struct {
 	reader   io.ReaderAt
 	closer   io.Closer
 	header   IndexFooter
-	docs     []format.DocumentMetadata
 	metadata *IndexMetadata
 	terms    *termBlockIndex
 	postings PostingsReader
@@ -288,7 +324,6 @@ type IndexReader struct {
 // It can be cached and reused to open immutable indexes without re-reading the
 // metadata region.
 type IndexMetadata struct {
-	docs        []format.DocumentMetadata
 	termDir     []termBlockDirEntry
 	postingsDir []postingsBlockDirEntry
 }
@@ -334,13 +369,28 @@ func ReadIndexFooterFrom(r io.ReaderAt, size int64) (IndexFooter, error) {
 	if err != nil {
 		return IndexFooter{}, err
 	}
-	if h.Magic != IndexMagic {
-		return IndexFooter{}, fmt.Errorf("invalid index magic: %x", h.Magic)
-	}
-	if h.Version != IndexVersion {
-		return IndexFooter{}, fmt.Errorf("index version mismatch: got %d, want %d", h.Version, IndexVersion)
+	if err := checkFooter(h); err != nil {
+		return IndexFooter{}, err
 	}
 	return h, nil
+}
+
+// checkFooter validates a footer read from a file: its magic and version, its
+// document layout, and that it has no document table.
+func checkFooter(h IndexFooter) error {
+	if h.Magic != IndexMagic {
+		return fmt.Errorf("invalid index magic: %x", h.Magic)
+	}
+	if h.Version != IndexVersion {
+		return fmt.Errorf("unsupported index version: %d, want %d", h.Version, IndexVersion)
+	}
+	if h.DocMetadataSize != 0 {
+		return fmt.Errorf("index has a %d-byte document table; v5 indexes have none", h.DocMetadataSize)
+	}
+	if err := h.documentLayout().validate(); err != nil {
+		return fmt.Errorf("index document layout: %w", err)
+	}
+	return nil
 }
 
 func OpenIndexFile(path string) (*IndexReader, error) {
@@ -376,11 +426,8 @@ func OpenIndexAt(reader io.ReaderAt, baseOffset int64, totalSize int64) (*IndexR
 	if err != nil {
 		return nil, err
 	}
-	if header.Magic != IndexMagic {
-		return nil, fmt.Errorf("invalid index magic: %x", header.Magic)
-	}
-	if header.Version != IndexVersion {
-		return nil, fmt.Errorf("unsupported index version: %d", header.Version)
+	if err := checkFooter(header); err != nil {
+		return nil, err
 	}
 
 	layout, err := computeIndexLayout(header, baseOffset, totalSize)
@@ -388,7 +435,11 @@ func OpenIndexAt(reader io.ReaderAt, baseOffset int64, totalSize int64) (*IndexR
 		return nil, err
 	}
 
-	metadata, err := readMetadataRegion(reader, layout, header)
+	metaBuf := make([]byte, layout.metadataSize)
+	if _, err := reader.ReadAt(metaBuf, layout.metadataOffset); err != nil {
+		return nil, fmt.Errorf("read metadata region: %w", err)
+	}
+	metadata, err := decodeMetadataRegion(metaBuf, header)
 	if err != nil {
 		return nil, err
 	}
@@ -396,15 +447,48 @@ func OpenIndexAt(reader io.ReaderAt, baseOffset int64, totalSize int64) (*IndexR
 	return openIndexReaderWithMetadata(reader, header, layout, metadata)
 }
 
-// OpenIndexAtWithHeader opens an index using header information from meta.json,
-// skipping the fixed-size header range read.
+// OpenIndexAtWithHeader opens an index using header information from
+// meta.json. index_header does not record the document layout, so the footer
+// is read in the same request as the metadata region, which ends where the
+// footer starts, and must match info.
 func OpenIndexAtWithHeader(
 	reader io.ReaderAt,
 	baseOffset int64,
 	totalSize int64,
 	info format.HeaderInfo,
 ) (*IndexReader, error) {
-	header := IndexFooter{
+	layout, err := computeIndexLayout(footerFromInfo(info), baseOffset, totalSize)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := make([]byte, layout.metadataSize+IndexFooterSize)
+	if _, err := reader.ReadAt(buf, layout.metadataOffset); err != nil {
+		return nil, fmt.Errorf("read metadata region and footer: %w", err)
+	}
+	header, err := parseIndexHeader(buf[layout.metadataSize:])
+	if err != nil {
+		return nil, err
+	}
+	if err := checkFooter(header); err != nil {
+		return nil, err
+	}
+	if header.Info() != info {
+		return nil, fmt.Errorf("index footer %+v does not match index_header %+v", header.Info(), info)
+	}
+
+	metadata, err := decodeMetadataRegion(buf[:layout.metadataSize], header)
+	if err != nil {
+		return nil, err
+	}
+
+	return openIndexReaderWithMetadata(reader, header, layout, metadata)
+}
+
+// footerFromInfo returns the footer fields that index_header records. It has
+// no document layout.
+func footerFromInfo(info format.HeaderInfo) IndexFooter {
+	return IndexFooter{
 		Magic:                IndexMagic,
 		Version:              info.Version,
 		Flags:                info.Flags,
@@ -419,18 +503,6 @@ func OpenIndexAtWithHeader(
 		TermBlockDirSize:     info.TermBlockDirSize,
 		PostingsBlockDirSize: info.PostingsBlockDirSize,
 	}
-
-	layout, err := computeIndexLayout(header, baseOffset, totalSize)
-	if err != nil {
-		return nil, err
-	}
-
-	metadata, err := readMetadataRegion(reader, layout, header)
-	if err != nil {
-		return nil, err
-	}
-
-	return openIndexReaderWithMetadata(reader, header, layout, metadata)
 }
 
 // OpenIndexAtWithMetadata opens an index using pre-parsed metadata, skipping
@@ -442,6 +514,9 @@ func OpenIndexAtWithMetadata(
 	header IndexFooter,
 	metadata *IndexMetadata,
 ) (*IndexReader, error) {
+	if err := checkFooter(header); err != nil {
+		return nil, err
+	}
 	layout, err := computeIndexLayout(header, baseOffset, totalSize)
 	if err != nil {
 		return nil, err
@@ -463,6 +538,10 @@ func computeIndexLayout(header IndexFooter, baseOffset, totalSize int64) (indexL
 	if minSize > totalSize {
 		return indexLayout{}, fmt.Errorf("index file truncated: need=%d have=%d", minSize, totalSize)
 	}
+	// OpenIndexAtWithHeader reads the footer right after the metadata region.
+	if minSize < totalSize {
+		return indexLayout{}, fmt.Errorf("index file has %d bytes after its sections: need=%d have=%d", totalSize-minSize, minSize, totalSize)
+	}
 	if metadataSize > uint64(^uint(0)>>1) {
 		return indexLayout{}, fmt.Errorf("metadata region too large: %d", metadataSize)
 	}
@@ -483,24 +562,16 @@ func computeIndexLayout(header IndexFooter, baseOffset, totalSize int64) (indexL
 	}, nil
 }
 
-func readMetadataRegion(reader io.ReaderAt, layout indexLayout, header IndexFooter) (*IndexMetadata, error) {
-	metaBuf := make([]byte, layout.metadataSize)
-	if _, err := reader.ReadAt(metaBuf, layout.metadataOffset); err != nil {
-		return nil, fmt.Errorf("read metadata region: %w", err)
-	}
-
-	docEnd := int(header.DocMetadataSize)
-	termDirEnd := docEnd + int(header.TermBlockDirSize)
+// decodeMetadataRegion decodes the term and postings directories. A checked
+// footer has no document table, so the region holds only the directories.
+func decodeMetadataRegion(metaBuf []byte, header IndexFooter) (*IndexMetadata, error) {
+	termDirEnd := int(header.TermBlockDirSize)
 	postingsDirEnd := termDirEnd + int(header.PostingsBlockDirSize)
 	if postingsDirEnd != len(metaBuf) {
 		return nil, fmt.Errorf("invalid metadata region sizing")
 	}
 
-	docs, err := decodeDocumentMetadata(metaBuf[:docEnd], header.DocumentCount)
-	if err != nil {
-		return nil, err
-	}
-	termDir, err := decodeTermBlockDirEntries(metaBuf[docEnd:termDirEnd], header.TermBlockCount)
+	termDir, err := decodeTermBlockDirEntries(metaBuf[:termDirEnd], header.TermBlockCount)
 	if err != nil {
 		return nil, fmt.Errorf("decode term directory: %w", err)
 	}
@@ -509,7 +580,6 @@ func readMetadataRegion(reader io.ReaderAt, layout indexLayout, header IndexFoot
 		return nil, fmt.Errorf("decode postings directory: %w", err)
 	}
 	return &IndexMetadata{
-		docs:        docs,
 		termDir:     termDir,
 		postingsDir: postingsDir,
 	}, nil
@@ -553,35 +623,11 @@ func openIndexReaderWithMetadata(
 	return &IndexReader{
 		reader:   reader,
 		header:   header,
-		docs:     metadata.docs,
 		metadata: metadata,
 		terms:    terms,
 		postings: postingsReader,
 		layout:   layout,
 	}, nil
-}
-
-func decodeDocumentMetadata(data []byte, count uint32) ([]format.DocumentMetadata, error) {
-	if count == 0 || len(data) == 0 {
-		return nil, nil
-	}
-	if len(data)%20 != 0 {
-		return nil, fmt.Errorf("invalid document metadata size")
-	}
-	n := uint32(len(data) / 20)
-	if n > count {
-		return nil, fmt.Errorf("document metadata entries exceed declared document count")
-	}
-	docs := make([]format.DocumentMetadata, n)
-	for i := range n {
-		off := int(i) * 20
-		docs[i] = format.DocumentMetadata{
-			ID:          binary.LittleEndian.Uint32(data[off : off+4]),
-			MinTimeUnix: int64(binary.LittleEndian.Uint64(data[off+4 : off+12])),
-			MaxTimeUnix: int64(binary.LittleEndian.Uint64(data[off+12 : off+20])),
-		}
-	}
-	return docs, nil
 }
 
 func (r *IndexReader) Header() IndexFooter {
@@ -593,8 +639,16 @@ func (r *IndexReader) ReadHeader() format.HeaderInfo {
 	return r.header.Info()
 }
 
+// Documents returns nil: v5 indexes have no document table. Document IDs are
+// cells of DocumentLayout.
 func (r *IndexReader) Documents() []format.DocumentMetadata {
-	return r.docs
+	return nil
+}
+
+// DocumentLayout returns how the index's document IDs map to time ranges and
+// document shards.
+func (r *IndexReader) DocumentLayout() format.DocumentLayout {
+	return r.header.documentLayout().public()
 }
 
 // Metadata returns parsed metadata sections that can be reused to reopen this
@@ -641,26 +695,24 @@ func (r *IndexReader) GetBitmap(termIndex int) (format.Bitmap, error) {
 	return r.postings.GetBitmap(termIndex)
 }
 
-func (r *IndexReader) query(term string) ([]uint32, error) {
+// query returns the document IDs of term, or matchesAll for a density
+// sentinel.
+func (r *IndexReader) query(term string) (docIDs []uint32, matchesAll bool, err error) {
 	pos, err := r.FindTerm(term)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if pos < 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	res, err := r.GetBitmap(pos)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if res.MatchesAll {
-		docIDs := make([]uint32, len(r.docs))
-		for i, doc := range r.docs {
-			docIDs[i] = doc.ID
-		}
-		return docIDs, nil
+		return nil, true, nil
 	}
-	return res.Roaring.ToArray(), nil
+	return res.Roaring.ToArray(), false, nil
 }
 
 func (r *IndexReader) ClassifyRead(offset, _ int64) format.ReadSection {
@@ -806,14 +858,6 @@ func (it *IndexTermIterator) Bitmap() format.Bitmap {
 
 func (it *IndexTermIterator) Err() error {
 	return it.err
-}
-
-// docTimeKey identifies a document by its time bounds. Documents with
-// identical time bounds across different source indexes represent the
-// same logical time bucket and are merged into a single document.
-type docTimeKey struct {
-	minTimeUnix int64
-	maxTimeUnix int64
 }
 
 // Merge helpers are in merge.go.
