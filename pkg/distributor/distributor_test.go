@@ -3851,6 +3851,54 @@ func TestDistributor_NormalizeStructuredMetadata(t *testing.T) {
 	}
 }
 
+func TestDistributor_NormalizeStructuredMetadata_OnlyRewritesWhenNeeded(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		metadata          []logproto.LabelAdapter
+		normalizeLevel    bool
+		want              labels.Labels
+		wantChanged       bool
+		wantSanitizations float64
+	}{
+		{
+			name:           "all valid metadata is returned unchanged",
+			metadata:       buildNestedAttrs("service_name", "loki", "trace_id", "abc123", constants.LevelLabel, "warn"),
+			normalizeLevel: true,
+			want:           labels.FromStrings("service_name", "loki", "trace_id", "abc123", constants.LevelLabel, "warn"),
+		},
+		{
+			name: "valid and invalid metadata mixed",
+			metadata: buildNestedAttrs(
+				"keep", "v",
+				"service.name", "loki",
+				"value", "a\xffb",
+				"empty", "",
+				constants.LevelLabel, "WARNING",
+				"last", "ok",
+			),
+			normalizeLevel:    true,
+			want:              labels.FromStrings("keep", "v", "service_name", "loki", "value", "a b", constants.LevelLabel, "warn", "last", "ok"),
+			wantChanged:       true,
+			wantSanitizations: 2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Distributor{m: newMetrics(prometheus.NewRegistry())}
+			before := append([]logproto.LabelAdapter(nil), tc.metadata...)
+
+			got, changed, err := d.normalizeStructuredMetadata(tc.metadata, "test", constants.Loki, tc.normalizeLevel)
+			require.NoError(t, err)
+			require.True(t, labels.Equal(tc.want, got), "want %s, got %s", tc.want, got)
+			require.Equal(t, tc.wantChanged, changed)
+			if !tc.wantChanged {
+				require.Equal(t, logproto.FromLabelAdaptersToLabels(tc.metadata), got, "valid metadata must be returned as-is")
+			}
+			require.Equal(t, before, tc.metadata, "normalization must not mutate shared input")
+			require.Equal(t, tc.wantSanitizations, testutil.ToFloat64(d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
+		})
+	}
+}
+
 func TestDistributor_NormalizeMetadataGroup(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
