@@ -4001,6 +4001,31 @@ The same `ErrReadOnly` message is also reused for a different trigger: when the 
 - HTTP status: 500 Internal Server Error (the error is returned as a plain Go error from the push path rather than an explicitly coded gRPC status, so it defaults to an internal-error-equivalent status rather than being explicitly assigned)
 - Configurable per tenant: No
 
+### Error: Ingester is rejecting writes: WAL disk usage exceeded threshold
+
+**Error message:**
+
+```text
+Ingester is rejecting writes: WAL disk usage exceeded threshold
+```
+
+**Cause:**
+
+Disk usage on the volume that stores the WAL has reached the configured threshold (`-ingester.wal-disk-full-threshold`, default 90%), so the ingester rejects new writes until usage drops below it. The ingester is otherwise running and continues to serve reads. The ingester logs `disk usage exceeded threshold, throttling writes` when throttling starts.
+
+**Resolution:**
+
+- **Free up or increase disk space** for the WAL directory (`-ingester.wal-dir`).
+- **Monitor disk usage** with the `loki_ingester_wal_disk_usage_percent` metric.
+- Refer to [WAL disk full](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-ingest/#error-wal-disk-full) for more details.
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: Partial. As with `Ingester is shutting down`, the write succeeds if the remaining ingesters in the replication set meet the quorum.
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
 ### Error: Ingester is stopping or already stopped
 
 **Error message:**
