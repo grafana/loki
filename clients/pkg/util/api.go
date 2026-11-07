@@ -1,8 +1,6 @@
 package util
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -27,22 +25,6 @@ type EntryHandler interface {
 	Stop()
 }
 
-// EntryMiddleware takes an EntryHandler and returns another one that will intercept and forward entries.
-// The newly created EntryHandler should be Stopped independently from the original one.
-type EntryMiddleware interface {
-	Wrap(EntryHandler) EntryHandler
-}
-
-// EntryMiddlewareFunc allows to create EntryMiddleware via a function.
-type EntryMiddlewareFunc func(EntryHandler) EntryHandler
-
-func (e EntryMiddlewareFunc) Wrap(next EntryHandler) EntryHandler {
-	return e(next)
-}
-
-// EntryMutatorFunc is a function that can mutate an entry
-type EntryMutatorFunc func(Entry) Entry
-
 type entryHandler struct {
 	stop    func()
 	entries chan<- Entry
@@ -62,31 +44,4 @@ func NewEntryHandler(entries chan<- Entry, stop func()) EntryHandler {
 		stop:    stop,
 		entries: entries,
 	}
-}
-
-// NewEntryMutatorHandler creates a EntryHandler that mutates incoming entries from another EntryHandler.
-func NewEntryMutatorHandler(next EntryHandler, f EntryMutatorFunc) EntryHandler {
-	in, wg, once := make(chan Entry), sync.WaitGroup{}, sync.Once{}
-	nextChan := next.Chan()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for e := range in {
-			nextChan <- f(e)
-		}
-	}()
-	return NewEntryHandler(in, func() {
-		once.Do(func() { close(in) })
-		wg.Wait()
-	})
-}
-
-// AddLabelsMiddleware is an EntryMiddleware that adds some labels.
-func AddLabelsMiddleware(additionalLabels model.LabelSet) EntryMiddleware {
-	return EntryMiddlewareFunc(func(eh EntryHandler) EntryHandler {
-		return NewEntryMutatorHandler(eh, func(e Entry) Entry {
-			e.Labels = additionalLabels.Merge(e.Labels)
-			return e
-		})
-	})
 }
