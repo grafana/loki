@@ -3,14 +3,19 @@ package tsdb
 import (
 	"fmt"
 	"hash"
+	"math"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const compactedFileUploader = "compactor"
@@ -72,6 +77,31 @@ type SingleTenantTSDBIdentifier struct {
 	TS             time.Time
 	From, Through  model.Time
 	Checksum       uint32
+	Shard          index.ShardAnnotation
+}
+
+// IsSharded reports whether the file holds only one of several fingerprint
+// ranges of its table.
+func (i SingleTenantTSDBIdentifier) IsSharded() bool {
+	return i.Shard.IsSharded()
+}
+
+// FingerprintBounds returns the [from, through) fingerprint range the file
+// holds. An unsharded file holds every fingerprint.
+func (i SingleTenantTSDBIdentifier) FingerprintBounds() (model.Fingerprint, model.Fingerprint) {
+	if !i.IsSharded() {
+		return 0, model.Fingerprint(math.MaxUint64)
+	}
+	return i.Shard.GetFromThrough()
+}
+
+// ShardKey identifies the fingerprint range of the file, in the form used in
+// file names: `<x>_of_<K>`. Unsharded files are `0_of_1`.
+func (i SingleTenantTSDBIdentifier) ShardKey() string {
+	if !i.IsSharded() {
+		return index.NewShard(0, 1).String()
+	}
+	return i.Shard.String()
 }
 
 // implement Hash
@@ -81,6 +111,7 @@ func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (err error) {
 }
 
 // str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>
+// followed by `-` + <shard>_of_<factor> when the file is one of several fingerprint-range shards of its table.
 func (i SingleTenantTSDBIdentifier) str() string {
 	ts := int64(0)
 	if i.ExportTSInSecs {
@@ -88,13 +119,18 @@ func (i SingleTenantTSDBIdentifier) str() string {
 	} else {
 		ts = i.TS.UnixNano()
 	}
+	shardSuffix := ""
+	if i.IsSharded() {
+		shardSuffix = "-" + i.Shard.String()
+	}
 	return fmt.Sprintf(
-		"%d-%s-%d-%d-%x.tsdb",
+		"%d-%s-%d-%d-%x%s.tsdb",
 		ts,
 		compactedFileUploader,
 		i.From,
 		i.Through,
 		i.Checksum,
+		shardSuffix,
 	)
 }
 
@@ -116,7 +152,7 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 	}
 
 	elems := strings.Split(trimmed, "-")
-	if len(elems) != 5 {
+	if len(elems) != 5 && len(elems) != 6 {
 		return
 	}
 
@@ -144,6 +180,15 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		return
 	}
 
+	var shard index.ShardAnnotation
+	if len(elems) == 6 {
+		shard, err = parseShardSuffix(elems[5])
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to parse shard of tsdb file", "path", p, "err", err)
+			return
+		}
+	}
+
 	var parsedTS time.Time
 	if len(elems[0]) <= 10 {
 		parsedTS = time.Unix(ts, 0)
@@ -156,8 +201,23 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		From:           model.Time(from),
 		Through:        model.Time(through),
 		Checksum:       uint32(checksum),
+		Shard:          shard,
 	}, true
 
+}
+
+// parseShardSuffix parses the `<x>_of_<K>` suffix of a sharded file name. K
+// must be a power of two greater than 1 and x must be below K. Unsharded files
+// carry no suffix.
+func parseShardSuffix(s string) (index.ShardAnnotation, error) {
+	shard, err := index.ParseShardString(s)
+	if err != nil {
+		return index.ShardAnnotation{}, err
+	}
+	if shard.Of == 1 {
+		return index.ShardAnnotation{}, fmt.Errorf("invalid shard %q: unsharded files have no shard suffix", s)
+	}
+	return shard, nil
 }
 
 type MultitenantTSDBIdentifier struct {
