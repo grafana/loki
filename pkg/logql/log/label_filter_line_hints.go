@@ -109,8 +109,10 @@ func (a anyLineNeeds) mayHold(line []byte) bool {
 }
 
 // appendLineRequirements appends a requirement for each `=` or `=~` filter in f, descending into both
-// sides of an `and`. Other filters, including `or`, add nothing, and neither do reserved `__` labels
-// or filters that accept the empty value. It returns dst unchanged for parsers whose values are unknown.
+// sides of an `and`. Other filters, including `or`, add nothing, and neither do reserved `__` labels,
+// filters that accept the empty value, or a `=~` filter after regexp or pattern whose regexp does not
+// simplify to literals, such as `e[rx]ror`, because those parsers have no key to require. It returns
+// dst unchanged for parsers whose values are unknown.
 func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parserValues) []lineRequirement {
 	if values == valuesUnknown {
 		return dst
