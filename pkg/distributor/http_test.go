@@ -242,7 +242,7 @@ func TestPushHandlerNegativeSizeHandling(t *testing.T) {
 
 	// A custom parser that reports negative sizes, to exercise the guard clause in recordPush
 	// that prevents a panic when incrementing Prometheus counters.
-	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.InternalPushRequest, *push.Stats, error) {
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.ParsedPushRequest, *push.Stats, error) {
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -283,7 +283,7 @@ func TestPushHandlerAllLogsFilteredRecordsMetrics(t *testing.T) {
 	// returns ErrAllLogsFiltered. Regression test for: the ErrAllLogsFiltered branch in
 	// pushHandler used to return before recordParsedRequest was ever called, silently
 	// dropping the ingest metrics below for any request that hit this path.
-	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.InternalPushRequest, *push.Stats, error) {
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.ParsedPushRequest, *push.Stats, error) {
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{Labels: `{foo="bar"}`},
@@ -318,7 +318,7 @@ func TestPushHandlerAllLogsFilteredNilStats(t *testing.T) {
 	distributors, _ := prepare(t, 1, 3, limits, nil)
 	d := distributors[0]
 
-	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.InternalPushRequest, *push.Stats, error) {
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.ParsedPushRequest, *push.Stats, error) {
 		return nil, nil, push.ErrAllLogsFiltered
 	}
 

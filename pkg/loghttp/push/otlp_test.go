@@ -799,7 +799,7 @@ func TestOTLPAttributeExpansion(t *testing.T) {
 			resolver.policyForOverride = func(_ context.Context, lbs labels.Labels) string {
 				return lbs.Get("service_name") + "/" + lbs.Get("route")
 			}
-			parse := func(deferExpansion bool) (*logproto.InternalPushRequest, *Stats, float64) {
+			parse := func(deferExpansion bool) (*logproto.ParsedPushRequest, *Stats, float64) {
 				stats, tracker := NewPushStats(), NewMockTracker()
 				req, err := otlpToLokiPushRequest(ctx, logs, "test", cfg, configs, nil, tracker, stats, log.NewNopLogger(), resolver, constants.OTLP, deferExpansion)
 				require.NoError(t, err)
@@ -2136,7 +2136,7 @@ func TestExtractLogsDecompressorDoesNotLeakGoroutines(t *testing.T) {
 	}
 }
 
-func flatOTLPRequest(req *logproto.InternalPushRequest) logproto.PushRequest {
+func flatOTLPRequest(req *logproto.ParsedPushRequest) logproto.PushRequest {
 	flat := logproto.PushRequest{Format: req.Format}
 	if req.Streams != nil {
 		flat.Streams = make([]logproto.Stream, 0, len(req.Streams))

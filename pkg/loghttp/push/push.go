@@ -96,7 +96,7 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.InternalPushRequest, *Stats, error)
+	RequestParser func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.ParsedPushRequest, *Stats, error)
 	ErrorWriter   func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
 
@@ -275,7 +275,7 @@ func checkSizeLimits(bodySizeReader, decompressedSizeReader util.SizeReader, max
 	return nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.InternalPushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.ParsedPushRequest, *Stats, error) {
 	pushStats := NewPushStats()
 
 	req, err := parsePushRequestBody(r, maxRecvMsgSize, maxDecompressedSize, pushStats)
@@ -297,6 +297,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 	lb := labels.NewBuilder(labels.EmptyLabels())
 
+	parsed := logproto.FromPushRequest(req)
 	for i := range req.Streams {
 		s := req.Streams[i]
 
@@ -369,9 +370,11 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		calculateStreamStats(r.Context(), s, lbs, streamResolver, logPushRequestStreams, pushStats)
 
 		req.Streams[i] = s
+		parsed.Streams[i].Labels = s.Labels
+		parsed.Streams[i].ParsedLabels = lbs
 	}
 
-	return logproto.FromPushRequest(req), pushStats, nil
+	return parsed, pushStats, nil
 }
 
 // calculateStreamStats modifies pushStats with statistics about one stream s.

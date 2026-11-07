@@ -27,7 +27,7 @@ func TestCanaryOTLPRoundTrip(t *testing.T) {
 	for _, batchSize := range []int{1, 3} {
 		t.Run(fmt.Sprint(batchSize), func(t *testing.T) {
 			type result struct {
-				request  *logproto.InternalPushRequest
+				request  *logproto.ParsedPushRequest
 				encoding string
 				err      error
 			}
