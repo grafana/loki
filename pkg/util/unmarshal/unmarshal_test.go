@@ -117,7 +117,7 @@ func Test_DecodePushRequest(t *testing.T) {
 		},
 		{
 			name:        "string without quotes in stream label value",
-			expectedErr: "Skip: do not know how to skip: 78",
+			expectedErr: "readNumberAsString: invalid number",
 			actual: `{
 			"streams": [
 				{
@@ -172,7 +172,7 @@ func Test_DecodePushRequest(t *testing.T) {
 		{
 			name:        "invalid field",
 			expected:    nil,
-			expectedErr: "unmarshalerDecoder: found unknown field",
+			expectedErr: "reading Stream: found unknown field",
 			actual: `{
 				"streams": [
 				  {

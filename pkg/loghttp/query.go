@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/gorilla/mux"
@@ -101,125 +102,86 @@ type PushRequest struct {
 	Streams []LogProtoStream `json:"streams"`
 }
 
-// LogProtoStream helps with unmarshalling of each log stream for push request.
-// This might look un-necessary but without it the CPU usage in benchmarks was increasing by ~25% :shrug:
+// LogProtoStream is used to unmarshal JSON for push requests.
+// This lets us run code focused on that task rather than the more general code for query responses.
 type LogProtoStream logproto.Stream
 
-func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
-	err := jsonparser.ObjectEach(data, func(key, val []byte, ty jsonparser.ValueType, _ int) error {
-		switch string(key) {
+func init() {
+	json.RegisterTypeDecoderFunc("loghttp.LogProtoStream", decodeLogProtoStream)
+}
+
+func decodeLogProtoStream(ptr unsafe.Pointer, iter *json.Iterator) { //#nosec G103 -- jsoniter decoder signature; ptr always points to a LogProtoStream -- nosemgrep: use-of-unsafe-block
+	s := (*LogProtoStream)(ptr)
+	for key := iter.ReadObject(); key != ""; key = iter.ReadObject() {
+		switch key {
 		case "stream":
-			var labels LabelSet
-			if err := labels.UnmarshalJSON(val); err != nil {
-				return err
+			labels := make(LabelSet)
+			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
+				labels[k] = iter.ReadAny().ToString()
 			}
 			s.Labels = labels.String()
 		case "values":
-			if ty == jsonparser.Null {
-				return nil
+			for iter.ReadArray() {
+				if iter.WhatIsNext() == json.NilValue {
+					iter.Skip()
+					continue
+				}
+				s.Entries = append(s.Entries, logproto.Entry{})
+				decodeLogProtoEntry(iter, &s.Entries[len(s.Entries)-1])
+				if iter.Error != nil {
+					return
+				}
 			}
-			entries, err := unmarshalHTTPToLogProtoEntries(val)
-			if err != nil {
-				return err
-			}
-			s.Entries = entries
 		default:
-			// return error when parsing unknown field
-			return errors.New("found unknown field: " + string(key))
+			iter.ReportError("reading Stream", "found unknown field: "+key)
+			return
 		}
-		return nil
-	})
-	return err
+		if iter.Error != nil {
+			return
+		}
+	}
 }
 
-func unmarshalHTTPToLogProtoEntries(data []byte) ([]logproto.Entry, error) {
-	var (
-		entries    []logproto.Entry
-		parseError error
-	)
-	if _, err := jsonparser.ArrayEach(data, func(value []byte, ty jsonparser.ValueType, _ int, err error) {
-		if err != nil || parseError != nil {
-			return
-		}
-		if ty == jsonparser.Null {
-			return
-		}
-		e, err := unmarshalHTTPToLogProtoEntry(value)
-		if err != nil {
-			parseError = err
-			return
-		}
-		entries = append(entries, e)
-	}); err != nil {
-		parseError = err
-	}
-
-	if parseError != nil {
-		return nil, parseError
-	}
-
-	return entries, nil
-}
-
-func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
-	var (
-		i          int
-		parseError error
-		e          logproto.Entry
-	)
-	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
-		// assert that both items in array are of type string
-		if (i == 0 || i == 1) && t != jsonparser.String {
-			parseError = jsonparser.MalformedStringError
-			return
-		} else if i == 2 && t != jsonparser.Object {
-			parseError = jsonparser.MalformedObjectError
-			return
-		}
+// decodeLogProtoEntry reads a [timestamp, line, structuredMetadata?] array into e.
+func decodeLogProtoEntry(iter *json.Iterator, e *logproto.Entry) {
+	for i := 0; iter.ReadArray(); i++ {
 		switch i {
 		case 0: // timestamp
-			ts, err := jsonparser.ParseInt(value)
+			if iter.WhatIsNext() != json.StringValue {
+				iter.ReportError("reading Entry", "timestamp must be a string")
+				return
+			}
+			ts, err := jsonparser.ParseInt(iter.ReadStringAsSlice())
 			if err != nil {
-				parseError = err
+				iter.ReportError("reading Entry", err.Error())
 				return
 			}
 			e.Timestamp = time.Unix(0, ts)
-		case 1: // value
-			v, err := jsonparser.ParseString(value)
-			if err != nil {
-				parseError = err
+		case 1: // line
+			if iter.WhatIsNext() != json.StringValue {
+				iter.ReportError("reading Entry", "line must be a string")
 				return
 			}
-			e.Line = v
+			e.Line = iter.ReadString()
 		case 2: // structuredMetadata
-			var structuredMetadata []logproto.LabelAdapter
-			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
-				if dataType != jsonparser.String {
-					return jsonparser.MalformedStringError
-				}
-				// Parse the string to properly handle escaped characters like newlines
-				parsedVal, err := jsonparser.ParseString(val)
-				if err != nil {
-					return err
-				}
-				structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
-					Name:  string(key),
-					Value: parsedVal,
-				})
-				return nil
-			})
-			if err != nil {
-				parseError = err
+			if iter.WhatIsNext() != json.ObjectValue {
+				iter.ReportError("reading Entry", "structured metadata must be an object")
 				return
 			}
-			e.StructuredMetadata = structuredMetadata
+			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
+				if iter.WhatIsNext() != json.StringValue {
+					iter.ReportError("reading Entry", "structured metadata value must be a string")
+					return
+				}
+				e.StructuredMetadata = append(e.StructuredMetadata, logproto.LabelAdapter{Name: k, Value: iter.ReadString()})
+			}
+		default:
+			iter.Skip()
 		}
-		i++
-	})
-	if parseError != nil {
-		return e, parseError
+		if iter.Error != nil {
+			return
+		}
 	}
-	return e, err
 }
 
 // ResultType holds the type of the result
