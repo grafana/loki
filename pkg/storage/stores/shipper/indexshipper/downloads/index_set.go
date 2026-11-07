@@ -257,7 +257,41 @@ func (t *indexSet) DropAllDBs() error {
 		}
 	}
 
+	if t.userID == "" {
+		return removeCommonIndexSetFiles(t.cacheLocation)
+	}
+
 	return os.RemoveAll(t.cacheLocation)
+}
+
+// removeCommonIndexSetFiles removes the files of the common index set. Its cache location is the
+// table directory, which also holds the directories of the user index sets, so those are left
+// alone and the table directory is only removed when no user index set directory is left in it.
+func removeCommonIndexSetFiles(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	hasUserDirs := false
+	for _, entry := range entries {
+		if entry.IsDir() {
+			hasUserDirs = true
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+
+	if hasUserDirs {
+		return nil
+	}
+
+	return os.RemoveAll(dir)
 }
 
 // Err returns the err which is usually set when there was any issue in Init.
