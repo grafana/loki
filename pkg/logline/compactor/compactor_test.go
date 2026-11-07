@@ -65,12 +65,12 @@ type streamingInMemBucket struct {
 	objstore.Bucket
 }
 
-func (b *streamingInMemBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *streamingInMemBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	buf, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
-	return b.Bucket.Upload(ctx, name, bytes.NewReader(buf))
+	return b.Bucket.Upload(ctx, name, bytes.NewReader(buf), opts...)
 }
 
 // newTestCompactorStore creates a pkg/store Store wrapping an InMemBucket.
