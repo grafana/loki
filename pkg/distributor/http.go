@@ -158,7 +158,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 	d.recordParsedRequest(r, logger, tenantID, format, presumedAgentIP, req, pushStats, streamResolver)
 
-	requestSize := int64(req.Size())
+	requestSize := int64(req.MemorySize())
 	newInflightBytes := d.inflightBytes.Add(requestSize)
 	d.m.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
