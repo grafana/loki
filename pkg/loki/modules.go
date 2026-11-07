@@ -811,30 +811,51 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 	), nil
 }
 
-// initDataObjCache builds the metadata caches of the data objects. They share one backend. It returns no service when
-// data objects are disabled or no cache is configured.
+// initDataObjCache builds the caches of the data objects. The metadata caches share one backend, and the
+// index lookup cache has its own. It returns no service when data objects are disabled or no cache is
+// configured.
 func (t *Loki) initDataObjCache() (services.Service, error) {
-	if !t.Cfg.DataObj.Enabled || !cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
 
 	logger := log.With(util_log.Logger, "component", "querier")
 
-	backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
-	if err != nil {
-		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+	// The modules that use the caches depend on this one, so they stop before it. The backends ignore a
+	// repeated Stop.
+	var stops []func()
+
+	if cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
+		backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+		}
+
+		cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
+		t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
+		t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
+		t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+		stops = append(stops, t.dataObjLogsCache.Stop, t.dataObjIndexCache.Stop, t.dataObjTOCCache.Stop)
 	}
 
-	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
-	t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
-	t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
-	t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+	if cache.IsCacheConfigured(t.Cfg.DataObj.IndexCache) {
+		backend, maxEntryBytes, err := metastore.NewIndexLookupCacheBackend(t.Cfg.DataObj.IndexCache, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating data object index cache: %w", err)
+		}
 
-	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
+		t.dataObjIndexLookupCacheBackend = backend
+		t.dataObjIndexLookupCacheMaxEntryBytes = maxEntryBytes
+		stops = append(stops, backend.Stop)
+	}
+
+	if len(stops) == 0 {
+		return nil, nil
+	}
 	return services.NewIdleService(nil, func(error) error {
-		t.dataObjLogsCache.Stop()
-		t.dataObjIndexCache.Stop()
-		t.dataObjTOCCache.Stop()
+		for _, stop := range stops {
+			stop()
+		}
 		return nil
 	}), nil
 }
@@ -855,6 +876,9 @@ func (t *Loki) initDataObjMetastore() (services.Service, error) {
 	metastoreOpts := []metastore.ObjectMetastoreOption{metastore.WithTOCResolverCache(t.dataObjTOCCache)}
 	if t.dataObjIndexCache != nil {
 		metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(t.dataObjIndexCache))
+	}
+	if t.dataObjIndexLookupCacheBackend != nil {
+		metastoreOpts = append(metastoreOpts, metastore.WithIndexLookupCache(t.dataObjIndexLookupCacheBackend, t.dataObjIndexLookupCacheMaxEntryBytes))
 	}
 
 	t.dataObjBucket = bucket
