@@ -92,7 +92,7 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 	})
 }
 
-func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+func (i *instrumentedCache) Fetch(ctx context.Context, keys []string, opts ...Option) ([]string, [][]byte, []string, error) {
 	var (
 		found    []string
 		bufs     [][]byte
@@ -104,7 +104,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := trace.SpanFromContext(ctx)
 		sp.SetAttributes(attribute.Int("keys requested", len(keys)))
-		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
+		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys, opts...)
 		if fetchErr != nil {
 			sp.SetStatus(codes.Error, fetchErr.Error())
 			sp.RecordError(fetchErr)

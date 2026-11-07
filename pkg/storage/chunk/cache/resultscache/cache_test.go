@@ -883,7 +883,7 @@ type mockResultsCache struct{}
 func (m mockResultsCache) Store(context.Context, []string, [][]byte) error {
 	panic("not implemented")
 }
-func (m mockResultsCache) Fetch(context.Context, []string) ([]string, [][]byte, []string, error) {
+func (m mockResultsCache) Fetch(context.Context, []string, ...cache.Option) ([]string, [][]byte, []string, error) {
 	panic("not implemented")
 }
 func (m mockResultsCache) Stop() {

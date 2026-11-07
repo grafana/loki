@@ -100,7 +100,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				res := &result{
 					batchID: input.batchID,
 				}
-				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
+				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys, input.opts)
 				input.resultCh <- res
 			}
 
@@ -113,6 +113,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 type work struct {
 	keys     []string
 	ctx      context.Context
+	opts     []Option
 	resultCh chan<- *result
 	batchID  int // For ordering results.
 }
@@ -150,24 +151,24 @@ func memcacheStatusCode(err error) string {
 // If the context is cancelled before all batches complete, Fetch returns
 // whatever results have been collected so far together with ctx.Err(). Keys
 // whose batch did not complete in time are reported as missed.
-func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *Memcached) Fetch(ctx context.Context, keys []string, opts ...Option) (found []string, bufs [][]byte, missed []string, err error) {
 	if c.cfg.BatchSize == 0 {
-		found, bufs, missed, err = c.fetch(ctx, keys)
+		found, bufs, missed, err = c.fetch(ctx, keys, opts)
 		return
 	}
 
 	start := time.Now()
-	found, bufs, missed, err = c.fetchKeysBatched(ctx, keys)
+	found, bufs, missed, err = c.fetchKeysBatched(ctx, keys, opts)
 	c.requestDuration.After(ctx, "Memcache.GetBatched", memcacheStatusCode(err), start)
 	return
 }
 
-func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *Memcached) fetch(ctx context.Context, keys []string, opts []Option) (found []string, bufs [][]byte, missed []string, err error) {
 	var (
 		start = time.Now()
 		items map[string]*memcache.Item
 	)
-	items, err = c.memcache.GetMulti(ctx, keys)
+	items, err = c.memcache.GetMulti(ctx, keys, memcacheOptions(opts)...)
 	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 
 	// GetMulti can return the items of the servers that answered together
@@ -186,7 +187,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	return
 }
 
-func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string, opts []Option) (found []string, bufs [][]byte, missed []string, err error) {
 	batchSize := c.cfg.BatchSize
 	numBatches := (len(keys) + batchSize - 1) / batchSize
 
@@ -215,6 +216,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 			c.inputCh <- &work{
 				keys:     keys[i:min(i+batchSize, len(keys))],
 				ctx:      ctx,
+				opts:     opts,
 				resultCh: resultsCh,
 				batchID:  sent,
 			}

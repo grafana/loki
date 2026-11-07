@@ -29,13 +29,13 @@ func (s statsCollector) Store(ctx context.Context, keys []string, bufs [][]byte)
 	return s.Cache.Store(ctx, keys, bufs)
 }
 
-func (s statsCollector) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (s statsCollector) Fetch(ctx context.Context, keys []string, opts ...Option) (found []string, bufs [][]byte, missing []string, err error) {
 	st := stats.FromContext(ctx)
 	st.AddCacheRequest(s.Cache.GetCacheType(), 1)
 
 	start := time.Now()
 
-	found, bufs, missing, err = s.Cache.Fetch(ctx, keys)
+	found, bufs, missing, err = s.Cache.Fetch(ctx, keys, opts...)
 
 	st.AddCacheDownloadTime(s.Cache.GetCacheType(), time.Since(start))
 	st.AddCacheEntriesFound(s.Cache.GetCacheType(), len(found))

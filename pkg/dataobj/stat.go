@@ -24,15 +24,16 @@ var (
 	// pages skipped".
 	StatDatasetPagesPruned = xcap.NewStatisticInt64("dataobj.dataset.pages.pruned", xcap.AggregationTypeSum)
 
-	// StatObjectBytesDownloaded is the total number of bytes a task read from
-	// the backing object store. Every request made through a reader from
-	// [NewInstrumentedBucketReader] counts: metadata reads, page downloads and
+	// StatObjectBytesFetched is the total number of bytes a task fetched through
+	// the bucket. Every request made through a reader from
+	// [NewInstrumentedBucketReader] counts: metadata reads, page reads and
 	// ad-hoc reads.
 	//
 	// A body records its bytes when the caller closes it. Bytes served from the
-	// metadata prefetch buffer are not counted again, so this is a true
-	// "transferred from storage" figure.
-	StatObjectBytesDownloaded = xcap.NewStatisticInt64("dataobj.object.bytes.downloaded", xcap.AggregationTypeSum)
+	// metadata prefetch buffer are not counted again. The bucket cache serves some
+	// of these bytes, so only the metrics of the bucket client, which sit below the
+	// cache, count what reached object storage.
+	StatObjectBytesFetched = xcap.NewStatisticInt64("dataobj.object.bytes.fetched", xcap.AggregationTypeSum)
 
 	// StatObjectsOpened* count the objects that [FromBucket] opened. The compaction state of the key
 	// picks the statistic. See [IsCompactedObjectPath].
@@ -42,11 +43,12 @@ var (
 	StatObjectsOpenedCompacted   = xcap.NewStatisticInt64("dataobj.objects.opened.compacted", xcap.AggregationTypeSum)
 	StatObjectsOpenedUncompacted = xcap.NewStatisticInt64("dataobj.objects.opened.uncompacted", xcap.AggregationTypeSum)
 
-	// StatObjectRequests* count every object-store request a task issued through
-	// a reader from [NewInstrumentedBucketReader], successful or not.
+	// StatObjectRequests* count every request a task issued through a reader
+	// from [NewInstrumentedBucketReader], successful or not.
 	//
 	// Reads served from memory, such as the prefetch buffer, issue no request and
-	// are not counted.
+	// are not counted. A read that the bucket cache serves counts, like a read of
+	// object storage.
 	StatObjectRequestsAttributes = xcap.NewStatisticInt64("dataobj.object.requests.attributes", xcap.AggregationTypeSum)
 	StatObjectRequestsGet        = xcap.NewStatisticInt64("dataobj.object.requests.get", xcap.AggregationTypeSum)
 	StatObjectRequestsGetRange   = xcap.NewStatisticInt64("dataobj.object.requests.get_range", xcap.AggregationTypeSum)

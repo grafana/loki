@@ -27,12 +27,14 @@ const loadTimeout = 30 * time.Second
 // backend's real one.
 const DefaultMaxItemBytes = 8 << 20 // 8 MiB
 
-// KindLogs, KindIndex and KindTOC label the counters of a Cache by the kind of object it serves. One
-// backend can serve several Caches, and each Cache reports its own hits, misses and errors.
+// KindLogs, KindIndex, KindTOC and KindObjectAttributes label the counters of a Cache by the kind of
+// object it serves. One backend can serve several Caches, and each Cache reports its own hits,
+// misses and errors. KindObjectAttributes caches the attributes of an object for the bucket cache.
 const (
-	KindLogs  = "logs"
-	KindIndex = "index"
-	KindTOC   = "toc"
+	KindLogs             = "logs"
+	KindIndex            = "index"
+	KindTOC              = "toc"
+	KindObjectAttributes = "object_attributes"
 )
 
 // NewBackend builds the cache backend that cfg describes. It also returns the largest region that the
@@ -76,8 +78,8 @@ type Cache struct {
 // hits, misses and errors under kind in m, which several Caches can share.
 //
 // Several Caches can share one backend c. Stop on each of them calls c.Stop, so c must ignore a
-// repeated Stop. The backend that NewBackend returns does. Keys are object paths, so objects of
-// different kinds that share a backend must not share a path.
+// repeated Stop. The backend that NewBackend returns does. A key is an object path, except for
+// KindObjectAttributes, so objects of different kinds that share a backend must not share a path.
 //
 // maxItemBytes is the largest item c's backend will actually store. A non-positive value falls back to
 // DefaultMaxItemBytes.

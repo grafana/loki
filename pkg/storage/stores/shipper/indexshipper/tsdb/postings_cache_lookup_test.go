@@ -25,7 +25,7 @@ type gatedPostingsCache struct {
 	requests atomic.Int64
 }
 
-func (c *gatedPostingsCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+func (c *gatedPostingsCache) Fetch(ctx context.Context, keys []string, opts ...cache.Option) ([]string, [][]byte, []string, error) {
 	c.requests.Add(1)
 	select {
 	case <-ctx.Done():
@@ -33,7 +33,7 @@ func (c *gatedPostingsCache) Fetch(ctx context.Context, keys []string) ([]string
 	case <-c.release:
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		return c.postingsTestCache.Fetch(ctx, keys)
+		return c.postingsTestCache.Fetch(ctx, keys, opts...)
 	}
 }
 

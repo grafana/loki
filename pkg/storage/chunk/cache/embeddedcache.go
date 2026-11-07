@@ -213,7 +213,7 @@ func (c *EmbeddedCache[K, V]) pruneExpiredItems(ttl time.Duration) {
 }
 
 // Fetch implements Cache.
-func (c *EmbeddedCache[K, V]) Fetch(ctx context.Context, keys []K) (foundKeys []K, foundValues []V, missingKeys []K, err error) {
+func (c *EmbeddedCache[K, V]) Fetch(ctx context.Context, keys []K, _ ...Option) (foundKeys []K, foundValues []V, missingKeys []K, err error) {
 	foundKeys, missingKeys, foundValues = make([]K, 0, len(keys)), make([]K, 0, len(keys)), make([]V, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.Get(ctx, key)

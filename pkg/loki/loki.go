@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketcache"
 	dataobjbuilder "github.com/grafana/loki/v3/pkg/dataobj/builder"
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
@@ -503,14 +504,16 @@ type Loki struct {
 	dataObjCompactionWorker   *enginecompactor.Worker
 	scratchStore              scratch.Store
 
-	// The DataObjCache module sets the caches. They are nil when data objects are disabled or no metadata cache is
-	// configured. The DataObjMetastore module sets the bucket and the metastore. They are nil when data objects are
+	// The DataObjCache module sets the caches. They are nil when data objects are disabled or the cache they belong to
+	// is not configured. The DataObjMetastore module sets the bucket and the metastore. They are nil when data objects are
 	// disabled.
-	dataObjLogsCache  *metadatacache.Cache
-	dataObjIndexCache *metadatacache.Cache
-	dataObjTOCCache   *metadatacache.Cache
-	dataObjBucket     objstore.Bucket
-	dataObjMetastore  *metastore.ObjectMetastore
+	dataObjLogsCache        *metadatacache.Cache
+	dataObjIndexCache       *metadatacache.Cache
+	dataObjTOCCache         *metadatacache.Cache
+	dataObjLogsBucketCache  *bucketcache.Backend
+	dataObjIndexBucketCache *bucketcache.Backend
+	dataObjBucket           objstore.Bucket
+	dataObjMetastore        *metastore.ObjectMetastore
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics

@@ -34,7 +34,9 @@ func (t tiered) Store(ctx context.Context, keys []string, bufs [][]byte) error {
 	return err
 }
 
-func (t tiered) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+func (t tiered) Fetch(ctx context.Context, keys []string, _ ...Option) ([]string, [][]byte, []string, error) {
+	// Fetch ignores opts, because it copies a hit into the earlier tiers. They would keep memory that the
+	// caller reuses.
 	found := make(map[string][]byte, len(keys))
 	missing := keys
 	previousCaches := make([]Cache, 0, len(t))
