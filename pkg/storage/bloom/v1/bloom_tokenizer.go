@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/go-kit/log"
@@ -58,6 +59,7 @@ func estimatedCount(m uint, p float64) uint {
 // Populates a bloom filter(s) with the tokens from the given chunks.
 // Called once per series
 func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2iter.Iterator[ChunkRefWithIter], ch chan *BloomCreation) {
+	defer close(ch)
 	clear(bt.cache) // MUST always clear the cache before starting a new series
 	var next bool
 
@@ -67,6 +69,10 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 			Bloom: blooms.At(),
 			Info:  newIndexingInfo(),
 		}
+	}
+	if err := blooms.Err(); err != nil {
+		ch <- &BloomCreation{Err: fmt.Errorf("reading existing blooms: %w", err)}
+		return
 	}
 
 	var bloom *Bloom
@@ -112,6 +118,14 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 
 			break
 		}
+		if err := chk.Itr.Err(); err != nil {
+			ch <- &BloomCreation{Err: fmt.Errorf("reading chunk entries: %w", err)}
+			return
+		}
+	}
+	if err := chks.Err(); err != nil {
+		ch <- &BloomCreation{Err: fmt.Errorf("loading chunks: %w", err)}
+		return
 	}
 
 	// TODO(salvacorts): Delete this once we solve the correctness bug
@@ -121,7 +135,6 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 
 	// Send the last bloom
 	bt.sendBloom(ch, bloom, info)
-	close(ch)
 }
 
 func (bt *BloomTokenizer) sendBloom(ch chan<- *BloomCreation, bloom *Bloom, info indexingInfo) {
