@@ -56,7 +56,7 @@ services:
       - loki
 
   silo-init:
-    image: pgsty/mc:latest
+    image: pgsty/mc:latest@sha256:ce62c9053c69ce12a527a322345b5ad9f44b5f8a7b8189f82e516f2e3f30f1d8
     depends_on:
       silo:
         condition: service_healthy
@@ -102,7 +102,7 @@ services:
       - loki-3-data:/loki
 
   nginx:
-    image: nginx:alpine
+    image: nginx:alpine@sha256:785835ea65db4bba6f021acc0f3be91b0fef76a53fe41f8588c6698d2aed0606
     container_name: nginx
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro

@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/loki -f cmd/loki/Dockerfile .
@@ -19,7 +19,7 @@ RUN mkdir -p /etc/loki /loki && \
     adduser --uid 10001 --gid 10001 --disabled-password --gecos "" loki && \
     chown -R loki:loki /etc/loki /loki
 
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 
 COPY --from=goenv /src/loki/cmd/loki/loki /usr/bin/loki
 COPY --from=filesystem --chown=10001:10001 /etc/loki /etc/loki

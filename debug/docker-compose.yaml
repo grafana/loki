@@ -30,7 +30,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:master
+    image: grafana/grafana:master@sha256:818d8d4c9366485b8f15e54062cdff0e7505045c2ae4a1c1d3ac13e025861bd9
     ports:
       - "3000:3000"
     networks:
