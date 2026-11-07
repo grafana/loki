@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/util/log"
@@ -425,4 +426,138 @@ func defaultLimitsTestConfig() validation.Limits {
 	limits := validation.Limits{}
 	flagext.DefaultValues(&limits)
 	return limits
+}
+
+func TestQueryFrontendConfig_UnmarshalYAML_Defaults(t *testing.T) {
+	yamlInput := `
+address: dns:///qf:9095
+`
+	var cfg QueryFrontendConfig
+	err := yaml.Unmarshal([]byte(yamlInput), &cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, "dns:///qf:9095", cfg.Address)
+	require.Equal(t, 100<<20, cfg.ClientConfig.MaxRecvMsgSize)
+	require.Equal(t, 100<<20, cfg.ClientConfig.MaxSendMsgSize)
+	require.Equal(t, 5*time.Second, cfg.ClientConfig.ConnectTimeout)
+}
+
+func TestQueryFrontendConfig_UnmarshalYAML_Inlined(t *testing.T) {
+	yamlInput := `
+address: dns:///qf:9095
+max_recv_msg_size: 16777216
+max_send_msg_size: 16777216
+grpc_compression: snappy
+connect_timeout: 10s
+`
+	var cfg QueryFrontendConfig
+	err := yaml.Unmarshal([]byte(yamlInput), &cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, "dns:///qf:9095", cfg.Address)
+	require.Equal(t, 16777216, cfg.ClientConfig.MaxRecvMsgSize)
+	require.Equal(t, 16777216, cfg.ClientConfig.MaxSendMsgSize)
+	require.Equal(t, "snappy", cfg.ClientConfig.GRPCCompression)
+	require.Equal(t, 10*time.Second, cfg.ClientConfig.ConnectTimeout)
+}
+
+func TestQueryFrontendConfig_UnmarshalYAML_GRPCClientConfig(t *testing.T) {
+	yamlInput := `
+address: dns:///qf:9095
+grpc_client_config:
+  max_recv_msg_size: 20971520
+  grpc_compression: gzip
+`
+	var cfg QueryFrontendConfig
+	err := yaml.Unmarshal([]byte(yamlInput), &cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, "dns:///qf:9095", cfg.Address)
+	require.Equal(t, 20971520, cfg.ClientConfig.MaxRecvMsgSize)
+	require.Equal(t, "gzip", cfg.ClientConfig.GRPCCompression)
+	require.Equal(t, 5*time.Second, cfg.ClientConfig.ConnectTimeout)
+}
+
+func TestQueryFrontendConfig_FlagsOverrideYAML(t *testing.T) {
+	yamlInput := `
+address: dns:///qf:9095
+grpc_client_config:
+  max_recv_msg_size: 20971520
+`
+	var cfg QueryFrontendConfig
+	err := yaml.Unmarshal([]byte(yamlInput), &cfg)
+	require.NoError(t, err)
+	require.Equal(t, 20971520, cfg.ClientConfig.MaxRecvMsgSize)
+
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	cfg.RegisterFlags(fs)
+	err = fs.Parse([]string{"-ruler.evaluation.query-frontend.grpc-max-recv-msg-size=41943040"})
+	require.NoError(t, err)
+
+	require.Equal(t, 41943040, cfg.ClientConfig.MaxRecvMsgSize)
+}
+
+func TestQueryFrontendConfig_UnmarshalYAML_ClientConfig(t *testing.T) {
+	yamlInput := `
+address: dns:///qf:9095
+client_config:
+  max_recv_msg_size: 33554432
+`
+	var cfg QueryFrontendConfig
+	err := yaml.Unmarshal([]byte(yamlInput), &cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, "dns:///qf:9095", cfg.Address)
+	require.Equal(t, 33554432, cfg.ClientConfig.MaxRecvMsgSize)
+}
+
+func TestQueryFrontendConfig_UnmarshalYAML_UnknownField(t *testing.T) {
+	yamlInput := `
+address: dns:///qf:9095
+non_existent_field: true
+`
+	var cfg QueryFrontendConfig
+	err := yaml.Unmarshal([]byte(yamlInput), &cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "non_existent_field not found")
+}
+
+func TestEvaluationConfig_UnmarshalYAML_And_Validate(t *testing.T) {
+	yamlInput := `
+mode: remote
+max_jitter: 5s
+query_frontend:
+  address: dns:///qf:9095
+  max_recv_msg_size: 67108864
+`
+	var evalCfg EvaluationConfig
+	err := yaml.Unmarshal([]byte(yamlInput), &evalCfg)
+	require.NoError(t, err)
+
+	require.Equal(t, EvalModeRemote, evalCfg.Mode)
+	require.Equal(t, 5*time.Second, evalCfg.MaxJitter)
+	require.Equal(t, "dns:///qf:9095", evalCfg.QueryFrontend.Address)
+	require.Equal(t, 67108864, evalCfg.QueryFrontend.ClientConfig.MaxRecvMsgSize)
+	require.NoError(t, evalCfg.Validate())
+
+	invalidModeCfg := EvaluationConfig{Mode: "invalid"}
+	require.Error(t, invalidModeCfg.Validate())
+}
+
+func TestQueryFrontendConfig_InlinedAndNestedCombined(t *testing.T) {
+	yamlInput := `
+address: dns:///qf:9095
+tls_enabled: true
+tls_cert_path: /path/to/cert
+grpc_client_config:
+  max_recv_msg_size: 20971520
+`
+	var cfg QueryFrontendConfig
+	err := yaml.Unmarshal([]byte(yamlInput), &cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, "dns:///qf:9095", cfg.Address)
+	require.True(t, cfg.ClientConfig.TLSEnabled)
+	require.Equal(t, "/path/to/cert", cfg.ClientConfig.TLS.CertPath)
+	require.Equal(t, 20971520, cfg.ClientConfig.MaxRecvMsgSize)
 }
