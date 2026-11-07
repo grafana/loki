@@ -1644,18 +1644,34 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger, dnsProvider, reg)
+	// Hold memberlist registrations until the first GetMemberlistKV returns.
+	// NewKV registers gauges that call State() before it sets NamedService, and
+	// /metrics is already served by then. A scrape in that window nil-derefs
+	// (logline-index-builder pods hit this on the partition-ring client, which
+	// is their first memberlist KV). The same getter is shared by every ring,
+	// including the query-scheduler.
+	metrics := newHeldRegisterer(reg)
+	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger, dnsProvider, metrics)
+	getMemberlistKV := func() (*memberlist.KV, error) {
+		kv, err := t.MemberlistKV.GetMemberlistKV()
+		if kv != nil {
+			// NamedService is set once NewKV has returned. Publishing earlier
+			// would put the State() gauges back on /metrics during that window.
+			metrics.release()
+		}
+		return kv, err
+	}
 
-	t.Cfg.CompactorConfig.CompactorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.CompactorConfig.CompactorRing.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = getMemberlistKV
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = getMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
