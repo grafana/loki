@@ -1139,6 +1139,18 @@ dataobj:
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
+  # Caches the results of reading the index objects: the sections that match a
+  # stream selector, and the answers to the equality predicates of a query. A
+  # result does not depend on the time range of the query, so queries with
+  # another time range share it. The shards of one query share the sections that
+  # match the selector when the query has at least as many shards as the index
+  # object has shard buckets. The cache is enabled when a backend is configured.
+  # Entries are keyed by the path of the index object, so the cache cannot
+  # differentiate entries between different buckets and clusters. Multiple
+  # installations must not share the same cache backend.
+  # The CLI flags prefix for this block configuration is: dataobj.index-cache
+  [index_cache: <cache_config>]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -2193,6 +2205,7 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom.metas-cache`
+- `dataobj.index-cache`
 - `dataobj.metadata-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
@@ -7293,6 +7306,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
+- `dataobj.index-cache.memcached`
 - `dataobj.metadata-cache.memcached`
 - `distributor.ring.etcd`
 - `etcd`

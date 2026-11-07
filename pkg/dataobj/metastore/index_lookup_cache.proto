@@ -1,0 +1,71 @@
+// index_lookup_cache.proto declares the values that the index lookup cache stores in its backend.
+// A value holds one part of the lookup of an index object: the sections that match a stream
+// selector, or the answer to one equality predicate.
+syntax = "proto3";
+
+package dataobj.metastore;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/metastore";
+
+// CachedSelectorMatches holds the sections of one index object whose streams match a stream selector,
+// cut for one shard bucket range.
+message CachedSelectorMatches {
+  // version is the version of the entries. A reader drops a value with another version.
+  uint32 version = 1;
+
+  // key is the full key of the entry before hashing. A reader drops a value whose key is not the key it
+  // asked for.
+  string key = 2;
+
+  // data_object_paths and matcher_label_names are dictionaries. The sections refer to them by position.
+  repeated string data_object_paths = 3;
+  repeated string matcher_label_names = 4;
+
+  repeated CachedSectionSelectorMatch sections = 5;
+}
+
+// CachedSectionSelectorMatch is the match of a stream selector in one logs section.
+message CachedSectionSelectorMatch {
+  uint32 data_object_path = 1;
+  int64 logs_section_index = 2;
+
+  // stream_id_deltas are the stream IDs that match every matcher, in ascending order. Each value is the
+  // difference to the previous ID, and the first one is the ID itself.
+  repeated uint64 stream_id_deltas = 3;
+
+  repeated uint32 matcher_label_names = 4;
+  repeated CachedMatcherTimeTerm time_terms = 5;
+}
+
+// CachedMatcherTimeTerm is what the rows of one matcher add to a section when the time range of a
+// request overlaps the time range of those rows.
+message CachedMatcherTimeTerm {
+  int64 min_unix_nanos = 1;
+  int64 max_unix_nanos = 2;
+
+  // keeps_all_streams is true when the term keeps every stream of the section. Otherwise
+  // kept_stream_id_deltas lists the streams that it keeps, which can be none.
+  bool keeps_all_streams = 3;
+  repeated uint64 kept_stream_id_deltas = 4;
+}
+
+// CachedPredicateAdmission holds the answer of one index object to one equality predicate.
+message CachedPredicateAdmission {
+  // version and key have the same meaning as in CachedSelectorMatches.
+  uint32 version = 1;
+  string key = 2;
+
+  repeated string data_object_paths = 3;
+
+  // bloom_hit_sections are the sections whose bloom filter for the label name may hold the value.
+  repeated CachedSectionRef bloom_hit_sections = 4;
+
+  // stream_label_sections are the sections where the label name is a stream label.
+  repeated CachedSectionRef stream_label_sections = 5;
+}
+
+// CachedSectionRef identifies one logs section.
+message CachedSectionRef {
+  uint32 data_object_path = 1;
+  int64 logs_section_index = 2;
+}

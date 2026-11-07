@@ -157,21 +157,16 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 		return fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	var matching []*dataobj.Section
-	for _, section := range r.obj.Sections() {
-		if section.Tenant != tenant || !postings.CheckSection(section) {
-			continue
-		}
-		matching = append(matching, section)
-	}
+	matching := tenantPostingsSections(r.obj, tenant)
 
-	opened := make([]*postings.Section, len(matching))
+	var (
+		opened      []*postings.Section
+		bucketRange *postings.ShardBucketRange
+	)
 	g, groupCtx := errgroup.WithContext(ctx)
-	g.SetLimit(maxConcurrentSectionOpens)
 
 	// Read the layout in parallel with the postings sections, so the two reads overlap. An index
 	// with no postings section of the tenant has nothing to prune.
-	var bucketRange *postings.ShardBucketRange
 	if len(matching) > 0 {
 		g.Go(func() error {
 			var err error
@@ -179,17 +174,11 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 			return err
 		})
 	}
-
-	for i, section := range matching {
-		g.Go(func() error {
-			sec, err := postings.Open(groupCtx, section)
-			if err != nil {
-				return fmt.Errorf("opening postings section: %w", err)
-			}
-			opened[i] = sec
-			return nil
-		})
-	}
+	g.Go(func() error {
+		var err error
+		opened, err = openPostingsSectionsConcurrently(groupCtx, matching)
+		return err
+	})
 	if err := g.Wait(); err != nil {
 		return err
 	}
@@ -217,11 +206,7 @@ func (r *postingsIndexSectionsReader) shardBucketRange(ctx context.Context, tena
 	if err != nil {
 		return nil, fmt.Errorf("reading the shard layout of the index object: %w", err)
 	}
-	from, to := layout.BucketRange(*r.hashRange)
-	if layout.CoversAllShardBuckets(from, to) {
-		return nil, nil
-	}
-	return &postings.ShardBucketRange{From: from, To: to}, nil
+	return shardBucketRangeFor(layout, r.hashRange), nil
 }
 
 var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")
