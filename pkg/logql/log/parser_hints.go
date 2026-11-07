@@ -48,10 +48,10 @@ type ParserHint interface {
 	Reset()
 }
 
-// LabelFilterHints let a parser stop parsing a line early once a label it
-// just extracted already fails a label filter positioned later in the
-// pipeline, instead of extracting the rest of the line only to have the
-// filter stage throw it away.
+// LabelFilterHints let a parser avoid work on a line that a label filter
+// positioned later in the pipeline would throw away. The parser can skip a
+// line that cannot pass the filter without parsing it, or stop parsing a
+// line once a label it just extracted already fails the filter.
 type LabelFilterHints interface {
 	// ShouldContinueParsingLine returns true when there is no label matcher for the
 	// provided label or the passed label and value match what's in the pipeline
