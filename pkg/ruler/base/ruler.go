@@ -406,7 +406,10 @@ func grafanaLinkForExpression(expr, datasourceUID string) string {
 		}
 	}
 
-	marshaledExpression, _ := json.Marshal(exprStruct)
+	marshaledExpression, err := json.Marshal(exprStruct)
+	if err != nil {
+		return fmt.Sprintf("/explore?error=%s", url.QueryEscape(err.Error()))
+	}
 	params := url.Values{}
 	params.Set("left", fmt.Sprintf(`{"queries":[%s]}`, marshaledExpression))
 	return `/explore?` + params.Encode()
