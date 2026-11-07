@@ -41,10 +41,12 @@ import (
 //     enforces at-least-once. kgo's own auto-commit would commit positions
 //     of records that have only been fetched, not yet uploaded.
 //
-//   - kgo.ConsumeResetOffset(AtStart): for partitions with no committed
+//   - kgo.ConsumeStartOffset(AtStart): for partitions with no committed
 //     offset yet, start at the earliest available record rather than the
 //     end. Without this, a fresh consumer group would silently skip every
-//     record produced before the first member joined.
+//     record produced before the first member joined. The reset offset is
+//     left at the franz-go default, so on franz-go >= 1.22 a data-loss
+//     reset doesn't re-read the whole topic.
 func (s *Service) createKafkaClient() (*kgo.Client, error) {
 	seedBrokers := strings.Split(s.cfg.Kafka.Address, ",")
 	for i := range seedBrokers {
@@ -68,7 +70,7 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 		kgo.ConsumeTopics(s.cfg.Kafka.Topic),
 		kgo.SessionTimeout(s.cfg.Kafka.SessionTimeout),
 		kgo.DisableAutoCommit(),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+		kgo.ConsumeStartOffset(kgo.NewOffset().AtStart()),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsLostOrRevoked),
 		kgo.OnPartitionsLost(s.onPartitionsLostOrRevoked),
