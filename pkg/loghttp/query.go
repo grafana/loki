@@ -115,9 +115,18 @@ func decodeLogProtoStream(ptr unsafe.Pointer, iter *json.Iterator) { //#nosec G1
 	for key := iter.ReadObject(); key != ""; key = iter.ReadObject() {
 		switch key {
 		case "stream":
+			if iter.WhatIsNext() != json.ObjectValue {
+				iter.ReportError("reading Stream", "stream must be an object")
+				return
+			}
 			labels := make(LabelSet)
 			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
-				labels[k] = iter.ReadAny().ToString()
+				if iter.WhatIsNext() == json.StringValue {
+					labels[k] = iter.ReadString()
+				} else {
+					// Keep the raw text of non-string values (e.g. "null", "5"), as jsonparser did.
+					labels[k] = string(iter.SkipAndReturnBytes())
+				}
 			}
 			s.Labels = labels.String()
 		case "values":
