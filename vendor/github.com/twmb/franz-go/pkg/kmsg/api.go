@@ -64,6 +64,16 @@ type Request interface {
 	IsFlexible() bool
 	// AppendTo appends this message in wire protocol form to a slice and
 	// returns the slice.
+	//
+	// AppendTo may be invoked more than once for the same request: for
+	// example, a client that retries the write on a fresh connection
+	// after a dead-connection failure will re-serialize the same request
+	// object. Custom implementations MUST be free of side effects that
+	// change the serialized bytes between calls, and MUST NOT rely on
+	// being called exactly once per logical request (e.g. no counter
+	// increments or map-existence flips). Mutations, if any, must be
+	// idempotent (same input produces the same output on repeated
+	// calls).
 	AppendTo([]byte) []byte
 	// ReadFrom parses all of the input slice into the response type.
 	//
