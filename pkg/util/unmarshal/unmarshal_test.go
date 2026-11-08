@@ -117,7 +117,7 @@ func Test_DecodePushRequest(t *testing.T) {
 		},
 		{
 			name:        "string without quotes in stream label value",
-			expectedErr: "readNumberAsString: invalid number",
+			expectedErr: "Skip: do not know how to skip: 78",
 			actual: `{
 			"streams": [
 				{
@@ -152,6 +152,48 @@ func Test_DecodePushRequest(t *testing.T) {
 						"test": "test",
 						"text": { "a": "b" }
 					},
+					"values":[
+						[ "123456789012345", "super line" ]
+					]
+				}
+			]
+		}`,
+		},
+		{
+			name: "null in stream label value",
+			expected: []logproto.Stream{
+				{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 123456789012345),
+							Line:      "super line",
+						},
+					},
+					Labels: `{nothing="null", test="test"}`,
+				},
+			},
+			actual: `{
+			"streams": [
+				{
+					"stream": {
+						"test": "test",
+						"nothing": null
+					},
+					"values":[
+						[ "123456789012345", "super line" ]
+					]
+				}
+			]
+		}`,
+		},
+
+		{
+			name:        "null stream",
+			expectedErr: "stream must be an object",
+			actual: `{
+			"streams": [
+				{
+					"stream": null,
 					"values":[
 						[ "123456789012345", "super line" ]
 					]
