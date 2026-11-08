@@ -599,6 +599,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
+				"err", checkpointRecoveryErr,
 			)
 		}
 		level.Info(i.logger).Log(
@@ -621,6 +622,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
+				"err", segmentRecoveryErr,
 			)
 		}
 		level.Info(i.logger).Log(
