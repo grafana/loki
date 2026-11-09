@@ -95,7 +95,7 @@ func newCoordinator(
 		logMergePlanningStrategy: logMergePlanningStrategy,
 	}
 	if cfg.DeletionSweep.Enabled {
-		c.sweeps = newSweepScheduler(cfg.DeletionSweep, log.With(logger, "component", "deletion-sweep"), dataBucket, limits, run, metrics.taskAttemptsTotal, c.discoverTenants)
+		c.sweeps = newSweepScheduler(cfg.DeletionSweep, log.With(logger, "component", "deletion-sweep"), dataBucket, limits, run, metrics.taskAttemptsTotal)
 	}
 	return c, nil
 }

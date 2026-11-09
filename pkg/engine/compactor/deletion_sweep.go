@@ -34,10 +34,8 @@ type sweepScheduler struct {
 	// slots holds one token for each sweep that runs. Its capacity caps the
 	// sweeps that run at the same time, across all tenants.
 	slots chan struct{}
-	// discoverToCTenants returns the tenants with a ToC in a recent window.
-	discoverToCTenants func(ctx context.Context) (map[string]struct{}, error)
-	clock              func() time.Time
-	sleep              func(ctx context.Context, d time.Duration)
+	clock func() time.Time
+	sleep func(ctx context.Context, d time.Duration)
 }
 
 // newSweepScheduler returns a sweepScheduler that runs plans with run. It
@@ -49,7 +47,6 @@ func newSweepScheduler(
 	limits Limits,
 	run runFunc,
 	attempts *prometheus.CounterVec,
-	discoverToCTenants func(ctx context.Context) (map[string]struct{}, error),
 ) *sweepScheduler {
 	return &sweepScheduler{
 		logger:     logger,
@@ -57,11 +54,10 @@ func newSweepScheduler(
 		limits:     limits,
 		// The next hourly sweep is the retry, so the dispatcher does not
 		// retry.
-		dispatcher:         newPlanDispatcher(logger, run, 1, 0, backoff.Config{}, attempts),
-		slots:              make(chan struct{}, cfg.MaxConcurrentSweeps),
-		discoverToCTenants: discoverToCTenants,
-		clock:              time.Now,
-		sleep:              sleepUntil,
+		dispatcher: newPlanDispatcher(logger, run, 1, 0, backoff.Config{}, attempts),
+		slots:      make(chan struct{}, cfg.MaxConcurrentSweeps),
+		clock:      time.Now,
+		sleep:      sleepUntil,
 	}
 }
 
@@ -72,20 +68,13 @@ func (s *sweepScheduler) supervisor(pollInterval time.Duration) *tenantsSupervis
 	return newTenantsSupervisor(s.logger, pollInterval, s.discover, s.enabled, s.runTenant)
 }
 
-// discover returns the tenants with a ToC in a recent window, and the tenants
-// with compacted objects. The second set keeps a tenant that stopped writing
-// data. A tenant with only old uncompacted objects is in neither set.
+// discover returns the tenants with compacted objects. Compaction runs for
+// every tenant, so a tenant with data has compacted objects soon after its
+// first write. The set also keeps a tenant that stopped writing data.
 func (s *sweepScheduler) discover(ctx context.Context) (map[string]struct{}, error) {
-	tenants, err := s.discoverToCTenants(ctx)
-	if err != nil {
-		return nil, err
-	}
-	compacted, err := deletion.ListCompactedTenants(ctx, s.dataBucket, s.logger)
+	tenants, err := deletion.ListCompactedTenants(ctx, s.dataBucket, s.logger)
 	if err != nil {
 		return nil, fmt.Errorf("list tenants with compacted objects: %w", err)
-	}
-	for tenant := range compacted {
-		tenants[tenant] = struct{}{}
 	}
 	return tenants, nil
 }

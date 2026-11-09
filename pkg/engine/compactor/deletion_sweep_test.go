@@ -19,12 +19,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-func newTestSweepScheduler(maxConcurrent int, bucket objstore.BucketReader, limits Limits, run runFunc, discoverToC func(context.Context) (map[string]struct{}, error)) *sweepScheduler {
-	if discoverToC == nil {
-		discoverToC = func(context.Context) (map[string]struct{}, error) { return map[string]struct{}{}, nil }
-	}
+func newTestSweepScheduler(maxConcurrent int, bucket objstore.BucketReader, limits Limits, run runFunc) *sweepScheduler {
 	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
-	return newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: maxConcurrent}, log.NewNopLogger(), bucket, limits, run, metrics.taskAttemptsTotal, discoverToC)
+	return newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: maxConcurrent}, log.NewNopLogger(), bucket, limits, run, metrics.taskAttemptsTotal)
 }
 
 // sweepRecorder records the time and the plan of each sweep. Its respond
@@ -99,7 +96,7 @@ func TestSweepScheduler_RunTenant(t *testing.T) {
 				}
 				return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
 			}
-			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run, nil)
+			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
 			s.runTenant(ctx, tenant)
 
@@ -127,7 +124,7 @@ func TestSweepScheduler_RunTenant(t *testing.T) {
 				}
 				return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
 			}
-			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run, nil)
+			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
 			s.runTenant(ctx, tenant)
 
@@ -146,7 +143,7 @@ func TestSweepScheduler_RunTenant(t *testing.T) {
 				}
 				return nil, errors.New("sweep failed")
 			}
-			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run, nil)
+			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
 			s.runTenant(ctx, tenant)
 
@@ -159,7 +156,7 @@ func TestSweepScheduler_RunTenant(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
 			recorder := &sweepRecorder{}
-			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run, nil)
+			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
 			s.runTenant(ctx, tenant)
 
@@ -176,7 +173,7 @@ func TestSweepScheduler_Sweep(t *testing.T) {
 				<-release
 				return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
 			}}
-			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run, nil)
+			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
 			var wg sync.WaitGroup
 			wg.Go(func() { s.sweep(t.Context(), "a") })
@@ -197,7 +194,7 @@ func TestSweepScheduler_Sweep(t *testing.T) {
 				<-release
 				return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
 			}}
-			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run, nil)
+			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
 			var wg sync.WaitGroup
 			wg.Go(func() { s.sweep(t.Context(), "a") })
@@ -214,28 +211,20 @@ func TestSweepScheduler_Sweep(t *testing.T) {
 }
 
 func TestSweepScheduler_Discover(t *testing.T) {
-	t.Run("returns the tenants with a ToC and the tenants with compacted objects", func(t *testing.T) {
+	t.Run("returns the tenants with compacted log or index objects", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		require.NoError(t, bucket.Upload(t.Context(), "objects/tenants/b/aa/compacted", bytes.NewReader([]byte("x"))))
-		require.NoError(t, bucket.Upload(t.Context(), "index/v0/indexes/tenants/c/bb/compacted", bytes.NewReader([]byte("x"))))
-		discoverToC := func(context.Context) (map[string]struct{}, error) { return map[string]struct{}{"a": {}, "b": {}}, nil }
-		s := newTestSweepScheduler(1, bucket, newFakeLimits(), (&sweepRecorder{}).run, discoverToC)
+		require.NoError(t, bucket.Upload(t.Context(), "objects/tenants/a/aa/compacted", bytes.NewReader([]byte("x"))))
+		require.NoError(t, bucket.Upload(t.Context(), "index/v0/indexes/tenants/b/bb/compacted", bytes.NewReader([]byte("x"))))
+		require.NoError(t, bucket.Upload(t.Context(), "objects/00/uncompacted", bytes.NewReader([]byte("x"))))
+		s := newTestSweepScheduler(1, bucket, newFakeLimits(), (&sweepRecorder{}).run)
 
 		tenants, err := s.discover(t.Context())
 		require.NoError(t, err)
-		require.Equal(t, map[string]struct{}{"a": {}, "b": {}, "c": {}}, tenants)
-	})
-
-	t.Run("returns an error when the ToC discovery fails", func(t *testing.T) {
-		discoverToC := func(context.Context) (map[string]struct{}, error) { return nil, errors.New("toc listing failed") }
-		s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), (&sweepRecorder{}).run, discoverToC)
-
-		_, err := s.discover(t.Context())
-		require.ErrorContains(t, err, "toc listing failed")
+		require.Equal(t, map[string]struct{}{"a": {}, "b": {}}, tenants)
 	})
 
 	t.Run("returns an error when the listing of compacted tenants fails", func(t *testing.T) {
-		s := newTestSweepScheduler(1, errBucket{Bucket: objstore.NewInMemBucket()}, newFakeLimits(), (&sweepRecorder{}).run, nil)
+		s := newTestSweepScheduler(1, errBucket{Bucket: objstore.NewInMemBucket()}, newFakeLimits(), (&sweepRecorder{}).run)
 
 		_, err := s.discover(t.Context())
 		require.ErrorContains(t, err, "list tenants with compacted objects")
@@ -246,7 +235,7 @@ func TestSweepScheduler_Enabled(t *testing.T) {
 	t.Run("follows the per-tenant deletion sweep limit", func(t *testing.T) {
 		limits := newFakeLimits("a")
 		limits.setSweep("b", true)
-		s := newTestSweepScheduler(1, objstore.NewInMemBucket(), limits, (&sweepRecorder{}).run, nil)
+		s := newTestSweepScheduler(1, objstore.NewInMemBucket(), limits, (&sweepRecorder{}).run)
 
 		require.False(t, s.enabled("a"))
 		require.True(t, s.enabled("b"))

@@ -684,7 +684,7 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 
 		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, compactionCfg.LogMaxRunsPerTask),
 	}
-	c.sweeps = newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: 1}, log.NewNopLogger(), bucket, integrationLimits{}, run, metrics.taskAttemptsTotal, c.discoverTenants)
+	c.sweeps = newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: 1}, log.NewNopLogger(), bucket, integrationLimits{}, run, metrics.taskAttemptsTotal)
 	return c
 }
 
