@@ -72,7 +72,7 @@ func TestBuilder_preserve_tenant(t *testing.T) {
 	require.Equal(t, "my-test-tenant", obj.Sections()[0].Tenant)
 }
 
-func TestBuilder_CompactionInfo(t *testing.T) {
+func TestBuilder_SizeLeveledCompaction(t *testing.T) {
 	flush := func(t *testing.T, builder *dataobj.Builder) *dataobj.Object {
 		t.Helper()
 		require.NoError(t, builder.Append(fakeSectionBuilder{
@@ -84,28 +84,28 @@ func TestBuilder_CompactionInfo(t *testing.T) {
 		return obj
 	}
 
-	t.Run("object reports no compaction info when the builder has none", func(t *testing.T) {
+	t.Run("object reports no size-leveled compaction when the builder has none", func(t *testing.T) {
 		obj := flush(t, dataobj.NewBuilder(nil))
 
-		_, ok := obj.CompactionInfo()
+		_, ok := obj.SizeLeveledCompaction()
 		require.False(t, ok)
 	})
 
-	t.Run("object reports level 0 when the builder sets level 0", func(t *testing.T) {
-		obj := flush(t, dataobj.NewBuilder(nil, dataobj.WithCompactionInfo(dataobj.CompactionInfo{Level: 0})))
+	t.Run("object reports size level 0 when the builder sets size level 0", func(t *testing.T) {
+		obj := flush(t, dataobj.NewBuilder(nil, dataobj.WithSizeLeveledCompaction(dataobj.SizeLeveledCompaction{Level: 0})))
 
-		info, ok := obj.CompactionInfo()
+		info, ok := obj.SizeLeveledCompaction()
 		require.True(t, ok)
-		require.Equal(t, dataobj.CompactionInfo{Level: 0}, info)
+		require.Equal(t, dataobj.SizeLeveledCompaction{Level: 0}, info)
 	})
 
-	t.Run("every flushed object keeps the compaction info of the builder", func(t *testing.T) {
-		builder := dataobj.NewBuilder(nil, dataobj.WithCompactionInfo(dataobj.CompactionInfo{Level: 3}))
+	t.Run("every flushed object keeps the size-leveled compaction of the builder", func(t *testing.T) {
+		builder := dataobj.NewBuilder(nil, dataobj.WithSizeLeveledCompaction(dataobj.SizeLeveledCompaction{Level: 3}))
 
 		for range 2 {
-			info, ok := flush(t, builder).CompactionInfo()
+			info, ok := flush(t, builder).SizeLeveledCompaction()
 			require.True(t, ok)
-			require.Equal(t, dataobj.CompactionInfo{Level: 3}, info)
+			require.Equal(t, dataobj.SizeLeveledCompaction{Level: 3}, info)
 		}
 	})
 }

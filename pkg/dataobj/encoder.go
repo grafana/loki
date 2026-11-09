@@ -31,9 +31,10 @@ type encoder struct {
 	// object, in this order. Types match by [SectionType.Equals].
 	prioritySections []SectionType
 
-	// compaction is the info that [encoder.Metadata] writes into the file
-	// metadata of every object. Nil writes no compaction info.
-	compaction *CompactionInfo
+	// sizeLeveled is the info that [encoder.metadata] writes into the file
+	// metadata of every object. If sizeLeveled is nil, the encoder writes no
+	// compaction info.
+	sizeLeveled *SizeLeveledCompaction
 
 	typesReady       bool
 	dictionary       []string
@@ -56,13 +57,13 @@ type sectionInfo struct {
 }
 
 // newEncoder returns an encoder that buffers sections in store and puts
-// sections with a type in prioritySections first. A non-nil compaction is
-// written into the file metadata of every object.
-func newEncoder(store scratch.Store, prioritySections []SectionType, compaction *CompactionInfo) *encoder {
+// sections with a type in prioritySections first. If sizeLeveled is not nil,
+// the encoder writes it into the file metadata of every object.
+func newEncoder(store scratch.Store, prioritySections []SectionType, sizeLeveled *SizeLeveledCompaction) *encoder {
 	return &encoder{
 		store:            store,
 		prioritySections: slices.Clone(prioritySections),
-		compaction:       compaction,
+		sizeLeveled:      sizeLeveled,
 	}
 }
 
@@ -226,8 +227,10 @@ func (enc *encoder) metadata() (*filemd.Metadata, error) {
 		Dictionary: enc.dictionary,
 		Types:      enc.rawTypes,
 	}
-	if enc.compaction != nil {
-		md.Compaction = &filemd.CompactionInfo{Level: enc.compaction.Level}
+	if enc.sizeLeveled != nil {
+		md.Compaction = &filemd.CompactionInfo{
+			SizeLeveled: &filemd.SizeLeveledCompaction{Level: enc.sizeLeveled.Level},
+		}
 	}
 	return md, nil
 }
@@ -314,7 +317,8 @@ func (enc *encoder) Flush() (*snapshot, error) {
 }
 
 // Reset resets the Encoder to a fresh state, removing any sections it still
-// holds from the scratch store. Reset keeps the compaction info.
+// holds from the scratch store. Reset keeps the compaction info, so the next
+// object gets the same info.
 func (enc *encoder) Reset() {
 	for _, section := range enc.sections {
 		// A failed removal is not actionable: the handle is unreachable either

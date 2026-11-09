@@ -72,8 +72,8 @@ message LogMerge {
   // across the sections of runs, from the index stats. It is 0 if the size is
   // unknown, and then the merge does not check the size of what it reads.
   int64 input_bytes = 6;
-  // output_level is the compaction level that the merge writes into the
-  // file metadata of each output object.
+  // output_level is the size level that the merge writes into the file
+  // metadata of each output object.
   uint32 output_level = 7;
 }
 

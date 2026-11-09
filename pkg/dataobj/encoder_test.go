@@ -244,3 +244,19 @@ func TestBuilder_SectionOrder(t *testing.T) {
 		requireOrder(t, obj, many, slices.Concat(wantStreams, wantStats, wantLogs))
 	})
 }
+
+func TestObject_SizeLeveledCompaction(t *testing.T) {
+	t.Run("reports no size-leveled compaction when the compaction info holds only a field of another strategy", func(t *testing.T) {
+		// Field 2 of CompactionInfo, wire type varint, value 5.
+		otherStrategy := []byte{0x10, 0x05}
+		// Field 5 of Metadata, wire type length-delimited.
+		raw := append([]byte{0x2a, byte(len(otherStrategy))}, otherStrategy...)
+
+		var md filemd.Metadata
+		require.NoError(t, md.Unmarshal(raw))
+		require.NotNil(t, md.Compaction)
+
+		_, ok := (&Object{metadata: &md}).SizeLeveledCompaction()
+		require.False(t, ok)
+	})
+}

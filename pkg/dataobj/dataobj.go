@@ -274,16 +274,18 @@ func (o *Object) Tenant() (string, error) {
 	return tenants[0], nil
 }
 
-// CompactionInfo returns the compaction info in the file metadata of the
-// object. The bool is false if the file metadata has no compaction info.
+// SizeLeveledCompaction returns the size-leveled compaction info in the file
+// metadata of the object. The bool is false if the size-leveled strategy did
+// not place the object.
 //
-// Only log objects that the compactor wrote have compaction info. Index
-// objects and log objects from an older compactor have none.
-func (o *Object) CompactionInfo() (CompactionInfo, bool) {
-	if o.metadata.Compaction == nil {
-		return CompactionInfo{}, false
+// Index objects, log objects from an older compactor, and objects that another
+// compaction strategy placed have no size-leveled compaction info.
+func (o *Object) SizeLeveledCompaction() (SizeLeveledCompaction, bool) {
+	sizeLeveled := o.metadata.GetCompaction().GetSizeLeveled()
+	if sizeLeveled == nil {
+		return SizeLeveledCompaction{}, false
 	}
-	return CompactionInfo{Level: o.metadata.Compaction.Level}, true
+	return SizeLeveledCompaction{Level: sizeLeveled.Level}, true
 }
 
 // Reader returns a reader for the entire raw data object.

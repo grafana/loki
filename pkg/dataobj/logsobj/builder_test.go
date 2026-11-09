@@ -136,15 +136,15 @@ func TestNewBuilder(t *testing.T) {
 		return obj
 	}
 
-	t.Run("builds objects with no compaction info when it has no options", func(t *testing.T) {
-		_, ok := flush(t).CompactionInfo()
+	t.Run("builds objects with no size-leveled compaction when it has no options", func(t *testing.T) {
+		_, ok := flush(t).SizeLeveledCompaction()
 		require.False(t, ok)
 	})
 
-	t.Run("builds objects with the compaction info of the options", func(t *testing.T) {
-		info, ok := flush(t, dataobj.WithCompactionInfo(dataobj.CompactionInfo{Level: 1})).CompactionInfo()
+	t.Run("builds objects with the size-leveled compaction of the options", func(t *testing.T) {
+		info, ok := flush(t, dataobj.WithSizeLeveledCompaction(dataobj.SizeLeveledCompaction{Level: 1})).SizeLeveledCompaction()
 		require.True(t, ok)
-		require.Equal(t, dataobj.CompactionInfo{Level: 1}, info)
+		require.Equal(t, dataobj.SizeLeveledCompaction{Level: 1}, info)
 	})
 }
 

@@ -34,7 +34,7 @@ func NewBuilder(scratchStore scratch.Store, opts ...BuilderOption) *Builder {
 	}
 
 	return &Builder{
-		encoder: newEncoder(scratchStore, cfg.prioritySections, cfg.compaction),
+		encoder: newEncoder(scratchStore, cfg.prioritySections, cfg.sizeLeveled),
 	}
 }
 
@@ -43,7 +43,7 @@ type BuilderOption func(*builderConfig)
 
 type builderConfig struct {
 	prioritySections []SectionType
-	compaction       *CompactionInfo
+	sizeLeveled      *SizeLeveledCompaction
 }
 
 // WithPrioritySections places sections with the given types before all other
@@ -62,20 +62,20 @@ func WithPrioritySections(types ...SectionType) BuilderOption {
 	}
 }
 
-// CompactionInfo describes where the compactor placed a data object in the
-// compaction levels.
-type CompactionInfo struct {
-	// Level is the compaction level of the run that holds the object, as the
-	// planner computed it when it planned the merge. The level depends on the
-	// planner configuration at that time, so it can differ from the level that
-	// a later planner computes for the same run.
+// SizeLeveledCompaction describes a data object that the size-leveled
+// compaction strategy placed.
+type SizeLeveledCompaction struct {
+	// Level is the size level of the run that holds the object. The planner
+	// computed it when it planned the merge. The size level depends on the base
+	// and ratio of the strategy at that time, so a later planner can compute a
+	// different size level for the same run.
 	Level uint32
 }
 
-// WithCompactionInfo writes info into the file metadata of every object that
-// the builder flushes. The info stays in effect after [Builder.Reset].
-func WithCompactionInfo(info CompactionInfo) BuilderOption {
-	return func(cfg *builderConfig) { cfg.compaction = &info }
+// WithSizeLeveledCompaction writes c into the file metadata of every object
+// that the builder flushes. The info stays in effect after [Builder.Reset].
+func WithSizeLeveledCompaction(c SizeLeveledCompaction) BuilderOption {
+	return func(cfg *builderConfig) { cfg.sizeLeveled = &c }
 }
 
 // Append flushes a [SectionBuilder], buffering its data and metadata into b.

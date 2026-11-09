@@ -518,8 +518,8 @@ func (w *logObjectWriter) startNewObject() error {
 	cfg := w.c.logsobjCfg
 	overrides := fixedLayout{layout: w.layout}
 
-	compaction := dataobj.WithCompactionInfo(dataobj.CompactionInfo{Level: w.node.OutputLevel})
-	builder, err := logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides, compaction)
+	sizeLeveled := dataobj.WithSizeLeveledCompaction(dataobj.SizeLeveledCompaction{Level: w.node.OutputLevel})
+	builder, err := logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides, sizeLeveled)
 	if err != nil {
 		return err
 	}
@@ -605,7 +605,7 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr erro
 		"path", path,
 		"bytes", size,
 		"object_index", w.stats.OutputObjects,
-		"compaction_level", w.node.OutputLevel,
+		"size_level", w.node.OutputLevel,
 	)
 	w.stats.OutputObjects++
 	w.stats.OutputBytesCompressed += size

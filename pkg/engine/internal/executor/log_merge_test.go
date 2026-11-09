@@ -309,8 +309,8 @@ type compactedObject struct {
 	streamLabels map[int64]labels.Labels
 	records      []outputRecord
 
-	compaction    dataobj.CompactionInfo
-	hasCompaction bool
+	sizeLeveled    dataobj.SizeLeveledCompaction
+	hasSizeLeveled bool
 }
 
 // readCompactedObjectsFromIndex reads the index at indexPath from the index bucket,
@@ -394,13 +394,13 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 			}
 		}
 
-		compaction, hasCompaction := logObj.CompactionInfo()
+		sizeLeveled, hasSizeLeveled := logObj.SizeLeveledCompaction()
 		out = append(out, compactedObject{
-			streamApp:     streamApp,
-			streamLabels:  streamLabels,
-			records:       records,
-			compaction:    compaction,
-			hasCompaction: hasCompaction,
+			streamApp:      streamApp,
+			streamLabels:   streamLabels,
+			records:        records,
+			sizeLeveled:    sizeLeveled,
+			hasSizeLeveled: hasSizeLeveled,
 		})
 	}
 	return out
@@ -1362,7 +1362,7 @@ func TestDoLogObjectMerge(t *testing.T) {
 		require.Zero(t, store.Live())
 	})
 
-	t.Run("writes the output level of the task into the file metadata of every output object", func(t *testing.T) {
+	t.Run("writes the output level of the task as the size level in the file metadata of every output object", func(t *testing.T) {
 		dataBucket, runs := splitSources(t)
 		indexBucket := objstore.NewInMemBucket()
 		c := newSmallObjectExecutorContext(t, indexBucket)
@@ -1374,8 +1374,8 @@ func TestDoLogObjectMerge(t *testing.T) {
 		objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts.Path, tenant)
 		require.GreaterOrEqual(t, len(objs), 2, "the merge must split into multiple objects")
 		for _, o := range objs {
-			require.True(t, o.hasCompaction)
-			require.Equal(t, dataobj.CompactionInfo{Level: 2}, o.compaction)
+			require.True(t, o.hasSizeLeveled)
+			require.Equal(t, dataobj.SizeLeveledCompaction{Level: 2}, o.sizeLeveled)
 		}
 	})
 }
