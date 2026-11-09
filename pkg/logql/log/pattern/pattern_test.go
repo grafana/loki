@@ -166,6 +166,20 @@ var fixtures = []struct {
 		[]string{"character"},
 		true,
 	},
+	{
+		// Leading literal anchors the start of the line
+		"foo <bar>",
+		"prefix foo baz",
+		nil,
+		false,
+	},
+	{
+		// Leading literal anchors the start of the line, with a trailing literal
+		"foo <bar> baz",
+		"prefix foo x baz",
+		nil,
+		false,
+	},
 }
 
 func Test_BytesIndexUnicode(t *testing.T) {
