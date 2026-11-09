@@ -127,6 +127,14 @@ func parseLabels(data []byte) (labels.Labels, error) {
 	labelsBuilder := labels.NewScratchBuilder(0)
 
 	err := jsonparser.ObjectEach(data, func(key []byte, value []byte, t jsonparser.ValueType, _ int) error {
+		if t == jsonparser.Boolean {
+			// Boolean tokens are not quoted strings, so ParseString cannot
+			// decode them. The raw literal is already the label value,
+			// matching how numbers are coerced to their literal form.
+			labelsBuilder.Add(string(key), string(value))
+			return nil
+		}
+
 		if t != jsonparser.String && t != jsonparser.Number {
 			return fmt.Errorf("could not parse label value. Expected string or number, got %s", t)
 		}
