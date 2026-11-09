@@ -138,13 +138,6 @@ Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/lok
 
 Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 
-#### Breaking change: Limit allowed S3 storage classes
-
-Loki now rejects S3 storage classes other than `STANDARD`, `STANDARD_IA`, and `REDUCED_REDUNDANCY`, such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
-If you have been using such classes, you must switch to a supported class before upgrading.
-
-`REDUCED_REDUNDANCY` is only intended for use with MinIO.
-
 #### Breaking change: Compactor and retention metrics are renamed 
 
 A number of legacy Prometheus metrics prefixed with `loki_boltdb_shipper_*` are renamed to `loki_tsdb_shipper_*`.
@@ -157,6 +150,31 @@ loki_boltdb_shipper_retention_*
 ```
 
 To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
+
+#### Breaking change: Rename and remove metrics
+
+- The deprecated metric `loki_log_messages_total` is removed in favor of `loki_internal_log_messages_total`.
+- The metric `loki_log_flushes` is renamed to `loki_internal_log_flushes` to be consistent with `loki_internal_log_messages_total`.
+- The second label of the `loki_mutated_samples_total` and `loki_mutated_bytes_total` metrics is renamed from `truncated` to `tenant`. The label always held the tenant ID (not a boolean), so the new name reflects its actual value and is consistent with the `tenant` label on the `loki_discarded_samples_total` / `loki_discarded_bytes_total` metrics. If you have dashboards or alerts that aggregate these metrics by the `truncated` label, update them to use `tenant`.
+
+#### Breaking change: Drop support for non-TSDB stores in jsonnet lib 
+
+With the removal of deprecated storage backends, the Loki jsonnet library is also cleaned up to reflect these changes. Affected configuration flags are:
+
+- `$._config.using_shipper_store` - any usages defaulted to `true`
+- `$._config.using_boltdb_shipper` - any usages defaulted to `false`
+- `$._config.using_tsdb_shipper` - any usages defaulted to `true`
+
+This change may update both command line arguments and the Loki config. If you've been using or overriding one of the three aforementioned configuration options, please remove them and replace them with the new defaults.
+
+#### Breaking change: Ruler always wipes its remote-write WAL on startup
+
+The ruler now deletes (wipes) its remote-write write-ahead log (WAL) directory on startup and starts each tenant with a fresh, empty WAL. WAL data left over from a previous run is no longer replayed, so any samples that had not yet been flushed to remote storage before a restart are discarded. For recording rules this is generally safe, since rules are re-evaluated and re-sent after startup.
+
+As a result, the following have been removed:
+
+- The `-ruler.enable-wal-replay` flag and its per-tenant equivalent `ruler_enable_wal_replay` (in `limits_config`). The ruler no longer replays the WAL, so these settings no longer have any effect. Remove them from your configuration; the `deprecated-config-checker` tool will flag them.
+- The ruler WAL metrics that only ever reported replay or repair activity: `loki_ruler_wal_corruptions_total`, `loki_ruler_wal_corruptions_repair_failed_total`, `loki_ruler_wal_corruptions_repair_succeeded_total`, and `loki_ruler_wal_replay_duration`. Remove any dashboards or alerts that reference them.
 
 #### Breaking change: Errored samples in metric queries now follow the query's grouping and `__error__` filter
 
@@ -174,40 +192,22 @@ The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
 
+#### Breaking change: Limit allowed S3 storage classes
+
+Loki now rejects S3 storage classes other than `STANDARD`, `STANDARD_IA`, and `REDUCED_REDUNDANCY`, such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
+If you have been using such classes, you must switch to a supported class before upgrading.
+
+`REDUCED_REDUNDANCY` is only intended for use with MinIO.
+
 #### Breaking change: Removal of the `row_shards` schema setting
 
 The `row_shards` setting on a `schema_config` `period_config` has been removed. It configured a static query shard factor for legacy (non-TSDB) index types. TSDB, the only supported index type, resolves log and metric query sharding dynamically from index statistics and ignores `row_shards`; series queries continue to use the previous default factor of 16. Because schema config is parsed strictly, a leftover `row_shards:` key now fails config load. Remove the `row_shards` setting from every `period_config`; the `deprecated-config-checker` tool will flag it.
-
-#### Breaking change: Ruler always wipes its remote-write WAL on startup
-
-The ruler now deletes (wipes) its remote-write write-ahead log (WAL) directory on startup and starts each tenant with a fresh, empty WAL. WAL data left over from a previous run is no longer replayed, so any samples that had not yet been flushed to remote storage before a restart are discarded. For recording rules this is generally safe, since rules are re-evaluated and re-sent after startup.
-
-As a result, the following have been removed:
-
-- The `-ruler.enable-wal-replay` flag and its per-tenant equivalent `ruler_enable_wal_replay` (in `limits_config`). The ruler no longer replays the WAL, so these settings no longer have any effect. Remove them from your configuration; the `deprecated-config-checker` tool will flag them.
-- The ruler WAL metrics that only ever reported replay or repair activity: `loki_ruler_wal_corruptions_total`, `loki_ruler_wal_corruptions_repair_failed_total`, `loki_ruler_wal_corruptions_repair_succeeded_total`, and `loki_ruler_wal_replay_duration`. Remove any dashboards or alerts that reference them.
 
 #### Breaking change: Configure deletes on compactor
 
 The configuration option `-compactor.allow-deletes` has been removed. Instead, use the the per-tenant `deletion_mode` option instead.
 This is configured in the `limits_config` and can be one of `disabled`, `filter-only`, or `filter-and-delete`.
 When set to `filter-only` or `filter-and-delete`, and `retention_enabled` is set to true, then the log entry deletion API endpoints are available.
-
-#### Breaking change: Rename and remove metrics
-
-- The deprecated metric `loki_log_messages_total` is removed in favor of `loki_internal_log_messages_total`.
-- The metric `loki_log_flushes` is renamed to `loki_internal_log_flushes` to be consistent with `loki_internal_log_messages_total`.
-- The second label of the `loki_mutated_samples_total` and `loki_mutated_bytes_total` metrics is renamed from `truncated` to `tenant`. The label always held the tenant ID (not a boolean), so the new name reflects its actual value and is consistent with the `tenant` label on the `loki_discarded_samples_total` / `loki_discarded_bytes_total` metrics. If you have dashboards or alerts that aggregate these metrics by the `truncated` label, update them to use `tenant`.
-
-#### Breaking change: Drop support for non-TSDB stores in jsonnet lib 
-
-With the removal of deprecated storage backends, the Loki jsonnet library is also cleaned up to reflect these changes. Affected configuration flags are:
-
-- `$._config.using_shipper_store` - any usages defaulted to `true`
-- `$._config.using_boltdb_shipper` - any usages defaulted to `false`
-- `$._config.using_tsdb_shipper` - any usages defaulted to `true`
-
-This change may update both command line arguments and the Loki config. If you've been using or overriding one of the three aforementioned configuration options, please remove them and replace them with the new defaults.
 
 #### Bloom filters are deprecated
 
