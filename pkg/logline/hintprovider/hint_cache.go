@@ -219,7 +219,7 @@ func (p *CachingHintProvider) ProvideHints(
 
 	// Key and look up on the log selector, so a metric query and the log query
 	// it wraps share entries.
-	expr = cacheSelector(expr)
+	expr = cacheKeyExpr(expr)
 	queryString := expr.String()
 	minDate := cacheKeyMinDate(p.delegate)
 	dayWindows := buildDayWindows(tenant, queryString, minDate, from.Time(), through.Time())
@@ -394,7 +394,7 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 	return days
 }
 
-// cacheSelector returns the expression a hint cache entry is computed from and
+// cacheKeyExpr returns the expression a hint cache entry is computed from and
 // keyed on: the log selector (stream matchers and pipeline) of the query.
 //
 // A log query is its own selector. A supported metric query yields the log
@@ -405,7 +405,7 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 //
 // The delegate must be asked about this expression, not the original one, so
 // that a cached value is a function of its key.
-func cacheSelector(expr syntax.Expr) syntax.Expr {
+func cacheKeyExpr(expr syntax.Expr) syntax.Expr {
 	if selector, ok := metricLogSelector(expr); ok && selector != nil {
 		return selector
 	}

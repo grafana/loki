@@ -47,7 +47,7 @@ Query-shape support and hint lookup for logline index lookups.
 6. **Hint cache keys are day-aligned**
    - `CachingHintProvider` stores one entry per UTC day touched by `[from, through]`.
    - Logical format: `logline:2:<tenant>:<log-selector>:<min-date>:<YYYY-MM-DD>`.
-   - `<log-selector>` is `cacheSelector(expr).String()`: the log selector (stream
+   - `<log-selector>` is `cacheKeyExpr(expr).String()`: the log selector (stream
      matchers plus pipeline) of the query. A log query is its own selector. A
      supported metric query yields the selector inside its range aggregation, so
      it shares entries with the log query it wraps. Range, offset, grouping,
