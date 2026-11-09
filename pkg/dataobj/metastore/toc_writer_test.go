@@ -31,6 +31,8 @@ import (
 )
 
 func TestWriteEntry(t *testing.T) {
+	t.Run("checks and raises the watermark together with the entry", testWriteEntryWithWatermark)
+
 	t.Run("appends the entry to an existing ToC", func(t *testing.T) {
 		tenantID := "test"
 		tocBuilder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
@@ -891,6 +893,38 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: window.Add(time.Hour).Unix(), EndUnix: window.Add(2 * time.Hour).Unix()}},
 			readWindowToCs(context.Background(), t, bucket, window))
 	})
+
+	t.Run("keeps the watermarks when it replaces pointers", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		seedWatermarkToC(t, bucket, []string{"indexes/a", "indexes/b"}, []watermarks.Watermark{wm(0, 99), wm(1, 5)})
+		writer := newTableOfContentsWriter(t, bucket)
+
+		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a", "indexes/b"}, []TableOfContentsEntry{
+			{Path: "indexes/merged", StartTime: unixTime(10), EndTime: unixTime(20)},
+		})
+		require.NoError(t, err)
+		require.True(t, replaced)
+
+		require.Equal(t, []tocRow{{Tenant: wmTenant, Path: "indexes/merged", StartUnix: 10, EndUnix: 20}}, readToC(ctx, t, bucket, wmTocPath()))
+		require.ElementsMatch(t, []watermarks.Watermark{wm(0, 99), wm(1, 5)}, readWatermarks(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("writes nothing when another writer removed an old path and the ToC holds watermarks", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
+		before := readRawToC(ctx, t, bucket, wmTocPath())
+		writer := newTableOfContentsWriter(t, bucket)
+
+		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/gone"}, []TableOfContentsEntry{
+			{Path: "indexes/merged", StartTime: unixTime(10), EndTime: unixTime(20)},
+		})
+
+		require.ErrorIs(t, err, errChangeSuperseded)
+		require.False(t, replaced)
+		require.Equal(t, before, readRawToC(ctx, t, bucket, wmTocPath()))
+	})
 }
 
 // writeTimeRanges records path in the ToC of every tenant in timeRanges.
@@ -1260,5 +1294,23 @@ func TestForEachTocPointer(t *testing.T) {
 			t.Fatal("unexpected pointer")
 			return nil
 		}))
+	})
+
+	t.Run("returns every pointer path when the ToC holds watermarks", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+		require.NoError(t, writeWatermarkEntry(ctx, writer, "indexes/a", 0, 99, nil))
+		require.NoError(t, writeWatermarkEntry(ctx, writer, "indexes/b", 1, 5, nil))
+
+		raw := readRawToC(ctx, t, bucket, wmTocPath())
+		obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+		require.NoError(t, err)
+		var paths []string
+		require.NoError(t, forEachTocPointer(ctx, obj, func(p indexpointers.IndexPointer) error {
+			paths = append(paths, p.Path)
+			return nil
+		}))
+		require.ElementsMatch(t, []string{"indexes/a", "indexes/b"}, paths)
 	})
 }
