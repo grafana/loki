@@ -88,8 +88,8 @@ func (s *SizeLeveledStrategy) groupByLevels(runs []Run) [][]Run {
 func (s *SizeLeveledStrategy) RunsPerLevel(runs []Run) []int {
 	levels := s.groupByLevels(runs)
 	counts := make([]int, len(levels))
-	for i, level := range levels {
-		counts[i] = len(level)
+	for i, levelRuns := range levels {
+		counts[i] = len(levelRuns)
 	}
 	return counts
 }
@@ -100,8 +100,8 @@ func (s *SizeLeveledStrategy) RunsPerLevel(runs []Run) []int {
 // even if its runs overlap. Plan merges each group of k runs in a level into
 // one run, so each compaction reduces the number of runs and compaction stops.
 func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
-	for _, level := range s.groupByLevels(runs) {
-		if len(level) >= s.k {
+	for _, levelRuns := range s.groupByLevels(runs) {
+		if len(levelRuns) >= s.k {
 			return true
 		}
 	}
@@ -122,10 +122,10 @@ func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
 // The output level of a task is the size level of the summed size of its
 // input runs, so it can be above the level of the inputs.
 func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string) (merges []*compactionv2pb.TaskSpec, unmerged []Run) {
-	for _, level := range s.groupByLevels(runs) {
-		full := len(level) - len(level)%s.k
+	for _, levelRuns := range s.groupByLevels(runs) {
+		full := len(levelRuns) - len(levelRuns)%s.k
 		for start := 0; start < full; start += s.k {
-			group := level[start : start+s.k]
+			group := levelRuns[start : start+s.k]
 			var mergedSize uint64
 			for _, run := range group {
 				mergedSize += run.Size()
@@ -136,7 +136,7 @@ func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string) (merges []*compact
 				merges = append(merges, task)
 			}
 		}
-		unmerged = append(unmerged, level[full:]...)
+		unmerged = append(unmerged, levelRuns[full:]...)
 	}
 	return merges, unmerged
 }
