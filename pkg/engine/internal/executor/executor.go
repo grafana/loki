@@ -39,11 +39,11 @@ type Config struct {
 
 	Bucket objstore.Bucket
 
-	// DataBucket reads source log objects during LogMerge compaction. Unlike
-	// Bucket (which the compaction wiring prefixes with the index-storage
-	// prefix for index I/O and ToC), source log objects are stored at the
-	// unprefixed dataobj root, so they must be read through this bucket.
-	// Optional; when nil the executor falls back to Bucket.
+	// DataBucket is the unprefixed dataobj root. LogMerge reads source log
+	// objects from it, and DeletionSweep scans objects and stores file lists
+	// in it. Unlike Bucket, which the compaction wiring prefixes with the
+	// index-storage prefix for index I/O and ToC, it holds objects/ and the
+	// index storage. Optional; when nil the executor falls back to Bucket.
 	DataBucket objstore.Bucket
 
 	// GetExternalInputs is an optional function called for each node in the

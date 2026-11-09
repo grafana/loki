@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -19,12 +20,13 @@ import (
 
 // fakeLimits reports per-tenant compaction phase enablement. newFakeLimits
 // enables index-only compaction for the listed tenants (log stays off). Use
-// setLog to adjust a tenant at runtime. The zero value enables
+// setLog and setSweep to adjust a tenant at runtime. The zero value enables
 // nothing.
 type fakeLimits struct {
 	mu    sync.Mutex
 	index map[string]bool
 	log   map[string]bool
+	sweep map[string]bool
 }
 
 func newFakeLimits(indexTenants ...string) *fakeLimits {
@@ -32,7 +34,19 @@ func newFakeLimits(indexTenants ...string) *fakeLimits {
 	for _, t := range indexTenants {
 		idx[t] = true
 	}
-	return &fakeLimits{index: idx, log: map[string]bool{}}
+	return &fakeLimits{index: idx, log: map[string]bool{}, sweep: map[string]bool{}}
+}
+
+func (f *fakeLimits) DeletionSweepEnabled(userID string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.sweep[userID]
+}
+
+func (f *fakeLimits) setSweep(userID string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sweep[userID] = on
 }
 
 func (f *fakeLimits) CompactionPhases(userID string) (runIndex, runLog bool) {
@@ -167,4 +181,38 @@ func TestNew_NilLimitsErrors(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "limits is required")
+}
+
+func TestNew_DeletionSweep(t *testing.T) {
+	newParams := func(dataBucket objstore.BucketReader) PlannerParams {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.Enabled = true
+		cfg.DeletionSweep.Enabled = true
+		bucket := objstore.NewInMemBucket()
+		return PlannerParams{
+			Config:          cfg,
+			Bucket:          bucket,
+			DataBucket:      dataBucket,
+			MetastoreWriter: metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
+			Limits:          newFakeLimits(),
+			Logger:          log.NewNopLogger(),
+		}
+	}
+
+	t.Run("returns an error when the deletion sweep is enabled without a data bucket", func(t *testing.T) {
+		_, err := New(newParams(nil))
+		require.ErrorContains(t, err, "data bucket is required")
+	})
+
+	t.Run("starts and stops cleanly with the deletion sweep enabled", func(t *testing.T) {
+		c, err := New(newParams(objstore.NewInMemBucket()))
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, c))
+		require.Equal(t, services.Terminated, c.State())
+	})
 }

@@ -30,13 +30,13 @@ func TestNewFileListScanner(t *testing.T) {
 		{"returns an error when max open files is negative", -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := NewFileListScanner(newFileBucket(t), "index/v0", tc.maxOpenFiles, log.NewNopLogger())
+			_, err := NewFileListScanner(newFileBucket(t), tc.maxOpenFiles, log.NewNopLogger())
 			require.ErrorContains(t, err, "max open files")
 		})
 	}
 
 	t.Run("returns an error when the bucket does not report modification times", func(t *testing.T) {
-		_, err := NewFileListScanner(noUpdatedAtBucket{fileBucket: newFileBucket(t)}, "index/v0", 2, log.NewNopLogger())
+		_, err := NewFileListScanner(noUpdatedAtBucket{fileBucket: newFileBucket(t)}, 2, log.NewNopLogger())
 		require.ErrorContains(t, err, "modification times")
 	})
 }
@@ -65,7 +65,7 @@ func TestFileListScanner_List(t *testing.T) {
 		bucket.put(t, "index/v0/tocs/2026-11-04T00_00_00Z/a/toc.toc", notADataObject, old)
 		bucket.put(t, "deletion/a/files.jsonl.gz", notADataObject, old)
 
-		list, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{
 			"index/v0/indexes/00/single-a",
@@ -84,7 +84,7 @@ func TestFileListScanner_List(t *testing.T) {
 		bucket.put(t, "objects/05/young", notADataObject, now)
 
 		var logs bytes.Buffer
-		scanner, err := NewFileListScanner(bucket, "index/v0", 2, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
+		scanner, err := NewFileListScanner(bucket, 2, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
 		require.NoError(t, err)
 
 		list, err := scanner.List(t.Context(), "a", now)
@@ -97,7 +97,7 @@ func TestFileListScanner_List(t *testing.T) {
 	})
 
 	t.Run("returns the tenant and the scan time in the file list", func(t *testing.T) {
-		list, err := newTestFileListScanner(t, newFileBucket(t), "index/v0").List(t.Context(), "a", now)
+		list, err := newTestFileListScanner(t, newFileBucket(t)).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, FileList{Tenant: "a", CreatedAt: now}, list)
 	})
@@ -114,7 +114,7 @@ func TestFileListScanner_List(t *testing.T) {
 		bucket.put(t, "objects/young-stray", notADataObject, young)
 		bucket.put(t, "index/v0/indexes/00/young", notADataObject, young)
 
-		list, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{
 			"objects/00/at-min-age",
@@ -126,22 +126,9 @@ func TestFileListScanner_List(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/stray", objectBytes(t, "a"), old)
 
-		list, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{"objects/stray"}, list.Paths)
-	})
-
-	t.Run("finds index objects when the index prefix has leading and trailing slashes", func(t *testing.T) {
-		bucket := newFileBucket(t)
-		bucket.put(t, "index/v0/indexes/tenants/a/bb/compacted", notADataObject, old)
-		bucket.put(t, "index/v0/indexes/00/single-a", objectBytes(t, "a"), old)
-
-		list, err := newTestFileListScanner(t, bucket, "/index/v0/").List(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, []string{
-			"index/v0/indexes/00/single-a",
-			"index/v0/indexes/tenants/a/bb/compacted",
-		}, list.Paths)
 	})
 
 	t.Run("lists each root with one recursive listing and the tenant directory with another", func(t *testing.T) {
@@ -151,7 +138,7 @@ func TestFileListScanner_List(t *testing.T) {
 		files.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
 		bucket := &listRecordingBucket{fileBucket: files}
 
-		_, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		_, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{
 			"objects/tenants/a/",
@@ -171,7 +158,7 @@ func TestFileListScanner_List(t *testing.T) {
 		files.put(t, "index/v0/indexes/tenants/c/bb/compacted", notADataObject, old)
 		bucket := &listRecordingBucket{fileBucket: files}
 
-		_, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		_, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{"objects/00/single-a", "objects/tenants/b/aa/compacted"}, bucket.names["objects/"])
 		require.Equal(t, []string{"index/v0/indexes/00/single-a", "index/v0/indexes/tenants/b/bb/compacted"}, bucket.names["index/v0/indexes/"])
@@ -184,7 +171,7 @@ func TestFileListScanner_List(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		bucket := objstore.WrapWith(files, objstore.BucketMetrics(reg, "test"))
 
-		list, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{"objects/00/single-a"}, list.Paths)
 		require.Zero(t, iterFailures(t, reg))
@@ -196,7 +183,7 @@ func TestFileListScanner_List(t *testing.T) {
 		bucket.put(t, "objects/tenants/b/aa/compacted", notADataObject, old)
 		bucket.put(t, "objects/zz/single-a", objectBytes(t, "a"), old)
 
-		list, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{"objects/00/single-a"}, list.Paths)
 	})
@@ -210,17 +197,9 @@ func TestFileListScanner_List(t *testing.T) {
 			"objects/tenants/a/": "objects/tenants/a/aa/",
 		}}
 
-		list, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{"objects/00/single-a", "objects/tenants/a/aa/compacted"}, list.Paths)
-	})
-
-	t.Run("returns an error when the index prefix makes the scan list an object twice", func(t *testing.T) {
-		bucket := newFileBucket(t)
-		bucket.put(t, "objects/indexes/00/single-a", objectBytes(t, "a"), old)
-
-		_, err := newTestFileListScanner(t, bucket, "objects").List(t.Context(), "a", now)
-		require.ErrorContains(t, err, "invalid file list")
 	})
 
 	t.Run("returns an error naming the object when an uncompacted object cannot be opened", func(t *testing.T) {
@@ -228,7 +207,7 @@ func TestFileListScanner_List(t *testing.T) {
 		bucket.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
 		bucket.put(t, "objects/01/corrupt", notADataObject, old)
 
-		_, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		_, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.ErrorContains(t, err, "objects/01/corrupt")
 	})
 
@@ -237,7 +216,7 @@ func TestFileListScanner_List(t *testing.T) {
 		files.put(t, "objects/01/corrupt", notADataObject, old)
 		bucket := &blockingBucket{fileBucket: files, blockAfter: "objects/01/corrupt"}
 
-		_, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		_, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.ErrorContains(t, err, "opening object objects/01/corrupt")
 		require.NotErrorIs(t, err, context.Canceled)
 	})
@@ -248,7 +227,7 @@ func TestFileListScanner_List(t *testing.T) {
 		files.put(t, "objects/01/no-time", objectBytes(t, "a"), old)
 		bucket := &noModTimeBucket{fileBucket: files, name: "objects/01/no-time"}
 
-		_, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		_, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.ErrorContains(t, err, "modification time of objects/01/no-time")
 	})
 
@@ -263,7 +242,7 @@ func TestFileListScanner_List(t *testing.T) {
 			opening:    make(chan struct{}),
 		}
 
-		_, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+		_, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.ErrorIs(t, err, errListing)
 		require.ErrorContains(t, err, "listing uncompacted objects in objects")
 		require.NotErrorIs(t, err, context.Canceled)
@@ -298,7 +277,7 @@ func TestFileListScanner_List(t *testing.T) {
 			files.put(t, "index/v0/indexes/00/single-a", objectBytes(t, "a"), old)
 			bucket := &noModTimeBucket{fileBucket: files, name: tc.noTime}
 
-			list, err := newTestFileListScanner(t, bucket, "index/v0").List(t.Context(), "a", now)
+			list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 			require.ErrorContains(t, err, tc.wantErr)
 			require.Empty(t, list.Paths)
 		})
@@ -310,7 +289,7 @@ func TestFileListScanner_List(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		_, err := newTestFileListScanner(t, bucket, "index/v0").List(ctx, "a", now)
+		_, err := newTestFileListScanner(t, bucket).List(ctx, "a", now)
 		require.ErrorIs(t, err, context.Canceled)
 	})
 
@@ -324,15 +303,15 @@ func TestFileListScanner_List(t *testing.T) {
 		{"returns an error for a tenant with a slash", "a/aa"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := newTestFileListScanner(t, newFileBucket(t), "index/v0").List(t.Context(), tc.tenant, now)
+			_, err := newTestFileListScanner(t, newFileBucket(t)).List(t.Context(), tc.tenant, now)
 			require.ErrorContains(t, err, "tenant")
 		})
 	}
 }
 
-func newTestFileListScanner(t *testing.T, bucket objstore.BucketReader, indexPrefix string) *FileListScanner {
+func newTestFileListScanner(t *testing.T, bucket objstore.BucketReader) *FileListScanner {
 	t.Helper()
-	scanner, err := NewFileListScanner(bucket, indexPrefix, 2, log.NewNopLogger())
+	scanner, err := NewFileListScanner(bucket, 2, log.NewNopLogger())
 	require.NoError(t, err)
 	return scanner
 }

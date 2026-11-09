@@ -2145,6 +2145,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	c, err := enginecompactor.New(enginecompactor.PlannerParams{
 		Config:          t.Cfg.DataObj.Compaction,
 		Bucket:          indexBucket,
+		DataBucket:      store,
 		MetastoreWriter: tocWriter,
 		Limits:          t.Overrides,
 		Logger:          logger,
