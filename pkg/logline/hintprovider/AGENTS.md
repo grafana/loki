@@ -46,8 +46,22 @@ Query-shape support and hint lookup for logline index lookups.
      vs SM, so we do not re-escape needles — only values already in the line.
 6. **Hint cache keys are day-aligned**
    - `CachingHintProvider` stores one entry per UTC day touched by `[from, through]`.
-   - Logical format: `logline:1:<tenant>:<expr.String()>:<min-date>:<YYYY-MM-DD>`.
-   - On cache miss, delegate lookups are also day-aligned: each missed day calls the delegate with that full day window (`[day_start, day_end)`).
+   - Logical format: `logline:2:<tenant>:<log-selector>:<min-date>:<YYYY-MM-DD>`.
+   - `<log-selector>` is `cacheSelector(expr).String()`: the log selector (stream
+     matchers plus pipeline) of the query. A log query is its own selector. A
+     supported metric query yields the selector inside its range aggregation, so
+     it shares entries with the log query it wraps. Range, offset, grouping,
+     `unwrap` and outer aggregations are not part of the key. A shape with no
+     single selector (a binary operation) is keyed on its whole expression.
+   - Anything that changes which needles `SupportedQuery` looks up (a matcher,
+     a line or label filter, a parser, `line_format`) changes the key, so two
+     queries share an entry only when they have the same selector.
+   - Bump `hintCacheGeneration` when the key format or the meaning of a cached
+     value changes.
+   - On cache miss, the delegate is asked about the selector, never the metric
+     wrapper, so a cached value is a function of its key. Each missed day calls
+     the delegate with that full day window (`[day_start, day_end)`), so which
+     query filled an entry does not affect what another query reads from it.
    - Responses are post-filtered back to the caller's `[from, through]` overlap window so API behavior stays window-scoped while cache payloads stay day-complete.
 7. **Cache API keys must be hashed**
    - Always call `cache.HashKey(logicalKey)` before `Fetch`/`Store`.
@@ -87,8 +101,9 @@ Query-shape support and hint lookup for logline index lookups.
     - Its literals are unfiltered. `SupportedQuery` drops those shorter than
       `ngramLength`, and a regex with none left contributes nothing.
 14. **A shared day lookup runs under the context of the caller that started it**
-    - Concurrent lookups of the same tenant, query and day share one delegate
-      call through singleflight.
+    - Concurrent lookups of the same tenant, log selector and day share one
+      delegate call through singleflight. A log query and its metric wrapper
+      therefore share a call.
     - Each caller stops waiting when its own context ends. The query frontend
       cancels a lookup when its query returns first, and the shared call keeps
       running for the callers still waiting on it.
