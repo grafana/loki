@@ -2002,6 +2002,25 @@ func Test_applyQuerierDataObjConfig(t *testing.T) {
 	})
 }
 
+func Test_applyQueryRangeDataObjConfig(t *testing.T) {
+	t.Run("copies the data-object settings into the query range config", func(t *testing.T) {
+		yamlContent := `dataobj:
+  enabled: true
+  storage_lag: 5h`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.True(t, config.QueryRange.DataObjEnabled)
+		require.Equal(t, 5*time.Hour, config.QueryRange.DataObjStorageLag)
+	})
+
+	t.Run("copies the default storage lag when data objects are disabled", func(t *testing.T) {
+		config, _, err := configWrapperFromYAML(t, minimalConfig, nil)
+		require.NoError(t, err)
+		require.False(t, config.QueryRange.DataObjEnabled)
+		require.Equal(t, 3*time.Hour, config.QueryRange.DataObjStorageLag)
+	})
+}
+
 func Test_IndexGatewayRingReplicationFactor(t *testing.T) {
 	t.Run("default replication factor is 3", func(t *testing.T) {
 		const emptyConfigString = `---
@@ -2486,4 +2505,48 @@ func TestBucketNamedStores_applyDefaults(t *testing.T) {
 
 		assert.Equal(t, expected, (swift.Config)(nsCfg.Swift["store-5"]))
 	})
+}
+
+// TestLoglineBuilderAPIVersionsMaxVersion checks that the logline builder inherits
+// the root ApiVersions cap unless its own flag is set.
+func TestLoglineBuilderAPIVersionsMaxVersion(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantRoot    int
+		wantLogline int
+	}{
+		{
+			name:        "defaults",
+			wantRoot:    4,
+			wantLogline: 4,
+		},
+		{
+			name:        "root cap disabled",
+			args:        []string{"-kafka.api-versions-max-version=0"},
+			wantRoot:    0,
+			wantLogline: 0,
+		},
+		{
+			name:        "root cap lowered",
+			args:        []string{"-kafka.api-versions-max-version=3"},
+			wantRoot:    3,
+			wantLogline: 3,
+		},
+		{
+			name:        "logline builder flag wins",
+			args:        []string{"-kafka.api-versions-max-version=0", "-logline-builder.kafka.api-versions-max-version=2"},
+			wantRoot:    0,
+			wantLogline: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, _, err := configWrapperFromYAML(t, "", tt.args)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantRoot, cfg.KafkaConfig.APIVersionsMaxVersion)
+			assert.Equal(t, tt.wantLogline, cfg.Logline.Builder.Kafka.APIVersionsMaxVersion)
+		})
+	}
 }

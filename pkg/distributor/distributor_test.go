@@ -1991,7 +1991,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
-			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
+			require.Equal(t, lbls.Get(constants.StreamShardLabel), fmt.Sprint(i))
 		}
 
 		derivedStreams, _ = d.shardStream(*logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), streamRate, "fake", "", d.validator.ShardStreams("fake"))
@@ -2002,7 +2002,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
-			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i+2))
+			require.Equal(t, lbls.Get(constants.StreamShardLabel), fmt.Sprint(i+2))
 		}
 	})
 }
@@ -2793,8 +2793,8 @@ func TestDistributor_PushTimeSharding(t *testing.T) {
 			name: "old entries are bucketed by their window", app: "regular",
 			entries: []logproto.Entry{entry(old.Add(time.Hour), "b"), entry(old, "a")},
 			want: []logproto.Stream{
-				stream("regular", []logproto.Entry{entry(old, "a")}, timeShardLabel, window(old)),
-				stream("regular", []logproto.Entry{entry(old.Add(time.Hour), "b")}, timeShardLabel, window(old.Add(time.Hour))),
+				stream("regular", []logproto.Entry{entry(old, "a")}, constants.TimeShardLabel, window(old)),
+				stream("regular", []logproto.Entry{entry(old.Add(time.Hour), "b")}, constants.TimeShardLabel, window(old.Add(time.Hour))),
 			},
 		},
 		{
@@ -2812,7 +2812,7 @@ func TestDistributor_PushTimeSharding(t *testing.T) {
 			name: "old and recent entries retain their metadata", app: "mixed",
 			entries: []logproto.Entry{entry(recent, "newest"), entry(old, "old"), entry(recent.Add(-time.Minute), "recent")},
 			want: []logproto.Stream{
-				stream("mixed", []logproto.Entry{entry(old, "old")}, timeShardLabel, window(old)),
+				stream("mixed", []logproto.Entry{entry(old, "old")}, constants.TimeShardLabel, window(old)),
 				stream("mixed", []logproto.Entry{entry(recent.Add(-time.Minute), "recent"), entry(recent, "newest")}),
 			},
 		},
@@ -2821,8 +2821,8 @@ func TestDistributor_PushTimeSharding(t *testing.T) {
 			entries: []logproto.Entry{entry(old.Add(time.Second), "second"), entry(old, "first")},
 			rate:    &fakeRateStore{rate: 1000, pushRate: 1},
 			want: []logproto.Stream{
-				stream("compose", []logproto.Entry{entry(old, "first")}, timeShardLabel, window(old), ingester.ShardLbName, "0"),
-				stream("compose", []logproto.Entry{entry(old.Add(time.Second), "second")}, timeShardLabel, window(old), ingester.ShardLbName, "1"),
+				stream("compose", []logproto.Entry{entry(old, "first")}, constants.TimeShardLabel, window(old), constants.StreamShardLabel, "0"),
+				stream("compose", []logproto.Entry{entry(old.Add(time.Second), "second")}, constants.TimeShardLabel, window(old), constants.StreamShardLabel, "1"),
 			},
 		},
 	} {
@@ -2908,10 +2908,10 @@ func TestDistributor_SharedMetadataLimits(t *testing.T) {
 				require.NoError(t, err)
 				var want []logproto.Stream
 				for i, lines := range [][]string{{"a", "b"}, {"c", "d"}} {
-					ls := labels.FromStrings("app", "shared", ingester.ShardLbName, strconv.Itoa(i))
+					ls := labels.FromStrings("app", "shared", constants.StreamShardLabel, strconv.Itoa(i))
 					if timeSharding {
 						start := at.Truncate(time.Hour)
-						ls = labels.NewBuilder(ls).Set(timeShardLabel, fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())).Labels()
+						ls = labels.NewBuilder(ls).Set(constants.TimeShardLabel, fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())).Labels()
 					}
 					out := logproto.Stream{Labels: ls.String(), Hash: labels.StableHash(ls)}
 					for _, line := range lines {
@@ -4581,7 +4581,7 @@ func TestDistributor_NestedLimitsServiceShard(t *testing.T) {
 				if timeSharding {
 					start := old.Truncate(time.Hour)
 					window := fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())
-					oldLabels := labels.NewBuilder(lbls).Set(timeShardLabel, window).Labels()
+					oldLabels := labels.NewBuilder(lbls).Set(constants.TimeShardLabel, window).Labels()
 					metadata = []*limitsproto.StreamMetadata{
 						{StreamHash: labels.StableHash(oldLabels), TotalSize: 22},
 						{StreamHash: labels.StableHash(lbls), TotalSize: 11},
@@ -4617,7 +4617,7 @@ func TestDistributor_NestedLimitsServiceShard(t *testing.T) {
 
 				want := make([]logproto.Stream, len(entries))
 				for i, e := range entries {
-					shardedLabels := labels.NewBuilder(entryLabels[i]).Set(ingester.ShardLbName, shardNumbers[i]).Labels()
+					shardedLabels := labels.NewBuilder(entryLabels[i]).Set(constants.StreamShardLabel, shardNumbers[i]).Labels()
 					e.StructuredMetadata = buildNestedAttrs("e", "ee", "s", "ss", "r", "rr")
 					want[i] = logproto.Stream{Labels: shardedLabels.String(), Hash: labels.StableHash(shardedLabels), Entries: []logproto.Entry{e}}
 				}
@@ -4970,17 +4970,6 @@ func TestDistributor_LimitsServiceShardObservations(t *testing.T) {
 		},
 		expectFailed: true,
 	}, {
-		name:                "the answering instance does not own the partition: not compared",
-		shardStreamsEnabled: true,
-		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
-			Results: []*limitsproto.StreamShardResult{{
-				StreamHash: streamHash,
-				Shards:     1,
-				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonNotOwned)},
-			}},
-		},
-		expectFailed: true,
-	}, {
 		// A difference in kind rather than in shard count, as the local rate
 		// store never rejects a stream.
 		name:                "the service rejects the stream: counted separately",
@@ -5113,29 +5102,6 @@ func sumCounterVec(t *testing.T, c prometheus.Collector) float64 {
 		total += dm.GetCounter().GetValue()
 	}
 	return total
-}
-
-func TestDistributorMaxInflightBytesLimit(t *testing.T) {
-	validationLimits := &validation.Limits{}
-	flagext.DefaultValues(validationLimits)
-	distributors, _ := prepare(t, 1, 3, validationLimits, nil)
-	d := distributors[0]
-	req := &logproto.PushRequest{
-		Streams: []logproto.Stream{{
-			Labels: "{foo=\"bar\"}",
-			Entries: []logproto.Entry{{
-				Timestamp: time.Now(),
-				Line:      strings.Repeat("a", 1025),
-			}},
-		}},
-	}
-	_, err := d.Push(ctx, req)
-	require.NoError(t, err)
-	// Set the max inflight bytes to 1KB, the same request should be rejected.
-	d.cfg.MaxInflightBytes = 1024
-	_, err = d.Push(ctx, req)
-	require.ErrorIs(t, err, errServiceUnavailableMaxLoad)
-
 }
 
 func ptr[T any](v T) *T { return &v }

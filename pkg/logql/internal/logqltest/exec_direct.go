@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -20,33 +20,39 @@ type directExecutionStack struct {
 	t          *testing.T
 	stackName  string
 	limits     logql.Limits
+	engineOpts logql.EngineOpts
 	newQuerier newScriptQuerierFunc
 	querier    logql.Querier
 
-	// dataObjStart is the time from which the querier reads stream-first queries from data
+	// dataObjQueryStart is the time from which the querier reads stream-first queries from data
 	// objects. It is zero when the querier reads no data objects.
-	dataObjStart time.Time
+	dataObjQueryStart time.Time
 }
 
-// newDirectTimestampFirstStack returns the direct stack in timestamp-first order.
-func newDirectTimestampFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directTimestampFirstStackName, limits: execLimits{}, newQuerier: newChunkQuerier}
+// newDirectTimestampFirstStack returns the direct stack in timestamp-first order, changed by opts.
+func newDirectTimestampFirstStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{maxQuerySeries: o.maxQuerySeries}, engineOpts: newEngineOpts(o), newQuerier: newChunkQuerier}
 }
 
-// newDirectStreamFirstStack returns the direct stack with stream-first execution enabled.
-func newDirectStreamFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directStreamFirstStackName, limits: execLimits{streamFirstExecutionEnabled: true}, newQuerier: newChunkQuerier}
+// newDirectStreamFirstStack returns the direct stack with stream-first execution enabled, changed
+// by opts.
+func newDirectStreamFirstStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, engineOpts: newEngineOpts(o), newQuerier: newChunkQuerier}
 }
 
-// newDirectDataObjStack returns the direct stack with stream-first execution enabled. The stack
-// reads all the data of stream-first queries from data objects.
-func newDirectDataObjStack(t *testing.T) *directExecutionStack {
+// newDirectDataObjStack returns the direct stack with stream-first execution enabled, changed by
+// opts. The stack reads all the data of stream-first queries from data objects.
+func newDirectDataObjStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
 	return &directExecutionStack{
-		t:            t,
-		stackName:    directDataObjStackName,
-		limits:       execLimits{streamFirstExecutionEnabled: true},
-		newQuerier:   newDataObjQuerierFunc(epoch),
-		dataObjStart: epoch,
+		t:                 t,
+		stackName:         stackName,
+		limits:            execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries},
+		engineOpts:        newEngineOpts(o),
+		newQuerier:        newDataObjQuerierFunc(epoch),
+		dataObjQueryStart: epoch,
 	}
 }
 
@@ -71,9 +77,7 @@ func (s *directExecutionStack) setStores(stores *scriptStores) {
 }
 
 func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
-	var opts logql.EngineOpts
-	flagext.DefaultValues(&opts)
-	engine := logql.NewEngine(opts, s.querier, s.limits, log.NewNopLogger())
+	engine := logql.NewEngine(s.engineOpts, s.querier, s.limits, log.NewNopLogger())
 
 	start, end, step := cmd.getTimeRange()
 	params, err := logql.NewLiteralParams(
@@ -85,6 +89,12 @@ func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 		return logqlmodel.Result{}, err
 	}
 
+	// The stack has no query-frontend, which decides whether a querier may read data objects.
+	// The stack marks the query eligible itself.
+	if !s.dataObjQueryStart.IsZero() {
+		params = params.WithDataObjOptions(&logproto.DataObjOptions{Eligible: true})
+	}
+
 	ctx := user.InjectOrgID(context.Background(), tenant)
 	// Add flag to categorize labels. This is mimicking standard behavior of our most important client: Grafana
 	ctx = httpreq.AddEncodingFlagsToContext(ctx, httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels))
@@ -93,5 +103,5 @@ func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 		return res, err
 	}
 
-	return res, checkDataObjReads(cmd.query, res, s.dataObjStart)
+	return res, checkDataObjReads(cmd.query, res, s.dataObjQueryStart)
 }

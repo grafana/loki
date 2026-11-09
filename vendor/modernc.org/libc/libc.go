@@ -15,6 +15,7 @@ package libc // import "modernc.org/libc"
 
 import (
 	"bufio"
+	"bytes"
 	crand "crypto/rand"
 	"fmt"
 	"math"
@@ -23,7 +24,6 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -769,15 +769,7 @@ func Xqsort(t *TLS, base uintptr, nmemb, size types.Size_t, compar uintptr) {
 	if __ccgo_strace {
 		trc("t=%v base=%v size=%v compar=%v, (%v:)", t, base, size, compar, origin(2))
 	}
-	sort.Sort(&sorter{
-		len:  int(nmemb),
-		base: base,
-		sz:   uintptr(size),
-		f: (*struct {
-			f func(*TLS, uintptr, uintptr) int32
-		})(unsafe.Pointer(&struct{ uintptr }{compar})).f,
-		t: t,
-	})
+	qsort(t, base, uintptr(nmemb), uintptr(size), compar)
 }
 
 // void __assert_fail(const char * assertion, const char * file, unsigned int line, const char * function);
@@ -1727,18 +1719,11 @@ func Xstrncpy(t *TLS, dest, src uintptr, n types.Size_t) (r uintptr) {
 		trc("t=%v src=%v n=%v, (%v:)", t, src, n, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	r = dest
-	for c := *(*int8)(unsafe.Pointer(src)); c != 0 && n > 0; n-- {
-		*(*int8)(unsafe.Pointer(dest)) = c
-		dest++
-		src++
-		c = *(*int8)(unsafe.Pointer(src))
-	}
-	for ; uintptr(n) > 0; n-- {
-		*(*int8)(unsafe.Pointer(dest)) = 0
-		dest++
-	}
-	return r
+	k := strnlen(src, n)
+	d := unsafe.Slice((*byte)(unsafe.Pointer(dest)), n)
+	copy(d, unsafe.Slice((*byte)(unsafe.Pointer(src)), k))
+	clear(d[k:])
+	return dest
 }
 
 // char * __builtin___strncpy_chk (char *dest, const char *src, size_t n, size_t os);
@@ -1829,15 +1814,19 @@ func Xstrcpy(t *TLS, dest, src uintptr) (r uintptr) {
 		defer func() { trc("-> %v", r) }()
 	}
 	r = dest
-	// src0 := src
-	for ; ; dest++ {
-		c := *(*int8)(unsafe.Pointer(src))
-		src++
-		*(*int8)(unsafe.Pointer(dest)) = c
+	// Short strings are cheaper to copy bytewise than to scan twice.
+	for i := 0; i < 16; i++ {
+		c := *(*byte)(unsafe.Pointer(src + uintptr(i)))
+		*(*byte)(unsafe.Pointer(dest + uintptr(i))) = c
 		if c == 0 {
 			return r
 		}
 	}
+	dest += 16
+	src += 16
+	n := strlen(src) + 1
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(dest)), n), unsafe.Slice((*byte)(unsafe.Pointer(src)), n))
+	return r
 }
 
 // char *strchr(const char *s, int c)
@@ -1845,18 +1834,25 @@ func Xstrchr(t *TLS, s uintptr, c int32) uintptr {
 	if __ccgo_strace {
 		trc("t=%v s=%v c=%v, (%v:)", t, s, c, origin(2))
 	}
-	for {
-		ch2 := *(*byte)(unsafe.Pointer(s))
-		if ch2 == byte(c) {
+	// Short strings are cheaper to scan bytewise than twice.
+	for i := 0; i < 16; i++ {
+		ch := *(*byte)(unsafe.Pointer(s))
+		if ch == byte(c) {
 			return s
 		}
 
-		if ch2 == 0 {
+		if ch == 0 {
 			return 0
 		}
 
 		s++
 	}
+	// The scan includes the NUL so that c == 0 finds the terminator.
+	if i := bytes.IndexByte(unsafe.Slice((*byte)(unsafe.Pointer(s)), strlen(s)+1), byte(c)); i >= 0 {
+		return s + uintptr(i)
+	}
+
+	return 0
 }
 
 // char *strrchr(const char *s, int c)
@@ -1865,17 +1861,12 @@ func Xstrrchr(t *TLS, s uintptr, c int32) (r uintptr) {
 		trc("t=%v s=%v c=%v, (%v:)", t, s, c, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	for {
-		ch2 := *(*byte)(unsafe.Pointer(s))
-		if ch2 == 0 {
-			return r
-		}
-
-		if ch2 == byte(c) {
-			r = s
-		}
-		s++
+	// the terminating NUL is part of the string and matches c == 0
+	n := Xstrlen(t, s)
+	if i := bytes.LastIndexByte(unsafe.Slice((*byte)(unsafe.Pointer(s)), n+1), byte(c)); i >= 0 {
+		return s + uintptr(i)
 	}
+	return 0
 }
 
 // void *memset(void *s, int c, size_t n)
@@ -1983,20 +1974,7 @@ func Xmemcmp(t *TLS, s1, s2 uintptr, n types.Size_t) int32 {
 	if __ccgo_strace {
 		trc("t=%v s2=%v n=%v, (%v:)", t, s2, n, origin(2))
 	}
-	for ; n != 0; n-- {
-		c1 := *(*byte)(unsafe.Pointer(s1))
-		s1++
-		c2 := *(*byte)(unsafe.Pointer(s2))
-		s2++
-		if c1 < c2 {
-			return -1
-		}
-
-		if c1 > c2 {
-			return 1
-		}
-	}
-	return 0
+	return memcmp(s1, s2, Tsize_t(n))
 }
 
 // void *memchr(const void *s, int c, size_t n);
@@ -2004,12 +1982,16 @@ func Xmemchr(t *TLS, s uintptr, c int32, n types.Size_t) uintptr {
 	if __ccgo_strace {
 		trc("t=%v s=%v c=%v n=%v, (%v:)", t, s, c, n, origin(2))
 	}
-	for ; n != 0; n-- {
-		if *(*byte)(unsafe.Pointer(s)) == byte(c) {
-			return s
+	// Scan in chunks that end at 4096-byte boundaries so n larger than the
+	// object (up to SIZE_MAX) never reads a page past the first match.
+	for n != 0 {
+		chunk := min(4096-s%4096, uintptr(n))
+		if i := bytes.IndexByte(unsafe.Slice((*byte)(unsafe.Pointer(s)), chunk), byte(c)); i >= 0 {
+			return s + uintptr(i)
 		}
 
-		s++
+		s += chunk
+		n -= types.Size_t(chunk)
 	}
 	return 0
 }
@@ -2054,14 +2036,9 @@ func getenv(p uintptr, nm string) uintptr {
 			return 0
 		}
 
-		s := GoString(q)
-		a := strings.SplitN(s, "=", 2)
-		if len(a) != 2 {
-			panic(todo("%q %q %q", nm, s, a))
-		}
-
-		if a[0] == nm {
-			return q + uintptr(len(nm)) + 1
+		// compare in place, the environment is scanned on every localtime call
+		if n := cstrPrefix(q, nm); n == len(nm) && *(*byte)(unsafe.Pointer(q + uintptr(n))) == '=' {
+			return q + uintptr(n) + 1
 		}
 	}
 }
@@ -2071,11 +2048,10 @@ func Xstrstr(t *TLS, haystack, needle uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v needle=%v, (%v:)", t, needle, origin(2))
 	}
-	hs := GoString(haystack)
-	nd := GoString(needle)
-	if i := strings.Index(hs, nd); i >= 0 {
-		r := haystack + uintptr(i)
-		return r
+	hs := unsafe.Slice((*byte)(unsafe.Pointer(haystack)), strlen(haystack))
+	nd := unsafe.Slice((*byte)(unsafe.Pointer(needle)), strlen(needle))
+	if i := bytes.Index(hs, nd); i >= 0 {
+		return haystack + uintptr(i)
 	}
 
 	return 0
@@ -2162,19 +2138,98 @@ func Xatol(t *TLS, nptr uintptr) long {
 	}
 }
 
+// cstrPrefix returns the length of the common prefix of the C string p and s.
+func cstrPrefix(p uintptr, s string) int {
+	var i int
+	for i < len(s) && *(*byte)(unsafe.Pointer(p + uintptr(i))) == s[i] {
+		i++
+	}
+	return i
+}
+
+type tzLocation struct {
+	tz  string
+	loc *gotime.Location
+}
+
+// localLocation caches the location of the last TZ value, loading it reads the zoneinfo file.
+var localLocation atomic.Pointer[tzLocation]
+
 func getLocalLocation() (loc *gotime.Location) {
-	loc = gotime.Local
-	if r := getenv(Environ(), "TZ"); r != 0 {
-		zname := GoString(r)
-		zone, off := parseZone(zname)
-		loc = gotime.FixedZone(zone, -off)
-		loc2, _ := gotime.LoadLocation(zname)
-		if loc2 != nil {
-			loc = loc2
+	r := getenv(Environ(), "TZ")
+	if r == 0 {
+		return gotime.Local
+	}
+
+	if c := localLocation.Load(); c != nil && cstrPrefix(r, c.tz) == len(c.tz) && *(*byte)(unsafe.Pointer(r + uintptr(len(c.tz)))) == 0 {
+		return c.loc
+	}
+
+	zname := GoString(r)
+	switch loc2, err := gotime.LoadLocation(strings.TrimPrefix(zname, ":")); {
+	case err == nil:
+		// Try a zone name first: parseZone exits at characters like '-' that valid names
+		// such as America/Port-au-Prince contain. POSIX lets a name follow a colon.
+		loc = loc2
+	case strings.HasPrefix(zname, ":"):
+		// A colon never starts a POSIX rule, so a name that does not load means UTC.
+		loc = gotime.UTC
+	default:
+		if l, ok := posixTZLocation(zname); ok {
+			// A POSIX rule such as EST5EDT,M3.2.0,M11.1.0, DST transitions included.
+			loc = l
+			break
+		}
+
+		// Not a rule the time package accepts: keep the standard time part, or use
+		// UTC rather than end the process over a malformed TZ.
+		if zone, off, ok := parseZone(zname); ok {
+			loc = gotime.FixedZone(zone, -off)
+		} else {
+			loc = gotime.UTC
 		}
 	}
+	localLocation.Store(&tzLocation{tz: zname, loc: loc})
 	return loc
+}
 
+// posixTZBlock is one section of a TZif version 2 file: the header, with no
+// transitions and one local time type, then that type, offset 1 s and an empty
+// name. posixTZLocation uses it for both the 32-bit and the 64-bit section.
+var posixTZBlock = []byte{
+	'T', 'Z', 'i', 'f', '2', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, // UT/local indicators
+	0, 0, 0, 0, // standard/wall indicators
+	0, 0, 0, 0, // leap seconds
+	0, 0, 0, 0, // transitions
+	0, 0, 0, 1, // local time types
+	0, 0, 0, 1, // abbreviation bytes
+	0, 0, 0, 1, 0, 0, // offset 1 s, not DST, abbreviation at 0
+	0, // empty abbreviation
+}
+
+// posixTZLocation returns a Location for a POSIX TZ rule string such as
+// "CET-1CEST,M3.5.0,M10.5.0/3". It puts s in the footer of a TZif file without
+// transitions, which the time package evaluates for every instant, so DST
+// follows the rule. It reports false if the time package does not accept s:
+// then it falls back to the sentinel local time type.
+func posixTZLocation(s string) (*gotime.Location, bool) {
+	if s == "" || strings.ContainsRune(s, '\n') {
+		return nil, false
+	}
+
+	data := append(append([]byte(nil), posixTZBlock...), posixTZBlock...)
+	data = append(append(append(data, '\n'), s...), '\n')
+	loc, err := gotime.LoadLocationFromTZData(s, data)
+	if err != nil {
+		return nil, false
+	}
+
+	if name, off := gotime.Unix(0, 0).In(loc).Zone(); name == "" && off == 1 {
+		return nil, false
+	}
+
+	return loc, true
 }
 
 // time_t mktime(struct tm *tm);
@@ -2652,40 +2707,6 @@ func Xgetc(t *TLS, stream uintptr) int32 {
 		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
 	}
 	return Xfgetc(t, stream)
-}
-
-// char *fgets(char *s, int size, FILE *stream);
-func Xfgets(t *TLS, s uintptr, size int32, stream uintptr) uintptr {
-	if __ccgo_strace {
-		trc("t=%v s=%v size=%v stream=%v, (%v:)", t, s, size, stream, origin(2))
-	}
-	if size < 1 {
-		return 0
-	}
-	if size == 1 {
-		*(*byte)(unsafe.Pointer(s)) = 0
-		return s
-	}
-	var b []byte
-out:
-	for ; size > 1; size-- {
-		switch c := Xfgetc(t, stream); c {
-		case '\n':
-			b = append(b, byte(c))
-			break out
-		case stdio.EOF:
-			break out
-		default:
-			b = append(b, byte(c))
-		}
-	}
-	if len(b) == 0 {
-		return 0
-	}
-
-	b = append(b, 0)
-	copy((*RawMem)(unsafe.Pointer(s))[:len(b):len(b)], b)
-	return s
 }
 
 // void bzero(void *s, size_t n);

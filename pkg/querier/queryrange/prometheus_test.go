@@ -30,7 +30,6 @@ var emptyStats = `"stats": {
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
-			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunkFetchFailures": 0,
 			"chunk" :{
@@ -76,7 +75,6 @@ var emptyStats = `"stats": {
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
-			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunkFetchFailures": 0,
 			"chunk" :{
@@ -181,26 +179,6 @@ var emptyStats = `"stats": {
 			"queryLengthServed": 0
 		},
 		"result": {
-			"entriesFound": 0,
-			"entriesRequested": 0,
-			"entriesStored": 0,
-			"bytesReceived": 0,
-			"bytesSent": 0,
-			"requests": 0,
-			"downloadTime": 0,
-			"queryLengthServed": 0
-		},
-		"logResult": {
-			"entriesFound": 0,
-			"entriesRequested": 0,
-			"entriesStored": 0,
-			"bytesReceived": 0,
-			"bytesSent": 0,
-			"requests": 0,
-			"downloadTime": 0,
-			"queryLengthServed": 0
-		},
-		"taskResult": {
 			"entriesFound": 0,
 			"entriesRequested": 0,
 			"entriesStored": 0,

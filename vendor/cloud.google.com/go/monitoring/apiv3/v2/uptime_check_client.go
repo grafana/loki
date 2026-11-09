@@ -296,6 +296,43 @@ func NewUptimeCheckClient(ctx context.Context, opts ...option.ClientOption) (*Up
 		client.CallOptions.DeleteUptimeCheckConfig = append(client.CallOptions.DeleteUptimeCheckConfig, gax.WithClientMetrics(metrics))
 		client.CallOptions.ListUptimeCheckIps = append(client.CallOptions.ListUptimeCheckIps, gax.WithClientMetrics(metrics))
 	}
+	if gax.IsFeatureEnabled("TRACING") {
+		tracing := gax.NewClientTracing(
+			gax.WithTracingAttributes(map[string]string{
+				gax.ClientService:  "monitoring",
+				gax.ClientVersion:  getVersionClient(),
+				gax.ClientArtifact: "cloud.google.com/go/monitoring/apiv3/v2",
+				gax.RPCSystem:      "grpc",
+				gax.URLDomain:      "monitoring.googleapis.com",
+			}),
+		)
+
+		client.CallOptions.ListUptimeCheckConfigs = append(client.CallOptions.ListUptimeCheckConfigs, gax.WithClientTracing(tracing))
+		client.CallOptions.GetUptimeCheckConfig = append(client.CallOptions.GetUptimeCheckConfig, gax.WithClientTracing(tracing))
+		client.CallOptions.CreateUptimeCheckConfig = append(client.CallOptions.CreateUptimeCheckConfig, gax.WithClientTracing(tracing))
+		client.CallOptions.UpdateUptimeCheckConfig = append(client.CallOptions.UpdateUptimeCheckConfig, gax.WithClientTracing(tracing))
+		client.CallOptions.DeleteUptimeCheckConfig = append(client.CallOptions.DeleteUptimeCheckConfig, gax.WithClientTracing(tracing))
+		client.CallOptions.ListUptimeCheckIps = append(client.CallOptions.ListUptimeCheckIps, gax.WithClientTracing(tracing))
+	}
+	if gax.IsFeatureEnabled("LOGGING") {
+		logging := gax.NewClientLogging(
+			gax.WithLoggerProvider(c.logger),
+			gax.WithLoggingAttributes(map[string]string{
+				gax.ClientService:  "monitoring",
+				gax.ClientVersion:  getVersionClient(),
+				gax.ClientArtifact: "cloud.google.com/go/monitoring/apiv3/v2",
+				gax.RPCSystem:      "grpc",
+				gax.URLDomain:      "monitoring.googleapis.com",
+			}),
+		)
+
+		client.CallOptions.ListUptimeCheckConfigs = append(client.CallOptions.ListUptimeCheckConfigs, gax.WithClientLogging(logging))
+		client.CallOptions.GetUptimeCheckConfig = append(client.CallOptions.GetUptimeCheckConfig, gax.WithClientLogging(logging))
+		client.CallOptions.CreateUptimeCheckConfig = append(client.CallOptions.CreateUptimeCheckConfig, gax.WithClientLogging(logging))
+		client.CallOptions.UpdateUptimeCheckConfig = append(client.CallOptions.UpdateUptimeCheckConfig, gax.WithClientLogging(logging))
+		client.CallOptions.DeleteUptimeCheckConfig = append(client.CallOptions.DeleteUptimeCheckConfig, gax.WithClientLogging(logging))
+		client.CallOptions.ListUptimeCheckIps = append(client.CallOptions.ListUptimeCheckIps, gax.WithClientLogging(logging))
+	}
 
 	client.internalClient = c
 
@@ -332,9 +369,6 @@ func (c *uptimeCheckGRPCClient) ListUptimeCheckConfigs(ctx context.Context, req 
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
-		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetParent()))
-	}
 	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
 		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.UptimeCheckService/ListUptimeCheckConfigs")
 	}
@@ -384,9 +418,6 @@ func (c *uptimeCheckGRPCClient) GetUptimeCheckConfig(ctx context.Context, req *m
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
-		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetName()))
-	}
 	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
 		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.UptimeCheckService/GetUptimeCheckConfig")
 	}
@@ -408,9 +439,6 @@ func (c *uptimeCheckGRPCClient) CreateUptimeCheckConfig(ctx context.Context, req
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
-		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetParent()))
-	}
 	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
 		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.UptimeCheckService/CreateUptimeCheckConfig")
 	}
@@ -453,9 +481,6 @@ func (c *uptimeCheckGRPCClient) DeleteUptimeCheckConfig(ctx context.Context, req
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
-		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetName()))
-	}
 	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
 		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.UptimeCheckService/DeleteUptimeCheckConfig")
 	}

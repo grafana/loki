@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
 )
@@ -177,12 +177,15 @@ func WriteVolumeResponseJSON(r *logproto.VolumeResponse, w io.Writer) error {
 	return s.Flush()
 }
 
-// WriteDetectedFieldsResponseJSON marshals a logproto.DetectedFieldsResponse to JSON and then
-// writes it to the provided io.Writer.
-func WriteDetectedFieldsResponseJSON(r *logproto.DetectedFieldsResponse, w io.Writer) error {
+// WriteDetectedFieldsResponseJSON writes detected fields or values and the
+// statistics of the underlying log query as a JSON response.
+func WriteDetectedFieldsResponseJSON(r *logproto.DetectedFieldsResponse, statistics stats.Result, w io.Writer) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
-	s.WriteVal(r)
+	s.WriteVal(struct {
+		*logproto.DetectedFieldsResponse
+		Statistics stats.Result `json:"stats"`
+	}{r, statistics})
 	s.WriteRaw("\n")
 	return s.Flush()
 }

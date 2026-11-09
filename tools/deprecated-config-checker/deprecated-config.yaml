@@ -14,6 +14,9 @@
 #
 # Note that even though the configs in schema_config takes a list, here we specify the deprecated fields for each item in the list.
 
+bloom_build: "Bloom filters are deprecated."
+bloom_gateway: "Bloom filters are deprecated."
+
 index_gateway:
   ring:
     replication_factor: "Use global or per-tenant index_gateway_shard_size configuration from limits_config."
@@ -26,7 +29,22 @@ kafka_config:
   client_id: "Use reader_config.client_id or writer_config.client_id instead."
 
 ## NOTE: This will also be used to validate per-tenant overrides.
-limits_config: {}
+limits_config:
+  bloom_gateway_enable_filtering: "Bloom filters are deprecated."
+  bloom_build_max_builders: "Bloom filters are deprecated."
+  bloom_build_task_max_retries: "Bloom filters are deprecated."
+  bloom_build_builder_response_timeout: "Bloom filters are deprecated."
+  bloom_creation_enabled: "Bloom filters are deprecated."
+  bloom_planning_strategy: "Bloom filters are deprecated."
+  bloom_split_series_keyspace_by: "Bloom filters are deprecated."
+  bloom_task_target_series_chunk_size: "Bloom filters are deprecated."
+  bloom_block_encoding: "Bloom filters are deprecated."
+  bloom_prefetch_blocks: "Bloom filters are deprecated."
+  bloom_max_block_size: "Bloom filters are deprecated."
+  bloom_max_bloom_size: "Bloom filters are deprecated."
 
 server:
   grpc_server_stats_tracking_enabled: "Deprecated, currently doesn't do anything, will be removed in a future version."
+
+storage_config:
+  bloom_shipper: "Bloom filters are deprecated."

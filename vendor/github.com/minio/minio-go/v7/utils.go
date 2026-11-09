@@ -444,7 +444,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 	deleteMarker := h.Get(amzDeleteMarker) == "true"
 
 	// Save object metadata info.
-	return ObjectInfo{
+	objInfo := ObjectInfo{
 		ETag:              etag,
 		Key:               objectName,
 		Size:              size,
@@ -480,7 +480,9 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		ChecksumXXHash128: h.Get(ChecksumXXHash128.Key()),
 		ChecksumAlgorithm: h.Get(amzChecksumAlgo),
 		ChecksumMode:      h.Get(ChecksumFullObjectMode.Key()),
-	}, nil
+	}
+	objInfo.setChecksumAlgorithm()
+	return objInfo, nil
 }
 
 var readFull = func(r io.Reader, buf []byte) (n int, err error) {
@@ -673,7 +675,7 @@ func (m *hashWrapper) Close() {
 	m.Hash = nil
 }
 
-const letterBytes = "abcdefghijklmnopqrstuvwxyz01234569"
+const letterBytes = "abcdefghijklmnopqrstuvwxyz0123456789"
 const (
 	letterIdxBits = 6                    // 6 bits to represent a letter index
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits

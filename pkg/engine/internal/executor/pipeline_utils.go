@@ -7,7 +7,7 @@ import (
 )
 
 // BufferedPipeline is a pipeline implementation that reads from a fixed set of Arrow records.
-// It implements the Pipeline interface and serves as a simple source for testing and data injection.
+// It implements the Pipeline interface and returns the records in order.
 type BufferedPipeline struct {
 	records []arrow.RecordBatch
 	current int
@@ -37,14 +37,7 @@ func (p *BufferedPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 	return p.records[p.current], nil
 }
 
-// Reset rewinds the pipeline so the next Read returns the first record again.
-// Records are not released; the caller must still call Close when done.
-// Primarily used for testing.
-func (p *BufferedPipeline) Reset() {
-	p.current = -1
-}
-
-// Close implements Pipeline. It releases all unreturned records.
+// Close implements Pipeline. It drops the references to the unreturned records.
 func (p *BufferedPipeline) Close() {
 	p.records = nil
 }

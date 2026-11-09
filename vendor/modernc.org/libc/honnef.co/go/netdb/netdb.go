@@ -15,9 +15,9 @@ package netdb // import "modernc.org/libc/honnef.co/go/netdb"
 
 import (
 	"io/ioutil"
-	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -684,23 +684,32 @@ type Servent struct {
 }
 
 // These variables get populated from /etc/protocols and /etc/services
-// respectively.
+// respectively, on the first call to GetProtoByNumber, GetProtoByName,
+// GetServByName or GetServByPort.
 var (
 	Protocols []*Protoent
 	Services  []*Servent
 )
 
-func init() {
+var loadOnce sync.Once
+
+// The files load reads; tests point them elsewhere.
+var (
+	protocolsFile = "/etc/protocols"
+	servicesFile  = "/etc/services"
+)
+
+// load populates Protocols and Services. Parsing the system files takes
+// milliseconds and megabytes, so it runs on first use, not in init, where
+// every program linking libc would pay for it.
+func load() {
 	protoMap := make(map[string]*Protoent)
 
 	// Load protocols
-	data, err := ioutil.ReadFile("/etc/protocols")
+	data, err := ioutil.ReadFile(protocolsFile)
 	if err != nil {
-		// See https://gitlab.com/cznic/libc/-/issues/48#note_2952938171
-		if !os.IsNotExist(err) && !os.IsPermission(err) {
-			panic(err)
-		}
-
+		// Whatever the error, fall back to the built-in table: a lookup must
+		// not crash the program. See issues #48 and #64.
 		data = []byte(protocols)
 	}
 
@@ -731,13 +740,10 @@ func init() {
 	}
 
 	// Load services
-	data, err = ioutil.ReadFile("/etc/services")
+	data, err = ioutil.ReadFile(servicesFile)
 	if err != nil {
-		// See https://gitlab.com/cznic/libc/-/issues/48#note_2952938171
-		if !os.IsNotExist(err) && !os.IsPermission(err) {
-			panic(err)
-		}
-
+		// Whatever the error, fall back to the built-in table: a lookup must
+		// not crash the program. See issues #48 and #64.
 		data = []byte(services)
 	}
 
@@ -809,6 +815,7 @@ func (this *Servent) Equal(other *Servent) bool {
 
 // GetProtoByNumber returns the Protoent for a given protocol number.
 func GetProtoByNumber(num int) (protoent *Protoent) {
+	loadOnce.Do(load)
 	for _, protoent := range Protocols {
 		if protoent.Number == num {
 			return protoent
@@ -820,6 +827,7 @@ func GetProtoByNumber(num int) (protoent *Protoent) {
 // GetProtoByName returns the Protoent whose name or any of its
 // aliases matches the argument.
 func GetProtoByName(name string) (protoent *Protoent) {
+	loadOnce.Do(load)
 	for _, protoent := range Protocols {
 		if protoent.Name == name {
 			return protoent
@@ -839,8 +847,9 @@ func GetProtoByName(name string) (protoent *Protoent) {
 // and protocol. If the protocol is nil, the first service matching
 // the service name is returned.
 func GetServByName(name string, protocol *Protoent) (servent *Servent) {
+	loadOnce.Do(load)
 	for _, servent := range Services {
-		if !servent.Protocol.Equal(protocol) {
+		if protocol != nil && !servent.Protocol.Equal(protocol) {
 			continue
 		}
 
@@ -862,8 +871,9 @@ func GetServByName(name string, protocol *Protoent) (servent *Servent) {
 // protocol. If the protocol is nil, the first service matching the
 // port number is returned.
 func GetServByPort(port int, protocol *Protoent) *Servent {
+	loadOnce.Do(load)
 	for _, servent := range Services {
-		if servent.Port == port && servent.Protocol.Equal(protocol) {
+		if servent.Port == port && (protocol == nil || servent.Protocol.Equal(protocol)) {
 			return servent
 		}
 	}

@@ -20,8 +20,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
@@ -44,7 +44,6 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
-			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunkFetchFailures": 0,
 			"chunk" :{
@@ -90,7 +89,6 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
-			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunkFetchFailures": 0,
 			"chunk" :{
@@ -195,26 +193,6 @@ const emptyStats = `{
 			"queryLengthServed": 0
 		},
 		"result": {
-			"entriesFound": 0,
-			"entriesRequested": 0,
-			"entriesStored": 0,
-			"bytesReceived": 0,
-			"bytesSent": 0,
-			"requests": 0,
-			"downloadTime": 0,
-			"queryLengthServed": 0
-		},
-		"logResult": {
-			"entriesFound": 0,
-			"entriesRequested": 0,
-			"entriesStored": 0,
-			"bytesReceived": 0,
-			"bytesSent": 0,
-			"requests": 0,
-			"downloadTime": 0,
-			"queryLengthServed": 0
-		},
-		"taskResult": {
 			"entriesFound": 0,
 			"entriesRequested": 0,
 			"entriesStored": 0,

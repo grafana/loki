@@ -114,6 +114,7 @@ var (
 	procGetCurrentProcessId        = modkernel32.NewProc("GetCurrentProcessId")
 	procGetCurrentThread           = modkernel32.NewProc("GetCurrentThread")
 	procGetCurrentThreadId         = modkernel32.NewProc("GetCurrentThreadId")
+	procGetDriveTypeW              = modkernel32.NewProc("GetDriveTypeW")
 	procGetEnvironmentVariableA    = modkernel32.NewProc("GetEnvironmentVariableA")
 	procGetEnvironmentVariableW    = modkernel32.NewProc("GetEnvironmentVariableW")
 	procGetExitCodeProcess         = modkernel32.NewProc("GetExitCodeProcess")
@@ -123,6 +124,7 @@ var (
 	procGetFileAttributesExW       = modkernel32.NewProc("GetFileAttributesExW")
 	procGetFileInformationByHandle = modkernel32.NewProc("GetFileInformationByHandle")
 	procGetFileSize                = modkernel32.NewProc("GetFileSize")
+	procGetFileSizeEx              = modkernel32.NewProc("GetFileSizeEx")
 	procGetFullPathNameW           = modkernel32.NewProc("GetFullPathNameW")
 	procGetLastError               = modkernel32.NewProc("GetLastError")
 	procGetLogicalDriveStringsA    = modkernel32.NewProc("GetLogicalDriveStringsA")
@@ -138,6 +140,7 @@ var (
 	procGetSystemTimeAsFileTime    = modkernel32.NewProc("GetSystemTimeAsFileTime")
 	procGetTempFileNameW           = modkernel32.NewProc("GetTempFileNameW")
 	procGetTickCount               = modkernel32.NewProc("GetTickCount")
+	procGetTickCount64             = modkernel32.NewProc("GetTickCount64")
 	procGetVersionExA              = modkernel32.NewProc("GetVersionExA")
 	procGetVersionExW              = modkernel32.NewProc("GetVersionExW")
 	procGetVolumeInformationA      = modkernel32.NewProc("GetVolumeInformationA")
@@ -167,6 +170,7 @@ var (
 	procSetConsoleTextAttribute    = modkernel32.NewProc("SetConsoleTextAttribute")
 	procSetEvent                   = modkernel32.NewProc("SetEvent")
 	procSetFilePointer             = modkernel32.NewProc("SetFilePointer")
+	procSetFilePointerEx           = modkernel32.NewProc("SetFilePointerEx")
 	procSetFileTime                = modkernel32.NewProc("SetFileTime")
 	procSleepEx                    = modkernel32.NewProc("SleepEx")
 	procSystemTimeToFileTime       = modkernel32.NewProc("SystemTimeToFileTime")
@@ -502,7 +506,7 @@ func Xlocaltime(_ *TLS, timep uintptr) uintptr {
 	localtime.Ftm_mon = int32(t.Month() - 1)
 	localtime.Ftm_year = int32(t.Year() - 1900)
 	localtime.Ftm_wday = int32(t.Weekday())
-	localtime.Ftm_yday = int32(t.YearDay())
+	localtime.Ftm_yday = int32(t.YearDay() - 1)
 	localtime.Ftm_isdst = Bool32(isTimeDST(t))
 	return uintptr(unsafe.Pointer(&localtime))
 }
@@ -525,7 +529,7 @@ func Xlocaltime_r(_ *TLS, timep, result uintptr) uintptr {
 	// (*time.Tm)(unsafe.Pointer(result)).Ftm_mon = int32(t.Month() - 1)
 	// (*time.Tm)(unsafe.Pointer(result)).Ftm_year = int32(t.Year() - 1900)
 	// (*time.Tm)(unsafe.Pointer(result)).Ftm_wday = int32(t.Weekday())
-	// (*time.Tm)(unsafe.Pointer(result)).Ftm_yday = int32(t.YearDay())
+	// (*time.Tm)(unsafe.Pointer(result)).Ftm_yday = int32(t.YearDay() - 1)
 	// (*time.Tm)(unsafe.Pointer(result)).Ftm_isdst = Bool32(isTimeDST(t))
 	// return result
 }
@@ -3874,6 +3878,36 @@ func XGetFileSize(t *TLS, hFile, lpFileSizeHigh uintptr) uint32 {
 		}
 	}
 	return uint32(r1)
+}
+
+// BOOL GetFileSizeEx(
+//
+//	HANDLE         hFile,
+//	PLARGE_INTEGER lpFileSize
+//
+// );
+func XGetFileSizeEx(t *TLS, hFile, lpFileSize uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v hFile=%v lpFileSize=%v, (%v:)", t, hFile, lpFileSize, origin(2))
+	}
+	r0, _, e1 := procGetFileSizeEx.Call(hFile, lpFileSize)
+	if r0 == 0 {
+		t.setErrno(e1)
+	}
+	return int32(r0)
+}
+
+// UINT GetDriveTypeW(
+//
+//	LPCWSTR lpRootPathName
+//
+// );
+func XGetDriveTypeW(t *TLS, lpRootPathName uintptr) uint32 {
+	if __ccgo_strace {
+		trc("t=%v lpRootPathName=%v, (%v:)", t, lpRootPathName, origin(2))
+	}
+	r0, _, _ := procGetDriveTypeW.Call(lpRootPathName)
+	return uint32(r0)
 }
 
 // DWORD GetFullPathNameA(
@@ -8078,22 +8112,7 @@ func Xstrncat(t *TLS, dest, src uintptr, n types.Size_t) (r uintptr) {
 	if __ccgo_strace {
 		trc("t=%v dest=%v src=%v n=%v, (%v:)", t, dest, src, n, origin(2))
 	}
-	r = dest
-	for *(*byte)(unsafe.Pointer(dest)) != 0 {
-		dest++
-	}
-	for ; n != 0; n-- {
-		c := *(*byte)(unsafe.Pointer(src))
-		if c == 0 {
-			break
-		}
-
-		*(*byte)(unsafe.Pointer(dest)) = c
-		dest++
-		src++
-	}
-	*(*byte)(unsafe.Pointer(dest)) = 0
-	return r
+	return strncat(dest, src, n)
 }
 
 // strtoi64 is the common part of strtoll and strtoull. Overflow is reported

@@ -63,15 +63,11 @@ const (
 	ringKey = "distributor"
 
 	ringAutoForgetUnhealthyPeriods = 2
-
-	timeShardLabel = "__time_shard__"
 )
 
 var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
-
-	errServiceUnavailableMaxLoad = httpgrpc.Error(503, "The server cannot accept more requests at this time.")
 
 	// the rune error replacement is rejected by Prometheus hence replacing them with space.
 	removeInvalidUtf = func(r rune) rune {
@@ -522,17 +518,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // It modifies req in place.
 // The returned error is the last one seen.
 func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
-	requestSize := int64(req.Size())
-
-	newInflightBytes := d.inflightBytes.Add(requestSize)
-	d.m.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
-	defer d.inflightBytes.Add(-requestSize)
-
-	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
-	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
-		return nil, errServiceUnavailableMaxLoad
-	}
-
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -709,7 +694,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 				continue
 			}
 
-			if !d.validator.IsInternalStream(lbs) {
+			if !constants.IsInternalStream(lbs.Has) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
@@ -1220,10 +1205,10 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 // rateLimitBucket accumulates the bytes and line count of the streams metered against a
 // single ingestion rate-limit bucket (either the tenant-wide bucket or a per-policy bucket).
 type rateLimitBucket struct {
-	policy      string
-	hasOverride bool
-	bytes       int
-	lines       int
+	policy      string // the name of the policy that owns this bucket.
+	hasOverride bool   // true if the policy has its own rate limit, false if it uses the tenant default rate limit.
+	bytes       int    // the total number of bytes metered for this policy.
+	lines       int    // the total number of log lines metered for this policy.
 }
 
 // rateLimitError builds the client-facing 429 error for the rate-limit buckets a request
@@ -1435,11 +1420,9 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode, result.GetRejectReason()).Inc()
 			shardCounts[i] = 0
 		case !ok,
-			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
-			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
-			// No usable answer: there was none, the service could not check the
-			// stream, or the instance that answered does not own its
-			// partition. Comparing it would report agreement or disagreement
+			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed):
+			// No usable answer: there was none, or the service could not check
+			// the stream. Comparing it would report agreement or disagreement
 			// that does not exist.
 			reason := limits.Reason(result.GetStats().GetShardDecisionContext())
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, reason.String()).Inc()

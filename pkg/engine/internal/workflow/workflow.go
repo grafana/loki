@@ -8,13 +8,10 @@ import (
 	gotrace "runtime/trace"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
@@ -25,76 +22,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-const (
-	eliminationReasonEmpty    = "empty"
-	eliminationReasonNonEmpty = "non_empty"
-)
-
 var (
 	tracer = otel.Tracer("pkg/engine/internal/workflow")
-
-	eliminatedCachedTasksTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "loki_engine_v2_task_cached_eliminated_total",
-		Help: "Total number of tasks eliminated before execution due to a cache hit.",
-	}, []string{"reason"})
 )
 
 // Options configures a [Workflow].
 type Options struct {
-	ID     ulid.ULID // Optional ID for the workflow. One will be generated if not provided.
-	Tenant string    // Tenant ID associated with the workflow.
-	Actor  []string  // Optional path to the actor that is generating the workflow.
-
-	// DebugTasks toggles debug messages for a task. This is very verbose and
-	// should only be enabled for debugging purposes.
-	//
-	// Regardless of the value of DebugTasks, workers still log when
-	// they start and finish assigned tasks.
-	DebugTasks bool
-
-	// DebugStreams toggles debug messages for data streams. This is very
-	// verbose and should only be enabled for debugging purposes.
-	DebugStreams bool
-
-	// CacheEnabled controls whether task fragments and DataObjScan nodes are
-	// wrapped with a Cache node during workflow planning.
-	CacheEnabled bool
-
-	// MaxTaskCacheSize is the maximum size in bytes of a task result that can be
-	// stored in the cache. 0 means only empty responses are cached.
-	MaxTaskCacheSize uint64
-
-	// MaxDataObjScanCacheSize is the maximum encoded size in bytes of a DataObjScan
-	// result that may be stored. 0 means only empty scan responses are cached.
-	MaxDataObjScanCacheSize uint64
-
-	// CacheCompression is the compression codec to use when encoding cache entries
-	// (e.g. "snappy"). An empty string means no compression.
-	CacheCompression string
-
-	// PruneEmptyCachedTasks controls whether tasks with a known-empty cached
-	// result are eliminated at plan time before any work is dispatched.
-	PruneEmptyCachedTasks bool
-
-	// NonEmptyCachedTasksMaxSize is the maximum total encoded size in bytes of
-	// non-empty cached task buffers that may be embedded in task assignments.
-	// Results that exceed the remaining budget are skipped; smaller results that
-	// still fit continue to be included. 0 disables non-empty task pruning entirely.
-	NonEmptyCachedTasksMaxSize uint64
-
-	// TaskCacheRegistry is the registry of cache backends used at plan time to
-	// prune tasks whose cached result is known to be empty.
-	TaskCacheRegistry executor.TaskCacheRegistry
-
-	// PruneCachedTasksFetchTimeout is the timeout applied to each cache Fetch
-	// call during task pruning at plan time. 0 means no timeout.
-	PruneCachedTasksFetchTimeout time.Duration
+	Tenant string   // Tenant ID associated with the workflow.
+	Actor  []string // Optional path to the actor that is generating the workflow.
 }
 
-var _ fmt.Stringer = (*Workflow)(nil)
-
-// Workflow represents a physical plan that has been partitioned into
-// parallelizable tasks.
+// Workflow represents a physical plan that runs as a set of tasks.
 type Workflow struct {
 	opts            Options
 	logger          log.Logger
@@ -103,11 +41,6 @@ type Workflow struct {
 	resultsStream   *Stream
 	resultsPipeline *streamPipe
 	manifest        *Manifest
-
-	captureMut sync.Mutex
-	// used to merge and link task regions
-	capture      *xcap.Capture
-	parentRegion *xcap.Region
 
 	span trace.Span
 
@@ -119,37 +52,18 @@ type Workflow struct {
 }
 
 // New creates a new Workflow from a physical plan. New returns an error if the
-// physical plan does not have exactly one root node, or if the physical plan
-// cannot be partitioned into a Workflow.
+// physical plan does not have exactly one root node.
 //
 // The provided Runner will be used for Workflow execution.
 func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(ctx, opts.Tenant, plan, cacheParams{
-		enabled:                     opts.CacheEnabled,
-		taskCacheMaxSizeBytes:       opts.MaxTaskCacheSize,
-		dataObjScanMaxSizeBytes:     opts.MaxDataObjScanCacheSize,
-		compression:                 opts.CacheCompression,
-		registry:                    opts.TaskCacheRegistry,
-		pruneEmptyCachedTasks:       opts.PruneEmptyCachedTasks,
-		nonEmptyCachedTasksMaxBytes: opts.NonEmptyCachedTasksMaxSize,
-		pruneFetchTimeout:           opts.PruneCachedTasksFetchTimeout,
-	}, logger)
+	graph, err := planWorkflow(opts.Tenant, plan)
 	if err != nil {
 		return nil, err
 	}
+	return newWorkflow(ctx, opts, logger, runner, graph)
+}
 
-	// All tasks were eliminated at plan time — return an empty workflow whose
-	// Run() immediately yields EOF without dispatching any work.
-	if graph.Len() == 0 {
-		level.Debug(logger).Log("msg", "workflow plan is empty")
-		return &Workflow{
-			opts:        opts,
-			logger:      logger,
-			runner:      runner,
-			taskResults: make(map[*Task]pendingSummary),
-		}, nil
-	}
-
+func newWorkflow(ctx context.Context, opts Options, logger log.Logger, runner Runner, graph dag.Graph[*Task]) (*Workflow, error) {
 	// Inject a stream for final task results.
 	results, err := injectResultsStream(&graph)
 	if err != nil {
@@ -166,9 +80,8 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 
 		taskResults: make(map[*Task]pendingSummary),
 	}
-	// Detach cancellation from the caller's ctx so a cancellation of the
-	// planning context does not abort the manifest registration, but keep
-	// the xcap region attached for observation recording.
+	// Cancelling the caller's context must not abort the manifest registration,
+	// so detach ctx from cancellation. It keeps its values.
 	if err := wf.init(context.WithoutCancel(ctx)); err != nil {
 		wf.Close()
 		return nil, err
@@ -176,10 +89,22 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 	return wf, nil
 }
 
-// Empty reports whether the workflow has no tasks to execute. This happens when
-// all tasks were eliminated at plan time because their cached results were empty.
-func (wf *Workflow) Empty() bool {
-	return wf.graph.Len() == 0
+// planWorkflow wraps a physical plan in a graph holding a single task. The
+// plan must have exactly one root node.
+func planWorkflow(tenantID string, plan *physical.Plan) (dag.Graph[*Task], error) {
+	if _, err := plan.Root(); err != nil {
+		return dag.Graph[*Task]{}, err
+	}
+
+	var graph dag.Graph[*Task]
+	graph.Add(&Task{
+		ULID:     ulid.Make(),
+		TenantID: tenantID,
+		Fragment: plan,
+		Sources:  make(map[physical.Node][]*Stream),
+		Sinks:    make(map[physical.Node][]*Stream),
+	})
+	return graph, nil
 }
 
 // injectResultsStream injects a new stream into the sinks of the root task for
@@ -204,13 +129,8 @@ func injectResultsStream(graph *dag.Graph[*Task]) (*Stream, error) {
 
 // init initializes the workflow.
 func (wf *Workflow) init(ctx context.Context) error {
-	id := wf.opts.ID
-	if id.IsZero() {
-		id = ulid.Make()
-	}
-
 	wf.manifest = &Manifest{
-		ID:     id,
+		ID:     ulid.Make(),
 		Tenant: wf.opts.Tenant,
 		Actor:  wf.opts.Actor,
 
@@ -226,31 +146,10 @@ func (wf *Workflow) init(ctx context.Context) error {
 	return wf.runner.Listen(ctx, wf.resultsPipeline, wf.resultsStream)
 }
 
-// String returns a string representation of the workflow. It is a convenience
-// method for calling [Sprint].
-func (wf *Workflow) String() string {
-	return Sprint(wf)
-}
-
-// Opts returns options of the workflow (mostly for testing purposes).
-func (wf *Workflow) Opts() Options { return wf.opts }
-
-// Len returns the total number of tasks in the workflow.
-func (wf *Workflow) Len() int {
-	if wf.Empty() {
-		return 0
-	}
-	return len(wf.manifest.Tasks)
-}
-
 // Close releases resources associated with the workflow.
 func (wf *Workflow) Close() {
 	if wf.span != nil {
 		wf.span.End()
-	}
-
-	if wf.Empty() {
-		return
 	}
 
 	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {
@@ -269,14 +168,6 @@ func (wf *Workflow) Close() {
 // The returned pipeline must be closed when the workflow is complete to release
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
-	if wf.Empty() {
-		level.Debug(wf.logger).Log("msg", "workflow is empty. will return an empty pipeline.")
-		return newEOFPipeline(), nil
-	}
-
-	wf.capture = xcap.CaptureFromContext(ctx)
-	wf.parentRegion = xcap.RegionFromContext(ctx)
-
 	// wf.Run tracks the lifetime of the workflow execution.
 	ctx, wf.span = tracer.Start(ctx, "wf.Run")
 
@@ -353,10 +244,6 @@ func (wf *Workflow) allTasks() []*Task {
 }
 
 func (wf *Workflow) onStreamClosed(_ context.Context, stream *Stream) {
-	if wf.opts.DebugStreams {
-		level.Debug(wf.logger).Log("msg", "stream closed", "stream_id", stream.ULID)
-	}
-
 	if stream.ULID != wf.resultsStream.ULID {
 		return
 	}
@@ -390,10 +277,6 @@ func (wf *Workflow) maybeCloseResults() {
 }
 
 func (wf *Workflow) onTaskResult(ctx context.Context, task *Task, result TaskResult) {
-	if wf.opts.DebugTasks {
-		level.Debug(wf.logger).Log("msg", "task result", "task_id", task.ULID, "outcome", result.Outcome)
-	}
-
 	wf.tasksMut.Lock()
 	if _, exists := wf.taskResults[task]; exists {
 		wf.tasksMut.Unlock()
@@ -406,10 +289,6 @@ func (wf *Workflow) onTaskResult(ctx context.Context, task *Task, result TaskRes
 		// Use the first failure from a task as the failure for the entire
 		// workflow.
 		wf.resultsPipeline.SetError(result.Error)
-	}
-
-	if result.Capture != nil {
-		wf.mergeCapture(result.Capture)
 	}
 
 	// The task has finished. Detect whether its immediate children should be
@@ -467,11 +346,4 @@ func (wf *Workflow) cancelTasks(ctx context.Context, tasks []*Task) {
 	if err := wf.runner.Cancel(ctx, tasks...); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to cancel tasks", "err", err)
 	}
-}
-
-func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
-	wf.captureMut.Lock()
-	defer wf.captureMut.Unlock()
-
-	wf.capture.Merge(wf.parentRegion, capture)
 }

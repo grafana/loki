@@ -1,10 +1,13 @@
 package index
 
 import (
+	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -20,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -29,7 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-// Used to expose SortSchemaLabels to logs builders
+// fakeLimits exposes SortSchemaLabels and DataObjShardLayout to logs builders.
 type fakeLimits struct{}
 
 func (fakeLimits) CompactionPhases(_ string) (runIndex, runLog bool) {
@@ -38,6 +40,9 @@ func (fakeLimits) CompactionPhases(_ string) (runIndex, runLog bool) {
 func (fakeLimits) SortSchemaLabels(string) []string {
 	return fakeSchema
 }
+func (fakeLimits) DataObjShardLayout(string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
+}
 
 var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:          2048,
@@ -45,7 +50,9 @@ var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
 
-	// This is set low because Pointers & Streams sections ignore section size. There must be a single pointers section per index object to maintain state.
+	// TargetSectionSize is 1 byte, so the tests cover index objects with many
+	// sections. Each AppendStat call cuts a new stats section, and the postings
+	// encoder writes one postings section per entry.
 	TargetSectionSize: 1,
 }
 
@@ -98,11 +105,11 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 	// streamShardBuckets from labels; a missing or zeroed map would either
 	// error or collapse these into one row.
 	first := labels.FromStrings("service_name", "api", "instance", "0")
-	firstShard := streams.ShardBucket(first)
+	firstShard := streams.DefaultShardLayout().BucketFromLabels(first)
 	var second labels.Labels
 	for i := 1; i < 256; i++ {
 		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
-		if streams.ShardBucket(candidate) != firstShard {
+		if streams.DefaultShardLayout().BucketFromLabels(candidate) != firstShard {
 			second = candidate
 			break
 		}
@@ -129,7 +136,7 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 		}, ts))
 	}
 
-	logObj, logCloser, err := logBuilder.Flush()
+	logObj, logCloser, err := logBuilder.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logCloser.Close() })
 
@@ -150,8 +157,8 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
 	}
 	require.Equal(t, map[int64]struct{}{
-		int64(firstShard):                  {},
-		int64(streams.ShardBucket(second)): {},
+		int64(firstShard): {},
+		int64(streams.DefaultShardLayout().BucketFromLabels(second)): {},
 	}, gotShards)
 }
 
@@ -185,8 +192,8 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
 		require.Equal(t, []string{tenant}, obj.Tenants())
 
-		require.GreaterOrEqual(t, obj.Sections().Count(pointers.CheckSection), 1)
-		requireValidPointers(t, obj)
+		require.GreaterOrEqual(t, obj.Sections().Count(postings.CheckSection), 1)
+		require.GreaterOrEqual(t, obj.Sections().Count(stats.CheckSection), 1)
 	})
 
 	t.Run("indexes several objects from an FS bucket into one range", func(t *testing.T) {
@@ -221,8 +228,53 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.Equal(t, time.Unix(10, 0).UTC(), timeRange.MinTime)
 		require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
 
-		require.GreaterOrEqual(t, obj.Sections().Count(pointers.CheckSection), 1)
-		requireValidPointers(t, obj)
+		require.GreaterOrEqual(t, obj.Sections().Count(postings.CheckSection), 1)
+		require.GreaterOrEqual(t, obj.Sections().Count(stats.CheckSection), 1)
+	})
+
+	t.Run("builds the same index object key on each rebuild of a multi-section object", func(t *testing.T) {
+		source := newMultiSectionSource(t)
+
+		wantKey := ""
+		for i := range 11 {
+			obj := calculateConcurrently(t, source)
+			if i == 0 {
+				// The index must hold more than one stats section. With one
+				// section, the builder sorts all rows before it encodes them,
+				// so the flush order cannot change the bytes and the test
+				// cannot detect an unordered flush.
+				require.Greater(t, obj.Sections().Count(stats.CheckSection), 1)
+			}
+
+			key, err := ObjectKey(context.Background(), obj)
+			require.NoError(t, err)
+			if i == 0 {
+				wantKey = key
+				continue
+			}
+			require.Equal(t, wantKey, key, "object key differs on rebuild %d", i)
+		}
+	})
+
+	t.Run("builds an index object key that IsCompactedObjectPath rejects, because a builder wrote the object", func(t *testing.T) {
+		obj := calculateConcurrently(t, newMultiSectionSource(t))
+
+		key, err := ObjectKey(t.Context(), obj)
+		require.NoError(t, err)
+
+		require.False(t, dataobj.IsCompactedObjectPath(key))
+	})
+
+	t.Run("writes the stats rows of a multi-section object in ascending section order", func(t *testing.T) {
+		obj := calculateConcurrently(t, newMultiSectionSource(t))
+
+		rows := readAllStatsRows(t, obj)
+		require.NotEmpty(t, rows)
+		sectionIndexes := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			sectionIndexes = append(sectionIndexes, row["section_index.int64"].(int64))
+		}
+		require.True(t, slices.IsSorted(sectionIndexes), "section indexes are not sorted: %v", sectionIndexes)
 	})
 
 	t.Run("returns ErrNotSingleTenant and leaves the builder empty when the object holds several tenants", func(t *testing.T) {
@@ -278,6 +330,20 @@ func TestCalculator_Calculate(t *testing.T) {
 		requireEmptyCalculator(t, calculator, indexBuilder)
 	})
 
+	t.Run("returns ErrUnprocessableObject and leaves the builder empty when the object holds a streams section without logs sections", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		obj, closer := fixtures.DataObject(t, fixtures.StreamsSection(t, tenant, testLogsFixture(t).Streams()))
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "no logs section")
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
+
 	t.Run("returns ErrUnprocessableObject and leaves the builder empty when the object holds neither streams nor logs sections", func(t *testing.T) {
 		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
@@ -286,7 +352,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		postingsBuilder := postings.NewBuilder(nil, 0, 0, 1<<20)
 		postingsBuilder.SetTenant(tenant)
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
-			ObjectPath: "src-obj", ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: time.Unix(10, 0).UTC(),
+			ObjectPath: "src-obj", ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(time.Unix(10, 0).UTC()),
 		})
 		obj, closer := fixtures.DataObject(t, postingsBuilder)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
@@ -296,6 +362,44 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.ErrorContains(t, err, "no streams section")
 		requireEmptyCalculator(t, calculator, indexBuilder)
 	})
+}
+
+// newMultiSectionSource returns a data object with at least two logs sections.
+func newMultiSectionSource(t *testing.T) *dataobj.Object {
+	t.Helper()
+
+	source, cleanup := buildSyntheticDataobj(t, 64<<10, 100, 50)
+	t.Cleanup(cleanup)
+	return source
+}
+
+// calculateConcurrently builds the index object of source with 4 workers.
+//
+// A fixed GOMAXPROCS gives Calculate the same worker limit on each machine.
+// With 1, the errgroup in Calculate runs one section at a time, so the order of
+// builder writes cannot change.
+//
+// calculateConcurrently sets the target section size to 1 byte itself, so the
+// test does not depend on that value in the shared test config. Each
+// AppendStat call then cuts a stats section, and the flush order decides which
+// rows each stats section holds.
+func calculateConcurrently(t *testing.T, source *dataobj.Object) *dataobj.Object {
+	t.Helper()
+
+	prevProcs := runtime.GOMAXPROCS(4)
+	defer runtime.GOMAXPROCS(prevProcs)
+
+	cfg := testCalculatorConfig
+	cfg.TargetSectionSize = 1
+	indexBuilder, err := indexobj.NewBuilder(benchTenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
+	require.NoError(t, err)
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+	require.NoError(t, calculator.Calculate(context.Background(), log.NewNopLogger(), source, "test/path"))
+
+	obj, closer, _, err := calculator.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	return obj
 }
 
 // requireEmptyCalculator checks that calculator and its builder hold no data.
@@ -313,27 +417,16 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 		path   = "objects/section-index-test"
 		tenant = "A"
 	)
-	sourceBuilder := dataobj.NewBuilder(nil)
-	ts := time.Unix(10, 0).UTC()
-	streamBuilder := streams.NewBuilder(nil, 2048, 10000)
-	streamBuilder.SetTenant(tenant)
-	id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
-	appendLogsSection := func() {
-		logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
-			PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
-		})
-		logBuilder.SetTenant(tenant)
-		logBuilder.Append(logs.Record{StreamID: id, Timestamp: ts, Line: []byte("line"), Metadata: labels.FromStrings("trace_id", "trace")})
-		require.NoError(t, sourceBuilder.Append(logBuilder))
-	}
+	fixture := fixtures.NewLogsFixtureBuilder(t)
+	fixture.ForStream(`{service_name="A"}`).Entry(10, `{trace_id="trace"}`, "line")
+	streamsSection := fixtures.StreamsSection(t, tenant, fixture.Streams(), fixtures.WithStreamsLayout(streams.NewLayout(streams.DefaultShardLayout(), nil)))
 	// Physical sections: logs, streams, logs. References must be 0 and 1,
 	// rather than physical indexes 0 and 2.
-	appendLogsSection()
-	require.NoError(t, sourceBuilder.Append(streamBuilder))
-	appendLogsSection()
-
-	source, sourceCloser, err := sourceBuilder.Flush()
-	require.NoError(t, err)
+	source, sourceCloser := fixtures.DataObject(t,
+		fixtures.LogsSection(t, tenant, fixture.Logs()),
+		streamsSection,
+		fixtures.LogsSection(t, tenant, fixture.Logs()),
+	)
 	t.Cleanup(func() { require.NoError(t, sourceCloser.Close()) })
 	require.Len(t, source.Sections(), 3)
 	require.True(t, logs.CheckSection(source.Sections()[0]))
@@ -383,51 +476,111 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	require.Equal(t, want, statsIndexes)
 }
 
-func requireValidPointers(t *testing.T, obj *dataobj.Object) {
-	totalPointers := 0
-	pointersByTenant := make(map[string]int)
-	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
-		require.NotEmpty(t, section.Tenant)
+func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
+	const tenant = "A"
 
-		sec, err := pointers.Open(context.Background(), section)
+	// buildSource builds an object with 16 streams in layout, each with one
+	// record that has structured metadata. The streams section records
+	// layout if record is true.
+	buildSource := func(t *testing.T, layout streams.Layout, record bool) *dataobj.Object {
+		t.Helper()
+		fixture := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+		for i := range 16 {
+			fixture.ForStream(fmt.Sprintf(`{app="%d",service_name="svc"}`, i)).Entry(10, fmt.Sprintf(`{trace_id="%d"}`, i), "line")
+		}
+		opts := []fixtures.StreamsSectionOpt{fixtures.WithStreamsLayout(layout)}
+		if !record {
+			opts = []fixtures.StreamsSectionOpt{fixtures.WithoutStreamsLayout()}
+		}
+		source, closer := fixtures.DataObject(t,
+			fixtures.StreamsSection(t, tenant, fixture.Streams(), opts...),
+			fixtures.LogsSection(t, tenant, fixture.Logs()),
+		)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return source
+	}
+	calculate := func(t *testing.T, source *dataobj.Object) (*dataobj.Object, error) {
+		t.Helper()
+		builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
+		if err := calculator.Calculate(t.Context(), log.NewNopLogger(), source, "objects/source"); err != nil {
+			return nil, err
+		}
+		obj, closer, _, err := calculator.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj, nil
+	}
+
+	t.Run("indexes labels and structured metadata with the schema labels and shard layout of the recorded layout", func(t *testing.T) {
+		four, err := streams.ShardLayoutFromBuckets(4)
+		require.NoError(t, err)
+		layout := streams.NewLayout(four, []string{"label:app"})
+		indexObj, err := calculate(t, buildSource(t, layout, true))
 		require.NoError(t, err)
 
-		reader := pointers.NewRowReader(sec)
-		require.NoError(t, reader.Open(context.Background()))
-
-		buf := make([]pointers.SectionPointer, 1024)
-		for {
-			n, err := reader.Read(context.Background(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, pointer := range buf[:n] {
-				require.NotEqual(t, pointer.Path, "")
-				require.Greater(t, pointer.PointerKind, pointers.PointerKind(0))
-				if pointer.PointerKind == pointers.PointerKindStreamIndex {
-					key := fmt.Sprintf("%s:%s:%d", section.Tenant, pointer.Path, pointer.Section)
-					pointersByTenant[key]++
-					require.Greater(t, pointer.StreamIDRef, int64(0))
-					require.Greater(t, pointer.StreamID, int64(0))
-					require.Greater(t, pointer.StartTs, time.Unix(0, 0))
-					require.Greater(t, pointer.EndTs, time.Unix(0, 0))
-					require.Greater(t, pointer.LineCount, int64(0))
-					require.Greater(t, pointer.UncompressedSize, int64(0))
-				} else {
-					require.Greater(t, pointer.ColumnIndex, int64(0))
-					require.Greater(t, len(pointer.ValuesBloomFilter), 0)
-				}
-				totalPointers++
-			}
+		statsRows := readAllStatsRows(t, indexObj)
+		require.NotEmpty(t, statsRows)
+		for _, row := range statsRows {
+			require.Equal(t, "label:app", row["sort_schema.utf8"])
+			require.Less(t, row["__shard_bucket__.int64"].(int64), int64(4))
 		}
-		require.Greater(t, totalPointers, 0)
-	}
 
-	// Expect two pointers for each object section, because every log object holds two streams.
-	for _, count := range pointersByTenant {
-		require.Equal(t, 2, count)
-	}
+		var labelRows, bloomRows int
+		for _, section := range indexObj.Sections().Filter(postings.CheckSection) {
+			sec, err := postings.Open(t.Context(), section)
+			require.NoError(t, err)
+			inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+			require.NoError(t, inner.Open(t.Context()))
+			reader := postings.NewRowReader(t.Context(), inner)
+			for reader.Next() {
+				row := reader.At()
+				require.Equal(t, int64(4), row.ShardBuckets)
+				switch row.Kind {
+				case postings.KindLabel:
+					labelRows++
+				case postings.KindBloom:
+					require.Equal(t, "trace_id", row.ColumnName)
+					require.Less(t, row.MaxShardBucket, uint32(4))
+					bloomRows++
+				}
+			}
+			require.NoError(t, reader.Err())
+			require.NoError(t, reader.Close())
+		}
+		require.Positive(t, labelRows)
+		require.Positive(t, bloomRows)
+	})
+
+	t.Run("returns an unprocessable object error for a legacy object", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join("..", "testdata", "legacy", "legacy-cluster-a.dataobj"))
+		require.NoError(t, err)
+		source, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+		require.NoError(t, err)
+
+		builder, err := indexobj.NewBuilder("T", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		err = NewCalculator(builder, NewCalculatorMetrics(nil)).Calculate(t.Context(), log.NewNopLogger(), source, "objects/legacy")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+	})
+
+	t.Run("returns an error for an object with another layout than the objects already in the index", func(t *testing.T) {
+		builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
+		appSource := buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}), true)
+		require.NoError(t, calculator.Calculate(t.Context(), log.NewNopLogger(), appSource, "objects/app"))
+
+		serviceSource := buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}), true)
+		err = calculator.Calculate(t.Context(), log.NewNopLogger(), serviceSource, "objects/service")
+		require.ErrorContains(t, err, "already has stream layout")
+		require.NotErrorIs(t, err, ErrUnprocessableObject)
+	})
+
+	t.Run("returns an unprocessable object error when the streams section records no layout", func(t *testing.T) {
+		_, err := calculate(t, buildSource(t, streams.NewLayout(streams.DefaultShardLayout(), nil), false))
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "records no layout")
+	})
 }

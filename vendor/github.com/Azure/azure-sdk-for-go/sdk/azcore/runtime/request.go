@@ -230,6 +230,8 @@ func SetMultipartFormData(req *policy.Request, formData map[string]any) error {
 }
 
 // SkipBodyDownload will disable automatic downloading of the response body.
+// It also disables response body logging. Error responses (status codes 400
+// and above) are still downloaded and eligible for body logging.
 func SkipBodyDownload(req *policy.Request) {
 	req.SetOperationValue(bodyDownloadPolicyOpValues{Skip: true})
 }

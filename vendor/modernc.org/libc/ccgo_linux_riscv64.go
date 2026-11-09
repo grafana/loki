@@ -6797,29 +6797,34 @@ type t__riscv_mc_d_ext_state = struct {
 }
 
 type t__riscv_mc_q_ext_state = struct {
-	F__f        [64]uint64
-	F__fcsr     uint32
-	F__reserved [3]uint32
+	F__ccgo_align [0]uint64
+	F__f          [64]uint64
+	F__fcsr       uint32
+	F__reserved   [3]uint32
 }
 
 type t__riscv_mc_fp_state = struct {
-	F__d         [0]t__riscv_mc_d_ext_state
-	F__q         [0]t__riscv_mc_q_ext_state
-	F__f         t__riscv_mc_f_ext_state
-	F__ccgo_pad3 [396]byte
+	F__ccgo_align [0]uint64
+	F__d          [0]t__riscv_mc_d_ext_state
+	F__q          [0]t__riscv_mc_q_ext_state
+	F__f          t__riscv_mc_f_ext_state
+	F__ccgo_pad3  [396]byte
 }
 
 type Tmcontext_t = struct {
-	F__gregs  t__riscv_mc_gp_state
-	F__fpregs t__riscv_mc_fp_state
+	F__ccgo_align [0]uint64
+	F__gregs      t__riscv_mc_gp_state
+	F__fpregs     t__riscv_mc_fp_state
 }
 
 type Tucontext_t = struct {
-	Fuc_flags    uint64
-	Fuc_link     uintptr
-	Fuc_stack    Tstack_t
-	Fuc_sigmask  Tsigset_t
-	Fuc_mcontext Tmcontext_t
+	F__ccgo_align  [0]uint64
+	Fuc_flags      uint64
+	Fuc_link       uintptr
+	Fuc_stack      Tstack_t
+	Fuc_sigmask    Tsigset_t
+	F__ccgo_align4 [8]byte
+	Fuc_mcontext   Tmcontext_t
 }
 
 type t__ucontext = Tucontext_t
@@ -29900,15 +29905,17 @@ type Tgreg_t = uint64
 type Tgregset_t = [32]uint64
 
 type Tfpregset_t = struct {
-	F__d         [0]t__riscv_mc_d_ext_state
-	F__q         [0]t__riscv_mc_q_ext_state
-	F__f         t__riscv_mc_f_ext_state
-	F__ccgo_pad3 [396]byte
+	F__ccgo_align [0]uint64
+	F__d          [0]t__riscv_mc_d_ext_state
+	F__q          [0]t__riscv_mc_q_ext_state
+	F__f          t__riscv_mc_f_ext_state
+	F__ccgo_pad3  [396]byte
 }
 
 type Tsigcontext = struct {
-	Fgregs  Tgregset_t
-	Ffpregs Tfpregset_t
+	F__ccgo_align [0]uint64
+	Fgregs        Tgregset_t
+	Ffpregs       Tfpregset_t
 }
 
 type Tucontext = Tucontext_t
@@ -142834,7 +142841,7 @@ func _wrapper_cmp(tls *TLS, v1 uintptr, v2 uintptr, cmp uintptr) (r int32) {
 
 type t__ccgo_fp__Xqsort_3 = func(*TLS, uintptr, uintptr) int32
 
-func Xqsort(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, __ccgo_fp_cmp Tcmpfun) {
+func ___musl_qsort(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, __ccgo_fp_cmp Tcmpfun) {
 	if __ccgo_strace {
 		trc("tls=%v base=%v nel=%v width=%v __ccgo_fp_cmp=%v, (%v:)", tls, base, nel, width, __ccgo_fp_cmp, origin(2))
 	}

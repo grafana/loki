@@ -347,12 +347,21 @@ func Xtmpfile(t *TLS) uintptr {
 		return 0
 	}
 
-	cf := newFile(t, int32(f.Fd()))
-	AtExit(func() {
-		nm := f.Name()
-		file(cf).close(t)
-		os.Remove(nm)
-	})
+	// Unlink the file right away like musl, so it goes away on fclose or exit. The fd
+	// is duplicated as the os.File would otherwise close it.
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	fd, err := unix.Dup(int(f.Fd()))
+	if err != nil {
+		t.setErrno(err)
+		return 0
+	}
+
+	cf := newFile(t, int32(fd))
+	if cf == 0 {
+		unix.Close(fd)
+	}
 
 	return cf
 }

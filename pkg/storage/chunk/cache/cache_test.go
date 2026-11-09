@@ -52,6 +52,7 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 			chunkenc.NewFacade(cs, 0, 0),
 			ts,
 			ts.Add(chunkLen),
+			0,
 		)
 
 		err = c.Encode()
@@ -131,7 +132,7 @@ func testChunkFetcher(t *testing.T, c cache.Cache, chunks []chunk.Chunk) {
 		},
 	}
 
-	fetcher, err := fetcher.New(c, nil, false, s, nil, 0, 0, false)
+	fetcher, err := fetcher.New(c, nil, false, s, nil, 0, 0)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 

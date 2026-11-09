@@ -79,9 +79,15 @@ func (b *BooleanBuilder) AppendNull() {
 }
 
 func (b *BooleanBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendNull()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendNulls(n)
 }
 
 func (b *BooleanBuilder) AppendEmptyValue() {
@@ -90,9 +96,16 @@ func (b *BooleanBuilder) AppendEmptyValue() {
 }
 
 func (b *BooleanBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendEmptyValue()
+		return
+	}
+	b.Reserve(n)
+	bitutil.SetBitsTo(b.rawData, int64(b.length), int64(n), false)
+	b.unsafeSetValid(n)
 }
 
 func (b *BooleanBuilder) AppendValueFromString(s string) error {
@@ -128,8 +141,12 @@ func (b *BooleanBuilder) AppendValues(v []bool, valid []bool) {
 	}
 
 	b.Reserve(len(v))
-	for i, vv := range v {
-		bitutil.SetBitTo(b.rawData, b.length+i, vv)
+	if len(v) < 8 {
+		for i, vv := range v {
+			bitutil.SetBitTo(b.rawData, b.length+i, vv)
+		}
+	} else {
+		packBoolsToBitmap(b.rawData, b.length, v)
 	}
 	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
@@ -152,6 +169,7 @@ func (b *BooleanBuilder) Reserve(n int) {
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
 // additional memory will be allocated. If n is smaller, the allocated memory may reduced.
 func (b *BooleanBuilder) Resize(n int) {
+	nBuilder := n
 	if n < minBuilderCapacity {
 		n = minBuilderCapacity
 	}
@@ -159,7 +177,7 @@ func (b *BooleanBuilder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.resize(n, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(arrow.BooleanTraits.BytesRequired(n))
 		b.rawData = b.data.Bytes()
 	}

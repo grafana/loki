@@ -22,7 +22,10 @@ type BuilderMetrics struct {
 	appends       prometheus.Counter
 	appendTime    prometheus.Histogram
 	buildTime     prometheus.Histogram
+	sortTime      prometheus.Histogram
 	flushFailures prometheus.Counter
+
+	releaseFailures prometheus.Counter
 
 	builtSize prometheus.Histogram
 }
@@ -64,6 +67,14 @@ func NewBuilderMetrics() *BuilderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
+		sortTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_dataobj_sort_duration_seconds",
+			Help: "Histogram of time spent sorting data objects",
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
 		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_dataobj_built_size_bytes",
 			Help: "Distribution of constructed data object sizes in bytes.",
@@ -75,6 +86,10 @@ func NewBuilderMetrics() *BuilderMetrics {
 		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_flush_failures_total",
 			Help: "Total number of flush failures.",
+		}),
+		releaseFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_release_failures_total",
+			Help: "Total number of failures to release the scratch storage of an intermediate data object. These do not fail the flush.",
 		}),
 	}
 }
@@ -99,9 +114,11 @@ func (m *BuilderMetrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.appends))
 	errs = append(errs, reg.Register(m.appendTime))
 	errs = append(errs, reg.Register(m.buildTime))
+	errs = append(errs, reg.Register(m.sortTime))
 
 	errs = append(errs, reg.Register(m.builtSize))
 	errs = append(errs, reg.Register(m.flushFailures))
+	errs = append(errs, reg.Register(m.releaseFailures))
 
 	return errors.Join(errs...)
 }
@@ -118,7 +135,9 @@ func (m *BuilderMetrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.appends)
 	reg.Unregister(m.appendTime)
 	reg.Unregister(m.buildTime)
+	reg.Unregister(m.sortTime)
 
 	reg.Unregister(m.builtSize)
 	reg.Unregister(m.flushFailures)
+	reg.Unregister(m.releaseFailures)
 }

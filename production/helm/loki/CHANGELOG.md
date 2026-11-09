@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 7.5.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.6.16 (updated `enterprise.version`, and `enterprise.image.tag`).
+
 ## 7.4.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.6.14 (updated `enterprise.version`, and `enterprise.image.tag`).

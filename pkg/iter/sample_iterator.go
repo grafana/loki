@@ -7,10 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 

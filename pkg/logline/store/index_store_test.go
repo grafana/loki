@@ -22,14 +22,24 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/format"
 )
 
-// newTestStore creates a Store with short poll interval and standard retention for testing.
+// Retention settings the deletion tests evaluate snapshots against.
+const (
+	testRetention   = 7 * 24 * time.Hour
+	testGracePeriod = 24 * time.Hour
+)
+
+// eligibleForDeletion evaluates the current snapshot with testRetention and
+// testGracePeriod.
+func eligibleForDeletion(s *Store, now time.Time) []Meta {
+	return s.Snapshot().EligibleForDeletion(now.Add(-testRetention), now.Add(-testGracePeriod))
+}
+
+// newTestStore creates a Store with a short poll interval for testing.
 func newTestStore(t *testing.T, bucket objstore.Bucket) *Store {
 	t.Helper()
 	cfg := Config{
-		PollInterval:          10 * time.Millisecond,
-		RetentionDuration:     7 * 24 * time.Hour,
-		CompactionGracePeriod: 24 * time.Hour,
-		MinDate:               "0001-01-01",
+		PollInterval: 10 * time.Millisecond,
+		MinDate:      "0001-01-01",
 	}
 	s, err := NewStore(bucket, cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
@@ -270,8 +280,6 @@ func TestConfig_Validate_Defaults(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 	require.Equal(t, DefaultPollInterval, cfg.PollInterval)
 	require.Equal(t, DefaultPollConcurrency, cfg.PollConcurrency)
-	require.Equal(t, DefaultRetentionDuration, cfg.RetentionDuration)
-	require.Equal(t, DefaultCompactionGracePeriod, cfg.CompactionGracePeriod)
 }
 
 func TestConfig_Validate_NegativePollInterval(t *testing.T) {
@@ -281,16 +289,6 @@ func TestConfig_Validate_NegativePollInterval(t *testing.T) {
 
 func TestConfig_Validate_NegativePollConcurrency(t *testing.T) {
 	cfg := Config{PollConcurrency: -1}
-	require.Error(t, cfg.Validate())
-}
-
-func TestConfig_Validate_NegativeRetention(t *testing.T) {
-	cfg := Config{RetentionDuration: -1 * time.Hour}
-	require.Error(t, cfg.Validate())
-}
-
-func TestConfig_Validate_NegativeGracePeriod(t *testing.T) {
-	cfg := Config{CompactionGracePeriod: -1 * time.Hour}
 	require.Error(t, cfg.Validate())
 }
 
@@ -1156,10 +1154,8 @@ func TestStore_Indexes_MinDateSet_IsInclusiveAndFiltersEarlierDates(t *testing.T
 	inner := objstore.NewInMemBucket()
 	bucket := &trackingBucket{Bucket: inner}
 	cfg := Config{
-		PollInterval:          10 * time.Millisecond,
-		RetentionDuration:     7 * 24 * time.Hour,
-		CompactionGracePeriod: 24 * time.Hour,
-		MinDate:               "2026-02-23",
+		PollInterval: 10 * time.Millisecond,
+		MinDate:      "2026-02-23",
 	}
 	s, err := NewStore(bucket, cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
@@ -1222,7 +1218,7 @@ func TestStore_EligibleForDeletion_ActiveRecentFile(t *testing.T) {
 
 	require.NoError(t, s.poll(context.Background()))
 
-	result := s.EligibleForDeletion(now)
+	result := eligibleForDeletion(s, now)
 	require.Empty(t, result)
 }
 
@@ -1241,7 +1237,7 @@ func TestStore_EligibleForDeletion_ActiveOldFile(t *testing.T) {
 
 	require.NoError(t, s.poll(context.Background()))
 
-	result := s.EligibleForDeletion(now)
+	result := eligibleForDeletion(s, now)
 	require.Len(t, result, 1)
 	require.Equal(t, meta.ID(), result[0].ID())
 }
@@ -1267,7 +1263,7 @@ func TestStore_EligibleForDeletion_CompactedWithinGrace(t *testing.T) {
 
 	require.NoError(t, s.poll(context.Background()))
 
-	result := s.EligibleForDeletion(now)
+	result := eligibleForDeletion(s, now)
 	require.Empty(t, result, "source within grace period should not be eligible")
 }
 
@@ -1294,7 +1290,7 @@ func TestStore_EligibleForDeletion_CompactedExpiredGrace(t *testing.T) {
 
 	// Pass a future "now" so that the merged index's CreatedAt (set to real time.Now()
 	// by Write) is older than the grace cutoff. Advance by 48h to exceed the 24h grace period.
-	result := s.EligibleForDeletion(now.Add(48 * time.Hour))
+	result := eligibleForDeletion(s, now.Add(48*time.Hour))
 	require.Len(t, result, 1)
 	require.Equal(t, source.ID(), result[0].ID())
 }
@@ -1303,7 +1299,7 @@ func TestStore_EligibleForDeletion_EmptySnapshot(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	s := newTestStore(t, bucket)
 
-	result := s.EligibleForDeletion(time.Now())
+	result := eligibleForDeletion(s, time.Now())
 	require.NotNil(t, result, "should return empty slice, not nil")
 	require.Empty(t, result)
 }
@@ -1457,10 +1453,8 @@ func TestStore_Poll_PerDateMetrics(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	reg := prometheus.NewPedanticRegistry()
 	cfg := Config{
-		PollInterval:          10 * time.Millisecond,
-		RetentionDuration:     7 * 24 * time.Hour,
-		CompactionGracePeriod: 24 * time.Hour,
-		MinDate:               "0001-01-01",
+		PollInterval: 10 * time.Millisecond,
+		MinDate:      "0001-01-01",
 	}
 	s, err := NewStore(bucket, cfg, log.NewNopLogger(), reg)
 	require.NoError(t, err)
@@ -1518,10 +1512,8 @@ func TestStore_Poll_PerDateMetrics_SkipsPreMinDate(t *testing.T) {
 	dateBefore := now.AddDate(0, 0, -2).Format("2006-01-02")
 	dateOnOrAfter := now.AddDate(0, 0, -1).Format("2006-01-02")
 	cfg := Config{
-		PollInterval:          10 * time.Millisecond,
-		RetentionDuration:     7 * 24 * time.Hour,
-		CompactionGracePeriod: 24 * time.Hour,
-		MinDate:               dateOnOrAfter,
+		PollInterval: 10 * time.Millisecond,
+		MinDate:      dateOnOrAfter,
 	}
 	s, err := NewStore(bucket, cfg, log.NewNopLogger(), reg)
 	require.NoError(t, err)
@@ -1546,10 +1538,8 @@ func TestStore_Poll_PerDateMetrics_ResetOnEmpty(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	reg := prometheus.NewPedanticRegistry()
 	cfg := Config{
-		PollInterval:          10 * time.Millisecond,
-		RetentionDuration:     7 * 24 * time.Hour,
-		CompactionGracePeriod: 24 * time.Hour,
-		MinDate:               "0001-01-01",
+		PollInterval: 10 * time.Millisecond,
+		MinDate:      "0001-01-01",
 	}
 	s, err := NewStore(bucket, cfg, log.NewNopLogger(), reg)
 	require.NoError(t, err)
@@ -1579,10 +1569,8 @@ func TestStore_Poll_PerDateBytesMetric(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	reg := prometheus.NewPedanticRegistry()
 	cfg := Config{
-		PollInterval:          10 * time.Millisecond,
-		RetentionDuration:     7 * 24 * time.Hour,
-		CompactionGracePeriod: 24 * time.Hour,
-		MinDate:               "0001-01-01",
+		PollInterval: 10 * time.Millisecond,
+		MinDate:      "0001-01-01",
 	}
 	s, err := NewStore(bucket, cfg, log.NewNopLogger(), reg)
 	require.NoError(t, err)
@@ -1634,10 +1622,8 @@ func TestStore_Poll_PerDateBytesMetric_ResetOnEmpty(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	reg := prometheus.NewPedanticRegistry()
 	cfg := Config{
-		PollInterval:          10 * time.Millisecond,
-		RetentionDuration:     7 * 24 * time.Hour,
-		CompactionGracePeriod: 24 * time.Hour,
-		MinDate:               "0001-01-01",
+		PollInterval: 10 * time.Millisecond,
+		MinDate:      "0001-01-01",
 	}
 	s, err := NewStore(bucket, cfg, log.NewNopLogger(), reg)
 	require.NoError(t, err)
@@ -1724,7 +1710,7 @@ func TestStore_Write_SetsVersion(t *testing.T) {
 	require.Equal(t, "v3", decoded.Version)
 }
 
-// ---- RetentionDuration uses MaxLogTs ----
+// ---- Retention uses MaxLogTs ----
 
 func TestStore_EligibleForDeletion_UsesMaxLogTsNotCreatedAt(t *testing.T) {
 	// Verify that retention is based on the data's MaxLogTs, not CreatedAt.
@@ -1749,7 +1735,7 @@ func TestStore_EligibleForDeletion_UsesMaxLogTsNotCreatedAt(t *testing.T) {
 	require.NoError(t, s.poll(context.Background()))
 
 	// EligibleForDeletion should use MaxLogTs — 8 days > 7 day retention
-	result := s.EligibleForDeletion(now)
+	result := eligibleForDeletion(s, now)
 	require.Len(t, result, 1, "index with old MaxLogTs should be eligible for deletion")
 	require.Equal(t, meta.ID(), result[0].ID())
 }

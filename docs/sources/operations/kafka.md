@@ -22,7 +22,7 @@ By default, the [distributor](https://grafana.com/docs/loki/<LOKI_VERSION>/get-s
 
 Kafka sits between the distributor and the ingester as a durable, replicated buffer. This decouples the two components so that a slow or restarting ingester doesn't block or fail writes.
 
-Loki uses the [franz-go](https://github.com/twmb/franz-go) Kafka client library. If you need to debug Kafka client behavior in your logs, look for the component name `kafka_client`. Kafka client metrics use the `loki_kafka_client_` prefix.
+Loki uses the [franz-go](https://github.com/twmb/franz-go) Kafka client library. If you need to debug Kafka client behavior in your logs, look for the component name `kafka_client`. Kafka client metrics for the partition reader use the `loki_kafka_client_` prefix. Producer-side metrics use the `kafka_client_` prefix (without the `loki_` part).
 
 ## When and why to use it
 
@@ -73,7 +73,7 @@ However, the querier must be told which ring to use to find the ingesters that h
 
 This section groups the relevant configuration blocks at a high level. For the full list of fields and their defaults, refer to the [Configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-config-ref/).
 
-- **`kafka_config`**: the Kafka client configuration shared by every Loki component that reads or writes Kafka records. It includes the broker addresses (`reader_config.address` and `writer_config.address`), the topic name, SASL credentials, producer tuning (`producer_linger`, `producer_max_inflight_requests_per_broker`, `producer_max_record_size_bytes`), and consumer tuning (`max_consumer_lag_at_startup`, `consumer_group_offset_commit_interval`, `max_consumer_workers`).
+- **`kafka_config`**: the Kafka client configuration shared by every Loki component that reads or writes Kafka records. It includes the broker addresses (`reader_config.address` and `writer_config.address`), the topic name, SASL credentials, producer tuning (`producer_linger`, `producer_max_inflight_requests_per_broker`, `producer_max_record_size_bytes`, `write_timeout`, `producer_max_buffered_bytes`), and consumer tuning (`max_consumer_lag_at_startup`, `consumer_group_offset_commit_interval`, `max_consumer_workers`). If the Kafka producer can't keep up, writes fail with backpressure errors; refer to [Troubleshoot Kafka producer backpressure](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-ingest/#error-kafka-producer-backpressure) to diagnose them.
 - **`distributor.kafka_writes_enabled`** and **`distributor.ingester_writes_enabled`**: control whether the distributor writes to Kafka, to ingesters over gRPC, or both. At least one must be `true`.
 - **`ingester.kafka_ingestion`**: controls whether ingesters consume from Kafka, and configures the partition ring key-value store that ingesters, distributors, queriers, and rulers use to coordinate partition ownership.
 - **`querier.query_partition_ingesters`**: controls whether the querier, and any ruler evaluating rules locally, looks up ingesters using the partition ring instead of the classic hash ring. Set this to `true` only after the Kafka-consuming ingesters have caught up and held data for at least `querier.query_ingesters_within` (default: 3 hours); otherwise recent queries can return incomplete results. Defaults to `false`.
@@ -92,7 +92,8 @@ The number of Kafka partitions in your topic limits how many ingesters can activ
 
 Keep the following in mind when you choose a partition count:
 
-- `kafka_config.auto_create_topic_default_partitions` defaults to `1000`. This is a cluster-wide Kafka broker setting (equivalent to Kafka's `num.partitions`), not a per-topic setting, and it only takes effect if you let Loki auto-create the topic.
+- `kafka_config.auto_create_topic_enabled` defaults to `true`. When enabled, Loki creates the configured `kafka_config.topic` automatically if it doesn't already exist. Set this to `false` if you manage topic creation outside Loki.
+- `kafka_config.auto_create_topic_default_partitions` defaults to `1000`. This is a cluster-wide Kafka broker setting (equivalent to Kafka's `num.partitions`), not a per-topic setting, and it only takes effect when `kafka_config.auto_create_topic_enabled` is `true`.
 - The partition count sets the maximum number of ingesters that can actively consume from the topic at once. If you have more ingesters than partitions, the extra ingesters have no partition to own and stay idle for Kafka-based ingestion.
 - `limits_config.ingestion_partitions_tenant_shard_size` controls how many partitions a single tenant's streams are shuffle-sharded across. The default, `0`, disables shuffle sharding, so a tenant's data spreads across all partitions.
 - Start with more partitions than you expect to need. Partitions are inexpensive to create in Kafka, but reducing the partition count of an existing topic later is difficult and usually requires creating a new topic.
@@ -111,7 +112,7 @@ Because of this sequence, ingester restarts are safe: any data produced to Kafka
 
 ## Monitoring Kafka ingestion
 
-This is the full list of Kafka-related metrics, organized by component. For the highest-signal subset of these metrics and example alerting queries, refer to [Key metrics for monitoring Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/metrics/#kafka-based-ingestion-experimental).
+This section lists the most important Kafka-related metrics, organized by component. For the highest-signal subset of these metrics and example alerting queries, refer to [Key metrics for monitoring Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/metrics/#kafka-based-ingestion-experimental).
 
 **Distributor (producer side):**
 
@@ -133,6 +134,11 @@ This is the full list of Kafka-related metrics, organized by component. For the 
 - `loki_kafka_client_partition_reader_fetch_errors_total`: errors fetching records from Kafka brokers.
 - `loki_kafka_client_partition_reader_fetches_total` and `loki_kafka_client_partition_reader_records_per_fetch`: fetch throughput.
 - `loki_kafka_client_partition_reader_offset_commit_requests_total` and `loki_kafka_client_partition_reader_offset_commit_failures_total`: health of offset commits to Kafka.
+- `loki_kafka_client_partition_reader_last_committed_offset` (label: `partition`): the last offset successfully committed. Compare against `loki_ingester_partition_current_offset` for lag alerting.
+- `loki_kafka_client_produce_write_wait_seconds`, `loki_kafka_client_produce_write_time_seconds`, `loki_kafka_client_produce_read_wait_seconds` and `loki_kafka_client_produce_read_time_seconds` (labels: `node_id`, `host`): native histograms of how long each stage of a Produce request to each broker takes: waiting to be written, writing, waiting for the response, and reading the response.
+- `kafka_client_produce_requests_total`: total number of produce requests issued to Kafka.
+- `kafka_client_produce_failures_total` (label: `reason`): total number of failed produce requests. Alert on this to detect backpressure or broker-side issues.
+- `kafka_client_buffered_produce_bytes_limit`: the configured maximum bytes of buffered, unacknowledged produce records (`kafka_config.producer_max_buffered_bytes`). Useful as a reference when investigating backpressure.
 
 ## Configuration examples
 
@@ -209,3 +215,4 @@ kafka_config:
 - [Migrate to Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-kafka/)
 - [Configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-config-ref/)
 - [Troubleshoot Kafka integration errors](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-operations/#kafka-integration-errors)
+- [Troubleshoot Kafka producer backpressure](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-ingest/#error-kafka-producer-backpressure)
