@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -808,6 +809,9 @@ func TestCheckpointCleanupOldCheckpointsAtStartup(t *testing.T) {
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
+	// A WAL directory written by a real checkpointing ingester must look healthy to the stale check.
+	require.NoError(t, checkStaleCheckpoint(walDir))
+
 	// Phase 2: Manually create a very old checkpoint that should have been deleted
 	// This simulates the scenario where repeated checkpoint failures prevented normal cleanup.
 	// In a healthy system, when newer checkpoints complete, checkpoint.000000 would be deleted
@@ -948,4 +952,138 @@ func TestCheckpointCleanupStaleTmpDirectoriesAtStartup(t *testing.T) {
 
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+}
+
+func writeTestSegments(t *testing.T, dir string, firstIdx, lastIdx int) {
+	t.Helper()
+	for i := firstIdx; i <= lastIdx; i++ {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, fmt.Sprintf("%08d", i)), nil, 0o640))
+	}
+}
+
+func TestCheckStaleCheckpoint(t *testing.T) {
+	const noSegments = -1
+	for _, tc := range []struct {
+		name        string
+		checkpoints []string
+		firstSeg    int
+		lastSeg     int // noSegments for none
+		stale       bool
+	}{
+		{name: "no checkpoint", lastSeg: 3},
+		{name: "no checkpoint, no segments", lastSeg: noSegments},
+		{name: "healthy: checkpoint is first segment - 1", checkpoints: []string{"checkpoint.000004"}, firstSeg: 5, lastSeg: 8},
+		{name: "healthy: checkpoint is last segment - 1", checkpoints: []string{"checkpoint.000007"}, firstSeg: 5, lastSeg: 8},
+		{name: "healthy: truncation failed, segments below checkpoint remain", checkpoints: []string{"checkpoint.000004"}, firstSeg: 0, lastSeg: 8},
+		{name: "healthy: older checkpoint left behind by a failed delete", checkpoints: []string{"checkpoint.000002", "checkpoint.000004"}, firstSeg: 5, lastSeg: 8},
+		{name: "healthy: tmp checkpoint above segments is ignored", checkpoints: []string{"checkpoint.000020.tmp"}, firstSeg: 0, lastSeg: 3},
+		{name: "checkpoint and no segments", checkpoints: []string{"checkpoint.000020"}, lastSeg: noSegments, stale: true},
+		{name: "checkpoint 0 and no segments", checkpoints: []string{"checkpoint.000000"}, lastSeg: noSegments, stale: true},
+		{name: "checkpoint above only segment", checkpoints: []string{"checkpoint.050000"}, lastSeg: 0, stale: true},
+		{name: "checkpoint above all segments", checkpoints: []string{"checkpoint.000020"}, firstSeg: 0, lastSeg: 3, stale: true},
+		{name: "checkpoint one above last segment", checkpoints: []string{"checkpoint.000004"}, firstSeg: 0, lastSeg: 4, stale: true},
+		{name: "checkpoint equals last segment", checkpoints: []string{"checkpoint.000008"}, firstSeg: 5, lastSeg: 8, stale: true},
+		{name: "checkpoint is the segment counter restarted: segments 0..N-1", checkpoints: []string{"checkpoint.000020"}, firstSeg: 0, lastSeg: 19, stale: true},
+		{name: "gap between checkpoint and first segment", checkpoints: []string{"checkpoint.000004"}, firstSeg: 9, lastSeg: 12, stale: true},
+		{name: "stale latest with older good checkpoint", checkpoints: []string{"checkpoint.000002", "checkpoint.000020"}, firstSeg: 3, lastSeg: 5, stale: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, c := range tc.checkpoints {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, c), 0o750))
+			}
+			if tc.lastSeg != noSegments {
+				writeTestSegments(t, dir, tc.firstSeg, tc.lastSeg)
+			}
+
+			err := checkStaleCheckpoint(dir)
+			if !tc.stale {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, errStaleCheckpoint)
+
+			// The check must not remove anything.
+			for _, c := range tc.checkpoints {
+				require.DirExists(t, filepath.Join(dir, c))
+			}
+		})
+	}
+}
+
+func TestCheckStaleCheckpointErrors(t *testing.T) {
+	t.Run("missing dir", func(t *testing.T) {
+		err := checkStaleCheckpoint(filepath.Join(t.TempDir(), "nope"))
+		require.Error(t, err)
+		require.NotErrorIs(t, err, errStaleCheckpoint)
+	})
+
+	t.Run("checkpoint is a file", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "checkpoint.000001"), nil, 0o640))
+		err := checkStaleCheckpoint(dir)
+		require.Error(t, err)
+		require.NotErrorIs(t, err, errStaleCheckpoint)
+	})
+
+	t.Run("non-sequential segments", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.000001"), 0o750))
+		writeTestSegments(t, dir, 0, 0)
+		writeTestSegments(t, dir, 5, 5)
+		err := checkStaleCheckpoint(dir)
+		require.Error(t, err)
+		require.NotErrorIs(t, err, errStaleCheckpoint)
+	})
+}
+
+// A stale checkpoint is only logged: startup must neither fail nor delete anything.
+func TestIngesterNewLogsStaleCheckpoint(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		checkpoint string
+		segments   bool
+	}{
+		// Opening the WAL creates segment 0, which hides both of these unless the check runs first.
+		{name: "checkpoint 0 and no segments", checkpoint: "checkpoint.000000"},
+		{name: "checkpoint and no segments", checkpoint: "checkpoint.050000"},
+		{name: "checkpoint above segments", checkpoint: "checkpoint.000020", segments: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			walDir := t.TempDir()
+			ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
+
+			require.NoError(t, os.MkdirAll(filepath.Join(walDir, tc.checkpoint), 0o750))
+			if tc.segments {
+				writeTestSegments(t, walDir, 0, 3)
+			}
+
+			var logs bytes.Buffer
+			i, err := New(ingesterConfig, client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewLogfmtLogger(&logs), nil, mockReadRingWithOneActiveIngester(), nil)
+			require.NoError(t, err)
+			require.NotNil(t, i)
+
+			require.Contains(t, logs.String(), "WAL checkpoint doesn't match the WAL segments")
+			require.DirExists(t, filepath.Join(walDir, tc.checkpoint))
+		})
+	}
+}
+
+func TestIngesterNewDoesNotLogForHealthyWAL(t *testing.T) {
+	walDir := t.TempDir()
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(walDir, "checkpoint.000003"), 0o750))
+	writeTestSegments(t, walDir, 4, 6)
+
+	var logs bytes.Buffer
+	_, err = New(ingesterConfig, client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewLogfmtLogger(&logs), nil, mockReadRingWithOneActiveIngester(), nil)
+	require.NoError(t, err)
+	require.NotContains(t, logs.String(), "doesn't match the WAL segments")
 }
