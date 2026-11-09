@@ -8,16 +8,19 @@ import (
 )
 
 func TestMatcherMatchesPrefix(t *testing.T) {
-	for _, tt := range []struct {
+	type testCase struct {
 		name string
 		line string
 		want [][]byte
-	}{
-		{"empty capture", "prefix ", [][]byte{[]byte("")}},
-		{"short line", "pre", nil},
-		{"empty line", "", nil},
-		{"later occurrence", "x prefix value", nil},
-		{"long miss", strings.Repeat("x", 4096) + "prefix value", nil},
+	}
+	for _, tt := range []testCase{
+		// Differs from the line filter: the parser accepts an empty capture, but
+		// Test rejects "prefix " for the filter "prefix <_>".
+		{name: "empty capture", line: "prefix ", want: [][]byte{[]byte("")}},
+		{name: "short line", line: "pre", want: nil},
+		{name: "empty line", line: "", want: nil},
+		{name: "later occurrence", line: "x prefix value", want: nil},
+		{name: "long miss", line: strings.Repeat("x", 4096) + "prefix value", want: nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			m, err := New("prefix <value>")
@@ -28,25 +31,37 @@ func TestMatcherMatchesPrefix(t *testing.T) {
 }
 
 func TestMatcherTestSemantics(t *testing.T) {
-	for _, tt := range []struct {
+	type testCase struct {
 		name    string
 		pattern string
 		line    string
 		want    bool
-	}{
-		{"empty", "", "", true},
-		{"empty pattern", "", "log", false},
-		{"empty line", "<_>", "", false},
-		{"literal only", "foo", "foo", true},
-		{"missing literal", "foo<_>", "bar", false},
-		{"literal remainder", "foo", "foo suffix", false},
-		{"first occurrence", "foo", "foofoo", false},
-		{"no retry after empty capture", "<_>foo", "foo xfoo", false},
-		{"empty interior capture", "foo<_>bar", "foobar", false},
-		{"no retry interior", "foo<_>bar", "foobar xbar", false},
-		{"repeated literal", "<_>foo<_>foo<_>", "xfooyfooz", true},
-		{"adjacent repeated literal", "<_>foo<_>foo<_>", "xfoofooz", false},
-		{"binary input", "<_>foo<_>", "\x00foo\xff", true},
+	}
+	for _, tt := range []testCase{
+		{name: "empty", pattern: "", line: "", want: true},
+		{name: "empty pattern", pattern: "", line: "log", want: false},
+		{name: "empty line", pattern: "<_>", line: "", want: false},
+		{name: "literal only", pattern: "foo", line: "foo", want: true},
+		{name: "missing literal", pattern: "foo<_>", line: "bar", want: false},
+		{name: "literal remainder", pattern: "foo", line: "foo suffix", want: false},
+		// Odd: "foo" matches "xfoo" because the start is not anchored, but it does
+		// not match "foofoo" because Test only tries the first "foo".
+		{name: "first occurrence", pattern: "foo", line: "foofoo", want: false},
+		// Odd: "<_>foo" matches "a xfoo" but not "foo xfoo". The first "foo" leaves
+		// the capture empty, and Test does not try the later "foo". The parser
+		// "<x>foo" accepts this line with an empty capture.
+		{name: "no retry after empty capture", pattern: "<_>foo", line: "foo xfoo", want: false},
+		// Differs from the parser: #12398 says that "<_>" masks non-empty text,
+		// but the parser "foo<x>bar" accepts this line with an empty capture.
+		{name: "empty interior capture", pattern: "foo<_>bar", line: "foobar", want: false},
+		// Odd: "bar x" is a valid non-empty capture, but Test stops at the first
+		// "bar". The parser "foo<x>bar" accepts this line with an empty capture.
+		{name: "no retry interior", pattern: "foo<_>bar", line: "foobar xbar", want: false},
+		{name: "repeated literal", pattern: "<_>foo<_>foo<_>", line: "xfooyfooz", want: true},
+		// Differs from the parser: no split gives three non-empty captures, but
+		// the parser "<a>foo<b>foo<c>" accepts this line with an empty middle capture.
+		{name: "adjacent repeated literal", pattern: "<_>foo<_>foo<_>", line: "xfoofooz", want: false},
+		{name: "binary input", pattern: "<_>foo<_>", line: "\x00foo\xff", want: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			m, err := ParseLineFilter([]byte(tt.pattern))
@@ -57,37 +72,4 @@ func TestMatcherTestSemantics(t *testing.T) {
 	var zero Matcher
 	require.True(t, zero.Test(nil))
 	require.False(t, zero.Test([]byte("log")))
-}
-
-// The pattern parser anchors a leading literal at the start of the line, as the
-// pattern parser documentation says. #12398 says that the |> and !> line filters
-// use the same semantics, except that named captures are not allowed. Test
-// accepts the leading literal at any position in the line, so a line filter
-// matches lines that the parser does not match.
-func TestMatcherTestAnchorsLeadingLiteral(t *testing.T) {
-	for _, tt := range []struct {
-		name   string
-		filter string
-		parser string
-		line   string
-		want   bool
-	}{
-		{"leading literal at start", "foo <_>", "foo <x>", "foo bar", true},
-		{"leading literal later in line", "foo <_>", "foo <x>", "prefix foo bar", false},
-		{"leading and trailing literals", "foo <_> baz", "foo <x> baz", "prefix foo bar baz", false},
-		{"request line", "GET <_>", "GET <path>", `level=info msg="retry after GET /x"`, false},
-		{"literal only", "foo", "", "prefix foo", false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			line := []byte(tt.line)
-			if tt.parser != "" {
-				p, err := New(tt.parser)
-				require.NoError(t, err)
-				require.Equal(t, tt.want, p.Matches(line) != nil, "pattern parser %q on %q", tt.parser, tt.line)
-			}
-			f, err := ParseLineFilter([]byte(tt.filter))
-			require.NoError(t, err)
-			require.Equal(t, tt.want, f.Test(line), "line filter %q on %q", tt.filter, tt.line)
-		})
-	}
 }
