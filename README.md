@@ -1,33 +1,75 @@
-<p align="center"><img src="docs/sources/logo_and_name.png" alt="Loki Logo"></p>
+<center>
 
-<a href="https://github.com/grafana/loki/actions/workflows/images.yml?query=branch%3Amain"><img src="https://github.com/grafana/loki/actions/workflows/images.yml/badge.svg?branch=main" alt="Check" /></a>
-<a href="https://goreportcard.com/report/github.com/grafana/loki"><img src="https://goreportcard.com/badge/github.com/grafana/loki" alt="Go Report Card" /></a>
-<a href="https://slack.grafana.com/"><img src="https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg" alt="Slack" /></a>
+[![Grafana Loki](docs/sources/logo_and_name.png)]()
+
+<br />
+
+[![Publish images](https://github.com/grafana/loki/actions/workflows/images.yml/badge.svg?branch=main)](https://github.com/grafana/loki/actions/workflows/images.yml?query=branch%3Amain)
+[![Join Slack](https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg)](https://slack.grafana.com)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/loki.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:loki)
 
-# Loki: like Prometheus, but for logs.
+</center>
 
-Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by [Prometheus](https://prometheus.io/).
-It is designed to be very cost effective and easy to operate.
-It does not index the contents of the logs, but rather a set of labels for each log stream.
+# Grafana Loki
 
-Compared to other log aggregation systems, Loki:
+**Grafana Loki is an open-source, horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by [Prometheus](https://prometheus.io/). It is designed to be cost-efficient and easy to operate. It does not index the contents of the logs, but rather a set of labels for each log stream.**
 
-- does not do full text indexing on logs. By storing compressed, unstructured logs and only indexing metadata, Loki is simpler to operate and cheaper to run.
-- indexes and groups log streams using the same labels you’re already using with Prometheus, enabling you to seamlessly switch between metrics and logs using the same labels that you’re already using with Prometheus.
-- is an especially good fit for storing [Kubernetes](https://kubernetes.io/) Pod logs. Metadata such as Pod labels is automatically scraped and indexed.
-- has native support in Grafana (needs Grafana v6.0).
+## Compared to other log aggregation systems, Loki ...
 
-A Loki-based logging stack consists of 3 components:
+<dl>
+  <dd>... does not do full text indexing on logs. By storing compressed, unstructured logs and only indexing metadata, Loki is simpler to operate and cheaper to run.</dd>
+  <dd>... indexes and groups log streams using the same labels you’re already using with Prometheus, enabling you to seamlessly switch between metrics and logs using the same labels that you’re already using with Prometheus.</dd>
+  <dd>... is an especially good fit for storing [Kubernetes](https://kubernetes.io/) Pod logs. Metadata such as Pod labels is automatically scraped and indexed.</dd>
+  <dd>... has native support in Grafana.</dd>
+</dl>
 
-- [Alloy](https://github.com/grafana/alloy) is agent, responsible for gathering logs and sending them to Loki.
-- [Loki](https://github.com/grafana/loki) is the main service, responsible for storing logs and processing queries.
-- [Grafana](https://github.com/grafana/grafana) for querying and displaying the logs.
+## The logging stack
 
-**Note that Alloy replaced Promtail in the stack, because Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy).**
+A Loki-based logging stack consists of three components:
 
-Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
-Loki differs from Prometheus by focusing on logs instead of metrics, and delivering logs via push, instead of pull.
+- [Alloy](https://github.com/grafana/alloy) is the logging agent, responsible for gathering logs and sending them to Loki.
+- [Loki](https://github.com/grafana/loki) is the log management system, responsible for receiving logs from the agent, storing them, and anwering queries about the logs.
+- [Grafana](https://github.com/grafana/grafana) is the user interface for sending queries and displaying the results.
+
+```mermaid
+flowchart TB
+    alloy["Alloy"]
+    loki["Loki"]
+    grafana["Grafana"]
+
+    subgraph write ["Loki Stack"]
+        direction TB
+        alloy -->|write| loki -->|read| grafana
+    end
+```
+
+## LogQL: Loki Query Language
+
+Loki has its own query language (LogQL) to retrieve stored logs.
+The language is inspired by Unix pipes and how they can be used to create pipelines for filtering and transforming text input. LogQL can create either log and metric results, depending on its form.
+
+A log query consists of a selector (like Prometheus' label selector) and and an optional pipeline (line filters, label filters, parsers, formatters, ...).
+
+```
+{cluster="prod", namespace="loki", container="distributor"}
+  | detected_level="error"
+  |= "failed to parse"
+```
+
+A metric query consists of a range vector aggregation surrounding a log query. Optionally, the range aggregation is surrounded by a vector aggregation or other function.
+
+```
+sum by (org_id) (
+  sum_over_time(
+    {cluster="prod", namespace="loki", container="query-frontend"}
+      |= "metrics.go"
+      | logfmt
+      | unwrap total_bytes
+      | __error__=""
+    [1h]
+  )
+)
+```
 
 ## Getting started
 
@@ -35,7 +77,7 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 * [Installing Alloy](https://grafana.com/docs/loki/latest/send-data/alloy/)
 * [Getting Started](https://grafana.com/docs/loki/latest/get-started/)
 
-### ⚠️ Helm Chart Migration
+## ⚠️ Helm Chart Migration
 Effective March 16, 2026, the Grafana Loki Helm chart will be forked to a new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts).  The chart in the Loki repository will continue to be maintained for GEL users only.  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
 
 ## Upgrading
