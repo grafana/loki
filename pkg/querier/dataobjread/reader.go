@@ -26,7 +26,7 @@ import (
 
 const (
 	// DefaultMaxConcurrency is how many logs sections the reader scans at once.
-	DefaultMaxConcurrency = 16
+	DefaultMaxConcurrency = 128
 
 	// DefaultReadBatchSize is how many records one section read decodes and forwards at a time.
 	DefaultReadBatchSize = 1024
