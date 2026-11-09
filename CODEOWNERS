@@ -4,6 +4,9 @@
 # Documentation.
 /docs/ @grafana/docs-logs @grafana/loki-team
 
+# SBOM generation for releases
+/.github/workflows/sbom-on-release.yml @grafana/security
+
 # Logql grammar
 # The OSS big tent team is listed as co-codeowner for grammar file. This is to receive notifications about updates, so these can be implemented in https://github.com/grafana/lezer-logql
 pkg/logql/syntax/syntax.y @grafana/oss-big-tent @grafana/loki-team
