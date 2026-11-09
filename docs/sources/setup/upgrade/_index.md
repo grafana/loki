@@ -103,6 +103,12 @@ For the best possible experience in production, we recommend deploying Loki in d
 
 A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
 
+#### Breaking change: Thanos storage clients are used by default
+
+The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos-based object store clients by default if not otherwise explicitly specified.
+
+Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
+
 #### Breaking change: Removal of various deprecated configuration options
 
 - The per-tenant ruler remote write settings have been removed in favor of `limits_config.ruler_remote_write_config`:
@@ -171,12 +177,6 @@ The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-var
 #### Breaking change: Removal of the `row_shards` schema setting
 
 The `row_shards` setting on a `schema_config` `period_config` has been removed. It configured a static query shard factor for legacy (non-TSDB) index types. TSDB, the only supported index type, resolves log and metric query sharding dynamically from index statistics and ignores `row_shards`; series queries continue to use the previous default factor of 16. Because schema config is parsed strictly, a leftover `row_shards:` key now fails config load. Remove the `row_shards` setting from every `period_config`; the `deprecated-config-checker` tool will flag it.
-
-#### Breaking change: Thanos storage clients are used by default
-
-The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos-based object store clients by default if not otherwise explicitly specified.
-
-Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
 
 #### Breaking change: Ruler always wipes its remote-write WAL on startup
 
